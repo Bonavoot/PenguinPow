@@ -22,7 +22,9 @@ const GROUND_LEVEL = SHADOW_GROUND_LEVEL;
 // the diffuse/bounced light is cool, so a pure-black penumbra reads as "sticker
 // dropped on the surface"; the cool cast makes the soft shadow belong to the
 // frozen arena (and quietly pairs with the cool rim light on the sprites).
-const SHADOW_GRADIENT =
+// Exported so menu portraits (BashoHub, etc.) can reuse the exact same
+// contact / core / ambient recipe instead of inventing a parallel oval.
+export const SHADOW_GRADIENT =
   "radial-gradient(ellipse 34% 46% at 50% 53%, rgba(2,4,8,0.82) 0%, rgba(4,8,16,0.52) 40%, rgba(4,8,16,0) 72%), " +
   "radial-gradient(ellipse 62% 66% at 50% 52%, rgba(9,17,32,0.44) 0%, rgba(9,17,32,0.18) 52%, rgba(9,17,32,0) 78%), " +
   "radial-gradient(ellipse 104% 100% at 50% 52%, rgba(14,24,42,0.22) 0%, rgba(14,24,42,0.07) 56%, rgba(14,24,42,0) 82%)";

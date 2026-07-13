@@ -1716,7 +1716,8 @@ function generateTextures(s) {
     // around the big ring + the residual upward "mist" tail.
     armorAbsorbSpark: createChunk(r(6), 255, 220, 230, 1.0),
 
-    // Grab-armor break: white-yellow glass shards + a brighter break ring
+    // Grab-armor break: white-yellow glass shards (ring texture kept for
+    // possible absorb-style reuse; break VFX no longer spawns smoke rings).
     armorBreakRing: createColoredCloudRing(r(170), r(15), 4091, {
       shadow: [220, 200, 110],
       body: [255, 240, 170],
@@ -2789,6 +2790,43 @@ const PRESETS = {
       alpha: 1,
       maxLife: 0.5,
     });
+  },
+
+  // Victim feet skid — a small dust kick under a slap victim as the hit shoves
+  // them back. The body judder sells the IMPACT; this sells the DISPLACEMENT
+  // (ground being lost on every hit). Deliberately small so rapid slap
+  // exchanges layer puffs without whiting out the feet. dir = drift direction.
+  slapSkidDust(engine, { x, y, dir = 1 }) {
+    const footX = x;
+    const footY = GAME_H - y - 12;
+    spawnLandingSmoke(engine, footX - dir * 6, footY, {
+      scale: 0.45,
+      alpha: 0.7,
+      maxLife: 0.3,
+    });
+    // A few low chips flicked along the drift — matter displaced by the shove.
+    for (let i = 0; i < 3; i++) {
+      engine.spawn({
+        x: footX + dir * rand(2, 10),
+        y: footY - rand(0, 4),
+        vx: dir * rand(60, 140),
+        vy: rand(-40, -10),
+        gravity: rand(160, 260),
+        drag: 0.9,
+        size: rand(3, 6),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.7, 0.95),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "inCubic",
+        rotation: 0,
+        rotationSpeed: rand(-10, 10),
+        maxLife: rand(0.22, 0.34),
+        texture: pick([engine.textures.circleIce, engine.textures.circle]),
+        blendMode: "lighter",
+        delay: rand(0, 0.02),
+      });
+    }
   },
 
   // Fast-fall slam landing — a slightly bigger smoke puff for the harder impact,
@@ -4563,25 +4601,16 @@ const PRESETS = {
   },
 
   // ── GRAB ARMOR BREAK ────────────────────────────────────────────────
-  // Charged attack shatters the armor — bright white-yellow break ring with
-  // a burst of glass shards that arc outward and fall under gravity. Same
-  // tilted-ring idiom, but bigger, brighter, and longer-lived than the absorb.
-  // Sized to read at a glance even in the chaos of a charged-attack confirm.
+  // Charged attack shatters the armor — glass shards + flecks only (no smoke
+  // rings; those fought the charged hit-spark sprite). Caller anchors at the
+  // charged hit-spark contact seam so the shatter reads ON the impact.
   grabArmorBreak(engine, { x, y, facing }) {
     const dir = facing || 1;
     const cx = x;
-    // Same chest-level position math as grabArmorAbsorb / hitImpact.
     const cy = GAME_H - y;
     const front = (cfg) => engine.spawn({ ...cfg, aboveFighters: true });
 
-    // Same tilted-back ring style as the absorb — keeps the break visually
-    // related to the absorb (it IS the armor's last gasp). Bigger but still
-    // tilted (stretchX < 1) so the ring reads as foreshortened, not as a
-    // wide flat shockwave. The drama comes from the glass shards, not from
-    // a giant ring.
-    const TILT_X = 0.6;
-
-    // Bright central flash — sells the "shatter" instant
+    // Bright central flash — sells the "shatter" instant under the hit spark
     front({
       x: cx, y: cy,
       vx: 0, vy: 0, gravity: 0, drag: 1,
@@ -4596,41 +4625,7 @@ const PRESETS = {
       blendMode: "lighter",
     });
 
-    // Primary tilted break ring — same footprint shape as the absorb but
-    // brighter, longer, and a touch larger to read as a shatter.
-    front({
-      x: cx, y: cy,
-      vx: 0, vy: 0, gravity: 0, drag: 1,
-      size: 12,
-      sizeEnd: 86,
-      alpha: 1.0,
-      alphaEnd: 0,
-      rotation: 0, rotationSpeed: 0,
-      ease: "outCubic", easeAlpha: "outCubic",
-      maxLife: 0.4,
-      texture: engine.textures.armorBreakRing,
-      stretchX: TILT_X,
-    });
-
-    // Secondary ring trailing slightly — gives the break a real "double pop"
-    front({
-      x: cx, y: cy,
-      vx: 0, vy: 0, gravity: 0, drag: 1,
-      size: 9,
-      sizeEnd: 64,
-      alpha: 0.75,
-      alphaEnd: 0,
-      rotation: 0, rotationSpeed: 0,
-      ease: "outCubic", easeAlpha: "outCubic",
-      maxLife: 0.34,
-      texture: engine.textures.armorBreakRing,
-      stretchX: TILT_X,
-      delay: 0.06,
-    });
-
-    // 14 glass shards bursting outward — the real noticeability lives here.
-    // Shards arc up then fall under gravity. Wide scatter sells the shatter
-    // without needing a huge ring.
+    // 14 glass shards bursting outward — the shatter read. Arc up then fall.
     const shardCount = 14;
     for (let i = 0; i < shardCount; i++) {
       const angle = (i / shardCount) * Math.PI * 2 + rand(-0.3, 0.3);

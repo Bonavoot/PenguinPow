@@ -58,12 +58,10 @@ const HitEffect = ({ position }) => {
     const isCinematic = position.cinematicKill || false;
     const cinematicMs = position.cinematicHitstopMs || 0;
 
-    const isBurstHit = position.isBurstHit || false;
     const isArmorBreak = position.isArmorBreak || false;
     const isPowered = position.isPowered || false;
-    const isPerfectEnder = position.isPerfectEnder || false;
 
-    const isHeavy = attackType === 'charged' || isBurstHit || isCinematic;
+    const isHeavy = attackType === 'charged' || isCinematic;
 
     const newEffect = {
       id: effectId,
@@ -71,12 +69,10 @@ const HitEffect = ({ position }) => {
       y: position.y,
       facing: position.facing || 1,
       attackType,
-      isBurstHit,
       isCounterHit,
       isPunish,
       isArmorBreak,
       isPowered,
-      isPerfectEnder,
       frozen: isCinematic,
     };
 
@@ -158,8 +154,6 @@ HitEffect.propTypes = {
     timestamp: PropTypes.number,
     isCounterHit: PropTypes.bool,
     isPunish: PropTypes.bool,
-    isPerfectEnder: PropTypes.bool,
-    seamOpen: PropTypes.bool,
   }),
 };
 

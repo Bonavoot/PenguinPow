@@ -14,22 +14,21 @@ const {
   RAW_PARRY_STAMINA_REFUND, RAW_PARRY_COOLDOWN_MS,
   PERFECT_PARRY_BALANCE_REFUND,
   SLAP_CHAIN_HIT_GAP_MS,
-  HITSTOP_SLAP_MS, HITSTOP_SLAP_STRING_MS, HITSTOP_SLAP_HIT2_MS, SLAP_STRING_ATTACKER_HITSTOP_RELIEF_MS, HITSTOP_SLAP_HIT3_MS, HITSTOP_PARRY_MS, HITSTOP_SLAP_PARRY_MS, HITSTOP_PERFECT_PARRY_MS, HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
+  HITSTOP_SLAP_MS, HITSTOP_BURST_MS, HITSTOP_PARRY_MS, HITSTOP_SLAP_PARRY_MS, HITSTOP_PERFECT_PARRY_MS, HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
   SLAP_HIT_VICTIM_STAMINA_DRAIN, CHARGED_HIT_VICTIM_STAMINA_DRAIN,
+  PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN,
   BALANCE_MAX, BALANCE_SLAP_HIT_DRAIN, BALANCE_CHARGED_HIT_DRAIN,
   CHARGE_CLASH_RECOVERY_DURATION, CHARGE_CLASH_BASE_KNOCKBACK,
   CHARGE_CLASH_MIN_KNOCKBACK, CHARGE_CLASH_ADVANTAGE_SCALE,
   CHARGE_PRIORITY_THRESHOLD, CHARGE_VS_SLAP_ATTACKER_PENALTY,
-  SLAP_STRING_LIGHT_KB_VELOCITY,
-  SLAP_NEUTRAL_KB_MULTIPLIER,
-  SLAP_HIT3_KB_VELOCITY,
-  SLAP_HIT3_KB_VELOCITY_SLOPPY,
   SLAP_KILL_RANGE,
-  SLAP_STRING_HIT_STUN_MS,
-  SLAP_STRING_HIT2_STUN_MS,
-  SLAP_HIT3_STUN_MS,
-  DOHYO_EDGE_PANIC_ZONE,
+  BURST_STUN_MS,
   SLAP_ONHIT_ATTACKER_PUSH,
+  SLAP_ONHIT_VICTIM_DRIFT,
+  SLAP_COUNTER_HIT_BONUS_MS,
+  SLAP_COUNTER_KB_MULT,
+  SLAP_MIN_HITSTUN_MS,
+  SLAP_RECOVERY_MS,
   CHARGED_KILL_REACH_MIN,
   CHARGED_KILL_REACH_MAX,
   CHARGED_KILL_REACH_CAP,
@@ -48,6 +47,7 @@ const {
   CHARGED_STARTUP_MS,
   PALM_THRUST_HIT_RECOVERY_MS,
   PALM_THRUST_HITBOX_DISTANCE_VALUE,
+  PALM_THRUST_KB_VELOCITY,
   PALM_THRUST_ACTIVE_MS,
   GRAB_STARTUP_ARMOR_STAGGER_MS,
   FLAP_BODYSLAM_KB_VELOCITY,
@@ -254,28 +254,6 @@ function checkCollision(player, otherPlayer, rooms, io) {
           player.attackStartTime - otherPlayer.attackStartTime
         );
         if (timeDifference <= SLAP_PARRY_WINDOW) {
-          // PHASE 1 — SEAM FINISHER PRIORITY. The slap3 ender is NOT a neutral
-          // near-simultaneous slap; it's the finisher of a connected string. At
-          // the ender seam it comes out ~45ms ahead of the victim's wakeup mash,
-          // which lands inside the 75ms slap-parry window and (wrongly) read as a
-          // mutual parry. Per the seam RPS (spec 1.2), a slap3 finisher BEATS a
-          // contesting slap as a clean counter-hit — it only loses to a parry.
-          // So when exactly ONE of the two clashing slaps is a slap3, resolve it
-          // as the finisher hitting the contester (no parry). Two slap3s clashing
-          // still parry (symmetric — falls through to resolveSlapParry).
-          const playerIsFinisher = player.slapStringPosition === 3;
-          const otherIsFinisher = otherPlayer.slapStringPosition === 3;
-          if (playerIsFinisher !== otherIsFinisher) {
-            // Resolve ONLY from the finisher's own collision pass to avoid
-            // double-processing (checkCollision runs once per player each tick).
-            // When the contester is `player`, do nothing here — the finisher's
-            // pass lands the counter-hit.
-            if (playerIsFinisher) {
-              if (eitherHasSlapParryImmunity) return;
-              processHit(player, otherPlayer, rooms, io);
-            }
-            return;
-          }
           const currentRoom = rooms.find((room) =>
             room.players.some((p) => p.id === player.id)
           );
@@ -313,7 +291,7 @@ function checkCollision(player, otherPlayer, rooms, io) {
       // Grab loses the timing race against this slap, but it's the defender's
       // FIRST slap during this grab attempt — armor absorbs the hit so the
       // grab can complete its commitment. The defender still pays the slap's
-      // normal balance/stamina drain (the armor isn't free), and the slapper's
+      // normal balance drain (the armor isn't free), and the slapper's
       // attack proceeds normally (no punish, but no "stuff the grab" reward).
       // Charged attacks bypass armor entirely (handled separately below) —
       // armor ONLY exists for slap. Multi-hit setups still beat grab because
@@ -472,14 +450,10 @@ function resolveSlapParry(player1, player2, room, io) {
   applyParryEffect(player1, dir1, p1Kb, SLAP_PARRY_RECOVERY_MS);
   applyParryEffect(player2, dir2, p2Kb, SLAP_PARRY_RECOVERY_MS);
 
-  // Clear slap-string state and schedule both players' (symmetric) recovery end.
+  // Clear slap state and schedule both players' (symmetric) recovery end.
   const applyRecovery = (p) => {
     p.isSlapSliding = false;
     p.isSlapParryRecovering = true;
-    p.slapStringPosition = 0;
-    p.slapStringWindowUntil = 0;
-    p.slapWhiffCount = 0;
-    p.isSlapWhiffPausing = false;
     p.pendingSlapCount = 0;
 
     timeoutManager.clearPlayerSpecific(p.id, "slapCycle");
@@ -561,11 +535,6 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
     p.isSlapAttack = false;
     p.isInStartupFrames = false;
     p.startupEndTime = 0;
-
-    if (p.keys && p.keys.mouse1) {
-      p.mouse1HeldDuringAttack = true;
-      if (!p.mouse1PressTime) p.mouse1PressTime = simNowForPlayer(p);
-    }
   });
 
   // Put both in recovery (uses the charged-recovery animation).
@@ -613,8 +582,8 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
 
 // ─── GRAB STARTUP SLAP ARMOR ───────────────────────────────────────────
 // Single-use absorption that lets a committed grab eat one neutral slap and
-// continue its startup. The grabber pays the slap's normal balance + stamina
-// drain, so mashing slap into grab still chips the grabber's resources — it
+// continue its startup. The grabber pays the slap's normal balance drain,
+// so mashing slap into grab still chips the grabber's resources — it
 // just doesn't stuff the grab outright. Multi-hit setups (slap chains, charged
 // follow-ups) still beat grab because armor is consumed after one hit.
 //
@@ -633,7 +602,8 @@ function applyGrabStartupArmor(attacker, defender, rooms, io) {
   defender.grabStartupDuration = (defender.grabStartupDuration || 0) + GRAB_STARTUP_ARMOR_STAGGER_MS;
   defender.actionLockUntil = (defender.actionLockUntil || 0) + GRAB_STARTUP_ARMOR_STAGGER_MS;
 
-  // Defender pays the slap's normal balance + stamina drain — armor isn't free.
+  // Defender pays the slap's normal balance drain — armor isn't free.
+  // Slap hits no longer chip stamina (balance is the hit tax).
   defender.balance = Math.max(0, defender.balance - BALANCE_SLAP_HIT_DRAIN);
   defender.stamina = Math.max(0, defender.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
 
@@ -757,11 +727,7 @@ function processHit(player, otherPlayer, rooms, io) {
     || otherPlayer.isWhiffingGrab
     || otherPlayer.isGrabWhiffRecovery
     || (otherPlayer.isRopeJumping && otherPlayer.ropeJumpPhase === "landing")
-    || otherPlayer.isSidestepRecovery
-    // PHASE 2: the committed slap-whiff pause is now a punishable recovery state
-    // (300ms lockout). Hitting a spammer in their whiff pause reads/rewards as a
-    // PUNISH — banner + 1.25× + punish-latched string — so spacing pays.
-    || otherPlayer.isSlapWhiffPausing;
+    || otherPlayer.isSidestepRecovery;
 
   // Counter hit and punish are conceptually mutually exclusive: counter = startup
   // read, punish = recovery exposure. If the victim is in a recovery phase (e.g.
@@ -769,35 +735,6 @@ function processHit(player, otherPlayer, rooms, io) {
   // press (e.g. buffering an attack out of recovery), which would otherwise
   // incorrectly stack a counter-hit bonus on top of the punish bonus.
   const isCounterHit = counterHitRaw && !isPunish;
-
-  // ── SLAP STRING COUNTER/PUNISH LATCH ────────────────────────────────────
-  // A slap string that STARTS on a counter or punish keeps that hit-effect
-  // styling (VFX + layered sound) for every following hit of the same string.
-  // After hit 1 the victim is in hitstun, so hits 2 & 3 can never re-detect a
-  // counter/punish on their own — without this latch they'd render as plain
-  // hits even though the whole string was earned off a hard read.
-  //
-  // Visual/audio only: the knockback + hit-stun bonuses below still key off the
-  // genuine per-hit isCounterHit/isPunish, so combo damage and balance are
-  // unchanged — only the presentation carries through.
-  if (isSlapAttack) {
-    const slapStringPos = player.slapStringPosition || 0;
-    if (slapStringPos <= 1) {
-      // First hit of a (new) string — latch reflects this hit's real read.
-      player.slapStringCounterLatched = isCounterHit;
-      player.slapStringPunishLatched = isPunish;
-    } else {
-      // Continuation — preserve the latch (OR-in any genuine fresh read).
-      player.slapStringCounterLatched = player.slapStringCounterLatched || isCounterHit;
-      player.slapStringPunishLatched = player.slapStringPunishLatched || isPunish;
-    }
-  }
-  const effectiveCounterHit = isSlapAttack
-    ? !!player.slapStringCounterLatched
-    : isCounterHit;
-  const effectivePunish = isSlapAttack
-    ? !!player.slapStringPunishLatched
-    : isPunish;
 
   // Store the charge power before resetting states
   const chargePercentage = player.chargeAttackPower;
@@ -826,15 +763,7 @@ function processHit(player, otherPlayer, rooms, io) {
       player.isChargingAttack = false;
       player.chargeStartTime = 0;
       player.chargeAttackPower = 0;
-      
-      // Track if mouse1 is held — enables charge resume after recovery without re-press
-      if (player.keys.mouse1) {
-        player.mouse1HeldDuringAttack = true;
-        if (!player.mouse1PressTime) {
-          player.mouse1PressTime = currentTime;
-        }
-      }
-      
+
       // Set recovery state for the attacker
       player.isRecovering = true;
       player.recoveryStartTime = currentTime;
@@ -891,12 +820,6 @@ function processHit(player, otherPlayer, rooms, io) {
         player,
         currentTime + activeRemain + PALM_THRUST_HIT_RECOVERY_MS
       );
-      if (player.keys.mouse1) {
-        player.mouse1HeldDuringAttack = true;
-        if (!player.mouse1PressTime) {
-          player.mouse1PressTime = currentTime;
-        }
-      }
     } else {
       // Reset all attack states first
       player.isAttacking = false;
@@ -906,15 +829,6 @@ function processHit(player, otherPlayer, rooms, io) {
       player.isChargingAttack = false;
       player.chargeStartTime = 0;
       player.chargeAttackPower = 0;
-
-      // Track if mouse1 is held — enables charge resume after recovery without re-press
-      if (player.keys.mouse1) {
-        player.mouse1HeldDuringAttack = true;
-        // Ensure press time is tracked (may already be set from re-press during animation)
-        if (!player.mouse1PressTime) {
-          player.mouse1PressTime = currentTime;
-        }
-      }
 
       // Set recovery state for successful hits. Shorter than the victim's
       // hitstun → the landed charge is PLUS on hit (see CHARGED_HIT_RECOVERY_MS).
@@ -1192,10 +1106,14 @@ function processHit(player, otherPlayer, rooms, io) {
     // Increment hit counter for reliable hit sound triggering
     otherPlayer.hitCounter = (otherPlayer.hitCounter || 0) + 1;
 
-    // Drain victim's stamina on hit (victim loses more than attacker spent)
+    // Light stamina chip on hit; balance is the primary hit tax.
+    // Slap: no stam drain. Charged: ~one slap cost. Palm: even lighter chip.
     if (isSlapAttack) {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
       otherPlayer.balance = Math.max(0, otherPlayer.balance - BALANCE_SLAP_HIT_DRAIN);
+    } else if (player.isPalmThrust) {
+      otherPlayer.stamina = Math.max(0, otherPlayer.stamina - PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN);
+      otherPlayer.balance = Math.max(0, otherPlayer.balance - BALANCE_CHARGED_HIT_DRAIN);
     } else {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - CHARGED_HIT_VICTIM_STAMINA_DRAIN);
       otherPlayer.balance = Math.max(0, otherPlayer.balance - BALANCE_CHARGED_HIT_DRAIN);
@@ -1216,43 +1134,19 @@ function processHit(player, otherPlayer, rooms, io) {
     // This prevents visual confusion when a player dodges through the opponent and releases a charged attack,
     // where they might pass back through the opponent during the attack movement
     const knockbackDirection = player.facing === 1 ? -1 : 1;
-    if (isSlapAttack) {
-    } else {
-    }
 
-    // ── PHASE 1: EARNED-STRING DETECTION (the ender seam gate) ──────────────
-    // A slap2 leaves a SHORTER stun (SLAP_STRING_HIT2_STUN_MS) — opening the
-    // contestable 2×2 seam — UNLESS the string is "earned", in which case the
-    // full SLAP_STRING_HIT_STUN_MS applies and slap3 stays guaranteed as today.
-    // Earned = opened on a counter/punish read (latched, so it carries through
-    // the string), OR the victim is gassed, OR the victim is already in the
-    // edge-panic zone in the knockback direction (genuinely cornered). Measured
-    // the same way as the SLAP_KILL_RANGE check. Computed here (before the hit
-    // payload emit) so the seam-open cue can key off it.
-    const stringPosForSeam = isSlapAttack ? (player.slapStringPosition || 0) : 0;
-    const distToBoundaryInKbDir = knockbackDirection > 0
-      ? MAP_RIGHT_BOUNDARY - otherPlayer.x
-      : otherPlayer.x - MAP_LEFT_BOUNDARY;
-    const earnedString =
-      effectiveCounterHit ||
-      effectivePunish ||
-      !!otherPlayer.isGassed ||
-      distToBoundaryInKbDir <= DOHYO_EDGE_PANIC_ZONE;
-    // The seam is "open" only on a NEUTRAL slap2 — used for the seam-open cue
-    // and CPU wakeup participation (spec 1.5/1.6).
-    const seamOpen = isSlapAttack && stringPosForSeam === 2 && !earnedString;
-
-    // Calculate knockback multiplier based on attack type and string position
-    // String hits 1&2: fixed velocity (not multiplier-based). Hit 3 and solo slaps use multiplier.
+    // Calculate knockback multiplier based on attack type.
+    // Slap: base 1.0 — its knockback is the fixed ground-transfer drift; the
+    // multiplier only carries counter/power/basho scaling into that drift.
     let finalKnockbackMultiplier;
     if (isSlapAttack) {
-      finalKnockbackMultiplier = SLAP_NEUTRAL_KB_MULTIPLIER;
+      finalKnockbackMultiplier = 1.0;
     } else {
       finalKnockbackMultiplier = 0.45 + Math.pow(chargePercentage / 100, 1.3) * 0.75;
     }
 
     if (isCounterHit) {
-      finalKnockbackMultiplier *= 1.25;
+      finalKnockbackMultiplier *= isSlapAttack ? SLAP_COUNTER_KB_MULT : 1.25;
     }
 
     // Armor-break punch: charged shattering grab armor isn't tagged as a
@@ -1262,9 +1156,9 @@ function processHit(player, otherPlayer, rooms, io) {
       finalKnockbackMultiplier *= 1.4;
     }
 
-    if (isPunish) {
-      finalKnockbackMultiplier *= 1.25;
-    }
+    // PUNISH IS A LABEL, GAME-WIDE: no knockback bonus, no stun bonus, no
+    // ring-out bypass. The free hit itself is the whole prize — the banner
+    // just tells both players what happened.
 
     if (otherPlayer.isCrouchStance) {
       finalKnockbackMultiplier *= 0.9;
@@ -1302,16 +1196,15 @@ function processHit(player, otherPlayer, rooms, io) {
 
     if (knockbackAllowed || isSlapAttack) {
       if (isSlapAttack) {
-        const stringPos = player.slapStringPosition || 0;
         const pushDirection = player.facing === 1 ? -1 : 1;
 
         // HIT-CONFIRM (unconditional): a slap that connects is a confirmed hit
         // even while the victim is knockback-immune. These flags (and the
-        // VFX/hitstop below) must NOT sit behind canApplyKnockback: when slap1
-        // connects LATE in its active window, the 150ms immunity it grants
-        // still covers slap2's connect moment — gating the confirm there made
-        // slap2 land as a silent "phantom hit" (victim stunned, but no VFX,
-        // no hitstop, string reset as if it whiffed → the "5-slap" bug).
+        // VFX/hitstop below) must NOT sit behind canApplyKnockback: when a slap
+        // connects LATE in its active window, the immunity it grants can still
+        // cover the next slap's connect moment — gating the confirm there would
+        // make it land as a silent "phantom hit" (victim stunned, but no VFX,
+        // no hitstop).
         player.movementVelocity = pushDirection * SLAP_ONHIT_ATTACKER_PUSH;
         player.isSlapSliding = true;
         player.lastSlapHitLandedTime = currentTime;
@@ -1320,63 +1213,51 @@ function processHit(player, otherPlayer, rooms, io) {
         if (knockbackAllowed) {
           otherPlayer.isSlapKnockback = true;
           // Clear any stale charged-knockback marker so a prior charged hit's
-          // rope-clamp gate can't catch this slap/burst knockback (PHASE 2).
+          // rope-clamp gate can't catch this slap knockback.
           otherPlayer.isChargedKnockback = false;
 
-          // ROPE RESISTANCE GATE (per-hit): this slap may only push the victim
+          // ROPE RESISTANCE GATE (per-hit): a slap may only push the victim
           // OUT of the ring if the hit landed while they were already within
-          // SLAP_KILL_RANGE of the boundary they're being knocked toward,
-          // OR if this is a punish (effectivePunish includes the slap-string
-          // latch so hits 2 & 3 keep the bypass from the opening read).
-          // Otherwise the rope catches them (clamped at the edge in the isHit
-          // movement block). Measured at connect time using the knockback
-          // direction so it's the same intuition for slap1/2/3.
+          // SLAP_KILL_RANGE of the boundary they're being knocked toward.
+          // No exceptions (punish included) — otherwise the rope catches them
+          // (clamped at the edge in the isHit movement block).
           const distanceToBoundaryInKbDir = knockbackDirection > 0
             ? MAP_RIGHT_BOUNDARY - otherPlayer.x
             : otherPlayer.x - MAP_LEFT_BOUNDARY;
           otherPlayer.slapKnockbackCanRingOut =
-            distanceToBoundaryInKbDir <= SLAP_KILL_RANGE || effectivePunish;
+            distanceToBoundaryInKbDir <= SLAP_KILL_RANGE;
 
-          if (stringPos === 3) {
-            // STRING HIT 3: physics-based knockback — velocity impulse, no DI.
-            // The fixed finisher velocity gets the same POWER×RESISTANCE scaling
-            // as the charged knockback (bashoKbFactor = 1.0 for non-BASHO).
-            otherPlayer.isBurstKnockback = true;
-            otherPlayer.burstKnockbackStartTime = currentTime;
-            // PHASE 1: burst velocity is tiered by the ender press timing (blue
-            // spark). executeSlapAttack sets slapHit3Velocity to the full 3.1
-            // (just-frame) or the sloppy 2.4 (buffered/late); fall back to full
-            // for any path that didn't set it (defensive).
-            const hit3Velocity = player.slapHit3Velocity || SLAP_HIT3_KB_VELOCITY;
-            otherPlayer.knockbackVelocity.x =
-              knockbackDirection * hit3Velocity * bashoKbFactor;
-            otherPlayer.movementVelocity = 0;
-          } else {
-            // STRING HITS 1 & 2 (and pos-0 fallback): cinematic combo push —
-            // both players slide forward together. Victim drifts via
-            // knockbackVelocity (active during isHit), attacker drifts via
-            // movementVelocity (ice physics). Same speed = locked pair.
-            otherPlayer.knockbackVelocity.x = pushDirection * SLAP_ONHIT_ATTACKER_PUSH;
-          }
+          // GROUND TRANSFER: both players slide toward the victim's rope, but
+          // the victim drifts slightly FASTER (SLAP_ONHIT_VICTIM_DRIFT >
+          // attacker push), so back-to-back slaps self-space out of range.
+          // finalKnockbackMultiplier carries counter (×1.25) / POWER / BASHO
+          // scaling into the drift — extra shove on an earned read.
+          otherPlayer.knockbackVelocity.x =
+            pushDirection * SLAP_ONHIT_VICTIM_DRIFT * finalKnockbackMultiplier;
         }
 
       } else if (player.isPalmThrust) {
-        // PALM THRUST: charge-scaled knockback using the SAME multiplier curve as
-        // charged attack (0.45 + charge^1.3 * 0.75, already in
-        // finalKnockbackMultiplier), delivered via slap3's burst model + rope
-        // clamp — so it can only ring a victim out if they were ALREADY within
-        // SLAP_KILL_RANGE of the boundary. From mid-ring the rope catches them
-        // (no cinematic KO from range). Keeps the palm a spacing / wall-carry
-        // tool whose power scales with charge hold time like the headbutt.
+        // PALM THRUST: NOT a charged-style finisher. It delivers a burst
+        // knockback with the rope-resistance clamp, so it can only ring a
+        // victim out if they were ALREADY within SLAP_KILL_RANGE of the
+        // boundary they're shoved toward. From mid-ring the rope catches them
+        // at the edge (clamped in the isHit movement block, gated on
+        // isSlapKnockback) — no cinematic KO from range. This keeps the palm
+        // a spacing / wall-carry tool, not a kill move.
         isCinematicKill = false;
 
+        // HEAVY single hit — now the game's big committal ground-based shove
+        // (slaps only gain ground; the palm SENDS them). Burst DELIVERY
+        // (isBurstKnockback → smooth ICE_COAST decay) with its own tunable
+        // velocity (PALM_THRUST_KB_VELOCITY). isSlapKnockback + the
+        // SLAP_KILL_RANGE gate still clamp the victim at the boundary unless
+        // they were already in kill range — no midscreen ring-out.
         otherPlayer.isSlapKnockback = true;
         otherPlayer.isBurstKnockback = true;
         otherPlayer.isChargedKnockback = false;
         otherPlayer.burstKnockbackStartTime = currentTime;
-        // Same base velocity × multiplier as charged (2.7 * finalKnockbackMultiplier).
         otherPlayer.knockbackVelocity.x =
-          2.7 * knockbackDirection * finalKnockbackMultiplier;
+          knockbackDirection * PALM_THRUST_KB_VELOCITY * bashoKbFactor;
         otherPlayer.knockbackVelocity.y = 0;
         otherPlayer.movementVelocity = 0;
 
@@ -1385,7 +1266,7 @@ function processHit(player, otherPlayer, rooms, io) {
             ? MAP_RIGHT_BOUNDARY - otherPlayer.x
             : otherPlayer.x - MAP_LEFT_BOUNDARY;
         otherPlayer.slapKnockbackCanRingOut =
-          distanceToBoundaryInKbDir <= SLAP_KILL_RANGE || effectivePunish;
+          distanceToBoundaryInKbDir <= SLAP_KILL_RANGE;
 
         // Palm holds its ground — no backward recoil on a connected hit.
         player.movementVelocity = 0;
@@ -1401,9 +1282,9 @@ function processHit(player, otherPlayer, rooms, io) {
         // victim within `killReach` of the ROPE (MAP_*_BOUNDARY 340/935) they're
         // being knocked toward? killReach scales with the FULL power of THIS hit
         // (finalKnockbackMultiplier already folds in charge %, the POWER power-up
-        // / Power Water, BASHO power & resistance stat mods, counter-hit ×1.25,
-        // and punish ×1.25), so power sources extend the reach even at lower
-        // charge — but a HARD CAP (CHARGED_KILL_REACH_CAP) keeps a wide NO-KILL
+        // / Power Water, BASHO power & resistance stat mods, and counter-hit
+        // ×1.25 — punish adds NOTHING, it's a label), so power sources extend
+        // the reach even at lower charge — but a HARD CAP keeps a wide NO-KILL
         // deadzone in the middle of the 595px ring: from midscreen a charged hit
         // can never ring out regardless of power. It rope-clamps the victim at
         // the edge instead (below + index.js), where the NEXT hit is earned.
@@ -1490,11 +1371,6 @@ function processHit(player, otherPlayer, rooms, io) {
         // The banners are now folded into the player_hit payload (the client
         // triggers them from the single handler), so a counter/punish costs the
         // same one render as a normal hit.
-        //
-        // `showCounterBanner` / `showPunishBanner` carry the RAW (non-latched)
-        // flags so the banner still fires ONLY on the real counter/punish frame,
-        // not on the subsequent latched hits of a slap string (the latched
-        // effectiveCounterHit/effectivePunish below still drive hit VFX styling).
         const attackerPlayerNumber =
           currentRoom.players.findIndex((p) => p.id === player.id) + 1;
         io.in(currentRoom.id).emit("player_hit", {
@@ -1502,27 +1378,23 @@ function processHit(player, otherPlayer, rooms, io) {
           y: otherPlayer.y,
           facing: otherPlayer.facing,
           attackType: isSlapAttack ? "slap" : "charged",
-          stringPos: isSlapAttack ? (player.slapStringPosition || 0) : 0,
+          // Palm thrust rides the charged hit path but uses the big burst
+          // spark on the client (not the charged sheet).
+          isPalmThrust: !!player.isPalmThrust,
           // Drives the client charged-hit shake scaling (heavier charge = bigger crunch).
           chargePercentage: isSlapAttack ? 0 : chargePercentage,
           timestamp: Date.now(),
           hitId: Math.random().toString(36).substr(2, 9),
-          // Latched for slap strings so hits 2 & 3 keep the counter/punish
-          // styling of the read that started the string (see latch above).
-          isCounterHit: effectiveCounterHit,
-          isPunish: effectivePunish,
-          // RAW flags + attacker side: client triggers the COUNTER HIT / PUNISH
-          // side banner off these (folded in from the old separate events).
+          // Drives hit VFX styling (counter = special color, punish = label
+          // styling only — no mechanical bonus behind it).
+          isCounterHit: isCounterHit,
+          isPunish: isPunish,
+          // Attacker side: client triggers the COUNTER HIT / PUNISH side
+          // banner off these (folded in from the old separate events).
           showCounterBanner: isCounterHit,
           showPunishBanner: isPunish,
           attackerPlayerNumber,
           cinematicKill: isCinematicKill || false,
-          // PHASE 1: the ender seam. `seamOpen` fires the seam-open cue on a
-          // NEUTRAL slap2 (decision moment). `isPerfectEnder` fires the blue
-          // spark on a just-frame slap3 finisher.
-          seamOpen: seamOpen || false,
-          isPerfectEnder:
-            isSlapAttack && stringPosForSeam === 3 && !!player.slapHit3PerfectEnder,
           knockbackDirection: knockbackDirection,
           // Charged attack shattering grab armor — client recolors the
           // charged hit VFX from orange to white/yellow to visually match
@@ -1550,46 +1422,16 @@ function processHit(player, otherPlayer, rooms, io) {
         // Charged: heavy, powerful feel scaling with charge
         // ============================================
         if (isSlapAttack) {
-          // Hitstop scales with string position: snappy lights (1 & 2), heavy finisher (3).
-          // Solo/pos-0 is a defensive fallback — in practice every active slap is pos 1-3.
-          // PHASE 1: hit 2 connect gets the heavy DECISION-BEAT freeze
-          // (HITSTOP_SLAP_HIT2_MS = 140). Hit 1 keeps the snappy string freeze;
-          // hit 3 keeps the finisher BOOM. The freeze pauses the sim clock for
-          // BOTH players, so the seam margins (spec 1.2) are frame-exact.
-          const slapPos = player.slapStringPosition || 0;
-          const isBurstHitLocal = slapPos === 3;
-          const isHit1 = slapPos === 1;
-          const isHit2 = slapPos === 2;
-          const slapHitstopMs = isBurstHitLocal
-            ? HITSTOP_SLAP_HIT3_MS
-            : isHit2
-              ? HITSTOP_SLAP_HIT2_MS
-              : isHit1
-                ? HITSTOP_SLAP_STRING_MS
-                : HITSTOP_SLAP_MS;
-          triggerHitstopAndEmit(io, currentRoom, slapHitstopMs, isBurstHitLocal ? "slap_burst" : "slap");
-
-          // === ATTACKER-FAVORED HITSTOP RELIEF (hit 1 only) ===
-          // The sim clock pauses during hitstop, so the attacker's cycle and the
-          // victim's stun freeze together automatically — no compensation needed.
-          // On hit 1 we additionally pull the ATTACKER's pending deadlines EARLIER
-          // by `relief` ms so the 1→2 chain stays snappy/aggressive. PHASE 1: hit 2
-          // gets NO relief — the seam freeze is symmetric so both players get an
-          // equal decision window (spec 1.1).
-          const attackerRelief = isHit1 ? SLAP_STRING_ATTACKER_HITSTOP_RELIEF_MS : 0;
-          if (attackerRelief > 0 && player.slapCycleEndCallback) {
-            player.attackEndTime = Math.max(currentTime, player.attackEndTime - attackerRelief);
-            if (player.slapActiveEndTime) {
-              player.slapActiveEndTime = Math.max(currentTime, player.slapActiveEndTime - attackerRelief);
-            }
-            player.attackCooldownUntil = Math.max(currentTime, player.attackCooldownUntil - attackerRelief);
-            timeoutManager.advanceNamed(player.id, "slapCycle", attackerRelief);
-          }
+          // One flat, snappy freeze per slap — every slap is an individual hit.
+          // Symmetric (the sim clock pauses for BOTH players), so the +0 frame
+          // math is untouched by hitstop.
+          triggerHitstopAndEmit(io, currentRoom, HITSTOP_SLAP_MS, "slap");
 
           // Screen shake is handled client-side by useCamera (driven by hitCounter +
           // knockback magnitude) — no need to double-shake from the server here.
         } else if (player.isPalmThrust) {
-          triggerHitstopAndEmit(io, currentRoom, HITSTOP_SLAP_STRING_MS, "slap");
+          // Palm thrust is a burst hit — heavier freeze than a slap poke.
+          triggerHitstopAndEmit(io, currentRoom, HITSTOP_BURST_MS, "slap");
         } else {
           // Charged attacks scale hitstop with charge power
           const hitstopDuration = isCinematicKill
@@ -1636,61 +1478,48 @@ function processHit(player, otherPlayer, rooms, io) {
     }
 
     // === HIT STUN DURATION ===
-    // String hits 1 & 2: 260ms stun vs the attacker's 195ms base cycle = ~65ms of guaranteed
-    //   advantage, which is what makes the chain a true combo. All slaps share 55ms startup;
-    //   the gap that lets a defender contest comes from the cycle/stun delta, not startup.
-    //   (Hitstop is added symmetrically to both, so it cancels out of this guarantee.)
-    // Hit 3: SLAP_HIT3_STUN_MS (burst finisher).
-    const stringPos = isSlapAttack ? (player.slapStringPosition || 0) : 0;
-
+    // SLAP: +0 BY CONSTRUCTION. The victim's hitstun equals the attacker's
+    //   remaining attack cycle at the moment of connect, so BOTH players become
+    //   actionable at the exact same sim-clock instant — no matter when in the
+    //   active window the hit landed. No combo, no frame advantage; the reward
+    //   is ground. (Hitstop pauses the sim clock for both, so it cancels out.)
+    //   A COUNTER HIT adds a flat SLAP_COUNTER_HIT_BONUS_MS on top — the one
+    //   earned exception: your next press wins a mash-vs-mash clash, but a
+    //   parry still answers it.
+    // CHARGED: fixed 380ms stun (counter ×1.4). Punish adds nothing — label only.
     let hitStateDuration;
     if (isSlapAttack) {
-      // Neutral slap2 → contestable seam (180ms). Hit 1, an earned slap2, and
-      // any other slap fall back to the full string stun (260ms).
-      hitStateDuration = seamOpen ? SLAP_STRING_HIT2_STUN_MS : SLAP_STRING_HIT_STUN_MS;
+      const attackerFreeAt = player.attackCooldownUntil || (currentTime + SLAP_RECOVERY_MS);
+      hitStateDuration = Math.max(attackerFreeAt - currentTime, SLAP_MIN_HITSTUN_MS);
+      if (isCounterHit) {
+        hitStateDuration += SLAP_COUNTER_HIT_BONUS_MS;
+      }
     } else {
       hitStateDuration = 380;
-    }
-    if (isCinematicKill) {
-      hitStateDuration = 3000;
-    } else if (isCounterHit) {
-      hitStateDuration = Math.round(hitStateDuration * 1.4);
-    }
-    if (isPunish && !isCinematicKill) {
-      hitStateDuration = Math.round(hitStateDuration * 1.4);
+      if (isCinematicKill) {
+        hitStateDuration = 3000;
+      } else if (isCounterHit) {
+        hitStateDuration = Math.round(hitStateDuration * 1.4);
+      }
     }
 
     // No hitstop extension needed: the stun timer below runs on the sim clock,
     // which freezes during hitstop — victim stun and attacker cycle pause in
-    // perfect lockstep, so the true-combo margin is frame-exact by construction.
+    // perfect lockstep, so the +0 margin is frame-exact by construction.
 
     // Update the last hit time for tracking
     otherPlayer.lastHitTime = currentTime;
-    otherPlayer.lastHitByStringPos = stringPos;
-    // PHASE 1: record whether the seam opened on THIS hit (neutral slap2) so a
-    // CPU victim can roll a wakeup option during the freeze (spec 1.5). Consumed
-    // and cleared by the CPU wakeup logic; harmless for human victims.
-    otherPlayer.seamOpenedByHit = seamOpen;
-    otherPlayer.seamOpenedTime = seamOpen ? currentTime : 0;
 
-    // The palm thrust ALSO delivers a burst (isBurstKnockback), so it must use
-    // the SAME short no-DI window as slap3 (SLAP_HIT3_STUN_MS). Without this it
-    // fell into the generic 380ms charged stun → 180ms of EXTRA forced, no-DI
-    // slide on top of slap3's, which (despite a LOWER velocity than slap3) is why
-    // it carried the victim clear across the ring and felt un-DI-able compared to
-    // the slap finisher. Matching the window makes DI open at the same instant as
-    // slap3, so the palm (2.7 < 3.1) now carries LESS than a confirmed slap3.
-    const isBurstHit = (isSlapAttack && stringPos === 3) || player.isPalmThrust;
-    const stunDuration = isBurstHit ? SLAP_HIT3_STUN_MS : hitStateDuration;
+    // The palm thrust delivers a burst (isBurstKnockback), so it uses the short
+    // no-DI window (BURST_STUN_MS) instead of the generic 380ms charged stun —
+    // DI opens early so the burst carries a bounded distance.
+    const isBurstHit = player.isPalmThrust === true;
+    const stunDuration = isBurstHit ? BURST_STUN_MS : hitStateDuration;
 
     setPlayerTimeout(
       otherPlayer.id,
       () => {
-        if (isBurstHit) {
-          if (Math.abs(otherPlayer.knockbackVelocity.x) > 0.01) {
-            otherPlayer.movementVelocity = otherPlayer.knockbackVelocity.x;
-          }
-        } else if (Math.abs(otherPlayer.knockbackVelocity.x) > 0.01) {
+        if (Math.abs(otherPlayer.knockbackVelocity.x) > 0.01) {
           otherPlayer.movementVelocity = otherPlayer.knockbackVelocity.x;
         }
         otherPlayer.knockbackVelocity.x = 0;
@@ -1700,8 +1529,7 @@ function processHit(player, otherPlayer, rooms, io) {
         otherPlayer.isBurstKnockback = false;
         otherPlayer.burstKnockbackStartTime = 0;
 
-        const isStringHit = isSlapAttack && (stringPos === 1 || stringPos === 2);
-        if (isSlapAttack && SLAP_CHAIN_HIT_GAP_MS > 0 && !isStringHit) {
+        if (isSlapAttack && SLAP_CHAIN_HIT_GAP_MS > 0) {
           setPlayerTimeout(
             otherPlayer.id,
             () => { otherPlayer.isAlreadyHit = false; },
@@ -1716,10 +1544,12 @@ function processHit(player, otherPlayer, rooms, io) {
       "hitStateReset"
     );
 
-    // Input lockout - slaps have moderate lock so hit animation is visible
-    // (sim clock — locks freeze through hitstop instead of being eaten by it)
-    const victimLockMs = isSlapAttack ? 180 : hitStateDuration;
-    // Attacker: brief lock for slaps creates commitment to each strike (rekka feel)
+    // Input lockout (sim clock — locks freeze through hitstop instead of being
+    // eaten by it). SLAP: the victim's lock matches the +0 hitstun exactly — a
+    // shorter fixed lock would silently hand the victim early inputs, a longer
+    // one would make them minus.
+    const victimLockMs = hitStateDuration;
+    // Attacker: brief lock for slaps creates commitment to each strike
     const attackerLockMs = isSlapAttack ? 50 : 200;
     otherPlayer.inputLockUntil = Math.max(
       otherPlayer.inputLockUntil || 0,
@@ -1732,10 +1562,6 @@ function processHit(player, otherPlayer, rooms, io) {
       );
     }
 
-    // Encourage clearer turn-taking: set wantsToRestartCharge only on intentional hold
-    if (player.keys && player.keys.mouse1) {
-      player.wantsToRestartCharge = true;
-    }
   }
 }
 
@@ -1945,9 +1771,9 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   // down. Flight physics keep running — no self pushback / scripted descent.
   flapper.flapHitLanded = true;
   flapper.flapCharges = 0;
-  flapper.flapHitRecoverDuration = SLAP_HIT3_STUN_MS;
+  flapper.flapHitRecoverDuration = BURST_STUN_MS;
 
-  // Knockback away from the flapper (burst model — no DI, like slap3).
+  // Knockback away from the flapper (burst model — no DI).
   const knockbackDirection = opponent.x >= flapper.x ? 1 : -1;
 
   clearAllActionStates(opponent);
@@ -1964,7 +1790,7 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   opponent.knockbackVelocity.y = 0;
   opponent.movementVelocity = 0;
 
-  // ROPE RESISTANCE (same treatment as slap3): the slam may only send the
+  // ROPE RESISTANCE (same treatment as the slap/palm): the slam may only send the
   // victim OUT of the ring if they were already within SLAP_KILL_RANGE of the
   // boundary they're knocked toward at connect time. From mid-ring the rope
   // catches them at the edge instead (clamped in the isHit movement block,
@@ -1992,7 +1818,6 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
       y: opponent.y,
       facing: opponent.facing,
       attackType: "flap",
-      stringPos: 0,
       chargePercentage: 0,
       timestamp: Date.now(),
       hitId: Math.random().toString(36).substr(2, 9),
@@ -2005,7 +1830,7 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
       victimId: opponent.id,
     });
 
-    triggerHitstopAndEmit(io, currentRoom, HITSTOP_SLAP_HIT3_MS, "slap_burst");
+    triggerHitstopAndEmit(io, currentRoom, HITSTOP_BURST_MS, "slap_burst");
   }
 
   // Burst stun → hand the residual velocity to the ice coast when it ends.
@@ -2021,13 +1846,13 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
       opponent.burstKnockbackStartTime = 0;
       opponent.isAlreadyHit = false;
     },
-    SLAP_HIT3_STUN_MS,
+    BURST_STUN_MS,
     "hitStateReset"
   );
 
   opponent.inputLockUntil = Math.max(
     opponent.inputLockUntil || 0,
-    currentTime + SLAP_HIT3_STUN_MS
+    currentTime + BURST_STUN_MS
   );
 }
 

@@ -13,8 +13,6 @@ const {
   RAW_PARRY_REARM_STAMINA_COST, RAW_PARRY_REARM_INTERVAL_MS,
   CHARGE_FULL_POWER_MS,
   GRAB_STARTUP_DURATION_MS,
-  PALM_THRUST_POWER,
-  PALM_THRUST_CHARGE_THRESHOLD_MS,
 } = require("./constants");
 
 const {
@@ -30,14 +28,11 @@ const {
   getSidestepInitData,
   canPlayerCharge,
   canPlayerUseAction,
-  shouldRestartCharging,
   startCharging,
-  startPalmThrustCharging,
   beginFlapStartup,
   gameNow,
   simNowForPlayer,
   lagCompensatedParryStart,
-  lagCompensatedEnderPress,
 } = require("./gameUtils");
 
 const {
@@ -219,15 +214,6 @@ function recordParryPressTime(player, data, rising) {
   if (pressGameTime) player.rawParryPressGameTime = pressGameTime;
 }
 
-// PHASE 1: on a rising mouse1 edge, record the player's true press moment (in
-// server gameNow() terms) so the slap-ender ("blue spark") grading can backdate
-// the press toward when the player actually clicked. See lagCompensatedEnderPress().
-function recordEnderPressTime(player, data, rising) {
-  if (!rising || !rising.mouse1) return;
-  const pressGameTime = pressGameTimeFromEvents(data, "mouse1");
-  if (pressGameTime) player.enderPressGameTime = pressGameTime;
-}
-
 // ============================================================
 // PHASE 3: TICK-CONSUMED INPUT DISPATCH
 // ============================================================
@@ -301,7 +287,6 @@ function processInputPacket(room, player, data, io, rooms) {
       // Capture true press moment for lag-compensated parry timing even while
       // input-locked — the buffered parry fires when the lock ends and reads it.
       recordParryPressTime(player, data, rising);
-      recordEnderPressTime(player, data, rising);
 
       // Clear grabBreakSpaceConsumed if spacebar was released during input lock,
       // so raw parry isn't blocked after the lock expires
@@ -318,26 +303,19 @@ function processInputPacket(room, player, data, io, rooms) {
       }
       player.keys = data.keys;
 
-      // During slap attacks, buffer mouse1 for next hits / mouse2 for grab ender
+      // During slap attacks, buffer mouse1 for the next individual slap
+      // (cap 1 — pure responsiveness, the follow-up is fully contestable).
+      // Back held (without forward) instead queues a palm thrust follow-up so
+      // the player can flow from slap pressure into a rooted thrust.
       if (player.isAttacking && player.attackType === "slap") {
         if (rising.mouse1) {
-          // PHASE 1: buffer cap clamps at 1 (spec 1.3). The pos2→3 ENDER only
-          // queues AFTER slap2 connects — an early (pre-connect) press does not
-          // queue an ender (the ender is a decision made after seeing slap2
-          // land). The pos1→2 chain still buffers freely so a masher always
-          // completes the basic string.
-          const isEnderInput = (player.slapStringPosition || 1) >= 2;
-          const enderAllowed = !isEnderInput || player.currentSlapHitConnected;
-          if (enderAllowed && player.pendingSlapCount < 1) {
+          const fwdK = player.facing === -1 ? "d" : "a";
+          const backK = player.facing === -1 ? "a" : "d";
+          if (data.keys[backK] && !data.keys[fwdK]) {
+            player.pendingPalmThrust = true;
+          } else if (player.pendingSlapCount < 1) {
             player.pendingSlapCount++;
-            if (isEnderInput) {
-              player.enderPressTime = lagCompensatedEnderPress(player, simNowForPlayer(player));
-            }
           }
-        }
-        if (rising.mouse2 && player.slapStringPosition >= 2 && player.currentSlapHitConnected) {
-          player.pendingGrabEnder = true;
-          player.pendingSlapCount = 0;
         }
       } else {
         // Non-slap states: use generic inputBuffer
@@ -461,7 +439,6 @@ function processInputPacket(room, player, data, io, rooms) {
     // (level-triggered on keys[" "]) and the input buffer both consume this when
     // they actually start the parry, so it must be recorded on the rising edge.
     recordParryPressTime(player, data, rising);
-    recordEnderPressTime(player, data, rising);
 
     // Set mouse1 press flags — true if a press happened ANYWHERE in the
     // packet window, even if the trailing snapshot already shows release.
@@ -534,16 +511,6 @@ function processInputPacket(room, player, data, io, rooms) {
         }
       } else if (player.mouse2JustPressed && !player.inClinch) {
         player.inputBuffer = { type: "grab", timestamp: simNowForPlayer(player) };
-      }
-    }
-
-    // Track mouse1 held during recovery from a connected charged attack
-    // This catches the case where player re-presses mouse1 AFTER processHit ran
-    // (e.g., mouse1 re-press event arrived after the hit was processed)
-    if (player.keys.mouse1 && player.isRecovering && player.chargedAttackHit) {
-      player.mouse1HeldDuringAttack = true;
-      if (!player.mouse1PressTime) {
-        player.mouse1PressTime = simNowForPlayer(player);
       }
     }
 
@@ -690,9 +657,6 @@ function processInputPacket(room, player, data, io, rooms) {
     player.isCrouchStance = false;
     player.isCrouchStrafing = false;
     player.pendingSlapCount = 0;
-    player.pendingGrabEnder = false;
-    player.slapStringPosition = 0;
-    player.slapStringWindowUntil = 0;
   } else if (
     // PARRY RE-ARM (Sekiro-style re-tap): a FRESH space press while ALREADY
     // parrying re-stamps the perfect window so the player can re-time the
@@ -722,8 +686,8 @@ function processInputPacket(room, player, data, io, rooms) {
     player.rawParryRearmUntil = nowSim + RAW_PARRY_REARM_INTERVAL_MS;
   }
 
-  // MOUSE1 PRESS: S+FORWARD+MOUSE1 = charged, BACK+MOUSE1 = open-palm thrust
-  // charge, else fire slap.
+  // MOUSE1 PRESS: S+FORWARD+MOUSE1 = charged, BACK+MOUSE1 = open-palm thrust,
+  // else fire slap.
   if (player.mouse1JustPressed && !shouldBlockAction()) {
     const forwardKey = player.facing === -1 ? 'd' : 'a';
     const backKey = player.facing === -1 ? 'a' : 'd';
@@ -734,7 +698,7 @@ function processInputPacket(room, player, data, io, rooms) {
     if (wantsChargedAttack && canPlayerSlap(player, { ignoreCooldown: true })) {
       player.chargeAttackPower = 0;
       player.chargeStartTime = 0;
-      startCharging(player, "charged");
+      startCharging(player);
       player.chargingFacingDirection = player.facing;
       player.movementVelocity = 0;
       player.isStrafing = false;
@@ -747,82 +711,46 @@ function processInputPacket(room, player, data, io, rooms) {
     } else if (wantsChargedAttack && player.isAttacking && player.attackType === "slap") {
       player.inputBuffer = { type: "chargedAttack", timestamp: simNowForPlayer(player) };
     } else if (wantsPalmThrust && canPlayerSlap(player)) {
-      // Begin palm charge — release mouse1 to fire (same hold/release as charged).
-      startPalmThrustCharging(player);
+      // Rooted "hold your ground" strike — only from neutral (executePalmThrust
+      // itself guards !isAttacking so it can never eat a slap string).
+      executePalmThrust(player, rooms);
     } else if (canPlayerSlap(player)) {
-      // PHASE 1: a MANUAL reactive press during the open slap2 window becomes
-      // the slap3 ender — stamp its lag-compensated arrival so the blue-spark
-      // tier grades it against the actionable moment (spec 1.4).
-      if (
-        player.slapStringPosition === 2 &&
-        player.slapStringWindowUntil &&
-        simNowForPlayer(player) <= player.slapStringWindowUntil
-      ) {
-        player.enderPressTime = lagCompensatedEnderPress(player, simNowForPlayer(player));
-      }
       executeSlapAttack(player, rooms);
     } else if (player.isAttacking && player.attackType === "slap") {
-      // PHASE 1: cap the mash buffer at 1, and only queue the pos2→3 ender after
-      // slap2 connects (see the locked-path handler for the rationale).
-      const isEnderInput = (player.slapStringPosition || 1) >= 2;
-      const enderAllowed = !isEnderInput || player.currentSlapHitConnected;
-      if (enderAllowed && player.pendingSlapCount < 1) {
+      // Back held (without forward) mid-slap → the queued follow-up should be
+      // the rooted palm thrust, not another slap. This is what lets a player
+      // slap-pressure then transition straight into a thrust by holding back —
+      // previously the back key was ignored here and every mid-slap press just
+      // buffered another slap.
+      if (wantsPalmThrust) {
+        player.pendingPalmThrust = true;
+      } else if (player.pendingSlapCount < 1) {
+        // Mash buffer capped at 1 — pure responsiveness so a press during the
+        // current slap fires the next one at cycle end (each press is its own
+        // slap; the follow-up is fully contestable).
         player.pendingSlapCount++;
-        if (isEnderInput) {
-          player.enderPressTime = lagCompensatedEnderPress(player, simNowForPlayer(player));
-        }
       }
     }
   }
 
-  // MOUSE2 DURING SLAP STRING: buffer grab ender (replaces hit 3 with grab).
-  // PHASE 1: only queues AFTER slap2 connects — the ender is a decision made
-  // after seeing slap2 land (spec 1.3), and the seam grab is armorless.
-  if (player.mouse2JustPressed && player.isAttacking && player.attackType === "slap" &&
-      player.slapStringPosition >= 2 && player.currentSlapHitConnected) {
-    player.pendingGrabEnder = true;
-    player.pendingSlapCount = 0;
-  }
-
-  // MOUSE1 RELEASE: Execute charged attack or palm thrust if charging
+  // MOUSE1 RELEASE: Execute charged attack if charging, otherwise clear state
   if (player.mouse1JustReleased) {
+    player.mouse1ConsumedUntilRelease = false;
     if (player.isRopeJumping && player.ropeJumpPhase === "landing" && player.mouse1PressTime > 0) {
       player.ropeJumpBufferedAttackRelease = simNowForPlayer(player) - player.mouse1PressTime;
     }
     if (player.isChargingAttack) {
       const chargePercentage = player.chargeAttackPower || 1;
-      const isPalmCharge = player.pendingChargeAttack === "palmThrust";
-      const holdMs = player.chargeStartTime
-        ? simNowForPlayer(player) - player.chargeStartTime
-        : 0;
       player.isChargingAttack = false;
       player.chargeStartTime = 0;
       player.chargingFacingDirection = null;
-      player.mouse1HeldDuringAttack = false;
-      player.pendingChargeAttack = null;
-      if (isPalmCharge) {
-        // Quick tap: same baseline power as the old instant thrust, and credit
-        // the hold against startup so press→hitbox stays ~90ms. Real charge
-        // (held past threshold) keeps full startup and scales power up from
-        // that floor so a short charge never hits weaker than a tap.
-        const isTap = holdMs < PALM_THRUST_CHARGE_THRESHOLD_MS;
-        const power = isTap
-          ? PALM_THRUST_POWER
-          : Math.max(PALM_THRUST_POWER, chargePercentage);
-        executePalmThrust(player, rooms, power, {
-          startupCreditMs: isTap ? holdMs : 0,
-        });
-      } else {
-        executeChargedAttack(player, chargePercentage, rooms);
-      }
+      executeChargedAttack(player, chargePercentage, rooms);
     } else {
       if (!(player.isAttacking && player.attackType === "charged")) {
         player.chargeAttackPower = 0;
       }
     }
     player.mouse1PressTime = 0;
-    player.wantsToRestartCharge = false;
-    player.mouse1HeldDuringAttack = false;
   }
 
   // Handle clearing charge during charging phase with throw/grab/snowball - MUST BE FIRST
@@ -1249,9 +1177,12 @@ function processInputPacket(room, player, data, io, rooms) {
 
   // S+FORWARD+MOUSE1 CHARGED ATTACK: Continuous check for lenient input detection.
   // Catches the case where mouse1 is already held and player adds S+forward after.
+  // Skip when this mouse1 hold already fired a press-to-fire move (palm thrust) —
+  // otherwise the still-held button auto-starts a charge and strands the shake.
   if (
     player.keys.mouse1 &&
     player.keys.s &&
+    !player.mouse1ConsumedUntilRelease &&
     !player.isChargingAttack &&
     !player.isAttacking &&
     !shouldBlockAction()
@@ -1260,7 +1191,7 @@ function processInputPacket(room, player, data, io, rooms) {
     if (player.keys[forwardKey] && canPlayerSlap(player, { ignoreCooldown: true })) {
       player.chargeAttackPower = 0;
       player.chargeStartTime = 0;
-      startCharging(player, "charged");
+      startCharging(player);
       player.chargingFacingDirection = player.facing;
       player.movementVelocity = 0;
       player.isStrafing = false;
@@ -1273,41 +1204,20 @@ function processInputPacket(room, player, data, io, rooms) {
     }
   }
 
-  // BACK+MOUSE1 PALM THRUST CHARGE: Continuous check — mouse1 already held,
-  // player adds back after (mirrors the charged continuous path above).
-  if (
-    player.keys.mouse1 &&
-    !player.isChargingAttack &&
-    !player.isAttacking &&
-    !shouldBlockAction()
-  ) {
-    const forwardKey = player.facing === -1 ? 'd' : 'a';
-    const backKey = player.facing === -1 ? 'a' : 'd';
-    // Don't steal a charged-attack input (S+forward takes priority).
-    const wantsChargedAttack = player.keys.s && player.keys[forwardKey];
-    if (
-      !wantsChargedAttack &&
-      player.keys[backKey] &&
-      !player.keys[forwardKey] &&
-      canPlayerSlap(player)
-    ) {
-      startPalmThrustCharging(player);
-    }
-  }
-
   // Clear any lingering charge state when not attacking
   if (player.isChargingAttack && !player.keys.mouse1 && !player.isAttacking) {
     player.isChargingAttack = false;
     player.chargeStartTime = 0;
     player.chargeAttackPower = 0;
     player.chargingFacingDirection = null;
-    player.pendingChargeAttack = null;
     player.attackType = null;
-    player.mouse1HeldDuringAttack = false;
   }
   // Safety: clear stale preserved charge when mouse1 is not held
   if (!player.keys.mouse1 && !player.isChargingAttack && player.chargeAttackPower > 0 && !player.isAttacking) {
     player.chargeAttackPower = 0;
+  }
+  if (!player.keys.mouse1) {
+    player.mouse1ConsumedUntilRelease = false;
   }
 
   // === GRIP-UP: Opponent presses Mouse2 while being grabbed without grip → gets grip ===

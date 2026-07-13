@@ -9,6 +9,10 @@ import {
   attack,
   slapAttack1,
   slapAttack2,
+  slapAttack1Blur,
+  slapAttack1Hit,
+  slapAttack2Blur,
+  slapAttack2Hit,
   palmThrust,
   palmThrustStartup,
   palmThrustSmear,
@@ -126,12 +130,16 @@ const getImageSrc = (
   //   2 = active strike      3 = recovery (reuses the startup pose)
   isPalmThrust,
   palmThrustFrame = 2,
-  // Which charge is active while isChargingAttack: "palmThrust" holds the palm
-  // startup pose + shake; anything else uses the generic charged crouch pose.
-  pendingChargeAttack = null,
   // Kill-throw flight vs grounded: spin uses `hit` high in the air; flat
   // landing art takes over near the ground (and stays after isBeingThrown clears).
-  isBeingThrown = false
+  isBeingThrown = false,
+  // Slap string (hits 1 & 2) — a client-driven animation spanning the whole slap
+  // cycle, mirroring the palm-thrust frame model. isSlapAttack stays true for the
+  // whole cycle; slapFrame (see GameFighter) picks the pose:
+  //   0 = windup (ready stance)   1 = blur (DISABLED in timeline)
+  //   2 = hit (active strike)     3 = recovery (settles back to the ready stance)
+  // Default 2 (the hit/active pose) is the safe money-frame fallback.
+  slapFrame = 2
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -205,8 +213,6 @@ const getImageSrc = (
     if (palmThrustFrame === 3) return palmThrustStartup;
     return palmThrust;
   }
-  // Palm charge hold: same shake as charged attack, but the palm startup pose.
-  if (isChargingAttack && pendingChargeAttack === "palmThrust") return palmThrustStartup;
   if (isChargingAttack) return recovering;
   if (isRecovering) return recovering;
   if (isThrowingSnowball) return snowballThrow;
@@ -240,9 +246,21 @@ const getImageSrc = (
   // }
 
   if (isSlapAttack) {
-    if (slapAnimation === 3) return palmThrust;
-    if (slapAnimation === 1) return slapAttack1;
-    return slapAttack2;
+    // Slaps play the client-driven windup → smear → hit → recovery cycle:
+    //   0 windup   → ready stance (palm-thrust-startup), held long enough to READ
+    //   1 smear    → slap-attack-{1,2}-blur-frame (a short motion beat before the hit)
+    //   2 hit      → slap-attack-{1,2}-hit-frame, the strike, held through active
+    //   3 recovery → SETTLE BACK to the ready stance (palm-thrust-startup), NOT idle
+    // The recovery deliberately returns to the SAME ready-stance pose as the
+    // windup so the motion reads as "set → strike → settle" instead of "arm up →
+    // arm down → idle" (idle drops the hands to the sides, which looked like a
+    // flinch). Slap 1 (slapAnimation 1) and slap 2 (slapAnimation 2) have their
+    // OWN smear/hit art; only the shared windup/recovery stance is reused.
+    if (slapFrame === 0) return palmThrustStartup; // windup (ready stance)
+    if (slapFrame === 3) return palmThrustStartup; // recovery (settle back to stance)
+    const isSlap2 = slapAnimation === 2;
+    if (slapFrame === 1) return isSlap2 ? slapAttack2Blur : slapAttack1Blur; // smear
+    return isSlap2 ? slapAttack2Hit : slapAttack1Hit; // hit — held through active
   }
   if (isGrabbing) {
     if (grabState === "attempting") {

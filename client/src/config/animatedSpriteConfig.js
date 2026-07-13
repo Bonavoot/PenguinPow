@@ -164,10 +164,18 @@ export const getSpritesheetConfig = (src) => {
     return SPRITESHEET_CONFIG[src];
   }
   
-  // Try to match by filename pattern
-  const srcLower = src.toLowerCase();
+  // Match by filename STEM, not a loose substring. We anchor on the START of the
+  // basename (filename only, ignoring the directory + any ?query/#hash) so a name
+  // that merely CONTAINS a pattern mid-string is NOT misclassified. This was a
+  // real bug: `slap-attack-1-hit-frame.png` contains "hit", so the old
+  // `src.includes('hit')` resolved a slap's static hit frame to the HIT
+  // spritesheet — rendering the isHit animation during the slap. Every real
+  // animated source's basename STARTS with its stem (hit.png, hit_spritesheet.png,
+  // pumo-waddle.png, grab-attempt.png, …), so start-anchored matching preserves
+  // all existing matches while ignoring incidental mid-name matches.
+  const basename = src.split(/[?#]/)[0].split('/').pop().toLowerCase();
   for (const [pattern, configName] of Object.entries(FILENAME_TO_CONFIG)) {
-    if (srcLower.includes(pattern)) {
+    if (basename.startsWith(pattern)) {
       return SPRITESHEET_CONFIG_BY_NAME[configName] || null;
     }
   }

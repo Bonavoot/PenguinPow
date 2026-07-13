@@ -13,6 +13,69 @@
 
 ---
 
+# ⚠️ SLAP REWORK (July 2026) — SUPERSEDES THE STRING & THE ENDER SEAM
+
+> The slap string, enders, and the ender seam were **removed from the game entirely**. Playtesting
+> after Phase 1 showed the string — even with the contestable seam — kept the slap as THE answer to
+> almost every situation, centralizing the game around hit-confirm strings instead of sumo. The fix
+> went deeper than the seam: the string itself is gone. **Phase 1 of this spec is dead** (the seam,
+> the just-frame ender, the grab ender, string latching); the seam-dependent parts of Phases 3–4
+> (seam wakeup policies, ender memory reads, `seamMixups` kit verb) are dead with it. Phase 2
+> (whiff economics, read-gated charged kills), Phase 3's corner economy, and Phase 4's difficulty
+> curve / archetype policies at the corner and clinch all still stand.
+
+## The slap as it exists now: individual presses, +0 on hit
+
+Each mouse1 press is one self-contained slap. There is no string position, no chaining bonus, no
+ender, and no combo — every press is contestable by the opponent.
+
+**Per-press frame data** (`constants.js`):
+- 55ms startup / 100ms active / 75ms recovery ≈ **230ms cycle** (`SLAP_TOTAL_MS`). Cost 3 stamina
+  (6 gassed). Press lunge unchanged.
+- `slapAnimation` alternates 1 ↔ 2 purely cosmetically — both slaps are mechanically identical.
+- One press may buffer during a slap (`pendingSlapCount` cap = 1) so mash never drops a beat.
+
+**On hit — exactly +0 frame advantage:**
+- Victim hitstun = the attacker's remaining lockout at the moment of connect
+  (`attackerFreeAt - now`, floored at `SLAP_MIN_HITSTUN_MS = 60`). Both players become actionable
+  on the same frame; nothing combos for free. Victim input lock matches the hitstun.
+- Hitstop: one flat symmetric **70ms** (`HITSTOP_SLAP_MS`) — sim clock pauses for both, so the +0
+  math is untouched by the freeze.
+- Ground transfer: attacker slides `SLAP_ONHIT_ATTACKER_PUSH = 1.0`, victim drifts
+  `SLAP_ONHIT_VICTIM_DRIFT = 1.15`. The victim loses ground on every hit and the gap self-spaces
+  after 2–3 consecutive slaps — the slap pays in **position**, the game's real currency.
+- Victim chip: −8 stamina, −8 balance per hit (unchanged).
+- Ring-out only within `SLAP_KILL_RANGE` (45px) of the boundary; otherwise the 12px rope clamp
+  catches them. No bypasses.
+
+**Counter hit on a slap (mechanical, kept):** ×1.25 knockback (`SLAP_COUNTER_KB_MULT`, tune up
+toward 1.5 if it reads weak) + flat **+35ms** hitstun (`SLAP_COUNTER_HIT_BONUS_MS`) — a small,
+honest reward for interrupting startup/commitment, enough to press position but not a free combo.
+
+**Punish (game-wide, label only):** the PUNISH banner still fires, but the ×1.25 knockback, the
+×1.4 stun, and the rope-clamp bypass are all **removed**. Punish tells the players what happened;
+it no longer changes what happens.
+
+**Whiff cooldown (replaced Phase 2's whiff economics):** the "2 whiffs → 300ms committed pause +
+3 stamina surcharge" was built to price string spam and is gone. Instead every WHIFFED slap holds
+its recovery slightly longer (`SLAP_WHIFF_EXTRA_RECOVERY_MS = 45`: 75 → 120ms, cycle 230 → 275ms).
+Spam is allowed — but landing hits keeps your rhythm faster than swinging at air, and a whiffed
+slap gives a slightly wider reactive punish window without any hard lockout.
+
+**Kept deliberately:** the slap parry clash (simultaneous slaps), grab startup armor vs slaps,
+the desperation-context counter-slap value via counter hits, and `slap_burst` as the CPU's flurry
+behavior (a burst of individual contestable presses — not a string).
+
+**Deleted with the string** (for future readers wondering where things went): string
+position/window/buffer chaining, hit-confirm gating, the seam + its 140ms slap2 freeze, earned
+strings and counter/punish latches, the grab ender, the just-frame ender + its lag compensation,
+the slap3 burst + `slapAnimation 3` palm-pose path, the desperation 45ms wakeup startup, the hit1
+attacker hitstop relief, per-position hitstop tiers, CPU string commitments + seam wakeup +
+ender-memory, and the client seam cue / perfect-ender FX / `stringPos` routing. Palm thrust keeps
+its burst knockback and now owns the heavy `HITSTOP_BURST_MS` (200ms) freeze.
+
+---
+
 ## 1. Vision (one paragraph)
 
 The slap string stays the metronome of the game but stops being the win condition on its own.
@@ -103,7 +166,7 @@ decision tick** → near-certain escape within a second; **palm thrust: zero ref
 
 ---
 
-# PHASE 1 — The Ender Seam
+# PHASE 1 — The Ender Seam ❌ (SUPERSEDED — see SLAP REWORK at the top; the string no longer exists)
 
 **Intent:** turn the slap2→slap3 moment into the game's signature decision beat. Both players
 choose during a big slap2 freeze; neutral strings become a 2×2 mixup; earned strings stay
@@ -248,7 +311,7 @@ it must always take slap3 (free guaranteed finisher). No memory/adaptation yet �
 
 ---
 
-# PHASE 2 — Spam Economics & Read-Gated Kills
+# PHASE 2 — Spam Economics & Read-Gated Kills ⚠️ (PARTIALLY SUPERSEDED — 2.1 whiff economics replaced by the per-press whiff cooldown, see SLAP REWORK; 2.2 read-gated charged kills still live)
 
 **Intent:** make whiffing a *choice with a price* and tie every guaranteed kill to a read. The
 palm thrust's anti-mash role strengthens automatically once whiffs cost real stamina.
@@ -298,7 +361,7 @@ easier is earned and correct.
 
 ---
 
-# PHASE 3 — Corner Economy & Escape Reads
+# PHASE 3 — Corner Economy & Escape Reads ✅ (STILL LIVE — seam-math notes in 3.1 are moot; the seam is gone)
 
 **Intent:** escapes still save your life but stop refunding the whole war; reading an escape pays
 in position; the AI stops treating the corner as a scripted exit and starts *fighting* there —
@@ -376,7 +439,7 @@ i-frame durations, escape stamina costs.
 
 ---
 
-# PHASE 4 — AI Identity, Memory & the Difficulty Curve
+# PHASE 4 — AI Identity, Memory & the Difficulty Curve ⚠️ (PARTIALLY SUPERSEDED — 4.1 memory and the seam policies in 4.2 were removed with the string; corner/clinch policies, curriculum kits, and the difficulty curve still stand)
 
 **Intent:** rivals with obvious, engaging gameplans at low/mid ranks that converge to
 "complete-with-a-lean" at the top; a memory system that forces mixups; a curriculum ladder; a

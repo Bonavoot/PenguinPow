@@ -76,7 +76,6 @@ function createInitialPlayerState(overrides = {}) {
     hitCounter: 0,
     lastHitType: null,
     lastHitTime: 0,
-    lastHitByStringPos: 0,
     isHitFalling: false,
     hitFallStartTime: 0,
     hitFallStartY: 0,
@@ -143,23 +142,11 @@ function createInitialPlayerState(overrides = {}) {
     lastCheckedAttackTime: 0,
     lastSlapHitLandedTime: 0,
 
-    // === Slap string ===
-    pendingSlapCount: 0,
-    pendingGrabEnder: false,
-    slapStringPosition: 0,
-    slapStringWindowUntil: 0,
-    slapWhiffCount: 0,
-    isSlapWhiffPausing: false,
-    slapAnimationToggle: 0,
+    // === Slap (individual presses — no string/combo) ===
+    pendingSlapCount: 0,       // 1-press input buffer for responsiveness
+    pendingPalmThrust: false,  // back+mouse1 pressed mid-slap → thrust fires at cycle end (instead of another slap)
+    slapAnimationToggle: 0,    // Cosmetic slap1 ↔ slap2 alternation
     currentSlapHitConnected: false,
-    // PHASE 1: ender seam (blue spark) timing + seam-open tracking
-    slapEnderActionableTime: 0,
-    enderPressTime: 0,
-    enderPressGameTime: 0,
-    slapHit3Velocity: 0,
-    slapHit3PerfectEnder: false,
-    seamOpenedByHit: false,
-    seamOpenedTime: 0,
 
     // === Charged attack ===
     isChargingAttack: false,
@@ -167,13 +154,13 @@ function createInitialPlayerState(overrides = {}) {
     chargeMaxDuration: 2000,
     chargeAttackPower: 0,
     chargingFacingDirection: null,
-    // "charged" | "palmThrust" | null — which move the current charge will release into
-    pendingChargeAttack: null,
     chargeCancelled: false,
-    wantsToRestartCharge: false,
-    mouse1HeldDuringAttack: false,
     mouse1BufferedBeforeStart: false,
     mouse1PressTime: 0,
+    // Palm (and other press-to-fire M1 moves) consume the current mouse1 hold so
+    // the continuous S+forward charge check can't auto-start mid-hold and leave
+    // the player stranded in the charge shake until they release / cancel.
+    mouse1ConsumedUntilRelease: false,
     isChargedHitRecoil: false,
 
     // === Parry ===

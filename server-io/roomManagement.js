@@ -300,6 +300,11 @@ function resetRoomAndPlayers(room, io) {
   delete room.winnerId;
   delete room.loserId;
   room.previousPlayerStates = [null, null];
+  // Kill any in-flight hitstop from the previous round. Leaving it active freezes
+  // simTime (and therefore recovery expiry) across the power-up / walk-up window,
+  // which is how a mid-KO palm recovery could still be locking movement at the
+  // next HAKKIYOI.
+  room.hitstopUntil = 0;
 
   if (room.roundStartTimer) {
     clearTimeout(room.roundStartTimer);
@@ -317,7 +322,22 @@ function resetRoomAndPlayers(room, io) {
     player.isJumping = false;
     player.isAttacking = false;
     player.isSlapAttack = false;
+    player.isPalmThrust = false;
+    player.palmThrustVisualUntil = 0;
     player.isStrafing = false;
+    player.isCrouchStance = false;
+    player.isCrouchStrafing = false;
+    player.movementVelocity = 0;
+    player.isPowerSliding = false;
+    player.isBraking = false;
+    // Charged / palm recovery MUST clear here. Palm (and charged) routinely end
+    // a round while isRecovering is still true; if this sticks, the player is
+    // rooted at the start of the next round until dodge/grab cancels it.
+    player.isRecovering = false;
+    player.recoveryStartTime = 0;
+    player.recoveryDuration = 0;
+    player.recoveryDirection = null;
+    player.isChargedHitRecoil = false;
     player.isRawParrying = false;
     player.rawParryStartTime = 0;
     player.rawParryMinDurationMet = false;
@@ -404,14 +424,9 @@ function resetRoomAndPlayers(room, io) {
     player.hitAbsorptionUsed = false;
     player.hitCounter = 0;
     player.lastHitTime = 0;
-    player.lastHitByStringPos = 0;
     player.lastSlapHitLandedTime = 0;
     player.pendingSlapCount = 0;
-    player.pendingGrabEnder = false;
-    player.slapStringPosition = 0;
-    player.slapStringWindowUntil = 0;
-    player.slapWhiffCount = 0;
-    player.isSlapWhiffPausing = false;
+    player.pendingPalmThrust = false;
     player.slapAnimationToggle = 0;
     player.currentSlapHitConnected = false;
     player.isBurstKnockback = false;
@@ -421,12 +436,10 @@ function resetRoomAndPlayers(room, io) {
     player.chargeAttackPower = 0;
     player.chargingFacingDirection = null;
     player.attackType = null;
-    player.pendingChargeAttack = null;
     player.spacebarReleasedDuringDodge = false;
+    player.mouse1ConsumedUntilRelease = false;
     player.mouse1PressTime = 0;
     player.mouse1BufferedBeforeStart = false;
-    player.mouse1HeldDuringAttack = false;
-    player.wantsToRestartCharge = false;
     player.mouse1JustPressed = false;
     player.mouse1JustReleased = false;
     player.mouse2JustPressed = false;

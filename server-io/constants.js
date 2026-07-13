@@ -20,7 +20,7 @@ const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'balance', 'id', 'figh
 
 const DELTA_TRACKED_PROPS = [
   'isAttacking', 'isSlapAttack', 'isPalmThrust', 'palmThrustFxId', 'slapAnimation', 'attackType',
-  'isChargingAttack', 'chargeAttackPower', 'chargeStartTime', 'pendingChargeAttack',
+  'isChargingAttack', 'chargeAttackPower', 'chargeStartTime',
   'isBurstKnockback',
   'isGrabbing', 'isBeingGrabbed', 'grabbedOpponent', 'grabState', 'grabAttemptType',
   'isGrabbingMovement', 'isWhiffingGrab', 'isGrabWhiffRecovery', 'isGrabTeching', 'grabTechRole', 'isGrabStartup',
@@ -116,93 +116,53 @@ const GRAB_PUSH_DURATION = 650;
 // Real fighting game structure: Startup → Active → Recovery
 // Startup: committed but can't hit. Active: hitbox live. Recovery: punishable.
 // ============================================
-const SLAP_STARTUP_MS = 55;       // Wind-up before hitbox — snappy initiation
+const SLAP_STARTUP_MS = 55;       // Wind-up before hitbox. Kept SHORT so slaps
+                                  // read as FAST jabs (not slow taps) — the client
+                                  // windup→smear→hit animation is compressed to match
+                                  // (see SLAP_ANIM in GameFighter).
 const SLAP_ACTIVE_MS = 100;       // Hitbox live window
-const SLAP_RECOVERY_MS = 130;     // Can't act, no hitbox — opponent's response window
+const SLAP_RECOVERY_MS = 75;      // Can't act, no hitbox. Full cycle = 230ms — the
+                                  // press-to-press rhythm of repeated slaps.
 const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS;
 
-// Slap String System — 3-hit combo: tap tap BOOM
-// Hits 1 & 2 are light pokes with minimal knockback (true combo on hit).
-// Hit 3 is the finisher with burst knockback that creates spacing.
-// After hit 2, player can input mouse2 instead of mouse1 to grab ender.
-//
-// RHYTHM: the slap1→slap2 gap is intentionally the BIGGEST (deliberate "BOP.. BOP"),
-// then slap2→slap3 tightens into the finisher. Gap = startup(55) + active(100) + recovery.
-// On hit, each gap is further extended by the attacker's hitstop (see collisionSystem).
-const SLAP_STRING_BUFFER_WINDOW_MS = 300;  // Manual input window after cycle end
-const SLAP_STRING_END_COOLDOWN_MS = 60;   // Post-3rd-slap lockout: just eats stale mashed inputs, not a penalty
+// ── SLAP REWORK: individual presses, no string/combo ────────────────────────
+// Each mouse1 press is one self-contained slap. On hit BOTH players become
+// actionable at the same instant (+0 by construction: the victim's hitstun is
+// set to the attacker's remaining cycle at the moment of connect — see
+// processHit). The reward for landing a slap is GROUND, not frames: both
+// players slide toward the victim's rope, with the victim drifting slightly
+// farther so repeated hits self-space out of slap reach after 2-3 connects.
+// The slap1/slap2 animations still alternate, but purely cosmetically — both
+// have identical properties.
 
-// Per-position recovery (the gap-shaper). Whiff gaps = startup+active+recovery.
-//   slap1 → slap2 (whiff): 55+100+75 = 230ms  (was 195 — slower, more deliberate)
-//   slap2 → slap3 (whiff/base): 55+100+50 = 205ms (snappier into the finisher)
-// On hit these become ~280 / ~255 once the attacker hitstop (~50ms) is added — still
-// well under the victim's hit-stun (260 + 70 hitstop = 330), so the true combo holds.
-const SLAP_STRING_RECOVERY_POS1_MS = 75;   // Recovery after slap1 → biggest gap (to slap2)
-const SLAP_STRING_RECOVERY_POS2_MS = 50;   // Recovery after slap2 → tighter gap (to slap3)
-const SLAP_STRING_HIT_RECOVERY_MS = 40;    // Legacy/default recovery (kept for any non-positional refs)
-const SLAP_STRING_HIT_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_STRING_HIT_RECOVERY_MS;
+// === WHIFF COOLDOWN (subtle, per press) ===
+// The old "2 whiffs → committed 300ms pause + stamina surcharge" was built to
+// price string spam; with slaps as individual +0 presses it's gone. Instead,
+// every WHIFFED slap holds its recovery a touch longer than a landed one
+// (75 → 120ms; cycle 230 → 275ms). Free to spam — but connecting keeps your
+// rhythm faster than swinging at air, so accuracy still pays, and a reactive
+// whiff punish gets a slightly wider window without a hard lockout. Applied at
+// cycle end (never on hit), so the +0 on-hit math is untouched.
+const SLAP_WHIFF_EXTRA_RECOVERY_MS = 45;
 
-// === WHIFF RHYTHM: "BOP BOP <pause>" ===
-// Two whiffed slaps come out, then a COMMITTED recovery pause (not cancelable into
-// any action) before you can slap again. The pause is the whiff-punish window: a
-// prompt, in-range opponent can punish it, but it's short enough that a DELAYED punish
-// attempt arrives after you're actionable again (so you can parry/dodge that one).
-// On hit the string flows normally (up to 3) — landing extends your turn, whiffing
-// interrupts it, which rewards accuracy. Counter resets the instant a slap connects.
-const SLAP_WHIFF_PAUSE_COUNT = 2;   // Consecutive whiffs before the committed pause
-const SLAP_WHIFF_PAUSE_MS = 300;    // Committed lockout duration — the punish window (main dial).
-                                    // PHASE 2: 220 → 300 so a REACTIVE whiff punish is possible
-                                    // (the old 220 let a delayed punish arrive after you're actionable,
-                                    // which specifically protected spam).
-// PHASE 2 — whiff surcharge. A whiffed slap costs an extra 3 stamina (charged at
-// cycle end when the slap did NOT connect), so a whiffed slap totals 6 while a
-// landed slap stays 3. Makes spacing/accuracy pay in the game's real currency.
-const SLAP_WHIFF_EXTRA_STAMINA = 3;
-
-// Knockback per string position
-const SLAP_STRING_LIGHT_KB_VELOCITY = 0.15;       // Hits 1 & 2: minimal — keeps opponent close for next hit
-const SLAP_NEUTRAL_KB_MULTIPLIER = 0.42;          // Solo slap (no string) — standard physics
-
-// Hit 3: physics-based knockback (velocity impulse, no DI)
+// ── BURST KNOCKBACK (palm thrust / flap body-slam delivery model) ───────────
+// Physics-based knockback: velocity impulse, no DI during the forced window.
 // ICE-SLIDE MODEL: a single, smooth exponential decay — the victim is shoved
 // at a moderate impulse and decelerates at the SAME friction as the ice coast
-// they settle into afterward (ICE_COAST_FRICTION). This makes the forced
-// knockback read as one continuous slide on ice instead of a fast pop that
-// brakes hard and then suddenly glides (the old two-phase glide→brake model
-// covered the same ground but looked "quick, then stops").
+// they settle into afterward (ICE_COAST_FRICTION), so the forced knockback
+// reads as one continuous slide on ice.
 //
 // DISTANCE TUNING: total travel ≈ k·v0/(1−friction) with k = delta·speedFactor
-// (~2.89 px per velocity-unit per tick). v0=3.1 @ 0.982 ≈ 494px total — matched
-// to the old 4.5 @ 0.95/0.993 feel so the knockback DISTANCE is unchanged; only
-// the velocity curve (the "feel") is reshaped. Peak speed drops ~13→9 px/tick.
-const SLAP_HIT3_KB_VELOCITY = 3.1;         // Finisher impulse (lowered from 4.5 to kill the "zoom").
-                                           // Main DISTANCE dial: raise/lower to send them further/less.
-                                           // Outside the kill zone the rope catches the victim (see
-                                           // SLAP_KILL_RANGE), so this mainly tunes positional dominance.
-const SLAP_HIT3_STUN_MS = 200;             // Forced (no-DI) window. After this the remaining velocity
+// (~2.89 px per velocity-unit per tick). v0=3.1 @ 0.982 ≈ 494px total.
+// (Formerly the slap-string hit-3 finisher constants; the slap string is gone,
+// but the palm thrust and flap body-slam still deliver through this model.)
+const BURST_KB_VELOCITY = 3.1;             // Reference burst impulse (flap body-slam uses this).
+const BURST_STUN_MS = 200;                 // Forced (no-DI) window. After this the remaining velocity
                                            // hands off to the DI-able ice coast — seamless, since both
-                                           // phases now use the same friction.
-const SLAP_HIT3_KB_FRICTION = 0.982;       // Per-tick decay during the forced window. Matched to
+                                           // phases use the same friction.
+const BURST_KB_FRICTION = 0.982;           // Per-tick decay during the forced window. Matched to
                                            // ICE_COAST_FRICTION so the shove and the follow-through slide
-                                           // are visually one motion. Higher = longer, slower glide
-                                           // (and more total distance); pair with v0 to hold distance.
-
-// ─── PHASE 1: THE ENDER SEAM — perfect-input finisher ("blue spark") ────────
-// Slap3's burst velocity depends on the ender press timing (see 1.4 of the
-// COMBAT_OVERHAUL_SPEC). Judged on press-arrival vs the attacker's actionable
-// moment (when the slap2 cycle ends), lag-compensated toward the true client
-// press. The earned-string guarantee does NOT change these tiers — precision
-// pays everywhere.
-//   • Buffered during the freeze (pressed before actionable) → SLOPPY (2.4)
-//   • Just-frame: within SLAP_ENDER_JUST_WINDOW_MS of actionable → full (3.1) + spark
-//   • Late (after the window) → SLOPPY (2.4)
-// ~110px of carry difference is the mechanical stake; the spark is psychological.
-const SLAP_HIT3_KB_VELOCITY_SLOPPY = 2.4;  // Mash-tax finisher impulse (~385px carry). Gap to 3.1 = the tax.
-const SLAP_ENDER_JUST_WINDOW_MS = 50;      // Just-frame window after becoming actionable — main difficulty dial.
-// Lag-compensation cap for the ender press moment (mirrors MAX_PARRY_BACKDATE_MS).
-// Backdating only makes the just-frame window HARDER to hit, so a spoofed
-// offset can do no better than the uncompensated (age 0) behavior.
-const MAX_ENDER_BACKDATE_MS = 120;
+                                           // are visually one motion.
 
 // ─── SLAP ROPE RESISTANCE ───────────────────────────────────────────────
 // Real-sumo rope feel: a slap can only send the opponent OUT if the hit
@@ -210,52 +170,44 @@ const MAX_ENDER_BACKDATE_MS = 120;
 // From mid-ring, the rope catches them — the victim is stopped at the edge
 // instead of being knocked through it. Evaluated PER HIT at connect time
 // (using the victim's distance to the boundary in the knockback direction),
-// so the slap string naturally walks them into the zone before slap3 finishes.
-//
-// TUNING: SLAP_KILL_RANGE must be <= how far slap3 actually travels during
-// its hitstun window. If "armed" finishers ever fizzle just short of the
-// rope, either lower this range or raise SLAP_HIT3_KB_VELOCITY. At 45px this
-// is a deliberately tight "already at the rope" band — well inside the wider
-// edge-panic zone (DOHYO_EDGE_PANIC_ZONE = 89) — so a neutral slap finisher
-// only rings out a victim who was genuinely pinned, not merely cornered.
+// so repeated slaps naturally walk the opponent into the zone first. There
+// is NO bypass — not even on a punish. Slap rings out ONLY inside this band.
 const SLAP_KILL_RANGE = 45;
 // Where a rope-caught victim comes to rest, measured INWARD from the boundary.
 // Keeps them a few px off the literal edge (not pixel-perfect on the rope) and
 // safely short of the ring-out line so the win check never trips on a save.
 const SLAP_ROPE_RESIST_BUFFER = 12;
 
-// String stun (hits 1 & 2)
-const SLAP_STRING_HIT_STUN_MS = 260;
+// ── ON-HIT GROUND TRANSFER (the slap's entire reward) ───────────────────────
+// On connect BOTH players slide toward the victim's rope. The victim drifts
+// slightly FASTER than the attacker advances, so back-to-back slaps self-space:
+// after 2-3 connects the victim exits slap reach and the attacker must walk or
+// commit to something else to continue. Positional gain, zero frame gain.
+const SLAP_ONHIT_ATTACKER_PUSH = 1.0;   // Attacker's forward slide on connect (matches whiff slide)
+const SLAP_ONHIT_VICTIM_DRIFT = 1.15;   // Victim's drift — the self-spacing dial (> attacker push)
 
-// ─── PHASE 1: CONTESTABLE SLAP3 (neutral strings only) ──────────────────────
-// A NEUTRAL slap2 leaves the victim in a shorter stun so the slap2→slap3 seam
-// becomes a decision moment (a 2×2 mixup — see spec 1.2). SLAP_STRING_HIT_STUN_MS
-// (260) still applies to hit 1 (keeps 1→2 a true combo) AND to hit 2 of an
-// EARNED string (counter/punish-latched, gassed victim, or victim in the
-// edge-panic zone in the knockback direction), so those enders stay guaranteed.
-const SLAP_STRING_HIT2_STUN_MS = 180;
-
-// On-hit combo push: both players drift forward together on connect (matches whiff slide)
-const SLAP_ONHIT_ATTACKER_PUSH = 1.0;
+// ── SLAP COUNTER HIT ─────────────────────────────────────────────────────────
+// A counter hit (clipping the opponent's startup) is the ONLY way a slap grants
+// frame advantage: a flat bonus on top of the +0 base, plus extra shove. The
+// bonus means your NEXT slap wins a mash-vs-mash clash decisively, but it does
+// NOT reach combo territory — a parry (or simply moving) still answers it.
+const SLAP_COUNTER_HIT_BONUS_MS = 35;   // Flat hitstun bonus — the earned tempo beat
+const SLAP_COUNTER_KB_MULT = 1.25;      // Victim drift multiplier on counter (extra ground)
+// Safety floor for the dynamically computed hitstun (see processHit).
+const SLAP_MIN_HITSTUN_MS = 60;
 
 const CHARGED_STARTUP_MS = 150;   // Clear windup (unchanged)
 const CHARGED_ACTIVE_MS = 120;    // Hitbox live window
 
-// ── OPEN-PALM THRUST (back + mouse1, chargeable) ────────────────────────────
-// A rooted, single-hit "hold your ground" strike. Hold BACK+mouse1 to charge
-// (same shake + 0→100% over CHARGE_FULL_POWER_MS as the headbutt), release to
-// fire. Quick taps (< PALM_THRUST_CHARGE_THRESHOLD_MS) keep the old snappy
-// press→hitbox timing via startup credit and fire at PALM_THRUST_POWER.
-// Rides the charged hit-resolution path (attackType "charged" + isPalmThrust)
-// for priority/hitstop/KB multiplier, but takes NO forward lunge. Knockback
-// magnitude uses the same 0.45+charge^1.3 curve as charged attack; delivery
-// stays slap3-burst + rope-clamp (no midscreen cinematic KO).
+// ── OPEN-PALM THRUST (back + mouse1) ────────────────────────────────────────
+// A rooted, single-hit "hold your ground" strike. Rides the charged
+// hit-resolution path (attackType "charged" + isPalmThrust flag) as a
+// fixed-power mini-charge, but takes NO forward lunge. Fast startup, weak-
+// charged power, and a long whiff recovery make it the committal spacing /
+// edge-finishing counterpart to the advancing slap string. Think Feng b+1:
+// snappy, rewarding on a read, but you eat a punish if it whiffs.
 const PALM_THRUST_STARTUP_MS = 90;         // Fast windup (~5-6 frames)
 const PALM_THRUST_ACTIVE_MS = 90;          // Single clean hit window (hitbox live)
-// Hold shorter than this = "tap": fires at PALM_THRUST_POWER with startup
-// credited by hold duration so press→active stays ~PALM_THRUST_STARTUP_MS
-// (same as the old instant-on-press feel). Hold longer = real charge.
-const PALM_THRUST_CHARGE_THRESHOLD_MS = 150;
 // Visual "hold": the strike pose lingers after the active frames, but this is
 // REAL recovery — no hitbox, the player can't act, and they ARE punishable. It
 // just renders as the attack pose (slapAttack1) instead of the recovery pose,
@@ -265,14 +217,19 @@ const PALM_THRUST_HOLD_MS = 260;
 // its strike sprite for the full whiff punish window instead.
 const PALM_THRUST_END_RECOVERY_MS = 60;
 const PALM_THRUST_HIT_RECOVERY_MS = 200;   // Settle on a confirmed hit
-// Default charge % when the thrust is fired without a charge hold (CPU / legacy
-// callers). 35 sits ABOVE CHARGE_PRIORITY_THRESHOLD (30) so an uncharged-path
-// thrust still beats a slap on a simultaneous trade.
+// Fixed "charge %" used ONLY for the palm's priority + hitstop, NOT its
+// knockback: 35 sits ABOVE CHARGE_PRIORITY_THRESHOLD (30) so the thrust beats a
+// slap on a simultaneous trade, and it scales the connect hitstop. The actual
+// shove is a fixed burst impulse (PALM_THRUST_KB_VELOCITY below) via the burst
+// knockback model — the palm does NOT run the 0.45+charge^1.3 charged formula.
 const PALM_THRUST_POWER = 35;
-// Legacy dial — palm knockback now uses the charged formula
-// (2.7 * finalKnockbackMultiplier). Kept exported for reference / tuning notes.
+// Heavy single-hit knockback — now the game's big committal SHOVE (slaps only
+// gain ground; the palm SENDS them). Delivered via the burst model (smooth
+// ICE_COAST slide + rope clamp): the reward for a slower, rooted, punishable,
+// grab-losable read. Sits under BURST_KB_VELOCITY (3.1, the flap body-slam)
+// as the ground-based burst tier.
 const PALM_THRUST_KB_VELOCITY = 2.4;
-const PALM_THRUST_STAMINA_COST = 6;        // Between slap (3) and charged (9)
+const PALM_THRUST_STAMINA_COST = 4;        // Slightly above slap (3) — committed poke, not a gas tax
 // Rooted (no lunge), so it needs a little more raw reach than the charged
 // hitbox to feel like a committed extended-arm thrust — a touch past slap.
 const PALM_THRUST_HITBOX_DISTANCE_VALUE = Math.round(177 * 0.96); // ~170
@@ -318,16 +275,12 @@ const DODGE_COOLDOWN_MS = 100;    // Forced idle gap after recovery before next 
 //   TRAVEL=160 over ACTIVE=400ms → ~400 px/sec effective lateral speed.
 //   That's slower than dodge AND covers ~27% of the map per move, so the
 //   sidestep reads as a circling step around the dohyo's curve, not a teleport.
-// Startup tuned to 40ms so a defender can escape the slap2→grab option select:
-// after slap2 hit-stun (260ms) ends, defender has a 60ms window before the
-// canceled grab connects. With 40ms startup the sidestep enters its strike+grab
-// invuln before grab lands, while keeping slap3 (which lands DURING hit-stun)
-// unavoidable. 40ms is still 2x dodge startup (20ms), so dodge remains the
-// faster panic button — sidestep is slower-but-bigger-reward by design.
-// PHASE 3.1: 40 → 50ms. The old 40 was tuned for the pre-Phase-1 slap2→grab
-// option-select; the rebuilt seam (buffered wakeup sidestep enters i-frames well
-// before the seam grab) leaves 50 safe there, and it makes a *predicted* corner
-// sidestep actually clippable — reading an escape should pay.
+// 50ms startup is still 2.5x dodge startup (20ms), so dodge remains the faster
+// panic button — sidestep is slower-but-bigger-reward by design.
+// PHASE 3.1: 40 → 50ms so a *predicted* corner sidestep is actually clippable —
+// reading an escape should pay. (The old 40 was tuned for the deleted slap-string
+// slap2→grab option-select; with slaps now individual +0 presses, that constraint
+// is gone.)
 const SIDESTEP_STARTUP_MS = 50;       // Vulnerable wind-up — counter-hittable on read
 const SIDESTEP_ACTIVE_MS = 400;       // Fixed active phase — same length every time
 const SIDESTEP_RECOVERY_MS = 150;     // Smooth settle to final position, vulnerable (PUNISH on hit)
@@ -661,14 +614,14 @@ const FLAP_CHARGE_COOLDOWN_MS = 150;     // Min interval between flaps (gives th
 const FLAP_STAMINA_COST = 12;            // Liftoff cost only (air flaps are free) — pricier than a dodge since liftoff buys an immune flight + a body-slam; still cheap enough for several flights per bar
 const FLAP_LANDING_RECOVERY_MS = 250;    // WHIFF landing endlag — the punish window
 // Connecting the body-slam latches the flight and syncs landing recovery to the
-// victim's hitstun (SLAP_HIT3_STUN_MS) so the slam grants NO frame advantage.
+// victim's hitstun (BURST_STUN_MS) so the slam grants NO frame advantage.
 // The flapper keeps normal flight physics until they touch down — no self
 // pushback and no scripted descent on connect.
-// Body-slam impulse = a full slap-string finisher (slap3). Uses the same
-// burst-knockback (no-DI) model so the "drop on their head" payoff reads like a
-// real heavy hit. The move has plenty of counters (parry, dash the landing,
-// walk under it), so a clean connect earns the same reward as the slap3 ender.
-const FLAP_BODYSLAM_KB_VELOCITY = SLAP_HIT3_KB_VELOCITY;
+// Body-slam impulse uses the burst-knockback (no-DI) model so the "drop on
+// their head" payoff reads like a real heavy hit. The move has plenty of
+// counters (parry, dash the landing, walk under it), so a clean connect earns
+// the game's heaviest strike knockback.
+const FLAP_BODYSLAM_KB_VELOCITY = BURST_KB_VELOCITY;
 
 // ============================================
 // Hit Recovery — smooth Y return when hit at non-ground positions
@@ -709,13 +662,15 @@ const STAMINA_REGEN_AMOUNT = 8; // per tick
 const CHARGE_FULL_POWER_MS = 1000; // Time to reach 100% charge (1 second)
 
 // Stamina costs — every action is a real decision (lowered to slow neutral pacing)
-const SLAP_ATTACK_STAMINA_COST = 3; // Lighter throw cost — victim still pays more on hit
-const CHARGED_ATTACK_STAMINA_COST = 9; // Heavy but not punishing for the attacker
+const SLAP_ATTACK_STAMINA_COST = 3; // Baseline poke cost
+const CHARGED_ATTACK_STAMINA_COST = 5; // Only a little more than slap — commitment tax is recovery/whiff, not gas
 const DODGE_STAMINA_COST = 4; // Deliberate escape
 
-// Stamina drain on victim when hit (victim pays MORE than attacker spent)
-const SLAP_HIT_VICTIM_STAMINA_DRAIN = 8; // Victim loses 8
-const CHARGED_HIT_VICTIM_STAMINA_DRAIN = 16; // Victim loses 16 — eating one charged shouldn't half-gas you
+// Stamina drain on victim when hit — light chips only; balance is the real hit tax.
+// Slap: none. Charged: ~one slap's worth. Palm: even lighter chip.
+const SLAP_HIT_VICTIM_STAMINA_DRAIN = 0;
+const CHARGED_HIT_VICTIM_STAMINA_DRAIN = 3;
+const PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN = 2;
 
 // ============================================
 // Balance System — clinch throw/kill-throw gating
@@ -724,7 +679,7 @@ const BALANCE_MAX = 100;
 const BALANCE_PASSIVE_REGEN_PER_SEC = 5;        // +5/sec in neutral
 const BALANCE_CROUCH_REGEN_PER_SEC = 10;        // +10/sec additional while crouching (stacks with passive → +15/sec)
 const BALANCE_SLAP_HIT_DRAIN = 8;               // Balance lost when hit by a slap
-const BALANCE_CHARGED_HIT_DRAIN = 15;           // Balance lost when hit by a charged attack (down from 20 — pairs with 16 stam drain)
+const BALANCE_CHARGED_HIT_DRAIN = 15;           // Balance lost when hit by a charged attack (primary hit tax; stam is a light chip)
 
 // ============================================
 // Mutual Clinch System — push/plant/throw interactions
@@ -941,26 +896,13 @@ const GASSED_RECOVERY_STAMINA = 55; // Granted on exit — enough to actually fi
 // Scales with power - stronger hits freeze longer
 // ============================================
 const SLAP_CHAIN_HIT_GAP_MS = 40;  // Minimum visual gap after slap hitstun before victim can be hit again
-const HITSTOP_SLAP_MS = 130;      // Solo/fallback slap freeze (~8 frames). Rarely hit in practice — every active
-                                  // slap is a string hit (pos 1-3), so this is the defensive fallback value.
-// AAA "fast lights, heavy finisher" model: the tap-tap of the string should feel SNAPPY, with the
-// dramatic freeze saved for the BOOM. A shorter freeze here is SAFE for the true combo because the
-// hitstop compensation is symmetric (see collisionSystem) — the combo margin is set by base frame data,
-// not by the hitstop, so the hitstop cancels out of the guarantee math.
-const HITSTOP_SLAP_STRING_MS = 70; // String hit 1 freeze (~4 frames). Snappy pop. On-hit cadence: 325ms → ~245ms.
-// PHASE 1: slap2 connect gets a HEAVIER freeze — this is the ender seam's
-// decision beat. Both players pick their option during this freeze; per Design
-// Principle 1 it reads as the heaviest mid-string IMPACT, not as lag (the sim
-// clock pauses for both, so the true-combo/seam margins are unaffected). The
-// attacker hitstop relief is NOT applied on hit 2 (the freeze is symmetric).
-const HITSTOP_SLAP_HIT2_MS = 140; // slap2 connect freeze (~9 frames) — the decision beat. Main "size of the seam" dial.
-const HITSTOP_SLAP_HIT3_MS = 200; // Combo finisher freeze (~12 frames). The "BOOM" — contrast with the fast lights sells it.
-// Attacker-favored asymmetry on chainable string hits (1 & 2): extend the ATTACKER's recovery by
-// `relief` ms LESS than the victim's stun, so the attacker un-freezes slightly ahead of the victim.
-// This adds on-hit flow / extra frame advantage so the chain feels aggressive rather than sluggish.
-// TRADE-OFF: tightens the post-slap2 escape/option-select read window by this many ms. Keep modest
-// (~1 frame) so counterplay still exists. Only applied to hits 1 & 2 (the finisher ends the string).
-const SLAP_STRING_ATTACKER_HITSTOP_RELIEF_MS = 20;
+// Flat slap connect freeze (~4 frames). Snappy pop — every slap is an
+// individual hit now, so one value covers them all. Symmetric (sim clock pauses
+// for both), so the +0 frame math is unaffected by hitstop.
+const HITSTOP_SLAP_MS = 70;
+// Heavy burst-hit freeze (~12 frames) — the "BOOM" for palm thrust / flap
+// body-slam class impacts.
+const HITSTOP_BURST_MS = 200;
 const HITSTOP_CHARGED_MIN_MS = 80;  // Minimum charged attack hitstop (5 frames)
 const HITSTOP_CHARGED_MAX_MS = 220; // Max charged hitstop at full power (~13 frames). Bumped from 150 — kill blows feel cinematic.
 const HITSTOP_PARRY_MS = 120;     // Regular parry hitstop - impactful but not too long (7 frames)
@@ -1037,7 +979,7 @@ const CINEMATIC_KB_MOVEMENT_FRICTION = 0.996;
 // ============================================
 // Global Attack Timing
 // ============================================
-const ATTACK_ENDLAG_SLAP_MS = SLAP_RECOVERY_MS; // Uses frame data (150ms — creates response window)
+const ATTACK_ENDLAG_SLAP_MS = SLAP_RECOVERY_MS; // Uses frame data (75ms recovery)
 const ATTACK_ENDLAG_CHARGED_MS = 300;   // Recovery for charged attacks (was 280)
 const ATTACK_COOLDOWN_MS = 50;          // Minimal cooldown for fast gameplay
 const BUFFERED_ATTACK_GAP_MS = 80;      // Fast chaining
@@ -1141,33 +1083,21 @@ module.exports = {
   SLAP_ACTIVE_MS,
   SLAP_RECOVERY_MS,
   SLAP_TOTAL_MS,
-  SLAP_STRING_BUFFER_WINDOW_MS,
-  SLAP_STRING_END_COOLDOWN_MS,
-  SLAP_STRING_RECOVERY_POS1_MS,
-  SLAP_STRING_RECOVERY_POS2_MS,
-  SLAP_STRING_HIT_RECOVERY_MS,
-  SLAP_STRING_HIT_TOTAL_MS,
-  SLAP_WHIFF_PAUSE_COUNT,
-  SLAP_WHIFF_PAUSE_MS,
-  SLAP_WHIFF_EXTRA_STAMINA,
-  SLAP_STRING_LIGHT_KB_VELOCITY,
-  SLAP_NEUTRAL_KB_MULTIPLIER,
-  SLAP_HIT3_KB_VELOCITY,
-  SLAP_HIT3_KB_VELOCITY_SLOPPY,
-  SLAP_ENDER_JUST_WINDOW_MS,
-  MAX_ENDER_BACKDATE_MS,
+  SLAP_WHIFF_EXTRA_RECOVERY_MS,
+  BURST_KB_VELOCITY,
+  BURST_STUN_MS,
+  BURST_KB_FRICTION,
   SLAP_KILL_RANGE,
   SLAP_ROPE_RESIST_BUFFER,
-  SLAP_HIT3_KB_FRICTION,
-  SLAP_STRING_HIT_STUN_MS,
-  SLAP_STRING_HIT2_STUN_MS,
-  SLAP_HIT3_STUN_MS,
   SLAP_ONHIT_ATTACKER_PUSH,
+  SLAP_ONHIT_VICTIM_DRIFT,
+  SLAP_COUNTER_HIT_BONUS_MS,
+  SLAP_COUNTER_KB_MULT,
+  SLAP_MIN_HITSTUN_MS,
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MS,
   PALM_THRUST_STARTUP_MS,
   PALM_THRUST_ACTIVE_MS,
-  PALM_THRUST_CHARGE_THRESHOLD_MS,
   PALM_THRUST_HOLD_MS,
   PALM_THRUST_END_RECOVERY_MS,
   PALM_THRUST_HIT_RECOVERY_MS,
@@ -1327,6 +1257,7 @@ module.exports = {
   DODGE_STAMINA_COST,
   SLAP_HIT_VICTIM_STAMINA_DRAIN,
   CHARGED_HIT_VICTIM_STAMINA_DRAIN,
+  PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN,
   GASSED_DURATION_MS,
   GASSED_RECOVERY_STAMINA,
 
@@ -1452,10 +1383,7 @@ module.exports = {
   // Hitstop
   SLAP_CHAIN_HIT_GAP_MS,
   HITSTOP_SLAP_MS,
-  HITSTOP_SLAP_STRING_MS,
-  HITSTOP_SLAP_HIT2_MS,
-  SLAP_STRING_ATTACKER_HITSTOP_RELIEF_MS,
-  HITSTOP_SLAP_HIT3_MS,
+  HITSTOP_BURST_MS,
   HITSTOP_CHARGED_MIN_MS,
   HITSTOP_CHARGED_MAX_MS,
   HITSTOP_PARRY_MS,

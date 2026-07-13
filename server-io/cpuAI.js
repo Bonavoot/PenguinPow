@@ -109,11 +109,6 @@ const AI_CONFIG = {
   PALM_SLAP_SPAM_WINDOW_MS: 4000,     // Rolling window for counting opponent slaps
   PALM_SLAP_SPAM_THRESHOLD: 3,        // Slaps in window that flag a "spammer"
 
-  // Slap string commitment — full rekka strings instead of random isolated slaps
-  STRING_FULL_CHANCE: 0.30,           // Chance to do full 3-hit string (mouse1×3)
-  STRING_GRAB_CHANCE: 0.25,           // Chance to do slap-slap-grab (mouse1×2 + mouse2)
-  // Remaining ~45%: single slap or legacy burst behavior
-
   // Slap pressure adaptation — AI gets more defensive after eating consecutive hits
   PRESSURE_HIT_THRESHOLD: 2,       // After this many consecutive hits, boost defense
   PRESSURE_PARRY_BOOST: 0.60,      // Boosted parry chance when under slap pressure
@@ -312,8 +307,7 @@ function resolveDifficultyByLadder(L) {
   return out;
 }
 // Map a ladder position to the nearest tier-name for the band-keyed tables
-// (legacy seam-wakeup roll, memory N/S, top-band convergence). Midpoints between
-// anchors: 0.125 / 0.425 / 0.80.
+// (top-band convergence). Midpoints between anchors: 0.125 / 0.425 / 0.80.
 function ladderBandKey(L) {
   const x = L < 0 ? 0 : L > 1 ? 1 : L;
   if (x < 0.125) return "EASY";
@@ -325,21 +319,9 @@ function ladderBandKey(L) {
 // Active difficulty profile for the CPU currently being processed. Defaults to
 // HARD so the brain is fully functional even if a caller never sets it.
 let DIFF = resolveDifficulty("HARD");
-// Resolved difficulty KEY (name) for the current CPU — used by tables that vary
-// by tier name rather than by profile field (e.g. the ender-seam wakeup roll).
+// Resolved difficulty KEY (name) for the current CPU — used by logic that varies
+// by tier name rather than by profile field (e.g. top-band convergence).
 let DIFF_KEY = "HARD";
-
-// ── PHASE 1: ENDER-SEAM VICTIM WAKEUP WEIGHTS (spec 1.5) ────────────────────
-// When the CPU eats slap2 of a NEUTRAL string (the seam opens), it rolls ONE
-// wakeup option during the freeze, jittered by the existing reaction pipeline.
-// Rows: parry / mash (desperation slap) / escape (sidestep); the remainder is
-// "eat it" (do nothing → still eats slap3, so beginners feel no change).
-const SEAM_WAKEUP_WEIGHTS = {
-  EASY:       { parry: 0.10, mash: 0.15, escape: 0.05 }, // eat 0.70
-  NORMAL:     { parry: 0.20, mash: 0.20, escape: 0.10 }, // eat 0.50
-  HARD:       { parry: 0.30, mash: 0.25, escape: 0.10 }, // eat 0.35
-  IMPOSSIBLE: { parry: 0.40, mash: 0.30, escape: 0.10 }, // eat 0.20
-};
 
 // ── PHASE 3.3: CORNER-ANSWER MENU (spec 3.3.3) ──────────────────────────────
 // Replaces "always flee". When the CPU commits a corner decision it rolls this
@@ -429,29 +411,11 @@ let PERS_KEY = "balanced";
 // PHASE 4.2 — DECISION-MOMENT POLICIES (per-archetype, rows sum to 1.0)
 // ============================================================================
 // Personality stops being "just multipliers" and expresses itself where the
-// player is watching: the ender seam (attacker + victim) and the corner. The
-// `balanced` row reproduces the Phase 1-3 baselines EXACTLY, so a non-archetype
-// CPU (PERS_KEY === "balanced") is unchanged. Only BASHO rivals carry a real
-// archetype (roomManagement.applyBashoOpponentProfile), so the firewall holds.
+// player is watching: the corner and the clinch. The `balanced` row reproduces
+// the baseline behavior EXACTLY, so a non-archetype CPU (PERS_KEY ===
+// "balanced") is unchanged. Only BASHO rivals carry a real archetype
+// (roomManagement.applyBashoOpponentProfile), so the firewall holds.
 //
-// Ender choice (attacker at the seam): slap3 / grab / bait(walk-away). balanced
-// reproduces the legacy AI_CONFIG.STRING_FULL_CHANCE(0.30)/STRING_GRAB_CHANCE
-// (0.25) split (remainder = bait), so non-BASHO CPUs are byte-identical.
-const ENDER_POLICY = {
-  balanced: { slap3: 0.30, grab: 0.25, bait: 0.45 },
-  pusher:   { slap3: 0.55, grab: 0.15, bait: 0.30 },
-  grappler: { slap3: 0.20, grab: 0.55, bait: 0.25 },
-  counter:  { slap3: 0.30, grab: 0.20, bait: 0.50 },
-  brawler:  { slap3: 0.65, grab: 0.20, bait: 0.15 },
-};
-// Wakeup choice (victim at the seam): parry / mash / escape / eat.
-const WAKEUP_POLICY = {
-  balanced: { parry: 0.25, mash: 0.20, escape: 0.10, eat: 0.45 },
-  pusher:   { parry: 0.15, mash: 0.25, escape: 0.10, eat: 0.50 },
-  grappler: { parry: 0.15, mash: 0.15, escape: 0.10, eat: 0.60 },
-  counter:  { parry: 0.45, mash: 0.10, escape: 0.15, eat: 0.30 },
-  brawler:  { parry: 0.10, mash: 0.40, escape: 0.05, eat: 0.45 },
-};
 // Corner answer: escape / palm / parry / fight / grab. balanced === the Phase 3
 // corner-menu baseline. Only counter/balanced keep escape >= 0.25 (spec 4.2).
 const CORNER_POLICY = {
@@ -492,15 +456,14 @@ const KIT_DIVISION_ORDER = [
   "jonokuchi", "jonidan", "sandanme", "makushita",
   "juryo", "maegashira", "komusubi", "sekiwake", "ozeki", "yokozuna",
 ];
-// Verbs ADDED at each division (inherit everything below). Base = slap string,
+// Verbs ADDED at each division (inherit everything below). Base = slap,
 // grab, and clinch push ("hit buttons, learn the rope").
 const KIT_ADDS_BY_DIVISION = {
-  jonokuchi:  ["slapString", "grab", "clinchPush"],
+  jonokuchi:  ["slap", "grab", "clinchPush"],
   jonidan:    ["plant", "parry"],
   sandanme:   ["palm", "clinchThrow"],
   makushita:  ["jolt", "pull", "sidestep"],
-  juryo:      ["ropeJump", "lift", "powerUps"],
-  maegashira: ["memory", "seamMixups"], // komusubi+ inherit this full kit
+  juryo:      ["ropeJump", "lift", "powerUps"], // maegashira+ inherit this full kit
 };
 const DIVISION_KIT = (() => {
   const out = {};
@@ -518,19 +481,6 @@ let KIT = null;
 function hasVerb(verb) {
   return !KIT || KIT.has(verb);
 }
-
-// PHASE 4.1 — MEMORY / READ SYSTEM per difficulty band. N = min observations of
-// a modal (>=60%) player choice before the CPU shifts its counter-weight by S;
-// the shift decays over ~20s of contrary evidence. EASY has no memory.
-const MEMORY_MODAL_THRESHOLD = 0.60;  // modal choice frequency that triggers a shift
-const MEMORY_SHIFT_CAP = 0.30;        // total shift ceiling (spec 4.1)
-const MEMORY_DECAY_MS = 20000;        // contrary-evidence decay horizon
-const MEMORY_BANDS = {
-  EASY:       { N: Infinity, S: 0 },    // no memory
-  NORMAL:     { N: 4, S: 0.10 },
-  HARD:       { N: 3, S: 0.20 },
-  IMPOSSIBLE: { N: 2, S: 0.30 },
-};
 
 // True at the IMPOSSIBLE band, where personality deltas converge halfway toward
 // `balanced` ("complete with a lean, never flat" — spec 4.2 top-rank).
@@ -550,7 +500,7 @@ function resolvePolicy(table, keys) {
 }
 
 // Weighted single draw over `keys` using `weights` (tolerates non-normalized
-// rows after memory shifts — divides by the live total).
+// rows — divides by the live total).
 function weightedPick(weights, keys) {
   let total = 0;
   for (const k of keys) total += Math.max(0, weights[k] || 0);
@@ -562,54 +512,6 @@ function weightedPick(weights, keys) {
     if (r < cum) return k;
   }
   return keys[keys.length - 1];
-}
-
-// PHASE 4.1: log the HUMAN's slap-string ender choice (slap3 vs grab) via rising
-// edges. Only runs for an archetype CPU, so non-BASHO players are untouched and
-// carry no memory. Old entries age out of the decay window in readPlayerEnderBias.
-function observePlayerEnder(cpu, human, aiState, currentTime) {
-  // PHASE 4.3: memory is a Maegashira+ verb (full kit). Lower ranks don't read.
-  if (PERS_KEY === "balanced" || !human || !hasVerb("memory")) return;
-  const pos = human.slapStringPosition || 0;
-  if (pos >= 3 && (aiState.lastSeenHumanStringPos || 0) < 3) {
-    aiState.playerEnderHistory.push({ choice: "slap3", t: currentTime });
-  }
-  aiState.lastSeenHumanStringPos = pos;
-
-  const grabEnder = !!human.pendingGrabEnder;
-  if (grabEnder && !aiState.humanGrabEnderSeen) {
-    aiState.playerEnderHistory.push({ choice: "grab", t: currentTime });
-  }
-  aiState.humanGrabEnderSeen = grabEnder;
-
-  // Bound the log; the decay window governs relevance, this just caps memory.
-  const hist = aiState.playerEnderHistory;
-  if (hist.length > 12) hist.splice(0, hist.length - 12);
-}
-
-// PHASE 4.1: read the human's modal ender within the decay window and return the
-// wakeup option to reinforce (parry beats slap3, mash beats grab), or null.
-// EASY band = no memory; higher bands need fewer observations + shift harder.
-function readPlayerEnderBias(aiState, currentTime) {
-  if (!hasVerb("memory")) return null;
-  const band = MEMORY_BANDS[DIFF_KEY];
-  if (!band || band.S <= 0 || !isFinite(band.N)) return null;
-  const hist = aiState.playerEnderHistory;
-  if (!hist || hist.length < band.N) return null;
-  let slap3 = 0;
-  let grab = 0;
-  let n = 0;
-  for (let i = hist.length - 1; i >= 0; i--) {
-    if (currentTime - hist[i].t > MEMORY_DECAY_MS) break;
-    if (hist[i].choice === "slap3") slap3++;
-    else if (hist[i].choice === "grab") grab++;
-    n++;
-  }
-  if (n < band.N) return null;
-  const shift = Math.min(band.S, MEMORY_SHIFT_CAP);
-  if (slap3 / n >= MEMORY_MODAL_THRESHOLD) return { option: "parry", amount: shift };
-  if (grab / n >= MEMORY_MODAL_THRESHOLD) return { option: "mash", amount: shift };
-  return null;
 }
 
 // Clamp a probability so dialed-up multipliers can't exceed a near-certainty.
@@ -649,20 +551,15 @@ function getAIState(playerId) {
       // Snowball defense tracking
       lastSnowballReactionTime: 0,
       // === Commitment system ===
-      commitAction: null,      // 'slap_burst', 'slap_string_full', 'slap_string_grab', etc.
+      commitAction: null,      // 'slap_burst', etc.
       commitCount: 0,          // How many actions left in commitment
       commitUntil: 0,          // Timestamp when commitment expires
-      stringBuffered: false,   // Whether string inputs have been buffered on the player object
       // === NEW: Aggression mode ===
       aggressionMode: 'balanced', // 'aggressive', 'balanced', 'defensive'
       aggressionShiftTime: 0,    // When to re-roll aggression
       // === NEW: Read system (preemptive actions instead of pure reactions) ===
       lastReadTime: 0,
       readCooldown: 0,
-      // === PHASE 1: ender-seam victim wakeup ===
-      seamWakeupChoice: null,   // 'parry' | 'mash' | 'escape' | 'eat' | null
-      seamWakeupExpire: 0,      // deadline to execute the rolled wakeup
-      seamHandledTime: 0,       // dedupe key = the hit's seamOpenedTime
       // === Parry-response node: rank-gated read of the HUMAN's raw parry ===
       // Rolled ONCE per detected parry (deduped on the human's rawParryStartTime),
       // then executed after a reaction delay so the grab-punish is never frame-1.
@@ -706,12 +603,6 @@ function getAIState(playerId) {
       lastPalmTime: 0,             // shared PALM_DECISION_COOLDOWN_MS gate
       opponentSlapTimes: [],       // rolling timestamps of the human's slaps
       lastSeenHumanAttackStart: 0, // edge-detect new human attacks for the tracker
-      // === PHASE 4.1: memory / read system ===
-      // Timestamped log of the human's string ENDER choice (slap3 vs grab). Read
-      // to bias the CPU's own wakeup weights (parry beats slap3, mash beats grab).
-      playerEnderHistory: [],      // [{ choice: 'slap3'|'grab', t }]
-      lastSeenHumanStringPos: 0,   // edge-detect the human reaching slap3
-      humanGrabEnderSeen: false,   // edge-detect a human grab ender
       // === Slap pressure tracking — adapts defense after consecutive hits ===
       consecutiveHitsTaken: 0,
       lastHitTime: 0,
@@ -1254,9 +1145,6 @@ function updateCPUAI(cpu, human, room, currentTime) {
     aiState.opponentSlapTimes = aiState.opponentSlapTimes.filter(t => t >= spamCutoff);
   }
 
-  // === PHASE 4.1: memory — log the human's string ENDER tendency (BASHO only) ===
-  observePlayerEnder(cpu, human, aiState, currentTime);
-
   // HIGHEST PRIORITY: DI (Directional Influence) - Reduce knockback by holding opposite direction!
   if (cpu.isHit && cpu.knockbackVelocity && Math.abs(cpu.knockbackVelocity.x) > 0.1) {
     handleKnockbackDI(cpu, aiState, currentTime);
@@ -1345,14 +1233,6 @@ function updateCPUAI(cpu, human, room, currentTime) {
 
   // Being grabbed outside clinch (edge case) — don't act
   if (cpu.isBeingGrabbed && !cpu.isBeingThrown) {
-    return;
-  }
-
-  // PHASE 1: ENDER-SEAM VICTIM WAKEUP — if the CPU just ate a neutral slap2,
-  // roll/execute a wakeup option (parry / mash / escape / eat). Runs before the
-  // normal reaction pipeline so the buffered choice fires the instant the CPU is
-  // actionable. Detection also happens while still stunned (returns false then).
-  if (handleSeamWakeup(cpu, human, aiState, currentTime)) {
     return;
   }
 
@@ -2171,9 +2051,7 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
     }
     if (canAttack(cpu)) {
       if (chance(0.5)) {
-        if (!pickStringCommitment(aiState, currentTime)) {
-          startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
-        }
+        startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
       }
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
@@ -2298,9 +2176,7 @@ function handleCornerAnswer(cpu, human, aiState, currentTime, distance, cornered
 function cornerFight(cpu, human, aiState, currentTime, distance) {
   if (distance < AI_CONFIG.SLAP_RANGE && canAttack(cpu)) {
     if (chance(0.5)) {
-      if (!pickStringCommitment(aiState, currentTime)) {
-        startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
-      }
+      startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
     }
     cpu.keys.mouse1 = true;
     aiState.mouse1ReleaseTime = currentTime + 40;
@@ -2493,9 +2369,7 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
     }
     if (roll < 0.85 * aggMult.attack) {
       if (chance(0.55)) {
-        if (!pickStringCommitment(aiState, currentTime)) {
-          startCommitment(aiState, 'slap_burst', randomInRange(3, 5), currentTime);
-        }
+        startCommitment(aiState, 'slap_burst', randomInRange(3, 5), currentTime);
       }
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
@@ -2503,10 +2377,8 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
       aiState.lastActionType = "slap";
       return;
     } else {
-      // String pressure: slap to build into hit 3 charge near the edge
-      if (!pickStringCommitment(aiState, currentTime)) {
-        startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
-      }
+      // Burst pressure: repeated slaps to walk the opponent toward the edge
+      startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
       aiState.lastDecisionTime = currentTime;
@@ -2651,105 +2523,6 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance, und
   return false;
 }
 
-// PHASE 1: is the CPU's in-progress slap string "earned" against `victim`?
-// Mirrors collisionSystem's earned-string gate: opened on a counter/punish read
-// (latched onto the attacker), OR the victim is gassed, OR the victim is already
-// in the edge-panic zone in the direction they'd be knocked (away from the CPU).
-function isStringEarnedAgainst(cpu, victim) {
-  if (cpu.slapStringCounterLatched || cpu.slapStringPunishLatched) return true;
-  if (victim.isGassed) return true;
-  const knockbackDir = victim.x >= cpu.x ? 1 : -1;
-  const distToBoundary = knockbackDir > 0
-    ? MAP_RIGHT_BOUNDARY - victim.x
-    : victim.x - MAP_LEFT_BOUNDARY;
-  return distToBoundary <= AI_CONFIG.EDGE_DANGER_ZONE;
-}
-
-// ── PHASE 1: ENDER-SEAM VICTIM WAKEUP (spec 1.5) ────────────────────────────
-// The CPU just ate slap2 of a NEUTRAL string (collisionSystem set seamOpenedByHit
-// on the victim). During the freeze it rolls ONE wakeup option (parry / mash /
-// escape / eat), then fires it the instant it becomes actionable — mirroring the
-// human's buffered wakeup. "eat" (and any unavailable choice) means do nothing,
-// so it still eats slap3 (beginners feel no change; the layer only opens at
-// intermediate+). Returns true if it executed an action this tick.
-function handleSeamWakeup(cpu, human, aiState, currentTime) {
-  // Detect a freshly-opened seam and roll the wakeup ONCE (deduped on the hit's
-  // timestamp). The roll can happen while still in hitstun (right as the freeze
-  // ends); execution below waits until the CPU can actually act.
-  if (
-    cpu.seamOpenedByHit &&
-    cpu.seamOpenedTime &&
-    aiState.seamHandledTime !== cpu.seamOpenedTime
-  ) {
-    aiState.seamHandledTime = cpu.seamOpenedTime;
-    cpu.seamOpenedByHit = false; // consume
-    let choice;
-    if (PERS_KEY === "balanced") {
-      // Non-BASHO / balanced: exact Phase 1.5 difficulty-keyed behavior.
-      const w = SEAM_WAKEUP_WEIGHTS[DIFF_KEY] || SEAM_WAKEUP_WEIGHTS.HARD;
-      const r = Math.random();
-      choice = "eat";
-      if (r < w.parry) choice = "parry";
-      else if (r < w.parry + w.mash) choice = "mash";
-      else if (r < w.parry + w.mash + w.escape) choice = "escape";
-    } else {
-      // PHASE 4.2/4.1: archetype wakeup policy (converged at the top band),
-      // reinforced by what the human keeps ending strings with (memory read).
-      const w = resolvePolicy(WAKEUP_POLICY, ["parry", "mash", "escape", "eat"]);
-      const bias = readPlayerEnderBias(aiState, currentTime);
-      if (bias) w[bias.option] = (w[bias.option] || 0) + bias.amount;
-      choice = weightedPick(w, ["parry", "mash", "escape", "eat"]);
-    }
-    aiState.seamWakeupChoice = choice;
-    // Generous window so a 1-tick scheduling delay still lands the wakeup.
-    aiState.seamWakeupExpire = currentTime + 400;
-  }
-
-  const choice = aiState.seamWakeupChoice;
-  if (!choice || choice === "eat") return false;
-  if (currentTime >= (aiState.seamWakeupExpire || 0)) {
-    aiState.seamWakeupChoice = null;
-    return false;
-  }
-  // Still stunned/locked → hold the decision until actionable (fires ~frame 1
-  // of wakeup, exactly like a human buffered choice).
-  if (cpu.isHit || !canAct(cpu)) return false;
-
-  aiState.seamWakeupChoice = null;
-  const dir = getDirectionToOpponent(cpu, human);
-
-  if (choice === "parry" && canParry(cpu)) {
-    resetAllKeys(cpu);
-    cpu.keys.s = true;
-    aiState.pendingParry = true;
-    aiState.parryStartTime = currentTime;
-    aiState.parryReleaseTime = currentTime + randomInRange(120, 220);
-    aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "seam_parry";
-    return true;
-  }
-  if (choice === "mash" && canAttack(cpu)) {
-    resetAllKeys(cpu);
-    cpu.keys.mouse1 = true;
-    aiState.mouse1ReleaseTime = currentTime + 40;
-    if (dir === 1) cpu.keys.d = true;
-    else cpu.keys.a = true;
-    aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "seam_mash";
-    return true;
-  }
-  if (choice === "escape" && hasVerb("sidestep") && canPlayerSidestep(cpu) && !cpu.isGassed) {
-    resetAllKeys(cpu);
-    cpu.keys.s = true;
-    cpu.keys.shift = true;
-    aiState.shiftReleaseTime = currentTime + 80;
-    aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "seam_escape";
-    return true;
-  }
-  return false;
-}
-
 // Handle snowball defense
 function handleSnowballDefense(cpu, human, aiState, currentTime, distance) {
   const closestSnowball = getClosestSnowball(cpu, human);
@@ -2831,141 +2604,16 @@ function handleSnowballDefense(cpu, human, aiState, currentTime, distance) {
   return false;
 }
 
-// Start a commitment (burst of actions or string sequence)
+// Start a commitment (burst of actions)
 function startCommitment(aiState, action, count, currentTime) {
   aiState.commitAction = action;
   aiState.commitCount = count;
-  aiState.stringBuffered = false;
-  if (action === 'slap_string_full' || action === 'slap_string_grab') {
-    aiState.commitUntil = currentTime + 2000;
-  } else {
-    aiState.commitUntil = currentTime + count * 250 + 500;
-  }
-}
-
-// Decide which string type to commit to. PHASE 4.2: the ender is drawn from the
-// archetype's ENDER_POLICY (slap3 / grab / bait). balanced reproduces the legacy
-// STRING_FULL_CHANCE/STRING_GRAB_CHANCE roll exactly, so non-BASHO is unchanged.
-function pickStringCommitment(aiState, currentTime) {
-  let choice;
-  if (PERS_KEY === "balanced") {
-    const roll = Math.random();
-    if (roll < AI_CONFIG.STRING_FULL_CHANCE) choice = "slap3";
-    else if (roll < AI_CONFIG.STRING_FULL_CHANCE + AI_CONFIG.STRING_GRAB_CHANCE) choice = "grab";
-    else choice = "bait";
-  } else {
-    const w = resolvePolicy(ENDER_POLICY, ["slap3", "grab", "bait"]);
-    choice = weightedPick(w, ["slap3", "grab", "bait"]);
-  }
-
-  if (choice === "slap3") {
-    startCommitment(aiState, 'slap_string_full', 3, currentTime);
-    return 'slap_string_full';
-  }
-  if (choice === "grab") {
-    startCommitment(aiState, 'slap_string_grab', 2, currentTime);
-    return 'slap_string_grab';
-  }
-  return null; // bait — no string-ender commitment (single slaps / reset)
+  aiState.commitUntil = currentTime + count * 250 + 500;
 }
 
 // Handle committed action sequences
 function handleCommitment(cpu, human, aiState, currentTime, distance) {
-  // === SLAP STRING: full 3-hit combo (mouse1 × 3) ===
-  if (aiState.commitAction === 'slap_string_full') {
-    if (!cpu.isAttacking && !aiState.stringBuffered && canAttack(cpu) && distance < AI_CONFIG.SLAP_RANGE + 30) {
-      resetAllKeys(cpu);
-      cpu.keys.mouse1 = true;
-      aiState.mouse1ReleaseTime = currentTime + 40;
-      aiState.lastDecisionTime = currentTime;
-      aiState.lastActionType = "string_full_start";
-      const dirToOpponent = getDirectionToOpponent(cpu, human);
-      if (dirToOpponent === 1) cpu.keys.d = true;
-      else cpu.keys.a = true;
-      return true;
-    }
-    if (cpu.isAttacking && cpu.attackType === "slap" && !aiState.stringBuffered) {
-      cpu.pendingSlapCount = 2;
-      aiState.stringBuffered = true;
-      return true;
-    }
-    if (aiState.stringBuffered) {
-      if (!cpu.isAttacking && !cpu.isInStartupFrames && !cpu.isInEndlag) {
-        aiState.commitAction = null;
-        aiState.commitCount = 0;
-        aiState.stringBuffered = false;
-        return false;
-      }
-      return true;
-    }
-    if (distance >= AI_CONFIG.SLAP_RANGE + 80) {
-      aiState.commitAction = null;
-      aiState.commitCount = 0;
-      aiState.stringBuffered = false;
-      return false;
-    }
-    if (distance < AI_CONFIG.SLAP_RANGE + 80) {
-      const dirToOpponent = getDirectionToOpponent(cpu, human);
-      if (dirToOpponent === 1) cpu.keys.d = true;
-      else cpu.keys.a = true;
-      return true;
-    }
-    return false;
-  }
-
-  // === SLAP STRING: slap-slap-grab ender (mouse1 × 2 + mouse2) ===
-  if (aiState.commitAction === 'slap_string_grab') {
-    if (!cpu.isAttacking && !aiState.stringBuffered && canAttack(cpu) && distance < AI_CONFIG.SLAP_RANGE + 30) {
-      resetAllKeys(cpu);
-      cpu.keys.mouse1 = true;
-      aiState.mouse1ReleaseTime = currentTime + 40;
-      aiState.lastDecisionTime = currentTime;
-      aiState.lastActionType = "string_grab_start";
-      const dirToOpponent = getDirectionToOpponent(cpu, human);
-      if (dirToOpponent === 1) cpu.keys.d = true;
-      else cpu.keys.a = true;
-      return true;
-    }
-    if (cpu.isAttacking && cpu.attackType === "slap" && !aiState.stringBuffered) {
-      // PHASE 1: if the string is EARNED (opened on a counter/punish, or the
-      // victim is gassed / already cornered), the slap3 finisher is a free
-      // guaranteed round-ender — always take it over the grab mixup (spec 1.5).
-      if (isStringEarnedAgainst(cpu, human)) {
-        cpu.pendingSlapCount = 2;
-        cpu.pendingGrabEnder = false;
-      } else {
-        cpu.pendingSlapCount = 1;
-        cpu.pendingGrabEnder = true;
-      }
-      aiState.stringBuffered = true;
-      return true;
-    }
-    if (aiState.stringBuffered) {
-      if (!cpu.isAttacking && !cpu.isInStartupFrames && !cpu.isInEndlag &&
-          !cpu.isGrabStartup && !cpu.isGrabbing && !cpu.isGrabbingMovement) {
-        aiState.commitAction = null;
-        aiState.commitCount = 0;
-        aiState.stringBuffered = false;
-        return false;
-      }
-      return true;
-    }
-    if (distance >= AI_CONFIG.SLAP_RANGE + 80) {
-      aiState.commitAction = null;
-      aiState.commitCount = 0;
-      aiState.stringBuffered = false;
-      return false;
-    }
-    if (distance < AI_CONFIG.SLAP_RANGE + 80) {
-      const dirToOpponent = getDirectionToOpponent(cpu, human);
-      if (dirToOpponent === 1) cpu.keys.d = true;
-      else cpu.keys.a = true;
-      return true;
-    }
-    return false;
-  }
-
-  // === Legacy slap burst (individual disconnected slaps) ===
+  // === Slap burst (individual presses — each one contestable) ===
   if (aiState.commitAction === 'slap_burst') {
     if (distance < AI_CONFIG.SLAP_RANGE + 30 && canAttack(cpu)) {
       resetAllKeys(cpu);
@@ -3108,16 +2756,14 @@ function handleCloseRange(cpu, human, aiState, currentTime, distance) {
     }
   }
   
-  // SLAP STRING / BURST — commit to a proper string sequence or burst pressure
+  // SLAP BURST — commit to a flurry of individual presses (each contestable)
   if (roll < 0.22 + AI_CONFIG.COMMIT_BURST_CHANCE * aggMult.attack && canAttack(cpu)) {
-    if (!pickStringCommitment(aiState, currentTime)) {
-      const burstCount = randomInRange(AI_CONFIG.COMMIT_SLAP_BURST_MIN, AI_CONFIG.COMMIT_SLAP_BURST_MAX);
-      startCommitment(aiState, 'slap_burst', burstCount, currentTime);
-    }
+    const burstCount = randomInRange(AI_CONFIG.COMMIT_SLAP_BURST_MIN, AI_CONFIG.COMMIT_SLAP_BURST_MAX);
+    startCommitment(aiState, 'slap_burst', burstCount, currentTime);
     cpu.keys.mouse1 = true;
     aiState.mouse1ReleaseTime = currentTime + 40;
     aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "string_start";
+    aiState.lastActionType = "burst_start";
     const dirToOpponent = getDirectionToOpponent(cpu, human);
     if (dirToOpponent === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
@@ -3689,11 +3335,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.isCrouchStance = false;
     cpu.isCrouchStrafing = false;
     cpu.pendingSlapCount = 0;
-    cpu.pendingGrabEnder = false;
-    cpu.slapStringPosition = 0;
-    cpu.slapStringWindowUntil = 0;
-    cpu.slapWhiffCount = 0;
-    cpu.isSlapWhiffPausing = false;
     
     if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
     else Object.assign(cpu._prevKeys, cpu.keys);
@@ -3706,7 +3347,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.rawParryStartTime = 0;
   }
   
-  // Neutral charged attack REMOVED — charge only exists as hit 3 string ender.
+  // Neutral charged attack REMOVED from the CPU's neutral game.
   // Clear any lingering charge state
   if (cpu.isChargingAttack) {
     clearChargeState(cpu);

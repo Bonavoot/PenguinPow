@@ -28,10 +28,11 @@ const HIT_FX = {
     endFrame: 15,
     durationMs: 300, // 14 frames → ~21ms/frame (~47fps): snappy but readable
     sizeCqw: 12,
-    // Horizontal anchor (% of 1280): base + facing*dir. These reproduce the
-    // slap's known-good spot exactly (old code: facing===1 ? -8 : -3).
+    // Horizontal anchor (% of 1280): base + facing*dir.
+    // More negative dirXPct = further toward attacker; less negative = deeper
+    // into the opponent. Nudged a touch into the body (was -2.5).
     baseXPct: -5.5,
-    dirXPct: -2.5,
+    dirXPct: -1.5,
     offsetYPct: 0, // vertical nudge (% of 720)
     filters: {
       normal: null, // untouched yellow art
@@ -41,8 +42,6 @@ const HIT_FX = {
         "hue-rotate(232deg) saturate(1.7) brightness(1.12) drop-shadow(0 0 0.4cqw rgba(196, 96, 255, 0.8))",
       armorBreak:
         "hue-rotate(-25deg) saturate(1.45) brightness(1.06) drop-shadow(0 0 0.35cqw rgba(255, 155, 45, 0.75))",
-      perfectEnder:
-        "hue-rotate(135deg) saturate(1.7) brightness(1.15) drop-shadow(0 0 0.45cqw rgba(90, 220, 255, 0.85))",
     },
   },
   charged: {
@@ -51,13 +50,11 @@ const HIT_FX = {
     startFrame: 1, // frame 0 empty; content 1–15 (peaks early, long fading tail)
     endFrame: 15,
     durationMs: 380, // 15 frames → ~25ms/frame (~40fps): the charged sheet's long tail reads better a touch slower
-    sizeCqw: 12, // a touch bigger feel than slap, but not huge
-    // The palm thrust / charged reaches further than a slap (bigger hitbox), so
-    // the contact seam sits deeper toward the attacker than the slap's. Same base
-    // as slap, but a stronger facing-directed term pushes it onto that seam.
-    // Tune dirXPct (more negative = further toward attacker) and offsetYPct.
+    sizeCqw: 14, // between slap (12) and the previous 16 — heavy but not huge
+    // Same base as slap; dirXPct less negative = deeper into the opponent
+    // (more negative = toward attacker). Pushed further in from -3.5.
     baseXPct: -5.5,
-    dirXPct: -4.5,
+    dirXPct: -1.0,
     offsetYPct: 0,
     filters: {
       // Base art is two-toned (red/orange spikes + yellow-white core). A plain
@@ -72,19 +69,19 @@ const HIT_FX = {
       counter: null,
       punish:
         "hue-rotate(272deg) saturate(1.6) brightness(1.1) drop-shadow(0 0 0.45cqw rgba(196, 96, 255, 0.8))",
-      // Amber via sepia (not hue-rotate) so the yellow core doesn't turn green.
+      // Pale gold + white — sepia keeps the core from going green; low
+      // saturate + high brightness = soft champagne gold with white-hot tips
+      // (distinct from normal's punchy yellow and counter's natural red).
       armorBreak:
-        "sepia(1) hue-rotate(-8deg) saturate(3.6) brightness(1.05) drop-shadow(0 0 0.4cqw rgba(255, 155, 45, 0.75))",
-      perfectEnder:
-        "hue-rotate(178deg) saturate(1.6) brightness(1.15) drop-shadow(0 0 0.5cqw rgba(90, 220, 255, 0.85))",
+        "sepia(1) hue-rotate(6deg) saturate(1.55) brightness(1.38) drop-shadow(0 0 0.45cqw rgba(255, 242, 200, 0.9))",
     },
   },
 };
 
-// The slap-string finisher (slap3) is a much bigger hit than slap1/2. It reuses
-// the SAME slap spark art (so the whole string stays visually cohesive and keeps
-// the full status-color set) but scaled up and held a touch longer, so it clearly
-// reads as the heavy ender rather than borrowing the charged move's own look.
+// Palm thrust is a much bigger hit than a slap. It reuses the SAME slap spark
+// art (keeping the full status-color set) but scaled up and held a touch
+// longer, so it clearly reads as the heavy burst rather than borrowing the
+// charged move's own look.
 HIT_FX.slapBurst = {
   ...HIT_FX.slap,
   sizeCqw: 16.5,
@@ -94,10 +91,6 @@ HIT_FX.slapBurst = {
 // Map hit status → filter key. Shared across sheets (each sheet supplies its own
 // CSS for the key). Power water (isPowered) is intentionally treated as normal.
 const resolveStatusKey = (position) => {
-  // Perfect ender wins: it's the rare, skill-timed slap3 finisher, so its unique
-  // color should always show — even when the hit is also a counter/punish/armor
-  // break (otherwise those would override the blue and hide the achievement).
-  if (position.isPerfectEnder) return "perfectEnder";
   if (position.isArmorBreak) return "armorBreak";
   if (position.isCounterHit) return "counter";
   if (position.isPunish) return "punish";
@@ -220,10 +213,9 @@ const SlapHitSpriteEffect = ({ position }) => {
   useEffect(() => {
     if (!position || !hitIdentifier) return;
     const rawType = position.attackType || "slap";
-    // The slap-string ender (slap3) flags isBurstHit — route it to the bigger
-    // slapBurst variant of the same spark.
-    const attackType =
-      rawType === "slap" && position.isBurstHit ? "slapBurst" : rawType;
+    // Palm thrust uses the bigger slapBurst variant of the slap spark sheet
+    // (it's attackType "charged" on the wire, so it must be routed explicitly).
+    const attackType = position.isPalmThrust ? "slapBurst" : rawType;
     // Only render for moves that have a configured sheet.
     if (!HIT_FX[attackType]) return;
     if (processedHitsRef.current.has(hitIdentifier)) return;
@@ -246,12 +238,11 @@ const SlapHitSpriteEffect = ({ position }) => {
     position?.y,
     position?.facing,
     position?.attackType,
-    position?.isBurstHit,
+    position?.isPalmThrust,
     position?.isCounterHit,
     position?.isPunish,
     position?.isArmorBreak,
     position?.isPowered,
-    position?.isPerfectEnder,
   ]);
 
   const handleDone = (effectId) => {
@@ -279,12 +270,11 @@ SlapHitSpriteEffect.propTypes = {
     attackType: PropTypes.string,
     hitId: PropTypes.string,
     timestamp: PropTypes.number,
-    isBurstHit: PropTypes.bool,
+    isPalmThrust: PropTypes.bool,
     isCounterHit: PropTypes.bool,
     isPunish: PropTypes.bool,
     isArmorBreak: PropTypes.bool,
     isPowered: PropTypes.bool,
-    isPerfectEnder: PropTypes.bool,
   }),
 };
 

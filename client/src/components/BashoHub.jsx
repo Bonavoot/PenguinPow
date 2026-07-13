@@ -73,6 +73,7 @@ import {
 } from "../lib/saveStore";
 import { createRun, ensureOpponentRanks } from "../lib/bashoRun";
 import BanzukeBoard from "./BanzukeBoard";
+import { SHADOW_GRADIENT } from "./PlayerShadow";
 
 const DEBUG_FLAG_KEY = "bashoDebug";
 
@@ -80,36 +81,38 @@ const DEBUG_FLAG_KEY = "bashoDebug";
 const SLOTS_PER_CATEGORY = 5;
 
 /**
- * D — the hub's DARK surface palette. Built from the same cool sumi-ink /
- * ice / vermillion / gold world as the in-game HUD (menuTheme C), but tuned
- * into layered charcoal surfaces so the dossier reads as a moody, cinematic
- * "fighter loadout" screen rather than a flat white card. Accents (ice,
- * vermillion, gold, cream text) still come from C so the theme stays unified.
+ * D — the hub's dusk surface palette. Same cool sumi / ice / vermillion /
+ * gold world as the in-game HUD (menuTheme C), but tuned as layered charcoal
+ * with room for frost and the locker-room art to breathe. Dark chrome still
+ * anchors headers and footers; mid surfaces sit a step lighter and cooler so
+ * the dossier doesn't read as "dark mode on dark." Accents still come from C.
  *
  * Surfaces climb in three steps — deep (inset) < panel (base) < soft (raised)
  * — which is what gives the UI depth: recessed tracks, floating cards, and
  * chrome bands all read as distinct planes under one cool light.
  */
 const D = {
-  page: "#0a0b0d", // deepest backdrop — neutral near-black
-  panelTop: "#191c21", // panel gradient — neutral charcoal catching light up top
-  panelBottom: "#0f1114", // panel gradient — sinks into shadow at the base
-  panel: "#14161a", // panel solid fallback
-  headTop: "#1f232a", // header nameplate band (elevated)
-  headBottom: "#14171c",
-  chromeTop: "#13161a", // footer chrome band
-  chromeBottom: "#0b0c0f",
-  soft: "#1b1e24", // raised surface — rows, slots, buttons
-  softHover: "#242830",
-  deep: "#0c0e11", // recessed inset — empty pips, placeholders
-  border: "rgba(234, 241, 247, 0.12)", // clean cool-white hairline
-  borderSoft: "rgba(234, 241, 247, 0.06)",
-  shadow: "rgba(0, 0, 0, 0.5)",
-  shadowStrong: "rgba(0, 0, 0, 0.68)",
-  textHi: "#f2f6fa", // headings — near-white
-  text: "#d2dae3", // body — cool light gray
-  textMute: "#8a94a1", // meta / captions — muted gray
-  textFaint: "rgba(210, 220, 232, 0.24)", // disabled / hints
+  page: "#12161c", // page fallthrough — cool slate, not pure black
+  panelTop: "#2a323c", // panel gradient — lit cool charcoal
+  panelBottom: "#1a2028", // panel gradient — sinks cooler at the base
+  panel: "#222933", // panel solid fallback
+  headTop: "#343c48", // header nameplate band (elevated, still dark)
+  headBottom: "#242b34",
+  chromeTop: "#1e2530", // footer chrome band
+  chromeBottom: "#141920",
+  soft: "#323a46", // raised surface — rows, slots, buttons
+  softHover: "#3e4755",
+  deep: "#12171e", // recessed inset — empty pips, placeholders
+  frost: "rgba(203, 219, 231, 0.10)", // icy wash over dark content bands
+  frostStrong: "rgba(234, 241, 247, 0.14)",
+  border: "rgba(234, 241, 247, 0.18)", // cleaner cool-white hairline
+  borderSoft: "rgba(234, 241, 247, 0.10)",
+  shadow: "rgba(12, 18, 28, 0.38)",
+  shadowStrong: "rgba(8, 12, 20, 0.52)",
+  textHi: "#f5f8fb", // headings — near-white
+  text: "#dce4ed", // body — cool light gray
+  textMute: "#9aa6b4", // meta / captions — muted gray
+  textFaint: "rgba(210, 220, 232, 0.32)", // disabled / hints
   // Single accent glow — the character's mawashi ice-blue.
   accentGlow: C.iceGlow,
   // Bright washi stage the fighter stands on (high-contrast "lightbox").
@@ -139,12 +142,12 @@ const WASHI_LIGHT_ON_DARK = `
   repeating-linear-gradient(
     90deg,
     transparent 0, transparent 3px,
-    rgba(232, 210, 170, 0.028) 3px, rgba(232, 210, 170, 0.028) 4px
+    rgba(232, 210, 170, 0.045) 3px, rgba(232, 210, 170, 0.045) 4px
   ),
   repeating-linear-gradient(
     0deg,
     transparent 0, transparent 5px,
-    rgba(232, 210, 170, 0.022) 5px, rgba(232, 210, 170, 0.022) 6px
+    rgba(232, 210, 170, 0.035) 5px, rgba(232, 210, 170, 0.035) 6px
   )
 `;
 
@@ -211,8 +214,8 @@ const PageContainer = styled.div`
   font-family: "Space Grotesk", sans-serif;
 `;
 
-// Backdrop mirrors the VS CPU lobby exactly: the locker-room art on
-// center-bottom cover, nudged/zoomed, dimmed and blurred for shallow DoF.
+// Backdrop mirrors the VS CPU lobby: locker-room art on center-bottom cover,
+// nudged/zoomed, dimmed and blurred for shallow DoF.
 const BackgroundImage = styled.div`
   position: absolute;
   inset: 0;
@@ -250,8 +253,7 @@ const CinematicOverlay = styled.div`
     );
 `;
 
-// Paper-grain pass on top of the backdrop (below the UI) — same recipe as
-// the VS CPU lobby so both screens read as the same film stock.
+// Paper-grain pass — same recipe/strength as the VS CPU lobby.
 const GrainOverlay = styled.div`
   position: absolute;
   inset: 0;
@@ -425,25 +427,31 @@ const Stage = styled.main`
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.18fr);
   align-items: stretch;
   gap: clamp(16px, 2.4cqw, 34px);
-  padding: clamp(16px, 2.6cqh, 30px) clamp(22px, 3.6cqw, 54px);
+  padding: clamp(10px, 1.8cqh, 22px) clamp(22px, 3.6cqw, 54px);
 `;
 
-// Shared panel shell — a sumi-charcoal plaque with a top→bottom light
-// falloff (top catches the stage light, base sinks into shadow), a cool
-// hairline edge, a soft top inner-glow, and a glowing accent bar across the
-// crown. The gradient + inner light are what make it read as a lit object.
+// Shared panel shell — dusk-charcoal plaque with a cool frost sheen so the
+// locker-room art can tint through. Top→bottom light falloff, cool hairline,
+// soft top inner-glow, and a glowing accent bar across the crown.
 const Panel = styled.section`
   position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: linear-gradient(180deg, ${D.panelTop} 0%, ${D.panelBottom} 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(42, 50, 60, 0.90) 0%,
+    rgba(26, 32, 40, 0.93) 100%
+  );
   border: 1px solid ${D.border};
   border-radius: 4px;
   overflow: hidden;
   box-shadow:
     0 18px 40px ${D.shadowStrong},
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    0 0 0 1px rgba(126, 203, 240, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 
   &::before {
     content: "";
@@ -476,10 +484,12 @@ const PanelHead = styled.header`
   justify-content: space-between;
   gap: 12px;
   flex-shrink: 0;
-  padding: clamp(9px, 1.3cqh, 13px) clamp(14px, 1.9cqw, 22px);
+  padding: clamp(7px, 1cqh, 11px) clamp(12px, 1.7cqw, 20px);
   background: linear-gradient(180deg, ${D.headTop} 0%, ${D.headBottom} 100%);
   border-bottom: 1px solid ${D.border};
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 
   /* Faint printed-paper weave for tactile depth on the nameplate band. */
   &::before {
@@ -530,25 +540,35 @@ const RankChip = styled.button`
   font-family: ${FONT_BODY};
   font-weight: 700;
   font-size: clamp(0.48rem, 0.76cqw, 0.6rem);
-  color: ${D.text};
+  color: ${C.gold};
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  background: ${D.soft};
-  border: 1px solid ${D.border};
+  background: linear-gradient(
+    180deg,
+    rgba(232, 197, 71, 0.12) 0%,
+    rgba(232, 197, 71, 0.05) 100%
+  );
+  border: 1px solid rgba(232, 197, 71, 0.32);
   border-radius: 999px;
   padding: clamp(3px, 0.5cqh, 5px) clamp(9px, 1.2cqw, 13px);
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease,
+    box-shadow 0.15s ease;
 
   .ladder {
     font-size: 1.05em;
     line-height: 1;
-    opacity: 0.6;
+    opacity: 0.7;
   }
   &:hover {
-    border-color: rgba(234, 241, 247, 0.32);
-    color: ${D.textHi};
-    background: ${D.softHover};
+    border-color: ${C.gold};
+    color: ${C.cream};
+    background: linear-gradient(
+      180deg,
+      rgba(232, 197, 71, 0.22) 0%,
+      rgba(232, 197, 71, 0.10) 100%
+    );
+    box-shadow: 0 0 14px rgba(232, 197, 71, 0.22);
   }
 `;
 
@@ -557,18 +577,20 @@ const RankChip = styled.button`
 // ============================================
 
 const PortraitStage = styled.div`
-  flex: 1 1 auto;
-  min-height: clamp(150px, 26cqh, 300px);
+  /* Takes ALL leftover column height after the fixed chrome (head, attrs,
+     appearance, footer). No hard min-height — that was clipping the footer
+     on shorter viewports. On tall screens this still grows the fighter. */
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(8px, 1.4cqh, 16px) clamp(12px, 1.8cqw, 20px);
+  padding: clamp(4px, 0.8cqh, 10px) clamp(10px, 1.5cqw, 18px);
   position: relative;
   overflow: hidden;
   /* High-contrast lightbox: the fighter stands on bright washi paper, lit
      from above and framed by a soft inset vignette — reads as a premium
-     character-viewer pod set into the dark panel. Deliberate contrast
-     against the warm charcoal chrome around it. */
+     character-viewer pod set into the dark panel. */
   background: radial-gradient(
     ellipse at 50% 32%,
     ${D.stageTop} 0%,
@@ -586,33 +608,45 @@ const PortraitStage = styled.div`
     background-image: ${WASHI_DARK_ON_LIGHT};
     pointer-events: none;
   }
+  /* Thin ice frame — behind the fighter so it frames the stage, not the sprite. */
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 5px;
+    border: 1px solid rgba(126, 203, 240, 0.22);
+    border-radius: 2px;
+    box-shadow: inset 0 0 0 1px rgba(255, 252, 244, 0.35);
+    pointer-events: none;
+    z-index: 1;
+  }
 `;
 
+// Ground shadow — same three-zone cool slate recipe as in-game PlayerShadow
+// (contact / core / ambient). Footprint scaled to the portrait sprite
+// (~4.4:1 oval); no warm brown drop-shadow on the sprite itself.
 const PortraitFloor = styled.div`
   position: absolute;
   left: 50%;
-  bottom: clamp(10px, 2cqh, 22px);
+  bottom: clamp(8px, 1.5cqh, 17px);
   transform: translateX(-50%);
-  width: clamp(120px, 20cqw, 220px);
-  height: clamp(10px, 1.6cqh, 18px);
+  width: clamp(120px, 16cqw, 190px);
+  height: clamp(27px, 3.6cqh, 43px);
   border-radius: 50%;
-  background: radial-gradient(
-    ellipse at center,
-    rgba(70, 48, 24, 0.34) 0%,
-    transparent 72%
-  );
+  background: ${SHADOW_GRADIENT};
+  z-index: 1;
   pointer-events: none;
 `;
 
 const PortraitSpotlight = styled.div`
   position: absolute;
   inset: 0;
-  /* Faint mawashi-blue halo behind the fighter — separates it from the
-     paper and ties the stage to the single blue accent. */
+  /* Stronger mawashi-blue halo — ties the bright stage to the ice accent
+     and keeps the lightbox from reading as a flat beige card. */
   background: radial-gradient(
     ellipse at center 44%,
-    rgba(126, 203, 240, 0.13) 0%,
-    transparent 58%
+    rgba(126, 203, 240, 0.22) 0%,
+    rgba(168, 224, 255, 0.08) 38%,
+    transparent 62%
   );
   pointer-events: none;
 `;
@@ -628,29 +662,32 @@ const AvatarBreath = styled.div`
   min-height: 0;
   animation: ${breathe} 2.8s ease-in-out infinite;
   transform-origin: center bottom;
-  filter: drop-shadow(0 14px 16px rgba(70, 48, 24, 0.38));
 `;
 
 const PortraitImage = styled.img`
-  height: 100%;
-  max-height: 100%;
+  height: 108%;
+  max-height: 108%;
   width: auto;
   max-width: 100%;
   object-fit: contain;
   transform: scaleX(-1);
+  transform-origin: center bottom;
 `;
 
-// Section block for Attributes + Appearance in the left column. Transparent
-// so it floats on the panel's own gradient, but separated by an ENGRAVED
-// divider (dark cut + light catch just below) rather than a flat hairline —
-// gives the stacked sections real depth while the column still reads as one
-// continuous carved plaque.
+// Section block for Attributes + Appearance in the left column. Cool frost
+// wash separates it from the portrait stage without going pure dark — still
+// reads as one carved plaque, but with a brighter ice band under the stats.
 const Block = styled.div`
   flex-shrink: 0;
-  padding: clamp(10px, 1.4cqh, 15px) clamp(14px, 1.9cqw, 22px);
-  border-top: 1px solid rgba(0, 0, 0, 0.38);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  background: transparent;
+  padding: clamp(6px, 0.9cqh, 10px) clamp(12px, 1.6cqw, 18px);
+  border-top: 1px solid rgba(126, 203, 240, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background: linear-gradient(
+    180deg,
+    ${D.frostStrong} 0%,
+    ${D.frost} 48%,
+    transparent 100%
+  );
 `;
 
 const BlockHead = styled.div`
@@ -658,25 +695,42 @@ const BlockHead = styled.div`
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: clamp(7px, 1cqh, 11px);
+  margin-bottom: clamp(4px, 0.6cqh, 7px);
 `;
 
 const BlockLabel = styled.div`
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(7px, 1cqw, 10px);
   font-family: ${FONT_BODY};
   font-weight: 700;
   font-size: clamp(0.48rem, 0.74cqw, 0.6rem);
   color: ${D.textHi};
   text-transform: uppercase;
   letter-spacing: 0.24em;
+
+  &::before {
+    content: "";
+    width: clamp(10px, 1.4cqw, 14px);
+    height: 2px;
+    background: ${C.ice};
+    box-shadow: 0 0 8px ${C.iceGlow};
+  }
 `;
 
 const BlockMeta = styled.div`
   font-family: ${FONT_BODY};
   font-weight: 700;
   font-size: clamp(0.4rem, 0.62cqw, 0.48rem);
-  color: ${(p) => (p.$accent ? C.ice : D.textMute)};
+  color: ${(p) => (p.$accent ? C.iceBright : D.textMute)};
   text-transform: uppercase;
   letter-spacing: 0.18em;
+  ${(p) =>
+    p.$accent &&
+    css`
+      text-shadow: 0 0 10px ${C.iceGlow};
+    `}
 `;
 
 // --- Attribute rows (compact for the narrow column) ---
@@ -684,28 +738,47 @@ const BlockMeta = styled.div`
 const StatList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(5px, 0.8cqh, 9px);
+  gap: clamp(2px, 0.4cqh, 4px);
 `;
 
 const StatRow = styled.div`
   display: grid;
-  grid-template-columns: clamp(16px, 2cqw, 22px) minmax(0, 1fr) auto;
+  grid-template-columns: clamp(22px, 2.6cqw, 28px) minmax(0, 1fr) auto;
   align-items: center;
-  gap: clamp(8px, 1.1cqw, 13px);
+  gap: clamp(6px, 0.9cqw, 10px);
+  padding: clamp(2px, 0.35cqh, 4px) clamp(5px, 0.7cqw, 8px);
+  border-radius: 3px;
+  background: rgba(8, 12, 18, 0.28);
+  border: 1px solid rgba(234, 241, 247, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 `;
 
 const StatKanji = styled.div`
+  width: clamp(22px, 2.6cqw, 28px);
+  height: clamp(22px, 2.6cqw, 28px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-family: ${FONT_KANJI};
-  font-size: clamp(0.8rem, 1.2cqw, 1rem);
-  color: ${C.ice};
-  text-align: center;
+  font-size: clamp(0.7rem, 1cqw, 0.85rem);
+  color: ${C.iceBright};
   line-height: 1;
+  border-radius: 3px;
+  background: linear-gradient(
+    180deg,
+    rgba(126, 203, 240, 0.16) 0%,
+    rgba(54, 130, 170, 0.10) 100%
+  );
+  border: 1px solid rgba(126, 203, 240, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 10px rgba(126, 203, 240, 0.12);
 `;
 
 const StatBody = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(2px, 0.4cqh, 4px);
+  gap: clamp(1px, 0.3cqh, 3px);
   min-width: 0;
 `;
 
@@ -727,26 +800,25 @@ const StatLabel = styled.div`
 
 const PipTrack = styled.div`
   display: flex;
-  gap: clamp(2px, 0.35cqw, 3px);
+  gap: clamp(2px, 0.3cqw, 3px);
+  padding: 1px;
+  border-radius: 2px;
+  background: rgba(8, 12, 18, 0.45);
+  border: 1px solid rgba(234, 241, 247, 0.05);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.28);
 `;
 
 const Pip = styled.div`
   flex: 1;
-  height: clamp(4px, 0.6cqh, 5px);
+  height: clamp(4px, 0.55cqh, 5px);
   border-radius: 1px;
-  /* Filled pips ride the cool ice-accent family — a muted steel-blue, one
-     step calmer than the bright selection ice so the meter still reads as
-     its own element without competing. The old saturated green was the
-     single loudest thing on the screen and pulled the eye to stats before
-     the loadout/CTA; keeping the meter cool lets value (fill length) carry
-     the read instead of a fifth shouting hue. */
   background: ${(p) =>
     p.$filled
-      ? "linear-gradient(180deg, #79bfe0 0%, #35708f 100%)"
-      : D.deep};
-  border: 1px solid ${(p) => (p.$filled ? "#2c6182" : D.borderSoft)};
+      ? "linear-gradient(180deg, #a8e0ff 0%, #4a9fc9 100%)"
+      : "rgba(234, 241, 247, 0.04)"};
+  border: 1px solid ${(p) => (p.$filled ? "#5bb3d9" : "transparent")};
   box-shadow: ${(p) =>
-    p.$filled ? "0 0 2px rgba(126, 203, 240, 0.3)" : "none"};
+    p.$filled ? "0 0 4px rgba(126, 203, 240, 0.45)" : "none"};
   transform-origin: left center;
   ${(p) =>
     p.$filled &&
@@ -759,29 +831,34 @@ const Pip = styled.div`
 const StatControls = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(2px, 0.4cqw, 5px);
+  gap: clamp(2px, 0.35cqw, 4px);
 `;
 
 const StepButton = styled.button`
-  width: clamp(18px, 2.2cqw, 24px);
-  height: clamp(18px, 2.2cqw, 24px);
+  width: clamp(16px, 2cqw, 22px);
+  height: clamp(16px, 2cqw, 22px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.78rem, 1.2cqw, 0.98rem);
+  font-size: clamp(0.7rem, 1.05cqw, 0.88rem);
   line-height: 1;
   color: ${D.textHi};
-  background: ${D.soft};
+  background: linear-gradient(180deg, ${D.softHover} 0%, ${D.soft} 100%);
   border: 1px solid ${D.border};
   border-radius: 2px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   cursor: pointer;
-  transition: color 0.12s ease, border-color 0.12s ease, transform 0.1s ease;
+  transition: color 0.12s ease, border-color 0.12s ease, transform 0.1s ease,
+    box-shadow 0.12s ease;
 
   &:hover:not(:disabled) {
     color: ${C.iceBright};
     border-color: ${C.iceMid};
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 0 10px rgba(126, 203, 240, 0.2);
   }
   &:active:not(:disabled) {
     transform: scale(0.9);
@@ -794,10 +871,10 @@ const StepButton = styled.button`
 
 const StatValue = styled.div`
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.6rem, 0.9cqw, 0.76rem);
+  font-size: clamp(0.54rem, 0.82cqw, 0.7rem);
   color: ${D.textHi};
   letter-spacing: 0.02em;
-  min-width: clamp(24px, 2.8cqw, 32px);
+  min-width: clamp(22px, 2.5cqw, 30px);
   text-align: center;
 
   .max {
@@ -812,32 +889,43 @@ const AppearanceRow = styled.div`
   position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: clamp(8px, 1.1cqw, 12px);
+  gap: clamp(6px, 0.9cqw, 10px);
 `;
 
 const AppearanceButton = styled.button`
   display: flex;
   align-items: center;
-  gap: clamp(7px, 1cqw, 11px);
+  gap: clamp(6px, 0.9cqw, 10px);
   width: 100%;
   text-align: left;
-  padding: clamp(6px, 0.9cqh, 9px) clamp(8px, 1.1cqw, 11px);
-  background: ${(p) => (p.$open ? D.soft : D.panel)};
+  padding: clamp(4px, 0.6cqh, 7px) clamp(7px, 1cqw, 10px);
+  background: ${(p) =>
+    p.$open
+      ? "linear-gradient(180deg, rgba(72, 84, 98, 0.55) 0%, rgba(42, 50, 60, 0.7) 100%)"
+      : "linear-gradient(180deg, rgba(42, 50, 60, 0.55) 0%, rgba(26, 32, 40, 0.7) 100%)"};
   border: 1px solid ${(p) => (p.$open ? C.iceMid : D.border)};
-  border-radius: 2px;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 
   &:hover {
     border-color: ${C.iceMid};
-    background: ${D.soft};
+    background: linear-gradient(
+      180deg,
+      rgba(72, 84, 98, 0.6) 0%,
+      rgba(42, 50, 60, 0.75) 100%
+    );
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 0 12px rgba(126, 203, 240, 0.12);
   }
 `;
 
 const AppearanceSwatch = styled.span`
   flex-shrink: 0;
-  width: clamp(18px, 2.4cqw, 24px);
-  height: clamp(18px, 2.4cqw, 24px);
+  width: clamp(16px, 2cqw, 22px);
+  height: clamp(16px, 2cqw, 22px);
   border-radius: 50%;
   background: ${(p) => p.$gradient || p.$color};
   border: 2px solid ${D.border};
@@ -942,17 +1030,18 @@ const ColorSwatch = styled.button`
   }
 `;
 
-// Light identity footer (division + record) — replaces the heavy dark band.
 const IdentityFooter = styled.footer`
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-shrink: 0;
-  padding: clamp(9px, 1.3cqh, 13px) clamp(14px, 1.9cqw, 22px);
+  padding: clamp(6px, 0.9cqh, 10px) clamp(12px, 1.6cqw, 18px);
   border-top: 1px solid ${D.border};
   background: linear-gradient(180deg, ${D.chromeTop} 0%, ${D.chromeBottom} 100%);
-  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 rgba(0, 0, 0, 0.18);
 `;
 
 const IdentityStack = styled.div`
@@ -974,9 +1063,10 @@ const IdentityLabel = styled.div`
 const IdentityRank = styled.div`
   font-family: ${FONT_DISPLAY};
   font-size: clamp(0.72rem, 1.1cqw, 0.95rem);
-  color: ${D.textHi};
+  color: ${C.gold};
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  text-shadow: 0 0 12px rgba(232, 197, 71, 0.28);
 `;
 
 const IdentityRecord = styled.div`
@@ -1009,6 +1099,12 @@ const LoadoutBody = styled.div`
   flex-direction: column;
   padding: clamp(12px, 1.7cqh, 18px) clamp(14px, 1.9cqw, 24px);
   overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    ${D.frostStrong} 0%,
+    transparent 28%,
+    transparent 100%
+  );
 `;
 
 const LoadoutBoard = styled.div`
@@ -1027,29 +1123,50 @@ const CategoryRow = styled.div`
   align-items: center;
   gap: clamp(10px, 1.4cqw, 18px);
   padding: clamp(5px, 0.8cqh, 9px) clamp(10px, 1.4cqw, 15px);
-  /* Lifted a full value-step above the panel (softHover→soft) with a crisp
-     edge, a top light-catch and a bottom inner-shadow, so each discipline
-     reads as its own raised shelf instead of melting into the panel. */
-  background: linear-gradient(180deg, ${D.softHover} 0%, ${D.soft} 100%);
-  border: 1px solid ${D.border};
+  /* Cool slate shelf — lifted above the panel with a frost edge so each
+     discipline reads as its own raised band instead of melting into dusk. */
+  background: linear-gradient(
+    180deg,
+    rgba(72, 84, 98, 0.72) 0%,
+    rgba(48, 58, 70, 0.78) 100%
+  );
+  border: 1px solid rgba(234, 241, 247, 0.16);
   border-radius: 4px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.35), 0 3px 8px ${D.shadow};
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+    0 3px 10px ${D.shadow};
 `;
 
 const CategoryLabel = styled.div`
+  position: relative;
   display: flex;
   align-items: center;
   gap: clamp(7px, 1cqw, 11px);
   min-width: 0;
+  padding-left: clamp(8px, 1cqw, 11px);
+
+  &::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 12%;
+    bottom: 12%;
+    width: 2px;
+    border-radius: 1px;
+    background: ${C.ice};
+    box-shadow: 0 0 8px ${C.iceGlow};
+    opacity: 0.85;
+  }
 `;
 
 const CategoryKanji = styled.div`
   font-family: ${FONT_KANJI};
   font-size: clamp(1.05rem, 1.7cqw, 1.45rem);
-  color: ${C.ice};
+  color: ${C.iceBright};
   line-height: 1;
   flex-shrink: 0;
+  text-shadow: 0 0 12px ${C.iceGlow};
 `;
 
 const CategoryNameStack = styled.div`
@@ -1150,17 +1267,44 @@ const LockedSlot = styled(Slot)`
 `;
 
 const PlaceholderSlot = styled(Slot)`
-  /* Empty "coming soon" slots must RECEDE. There are ~20 of them and the
-     old diagonal-stripe fill + full-strength dashed border turned the whole
-     board into loud texture that fought the two real sidegrades and the CTA.
-     Flat recessed inset + a faint hairline + reduced opacity pushes them
-     behind the live content so the eye lands on what's actually actionable. */
-  background: ${D.deep};
-  border-style: dashed;
-  border-color: ${D.borderSoft};
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  /* Reserved technique plates — empty slots should feel intentional
+     ("sealed for later") rather than unfinished UI. Soft ink wash +
+     faint hanko ring + solid hairline; real equipped icons still win. */
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 50% 48%,
+      rgba(126, 203, 240, 0.05) 0%,
+      transparent 58%
+    ),
+    linear-gradient(180deg, #1a212b 0%, #12171e 100%);
+  border-style: solid;
+  border-color: rgba(234, 241, 247, 0.10);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.25);
   color: ${D.textFaint};
-  opacity: 0.55;
+  opacity: 0.72;
+  cursor: default;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 18%;
+    border-radius: 50%;
+    border: 1px solid rgba(234, 241, 247, 0.08);
+    pointer-events: none;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: ${WASHI_LIGHT_ON_DARK};
+    opacity: 0.55;
+    pointer-events: none;
+  }
 `;
 
 const SlotKanji = styled.span`
@@ -1171,10 +1315,13 @@ const SlotKanji = styled.span`
 `;
 
 const PlaceholderGlyph = styled.span`
-  font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.85rem, 1.4cqw, 1.2rem);
-  color: ${D.textFaint};
+  position: relative;
+  z-index: 1;
+  font-family: ${FONT_KANJI};
+  font-size: clamp(0.72rem, 1.1cqw, 0.92rem);
+  color: rgba(210, 220, 232, 0.28);
   line-height: 1;
+  letter-spacing: 0;
 `;
 
 const SlotCheck = styled.span`
@@ -1228,8 +1375,15 @@ const DetailStrip = styled.div`
   gap: clamp(11px, 1.5cqw, 16px);
   min-height: clamp(70px, 10.5cqh, 92px);
   margin-top: clamp(10px, 1.5cqh, 16px);
-  padding-top: clamp(10px, 1.5cqh, 16px);
-  border-top: 1px solid ${D.borderSoft};
+  padding: clamp(10px, 1.5cqh, 14px) clamp(12px, 1.5cqw, 16px);
+  border: 1px solid rgba(126, 203, 240, 0.18);
+  border-radius: 4px;
+  background: linear-gradient(
+    180deg,
+    rgba(234, 241, 247, 0.12) 0%,
+    rgba(126, 203, 240, 0.06) 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
 `;
 
 const DetailIcon = styled.div`
@@ -1316,9 +1470,63 @@ const DetailTag = styled.span`
   font-family: ${FONT_BODY};
   font-weight: 600;
   font-size: clamp(0.4rem, 0.6cqw, 0.48rem);
-  color: ${(p) => (p.$accent ? C.ice : D.textMute)};
+  color: ${(p) => (p.$accent ? C.iceBright : D.textMute)};
   text-transform: uppercase;
   letter-spacing: 0.12em;
+  padding: 2px 7px;
+  border-radius: 2px;
+  background: ${(p) =>
+    p.$accent ? "rgba(126, 203, 240, 0.12)" : "rgba(234, 241, 247, 0.05)"};
+  border: 1px solid
+    ${(p) => (p.$accent ? "rgba(126, 203, 240, 0.28)" : D.borderSoft)};
+`;
+
+const DetailEmpty = styled.div`
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 1.3cqw, 14px);
+  width: 100%;
+  min-height: inherit;
+`;
+
+const DetailEmptySeal = styled.div`
+  flex-shrink: 0;
+  width: clamp(40px, 5cqw, 52px);
+  height: clamp(40px, 5cqw, 52px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-family: ${FONT_KANJI};
+  font-size: clamp(1rem, 1.5cqw, 1.25rem);
+  color: rgba(126, 203, 240, 0.45);
+  background: linear-gradient(180deg, #1a212b 0%, #12171e 100%);
+  border: 1px solid rgba(126, 203, 240, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+`;
+
+const DetailEmptyCopy = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+
+  .title {
+    font-family: ${FONT_BODY};
+    font-weight: 700;
+    font-size: clamp(0.48rem, 0.72cqw, 0.58rem);
+    color: ${D.textHi};
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+  }
+  .hint {
+    font-family: ${FONT_BODY};
+    font-weight: 500;
+    font-size: clamp(0.42rem, 0.64cqw, 0.52rem);
+    color: ${D.textMute};
+    letter-spacing: 0.04em;
+    line-height: 1.35;
+  }
 `;
 
 const DetailDesc = styled.p`
@@ -1382,11 +1590,20 @@ const ActionButton = styled.button`
   ${(p) =>
     p.$variant === "equipped" &&
     css`
-      color: ${C.iceBright};
-      background: rgba(126, 203, 240, 0.09);
-      border: 1px solid ${C.iceMid};
+      color: ${C.inkText};
+      background: linear-gradient(
+        180deg,
+        rgba(168, 224, 255, 0.92) 0%,
+        rgba(126, 203, 240, 0.88) 100%
+      );
+      border: 1px solid ${C.iceBright};
+      box-shadow: 0 0 14px ${C.iceGlow};
       &:hover:not(:disabled) {
-        background: rgba(126, 203, 240, 0.16);
+        background: linear-gradient(
+          180deg,
+          #dff3ff 0%,
+          rgba(168, 224, 255, 0.95) 100%
+        );
       }
     `}
 
@@ -1412,7 +1629,9 @@ const StartFooter = styled.footer`
   padding: clamp(11px, 1.5cqh, 16px) clamp(14px, 1.9cqw, 24px);
   border-top: 1px solid ${D.border};
   background: linear-gradient(180deg, ${D.chromeTop} 0%, ${D.chromeBottom} 100%);
-  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 rgba(0, 0, 0, 0.18);
 `;
 
 const StartNote = styled.div`
@@ -1420,10 +1639,16 @@ const StartNote = styled.div`
   font-family: ${FONT_BODY};
   font-weight: 600;
   font-size: clamp(0.44rem, 0.68cqw, 0.54rem);
-  color: ${D.textMute};
+  color: ${D.text};
   text-transform: uppercase;
   letter-spacing: 0.14em;
   line-height: 1.4;
+
+  em {
+    font-style: normal;
+    color: ${C.gold};
+    font-weight: 700;
+  }
 `;
 
 const StartButton = styled.button`
@@ -2256,10 +2481,10 @@ function BashoHub({ onBack, onStartRun }) {
                           key={`ph-${i}`}
                           as="div"
                           $interactive={false}
-                          title="Coming soon"
-                          aria-label="Coming soon"
+                          title="Technique sealed — coming later"
+                          aria-label="Technique sealed — coming later"
                         >
-                          <PlaceholderGlyph aria-hidden>?</PlaceholderGlyph>
+                          <PlaceholderGlyph aria-hidden>未</PlaceholderGlyph>
                         </PlaceholderSlot>
                       ))}
                     </SlotStrip>
@@ -2361,11 +2586,15 @@ function BashoHub({ onBack, onStartRun }) {
                   </DetailAction>
                 </>
               ) : (
-                <DetailBody>
-                  <DetailDesc>
-                    Hover a discipline slot to preview its sidegrade.
-                  </DetailDesc>
-                </DetailBody>
+                <DetailEmpty>
+                  <DetailEmptySeal aria-hidden>技</DetailEmptySeal>
+                  <DetailEmptyCopy>
+                    <span className="title">Select a technique</span>
+                    <span className="hint">
+                      Hover a discipline slot to preview its sidegrade.
+                    </span>
+                  </DetailEmptyCopy>
+                </DetailEmpty>
               )}
             </DetailStrip>
           </LoadoutBody>
@@ -2373,7 +2602,13 @@ function BashoHub({ onBack, onStartRun }) {
           <StartFooter>
             <StartNote>
               {bouts} bouts &middot;{" "}
-              {division.kk ? `${division.kk} wins = kachi-koshi` : "title defense"}
+              {division.kk ? (
+                <>
+                  {division.kk} wins = <em>kachi-koshi</em>
+                </>
+              ) : (
+                <em>title defense</em>
+              )}
             </StartNote>
             <StartButton onClick={handleStart} onMouseEnter={playButtonHoverSound}>
               {resumeRun ? "Resume Basho" : "Start Basho"}

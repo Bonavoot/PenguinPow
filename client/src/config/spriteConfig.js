@@ -73,6 +73,10 @@ import rawParrySuccess from "../assets/raw-parry-success.png";
 import slapAttack1 from "../assets/slapAttack1.png";
 import slapAttack2 from "../assets/slapAttack2.png";
 import slapAttack3 from "../assets/attack.png";
+import slapAttack1Blur from "../assets/slap-attack-1-blur-frame.png";
+import slapAttack1Hit from "../assets/slap-attack-1-hit-frame.png";
+import slapAttack2Blur from "../assets/slap-attack-2-blur-frame.png";
+import slapAttack2Hit from "../assets/slap-attack-2-hit-frame.png";
 import palmThrust from "../assets/palm-thrust.png";
 import palmThrustStartup from "../assets/palm-thrust-startup.png";
 import palmThrustSmear from "../assets/palm-thrust-smear.png";
@@ -236,6 +240,10 @@ const BLUE_STATIC_SPRITES = {
   slapAttack1: slapAttack1,
   slapAttack2: slapAttack2,
   slapAttack3: slapAttack3,
+  slapAttack1Blur: slapAttack1Blur,
+  slapAttack1Hit: slapAttack1Hit,
+  slapAttack2Blur: slapAttack2Blur,
+  slapAttack2Hit: slapAttack2Hit,
   palmThrust: palmThrust,
   palmThrustStartup: palmThrustStartup,
   palmThrustSmear: palmThrustSmear,

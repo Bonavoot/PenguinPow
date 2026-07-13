@@ -18,9 +18,7 @@ const {
   canPlayerDash,
   canPlayerSidestep,
   getSidestepInitData,
-  shouldRestartCharging,
   startCharging,
-  startPalmThrustCharging,
   lagCompensatedParryStart,
   beginFlapStartup,
 } = require("./gameUtils");
@@ -45,22 +43,11 @@ const {
   SLAP_ACTIVE_MS,
   SLAP_RECOVERY_MS,
   SLAP_TOTAL_MS,
-  SLAP_STRING_BUFFER_WINDOW_MS,
-  SLAP_STRING_END_COOLDOWN_MS,
-  SLAP_STRING_HIT_TOTAL_MS,
-  SLAP_STRING_RECOVERY_POS1_MS,
-  SLAP_STRING_RECOVERY_POS2_MS,
-  SLAP_WHIFF_PAUSE_COUNT,
-  SLAP_WHIFF_PAUSE_MS,
-  SLAP_WHIFF_EXTRA_STAMINA,
-  SLAP_HIT3_KB_VELOCITY,
-  SLAP_HIT3_KB_VELOCITY_SLOPPY,
-  SLAP_ENDER_JUST_WINDOW_MS,
+  SLAP_WHIFF_EXTRA_RECOVERY_MS,
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MS,
   PALM_THRUST_STARTUP_MS,
   PALM_THRUST_ACTIVE_MS,
-  PALM_THRUST_CHARGE_THRESHOLD_MS,
   PALM_THRUST_HOLD_MS,
   PALM_THRUST_END_RECOVERY_MS,
   PALM_THRUST_HIT_RECOVERY_MS,
@@ -562,11 +549,6 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.clinchJoltPlantInterruptStart = 0;
 
     p.pendingSlapCount = 0;
-    p.pendingGrabEnder = false;
-    p.slapStringPosition = 0;
-    p.slapStringWindowUntil = 0;
-    p.slapWhiffCount = 0;
-    p.isSlapWhiffPausing = false;
     p.slapAnimationToggle = 0;
     p.currentSlapHitConnected = false;
     p.mouse1JustPressed = false;
@@ -691,94 +673,29 @@ function executeSlapAttack(player, rooms) {
 
   clearChargeState(player);
 
-  // === STRING POSITION TRACKING ===
-  // 3-hit string: hit 1 → hit 2 → hit 3 (each requires hit confirm).
-  // Hits 1 & 2 are light pokes, hit 3 is the burst knockback finisher.
-  // All attack-cycle timestamps below live on the room's pausable sim clock,
-  // so the whole cycle freezes in lockstep during hitstop.
+  // === INDIVIDUAL SLAP (no string / no combo) ===
+  // Every press is one self-contained slap. On hit the exchange is +0 by
+  // construction (see processHit: victim hitstun = attacker's remaining cycle),
+  // so the reward is GROUND, never frames. All attack-cycle timestamps below
+  // live on the room's pausable sim clock, so the whole cycle freezes in
+  // lockstep during hitstop.
   const now = simNowForPlayer(player);
-  const inStringWindow = player.slapStringWindowUntil && now <= player.slapStringWindowUntil;
 
-  if (inStringWindow && player.slapStringPosition >= 1 && player.slapStringPosition <= 2) {
-    player.slapStringPosition++;
-  } else {
-    player.slapStringPosition = 1;
-  }
-
-  // ── PHASE 1: BLUE-SPARK ENDER TIER ──────────────────────────────────────
-  // When this slap becomes the finisher (position 3), grade the press timing:
-  // the ender press arrival vs the attacker's actionable moment (when the slap2
-  // cycle ended, stored in slapEnderActionableTime). A press that lands within
-  // SLAP_ENDER_JUST_WINDOW_MS AFTER becoming actionable earns the full 3.1
-  // burst + blue spark; a press buffered during the freeze (arrival < actionable)
-  // or a late press gets the sloppy 2.4. enderPressTime is lag-compensated
-  // toward the true client press (see socketHandlers). No press stamp (CPU,
-  // un-synced client) → sloppy, so the spark is a deliberate skill expression.
-  if (player.slapStringPosition === 3) {
-    const actionable = player.slapEnderActionableTime || now;
-    const pressT = player.enderPressTime || 0;
-    const delta = pressT - actionable;
-    const justFrame = pressT > 0 && delta >= 0 && delta <= SLAP_ENDER_JUST_WINDOW_MS;
-    player.slapHit3Velocity = justFrame ? SLAP_HIT3_KB_VELOCITY : SLAP_HIT3_KB_VELOCITY_SLOPPY;
-    player.slapHit3PerfectEnder = justFrame;
-    player.enderPressTime = 0; // consume
-  }
-
-  player.slapStringWindowUntil = 0;
-
-  // Clear any prior committed whiff-pause state — we're actively slapping again.
-  player.isSlapWhiffPausing = false;
-
-  // // Animation is decoupled from string position — alternates every slap visually
-  // // slapAnimationToggle persists across strings so parries cycle naturally
-  // player.slapAnimationToggle = player.slapAnimationToggle === 1 ? 2 : 1;
-  // player.slapAnimation = player.slapAnimationToggle;
-
-  // Animation is decoupled from string position — alternates every slap visually
-  // slapAnimationToggle persists across strings so parries cycle naturally.
-  // Hit 3 (finisher) uses slapAnimation === 3 so the client can show the palm
-  // thrust pose without needing a separate slapStringPosition prop.
-  if (player.slapStringPosition === 3) {
-    player.slapAnimation = 3;
-  } else {
-    player.slapAnimationToggle = player.slapAnimationToggle === 1 ? 2 : 1;
-    player.slapAnimation = player.slapAnimationToggle;
-  }
+  // Cosmetic animation alternation: slap1 ↔ slap2 have identical properties.
+  player.slapAnimationToggle = player.slapAnimationToggle === 1 ? 2 : 1;
+  player.slapAnimation = player.slapAnimationToggle;
 
   player.currentSlapHitConnected = false;
 
   player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
 
-  // Startup/active are shared; recovery (and thus the gap to the next slap) is
-  // position-aware so slap1→slap2 is the biggest gap, slap2→slap3 tightens up.
-  const baseStartupMs = SLAP_STARTUP_MS;
-  const activeMs = SLAP_ACTIVE_MS;
-  const positionRecoveryMs = player.slapStringPosition === 1
-    ? SLAP_STRING_RECOVERY_POS1_MS
-    : SLAP_STRING_RECOVERY_POS2_MS;
-  const totalCycleDuration = baseStartupMs + activeMs + positionRecoveryMs;
-
-  // DESPERATION COUNTER-SLAP: faster startup when recently hit.
-  // Disabled for combo victims (hit by string hit 1) — the attacker earned the
-  // frame trap through the string, so the victim shouldn't get a speed boost to escape it.
-  const recentlyRecoveredFromHit = player.lastHitTime && 
-    (now - player.lastHitTime < 380) && !player.isHit;
-  // A true combo victim (hit1, or hit2 of an EARNED string) doesn't get the
-  // desperation speed boost — the attacker earned that frame trap. BUT the
-  // NEUTRAL ender seam (hit2 of an un-earned string, seamOpenedByHit) is a
-  // contestable mixup: the wakeup mash is the "beats grab" leg of the seam RPS
-  // (spec guardrail 5), so it keeps the 45ms desperation startup to reliably
-  // clip the armorless seam grab. seamOpenedByHit is only true when the LAST
-  // hit was a neutral slap2, and the 380ms recentlyRecovered gate bounds it.
-  const wasComboVictim = player.lastHitByStringPos >= 1 && !player.seamOpenedByHit;
-  const startupDuration = (recentlyRecoveredFromHit && !wasComboVictim) ? Math.min(45, baseStartupMs) : baseStartupMs;
-
-  const attackDuration = baseStartupMs + activeMs;
+  const attackDuration = SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
+  const totalCycleDuration = SLAP_TOTAL_MS;
 
   player.isSlapAttack = true;
   player.isPalmThrust = false; // A slap is never a palm — clear any lingering hold flag
   player.attackEndTime = now + attackDuration;
-  player.slapActiveEndTime = now + baseStartupMs + activeMs;
+  player.slapActiveEndTime = now + attackDuration;
   player.isAttacking = true;
   player.attackStartTime = now;
   player.attackType = "slap";
@@ -787,19 +704,19 @@ function executeSlapAttack(player, rooms) {
   player.attackCooldownUntil = now + totalCycleDuration;
 
   player.isInStartupFrames = true;
-  player.startupEndTime = now + startupDuration;
+  player.startupEndTime = now + SLAP_STARTUP_MS;
 
   setPlayerTimeout(
     player.id,
     () => {
       player.isInStartupFrames = false;
     },
-    startupDuration
+    SLAP_STARTUP_MS
   );
 
-  const finishedPosition = player.slapStringPosition;
-
-  player.slapCycleEndCallback = () => {
+  // Ends the slap and fires a buffered press if one is queued. Runs at cycle
+  // end on hit, or after the whiff-cooldown extension on whiff.
+  const endSlapCycle = () => {
       player.isAttacking = false;
       player.isSlapAttack = false;
       player.attackType = null;
@@ -809,130 +726,52 @@ function executeSlapAttack(player, rooms) {
       player.slapActiveEndTime = 0;
       player.currentAction = null;
 
-      // PHASE 2 — WHIFF SURCHARGE. A slap that did NOT connect costs an extra
-      // SLAP_WHIFF_EXTRA_STAMINA on top of the SLAP_ATTACK_STAMINA_COST paid at
-      // startup, so a whiffed slap totals 6 while a landed slap stays 3. Charged
-      // once per whiffed cycle, here at cycle end (currentSlapHitConnected still
-      // reflects whether THIS slap connected). Makes spacing pay in stamina.
-      if (!player.currentSlapHitConnected) {
-        player.stamina = Math.max(0, player.stamina - SLAP_WHIFF_EXTRA_STAMINA);
-      }
-
       const isPlayerValid = () => (
         !player.isDodging && !player.isThrowing && !player.isBeingThrown &&
         !player.isGrabbing && !player.isBeingGrabbed && !player.isRawParryStun &&
         !player.isRawParrying && !player.isHit && !player.canMoveToReady
       );
 
-      // === HIT-CONFIRM STRING: only advance if the hit connected ===
-      if (finishedPosition <= 2) {
-        // Hits 1 & 2: can chain forward on confirm
-        if (player.currentSlapHitConnected && isPlayerValid()) {
-          // Landing a slap drops us into the combo path — clear the whiff streak so
-          // a connected hit never inherits a pending whiff-pause.
-          player.slapWhiffCount = 0;
-          // PHASE 1: slap2's cycle just ended → the attacker is now actionable
-          // for the ender. Stamp this moment so the blue-spark tier can grade
-          // the ender press against it (spec 1.4). A press buffered during the
-          // freeze arrived BEFORE this → sloppy; a reactive press right after
-          // → just-frame.
-          if (finishedPosition === 2) {
-            player.slapEnderActionableTime = simNowForPlayer(player);
-          }
-          // Check for grab ender (mouse2 buffered after hit 2)
-          if (finishedPosition === 2 && player.pendingGrabEnder) {
-            player.pendingSlapCount = 0;
-            player.pendingGrabEnder = false;
-            player.slapStringPosition = 0;
-            player.slapStringWindowUntil = 0;
-            // Transition into grab startup
-            player.isGrabStartup = true;
-            player.grabStartupStartTime = simNowForPlayer(player);
-            player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
-            // PHASE 1: a SEAM grab (initiated from the string) carries NO
-            // slap-startup armor — it's a mixup tool, not a neutral grab. Wakeup
-            // mash must cleanly beat it or the 2×2 collapses (spec 1.7). Neutral
-            // grabs keep their armor (set false on their own initiation paths).
-            player.grabStartupArmorUsed = true;
-            player.currentAction = "grab_startup";
-            player.actionLockUntil = simNowForPlayer(player) + GRAB_STARTUP_DURATION_MS;
-            player.grabState = GRAB_STATES.ATTEMPTING;
-            player.grabAttemptType = "grab";
-            player.grabApproachSpeed = 0;
-            return;
-          }
-          if (player.pendingSlapCount > 0) {
-            // Next hit buffered → chain immediately
-            player.pendingSlapCount--;
-            player.pendingGrabEnder = false;
-            player.slapStringWindowUntil = simNowForPlayer(player) + 100;
-            executeSlapAttack(player, rooms);
-            return;
-          }
-          // Hit connected but no buffer → open manual window
-          player.slapStringWindowUntil = simNowForPlayer(player) + SLAP_STRING_BUFFER_WINDOW_MS;
-          setPlayerTimeout(player.id, () => {
-            if (player.slapStringPosition === finishedPosition && !player.isSlapAttack) {
-              player.slapStringPosition = 0;
-              player.slapStringWindowUntil = 0;
-              player.pendingGrabEnder = false;
-            }
-          }, SLAP_STRING_BUFFER_WINDOW_MS, "slapStringReset");
-        } else {
-          // === WHIFF: "BOP BOP <committed pause>" ===
-          player.slapStringPosition = 0;
-          player.slapStringWindowUntil = 0;
-          player.pendingGrabEnder = false;
-
-          player.slapWhiffCount = (player.slapWhiffCount || 0) + 1;
-
-          // After N consecutive whiffs, commit to an un-cancelable recovery pause —
-          // the whiff-punish window. PHASE 1: buffered slaps are CLEARED when the
-          // pause triggers and the pause NO LONGER auto-resumes a mashed rhythm.
-          // The player is hard-locked during the pause; a FRESH press after it
-          // fires frame 1 (spec 1.3). This makes spacing a real choice — a
-          // whiffed mash no longer "carries on" for free after the punish window.
-          if (player.slapWhiffCount >= SLAP_WHIFF_PAUSE_COUNT && isPlayerValid()) {
-            player.slapWhiffCount = 0;
-            player.pendingSlapCount = 0; // drop buffered mash — no auto-resume
-            player.pendingGrabEnder = false;
-            player.isSlapWhiffPausing = true;
-            player.currentAction = "slap_whiff_recovery";
-            // Both deadlines are sim-clock (pause through hitstop).
-            player.actionLockUntil = Math.max(player.actionLockUntil || 0, simNowForPlayer(player) + SLAP_WHIFF_PAUSE_MS);
-            player.attackCooldownUntil = Math.max(player.attackCooldownUntil || 0, simNowForPlayer(player) + SLAP_WHIFF_PAUSE_MS);
-            setPlayerTimeout(player.id, () => {
-              player.isSlapWhiffPausing = false;
-              if (player.currentAction === "slap_whiff_recovery") {
-                player.currentAction = null;
-              }
-              // No auto-resume: any slaps buffered during the pause are discarded.
-              player.pendingSlapCount = 0;
-            }, SLAP_WHIFF_PAUSE_MS, "slapWhiffPause");
-            return;
-          }
-
-          // First whiff of a sequence: a buffered input fires the 2nd BOP immediately.
-          if (player.pendingSlapCount > 0 && isPlayerValid()) {
-            player.pendingSlapCount--;
-            executeSlapAttack(player, rooms);
-            return;
-          }
-          // Player stopped after a single whiff → sequence ends, no pause.
-          player.pendingSlapCount = 0;
-          player.slapWhiffCount = 0;
-        }
-      } else {
-        // Hit 3 finished → string complete, reset
-        // Discard buffered slaps + brief cooldown to eat stale mashed inputs.
-        // Only blocks slaps (via canPlayerSlap cooldown); charge bypasses with ignoreCooldown.
-        player.slapStringPosition = 0;
-        player.slapStringWindowUntil = 0;
-        player.pendingGrabEnder = false;
+      // Back was held mid-slap → flow into the rooted palm thrust instead of
+      // another slap. Takes priority over a buffered slap so "hold back" always
+      // wins the transition. executePalmThrust re-guards on !isAttacking (just
+      // cleared above) so this can never eat an in-progress slap.
+      if (player.pendingPalmThrust && isPlayerValid()) {
+        player.pendingPalmThrust = false;
         player.pendingSlapCount = 0;
-        player.slapWhiffCount = 0;
-        player.attackCooldownUntil = simNowForPlayer(player) + SLAP_STRING_END_COOLDOWN_MS;
+        executePalmThrust(player, rooms);
+        return;
       }
+
+      // Buffered press → next slap fires immediately. Pure responsiveness:
+      // on hit the exchange was +0, so this follow-up is fully contestable
+      // (the victim is actionable at this exact instant too — mash mirrors
+      // clash); on whiff the extra recovery has already been served.
+      if (player.pendingSlapCount > 0 && isPlayerValid()) {
+        player.pendingSlapCount--;
+        executeSlapAttack(player, rooms);
+        return;
+      }
+      player.pendingSlapCount = 0;
+      player.pendingPalmThrust = false;
+  };
+
+  player.slapCycleEndCallback = () => {
+      // === WHIFF COOLDOWN ===
+      // A slap that did NOT connect holds its recovery pose a touch longer
+      // (SLAP_WHIFF_EXTRA_RECOVERY_MS) before ending. Spam away — but landing
+      // hits keeps your rhythm faster than swinging at air. Never runs on hit,
+      // so the +0 hitstun math (keyed to attackCooldownUntil at connect time)
+      // is untouched.
+      if (!player.currentSlapHitConnected) {
+        player.attackCooldownUntil = Math.max(
+          player.attackCooldownUntil || 0,
+          simNowForPlayer(player) + SLAP_WHIFF_EXTRA_RECOVERY_MS
+        );
+        setPlayerTimeout(player.id, endSlapCycle, SLAP_WHIFF_EXTRA_RECOVERY_MS, "slapCycle");
+        return;
+      }
+      endSlapCycle();
   };
 
   setPlayerTimeout(
@@ -944,22 +783,16 @@ function executeSlapAttack(player, rooms) {
 }
 
 // OPEN-PALM THRUST (back + mouse1) — a rooted, single-hit counterpart to the
-// advancing slap string. Charge with BACK+mouse1 (same power curve as the
-// headbutt), release to fire. Rides the charged hit-resolution path
-// (attackType "charged" + isPalmThrust) so it inherits charged priority /
-// hitstop / KB multiplier math, but:
+// advancing slap string. It rides the charged hit-resolution path (attackType
+// "charged" + isPalmThrust flag) as a fixed-power mini-charge, so it inherits
+// all the battle-tested charged knockback/trade/parry logic for free, but:
 //   • takes NO forward lunge (the lunge block in index.js is gated on
 //     !isPalmThrust) — the player holds their ground,
 //   • uses its own fast startup / long whiff-recovery frame data, and
-//   • delivers knockback via the slap3 burst + rope-clamp model (no midscreen
-//     cinematic KO), scaled by the same 0.45+charge^1.3 multiplier.
+//   • deals a fixed "weak charged" knockback (PALM_THRUST_POWER).
 // The whiff recovery (safelyEndChargedAttack) and connected-hit recovery
 // (processHit) both branch on isPalmThrust for their palm-specific values.
-// chargePercentage: 0–100 from the charge hold; defaults to PALM_THRUST_POWER
-// for CPU / buffered callers that fire without a charge session.
-// options.startupCreditMs: subtract from startup (used for quick taps so
-// press→hitbox stays ~PALM_THRUST_STARTUP_MS despite firing on release).
-function executePalmThrust(player, rooms, chargePercentage = PALM_THRUST_POWER, options = {}) {
+function executePalmThrust(player, rooms) {
   // Same central guards as the slap: never fire during a win cinematic or
   // mid-flap (a buffered click must not resolve into a stray thrust).
   const ownerRoom = rooms && rooms.find((room) => room.players.some((p) => p.id === player.id));
@@ -980,9 +813,12 @@ function executePalmThrust(player, rooms, chargePercentage = PALM_THRUST_POWER, 
 
   clearChargeState(player);
 
+  // This press already spent itself on the thrust. Keep mouse1 from auto-
+  // starting a headbutt charge while still held after the move ends (facing
+  // flip or adding S+forward mid-hold used to strand the charge shake).
+  player.mouse1ConsumedUntilRelease = true;
+
   const now = simNowForPlayer(player);
-  const startupCreditMs = Math.max(0, options.startupCreditMs || 0);
-  const startupMs = Math.max(0, PALM_THRUST_STARTUP_MS - startupCreditMs);
 
   // Auto-correct facing toward the opponent, then lock it for the move so the
   // thrust always fires the correct way even if inputs jitter.
@@ -1005,16 +841,21 @@ function executePalmThrust(player, rooms, chargePercentage = PALM_THRUST_POWER, 
   player.isCrouchStance = false;
   player.isCrouchStrafing = false;
 
+  // A palm thrust starts from neutral — it must NOT inherit a stale slap buffer.
+  // Leaving pendingSlapCount > 0 here is the root of the post-thrust strafe lock
+  // (the strafe gate blocks on it, and nothing in the thrust path drains it).
+  player.pendingSlapCount = 0;
+  player.pendingPalmThrust = false;
+
   player.stamina = Math.max(0, player.stamina - PALM_THRUST_STAMINA_COST);
 
-  // Rides the charged resolution path with charge-scaled power.
+  // Rides the charged resolution path with a fixed power.
   player.attackType = "charged";
   player.isPalmThrust = true;
   player.isSlapAttack = false;
   player.isChargingAttack = false;
   player.chargeStartTime = 0;
-  player.pendingChargeAttack = null;
-  player.chargeAttackPower = Math.max(1, Math.min(100, chargePercentage));
+  player.chargeAttackPower = PALM_THRUST_POWER;
   player.chargedAttackHit = false;
 
   player.isAttacking = true;
@@ -1027,7 +868,7 @@ function executePalmThrust(player, rooms, chargePercentage = PALM_THRUST_POWER, 
   // client "a NEW thrust fired" — one force-cone per execution, always.
   player.palmThrustFxId = (player.palmThrustFxId || 0) + 1;
 
-  const activeWindowEnd = now + startupMs + PALM_THRUST_ACTIVE_MS;
+  const activeWindowEnd = now + PALM_THRUST_STARTUP_MS + PALM_THRUST_ACTIVE_MS;
   player.attackEndTime = activeWindowEnd;
   player.chargedActiveEndTime = activeWindowEnd;
   // Strike pose through active + recovery — only safelyEndChargedAttack (and
@@ -1037,25 +878,21 @@ function executePalmThrust(player, rooms, chargePercentage = PALM_THRUST_POWER, 
   player.palmThrustVisualUntil = activeWindowEnd;
 
   // Startup telegraph — no hitbox until it ends (checkCollision gates on this).
-  // Quick taps credit hold time so press→active ≈ the old instant-on-press timing.
-  if (startupMs > 0) {
-    player.isInStartupFrames = true;
-    player.startupEndTime = now + startupMs;
-    setPlayerTimeout(
-      player.id,
-      () => {
-        player.isInStartupFrames = false;
-      },
-      startupMs,
-      "palmThrustStartupEnd"
-    );
-  } else {
-    player.isInStartupFrames = false;
-    player.startupEndTime = now;
-  }
+  player.isInStartupFrames = true;
+  player.startupEndTime = now + PALM_THRUST_STARTUP_MS;
+  setPlayerTimeout(
+    player.id,
+    () => {
+      player.isInStartupFrames = false;
+    },
+    PALM_THRUST_STARTUP_MS,
+    "palmThrustStartupEnd"
+  );
 
+  // Render as the generic charged "attack" pose (placeholder until a dedicated
+  // animation exists) and lock the action through startup for readability.
   player.currentAction = "charged";
-  player.actionLockUntil = now + startupMs;
+  player.actionLockUntil = now + PALM_THRUST_STARTUP_MS;
 }
 
 function cleanupRoom(room) {
@@ -1093,20 +930,8 @@ function executeChargedAttack(player, chargePercentage, rooms) {
     return;
   }
 
-  // Charged attacks drain stamina (3x slap attack cost)
+  // Charged attacks drain a little more stamina than a slap
   player.stamina = Math.max(0, player.stamina - CHARGED_ATTACK_STAMINA_COST);
-
-  // Check if mouse1 is held when the attack starts (for charge restart after recovery)
-  const mouse1HeldOnStart = player.keys.mouse1;
-  if (mouse1HeldOnStart) {
-    player.mouse1HeldDuringAttack = true;
-  }
-
-  // Clear any pending charge attack to prevent double execution
-  if (player.pendingChargeAttack) {
-    player.pendingChargeAttack = null;
-    player.spacebarReleasedDuringDodge = false;
-  }
 
   // Don't execute charged attack if player is in a throw state
   if (player.isThrowing || player.isBeingThrown) {
@@ -1608,6 +1433,13 @@ function safelyEndChargedAttack(player, rooms) {
   // the strike pose; otherwise it's cleared with the rest of the attack state.
   let palmHoldScheduled = false;
 
+  // A charge overlapping an ending attack should never happen, but if it does
+  // the old `if (!isChargingAttack)` guard skipped ALL cleanup and left the
+  // player rooted in the charge shake with isAttacking still true forever.
+  if (player.isChargingAttack) {
+    clearChargeState(player, true);
+  }
+
   // Only handle charged attacks, let slap attacks end normally
   if (player.attackType === "charged" && !player.chargedAttackHit) {
     // Find the current room and opponent to check if recovery is needed
@@ -1619,7 +1451,7 @@ function safelyEndChargedAttack(player, rooms) {
       const opponent = currentRoom.players.find((p) => p.id !== player.id);
 
       // Set recovery for missed charged attacks - INCREASED duration for visual clarity
-      if (opponent && !opponent.isHit && !player.isChargingAttack) {
+      if (opponent && !opponent.isHit) {
         player.isRecovering = true;
         player.recoveryStartTime = simNowForPlayer(player);
         if (isPalm) {
@@ -1640,41 +1472,39 @@ function safelyEndChargedAttack(player, rooms) {
           player.movementVelocity = player.facing * -3;
           player.knockbackVelocity = { x: 0, y: 0 };
         }
-      } else {
       }
     }
   }
 
   // Clear attack states (for both charged and slap attacks)
-  if (!player.isChargingAttack) {
-    // Save whether the attack connected before clearing the flag
-    const attackConnected = player.chargedAttackHit;
+  // Save whether the attack connected before clearing the flag
+  const attackConnected = player.chargedAttackHit;
 
-    // Palm thrust on-hit: active window just ended — strike pose through recovery.
-    if (isPalm && attackConnected) {
-      player.isAttacking = false;
-      player.isSlapAttack = false;
-      player.attackStartTime = 0;
-      player.attackEndTime = 0;
-      player.chargingFacingDirection = null;
-      player.attackType = null;
-      player.chargeAttackPower = 0;
-      player.chargedAttackHit = false;
-      player.chargedActiveEndTime = 0;
-      player.isRecovering = true;
-      player.recoveryStartTime = simNowForPlayer(player);
-      player.recoveryDuration = PALM_THRUST_HIT_RECOVERY_MS;
-      player.recoveryDirection = player.facing;
-      player.movementVelocity = 0;
-      player.knockbackVelocity = { x: 0, y: 0 };
-      player.mouse1HeldDuringAttack = false;
-      schedulePalmThrustVisualEnd(
-        player,
-        player.recoveryStartTime + PALM_THRUST_HIT_RECOVERY_MS
-      );
-      palmHoldScheduled = true;
-    } else {
-    
+  // Palm thrust on-hit: active window just ended — strike pose through recovery.
+  if (isPalm && attackConnected) {
+    player.isAttacking = false;
+    player.isSlapAttack = false;
+    player.attackStartTime = 0;
+    player.attackEndTime = 0;
+    player.chargingFacingDirection = null;
+    player.attackType = null;
+    player.chargeAttackPower = 0;
+    player.chargedAttackHit = false;
+    player.chargedActiveEndTime = 0;
+    player.currentAction = null;
+    player.actionLockUntil = 0;
+    player.isRecovering = true;
+    player.recoveryStartTime = simNowForPlayer(player);
+    player.recoveryDuration = PALM_THRUST_HIT_RECOVERY_MS;
+    player.recoveryDirection = player.facing;
+    player.movementVelocity = 0;
+    player.knockbackVelocity = { x: 0, y: 0 };
+    schedulePalmThrustVisualEnd(
+      player,
+      player.recoveryStartTime + PALM_THRUST_HIT_RECOVERY_MS
+    );
+    palmHoldScheduled = true;
+  } else {
     player.isAttacking = false;
     player.isSlapAttack = false;
     // Keep isPalmThrust alive through the visual hold; otherwise clear it.
@@ -1684,7 +1514,11 @@ function safelyEndChargedAttack(player, rooms) {
     player.chargeAttackPower = 0;
     player.chargedAttackHit = false;
     player.chargedActiveEndTime = 0;
-    
+    if (palmHoldScheduled || player.isRecovering) {
+      player.currentAction = null;
+      player.actionLockUntil = 0;
+    }
+
     // Only apply endlag for attacks that DIDN'T connect (whiffed attacks)
     // Connected attacks are already handled by processHit's recovery state
     if (!attackConnected && !player.isRecovering) {
@@ -1694,12 +1528,9 @@ function safelyEndChargedAttack(player, rooms) {
       player.endlagEndTime = simNowForPlayer(player) + CHARGED_ENDLAG_DURATION;
       player.currentAction = "endlag";
       player.actionLockUntil = simNowForPlayer(player) + CHARGED_ENDLAG_DURATION;
-      
+
       // Set attack cooldown to prevent immediate spam
       player.attackCooldownUntil = simNowForPlayer(player) + CHARGED_ENDLAG_DURATION + 150;
-
-      // Clear the mouse1 flag - restart logic now happens immediately when recovery ends
-      player.mouse1HeldDuringAttack = false;
 
       // Clear endlag after duration via timeout
       setPlayerTimeout(
@@ -1711,7 +1542,7 @@ function safelyEndChargedAttack(player, rooms) {
             player.actionLockUntil = 0;
             player.currentAction = null;
           }
-          
+
           // Check for buffered actions after endlag ends
           if (player.bufferedAction && simNowForPlayer(player) < player.bufferExpiryTime) {
             const action = player.bufferedAction;
@@ -1723,7 +1554,7 @@ function safelyEndChargedAttack(player, rooms) {
             if (action.type === "dash" && !player.isGassed && !player.isBeingGrabbed) {
               player.movementVelocity = 0;
               player.isStrafing = false;
-              
+
               player.isDodging = true;
               player.dodgeStartTime = simNowForPlayer(player);
               player.dodgeEndTime = simNowForPlayer(player) + DODGE_DURATION;
@@ -1736,12 +1567,7 @@ function safelyEndChargedAttack(player, rooms) {
         CHARGED_ENDLAG_DURATION,
         "chargedEndlagReset"
       );
-    } else {
-      // Attack connected — processHit already handles recovery, just clear stale flags
-      player.mouse1HeldDuringAttack = false;
     }
-    }
-  } else {
   }
 }
 
@@ -1845,9 +1671,6 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.isCrouchStance = false;
     player.isCrouchStrafing = false;
     player.pendingSlapCount = 0;
-    player.pendingGrabEnder = false;
-    player.slapStringPosition = 0;
-    player.slapStringWindowUntil = 0;
     clearChargeState(player, true);
     return;
   }
@@ -1914,7 +1737,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
     return;
   }
 
-  // Priority 3: Mouse1 held — S+forward = charged, back = palm thrust charge, else slap
+  // Priority 3: Mouse1 held — S+forward = charged, back = palm thrust, else slap
   if (player.keys.mouse1) {
     player.mouse1PressTime = simNowForPlayer(player);
     const fwdKey = player.facing === -1 ? 'd' : 'a';
@@ -1922,7 +1745,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
     if (player.keys.s && player.keys[fwdKey] && canPlayerSlap(player, { ignoreCooldown: true })) {
       player.chargeAttackPower = 0;
       player.chargeStartTime = 0;
-      startCharging(player, "charged");
+      startCharging(player);
       player.chargingFacingDirection = player.facing;
       player.movementVelocity = 0;
       player.isStrafing = false;
@@ -1933,7 +1756,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
       player.isCrouchStance = false;
       player.isCrouchStrafing = false;
     } else if (player.keys[backKey] && !player.keys[fwdKey] && canPlayerSlap(player)) {
-      startPalmThrustCharging(player);
+      executePalmThrust(player, rooms);
     } else if (canPlayerSlap(player)) {
       executeSlapAttack(player, rooms);
     }
@@ -1996,9 +1819,6 @@ function executeInputBuffer(player, rooms) {
         player.isCrouchStance = false;
         player.isCrouchStrafing = false;
         player.pendingSlapCount = 0;
-        player.pendingGrabEnder = false;
-        player.slapStringPosition = 0;
-        player.slapStringWindowUntil = 0;
         clearChargeState(player, true);
         player.inputBuffer = null;
         return true;
@@ -2069,15 +1889,10 @@ function executeInputBuffer(player, rooms) {
       break;
     }
     case "palmThrust": {
-      // Back + mouse1 buffered during a lock/recovery — begin the palm charge
-      // the instant the player can act again (same gate as slap). If mouse1 is
-      // no longer held, fire immediately at default power so the buffer isn't lost.
+      // Back + mouse1 buffered during a lock/recovery — fire the thrust the
+      // instant the player can act again (same gate as slap).
       if (canPlayerSlap(player)) {
-        if (player.keys.mouse1) {
-          startPalmThrustCharging(player);
-        } else {
-          executePalmThrust(player, rooms);
-        }
+        executePalmThrust(player, rooms);
         player.inputBuffer = null;
         return true;
       }
@@ -2122,7 +1937,7 @@ function executeInputBuffer(player, rooms) {
       if (canPlayerSlap(player, { ignoreCooldown: true })) {
         player.chargeAttackPower = 0;
         player.chargeStartTime = 0;
-        startCharging(player, "charged");
+        startCharging(player);
         player.chargingFacingDirection = player.facing;
         player.movementVelocity = 0;
         player.isStrafing = false;
@@ -2132,6 +1947,23 @@ function executeInputBuffer(player, rooms) {
         player.isPerfectRawParrySuccess = false;
         player.isCrouchStance = false;
         player.isCrouchStrafing = false;
+
+        // TAP CASE: mouse1 was pressed AND released while this buffer was
+        // waiting (e.g. a quick S+forward+M1 tap during a slap). The release
+        // handler already ran — it saw isChargingAttack false and did nothing —
+        // so no release edge remains to ever execute or end this charge.
+        // Without this, the player stands stranded in the charging stance,
+        // rooted in place, until some unrelated input packet clears it.
+        // Resolve it the way the release handler would have: fire the charged
+        // attack immediately at tap (minimum) power.
+        if (!player.keys.mouse1) {
+          const tapCharge = player.chargeAttackPower || 1;
+          player.isChargingAttack = false;
+          player.chargeStartTime = 0;
+          player.chargingFacingDirection = null;
+          executeChargedAttack(player, tapCharge, rooms);
+        }
+
         player.inputBuffer = null;
         return true;
       }

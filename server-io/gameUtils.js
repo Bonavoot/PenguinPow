@@ -14,7 +14,6 @@ const {
   SIDESTEP_STAMINA_COST,
   HITBOX_DISTANCE_VALUE,
   MAX_PARRY_BACKDATE_MS,
-  MAX_ENDER_BACKDATE_MS,
   FLAP_STARTUP_MS,
   FLAP_CHARGES,
   FLAP_STAMINA_COST,
@@ -183,29 +182,6 @@ function lagCompensatedParryStart(player, simNowMs) {
   const age = gameNow() - pressGameTime;
   if (!Number.isFinite(age) || age <= 0) return simNowMs;
   const backdate = Math.min(age, MAX_PARRY_BACKDATE_MS);
-  return simNowMs - backdate;
-}
-
-// ============================================================
-// PHASE 1: SLAP-ENDER ("blue spark") LAG-COMPENSATION
-// ============================================================
-// Returns the sim-clock time to record as the ender press arrival, backdated
-// toward the player's TRUE mouse1 press moment (reconstructed from the synced
-// client clock offset in `enderPressGameTime`) instead of packet-arrival time.
-// The just-frame window (SLAP_ENDER_JUST_WINDOW_MS) is judged as
-// `enderPressTime - slapEnderActionableTime`, so — exactly like the parry —
-// baking network jitter into that delta would make an identically-timed press
-// spark one round and fizzle the next. Clamped to [0, MAX_ENDER_BACKDATE_MS]:
-// backdating only makes the window HARDER to hit (moves the press earlier,
-// toward "buffered"), so a spoofed offset can do no better than uncompensated
-// behavior. Consumes the stamp so a stale press can't grade a later ender.
-function lagCompensatedEnderPress(player, simNowMs) {
-  const pressGameTime = player.enderPressGameTime || 0;
-  player.enderPressGameTime = 0;
-  if (!pressGameTime) return simNowMs;
-  const age = gameNow() - pressGameTime;
-  if (!Number.isFinite(age) || age <= 0) return simNowMs;
-  const backdate = Math.min(age, MAX_ENDER_BACKDATE_MS);
   return simNowMs - backdate;
 }
 
@@ -569,7 +545,6 @@ function resetPlayerAttackStates(player) {
   player.attackStartTime = 0;
   player.attackEndTime = 0;
   player.attackType = null;
-  player.pendingChargeAttack = null;
   player.spacebarReleasedDuringDodge = false;
   // Reset visual clarity timing states
   player.isInStartupFrames = false;
@@ -579,14 +554,7 @@ function resetPlayerAttackStates(player) {
   player.slapActiveEndTime = 0;
   player.chargedActiveEndTime = 0;
   player.attackCooldownUntil = 0;
-  player.slapStringPosition = 0;
-  player.slapStringWindowUntil = 0;
-  player.slapStringCounterLatched = false;
-  player.slapStringPunishLatched = false;
-  player.slapWhiffCount = 0;
-  player.isSlapWhiffPausing = false;
   player.currentSlapHitConnected = false;
-  player.pendingGrabEnder = false;
   player.isBurstKnockback = false;
   player.burstKnockbackStartTime = 0;
 }
@@ -626,23 +594,14 @@ function clearAllActionStates(player) {
   player.attackStartTime = 0;
   player.attackEndTime = 0;
   player.attackType = null;
-  player.pendingChargeAttack = null;
   player.spacebarReleasedDuringDodge = false;
   player.pendingSlapCount = 0;
-  player.pendingGrabEnder = false;
+  player.pendingPalmThrust = false;
   player.isSlapSliding = false;
-  player.slapStringPosition = 0;
-  player.slapStringWindowUntil = 0;
-  player.slapStringCounterLatched = false;
-  player.slapStringPunishLatched = false;
-  player.slapWhiffCount = 0;
-  player.isSlapWhiffPausing = false;
   player.currentSlapHitConnected = false;
   player.isBurstKnockback = false;
   player.burstKnockbackStartTime = 0;
-  player.mouse1HeldDuringAttack = false;
   player.mouse1BufferedBeforeStart = false;
-  player.wantsToRestartCharge = false;
   player.chargedAttackHit = false;
   
   // Clear counter hit timing — prevents stale timestamps from causing
@@ -851,23 +810,9 @@ function constrainToMapBoundaries(
   return Math.max(leftBoundary, Math.min(x, rightBoundary));
 }
 
-function shouldRestartCharging(player) {
-  // Require explicit intent from the player to restart charging to reduce accidental restarts
-  // Mouse1 is now the charge button (hold mouse1 past threshold)
-  // IMPORTANT: Always enforce the 200ms threshold to prevent quick taps from triggering charge
-  return (
-    player.keys.mouse1 &&
-    player.mouse1PressTime > 0 &&
-    (simNowForPlayer(player) - player.mouse1PressTime) >= 200 &&
-    player.wantsToRestartCharge &&
-    isPlayerInActiveState(player)
-  );
-}
-
-function startCharging(player, chargeKind = "charged") {
+function startCharging(player) {
   // NOTE: Charging does NOT cancel power slide - only the released attack does
   // This allows players to charge while sliding for aggressive plays
-  // chargeKind: "charged" (S+forward headbutt) or "palmThrust" (back+mouse1)
   
   player.isChargingAttack = true;
   // chargeStartTime lives on the sim clock: charge progress pauses during
@@ -882,24 +827,6 @@ function startCharging(player, chargeKind = "charged") {
     player.chargeAttackPower = 1;
   }
   player.attackType = "charged";
-  player.pendingChargeAttack = chargeKind;
-  player.wantsToRestartCharge = false;
-}
-
-// Shared setup when entering a palm-thrust charge (BACK+mouse1 hold).
-function startPalmThrustCharging(player) {
-  player.chargeAttackPower = 0;
-  player.chargeStartTime = 0;
-  startCharging(player, "palmThrust");
-  player.chargingFacingDirection = player.facing;
-  player.movementVelocity = 0;
-  player.isStrafing = false;
-  player.isPowerSliding = false;
-  player.isBraking = false;
-  player.isRawParrySuccess = false;
-  player.isPerfectRawParrySuccess = false;
-  player.isCrouchStance = false;
-  player.isCrouchStrafing = false;
 }
 
 function canPlayerSlap(player, { ignoreCooldown = false } = {}) {
@@ -928,9 +855,7 @@ function clearChargeState(player, isCancelled = false) {
     player.chargeAttackPower = 0;
   }
   player.chargingFacingDirection = null;
-  player.pendingChargeAttack = null;
   player.spacebarReleasedDuringDodge = false;
-  player.mouse1HeldDuringAttack = false;
 
   if (isCancelled) {
     player.chargeCancelled = true;
@@ -949,16 +874,10 @@ function clearChargeState(player, isCancelled = false) {
 // of slap-hands VFX bleeding into / after flap).
 function cancelPendingSlapWork(player) {
   timeoutManager.clearPlayerSpecific(player.id, "slapCycle");
-  timeoutManager.clearPlayerSpecific(player.id, "slapWhiffPause");
-  timeoutManager.clearPlayerSpecific(player.id, "slapStringReset");
   player.slapCycleEndCallback = null;
 
   player.pendingSlapCount = 0;
-  player.pendingGrabEnder = false;
-  player.slapStringPosition = 0;
-  player.slapStringWindowUntil = 0;
-  player.slapWhiffCount = 0;
-  player.isSlapWhiffPausing = false;
+  player.pendingPalmThrust = false;
   player.currentSlapHitConnected = false;
   player.isSlapSliding = false;
   player.slapFacingDirection = null;
@@ -1234,8 +1153,6 @@ module.exports = {
   simNowForPlayer,
   advanceRoomSimTime,
   lagCompensatedParryStart,
-  lagCompensatedEnderPress,
-
   // Classes and instances
   TimeoutManager,
   timeoutManager,
@@ -1254,9 +1171,7 @@ module.exports = {
   cancelPendingSlapWork,
   isWithinMapBoundaries,
   constrainToMapBoundaries,
-  shouldRestartCharging,
   startCharging,
-  startPalmThrustCharging,
   canPlayerSlap,
   clearChargeState,
   isOutsideDohyo,

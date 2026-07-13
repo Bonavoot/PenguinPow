@@ -25,6 +25,10 @@ import attack from "../assets/attack.png";
 import slapAttack1 from "../assets/slapAttack1.png";
 import slapAttack2 from "../assets/slapAttack2.png";
 import slapAttack3 from "../assets/attack.png";
+import slapAttack1Blur from "../assets/slap-attack-1-blur-frame.png";
+import slapAttack1Hit from "../assets/slap-attack-1-hit-frame.png";
+import slapAttack2Blur from "../assets/slap-attack-2-blur-frame.png";
+import slapAttack2Hit from "../assets/slap-attack-2-hit-frame.png";
 import palmThrust from "../assets/palm-thrust.png";
 import palmThrustStartup from "../assets/palm-thrust-startup.png";
 import palmThrustSmear from "../assets/palm-thrust-smear.png";
@@ -260,6 +264,10 @@ const initializeImagePreloading = () => {
   preloadImage(slapAttack1);
   preloadImage(slapAttack2);
   preloadImage(slapAttack3);
+  preloadImage(slapAttack1Blur);
+  preloadImage(slapAttack1Hit);
+  preloadImage(slapAttack2Blur);
+  preloadImage(slapAttack2Hit);
   preloadImage(palmThrust);
   preloadImage(palmThrustStartup);
   preloadImage(palmThrustSmear);
@@ -405,6 +413,10 @@ export {
   slapAttack1,
   slapAttack2,
   slapAttack3,
+  slapAttack1Blur,
+  slapAttack1Hit,
+  slapAttack2Blur,
+  slapAttack2Hit,
   palmThrust,
   palmThrustStartup,
   palmThrustSmear,

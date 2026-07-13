@@ -25,11 +25,9 @@
 // translation + roll. Smaller events still read as clearly lighter because the
 // translation amplitude scales per event. (Per-event roll/trauma keep weight.)
 export const SHAKE_PROFILES = {
-  // ── Per-hit tiers (driven by player_hit: attackType + string position) ──
-  // Light pokes (slap 1 & 2 and solo) — snappy rattle.
+  // ── Per-hit tiers (driven by player_hit: attackType) ──
+  // Slap pokes — snappy rattle.
   slap_hit:        { trauma: 0.40, punch: 0.0, rot: 0.0 },
-  // Slap-string FINISHER (slap3) — the "BOOM". Heavy crunch + roll.
-  slap_finisher:   { trauma: 0.85, punch: 0.0, rot: 0.45 },
   // Charged hit — heavy crunch + roll (caller scales by charge %).
   charged_hit:     { trauma: 0.88, punch: 0.0, rot: 0.50 },
 

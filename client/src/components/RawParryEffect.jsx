@@ -32,8 +32,13 @@ const PP_FRONT_OFFSET_PCT = -15;
 // Perspective tilt. IMPORTANT: perspective() only accepts an absolute length —
 // px, NOT cqw (a cqw here makes the whole transform invalid and it gets dropped,
 // which breaks BOTH the centering and the tilt). Smaller px = stronger 3D.
-const PP_PERSPECTIVE = "600px";
-const PP_TILT = "48deg"; // rotateY tilts left/right like the old ring; swap to rotateX to lay it back
+const PP_PERSPECTIVE = "400px";
+// Magnitude of the rotateY foreshortening. MUST be signed by facing below —
+// a fixed +deg always leans the same screen way, so on one facing it reads as
+// a clear 3D plane and on the other it fights the attack direction and looks
+// almost flat / ambiguous. Same convention as the old CSS ring:
+//   facing -1 (looking right) → +tilt, facing +1 (looking left) → -tilt.
+const PP_TILT_DEG = 62;
 
 // Both tiers recolor the GREEN art → BLUE. hue-rotate on colored art can't hit
 // an exact hue, so use the tint recipe: grayscale strips the green, sepia re-tones
@@ -55,9 +60,10 @@ const ParrySprite = styled.div`
   bottom: ${(props) => (props.$y / 720) * 100 + PP_BASELINE_OFFSET_Y}%;
   width: ${(props) => props.$size}cqw;
   height: ${(props) => props.$size}cqw;
-  /* translate centers on the anchor, then perspective()+rotateY tilts the single
-     sprite plane left/right for a clean 3D read (matches the old ring's axis). */
-  transform: translate(-50%, 50%) perspective(${PP_PERSPECTIVE}) rotateY(${PP_TILT});
+  /* translate centers on the anchor, then perspective()+rotateY tilts the
+     sprite plane toward the opponent (signed by facing) for a clean 3D read. */
+  transform: translate(-50%, 50%) perspective(${PP_PERSPECTIVE})
+    rotateY(${(props) => (props.$facing === -1 ? PP_TILT_DEG : -PP_TILT_DEG)}deg);
   transform-origin: center;
   z-index: 168;
   pointer-events: none;

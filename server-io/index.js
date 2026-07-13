@@ -56,7 +56,7 @@ const {
   GASSED_RECOVERY_STAMINA_IN_CLINCH, COUNTER_GRAB_BALANCE_DEBUFF,
   BALANCE_MAX, BALANCE_PASSIVE_REGEN_PER_SEC,
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS, SLAP_PARRY_KB_FRICTION,
-  SLAP_HIT3_KB_FRICTION,
+  BURST_KB_FRICTION,
   SLAP_ROPE_RESIST_BUFFER,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_RECOVERY_MS,
   SIDESTEP_ARC_DEPTH, SIDESTEP_TRAVEL, SIDESTEP_TRAVEL_EDGE, SIDESTEP_GRAB_TRACK_RANGE,
@@ -87,7 +87,6 @@ const {
   clearAllActionStates,
   isWithinMapBoundaries,
   constrainToMapBoundaries,
-  shouldRestartCharging,
   startCharging,
   canPlayerSlap,
   clearChargeState,
@@ -696,8 +695,6 @@ function tick(delta) {
             player.isPalmThrust = false;
             player.palmThrustVisualUntil = 0;
 
-            player.mouse1HeldDuringAttack = false;
-
             // Clean up stale chargedAttackHit flag after recovery ends
             // This flag is set by processHit and never cleared by safelyEndChargedAttack
             // (since safelyEndChargedAttack doesn't run for connected attacks)
@@ -967,7 +964,7 @@ function tick(delta) {
                 // Single smooth ice-slide decay (matches ICE_COAST_FRICTION) so
                 // the forced shove flows seamlessly into the DI-able coast that
                 // follows — one continuous slide instead of pop-then-brake.
-                player.knockbackVelocity.x *= SLAP_HIT3_KB_FRICTION;
+                player.knockbackVelocity.x *= BURST_KB_FRICTION;
               } else if (player.isSlapKnockback) {
                 player.knockbackVelocity.x *= 0.97;
               } else {
@@ -1837,12 +1834,6 @@ function tick(delta) {
         player.isDodgeRecovery = false;
         player.dodgeRecoveryEndTime = 0;
         player.dodgeCooldownUntil = now + DODGE_COOLDOWN_MS;
-
-        // Neutral charged attack removed — pending charge cleared, no charge restart
-        if (player.pendingChargeAttack) {
-          player.pendingChargeAttack = null;
-          player.spacebarReleasedDuringDodge = false;
-        }
       }
 
       // Clear dodge landing flag after animation duration (200ms)
@@ -3027,7 +3018,6 @@ function tick(delta) {
         !player.isAttacking && // Block during any attack (slap or charged)
         !player.isHit &&
         !player.isRawParryStun &&
-        !player.isSlapWhiffPausing && // Committed whiff pause — can't cancel into parry
         !player.isAtTheRopes
       ) {
         // Start raw parry if not already parrying
@@ -3054,11 +3044,6 @@ function tick(delta) {
           player.isCrouchStance = false;
           player.isCrouchStrafing = false;
           player.pendingSlapCount = 0;
-          player.pendingGrabEnder = false;
-          player.slapStringPosition = 0;
-          player.slapStringWindowUntil = 0;
-          player.slapWhiffCount = 0;
-          player.isSlapWhiffPausing = false;
         }
         // Only set isReady to false if we're not in an attack state
         if (!player.isAttacking && !player.isChargingAttack) {
@@ -3256,6 +3241,23 @@ function tick(delta) {
       player.sizeMultiplier = DEFAULT_PLAYER_SIZE_MULTIPLIER;
       // }
 
+      // STRANDED-CHARGE GUARD: a charging stance with mouse1 not held can never
+      // be released (the release edge already passed — e.g. a buffered charge
+      // that fired after a tap, or a dropped release packet). The equivalent
+      // cleanup in socketHandlers only runs when a NEW input packet arrives, so
+      // a player holding a key steadily (no key edges → no packets) would stand
+      // frozen in place indefinitely. Self-heal every tick instead. Ordering is
+      // safe: input packets (including the release handler, which executes the
+      // attack and clears isChargingAttack itself) are processed at tick start,
+      // before this guard runs.
+      if (player.isChargingAttack && player.keys && !player.keys.mouse1 && !player.isAttacking) {
+        player.isChargingAttack = false;
+        player.chargeStartTime = 0;
+        player.chargeAttackPower = 0;
+        player.chargingFacingDirection = null;
+        player.attackType = null;
+      }
+
       // Update charge attack power in the game loop
       // (sim clock — charge stops building during hitstop, like everything else)
       if (player.isChargingAttack) {
@@ -3288,6 +3290,19 @@ function tick(delta) {
       ) {
         player.slapStrafeCooldown = false;
         player.slapStrafeCooldownEndTime = 0;
+      }
+
+      // SELF-HEAL: the slap input buffers (pendingSlapCount / pendingPalmThrust)
+      // are meaningful ONLY while an actual slap is in flight — they're queued
+      // during a slap and consumed by endSlapCycle when that slap ends. If one
+      // ever outlives its slap (e.g. a press buffered on the final slap, then
+      // the player rolls straight into a palm thrust or neutral before the cycle
+      // callback drained it), it silently keeps blocking strafing forever until
+      // the player gets hit or feeds another input — the exact "stuck after palm
+      // thrust" lock. Clearing the orphan every tick makes that lock impossible.
+      if (!(player.isAttacking && player.attackType === "slap")) {
+        if (player.pendingSlapCount > 0) player.pendingSlapCount = 0;
+        if (player.pendingPalmThrust) player.pendingPalmThrust = false;
       }
 
       // FINAL GUARD: sanitize stamina once per tick per player before emit

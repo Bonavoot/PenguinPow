@@ -394,22 +394,22 @@ const Game = ({
 
       // CLIENT-SIDE PREDICTION for gamepad inputs
       if (gamepadKeyState.mouse1 && !keyState.mouse1) {
+        // Mirror the server's mouse1 branch (charged / palm thrust / slap) so a
+        // back+mouse1 palm thrust isn't mispredicted as a slap (which never gets
+        // server-confirmed and used to lock strafing).
         if (cp?.facing != null) {
           const forwardKey = cp.facing === -1 ? 'd' : 'a';
           const backKey = cp.facing === -1 ? 'a' : 'd';
           if (gamepadKeyState.s && gamepadKeyState[forwardKey]) {
             applyPrediction("charge_start");
           } else if (gamepadKeyState[backKey] && !gamepadKeyState[forwardKey]) {
-            applyPrediction("palm_charge_start");
+            applyPrediction("palm_thrust");
           } else {
             applyPrediction("slap");
           }
         } else {
           applyPrediction("slap");
         }
-      }
-      if (!gamepadKeyState.mouse1 && keyState.mouse1) {
-        applyPrediction("charge_release");
       }
       if (gamepadKeyState.mouse2 && !keyState.mouse2) {
         applyPrediction("grab");
@@ -516,20 +516,18 @@ const Game = ({
 
     const handleKeyUp = (e) => {
       const cp = currentPlayerRef.current;
-      // Block inputs during power-up selection
-      if (isPowerUpSelectionActive) return;
-
-      // Block inputs when current player is throwing snowball
-      if (cp?.isThrowingSnowball) return;
-
-      // When being grabbed, allow A/D/S/W key releases (clinch inputs)
-      const allowedGrabKeysUp = ["a", "d", "s", "w"];
-      if (
-        cp?.isBeingGrabbed &&
-        !allowedGrabKeysUp.includes(e.key.toLowerCase())
-      ) {
-        return;
-      }
+      // RELEASES ARE ALWAYS TRACKED — even while being grabbed, during power-up
+      // selection, or mid-snowball. Swallowing a key-up leaves keyState stuck
+      // "held": every later packet then tells the server the key is still down
+      // long after the finger left it, and the first system that reads held
+      // keys (post-grab input buffer, S+forward auto-charge, level-triggered
+      // parry, tachiai charge) fires a phantom action or strands the player in
+      // the charging stance. Only the visual predictions are skipped while in
+      // a blocked state — the key state itself must stay truthful.
+      const inputsBlocked =
+        isPowerUpSelectionActive ||
+        cp?.isThrowingSnowball ||
+        cp?.isBeingGrabbed;
 
       const key = e.key.toLowerCase();
       if (Object.prototype.hasOwnProperty.call(keyState, key)) {
@@ -541,12 +539,14 @@ const Game = ({
         if (wasPressed) pushEvent(key, "up");
 
         // CLIENT-SIDE PREDICTION: Apply predicted state for releases
-        if (key === " ") {
-          applyPrediction("parry_release");
-        }
-        // ICE PHYSICS: End power slide when c/control released
-        else if (key === "c" || key === "control") {
-          applyPrediction("power_slide_end");
+        if (!inputsBlocked) {
+          if (key === " ") {
+            applyPrediction("parry_release");
+          }
+          // ICE PHYSICS: End power slide when c/control released
+          else if (key === "c" || key === "control") {
+            applyPrediction("power_slide_end");
+          }
         }
 
         scheduleEmit();
@@ -570,13 +570,20 @@ const Game = ({
         const wasPressed = keyState.mouse1;
         keyState.mouse1 = true;
         if (!wasPressed) pushEvent("mouse1", "down");
+        // Mirror the server's mouse1 branch (see server-io/socketHandlers.js):
+        //   S + forward  → charged attack
+        //   back only    → rooted palm thrust
+        //   otherwise    → slap
+        // Predicting the correct one matters: a palm thrust predicted as a slap
+        // never gets confirmed by the server (it never sets isSlapAttack), which
+        // used to leave the attack prediction latched and lock strafing.
         if (cp?.facing != null) {
           const forwardKey = cp.facing === -1 ? 'd' : 'a';
           const backKey = cp.facing === -1 ? 'a' : 'd';
           if (keyState.s && keyState[forwardKey]) {
             applyPrediction("charge_start");
           } else if (keyState[backKey] && !keyState[forwardKey]) {
-            applyPrediction("palm_charge_start");
+            applyPrediction("palm_thrust");
           } else {
             applyPrediction("slap");
           }
@@ -600,14 +607,18 @@ const Game = ({
 
     const handleMouseUp = (e) => {
       const cp = currentPlayerRef.current;
-      // Block inputs during power-up selection
-      if (isPowerUpSelectionActive) return;
-
-      // Block inputs when current player is throwing snowball
-      if (cp?.isThrowingSnowball) return;
-
-      // Block Mouse1 release when being grabbed, but allow Mouse2 release
-      if (cp?.isBeingGrabbed && e.button === 0) return;
+      // RELEASES ARE ALWAYS TRACKED — same rule as handleKeyUp. The old early
+      // returns here (being grabbed / power-up selection / snowball) swallowed
+      // the mouse1 release, leaving keyState.mouse1 stuck true. Real-world
+      // repro: palm thrust whiffs → you get grabbed during its recovery → you
+      // let go of M1 mid-grab → server believes M1 is held forever → the next
+      // S+forward walk auto-starts a charge and the player stands stranded in
+      // the shaking charge stance until M1 is physically clicked again. Only
+      // the prediction is gated; the release itself always goes through.
+      const inputsBlocked =
+        isPowerUpSelectionActive ||
+        cp?.isThrowingSnowball ||
+        cp?.isBeingGrabbed;
 
       if (e.button === 0) {
         e.preventDefault();
@@ -619,7 +630,9 @@ const Game = ({
           // mouse-up. Internally a no-op unless we're actually charging, and
           // the server unconditionally executes the charged attack on release
           // while charging — so this prediction can't desync.
-          applyPrediction("charge_release");
+          if (!inputsBlocked) {
+            applyPrediction("charge_release");
+          }
         }
         scheduleEmit();
       } else if (e.button === 2) {

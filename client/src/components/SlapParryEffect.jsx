@@ -11,13 +11,11 @@ const GRID = 4;
 const START_FRAME = 1; // frame 0 is empty
 const END_FRAME = 15;
 const DURATION_MS = 280; // 15 frames → ~19ms/frame: snappy for a rapid parry
-const SIZE_CQW = 11; // smaller than the grab break's 14 (parry is a lighter beat)
-const BASELINE_OFFSET_Y = 4; // matches the previous slap-parry vertical placement
-
+const SIZE_CQW = 13; // a touch under grab break's 14 — still the lighter beat, just more readable
 const SpriteContainer = styled.div`
   position: absolute;
   left: ${(props) => (props.$x / 1280) * 100}%;
-  bottom: ${(props) => (props.$y / 720) * 100 + BASELINE_OFFSET_Y}%;
+  bottom: ${(props) => (props.$y / 720) * 100}%;
   width: ${SIZE_CQW}cqw;
   height: ${SIZE_CQW}cqw;
   transform: translate(-50%, 50%);

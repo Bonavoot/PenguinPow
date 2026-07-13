@@ -387,7 +387,6 @@ export const StyledImage = styled("img")
         undefined, // flapUseDodgePose
         undefined, // isPalmThrust
         2, // palmThrustFrame
-        props.$pendingChargeAttack,
         props.$isBeingThrown && !props.$showClinchKillThrowLanding
       ),
     style: {
