@@ -7,6 +7,7 @@ const {
   PERFECT_PARRY_BALANCE_REFUND, BALANCE_MAX,
   SIDESTEP_HIT_RETURN_BASE_MS,
   SIDESTEP_HIT_RETURN_MIN_MS,
+  SLAP_KILL_RANGE,
 } = require("./constants");
 
 const {
@@ -18,6 +19,8 @@ const {
   emitThrottledScreenShake,
   DOHYO_LEFT_BOUNDARY,
   DOHYO_RIGHT_BOUNDARY,
+  MAP_LEFT_BOUNDARY,
+  MAP_RIGHT_BOUNDARY,
   clearHitFall,
   clearSidestepHitReturn,
   hasHitAbsorption,
@@ -87,12 +90,10 @@ function updateProjectiles(room, io, delta) {
             return true; // Keep snowball in flight, don't register hit
           }
 
-          // Check for thick blubber hit absorption
+          // Thick Blubber hit absorption — GRABS ONLY (no longer applies to
+          // charged attacks).
           const isTargetGrabbing = targetPlayer.isGrabStartup || targetPlayer.isGrabbingMovement || targetPlayer.isGrabbing;
-          if (
-            hasHitAbsorption(targetPlayer) &&
-            ((targetPlayer.isAttacking && targetPlayer.attackType === "charged") || isTargetGrabbing)
-          ) {
+          if (hasHitAbsorption(targetPlayer) && isTargetGrabbing) {
             // Spend the absorption (single-slot power-up or BASHO stacked charge)
             consumeHitAbsorption(targetPlayer);
 
@@ -104,11 +105,12 @@ function updateProjectiles(room, io, delta) {
             // instead of lingering at its last sampled spot for a frame.
             room.forceBroadcast = true;
 
-            // Emit absorption effect
-            io.in(room.id).emit("thick_blubber_absorption", {
-              playerId: targetPlayer.id,
+            // Absorb VFX: the pink Thick Blubber ring.
+            io.in(room.id).emit("grab_armor_absorb", {
+              defenderId: targetPlayer.id,
               x: targetPlayer.x,
               y: targetPlayer.y,
+              facing: targetPlayer.facing,
             });
 
             return false; // Remove snowball after absorption
@@ -182,9 +184,22 @@ function updateProjectiles(room, io, delta) {
           if (canApplyKnockback(targetPlayer)) {
             const knockbackDirection = snowball.velocityX > 0 ? 1 : -1;
 
-            targetPlayer.isSlapKnockback = false;
+            // MASTERY Phase 0 — projectile ring-out consistency. Route the
+            // snowball knockback through the slap rope-resistance clamp
+            // (isSlapKnockback + slapKnockbackCanRingOut gate in index.js) so a
+            // snowball can only ring the victim out if they were ALREADY within
+            // SLAP_KILL_RANGE of the boundary they're shoved toward. Otherwise
+            // the rope catches them at the edge — no more midscreen KO from a
+            // projectile. All ring-outs are earned at the rope.
+            targetPlayer.isSlapKnockback = true;
             targetPlayer.isBurstKnockback = false;
             targetPlayer.burstKnockbackStartTime = 0;
+
+            const distanceToBoundaryInKbDir = knockbackDirection > 0
+              ? MAP_RIGHT_BOUNDARY - targetPlayer.x
+              : targetPlayer.x - MAP_LEFT_BOUNDARY;
+            targetPlayer.slapKnockbackCanRingOut =
+              distanceToBoundaryInKbDir <= SLAP_KILL_RANGE;
 
             targetPlayer.knockbackVelocity.x = knockbackDirection * 1.55;
             targetPlayer.movementVelocity = 0;
@@ -202,6 +217,7 @@ function updateProjectiles(room, io, delta) {
               targetPlayer.isHit = false;
               targetPlayer.isAlreadyHit = false;
               targetPlayer.isSlapKnockback = false;
+              targetPlayer.slapKnockbackCanRingOut = false;
               targetPlayer.isBurstKnockback = false;
               targetPlayer.burstKnockbackStartTime = 0;
             },
@@ -439,23 +455,22 @@ function updateProjectiles(room, io, delta) {
             return true; // Keep clone in flight, don't register hit
           }
 
-          // Check for thick blubber hit absorption
+          // Thick Blubber hit absorption — GRABS ONLY (no longer applies to
+          // charged attacks).
           const isOpponentGrabbingClone = opponent.isGrabStartup || opponent.isGrabbingMovement || opponent.isGrabbing;
-          if (
-            hasHitAbsorption(opponent) &&
-            ((opponent.isAttacking && opponent.attackType === "charged") || isOpponentGrabbingClone)
-          ) {
+          if (hasHitAbsorption(opponent) && isOpponentGrabbingClone) {
             // Spend the absorption (single-slot power-up or BASHO stacked charge)
             consumeHitAbsorption(opponent);
 
             // Remove clone but don't hit the player
             clone.hasHit = true;
 
-            // Emit absorption effect
-            io.in(room.id).emit("thick_blubber_absorption", {
-              playerId: opponent.id,
+            // Absorb VFX: the pink Thick Blubber ring.
+            io.in(room.id).emit("grab_armor_absorb", {
+              defenderId: opponent.id,
               x: opponent.x,
               y: opponent.y,
+              facing: opponent.facing,
             });
 
             return false; // Remove clone after absorption
@@ -516,9 +531,19 @@ function updateProjectiles(room, io, delta) {
           if (canApplyKnockback(opponent)) {
             const knockbackDirection = clone.velocityX > 0 ? 1 : -1;
 
-            opponent.isSlapKnockback = false;
+            // MASTERY Phase 0 — projectile ring-out consistency (see snowball
+            // above). Route pumo-clone knockback through the slap rope clamp so
+            // a clone only rings the victim out from within SLAP_KILL_RANGE of
+            // the boundary; otherwise the rope catches them at the edge.
+            opponent.isSlapKnockback = true;
             opponent.isBurstKnockback = false;
             opponent.burstKnockbackStartTime = 0;
+
+            const distanceToBoundaryInKbDir = knockbackDirection > 0
+              ? MAP_RIGHT_BOUNDARY - opponent.x
+              : opponent.x - MAP_LEFT_BOUNDARY;
+            opponent.slapKnockbackCanRingOut =
+              distanceToBoundaryInKbDir <= SLAP_KILL_RANGE;
 
             opponent.knockbackVelocity.x = knockbackDirection * 1.6;
             opponent.movementVelocity = 0;
@@ -536,6 +561,7 @@ function updateProjectiles(room, io, delta) {
               opponent.isHit = false;
               opponent.isAlreadyHit = false;
               opponent.isSlapKnockback = false;
+              opponent.slapKnockbackCanRingOut = false;
               opponent.isBurstKnockback = false;
               opponent.burstKnockbackStartTime = 0;
             },

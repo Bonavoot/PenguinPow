@@ -4,6 +4,7 @@ const {
   timeoutManager,
   simNow,
   simNowForPlayer,
+  logVerbInitiation,
   resetPlayerAttackStates,
   clearChargeState,
   schedulePalmThrustVisualEnd,
@@ -21,10 +22,31 @@ const {
   startCharging,
   lagCompensatedParryStart,
   beginFlapStartup,
+  alignedEntryVelocity,
+  takeInheritedVelocity,
 } = require("./gameUtils");
 
+// MASTERY OVERHAUL feature flags (Phase 1: momentum inheritance, Phase 3: cadence,
+// Phase 4: analog resolutions).
+const { MASTERY_P1_MOMENTUM, MASTERY_P3_CADENCE, MASTERY_P4_ANALOG } = require("./masteryFlags");
+
 // Per-match input audit log (open at first round, close on matchOver)
-const { openLog: openAuditLog, closeLog: closeAuditLog } = require("./inputAuditLog");
+const { openLog: openAuditLog, closeLog: closeAuditLog, appendWinType } = require("./inputAuditLog");
+
+// MASTERY Phase 2 (2.5) — classify a round win as oshi (strike/edge kill) or
+// yotsu (clinch conversion) for the win-type telemetry. Clinch-based finishes
+// are yotsu; everything else (slap/palm/charged edge kills, ring-outs) is oshi.
+function classifyWinCategory(winType) {
+  switch (winType) {
+    case "grabThrow":
+    case "grabPush":
+    case "clinchKillThrow":
+    case "clinchKillPull":
+      return "yotsu";
+    default:
+      return "oshi";
+  }
+}
 const { createInitialKeys } = require("./playerFactory");
 
 const {
@@ -43,7 +65,12 @@ const {
   SLAP_ACTIVE_MS,
   SLAP_RECOVERY_MS,
   SLAP_TOTAL_MS,
+  SLAP_TOTAL_MS_ENHANCED,
+  CADENCE_WINDOW_MS,
   SLAP_WHIFF_EXTRA_RECOVERY_MS,
+  K_SLAP_INHERIT,
+  SLAP_SLIDE_MIN,
+  SLAP_SLIDE_MAX,
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MS,
   PALM_THRUST_STARTUP_MS,
@@ -57,6 +84,9 @@ const {
   CHARGED_TIER_MED_MS,
   CHARGED_TIER_HEAVY_BASE_MS,
   CHARGED_TIER_HEAVY_SCALE_MS,
+  CHARGE_DURATION_BASE_MS,
+  CHARGE_DURATION_SCALE_MS,
+  CHARGE_DURATION_EXP,
   DODGE_STARTUP_MS,
   DODGE_RECOVERY_MS,
   GRAB_STARTUP_DURATION_MS,
@@ -298,6 +328,18 @@ function handleWinCondition(room, loser, winner, io, winType) {
 
   // Store the win count BEFORE potentially clearing it
   const winCount = winner.wins.length;
+
+  // MASTERY Phase 2 (2.5): win-type telemetry — record the oshi/yotsu split so
+  // the playtest can confirm both conversion paths are used (audit-gated, no-op
+  // by default).
+  appendWinType(room, {
+    winType: winType || "ringOut",
+    category: classifyWinCategory(winType || "ringOut"),
+    winnerId: winner.id,
+    loserId: loser.id,
+    matchMode: room.matchMode || "pvp",
+    cpuDifficulty: room.cpuDifficulty || null,
+  });
 
   // Stamina stays frozen at end-of-round values.
   // It resets to 100 when resetRoomAndPlayers() runs for the next round.
@@ -608,7 +650,12 @@ function handleWinCondition(room, loser, winner, io, winType) {
 }
 
 // Add this new function near the other helper functions
-function executeSlapAttack(player, rooms) {
+// MASTERY Phase 3 (tsuppari cadence): `cadenceEnhanced` is passed true ONLY by
+// endSlapCycle when the buffered follow-up press was timed late & precise inside
+// the cycle (gap ≤ CADENCE_WINDOW_MS). A direct/fresh press (or the flag off)
+// always starts a normal slap. Everything about the enhancement is ceiling-only
+// and gated on MASTERY_P3_CADENCE below.
+function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
   // Round is over — never fire a stray slap. This is the central guard covering
   // every slap entry point (buffered post-grab inputs, slap-string continuations
   // on timers, rope-jump attack releases, CPU, etc.) so none of them resolve into
@@ -626,6 +673,10 @@ function executeSlapAttack(player, rooms) {
   // instant the flap ends. Guarding the single point where isSlapAttack is set
   // true stops the leak at the source (covers buffered/timer/CPU entry points).
   if (player.isFlapping || player.flapPhase) return;
+
+  // MASTERY Phase 0 telemetry — snapshot entry velocity BEFORE the slide
+  // overwrite below (velocity-at-press for the momentum-curve histogram).
+  const slapEntryVelocity = player.movementVelocity;
 
   if (player.isPowerSliding) {
     player.isPowerSliding = false;
@@ -647,7 +698,35 @@ function executeSlapAttack(player, rooms) {
       player.facing = player.slapFacingDirection;
 
       const slideDirection = player.facing === 1 ? -1 : 1;
+
+      // MASTERY Phase 1: the slap's base slide BLENDS with the velocity carried
+      // into the press instead of a flat 1.0 — a dash-in slap shoves ~2× a
+      // flat-footed one, a fade-away (retreating) slap steps in short & safe.
+      // Floor is today's 1.0 at entry velocity 0 (invariant #2); only distances
+      // change (invariant #1). The power/BASHO slide scaling below still stacks
+      // on top of the blended base, exactly as it did on the flat 1.0.
       let slapSlideVelocity = 1.0;
+      if (MASTERY_P1_MOMENTUM) {
+        // Reliable inheritance: use whichever is stronger between the live
+        // velocity and the momentum carry stamped by a recent dodge/slide (see
+        // takeInheritedVelocity). This is what makes "dodge → (buffered) mouse1"
+        // consistently carry the dash's momentum instead of depending on a
+        // frame-perfect press before the landing slide decays.
+        const inheritV = takeInheritedVelocity(
+          player,
+          slapEntryVelocity,
+          simNowForPlayer(player)
+        );
+        const aligned = alignedEntryVelocity(inheritV, slideDirection);
+        slapSlideVelocity = Math.max(
+          SLAP_SLIDE_MIN,
+          Math.min(1.0 + K_SLAP_INHERIT * aligned, SLAP_SLIDE_MAX)
+        );
+        // Consumed by the on-hit ground transfer (processHit slap branch).
+        player.slapEntryAligned = Math.max(0, aligned);
+      } else {
+        player.slapEntryAligned = 0;
+      }
 
       if (player.activePowerUp === "power") {
         slapSlideVelocity *= player.powerUpMultiplier - 0.1;
@@ -671,6 +750,8 @@ function executeSlapAttack(player, rooms) {
     return;
   }
 
+  logVerbInitiation(currentRoom, player, "slap", slapEntryVelocity);
+
   clearChargeState(player);
 
   // === INDIVIDUAL SLAP (no string / no combo) ===
@@ -681,6 +762,23 @@ function executeSlapAttack(player, rooms) {
   // lockstep during hitstop.
   const now = simNowForPlayer(player);
 
+  // MASTERY Phase 3 (tsuppari cadence): stamp the press moment. This is the
+  // "direct-press path" stamp — a buffered press re-stamps this at its own queue
+  // time (socketHandlers / CPU cadence), and endSlapCycle reads it to grade the
+  // NEXT slap. Harmless with the flag off (never read).
+  player.pendingSlapPressTime = now;
+
+  // Resolve the cadence enhancement for THIS slap. Only a late-&-precise buffered
+  // follow-up (graded in endSlapCycle) arrives here enhanced; the base slap is
+  // never touched (reward-only). isEnhancedSlap latches for the whole cycle so
+  // processHit can read it at connect (enhanced posture drain + pair shift).
+  const isEnhancedSlap = MASTERY_P3_CADENCE && cadenceEnhanced === true;
+  player.isEnhancedSlap = isEnhancedSlap;
+  // Consecutive enhanced slaps escalate the cosmetic chain (delta prop → VFX/SFX).
+  // A normal slap in a string breaks the streak (chain → 0); whiff/clash/parry/
+  // hit-taken also reset it at their own sites.
+  player.cadenceChain = isEnhancedSlap ? (player.cadenceChain || 0) + 1 : 0;
+
   // Cosmetic animation alternation: slap1 ↔ slap2 have identical properties.
   player.slapAnimationToggle = player.slapAnimationToggle === 1 ? 2 : 1;
   player.slapAnimation = player.slapAnimationToggle;
@@ -689,8 +787,13 @@ function executeSlapAttack(player, rooms) {
 
   player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
 
+  // Enhanced slaps run a SHORTER total cycle (only the recovery tail shrinks —
+  // startup + active window are byte-identical, so hitbox timing is unchanged).
+  // The +0 exchange survives automatically: processHit derives victim hitstun
+  // from the attacker's remaining cycle (attackCooldownUntil), which is set from
+  // totalCycleDuration below — both players just become actionable sooner.
   const attackDuration = SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
-  const totalCycleDuration = SLAP_TOTAL_MS;
+  const totalCycleDuration = isEnhancedSlap ? SLAP_TOTAL_MS_ENHANCED : SLAP_TOTAL_MS;
 
   player.isSlapAttack = true;
   player.isPalmThrust = false; // A slap is never a palm — clear any lingering hold flag
@@ -749,7 +852,17 @@ function executeSlapAttack(player, rooms) {
       // clash); on whiff the extra recovery has already been served.
       if (player.pendingSlapCount > 0 && isPlayerValid()) {
         player.pendingSlapCount--;
-        executeSlapAttack(player, rooms);
+        // MASTERY Phase 3: grade the cadence of THIS follow-up. gap = how long
+        // before cycle end the buffered press was queued. A masher buffers EARLY
+        // (large gap → normal); a rhythm player presses LATE & precise (small
+        // gap ≤ CADENCE_WINDOW_MS → enhanced). Judged on the sim clock via the
+        // stored press timestamp, never on packet arrival (netcode note 5).
+        let cadenceEnhanced = false;
+        if (MASTERY_P3_CADENCE && player.pendingSlapPressTime > 0) {
+          const gap = simNowForPlayer(player) - player.pendingSlapPressTime;
+          cadenceEnhanced = gap <= CADENCE_WINDOW_MS;
+        }
+        executeSlapAttack(player, rooms, cadenceEnhanced);
         return;
       }
       player.pendingSlapCount = 0;
@@ -764,6 +877,8 @@ function executeSlapAttack(player, rooms) {
       // so the +0 hitstun math (keyed to attackCooldownUntil at connect time)
       // is untouched.
       if (!player.currentSlapHitConnected) {
+        // MASTERY Phase 3: a whiff breaks the tsuppari rhythm — reset the chain.
+        player.cadenceChain = 0;
         player.attackCooldownUntil = Math.max(
           player.attackCooldownUntil || 0,
           simNowForPlayer(player) + SLAP_WHIFF_EXTRA_RECOVERY_MS
@@ -801,6 +916,10 @@ function executePalmThrust(player, rooms) {
 
   if (player.isAttacking) return; // Only from neutral — never cancels a slap string
 
+  // MASTERY Phase 0 telemetry — snapshot entry velocity before the move roots
+  // the player (movementVelocity = 0 below).
+  const palmEntryVelocity = player.movementVelocity;
+
   // Drop any stale visual-hold timer from a prior thrust so it can't clear the
   // isPalmThrust flag mid-way through this fresh one.
   timeoutManager.clearPlayerSpecific(player.id, "palmThrustVisualEnd");
@@ -831,6 +950,7 @@ function executePalmThrust(player, rooms) {
       player.facing = player.x < opponent.x ? -1 : 1;
     }
   }
+  logVerbInitiation(currentRoom, player, "palm", palmEntryVelocity);
   player.chargingFacingDirection = player.facing;
 
   // Rooted: no forward slide, ever.
@@ -938,6 +1058,10 @@ function executeChargedAttack(player, chargePercentage, rooms) {
     return;
   }
 
+  // MASTERY Phase 0 telemetry — entry velocity at charge release (typically ~0
+  // since charging is rooted, but recorded for a complete per-verb picture).
+  const chargedEntryVelocity = player.movementVelocity;
+
   // Store previous recovery state in case we need to restore it
   const previousRecoveryState = {
     isRecovering: player.isRecovering,
@@ -957,10 +1081,22 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   // (from a prior connected thrust that ended into recovery) can never root it.
   player.isPalmThrust = false;
 
-  // Lunge duration scales with charge tier — see constants.js for tunable values.
-  // Tier thresholds: ≤25% light, 26–75% med, >75% heavy with linear tail.
+  // Lunge duration scales with charge.
+  // MASTERY Phase 4 (4.4): a CONTINUOUS curve replaces the 300/500/1000 tier
+  // buckets — attackDuration = 300 + 1700*(charge/100)^1.6. It matches the old
+  // endpoints (charge 0 → 300ms, charge 100 → 2000ms) and keeps low-charge
+  // lunges short, but removes the cliffs between tiers so every extra ms of
+  // charge buys a little more lunge. The priority threshold (30) and kill gates
+  // (50/80) are untouched — those stay legible bets. Flag off ⇒ today's tier
+  // buckets exactly (byte-identical). Tier thresholds: ≤25% light, 26–75% med,
+  // >75% heavy with linear tail.
   let attackDuration;
-  if (chargePercentage <= 25) {
+  if (MASTERY_P4_ANALOG) {
+    attackDuration =
+      CHARGE_DURATION_BASE_MS +
+      CHARGE_DURATION_SCALE_MS *
+        Math.pow(Math.max(0, Math.min(chargePercentage, 100)) / 100, CHARGE_DURATION_EXP);
+  } else if (chargePercentage <= 25) {
     attackDuration = CHARGED_TIER_LIGHT_MS;
   } else if (chargePercentage <= 75) {
     attackDuration = CHARGED_TIER_MED_MS;
@@ -1006,20 +1142,9 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   // Add hit tracking
   player.chargedAttackHit = false;
 
-  // Reset hit absorption for thick blubber power-up when executing charged attack
-  if (player.activePowerUp === "thick_blubber") {
-    player.hitAbsorptionUsed = false;
-
-    // Find the current room to emit thick blubber activation
-    const currentRoom = rooms.find((room) =>
-      room.players.some((p) => p.id === player.id)
-    );
-
-    if (currentRoom) {
-      // Import io from the main file - we'll need to pass it as a parameter
-      // For now, we'll add this logic to the main file instead
-    }
-  }
+  // Thick Blubber is GRABS ONLY now — it no longer recharges (or applies) on a
+  // charged attack. The absorb is refreshed when a grab starts (socketHandlers /
+  // cpuAI), so nothing to do here.
 
   // Auto-correct facing direction before locking it (similar to slap attacks after throw)
   // Find the current room and opponent
@@ -1039,6 +1164,8 @@ function executeChargedAttack(player, chargePercentage, rooms) {
 
       player.facing = correctedFacing;
     }
+
+    logVerbInitiation(currentRoom, player, "charged", chargedEntryVelocity);
   }
 
   // Lock facing direction during attack (after auto-correction)
@@ -1552,6 +1679,9 @@ function safelyEndChargedAttack(player, rooms) {
             // Execute the buffered action
             // CRITICAL: Block buffered dash if player is being grabbed
             if (action.type === "dash" && !player.isGassed && !player.isBeingGrabbed) {
+              // MASTERY Phase 1: capture carried speed before zeroing (dodge
+              // landing blends it, gated by MASTERY_P1_MOMENTUM).
+              player.dodgeEntrySpeed = Math.abs(player.movementVelocity);
               player.movementVelocity = 0;
               player.isStrafing = false;
 
@@ -1638,6 +1768,8 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.bufferExpiryTime = 0;
     player.isRawParrySuccess = false;
     player.isPerfectRawParrySuccess = false;
+    // MASTERY Phase 1: capture carried speed before zeroing (see index.js landing).
+    player.dodgeEntrySpeed = Math.abs(player.movementVelocity);
     player.movementVelocity = 0;
     player.isStrafing = false;
     player.isPowerSliding = false;
@@ -1710,6 +1842,8 @@ function activateBufferedInputAfterGrab(player, rooms) {
   if (player.keys.shift && !player.keys.mouse2 && !player.isGassed) {
     player.isRawParrySuccess = false;
     player.isPerfectRawParrySuccess = false;
+    // MASTERY Phase 1: capture carried speed before zeroing (see index.js landing).
+    player.dodgeEntrySpeed = Math.abs(player.movementVelocity);
     player.movementVelocity = 0;
     player.isStrafing = false;
     player.isPowerSliding = false;
@@ -1852,6 +1986,8 @@ function executeInputBuffer(player, rooms) {
         player.isRawParrySuccess = false;
         player.isPerfectRawParrySuccess = false;
         clearChargeState(player, true);
+        // MASTERY Phase 1: capture carried speed before zeroing (see index.js landing).
+        player.dodgeEntrySpeed = Math.abs(player.movementVelocity);
         player.movementVelocity = 0;
         player.isStrafing = false;
         player.isPowerSliding = false;
@@ -1985,6 +2121,12 @@ function executeInputBuffer(player, rooms) {
         player.actionLockUntil = simNowForPlayer(player) + GRAB_STARTUP_DURATION_MS;
         player.grabState = GRAB_STATES.ATTEMPTING;
         player.grabAttemptType = "grab";
+        logVerbInitiation(
+          rooms.find((r) => r.players.some((p) => p.id === player.id)),
+          player,
+          "grab",
+          player.movementVelocity
+        );
         player.grabApproachSpeed = Math.abs(player.movementVelocity);
         player.movementVelocity = 0;
         player.isStrafing = false;

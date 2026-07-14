@@ -1,5 +1,8 @@
+const { MASTERY_P1_MOMENTUM } = require("./masteryFlags");
+
 const {
   GRAB_PUSH_BURST_BASE, GRAB_PUSH_MOMENTUM_TRANSFER,
+  GRAB_PUSH_MOMENTUM_TRANSFER_MASTERY,
   GRAB_PUSH_DECAY_RATE, GRAB_PUSH_MIN_VELOCITY,
   GRAB_PUSH_STAMINA_DRAIN_INTERVAL, GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL,
   GRAB_STAMINA_DRAIN_INTERVAL,
@@ -236,8 +239,14 @@ function updateGrabActions(player, room, io, delta, rooms) {
     const pushElapsed = simNow(room) - player.grabPushStartTime;
     const pushElapsedSec = pushElapsed / 1000;
 
-    // Calculate burst push speed (exponential decay)
-    const initialPushSpeed = GRAB_PUSH_BURST_BASE + (player.grabApproachSpeed || 0) * GRAB_PUSH_MOMENTUM_TRANSFER;
+    // Calculate burst push speed (exponential decay).
+    // MASTERY Phase 1: the grab is the TEMPLATE inheritance mechanic (it already
+    // transfers approach speed into the burst) — raise the transfer so a
+    // dash/power-slide grab bites harder. Flag off ⇒ the original 0.6 (identical).
+    const grabMomentumTransfer = MASTERY_P1_MOMENTUM
+      ? GRAB_PUSH_MOMENTUM_TRANSFER_MASTERY
+      : GRAB_PUSH_MOMENTUM_TRANSFER;
+    const initialPushSpeed = GRAB_PUSH_BURST_BASE + (player.grabApproachSpeed || 0) * grabMomentumTransfer;
     let currentPushSpeed = initialPushSpeed * Math.exp(-GRAB_PUSH_DECAY_RATE * pushElapsedSec);
 
     // When burst decays below threshold, transition to manual clinch push
@@ -1624,4 +1633,4 @@ function triggerRingOut(pusher, victim, room, io, rooms, direction) {
   victim.knockbackVelocity = { ...victim.knockbackVelocity };
 }
 
-module.exports = { updateGrabActions };
+module.exports = { updateGrabActions, grantDeepGrip };

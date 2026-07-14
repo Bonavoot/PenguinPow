@@ -89,9 +89,17 @@ function createInitialPlayerState(overrides = {}) {
     isPowerSliding: false,
     isCrouchStance: false,
     isCrouchStrafing: false,
+    // MASTERY Phase 1: momentum carry window — a dodge landing / active power
+    // slide stamps earned momentum here so the next slap inherits it reliably
+    // (gated by MASTERY_P1_MOMENTUM).
+    momentumWindowVel: 0,
+    momentumWindowUntil: 0,
 
     // === Dodge ===
     isDodging: false,
+    // MASTERY Phase 1: |velocity| carried into a dodge, captured before it zeroes
+    // out at dodge start; blended into landing momentum (gated by MASTERY_P1_MOMENTUM).
+    dodgeEntrySpeed: 0,
     dodgeDirection: null,
     dodgeEndTime: 0,
     isDodgeStartup: false,
@@ -144,9 +152,17 @@ function createInitialPlayerState(overrides = {}) {
 
     // === Slap (individual presses — no string/combo) ===
     pendingSlapCount: 0,       // 1-press input buffer for responsiveness
+    pendingSlapPressTime: 0,   // MASTERY Phase 3: simNow the buffered/direct slap press was queued (cadence gap source)
     pendingPalmThrust: false,  // back+mouse1 pressed mid-slap → thrust fires at cycle end (instead of another slap)
     slapAnimationToggle: 0,    // Cosmetic slap1 ↔ slap2 alternation
     currentSlapHitConnected: false,
+    // MASTERY Phase 3 (tsuppari cadence): an enhanced slap is a buffered follow-up
+    // pressed LATE & precise (gap ≤ CADENCE_WINDOW_MS). isEnhancedSlap latches for
+    // the current slap so processHit can read it at connect; cadenceChain counts
+    // consecutive enhanced slaps (cosmetic delta prop → escalating VFX/SFX).
+    // Both stay 0/false when MASTERY_P3_CADENCE is off (byte-identical).
+    isEnhancedSlap: false,
+    cadenceChain: 0,
 
     // === Charged attack ===
     isChargingAttack: false,
@@ -255,6 +271,9 @@ function createInitialPlayerState(overrides = {}) {
     lastGrabAttemptTime: 0,
     lastGrabStaminaDrainTime: 0,
     grabApproachSpeed: 0,
+    // MASTERY Phase 1: max(0, aligned entry velocity) at slap press — drives the
+    // on-hit ground-transfer inheritance in processHit (gated by MASTERY_P1_MOMENTUM).
+    slapEntryAligned: 0,
 
     // === Grab actions (push/pull/separate) ===
     isGrabPushing: false,
@@ -295,6 +314,10 @@ function createInitialPlayerState(overrides = {}) {
     isArmClamped: false,
     clinchThrowFailStagger: false,
     hasDeepGrip: false,
+    // MASTERY Phase 2 (posture coupling): broken-posture "openable" tell,
+    // derived from `balance` each tick behind MASTERY_P2_POSTURE (false when
+    // the flag is off).
+    isPostureBroken: false,
     deepGripPushStart: 0,
     clinchPushRampStart: 0,
     reactBraceDeadline: 0,
@@ -399,7 +422,6 @@ function createInitialPlayerState(overrides = {}) {
     mouse2JustPressed: false,
     mouse2JustReleased: false,
     shiftJustPressed: false,
-    eJustPressed: false,
     wJustPressed: false,
     fJustPressed: false,
     spaceJustPressed: false,

@@ -1423,7 +1423,7 @@ const PowerUpSlot = styled.div`
       case "pumo_army":
         return "linear-gradient(135deg, #ffcc80, #ff8c00)";
       case "thick_blubber":
-        return "linear-gradient(135deg, #9c88ff, #7c4dff)";
+        return "linear-gradient(135deg, #ff5087, #a01f4a)";
       case "flap":
         return "linear-gradient(135deg, #34e0c0, #15705f)";
       case "shatter_palm":
@@ -1660,6 +1660,7 @@ const UiPlayerInfo = ({
   player1Balance = 100,
   player1BalanceGain = 0,
   player1HasDeepGrip = false,
+  player1PostureBroken = false,
   player2Stamina,
   player2ActivePowerUp = null,
   player2SnowballCooldown = false,
@@ -1671,6 +1672,7 @@ const UiPlayerInfo = ({
   player2Balance = 100,
   player2BalanceGain = 0,
   player2HasDeepGrip = false,
+  player2PostureBroken = false,
   matchOver = false,
   player1TopMarks = undefined,
   player2TopMarks = undefined,
@@ -2301,6 +2303,7 @@ const UiPlayerInfo = ({
                 balance={b1}
                 isRight={false}
                 danger={b1Danger}
+                broken={player1PostureBroken}
                 gainKey={p1BalGainKey}
                 deepGripThreat={player2HasDeepGrip}
                 deepGripHold={player1HasDeepGrip}
@@ -2448,6 +2451,7 @@ const UiPlayerInfo = ({
                 balance={b2}
                 isRight={true}
                 danger={b2Danger}
+                broken={player2PostureBroken}
                 gainKey={p2BalGainKey}
                 deepGripThreat={player1HasDeepGrip}
                 deepGripHold={player2HasDeepGrip}
@@ -2519,6 +2523,7 @@ UiPlayerInfo.propTypes = {
   player1Balance: PropTypes.number,
   player1BalanceGain: PropTypes.number,
   player1HasDeepGrip: PropTypes.bool,
+  player1PostureBroken: PropTypes.bool,
   player2Stamina: PropTypes.number,
   player2ActivePowerUp: PropTypes.string,
   player2SnowballCooldown: PropTypes.bool,
@@ -2530,6 +2535,7 @@ UiPlayerInfo.propTypes = {
   player2Balance: PropTypes.number,
   player2BalanceGain: PropTypes.number,
   player2HasDeepGrip: PropTypes.bool,
+  player2PostureBroken: PropTypes.bool,
   matchOver: PropTypes.bool,
   player1TopMarks: PropTypes.node,
   player2TopMarks: PropTypes.node,

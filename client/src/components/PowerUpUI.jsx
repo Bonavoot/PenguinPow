@@ -69,8 +69,8 @@ const PowerUpUI = ({
           name: "Thick Blubber",
           colors: {
             ready:
-              "linear-gradient(135deg, #9c88ff 0%, #7c4dff 30%, #5e35b1 100%)",
-            border: "#5e35b1",
+              "linear-gradient(135deg, #ffd0e0 0%, #ff5087 30%, #a01f4a 100%)",
+            border: "#a01f4a",
           },
         };
       case "flap":

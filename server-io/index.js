@@ -9,7 +9,7 @@ const {
   GRAB_STATES, TICK_RATE, BROADCAST_EVERY_N_TICKS,
   ALWAYS_SEND_PROPS, DELTA_TRACKED_PROPS, ALL_TRACKED_PROPS,
   speedFactor, GROUND_LEVEL, HITBOX_DISTANCE_VALUE, CHARGED_HITBOX_DISTANCE_VALUE,
-  THROW_RANGE, GRAB_RANGE, GRAB_PUSH_SPEED, GRAB_PUSH_DURATION,
+  GRAB_RANGE,
   DOHYO_FALL_SPEED, DOHYO_FALL_DEPTH,
   POWER_UP_TYPES, POWER_UP_EFFECTS,
   GRAB_DURATION, GRAB_ATTEMPT_DURATION,
@@ -19,11 +19,12 @@ const {
   SLIDE_SPEED_BOOST, SLIDE_MAX_SPEED, SLIDE_FRICTION, SLIDE_MIN_VELOCITY,
   SLIDE_MAINTAIN_VELOCITY, SLIDE_BRAKE_FRICTION, SLIDE_STRAFE_TIME_REQUIRED,
   DODGE_SLIDE_MOMENTUM, DODGE_POWERSLIDE_BOOST,
+  DODGE_LANDING_BASE, K_DODGE_INHERIT, DODGE_LANDING_MIN, DODGE_LANDING_MAX,
   DOHYO_EDGE_PANIC_ZONE, ICE_EDGE_BRAKE_BONUS, ICE_EDGE_SLIDE_PENALTY,
-  MOVEMENT_ACCELERATION, MOVEMENT_DECELERATION, MAX_MOVEMENT_SPEED,
+  MOVEMENT_DECELERATION,
   MOVEMENT_MOMENTUM, MOVEMENT_FRICTION, ICE_DRIFT_FACTOR,
   CHARGED_RECOIL_FRICTION,
-  MIN_MOVEMENT_THRESHOLD, INITIAL_MOVEMENT_BURST,
+  MIN_MOVEMENT_THRESHOLD,
   DODGE_DURATION, DODGE_BASE_SPEED,
   DODGE_CANCEL_ACTION_LOCK,
   DODGE_STARTUP_MS, DODGE_RECOVERY_MS, DODGE_COOLDOWN_MS,
@@ -33,7 +34,7 @@ const {
   CHARGE_FULL_POWER_MS,
   GRAB_STARTUP_DURATION_MS, GRAB_ACTIVE_MS, GRAB_STARTUP_HOP_HEIGHT, GRAB_LUNGE_DISTANCE, SLAP_ATTACK_STARTUP_MS,
   GRAB_WHIFF_RECOVERY_MS, GRAB_CATCH_MIN_BURST_SPEED,
-  GRAB_BREAK_STAMINA_COST, GRAB_BREAK_PUSH_VELOCITY, GRAB_BREAK_FORCED_DISTANCE,
+  GRAB_BREAK_STAMINA_COST, GRAB_BREAK_FORCED_DISTANCE,
   GRAB_BREAK_TWEEN_DURATION, GRAB_BREAK_RESIDUAL_VEL,
   GRAB_BREAK_INPUT_LOCK_MS, GRAB_BREAK_ACTION_LOCK_MS,
   RAW_PARRY_STAMINA_COST, RAW_PARRY_MIN_DURATION, RAW_PARRY_MAX_DURATION, RAW_PARRY_COOLDOWN_MS, PULL_BOUNDARY_MARGIN,
@@ -55,11 +56,14 @@ const {
   GASSED_DURATION_MS, GASSED_RECOVERY_STAMINA,
   GASSED_RECOVERY_STAMINA_IN_CLINCH, COUNTER_GRAB_BALANCE_DEBUFF,
   BALANCE_MAX, BALANCE_PASSIVE_REGEN_PER_SEC,
+  BALANCE_PASSIVE_REGEN_PER_SEC_P2,
+  POSTURE_BREAK_THRESHOLD, POSTURE_RECOVER_THRESHOLD,
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS, SLAP_PARRY_KB_FRICTION,
   BURST_KB_FRICTION,
   SLAP_ROPE_RESIST_BUFFER,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_RECOVERY_MS,
   SIDESTEP_ARC_DEPTH, SIDESTEP_TRAVEL, SIDESTEP_TRAVEL_EDGE, SIDESTEP_GRAB_TRACK_RANGE,
+  SIDESTEP_GRAB_TRACK_RANGE_P5,
   SIDESTEP_RECOVERY_OVERLAP_THRESHOLD,
   CLINCH_KILL_THROW_ARC_HEIGHT,
   CLINCH_KILL_THROW_DISTANCE,
@@ -107,6 +111,7 @@ const {
   clearHitFall,
   clearSidestepHitReturn,
   cancelPendingSlapWork,
+  stampMomentumWindow,
 } = require("./gameUtils");
 
 // Import game functions
@@ -123,6 +128,9 @@ const {
   activateBufferedInputAfterGrab,
   executeInputBuffer,
 } = require("./gameFunctions");
+
+// MASTERY OVERHAUL feature flags (Phase 1: momentum inheritance; Phase 2: posture).
+const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P5_ASSISTS } = require("./masteryFlags");
 
 // Import delta state utilities
 const { computePlayerDelta, clonePlayerState } = require("./deltaState");
@@ -144,7 +152,7 @@ const {
 const {
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
-  grabBeatsSlap,
+  grabSlipsSlap,
 } = require("./combatHelpers");
 
 // Import CPU AI
@@ -156,7 +164,7 @@ const { checkCollision, checkFlapBodySlam } = require("./collisionSystem");
 const { updateProjectiles } = require("./projectileUpdates");
 
 // Import grab action system
-const { updateGrabActions } = require("./grabActionSystem");
+const { updateGrabActions, grantDeepGrip } = require("./grabActionSystem");
 
 // Import per-match input audit log
 const { openLog: openAuditLog } = require("./inputAuditLog");
@@ -1135,9 +1143,16 @@ function tick(delta) {
           const opponentInSidestepInvuln = opponentSidestepping &&
             !opponent.isSidestepStartup &&
             (!opponent.isSidestepRecovery || (sidestepPushboxOverlap && opponentPassedPlayer));
+          // MASTERY Phase 5 (5.1): tighten the grab's sidestep-tracking range so
+          // spacing — not an auto-track table — answers the sidestep. A
+          // point-blank read still catches the startup/recovery; a spaced
+          // sidestep now escapes. Flag off ⇒ the original 400 range (unchanged).
+          const sidestepGrabTrackRange = MASTERY_P5_ASSISTS
+            ? SIDESTEP_GRAB_TRACK_RANGE_P5
+            : SIDESTEP_GRAB_TRACK_RANGE;
           const sidestepTrackInRange = opponentSidestepping &&
             !opponentInSidestepInvuln &&
-            Math.abs(player.x - opponent.x) < SIDESTEP_GRAB_TRACK_RANGE;
+            Math.abs(player.x - opponent.x) < sidestepGrabTrackRange;
           const normalGrabInRange = opponent && !opponentSidestepping && isOpponentCloseEnoughForGrab(player, opponent) && isOpponentInFrontOfGrabber(player, opponent);
 
           if (opponent && !(opponent.isRopeJumping && opponent.ropeJumpPhase === "active") && !(opponent.isFlapping && opponent.flapPhase === "flight") && (normalGrabInRange || sidestepTrackInRange)) {
@@ -1167,10 +1182,15 @@ function tick(delta) {
               !player.isBeingGrabbed &&
               !player.throwTechCooldown &&
               !opponentGrabImmune;
+            // GRAB SLIPS SLAP: the grab reached its active window because it
+            // slipped the opponent's slap during startup (see grabSlipsSlap in
+            // collisionSystem). Mirror that rule here so a still-slapping
+            // opponent doesn't block the connect: if the grab began before the
+            // slap went active, the grab connects through it.
             const grabWinsVsSlap =
               opponent.isAttacking &&
               opponent.attackType === "slap" &&
-              grabBeatsSlap(player, opponent);
+              grabSlipsSlap(player, opponent);
             // NOTE: a palm thrust that hits a grab startup is absorbed by the
             // grab-startup armor and ends its own attack (see collisionSystem),
             // so by the time the grab connects the palm-thruster is already
@@ -1209,6 +1229,22 @@ function tick(delta) {
               opponent.hasGrip = false;
               opponent.inClinch = true;
               opponent.clinchAction = "neutral";
+
+              // MASTERY Phase 2 (2.3): yotsu conversion. Catching a
+              // broken-posture victim grants the grabber DEEP GRIP on connect
+              // and floors the Phase A burst so the carry visibly bites — the
+              // striking setup that broke posture pays off in the clinch. The
+              // victim still gets their normal grip-up fight (not skipped); the
+              // reward is the deep-grip head start (+10 throw threshold, ×1.1
+              // push) they'd otherwise need 1s of unanswered push to earn.
+              // Flag off / posture intact ⇒ no change.
+              if (MASTERY_P2_POSTURE && opponent.isPostureBroken) {
+                player.grabApproachSpeed = Math.max(
+                  player.grabApproachSpeed || 0,
+                  GRAB_CATCH_MIN_BURST_SPEED
+                );
+                grantDeepGrip(player, opponent, room, io, "posture");
+              }
 
               // IMMEDIATE PUSH (auto-burst)
               player.isGrabPushing = true;
@@ -1478,13 +1514,44 @@ function tick(delta) {
         }
       }
 
-      // Balance regen — passive +5/sec, no regen when gassed or in clinch
+      // Balance regen — passive +5/sec, no regen when gassed or in clinch.
+      // MASTERY Phase 2 (2.2): slightly faster passive regen so disengaging
+      // resets the hand-fight war a touch quicker. Flag off ⇒ today's rate.
       if (player.balance < BALANCE_MAX && !room.gameOver && !player.isGassed && !player.inClinch) {
         const deltaSec = delta / 1000;
-        let balanceRegen = BALANCE_PASSIVE_REGEN_PER_SEC;
+        let balanceRegen = MASTERY_P2_POSTURE
+          ? BALANCE_PASSIVE_REGEN_PER_SEC_P2
+          : BALANCE_PASSIVE_REGEN_PER_SEC;
         // BASHO BALANCE attribute scales balance regen rate (1.0 for non-BASHO).
         balanceRegen *= player.statMods?.balanceRegen ?? 1;
         player.balance = Math.min(BALANCE_MAX, player.balance + balanceRegen * deltaSec);
+      }
+
+      // MASTERY Phase 2 (2.1): derive the broken-posture "openable" tell from
+      // `balance` with hysteresis (breaks below POSTURE_BREAK_THRESHOLD, only
+      // recovers above the higher POSTURE_RECOVER_THRESHOLD → no flicker). It
+      // gates the yotsu (deep-grip on grab) and oshi (expanded kill band)
+      // conversions and is broadcast for the client stagger overlay. A
+      // posture_break event fires on the break edge for the crack SFX. With the
+      // flag OFF the state is forced false and never read, so the sim is
+      // byte-identical (invariants #2 & #4).
+      if (MASTERY_P2_POSTURE) {
+        if (player.isPostureBroken) {
+          if (player.balance > POSTURE_RECOVER_THRESHOLD) player.isPostureBroken = false;
+        } else if (player.balance < POSTURE_BREAK_THRESHOLD && !player.isDead) {
+          player.isPostureBroken = true;
+          if (!room.gameOver) {
+            io.in(room.id).emit("posture_break", {
+              playerId: player.id,
+              playerNumber: room.players.indexOf(player) === 0 ? 1 : 2,
+              x: player.x,
+              y: player.y,
+            });
+          }
+        }
+      } else if (player.isPostureBroken) {
+        // Flag toggled off at runtime — clear the stale tell.
+        player.isPostureBroken = false;
       }
 
       // if (player.isHit) return;
@@ -1805,18 +1872,43 @@ function tick(delta) {
             player.facing = player.x < dodgeOpponent.x ? -1 : 1;
           }
 
-          // Landing momentum on ice
+          // Landing momentum on ice.
+          // MASTERY Phase 1: a dodge INHERITS the speed carried into it — walk→
+          // dodge→slap chains build real momentum with no runway. Base blends
+          // dodgeEntrySpeed (captured at dodge start, before it zeroed) into the
+          // landing slide; the powerslide (C held) path multiplies the SAME base
+          // by DODGE_POWERSLIDE_BOOST, exactly as before. At entry speed 0 the
+          // base is clamped to DODGE_LANDING_MIN == today's DODGE_SLIDE_MOMENTUM
+          // (invariant #2). Flag off ⇒ the flat DODGE_SLIDE_MOMENTUM as today.
+          const landingBase = MASTERY_P1_MOMENTUM
+            ? Math.max(
+                DODGE_LANDING_MIN,
+                Math.min(
+                  DODGE_LANDING_BASE + K_DODGE_INHERIT * (player.dodgeEntrySpeed || 0),
+                  DODGE_LANDING_MAX
+                )
+              )
+            : DODGE_SLIDE_MOMENTUM;
           if ((player.keys.c || player.keys.control) && room.gameStart && !room.gameOver && !room.matchOver) {
-            player.movementVelocity = landingDirection * DODGE_SLIDE_MOMENTUM * DODGE_POWERSLIDE_BOOST;
+            player.movementVelocity = landingDirection * landingBase * DODGE_POWERSLIDE_BOOST;
             player.isPowerSliding = true;
           } else {
-            player.movementVelocity = landingDirection * DODGE_SLIDE_MOMENTUM;
+            player.movementVelocity = landingDirection * landingBase;
           }
 
           if (player.keys.a && !player.keys.d) {
             player.movementVelocity -= 0.2;
           } else if (player.keys.d && !player.keys.a) {
             player.movementVelocity += 0.2;
+          }
+
+          // MASTERY Phase 1: stamp the dodge's landing momentum into the carry
+          // window so the next slap inherits it reliably (even a buffered
+          // mouse1), instead of racing the landing slide's decay. Captures the
+          // full landing velocity — including the C-held powerslide boost and
+          // the A/D nudge above.
+          if (MASTERY_P1_MOMENTUM) {
+            stampMomentumWindow(player, player.movementVelocity, now);
           }
 
           player.justLandedFromDodge = true;
@@ -1846,6 +1938,19 @@ function tick(delta) {
       // POWER SLIDE FROM DODGE: If just landed and holding C/CTRL, ensure power slide is active
       if (player.justLandedFromDodge && (player.keys.c || player.keys.control) && Math.abs(player.movementVelocity) > SLIDE_MAINTAIN_VELOCITY && room.gameStart && !room.gameOver && !room.matchOver) {
         player.isPowerSliding = true;
+      }
+
+      // MASTERY Phase 1: an active power slide continuously refreshes the
+      // momentum carry window, so a slap fired DURING or just AFTER the slide
+      // reliably inherits its speed (this is the "same with the sliding" fix —
+      // no more guessing whether the boost will land). Only real slide speed
+      // stamps; a slide that has decayed to a crawl carries nothing.
+      if (
+        MASTERY_P1_MOMENTUM &&
+        player.isPowerSliding &&
+        Math.abs(player.movementVelocity) > SLIDE_MAINTAIN_VELOCITY
+      ) {
+        stampMomentumWindow(player, player.movementVelocity, now);
       }
 
       // ── SIDESTEP arc physics ──
@@ -2371,6 +2476,18 @@ function tick(delta) {
           opponent.inClinch = true;
           opponent.clinchAction = "neutral";
 
+          // MASTERY Phase 2 (2.3): yotsu conversion (grab-movement connect
+          // path — mirrors the grab-startup connect above). A broken-posture
+          // victim hands the grabber deep grip on connect + a floored Phase A
+          // burst. Flag off / posture intact ⇒ no change.
+          if (MASTERY_P2_POSTURE && opponent.isPostureBroken) {
+            player.grabApproachSpeed = Math.max(
+              player.grabApproachSpeed || 0,
+              GRAB_CATCH_MIN_BURST_SPEED
+            );
+            grantDeepGrip(player, opponent, room, io, "posture");
+          }
+
           // IMMEDIATE PUSH: Push starts right away (processed after hitstop)
           // No decision window — push is the default, pull/throw interrupt it
           player.isGrabPushing = true;
@@ -2605,10 +2722,6 @@ function tick(delta) {
           !player.isThrowingSnowball &&
           !player.isSpawningPumoArmy &&
           !player.pendingSlapCount &&
-          !(
-            player.slapStrafeCooldown &&
-            now < player.slapStrafeCooldownEndTime
-          ) && // Block strafing during post-slap cooldown
           !player.isAtTheRopes && // Block strafing while at the ropes
           !player.isPowerSliding && // Power sliding uses its own physics - no strafing
           !(player.inputLockUntil && now < player.inputLockUntil) // Block during input freeze (e.g. pull reversal)
@@ -2689,10 +2802,6 @@ function tick(delta) {
           !player.isThrowingSnowball &&
           !player.isSpawningPumoArmy &&
           !player.pendingSlapCount &&
-          !(
-            player.slapStrafeCooldown &&
-            now < player.slapStrafeCooldownEndTime
-          ) &&
           !player.isAtTheRopes &&
           !player.isPowerSliding && // Power sliding uses its own physics - no strafing
           !(player.inputLockUntil && now < player.inputLockUntil) // Block during input freeze (e.g. pull reversal)
@@ -2916,9 +3025,7 @@ function tick(delta) {
             !player.keys.d &&
             (!player.canMoveToReady || room.gameStart)) ||
           player.isAttacking || // Clear strafing during any attack (slap or charged)
-          player.pendingSlapCount || // Clear strafing when buffered slap attack is pending
-          (player.slapStrafeCooldown &&
-            now < player.slapStrafeCooldownEndTime) // Clear strafing during post-slap cooldown
+          player.pendingSlapCount // Clear strafing when buffered slap attack is pending
         ) {
           player.isStrafing = false;
         }
@@ -2936,8 +3043,6 @@ function tick(delta) {
           (player.keys.a && player.keys.d) ||
           player.isAttacking || // Clear strafing during any attack (slap or charged)
           player.pendingSlapCount || // Clear strafing when buffered slap attack is pending
-          (player.slapStrafeCooldown &&
-            now < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
           player.isHit || // Add isHit to force clear strafing when parried
           player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
           player.isAtTheRopes || // Block strafing while at the ropes
@@ -2971,8 +3076,6 @@ function tick(delta) {
         player.isRecovering ||
         player.isAttacking || // Clear strafing during any attack
         player.pendingSlapCount || // Clear strafing when buffered slap attack is pending
-        (player.slapStrafeCooldown &&
-          now < player.slapStrafeCooldownEndTime) || // Clear strafing during post-slap cooldown
         player.isHit || // Add isHit to force clear strafing when parried
         player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
         player.isAtTheRopes || // Block strafing while at the ropes
@@ -3283,15 +3386,6 @@ function tick(delta) {
       // CONTINUOUS MOUSE1 CHECK: Auto-start charging when mouse1 is held and player is idle
       // Neutral charged attack removed — no charge initiation from held mouse1
 
-      // Clear strafing cooldown when it expires
-      if (
-        player.slapStrafeCooldown &&
-        now >= player.slapStrafeCooldownEndTime
-      ) {
-        player.slapStrafeCooldown = false;
-        player.slapStrafeCooldownEndTime = 0;
-      }
-
       // SELF-HEAL: the slap input buffers (pendingSlapCount / pendingPalmThrust)
       // are meaningful ONLY while an actual slap is in flight — they're queued
       // during a slap and consumed by endSlapCycle when that slap ends. If one
@@ -3303,6 +3397,20 @@ function tick(delta) {
       if (!(player.isAttacking && player.attackType === "slap")) {
         if (player.pendingSlapCount > 0) player.pendingSlapCount = 0;
         if (player.pendingPalmThrust) player.pendingPalmThrust = false;
+      }
+
+      // SELF-HEAL: at-the-ropes is a fixed-duration stun cleared by a named
+      // timeout. If that timeout is ever cancelled without resetting the flag
+      // (e.g. a hit interrupting the ropes stun), the movement gate would stay
+      // blocked forever. Force-expire the flag once its duration has elapsed so
+      // an orphaned at-the-ropes can never permanently lock a player in place.
+      if (
+        player.isAtTheRopes &&
+        player.atTheRopesStartTime &&
+        now - player.atTheRopesStartTime >= AT_THE_ROPES_DURATION
+      ) {
+        player.isAtTheRopes = false;
+        player.atTheRopesStartTime = 0;
       }
 
       // FINAL GUARD: sanitize stamina once per tick per player before emit
@@ -3367,6 +3475,11 @@ function tick(delta) {
         player2: player2Delta,
         // Include flag so client knows this is a delta update
         isDelta: true,
+        // MASTERY Phase 5 (5.2): tells the client whether the assist-removal /
+        // legibility phase is live, so client-only continuous tells (speed
+        // spray + lean, posture-bar pulse, hidden-tech dust) render ONLY when
+        // the flag is on. With the flag off the client shows today's visuals.
+        masteryP5: MASTERY_P5_ASSISTS,
       });
     }
   }

@@ -142,13 +142,13 @@ export const getFighterPopFilter = (props) => {
   }
 
   if (props.$isAtTheRopes) {
-    return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7))`;
+    return `${base} drop-shadow(0 0 3px rgba(255, 55, 55, 0.9)) drop-shadow(0 0 1px rgba(255, 120, 120, 0.95))`;
   }
   // Clinch balance danger (<15 — every throw/pull/lift is now a kill): the
   // SAME red rim as at-the-ropes, deliberately. Both mean "you can die right
   // now", so they share one visual grammar instead of inventing a new color.
   if (props.$inClinch && props.$balanceDanger) {
-    return `${base} drop-shadow(0 0 8px rgba(255, 50, 50, 0.7))`;
+    return `${base} drop-shadow(0 0 3px rgba(255, 55, 55, 0.9)) drop-shadow(0 0 1px rgba(255, 120, 120, 0.95))`;
   }
   if (props.$isGrabBreaking) {
     return `${base} drop-shadow(0 0 8px rgba(0, 255, 128, 0.85))`;
@@ -168,6 +168,18 @@ export const getFighterPopFilter = (props) => {
   // still outranks it: "you can die" always wins the rim.
   if (props.$inClinch && props.$hasDeepGrip) {
     return `${base} drop-shadow(0 0 5px rgba(255, 194, 71, 0.55))`;
+  }
+  // MASTERY Phase 2 (2.1): BROKEN POSTURE — the "openable" tell. A pulsing
+  // magenta/violet stagger rim, distinct from the red danger and blue parry
+  // rims, readable from across the room. It sits below the danger/parry/grip
+  // states above (those mean "right now" outcomes and outrank the tell), and
+  // above the neutral offense rims. Only shown while the server-derived
+  // isPostureBroken flag is set (Phase 2 flag off ⇒ always false ⇒ never shown).
+  if (props.$isPostureBroken) {
+    // Tight double rim (mirrors the perfect-parry gold rim's crispness): a
+    // defined magenta/violet contour hugging the silhouette, NOT a wide glow
+    // cloud. Bright but small-radius so it reads premium, not cheap.
+    return `${base} drop-shadow(0 0 3px rgba(214, 92, 255, 0.9)) drop-shadow(0 0 1px rgba(240, 170, 255, 0.95))`;
   }
   if (props.$isGrabPushing) {
     return `${base} drop-shadow(0 0 4px rgba(255, 150, 50, 0.5))`;
@@ -193,6 +205,10 @@ export const getFighterPopFilter = (props) => {
       tier === "cinematic" ? "drop-shadow(0 0 18px rgba(255, 220, 100, 1)) drop-shadow(0 0 32px rgba(255, 200, 80, 0.55))"
       : tier === "charged" ? "drop-shadow(0 0 12px rgba(255, 235, 160, 0.9))"
       : tier === "burst"   ? "drop-shadow(0 0 9px rgba(255, 230, 140, 0.78))"
+      // MASTERY Phase 3 (tsuppari cadence): crisp white/cyan hand-flash for a
+      // rhythm-timed enhanced slap — reads "precise", distinct from the warm
+      // gold "I scored" confirm.
+      : tier === "cadence" ? "drop-shadow(0 0 9px rgba(220, 250, 255, 0.95)) drop-shadow(0 0 15px rgba(150, 225, 255, 0.6))"
       :                       "drop-shadow(0 0 6px rgba(255, 245, 220, 0.62))";
     return `${base} ${glow}`;
   }

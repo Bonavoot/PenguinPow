@@ -15,10 +15,15 @@ const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
         CLINCH_THROW_LAND_THRESHOLD, CLINCH_THROW_KILL_THRESHOLD,
         DEEP_GRIP_THROW_THRESHOLD_BONUS,
         FLAP_IMPULSE, FLAP_FLAP_H_IMPULSE, FLAP_CHARGE_COOLDOWN_MS, FLAP_STAMINA_COST,
+        SLAP_TOTAL_MS, CADENCE_WINDOW_MS,
+        CPU_CADENCE_EASY, CPU_CADENCE_NORMAL, CPU_CADENCE_HARD, CPU_CADENCE_IMPOSSIBLE,
         BALANCE_MAX } = require("./constants");
 const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
         canPlayerSidestep, getSidestepInitData, simNowForPlayer,
-        beginFlapStartup } = require("./gameUtils");
+        logVerbInitiation, beginFlapStartup } = require("./gameUtils");
+
+// MASTERY OVERHAUL feature flags (Phase 1: momentum, Phase 2: posture, Phase 3: cadence).
+const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P3_CADENCE } = require("./masteryFlags");
 
 // Map boundaries - MUST match gameUtils.js (340 and 940)
 const MAP_LEFT_BOUNDARY = 340;
@@ -322,6 +327,37 @@ let DIFF = resolveDifficulty("HARD");
 // Resolved difficulty KEY (name) for the current CPU — used by logic that varies
 // by tier name rather than by profile field (e.g. top-band convergence).
 let DIFF_KEY = "HARD";
+
+// MASTERY Phase 1 (1.7): momentum entries are a HARD+ competence only — EASY /
+// NORMAL keep pressing flat-footed as today (difficulty firewall: the overhaul
+// raises the ceiling, not the floor).
+function isHardPlusTier() {
+  return DIFF_KEY === "HARD" || DIFF_KEY === "IMPOSSIBLE";
+}
+
+// MASTERY Phase 2 (2.5): "hunt broken posture". When the opponent's posture is
+// broken, the CPU leans harder into the CONVERSION it's built for — a grappler
+// hunts the yotsu grab, a pusher hunts the oshi edge-thrust — turning the
+// striking setup into a kill. EASY ignores posture entirely (difficulty
+// firewall: the overhaul raises the ceiling, not the floor). Non-archetype
+// (VS CPU) rikishi still get a modest general boost so both paths appear at
+// HARD. Flag off / posture intact ⇒ multiplier 1 (byte-identical).
+function isHuntingBrokenPosture(human) {
+  return (
+    MASTERY_P2_POSTURE &&
+    !!human &&
+    human.isPostureBroken === true &&
+    DIFF_KEY !== "EASY"
+  );
+}
+function postureHuntGrabMult(human) {
+  if (!isHuntingBrokenPosture(human)) return 1;
+  return PERS_KEY === "grappler" ? 1.5 : 1.25;
+}
+function postureHuntPalmMult(human) {
+  if (!isHuntingBrokenPosture(human)) return 1;
+  return PERS_KEY === "pusher" ? 1.5 : 1.25;
+}
 
 // ── PHASE 3.3: CORNER-ANSWER MENU (spec 3.3.3) ──────────────────────────────
 // Replaces "always flee". When the CPU commits a corner decision it rolls this
@@ -2228,8 +2264,14 @@ function handlePalmUsage(cpu, human, aiState, currentTime, distance) {
     ? human.x - MAP_LEFT_BOUNDARY
     : MAP_RIGHT_BOUNDARY - human.x;
   const opponentInFront = cpu.facing === 1 ? human.x < cpu.x : human.x > cpu.x;
+  // MASTERY Phase 2 (2.5): hunt broken posture with the oshi edge-thrust (pusher
+  // ×1.5). Chance is clamped so the boosted value can't exceed 1.
+  const edgeFinishChance = Math.min(
+    1,
+    AI_CONFIG.PALM_EDGE_FINISH_CHANCE * postureHuntPalmMult(human)
+  );
   if (opponentInFront && opponentFrontEdgeDist <= SLAP_KILL_RANGE &&
-      distance < AI_CONFIG.MID_RANGE && chance(AI_CONFIG.PALM_EDGE_FINISH_CHANCE)) {
+      distance < AI_CONFIG.MID_RANGE && chance(edgeFinishChance)) {
     if (tryPalmThrust(cpu, human, aiState, currentTime, distance, 'edge')) return true;
   }
 
@@ -2358,7 +2400,7 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
   if (distance < AI_CONFIG.SLAP_RANGE && canAttack(cpu)) {
     // Smart grab decision: if opponent low stamina, grab is almost guaranteed win via push
     const opponentLowStamina = human.stamina < AI_CONFIG.LOW_STAMINA_THRESHOLD;
-    const grabChance = opponentLowStamina ? 0.60 : 0.40;
+    const grabChance = (opponentLowStamina ? 0.60 : 0.40) * postureHuntGrabMult(human);
     
     if (roll < grabChance * aggMult.grab && canGrab(cpu)) {
       const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
@@ -2737,7 +2779,7 @@ function handleCloseRange(cpu, human, aiState, currentTime, distance) {
   
   // GRABS when opponent is near edge — especially with low stamina
   if (isOpponentNearEdge(human) && canGrab(cpu)) {
-    const grabChance = opponentLow ? 0.55 : 0.40;
+    const grabChance = (opponentLow ? 0.55 : 0.40) * postureHuntGrabMult(human);
     if (roll < grabChance * aggMult.grab) {
       const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
       if (result) {
@@ -2748,7 +2790,7 @@ function handleCloseRange(cpu, human, aiState, currentTime, distance) {
   }
   
   // MID-SCREEN GRABS — use them more often but not always (must be point-blank)
-  if (roll < 0.22 * aggMult.grab && canGrab(cpu)) {
+  if (roll < 0.22 * aggMult.grab * postureHuntGrabMult(human) && canGrab(cpu)) {
     const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
     if (result) {
       aiState.lastActionType = "grab";
@@ -2805,10 +2847,44 @@ function handleMidRange(cpu, human, aiState, currentTime, distance) {
   const roll = Math.random();
   const aggMult = getAggressionMultiplier(aiState);
   const opponentLow = human.stamina < AI_CONFIG.LOW_STAMINA_THRESHOLD;
+
+  // MASTERY Phase 1 (1.7): momentum entries at HARD+. In the 160–260px footsie
+  // band, a flat-footed slap now wastes the phase's whole point — so instead of
+  // pressing from a standstill, the CPU first GENERATES momentum (dash-in when
+  // available, else a committed walk-in) so the slap it throws next cycle
+  // inherits real slide/knockback. Once it's already moving (velocity built up),
+  // it falls through to the normal offense below and slaps WITH that momentum.
+  // Gated to HARD+ (EASY/NORMAL press flat as today) and behind the flag ⇒
+  // flag off / EASY / NORMAL are byte-identical.
+  if (
+    MASTERY_P1_MOMENTUM &&
+    isHardPlusTier() &&
+    distance >= 160 && distance <= 260 &&
+    Math.abs(cpu.movementVelocity || 0) < 0.5 &&
+    canAttack(cpu)
+  ) {
+    const dirToOpponent = getDirectionToOpponent(cpu, human);
+    if (canDodge(cpu) && chance(0.5)) {
+      // Dash-in: the biggest runway-free momentum generator (walk→dodge→slap).
+      cpu.keys.shift = true;
+      if (dirToOpponent === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      aiState.shiftReleaseTime = currentTime + 80;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "momentum_dash_in";
+      return;
+    }
+    // Walk-in: build ground speed for a momentum slap on the next cycle.
+    if (dirToOpponent === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "momentum_walk_in";
+    return;
+  }
   
   // MID-SCREEN GRABS — walk into range, then grab
   if (distance < AI_CONFIG.GRAB_APPROACH_RANGE && canGrab(cpu)) {
-    const grabChance = opponentLow ? 0.35 : AI_CONFIG.GRAB_MID_SCREEN_CHANCE;
+    const grabChance = (opponentLow ? 0.35 : AI_CONFIG.GRAB_MID_SCREEN_CHANCE) * postureHuntGrabMult(human);
     if (roll < grabChance * aggMult.grab) {
       const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
       if (result) {
@@ -2982,6 +3058,84 @@ function handleMovement(cpu, human, aiState, currentTime, distance) {
   }
 }
 
+// MASTERY Phase 3 (tsuppari cadence) — the fraction of a CPU's follow-up slaps
+// timed INTO the cadence window, by difficulty tier (cross-phase CPU table:
+// EASY 0 / NORMAL 25 / HARD 60 / IMPOSSIBLE 92). EASY never cadences — the
+// overhaul raises the ceiling, not the floor (difficulty firewall). DIFF_KEY is
+// always one of the four band names (discrete tier or BASHO ladder band).
+function cpuCadenceFraction() {
+  switch (DIFF_KEY) {
+    case "EASY": return CPU_CADENCE_EASY;
+    case "NORMAL": return CPU_CADENCE_NORMAL;
+    case "IMPOSSIBLE": return CPU_CADENCE_IMPOSSIBLE;
+    case "HARD":
+    default: return CPU_CADENCE_HARD;
+  }
+}
+
+// While the CPU is mid-slap, SCHEDULE its next M1 press. For a tier-dependent
+// fraction of cycles the buffered press is timed to land near cycle end (gap ≤
+// CADENCE_WINDOW_MS → enhanced follow-up, graded by endSlapCycle exactly like a
+// human's); otherwise it buffers early (mash → normal). This reuses the human
+// buffer path (pendingSlapCount + pendingSlapPressTime) so there is ONE cadence
+// code path, judged on the sim clock. Fully gated on MASTERY_P3_CADENCE: with
+// the flag off the CPU never buffers here and keeps today's fresh-press slap
+// chaining, so VS CPU / BASHO are byte-identical.
+function scheduleCpuCadence(cpu, human, currentTime) {
+  if (!MASTERY_P3_CADENCE || !human) return;
+  const aiState = getAIState(cpu.id);
+
+  // Only during our OWN active slap.
+  if (!cpu.isAttacking || cpu.attackType !== "slap") {
+    aiState.cadenceCycleKey = 0;
+    return;
+  }
+
+  const cycleKey = cpu.attackStartTime || 0;
+  if (aiState.cadenceCycleKey !== cycleKey) {
+    // First look at this slap cycle — decide once whether to continue the
+    // tsuppari and, if so, whether THIS follow-up is timed into the window.
+    aiState.cadenceCycleKey = cycleKey;
+    aiState.cadenceBuffered = false;
+    aiState.cadenceBufferAt = 0;
+
+    const distance = Math.abs(cpu.x - human.x);
+    const wantContinue =
+      distance < AI_CONFIG.SLAP_RANGE + 30 &&
+      cpu.stamina > SLAP_ATTACK_STAMINA_COST &&
+      !human.isDead &&
+      !human.isRawParrying; // don't tsuppari straight into a held parry
+
+    if (wantContinue) {
+      const cycleEnd = cpu.attackCooldownUntil || (currentTime + SLAP_TOTAL_MS);
+      if (Math.random() < cpuCadenceFraction()) {
+        // In-window: land the buffered press inside the last CADENCE_WINDOW_MS,
+        // with a small pad on each side so 16ms tick granularity + the +0 whiff
+        // extension don't push it out of the window.
+        const jitter = randomInRange(8, Math.max(9, CADENCE_WINDOW_MS - 12));
+        aiState.cadenceBufferAt = cycleEnd - jitter;
+      } else {
+        // Mash: buffer early so the gap exceeds the window (normal slap).
+        aiState.cadenceBufferAt = currentTime + randomInRange(0, 25);
+      }
+    }
+  }
+
+  // Release the scheduled buffer once its moment arrives (once per cycle). This
+  // is the CPU's "press" — endSlapCycle fires it and grades the gap.
+  if (
+    aiState.cadenceBufferAt > 0 &&
+    !aiState.cadenceBuffered &&
+    currentTime >= aiState.cadenceBufferAt &&
+    !cpu.isInStartupFrames &&
+    (cpu.pendingSlapCount || 0) < 1
+  ) {
+    cpu.pendingSlapCount = 1;
+    cpu.pendingSlapPressTime = currentTime;
+    aiState.cadenceBuffered = true;
+  }
+}
+
 // Process CPU inputs and trigger actions
 function processCPUInputs(cpu, opponent, room, gameHelpers) {
   if (!cpu || !cpu.isCPU || !cpu.keys) return;
@@ -3025,7 +3179,13 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   }
   
   const currentTime = simNowForPlayer(cpu);
-  
+
+  // MASTERY Phase 3: schedule/release the CPU's cadence-timed follow-up slap. Runs
+  // BEFORE the shouldBlockAction early-return below (which fires during our own
+  // active slap) so it can buffer the next press mid-cycle. No-op with the flag
+  // off (byte-identical CPU behavior).
+  scheduleCpuCadence(cpu, opponent, currentTime);
+
   const shouldBlockAction = (allowThrowFromGrab = false) => {
     if (cpu.isAttacking) return true;
     if (cpu.isInStartupFrames) return true;
@@ -3156,9 +3316,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.isPerfectRawParrySuccess = false;
     clearChargeState(cpu, true);
 
-    if (cpu.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER) {
-      cpu.hitAbsorptionUsed = false;
-    }
+    // Refresh Thick Blubber absorb per grab attempt (grabs-only; no-op without blubber).
+    cpu.hitAbsorptionUsed = false;
     
     cpu.lastGrabAttemptTime = currentTime;
     cpu.isGrabStartup = true;
@@ -3169,6 +3328,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.actionLockUntil = currentTime + GRAB_STARTUP_DURATION_MS;
     cpu.grabState = "attempting";
     cpu.grabAttemptType = "grab";
+    // MASTERY Phase 0 telemetry — signed entry velocity at grab press.
+    logVerbInitiation(room, cpu, "grab", cpu.movementVelocity);
     cpu.grabApproachSpeed = Math.abs(cpu.movementVelocity);
     cpu.movementVelocity = 0;
     cpu.isStrafing = false;
@@ -3229,6 +3390,9 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.isRawParrySuccess = false;
     cpu.isPerfectRawParrySuccess = false;
     clearChargeState(cpu, true);
+    // MASTERY Phase 1: capture carried speed before zeroing (dodge landing
+    // blends it, gated by MASTERY_P1_MOMENTUM in index.js).
+    cpu.dodgeEntrySpeed = Math.abs(cpu.movementVelocity);
     cpu.movementVelocity = 0;
     cpu.isStrafing = false;
     cpu.isPowerSliding = false;

@@ -20,7 +20,6 @@ import SlapParryEffect from "./SlapParryEffect";
 import ChargeClashEffect from "./ChargeClashEffect";
 import { useParticles } from "../particles/ParticleContext";
 import StarStunEffect from "./StarStunEffect";
-import ThickBlubberEffect from "./ThickBlubberEffect";
 import GrabBreakEffect from "./GrabBreakEffect";
 import GrabTechEffect from "./GrabTechEffect";
 import ClinchJoltEffect from "./ClinchJoltEffect";
@@ -305,6 +304,12 @@ function useRecoloredCloneSrc(baseSrc, ownerColor, ownerBodyColor) {
 // a previous match can never leak into a new one.
 // =====================================================================
 const sharedFighterState = { player1: null, player2: null, lastPacket: null };
+
+// MASTERY Phase 5 (5.2): the server stamps `masteryP5` on every state packet so
+// the client knows whether the assist-removal / legibility phase is live. Client
+// ONLY continuous tells (speed-spray + lean, posture-bar pulse, hidden-tech dust)
+// read this so they render nothing with the flag off — today's visuals unchanged.
+let masteryP5Live = false;
 
 // True while the flap power-up owns the player (startup, flight, or landing).
 // Uses flapPhase as a backstop when isFlapping is missing from a delta tick.
@@ -1645,15 +1650,9 @@ const GameFighter = ({
   const snowballRafRef = useRef(null);
   const [allPumoArmies, setAllPumoArmies] = useState([]);
 
-  const [thickBlubberEffect, setThickBlubberEffect] = useState({
-    isActive: false,
-    x: 0,
-    y: 0,
-  });
-  const [thickBlubberIndicator, setThickBlubberIndicator] = useState(false);
-  // (Sprite tint for grab-armor absorb intentionally removed — the
-  // particle VFX alone communicates the absorb; tinting the body
-  // washed the player out and competed with the ring's own color.)
+  // Thick Blubber absorb VFX is now the pink "wrap ring" (grab_armor_absorb
+  // handler / grabArmorAbsorb particle) — no per-fighter effect state and no
+  // body tint needed.
   const [disconnectCountdown, setDisconnectCountdown] = useState(3);
   const [uiRoundId, setUiRoundId] = useState(0);
 
@@ -2353,6 +2352,9 @@ const GameFighter = ({
       const player1Data = sharedFighterState.player1;
       const player2Data = sharedFighterState.player2;
 
+      // MASTERY Phase 5: latch the phase flag from the packet (constant per match).
+      if (typeof data.masteryP5 === "boolean") masteryP5Live = data.masteryP5;
+
       // Always update ref (read by counter-grab positioning etc.)
       allPlayersDataRef.current.player1 = player1Data;
       allPlayersDataRef.current.player2 = player2Data;
@@ -2584,6 +2586,8 @@ const GameFighter = ({
           prev.isArmClamped !== newState.isArmClamped ||
           prev.clinchThrowFailStagger !== newState.clinchThrowFailStagger ||
           prev.hasDeepGrip !== newState.hasDeepGrip ||
+          // MASTERY Phase 2 (2.1): broken-posture tell drives the stagger rim.
+          prev.isPostureBroken !== newState.isPostureBroken ||
           // Balance threshold crossings (throwable <=50, kill zone <15) drive the
           // clinch wobble/stagger animations — balance is ALWAYS_SEND so a plain
           // value compare would re-render every packet; compare zone membership.
@@ -2739,6 +2743,10 @@ const GameFighter = ({
           let tier = "slap";
           if (data.attackType === "charged") tier = "charged";
           if (data.cinematicKill) tier = "cinematic";
+          // MASTERY Phase 3: a rhythm-timed (enhanced) slap flashes a crisp
+          // white hand-flash instead of the warm gold confirm — the visible tell
+          // that pairs with the rising-pitch crack.
+          if (data.isCadence && tier === "slap") tier = "cadence";
           setAttackerConfirmTier(tier);
           if (attackerConfirmTimeoutRef.current) {
             clearTimeout(attackerConfirmTimeoutRef.current);
@@ -2765,7 +2773,10 @@ const GameFighter = ({
               0.8 + Math.min((data.chargePercentage || 0) / 100, 1) * 0.45;
             addShake("charged_hit", { scale: chargeScale, dirX: shakeDir });
           } else {
-            addShake("slap_hit", { dirX: shakeDir });
+            // MASTERY Phase 5 (5.2): a momentum hit (dash-in / carried speed)
+            // punches the camera harder than a flat-footed slap. Server-gated ⇒
+            // scale is 1 (today) with the flag off.
+            addShake("slap_hit", { dirX: shakeDir, scale: data.momentumHit ? 1.4 : 1 });
           }
         }
 
@@ -2786,6 +2797,27 @@ const GameFighter = ({
               playSound(baseSound, 0.022, null, 0.78, pan);
             } else if (data.isPunish) {
               playSound(baseSound, 0.020, null, 1.32, pan);
+            }
+            // MASTERY Phase 3 (tsuppari cadence): an enhanced (rhythm-timed) slap
+            // layers a sharper, higher "crack" whose pitch RISES with each
+            // consecutive enhanced slap — the crowd can HEAR a good player's
+            // tsuppari. Reuses the same sample at a climbing rate (capped) so it
+            // reads as belonging to the hit. Falls back to silent (isCadence
+            // false) with the flag off.
+            if (data.isCadence) {
+              const chain = Math.max(1, data.cadenceChain || 1);
+              const cadenceRate = Math.min(1.35 + (chain - 1) * 0.12, 1.9);
+              playSound(baseSound, 0.03, null, cadenceRate, pan);
+            }
+            // MASTERY Phase 5 (5.2): a momentum hit adds a faint, pitched-DOWN
+            // SUB-layer so a big-momentum slap FEELS heavier — kept well under the
+            // base hit so it reads as added weight, NOT a second hit (a near-base
+            // replay of the same sample flams into an audible "double" on the
+            // frequent momentum slaps). Braked knockback stays a VISUAL-only tell
+            // (the dig-in skid below) — replaying the hit sample here was the
+            // other half of the doubling. Server-gated ⇒ silent with the flag off.
+            if (data.momentumHit) {
+              playSound(baseSound, 0.012, null, 0.6, pan);
             }
           } else {
             const baseSound = pickRandomSound(chargedHitSounds);
@@ -2820,6 +2852,7 @@ const GameFighter = ({
             isPunish: data.isPunish || false,
             isArmorBreak: data.isArmorBreak || false,
             isPowered: data.isPowered || false,
+            isCadence: data.isCadence || false,
             cinematicKill: data.cinematicKill || false,
             cinematicHitstopMs: data.cinematicKill ? 550 : 0,
           });
@@ -2890,6 +2923,17 @@ const GameFighter = ({
             y: data.y,
             dir: skidDir,
           });
+          // MASTERY Phase 5 (5.2): a momentum hit throws a second, heavier skid
+          // (more ground visibly lost); a braked hit kicks the chips BACK toward
+          // the incoming shove ("dig-in" against it). Both reuse the existing
+          // skid preset and only fire on server-gated flags ⇒ nothing extra with
+          // the flag off.
+          if (data.momentumHit) {
+            emitParticles("slapSkidDust", { x: data.x + skidDir * 6, y: data.y, dir: skidDir });
+          }
+          if (data.braked) {
+            emitParticles("slapSkidDust", { x: data.x, y: data.y, dir: -skidDir });
+          }
         }
 
         // Arm the victim hitstop judder on THIS fighter's instance (cinematic
@@ -3016,7 +3060,7 @@ const GameFighter = ({
 
     let handleGrabBreak, handleGrabTech, handleClinchTech, handleCounterGrab,
     handleStaminaBlocked, handleClinchCallout, handleClinchThrowFail,
-    handleDeepGrip;
+    handleDeepGrip, handlePostureBreak;
     if (index === 0) {
       handleGrabBreak = (data) => {
         if (
@@ -3124,6 +3168,17 @@ const GameFighter = ({
         });
       };
       socket.on("deep_grip", handleDeepGrip);
+
+      // MASTERY Phase 2 (2.1): posture-crack SFX on the break edge — the audible
+      // half of the broken-posture "openable" tell (the visual half is the
+      // magenta stagger rim driven by isPostureBroken). Fires once per break,
+      // panned to the staggered fighter. Server only emits this behind the
+      // MASTERY_P2_POSTURE flag, so it's silent when the phase is off.
+      handlePostureBreak = (data) => {
+        if (!data) return;
+        playSound(stunnedSound, 0.03, null, 0.85, xToPan(data.x));
+      };
+      socket.on("posture_break", handlePostureBreak);
 
       // NOTE: counter-hit and punish side banners are no longer separate socket
       // events — they're folded into the player_hit handler above (which fires
@@ -3454,6 +3509,7 @@ const GameFighter = ({
         socket.off("clinch_callout", handleClinchCallout);
         socket.off("clinch_throw_fail", handleClinchThrowFail);
         socket.off("deep_grip", handleDeepGrip);
+        socket.off("posture_break", handlePostureBreak);
       }
       socket.off("snowball_hit", handleSnowballHit);
       socket.off("gyoji_call", handleGyojiCall);
@@ -4748,29 +4804,6 @@ const GameFighter = ({
   // of useCamera's --cam-x/y/-rot output, so there's a single coherent motion
   // and the HUD still stays rock-steady (only .game-scene is transformed).
 
-  // Update thick blubber indicator based on actual game state
-  // Only show during grab startup/lunge, NOT during the full grab hold/clinch
-  const shouldShowThickBlubberIndicator = useMemo(() => {
-    const isInGrabLunge = penguin.isGrabStartup || penguin.isGrabbingMovement;
-    return (
-      penguin.activePowerUp === "thick_blubber" &&
-      ((penguin.isAttacking && penguin.attackType === "charged") ||
-        isInGrabLunge) &&
-      !penguin.hitAbsorptionUsed
-    );
-  }, [
-    penguin.activePowerUp,
-    penguin.isAttacking,
-    penguin.attackType,
-    penguin.hitAbsorptionUsed,
-    penguin.isGrabStartup,
-    penguin.isGrabbingMovement,
-  ]);
-
-  useEffect(() => {
-    setThickBlubberIndicator(shouldShowThickBlubberIndicator);
-  }, [shouldShowThickBlubberIndicator]);
-
   const [isCinematicKillAttacker, setIsCinematicKillAttacker] = useState(false);
 
   // Attacker-side hit-confirm: brief golden flash on the *attacker's* sprite when their
@@ -4806,28 +4839,6 @@ const GameFighter = ({
   // MEMORY FIX: Track timeouts so we can clear them on unmount (prevents setState after unmount)
   useEffect(() => {
     const pendingTimeouts = [];
-
-    const handleThickBlubber = (data) => {
-      if (data.playerId === player.id) {
-        setThickBlubberEffect({
-          isActive: true,
-          x: data.x,
-          y: data.y,
-        });
-
-        playSound(thickBlubberSound, 0.01);
-
-        const id = setTimeout(() => {
-          setThickBlubberEffect({
-            isActive: false,
-            x: 0,
-            y: 0,
-          });
-        }, 50);
-        pendingTimeouts.push(id);
-      }
-    };
-    socket.on("thick_blubber_absorption", handleThickBlubber);
 
     const handleRingOut = () => {
       addShake("ring_out");
@@ -5146,7 +5157,6 @@ const GameFighter = ({
       // change) the scheduled unfreeze timeout above is cleared, so make sure
       // the engine never gets stranded in its frozen state.
       if (index === 0) setFrozen(false);
-      socket.off("thick_blubber_absorption", handleThickBlubber);
       socket.off("ring_out", handleRingOut);
       socket.off("cinematic_kill", handleCinematicKill);
       socket.off("clinch_kill_throw", handleClinchKillThrow);
@@ -5526,10 +5536,11 @@ const GameFighter = ({
   // player out. `useArmorTint` is kept as a constant `false` so the
   // shared sprite-recolor pipeline below doesn't need to change.
   const useArmorTint = false;
-  // Suppress blubber tint during both flash and red-tint frames so the
-  // damage-state visuals win cleanly over passive power-up tinting.
-  const useBlubberTint =
-    thickBlubberIndicator && !showHitTintThisFrame && !showHitFlashThisFrame;
+  // Thick Blubber no longer tints the body purple. The absorb is communicated
+  // entirely by the pink "wrap ring" VFX (see grab_armor_absorb handler), so
+  // this is kept as a constant `false` — the shared sprite-recolor pipeline
+  // below is untouched.
+  const useBlubberTint = false;
 
   // Get sprite render info (handles animated spritesheets and recoloring).
   // `renderHitTint` (NOT raw showHitTintThisFrame) is passed for the red tint
@@ -5746,6 +5757,9 @@ const GameFighter = ({
     $clinchThrowFailStagger: penguin.clinchThrowFailStagger,
     $inClinch: penguin.inClinch,
     $hasDeepGrip: penguin.hasDeepGrip,
+    // MASTERY Phase 2 (2.1): broken-posture stagger rim (server-derived tell;
+    // false when the Phase 2 flag is off).
+    $isPostureBroken: penguin.isPostureBroken,
     $balanceDanger: (penguin.balance ?? 100) < 15,
     $balanceWobble: (penguin.balance ?? 100) <= 50,
     $isCinematicKillAttacker: isCinematicKillAttacker,
@@ -5841,6 +5855,11 @@ const GameFighter = ({
               player1Balance: allPlayersData.player1?.balance ?? 100,
               player1BalanceGain: p1BalanceGain,
               player1HasDeepGrip: !!allPlayersData.player1?.hasDeepGrip,
+              // MASTERY Phase 5 (5.2): the posture bar PULSES when broken so the
+              // "openable" tell reads on the HUD too. Gated on the phase flag ⇒
+              // no pulse with the flag off (server drives isPostureBroken).
+              player1PostureBroken:
+                masteryP5Live && !!allPlayersData.player1?.isPostureBroken,
               player2Stamina: allPlayersData.player2?.stamina ?? 100,
               player2ActivePowerUp: isBashoMatch
                 ? bashoOpponentActive
@@ -5859,6 +5878,8 @@ const GameFighter = ({
               player2Balance: allPlayersData.player2?.balance ?? 100,
               player2BalanceGain: p2BalanceGain,
               player2HasDeepGrip: !!allPlayersData.player2?.hasDeepGrip,
+              player2PostureBroken:
+                masteryP5Live && !!allPlayersData.player2?.isPostureBroken,
             };
 
             if (isBashoMatch) {
@@ -6215,11 +6236,6 @@ const GameFighter = ({
       {index === 0 && noStaminaEffectKey > 0 && (
         <NoStaminaEffect showEffect={noStaminaEffectKey} />
       )}
-      <ThickBlubberEffect
-        x={thickBlubberEffect.x}
-        y={thickBlubberEffect.y}
-        isActive={thickBlubberEffect.isActive}
-      />
       {index === 0 && <ThrowTechEffect />}
       {countdown > 0 &&
         !hakkiyoi &&

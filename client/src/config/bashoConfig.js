@@ -117,7 +117,16 @@ export const LOADOUT_OPTIONS = {
     },
   ],
   movement: [],
-  grappling: [],
+  grappling: [
+    {
+      id: "thick_blubber",
+      label: "Thick Blubber",
+      kanji: "脂",
+      cost: 1,
+      unlock: "loadout_thick_blubber",
+      desc: "Your grab shrugs off one hit during its startup — a single slap, palm, or charged blow that would stuff the grab is absorbed instead, letting the grab complete. Refreshes every grab attempt. Grabs only: it does NOT protect your palm thrust or charged attacks. The read-grab specialist's answer to a jabby opponent.",
+    },
+  ],
   shinto: [],
 };
 
@@ -195,6 +204,14 @@ export const UNLOCKS = [
     cost: 150,
     desc: "Unlock Shatter Palm: palm thrust breaks grab startup armor like a charged attack.",
   },
+  {
+    id: "loadout_thick_blubber",
+    label: "Thick Blubber",
+    sub: "Grappling Sidegrade",
+    kanji: "脂",
+    cost: 150,
+    desc: "Unlock Thick Blubber: your grab absorbs one hit during startup (refreshes every grab). Grabs only.",
+  },
 ];
 
 export const UNLOCK_BY_ID = UNLOCKS.reduce((acc, u) => {
@@ -217,21 +234,21 @@ export function isUnlocked(career, id) {
 
 /*
  * The pool the between-bout DAY-card draft rolls from. These are the existing
- * special power-ups MINUS Flap and Shatter Palm — those live in the
- * persistent loadout (Defense / Attack sidegrades), and the §5.4 "one-home
- * rule" keeps each effect in exactly ONE system (loadout OR draft). The exotic pool expands here in a dedicated
- * content pass — adding ids is data-only.
+ * special power-ups MINUS Flap, Shatter Palm, and Thick Blubber — those live in
+ * the persistent loadout (Defense / Attack / Grappling sidegrades), and the
+ * §5.4 "one-home rule" keeps each effect in exactly ONE system (loadout OR
+ * draft). The exotic pool expands here in a dedicated content pass — adding ids
+ * is data-only.
  *
- * Picks STACK for the whole run (reset each basho): passives multiply, Thick
- * Blubber adds an absorption charge, actives stack uses but only one active
- * type is kept at a time (picking a new active replaces the previous one).
+ * Picks STACK for the whole run (reset each basho): passives multiply, actives
+ * stack uses but only one active type is kept at a time (picking a new active
+ * replaces the previous one).
  */
 export const BASHO_DRAFT_POOL = [
   "speed",
   "power",
   "snowball",
   "pumo_army",
-  "thick_blubber",
 ];
 
 /**

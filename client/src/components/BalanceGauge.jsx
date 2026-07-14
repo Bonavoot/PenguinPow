@@ -6,6 +6,21 @@ import { C } from "./menuTheme";
 
 const GAUGE_HEIGHT = "clamp(16px, 2.2cqh, 22px)";
 
+/* MASTERY Phase 5 (5.2): broken-posture HUD pulse — a vermillion glow that
+ * breathes while posture is broken, so the "openable" tell reads on the bar as
+ * well as on the fighter. Only applied when the `broken` prop is set (which the
+ * HUD gates behind the phase flag), so with the flag off the bar is unchanged. */
+const posturePulse = keyframes`
+  0%, 100% {
+    filter: drop-shadow(0 0 2px rgba(226, 74, 42, 0.55));
+    transform: scale(1);
+  }
+  50% {
+    filter: drop-shadow(0 0 7px rgba(255, 96, 64, 0.95));
+    transform: scale(1.045);
+  }
+`;
+
 const GaugeShell = styled.div`
   flex: 1;
   min-width: 0;
@@ -13,6 +28,13 @@ const GaugeShell = styled.div`
   align-items: center;
   height: ${GAUGE_HEIGHT};
   position: relative;
+  transform-origin: ${(p) => (p.$isRight ? "right center" : "left center")};
+  ${(p) =>
+    p.$broken
+      ? css`
+          animation: ${posturePulse} 0.6s ease-in-out infinite;
+        `
+      : ""}
 `;
 
 const GaugeCanvas = styled.canvas`
@@ -28,7 +50,7 @@ const BalLabel = styled.div`
   font-size: clamp(7px, 0.82cqw, 10px);
   color: rgba(245, 236, 217, 0.72);
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
   line-height: 1;
   text-shadow:
     1px 1px 2px rgba(0, 0, 0, 1),
@@ -138,6 +160,7 @@ const BalanceGauge = ({
   balance = 100,
   isRight = false,
   danger = false,
+  broken = false,
   gainKey = 0,
   deepGripThreat = false,
   deepGripHold = false,
@@ -242,8 +265,8 @@ const BalanceGauge = ({
 
   return (
     <Strip $isRight={isRight}>
-      <BalLabel>BAL</BalLabel>
-      <GaugeShell ref={shellRef}>
+      <BalLabel>POSTURE</BalLabel>
+      <GaugeShell ref={shellRef} $broken={broken} $isRight={isRight}>
         <GaugeCanvas ref={canvasRef} aria-hidden="true" />
         {gripMode && (
           <DeepGripChip $mode={gripMode} $isRight={isRight}>
@@ -260,6 +283,7 @@ BalanceGauge.propTypes = {
   balance: PropTypes.number,
   isRight: PropTypes.bool,
   danger: PropTypes.bool,
+  broken: PropTypes.bool,
   gainKey: PropTypes.number,
   deepGripThreat: PropTypes.bool,
   deepGripHold: PropTypes.bool,

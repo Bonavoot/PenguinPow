@@ -32,6 +32,7 @@ const {
   beginFlapStartup,
   gameNow,
   simNowForPlayer,
+  logVerbInitiation,
   lagCompensatedParryStart,
 } = require("./gameUtils");
 
@@ -315,6 +316,9 @@ function processInputPacket(room, player, data, io, rooms) {
             player.pendingPalmThrust = true;
           } else if (player.pendingSlapCount < 1) {
             player.pendingSlapCount++;
+            // MASTERY Phase 3: stamp the queue moment (sim clock) — endSlapCycle
+            // reads it to grade cadence. Late & precise ⇒ enhanced follow-up.
+            player.pendingSlapPressTime = simNowForPlayer(player);
           }
         }
       } else {
@@ -462,7 +466,6 @@ function processInputPacket(room, player, data, io, rooms) {
     // Track "just pressed" state for all action keys to prevent actions from triggering
     // when keys are held through other actions (e.g., holding E during dodge then grabbing after)
     player.shiftJustPressed = !!rising.shift;
-    player.eJustPressed = !!rising.e;
     player.wJustPressed = !!rising.w;
     player.aJustPressed = !!rising.a;
     player.dJustPressed = !!rising.d;
@@ -729,6 +732,9 @@ function processInputPacket(room, player, data, io, rooms) {
         // current slap fires the next one at cycle end (each press is its own
         // slap; the follow-up is fully contestable).
         player.pendingSlapCount++;
+        // MASTERY Phase 3: stamp the queue moment (sim clock) — endSlapCycle
+        // reads it to grade cadence. Late & precise ⇒ enhanced follow-up.
+        player.pendingSlapPressTime = simNowForPlayer(player);
       }
     }
   }
@@ -1035,6 +1041,11 @@ function processInputPacket(room, player, data, io, rooms) {
 
     // Dodge cancels charging - clear charge state
     clearChargeState(player, true);
+
+    // MASTERY Phase 1: snapshot the speed carried into the dodge BEFORE it's
+    // zeroed — the dodge landing blends it into landing momentum (index.js,
+    // gated by MASTERY_P1_MOMENTUM). Travel itself stays fixed (104px).
+    player.dodgeEntrySpeed = Math.abs(player.movementVelocity);
 
     // Clear movement momentum for static dodge distance
     // Also cancels power slide - dodge is an escape option from slide
@@ -1351,10 +1362,12 @@ function processInputPacket(room, player, data, io, rooms) {
     // Clear charging attack state when starting grab
     clearChargeState(player, true); // true = cancelled by grab
 
-    // Reset hit absorption for thick blubber power-up when starting grab (like charged attack)
-    if (player.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER) {
-      player.hitAbsorptionUsed = false;
-    }
+    // Refresh the Thick Blubber absorb at the START of every grab attempt —
+    // one absorb per grab, unlimited grabs. Reset unconditionally: it's a no-op
+    // for players without blubber (hasHitAbsorption still gates on the power-up
+    // / loadout flag), and it lets BOTH the power-up and the BASHO grappling
+    // loadout ("thick_blubber") refresh per grab.
+    player.hitAbsorptionUsed = false;
 
     // Begin startup with forward lunge — tick loop applies lunge movement,
     // then does range check at the end → connect / whiff / tech
@@ -1366,6 +1379,10 @@ function processInputPacket(room, player, data, io, rooms) {
     player.actionLockUntil = simNowForPlayer(player) + GRAB_STARTUP_DURATION_MS;
     player.grabState = GRAB_STATES.ATTEMPTING;
     player.grabAttemptType = "grab";
+
+    // MASTERY Phase 0 telemetry — signed entry velocity at grab press, before
+    // the momentum below is captured/zeroed.
+    logVerbInitiation(room, player, "grab", player.movementVelocity);
 
     // Capture approach speed BEFORE clearing momentum (for momentum-transferred push)
     player.grabApproachSpeed = Math.abs(player.movementVelocity);

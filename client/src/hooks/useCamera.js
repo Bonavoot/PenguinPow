@@ -276,9 +276,13 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
 
     // Perfect parry: fire the dedicated heavy shake (trauma + zoom + roll).
     // Skipped during a kill cinematic so it can never step on the KO moment.
-    const onPerfectParry = () => {
+    const onPerfectParry = (data) => {
       if (cinematicRef.current.active) return;
-      addShake("perfect_parry");
+      // MASTERY Phase 4 (4.1): scale the heavy parry shake slightly with the
+      // timing quality (0..1). Undefined/0 (flag off, or window-edge parry) →
+      // scale 1 = today's shake.
+      const quality = typeof data?.quality === "number" ? data.quality : 0;
+      addShake("perfect_parry", { scale: 1 + quality * 0.3 });
       // Arm the micro-hitstop freeze-frame (held in the tick loop below).
       microFreezeUntilRef.current = performance.now() + PERFECT_PARRY_FREEZE_MS;
     };

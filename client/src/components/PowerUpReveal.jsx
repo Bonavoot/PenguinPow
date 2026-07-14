@@ -100,7 +100,7 @@ const TYPE_COLORS = {
   power: { main: "#ff4444", deep: "#7a1c1c" },
   snowball: { main: "#74b9ff", deep: "#2a4a78" },
   pumo_army: { main: "#ffaa44", deep: "#8a5418" },
-  thick_blubber: { main: "#aa77ff", deep: "#4a2c8a" },
+  thick_blubber: { main: "#ff5087", deep: "#a01f4a" },
   flap: { main: "#34e0c0", deep: "#15705f" },
   shatter_palm: { main: "#ffe566", deep: "#c99200" },
 };

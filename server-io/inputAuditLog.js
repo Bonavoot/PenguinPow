@@ -172,6 +172,39 @@ function appendInput(room, entry) {
   }
 }
 
+// Velocity-at-press telemetry (MASTERY Phase 0). Recorded on every attack/grab
+// initiation so we can histogram |movementVelocity| at press per verb (see
+// scripts/velocity-histogram.mjs) — this locates the momentum-curve knee for
+// Phase 1 and proves the before/after distribution shift. Written into the same
+// per-match JSONL stream, tagged `kind:"verbInit"` so the inspector/histogram
+// tools can filter it apart from raw input packets. No-op (and zero cost) when
+// audit logging is disabled or no stream is open.
+function appendVerbInit(room, entry) {
+  if (!AUDIT_ENABLED) return;
+  if (!room || !room.__auditStream) return;
+  try {
+    room.__auditStream.write(JSON.stringify({ kind: "verbInit", ...entry }) + "\n");
+  } catch (err) {
+    console.error("[inputAuditLog] verb telemetry write failed:", err.message);
+  }
+}
+
+// Win-type telemetry (MASTERY Phase 2 acceptance, 2.5). Logged on every round
+// win so the oshi (strike/edge kills) vs yotsu (clinch conversions) split can
+// be counted from the per-match JSONL — the spec wants to see BOTH paths used
+// (not a 90/10 collapse) once posture coupling is on. Tagged `kind:"winType"`
+// so it filters apart from raw input packets. No-op (and zero cost) when audit
+// logging is disabled or no stream is open.
+function appendWinType(room, entry) {
+  if (!AUDIT_ENABLED) return;
+  if (!room || !room.__auditStream) return;
+  try {
+    room.__auditStream.write(JSON.stringify({ kind: "winType", ...entry }) + "\n");
+  } catch (err) {
+    console.error("[inputAuditLog] winType telemetry write failed:", err.message);
+  }
+}
+
 // Idempotent close. Safe to call from multiple cleanup paths
 // (matchOver, opponent disconnect, full disconnect, room reset).
 function closeLog(room) {
@@ -195,6 +228,8 @@ if (AUDIT_ENABLED) {
 module.exports = {
   openLog,
   appendInput,
+  appendVerbInit,
+  appendWinType,
   closeLog,
   rotateLogs,
   LOG_DIR,

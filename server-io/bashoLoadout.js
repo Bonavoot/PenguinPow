@@ -28,11 +28,19 @@ function deriveLoadout(selected = {}) {
   const defense = Array.isArray(selected && selected.defense)
     ? selected.defense
     : [];
+  const grappling = Array.isArray(selected && selected.grappling)
+    ? selected.grappling
+    : [];
   return {
     // ATTACK sidegrade: palm thrust shatters grab startup armor (charged-style).
     palmBreaksGrabArmor: attack.includes("shattering_palm"),
     // DEFENSE sidegrade: swap the raw-parry-on-Space for the flight liftoff.
     flapReplacesParry: defense.includes("flap"),
+    // GRAPPLING sidegrade: Thick Blubber — your grab absorbs one hit during its
+    // startup (refreshed every grab attempt). Grabs-only; does not protect palm
+    // thrust or charged attacks. Read grabs-only inside hasHitAbsorption's call
+    // sites (collisionSystem / projectileUpdates).
+    thickBlubberGrabs: grappling.includes("thick_blubber"),
   };
 }
 

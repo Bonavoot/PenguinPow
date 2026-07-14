@@ -83,7 +83,7 @@ bout — see Section 5.*
 
 **Power-ups (drafted pre-bout, 1 of N):** `speed` (Happy Feet, 1.4× move), `power` (Power Water,
 1.3× knockback), `snowball` (projectile, limited throws), `pumo_army` (spawns slapping clones),
-`thick_blubber` (absorb 1 hit), `flap` (replaces parry with flight + body-slam). Defined in
+`thick_blubber` (grab absorbs 1 hit during startup, grabs-only, refreshes per grab — also a Grappling loadout option), `flap` (replaces parry with flight + body-slam). Defined in
 `server-io/constants.js`; selection flow in `client/src/components/PowerUpSelection.jsx` +
 `server-io/roomManagement.js`.
 

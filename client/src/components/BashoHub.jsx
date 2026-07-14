@@ -33,6 +33,7 @@ import pumo from "../assets/pumo-idle.png";
 import envelopeImg from "../assets/envelope.png";
 import flapIcon from "../assets/flap-icon.png";
 import shatterPalmIcon from "../assets/shatter-palm-icon.png";
+import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 import lobbyBackground from "../assets/lockerroom.webp";
 import {
   C,
@@ -167,6 +168,12 @@ const LOADOUT_OPTION_ICONS = {
     deep: "#c99200",
     imgSize: "86%",
     imgScale: 1.08,
+  },
+  thick_blubber: {
+    icon: thickBlubberIcon,
+    // Pink absorb-ring color (matches the Thick Blubber VFX + power-up icon).
+    main: "#ff5087",
+    deep: "#a01f4a",
   },
 };
 

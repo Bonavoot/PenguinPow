@@ -20,7 +20,13 @@ const {
   GASSED_DURATION_MS,
   POWER_UP_TYPES,
   MAX_MOVE_SPEED_MULT,
+  MOMENTUM_ENTRY_CLAMP,
+  MOMENTUM_WINDOW_MS,
 } = require("./constants");
+
+// Velocity-at-press telemetry sink (MASTERY Phase 0). appendVerbInit is a
+// no-op unless AUDIT_LOG is enabled, so this require adds no hot-path cost.
+const { appendVerbInit, AUDIT_ENABLED } = require("./inputAuditLog");
 
 // ============================================
 // EFFECTIVE MOVEMENT SPEED (single source of truth)
@@ -68,6 +74,10 @@ function hasHitAbsorption(player) {
   return (
     (player.activePowerUp === POWER_UP_TYPES.THICK_BLUBBER &&
       !player.hitAbsorptionUsed) ||
+    // BASHO "Thick Blubber" grappling loadout: one absorb per grab attempt
+    // (hitAbsorptionUsed is refreshed when a grab starts). Grabs-only is
+    // enforced at the call sites, same as the power-up.
+    (player.loadout?.thickBlubberGrabs === true && !player.hitAbsorptionUsed) ||
     (player.bashoBlubberRemaining ?? 0) > 0
   );
 }
@@ -103,6 +113,51 @@ function consumeHitAbsorption(player) {
 // Date.now() uses are intentionally wall-clock: emit payload timestamps/IDs,
 // input audit logs, sim-clock seeding, and the screen-shake emit throttle.
 const gameNow = () => Number(process.hrtime.bigint() / 1000000n);
+
+// ============================================================
+// MASTERY PHASE 1 — MOMENTUM INHERITANCE HELPER
+// ============================================================
+// Signed entry velocity aligned to a direction (+ = moving THAT way). `dir` is
+// ±1 (e.g. a slap's slideDirection, or a knockback direction negated to mean
+// "moving into the hit"). Clamped to the sane powerslide-capped sim bounds so a
+// runaway velocity can never blow up a blended distance. Pure/stateless — the
+// same helper backs slap slide inheritance, the on-hit ground transfer, and the
+// victim-side into/brace scaling. Callers gate on MASTERY_P1_MOMENTUM; with the
+// flag off this is never called, so the sim is unchanged.
+function alignedEntryVelocity(v, dir) {
+  const a = (v || 0) * dir;
+  return Math.max(-MOMENTUM_ENTRY_CLAMP, Math.min(a, MOMENTUM_ENTRY_CLAMP));
+}
+
+// ── MOMENTUM CARRY WINDOW ────────────────────────────────────────────────
+// Stamp the earned momentum from a dodge landing (or an active power slide) as
+// a short-lived, non-decaying carry so the NEXT slap inherits it RELIABLY —
+// independent of the exact tick the press lands on, and covering buffered
+// presses. Without this the inheritance reads the live (already-decaying) slide
+// velocity, so a dodge→slap only felt boosted on a frame-perfect click. Both
+// call sites are gated on MASTERY_P1_MOMENTUM, so with the flag off this is
+// never stamped or consumed.
+function stampMomentumWindow(player, signedVel, nowSim) {
+  player.momentumWindowVel = signedVel || 0;
+  player.momentumWindowUntil = nowSim + MOMENTUM_WINDOW_MS;
+}
+
+// Returns the SIGNED velocity a momentum-inheriting verb should treat as its
+// entry: whichever of the live velocity or the still-valid stamped carry has
+// the larger magnitude (so mid-slide presses use the live speed, and just-after
+// presses use the held carry the decaying slide dropped below). Consumes the
+// window so a single dodge/slide powers exactly ONE entry — an active slide
+// re-stamps every tick, so consecutive in-slide slaps still read the live speed.
+function takeInheritedVelocity(player, liveVel, nowSim) {
+  const live = liveVel || 0;
+  if (nowSim < (player.momentumWindowUntil || 0)) {
+    const carry = player.momentumWindowVel || 0;
+    player.momentumWindowUntil = 0;
+    player.momentumWindowVel = 0;
+    return Math.abs(carry) > Math.abs(live) ? carry : live;
+  }
+  return live;
+}
 
 // Game constants
 const MAP_LEFT_BOUNDARY = 340;
@@ -148,6 +203,30 @@ function simNowForPlayer(player) {
   const room =
     player && simRoomResolver ? simRoomResolver(player.id) : null;
   return room ? simNow(room) : Date.now();
+}
+
+// ============================================================
+// MASTERY PHASE 0 — VELOCITY-AT-PRESS TELEMETRY
+// ============================================================
+// Records one sample per attack/grab initiation:
+//   { verb, movementVelocity, x, opponentDistance, simTime }
+// `entryVelocity` is the SIGNED movementVelocity captured at the press moment,
+// BEFORE the verb zeroes/overwrites it (callers must snapshot it first). The
+// histogram of |movementVelocity| per verb (scripts/velocity-histogram.mjs)
+// tells us where the Phase 1 momentum curve's knee belongs. Purely
+// observational — never mutates state, and no-ops with zero cost when audit
+// logging is disabled.
+function logVerbInitiation(room, player, verb, entryVelocity) {
+  if (!AUDIT_ENABLED) return;
+  if (!room || !player) return;
+  const opponent = room.players.find((p) => p.id !== player.id);
+  appendVerbInit(room, {
+    verb,
+    movementVelocity: entryVelocity,
+    x: player.x,
+    opponentDistance: opponent ? Math.abs(player.x - opponent.x) : null,
+    simTime: simNowForPlayer(player),
+  });
 }
 
 // ============================================================
@@ -596,7 +675,11 @@ function clearAllActionStates(player) {
   player.attackType = null;
   player.spacebarReleasedDuringDodge = false;
   player.pendingSlapCount = 0;
+  player.pendingSlapPressTime = 0;
   player.pendingPalmThrust = false;
+  // MASTERY Phase 3: clearing attack state ends the tsuppari string.
+  player.isEnhancedSlap = false;
+  player.cadenceChain = 0;
   player.isSlapSliding = false;
   player.currentSlapHitConnected = false;
   player.isBurstKnockback = false;
@@ -707,6 +790,10 @@ function clearAllActionStates(player) {
   player.isCrouchStance = false;
   player.isCrouchStrafing = false;
   player.movementVelocity = 0;
+  // MASTERY Phase 1: getting hit / losing control forfeits any queued momentum
+  // carry — you can't cash a dodge-in into a slap after eating a hit.
+  player.momentumWindowVel = 0;
+  player.momentumWindowUntil = 0;
   // ICE PHYSICS: Clear sliding states
   player.isPowerSliding = false;
   player.isBraking = false;
@@ -719,6 +806,16 @@ function clearAllActionStates(player) {
   player.recoveryStartTime = 0;
   player.recoveryDuration = 0;
   player.recoveryDirection = null;
+
+  // End the at-the-ropes STUN. This is the movement/stun flag only — its clear
+  // is otherwise driven by a named 800ms timeout, and any transition that cancels
+  // that timeout (a hit landing on a player still at the ropes cancels it in
+  // processHit) would otherwise orphan the flag TRUE forever, permanently
+  // blocking the strafe gate. The facing LOCK (atTheRopesFacingDirection) is
+  // deliberately left intact — it's meant to persist through hits/ring-out until
+  // the player moves back inside the boundary or the round resets.
+  player.isAtTheRopes = false;
+  player.atTheRopesStartTime = 0;
   
   // Clear action lock
   player.currentAction = null;
@@ -877,7 +974,11 @@ function cancelPendingSlapWork(player) {
   player.slapCycleEndCallback = null;
 
   player.pendingSlapCount = 0;
+  player.pendingSlapPressTime = 0;
   player.pendingPalmThrust = false;
+  // MASTERY Phase 3: a flap (or other teardown) ends the tsuppari string.
+  player.isEnhancedSlap = false;
+  player.cadenceChain = 0;
   player.currentSlapHitConnected = false;
   player.isSlapSliding = false;
   player.slapFacingDirection = null;
@@ -1143,6 +1244,11 @@ module.exports = {
   // Monotonic clock helper
   gameNow,
 
+  // Mastery Phase 1 — momentum inheritance
+  alignedEntryVelocity,
+  stampMomentumWindow,
+  takeInheritedVelocity,
+
   // Thick Blubber hit absorption (single-slot power-up + BASHO stacked charges)
   hasHitAbsorption,
   consumeHitAbsorption,
@@ -1151,6 +1257,7 @@ module.exports = {
   setSimRoomResolver,
   simNow,
   simNowForPlayer,
+  logVerbInitiation,
   advanceRoomSimTime,
   lagCompensatedParryStart,
   // Classes and instances

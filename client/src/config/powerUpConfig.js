@@ -29,9 +29,9 @@ export const POWER_UP_TYPE_COLORS = {
     glow: "rgba(255, 170, 68, 0.45)",
   },
   thick_blubber: {
-    main: "#aa77ff",
-    deep: "#4a2c8a",
-    glow: "rgba(170, 119, 255, 0.45)",
+    main: "#ff5087",
+    deep: "#a01f4a",
+    glow: "rgba(255, 110, 165, 0.45)",
   },
   flap: {
     main: "#34e0c0",

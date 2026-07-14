@@ -1,6 +1,6 @@
 const {
   GRAB_RANGE,
-  GRAB_STARTUP_DURATION_MS, SLAP_ATTACK_STARTUP_MS,
+  SLAP_ATTACK_STARTUP_MS,
 } = require("./constants");
 
 function isOpponentCloseEnoughForGrab(player, opponent) {
@@ -21,14 +21,35 @@ function isOpponentInFrontOfGrabber(player, opponent) {
   return relativePos >= -BEHIND_TOLERANCE;
 }
 
-// First-to-active wins: grab vs slap is deterministic based on when each became active
-// Returns true if grab wins (grab became active before slap)
-function grabBeatsSlap(grabber, slapper) {
+// GRAB "SLIPS" SLAP — the anti-slap-spam read.
+//
+// Problem this solves: slap startup (55ms) is ~3x faster than grab startup
+// (165ms), so a "first-to-active" rule (the old grabBeatsSlap) meant a grab
+// could only win if it was committed ~110ms BEFORE the slap even began — which
+// is structurally impossible against continuous slap pressure (there is always
+// a slap going active inside your 165ms startup). Grabs therefore lost to any
+// slap spam and felt unusable.
+//
+// New rule: a grab that is ALREADY in startup when a slap's hitbox comes out
+// "slips" (evades) that slap — the slap whiffs, the grab startup survives and
+// connects. This is evasion, not the old free damage-absorb armor, so it never
+// eats a hit it shouldn't.
+//
+// Counterplay is preserved (it is NOT "grab always beats slap"):
+//   • A slap that was ALREADY ACTIVE before the grab began still connects —
+//     you can't grab your way out of a slap that is already landing. That is
+//     the `grabStartupStartTime <= slapActiveTime` guard below.
+//   • Reading the (readable, 165ms) grab and simply NOT slapping punishes the
+//     grab's long whiff recovery.
+//   • Charged and palm still break grab startup outright (separate branches).
+//
+// Returns true when the grab slips (beats) this slap.
+function grabSlipsSlap(grabber, slapper) {
   if (!grabber.grabStartupStartTime || !slapper.attackStartTime) return false;
-  const grabStartupMs = grabber.grabStartupDuration || GRAB_STARTUP_DURATION_MS;
-  const grabActiveTime = grabber.grabStartupStartTime + grabStartupMs;
   const slapActiveTime = slapper.attackStartTime + SLAP_ATTACK_STARTUP_MS;
-  return grabActiveTime < slapActiveTime;
+  // Grab began at or before the slap's hitbox came out → the slap is slipped.
+  // Grab began AFTER the slap was already active → the slap connects (stuffs).
+  return grabber.grabStartupStartTime <= slapActiveTime;
 }
 
 // NOTE: The legacy throw-tech system (checkForThrowTech / checkForGrabPriority /
@@ -39,5 +60,5 @@ function grabBeatsSlap(grabber, slapper) {
 module.exports = {
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
-  grabBeatsSlap,
+  grabSlipsSlap,
 };

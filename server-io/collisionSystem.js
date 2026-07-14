@@ -13,11 +13,28 @@ const {
   RAW_PARRY_KNOCKBACK, RAW_PARRY_SLAP_KNOCKBACK,
   RAW_PARRY_STAMINA_REFUND, RAW_PARRY_COOLDOWN_MS,
   PERFECT_PARRY_BALANCE_REFUND,
+  PERFECT_PARRY_ATTACKER_STUN_MAX, PERFECT_PARRY_KNOCKBACK_MAX,
+  PERFECT_PARRY_BALANCE_REFUND_MAX,
+  SLAP_TIP_DISTANCE, SLAP_TIP_POSTURE_MULT, SLAP_TIP_DRIFT_MULT,
+  CLASH_MARGIN_MIN_MS, CLASH_MARGIN_MAX_MS,
+  CLASH_LOSER_KB_MIN, CLASH_LOSER_KB_MAX,
+  CLASH_WINNER_KB_MAX, CLASH_WINNER_KB_MIN,
+  FOLLOW_THROUGH_TOWARD_SHIFT, FOLLOW_THROUGH_AWAY_SHIFT,
+  FOLLOW_THROUGH_TOWARD_RECOVERY_MS, FOLLOW_THROUGH_AWAY_RECOVERY_MS,
+  CPU_FOLLOW_THROUGH_PUSHER, CPU_FOLLOW_THROUGH_COUNTER_FADE,
+  CPU_FOLLOW_THROUGH_EDGE_RANGE,
+  COUNTER_HIT_INTENT_WINDOW_MS,
   SLAP_CHAIN_HIT_GAP_MS,
   HITSTOP_SLAP_MS, HITSTOP_BURST_MS, HITSTOP_PARRY_MS, HITSTOP_SLAP_PARRY_MS, HITSTOP_PERFECT_PARRY_MS, HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
   SLAP_HIT_VICTIM_STAMINA_DRAIN, CHARGED_HIT_VICTIM_STAMINA_DRAIN,
   PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN,
   BALANCE_MAX, BALANCE_SLAP_HIT_DRAIN, BALANCE_CHARGED_HIT_DRAIN,
+  BALANCE_SLAP_HIT_DRAIN_P2, BALANCE_CHARGED_HIT_DRAIN_P2, BALANCE_PALM_HIT_DRAIN_P2,
+  BALANCE_SLAP_HIT_DRAIN_ENHANCED, CADENCE_STEP_IN_MULT,
+  POSTURE_COUNTER_DRAIN_MULT,
+  KILLBAND_MOMENTUM, KILLBAND_MOMENTUM_REF, KILLBAND_POSTURE, KILLBAND_CAP,
+  POSTURE_CHARGED_KILL_REACH_MULT,
+  MOMENTUM_HIT_MULT_THRESHOLD,
   CHARGE_CLASH_RECOVERY_DURATION, CHARGE_CLASH_BASE_KNOCKBACK,
   CHARGE_CLASH_MIN_KNOCKBACK, CHARGE_CLASH_ADVANTAGE_SCALE,
   CHARGE_PRIORITY_THRESHOLD, CHARGE_VS_SLAP_ATTACKER_PENALTY,
@@ -25,6 +42,15 @@ const {
   BURST_STUN_MS,
   SLAP_ONHIT_ATTACKER_PUSH,
   SLAP_ONHIT_VICTIM_DRIFT,
+  K_SLAP_KB_INHERIT,
+  SLAP_ONHIT_ATTACKER_PUSH_CAP,
+  SLAP_ONHIT_VICTIM_DRIFT_CAP,
+  K_VICTIM_INTO,
+  K_VICTIM_BRACE,
+  VICTIM_KB_SCALE_MIN,
+  VICTIM_KB_SCALE_MAX,
+  K_PALM_MATADOR,
+  PALM_MATADOR_KB_CAP,
   SLAP_COUNTER_HIT_BONUS_MS,
   SLAP_COUNTER_KB_MULT,
   SLAP_MIN_HITSTUN_MS,
@@ -49,7 +75,6 @@ const {
   PALM_THRUST_HITBOX_DISTANCE_VALUE,
   PALM_THRUST_KB_VELOCITY,
   PALM_THRUST_ACTIVE_MS,
-  GRAB_STARTUP_ARMOR_STAGGER_MS,
   FLAP_BODYSLAM_KB_VELOCITY,
 } = require("./constants");
 
@@ -74,10 +99,15 @@ const {
   hasHitAbsorption,
   consumeHitAbsorption,
   schedulePalmThrustVisualEnd,
+  alignedEntryVelocity,
 } = require("./gameUtils");
 
+// MASTERY OVERHAUL feature flags (Phase 1: momentum; Phase 2: posture;
+// Phase 3: cadence; Phase 4: analog resolutions & risk dials).
+const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P3_CADENCE, MASTERY_P4_ANALOG, MASTERY_P5_ASSISTS } = require("./masteryFlags");
+
 const {
-  grabBeatsSlap,
+  grabSlipsSlap,
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
 } = require("./combatHelpers");
@@ -103,6 +133,76 @@ function chargedKillReach(finalMultiplier) {
     CHARGED_KILL_REACH_MIN +
     (finalMultiplier - CHARGED_KILL_MULT_MIN) * slope;
   return Math.max(0, Math.min(raw, CHARGED_KILL_REACH_CAP));
+}
+
+// MASTERY Phase 2 (2.4) — OSHI conversion. The slap/palm/flap-slam edge kill
+// band EXPANDS with earned quality: the attacker's carried momentum
+// (slapEntryAligned) plus whether the victim's POSTURE is broken. It can only
+// widen (never shrink) and is hard-capped at KILLBAND_CAP so a wide midscreen
+// no-kill deadzone always survives (invariant #3). Palm/flap carry no
+// slapEntryAligned (rooted / airborne) so their momentum term is 0 — only the
+// posture term widens their band. With the flag OFF this collapses to exactly
+// SLAP_KILL_RANGE (byte-identical, invariants #2 & #4).
+function slapKillBand(attacker, victim) {
+  if (!MASTERY_P2_POSTURE) return SLAP_KILL_RANGE;
+  const aligned = Math.min(attacker.slapEntryAligned || 0, KILLBAND_MOMENTUM_REF);
+  const band =
+    SLAP_KILL_RANGE +
+    KILLBAND_MOMENTUM * (aligned / KILLBAND_MOMENTUM_REF) +
+    (victim.isPostureBroken ? KILLBAND_POSTURE : 0);
+  return Math.min(band, KILLBAND_CAP);
+}
+
+// MASTERY Phase 4 (4.1) — PARRY QUALITY CURVE. Inside the perfect window, the
+// payout is graded by HOW EARLY the parry landed: `quality` 1 = frame-perfect,
+// 0 = at the very edge of the window. Every term lerps from today's base
+// constant (quality 0) up to its Phase-4 max (quality 1), so a just-barely
+// perfect parry pays exactly today's stun/shove/refund (floor preserved) while
+// a frame-perfect read pays the ceiling. Only ever called behind
+// MASTERY_P4_ANALOG; the flag-off path keeps the flat base constants
+// (byte-identical, invariants #2 & #4).
+function gradePerfectParry(parryDuration) {
+  const quality = Math.max(0, Math.min(1, 1 - parryDuration / PERFECT_PARRY_WINDOW));
+  const lerp = (a, b) => a + (b - a) * quality;
+  return {
+    quality,
+    attackerStun: lerp(PERFECT_PARRY_ATTACKER_STUN_DURATION, PERFECT_PARRY_ATTACKER_STUN_MAX),
+    parryShove: lerp(PERFECT_PARRY_KNOCKBACK, PERFECT_PARRY_KNOCKBACK_MAX),
+    postureRefund: Math.round(lerp(PERFECT_PARRY_BALANCE_REFUND, PERFECT_PARRY_BALANCE_REFUND_MAX)),
+  };
+}
+
+// MASTERY Phase 4 (4.5) — FOLLOW-THROUGH risk dial. On a slap connect the
+// attacker's held direction is a player-chosen bet: +1 = holding TOWARD the
+// victim (commit — bigger shift, +recovery/slightly minus), −1 = holding AWAY
+// (fade — smaller shift, −recovery/slightly plus), 0 = NEUTRAL (today's +0
+// default). Humans read raw key state (a/d relative to the push direction);
+// CPUs derive intent from archetype so their movement/facing is untouched — a
+// pusher biases follow-through, a counter biases fade, and IMPOSSIBLE presses
+// the edge on a broken-posture victim near their rope. Only called behind
+// MASTERY_P4_ANALOG.
+function resolveSlapFollowThrough(attacker, victim, pushDirection, room) {
+  const towardSign = Math.sign(pushDirection) || 1;
+  if (attacker.isCPU) {
+    const diff = room && room.cpuDifficulty;
+    // Difficulty firewall: EASY/NORMAL gain no new capability — they keep the
+    // neutral +0 slap. Follow-through is a HARD+ ceiling behavior.
+    if (diff !== "HARD" && diff !== "IMPOSSIBLE") return 0;
+    if (diff === "IMPOSSIBLE" && victim.isPostureBroken) {
+      const distToRope = towardSign > 0
+        ? MAP_RIGHT_BOUNDARY - victim.x
+        : victim.x - MAP_LEFT_BOUNDARY;
+      if (distToRope <= CPU_FOLLOW_THROUGH_EDGE_RANGE) return 1;
+    }
+    const arch = attacker.aiArchetype;
+    if (arch === "pusher") return Math.random() < CPU_FOLLOW_THROUGH_PUSHER ? 1 : 0;
+    if (arch === "counter") return Math.random() < CPU_FOLLOW_THROUGH_COUNTER_FADE ? -1 : 0;
+    return 0;
+  }
+  const keys = attacker.keys || {};
+  const heldDir = keys.d && !keys.a ? 1 : keys.a && !keys.d ? -1 : 0;
+  if (heldDir === 0) return 0;
+  return heldDir === towardSign ? 1 : -1;
 }
 
 function checkCollision(player, otherPlayer, rooms, io) {
@@ -282,30 +382,19 @@ function checkCollision(player, otherPlayer, rooms, io) {
         }
       }
 
-      // First-to-active wins: if defender is in grab startup, timing determines winner
-      if (otherPlayer.isGrabStartup && grabBeatsSlap(otherPlayer, player)) {
-        return; // Grab wins — don't process slap hit, grab will connect
+      // GRAB SLIPS SLAP: if the defender is in grab startup and this slap's
+      // hitbox came out AFTER their grab began, the grab evades it — the slap
+      // whiffs and the grab startup survives to connect. This is the anti-spam
+      // read (see grabSlipsSlap): a committed grab beats mashed slaps, but a
+      // slap already active before the grab started still connects below.
+      if (otherPlayer.isGrabStartup && grabSlipsSlap(otherPlayer, player)) {
+        return; // Grab slips it — don't process slap hit, grab will connect
       }
 
-      // ── GRAB STARTUP SLAP ARMOR ─────────────────────────────────────
-      // Grab loses the timing race against this slap, but it's the defender's
-      // FIRST slap during this grab attempt — armor absorbs the hit so the
-      // grab can complete its commitment. The defender still pays the slap's
-      // normal balance drain (the armor isn't free), and the slapper's
-      // attack proceeds normally (no punish, but no "stuff the grab" reward).
-      // Charged attacks bypass armor entirely (handled separately below) —
-      // armor ONLY exists for slap. Multi-hit setups still beat grab because
-      // armor consumes after one hit.
-      if (
-        otherPlayer.isGrabStartup &&
-        !otherPlayer.grabStartupArmorUsed &&
-        !otherPlayer.isRawParrying &&
-        !eitherHasSlapParryImmunity
-      ) {
-        applyGrabStartupArmor(player, otherPlayer, rooms, io);
-        return;
-      }
-
+      // Slap was already active before the grab began → it stuffs the grab and
+      // connects cleanly (processHit). There is NO free damage-absorb armor;
+      // the ONLY thing that absorbs here is the Thick Blubber loadout/power-up,
+      // resolved grabs-only inside processHit.
       if (eitherHasSlapParryImmunity) return;
       processHit(player, otherPlayer, rooms, io);
     }
@@ -319,38 +408,16 @@ function checkCollision(player, otherPlayer, rooms, io) {
   const chargedHorizontalDistance = Math.abs(chargedDeltaX);
 
   if (chargedOpponentInFront && chargedHorizontalDistance < hitboxDistance) {
-    // PALM THRUST vs a standing grab: the palm is a SINGLE hit, so grab-startup
-    // armor ABSORBS it (breaking that armor takes 2 hits) and the grab
-    // completes — blowing through grab armor stays exclusive to the (committal,
-    // lunging) charged attack. BASHO Shatter Palm loadout opts the palm into
-    // charged-style armor break instead (falls through to processHit below).
-    // We trigger the exact same absorb VFX/drains a lone slap would, then end
-    // the palm into its normal punishable recovery so the grabber can cash in.
-    // The grab-range check preserves the palm's superior reach (a grabber inside
-    // palm range but OUTSIDE grab range still eats the palm, so a read grab is
-    // the answer up close, not from afar). A dash grab (isGrabbingMovement) is
-    // intentionally NOT included — dash grabs lose to strikes for slaps too, so
-    // the palm stuffs them the same way.
+    // PALM THRUST vs a grab: there is no default grab-startup armor, so a palm
+    // that reaches a grabber stuffs the grab like any other strike (resolved in
+    // processHit, where only the grabs-only Thick Blubber can absorb it). We
+    // still block the palm from connecting through an ALREADY-active grab
+    // (clinch) — that's a completed grab, not a startup to be stuffed.
     if (
       player.isPalmThrust &&
       isOpponentCloseEnoughForGrab(otherPlayer, player) &&
       isOpponentInFrontOfGrabber(otherPlayer, player)
     ) {
-      if (
-        !playerPalmBreaksGrabArmor(player) &&
-        otherPlayer.isGrabStartup &&
-        !otherPlayer.grabStartupArmorUsed &&
-        !otherPlayer.isRawParrying
-      ) {
-        applyGrabStartupArmor(player, otherPlayer, rooms, io);
-        // End the palm cleanly (applyGrabStartupArmor drops isAttacking, which
-        // would otherwise strand it — the main loop's recovery handoff is gated
-        // on isAttacking). Lazy require avoids any load-order edge; collisionSystem
-        // is only ever required by index.js, so there is no real cycle.
-        const { safelyEndChargedAttack } = require("./gameFunctions");
-        safelyEndChargedAttack(player, rooms);
-        return;
-      }
       // Already clinching us (active grab) — the palm can't connect.
       if (otherPlayer.isGrabbing) {
         return;
@@ -359,27 +426,18 @@ function checkCollision(player, otherPlayer, rooms, io) {
     if (player.isAttacking && otherPlayer.isAttacking) {
       if (otherPlayer.attackType === "charged") {
         // === CHARGED vs CHARGED ===
-        // Check thick blubber first — one-sided blubber wins outright
-        const playerHasThickBlubber = hasHitAbsorption(player);
-        const otherPlayerHasThickBlubber = hasHitAbsorption(otherPlayer);
-
-        if (playerHasThickBlubber && !otherPlayerHasThickBlubber) {
-          processHit(player, otherPlayer, rooms, io);
-        } else if (otherPlayerHasThickBlubber && !playerHasThickBlubber) {
-          processHit(otherPlayer, player, rooms, io);
-        } else {
-          // Both or neither have thick blubber → charge clash
-          const currentRoom = rooms.find((room) =>
-            room.players.some((p) => p.id === player.id)
+        // Thick Blubber is grabs-only now — it does NOT influence a charge
+        // clash. Two charged attacks always resolve as a clash.
+        const currentRoom = rooms.find((room) =>
+          room.players.some((p) => p.id === player.id)
+        );
+        if (currentRoom) {
+          resolveChargeClash(
+            player, otherPlayer,
+            player.chargeAttackPower || 0,
+            otherPlayer.chargeAttackPower || 0,
+            currentRoom, io
           );
-          if (currentRoom) {
-            resolveChargeClash(
-              player, otherPlayer,
-              player.chargeAttackPower || 0,
-              otherPlayer.chargeAttackPower || 0,
-              currentRoom, io
-            );
-          }
         }
       } else if (otherPlayer.attackType === "slap") {
         // === CHARGED vs SLAP ===
@@ -419,17 +477,34 @@ function resolveSlapParry(player1, player2, room, io) {
   const gap = Math.abs(player1.attackStartTime - player2.attackStartTime);
   const isNeutral = gap < SLAP_PARRY_NEUTRAL_WINDOW_MS;
 
+  // MASTERY Phase 4 (4.3): the decisive-clash shove scales with the timing
+  // MARGIN between the two presses — a razor-thin win barely nudges, a clean
+  // first-move win sends. At the smallest decisive gap (t=0) the pair equals
+  // today's fixed WINNER/LOSER-ish floor; a wide margin (t=1) spreads them.
+  // Neutral (tie) is unchanged; recovery stays symmetric (fairness invariant).
+  // Flag off ⇒ today's exact SLAP_PARRY_KNOCKBACK_WINNER/LOSER (byte-identical).
+  let winnerKb = SLAP_PARRY_KNOCKBACK_WINNER;
+  let loserKb = SLAP_PARRY_KNOCKBACK_LOSER;
+  if (MASTERY_P4_ANALOG) {
+    const t = Math.max(
+      0,
+      Math.min(1, (gap - CLASH_MARGIN_MIN_MS) / (CLASH_MARGIN_MAX_MS - CLASH_MARGIN_MIN_MS))
+    );
+    loserKb = CLASH_LOSER_KB_MIN + (CLASH_LOSER_KB_MAX - CLASH_LOSER_KB_MIN) * t;
+    winnerKb = CLASH_WINNER_KB_MAX + (CLASH_WINNER_KB_MIN - CLASH_WINNER_KB_MAX) * t;
+  }
+
   // Per-player knockback strength (the ONLY thing the outcome changes).
   let p1Kb, p2Kb;
   if (isNeutral) {
     p1Kb = p2Kb = SLAP_PARRY_KNOCKBACK_NEUTRAL;
   } else if (player1.attackStartTime <= player2.attackStartTime) {
     // player1 went first → player1 wins (holds ground), player2 loses (shoved).
-    p1Kb = SLAP_PARRY_KNOCKBACK_WINNER;
-    p2Kb = SLAP_PARRY_KNOCKBACK_LOSER;
+    p1Kb = winnerKb;
+    p2Kb = loserKb;
   } else {
-    p2Kb = SLAP_PARRY_KNOCKBACK_WINNER;
-    p1Kb = SLAP_PARRY_KNOCKBACK_LOSER;
+    p2Kb = winnerKb;
+    p1Kb = loserKb;
   }
 
   const dir1 = player1.x < player2.x ? -1 : 1;
@@ -455,6 +530,8 @@ function resolveSlapParry(player1, player2, room, io) {
     p.isSlapSliding = false;
     p.isSlapParryRecovering = true;
     p.pendingSlapCount = 0;
+    // MASTERY Phase 3: a clash interrupts both players' tsuppari rhythm.
+    p.cadenceChain = 0;
 
     timeoutManager.clearPlayerSpecific(p.id, "slapCycle");
     p.attackCooldownUntil = now + SLAP_PARRY_RECOVERY_MS;
@@ -580,55 +657,9 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
 
 // resolveSlap3Clash removed — hit 3 no longer part of slap string
 
-// ─── GRAB STARTUP SLAP ARMOR ───────────────────────────────────────────
-// Single-use absorption that lets a committed grab eat one neutral slap and
-// continue its startup. The grabber pays the slap's normal balance drain,
-// so mashing slap into grab still chips the grabber's resources — it
-// just doesn't stuff the grab outright. Multi-hit setups (slap chains, charged
-// follow-ups) still beat grab because armor is consumed after one hit.
-//
-// CRITICAL: armor also extends the remaining grab startup by a stagger window.
-// Without that, a single slap absorbs and the grab still connects on schedule —
-// since slap chain cycle (~195ms) is longer than the 180ms base startup, the
-// slapper can't fit a second slap inside the grab window, so armor becomes
-// mathematically unbeatable by slaps. The stagger opens a real "chain to break
-// armor" window and gives the slapper a beat to cancel into something else.
-function applyGrabStartupArmor(attacker, defender, rooms, io) {
-  defender.grabStartupArmorUsed = true;
-
-  // Stagger: extend grab startup so a chained slap (or sidestep / parry) can
-  // actually catch the grabber. This is the main fix for "armor too strong" —
-  // without it, single slaps were a free chip-and-lose interaction for the slapper.
-  defender.grabStartupDuration = (defender.grabStartupDuration || 0) + GRAB_STARTUP_ARMOR_STAGGER_MS;
-  defender.actionLockUntil = (defender.actionLockUntil || 0) + GRAB_STARTUP_ARMOR_STAGGER_MS;
-
-  // Defender pays the slap's normal balance drain — armor isn't free.
-  // Slap hits no longer chip stamina (balance is the hit tax).
-  defender.balance = Math.max(0, defender.balance - BALANCE_SLAP_HIT_DRAIN);
-  defender.stamina = Math.max(0, defender.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
-
-  // End the attacker's slap so it doesn't re-collide on subsequent ticks.
-  // executeSlapAttack's recovery timeout will still fire and clean up cleanly
-  // (clearing already-cleared state is a no-op). Slap player still goes through
-  // their normal recovery window — they aren't punished for the hit attempt.
-  attacker.isAttacking = false;
-  attacker.attackStartTime = 0;
-  attacker.attackEndTime = 0;
-
-  const currentRoom = rooms.find((room) =>
-    room.players.some((p) => p.id === attacker.id)
-  );
-  if (currentRoom) {
-    io.in(currentRoom.id).emit("grab_armor_absorb", {
-      defenderId: defender.id,
-      attackerId: attacker.id,
-      x: defender.x,
-      y: defender.y,
-      facing: defender.facing,
-      armorId: `armor-absorb-${Date.now()}-${defender.id}`,
-    });
-  }
-}
+// (The default grab-startup slap armor was removed: grabs no longer get a free
+// one-hit absorb. The absorb behavior now lives ONLY in the grabs-only Thick
+// Blubber loadout/power-up, resolved inside processHit.)
 
 function processHit(player, otherPlayer, rooms, io) {
   // Find the current room
@@ -640,6 +671,13 @@ function processHit(player, otherPlayer, rooms, io) {
   // windows, burst knockback) lives on the room's pausable clock so it freezes
   // in lockstep with the hitstop this hit is about to trigger.
   const currentTime = simNow(currentRoom);
+
+  // MASTERY Phase 1 (1.3): snapshot the VICTIM's signed velocity at the moment
+  // of connect, BEFORE clearAllActionStates(otherPlayer) below zeroes it. Used
+  // to scale knockback by whether they were moving INTO the hit (charging in →
+  // more shove) or BRACING away (well-timed brake → less) — the trainable
+  // upgrade to the previously-invisible DI. Only read behind the flag.
+  const victimEntryV = otherPlayer.movementVelocity || 0;
 
   // Use the stored attack type instead of checking isSlapAttack
   const isSlapAttack = player.attackType === "slap";
@@ -694,7 +732,13 @@ function processHit(player, otherPlayer, rooms, io) {
   // Counter hit = hitting opponent during STARTUP frames of their move
   // ============================================
   const counterHitFromAttacking = otherPlayer.isAttacking && timeSinceAttackAttempt <= COUNTER_HIT_WINDOW_MS;
-  const counterHitFromIntent = timeSinceAttackIntent <= COUNTER_HIT_WINDOW_MS;
+  // MASTERY Phase 4 (4.5): counter-hit honesty. The PURE-INTENT counter (the
+  // victim only pressed — no active startup yet) now feeds a ×1.5 posture drain
+  // (Phase 2), so it must be an earned read: its window shrinks 150→100ms with
+  // the flag on. The active-startup counter (counterHitFromAttacking) keeps the
+  // full window. Flag off ⇒ both use COUNTER_HIT_WINDOW_MS (byte-identical).
+  const intentWindow = MASTERY_P4_ANALOG ? COUNTER_HIT_INTENT_WINDOW_MS : COUNTER_HIT_WINDOW_MS;
+  const counterHitFromIntent = timeSinceAttackIntent <= intentWindow;
   // Charged shattering grab armor has its own VFX (grab_armor_break) — don't
   // also fire the counter-hit banner/effect, it doubles up visually. Slap
   // stuffing grab (after armor consumed) IS still a counter hit — that's a
@@ -739,11 +783,15 @@ function processHit(player, otherPlayer, rooms, io) {
   // Store the charge power before resetting states
   const chargePercentage = player.chargeAttackPower;
 
-  // Check for thick blubber hit absorption (only if defender is executing charged attack or grab and hasn't used absorption)
+  // Thick Blubber hit absorption — GRABS ONLY. The defender must be in a grab
+  // (startup / dash / clinch) for blubber to eat the hit; it no longer applies
+  // to charged attacks or palm thrust. One absorb per grab attempt (refreshed
+  // when a grab starts), so a blubber grappler can trade the first strike for
+  // the grab, but a second hit stuffs it.
   const isDefenderGrabbing = otherPlayer.isGrabStartup || otherPlayer.isGrabbingMovement || otherPlayer.isGrabbing;
   if (
     hasHitAbsorption(otherPlayer) &&
-    ((otherPlayer.isAttacking && otherPlayer.attackType === "charged") || isDefenderGrabbing) &&
+    isDefenderGrabbing &&
     !otherPlayer.isRawParrying
   ) {
     // Raw parry should still work normally
@@ -781,12 +829,16 @@ function processHit(player, otherPlayer, rooms, io) {
       player.attackEndTime = 0;
     }
 
-    // Emit a special effect or sound for absorption if needed
+    // Absorb VFX: the pink "wrap ring" (formerly the grab-armor absorb) is now
+    // the Thick Blubber animation. Payload matches the ring handler (defender-
+    // gated, facing-aware).
     if (currentRoom) {
-      io.in(currentRoom.id).emit("thick_blubber_absorption", {
-        playerId: otherPlayer.id,
+      io.in(currentRoom.id).emit("grab_armor_absorb", {
+        defenderId: otherPlayer.id,
+        attackerId: player.id,
         x: otherPlayer.x,
         y: otherPlayer.y,
+        facing: otherPlayer.facing,
       });
     }
 
@@ -855,6 +907,9 @@ function processHit(player, otherPlayer, rooms, io) {
     const currentTime = simNowForPlayer(otherPlayer);
     const parryDuration = currentTime - otherPlayer.rawParryStartTime;
     const isPerfectParry = parryDuration <= PERFECT_PARRY_WINDOW;
+    // MASTERY Phase 4 (4.1): grade the perfect parry by timing precision. Null
+    // (and the flat base payouts below) with the flag off or on a regular parry.
+    const ppGrade = MASTERY_P4_ANALOG && isPerfectParry ? gradePerfectParry(parryDuration) : null;
 
     // Apply appropriate knockback based on attack type
     const knockbackAmount = isSlapBeingParried
@@ -868,6 +923,8 @@ function processHit(player, otherPlayer, rooms, io) {
     // CRITICAL: Clear ALL action states before setting isHit
     clearAllActionStates(player);
     player.y = GROUND_LEVEL;
+    // MASTERY Phase 3: a parried slap breaks the attacker's tsuppari rhythm.
+    player.cadenceChain = 0;
     
     player.knockbackVelocity.x = knockbackAmount * knockbackDirection;
     player.knockbackVelocity.y = 0;
@@ -892,7 +949,9 @@ function processHit(player, otherPlayer, rooms, io) {
     let perfectParryBalanceGain = 0;
     if (isPerfectParry) {
       const balanceBefore = otherPlayer.balance;
-      otherPlayer.balance = Math.min(BALANCE_MAX, otherPlayer.balance + PERFECT_PARRY_BALANCE_REFUND);
+      // MASTERY Phase 4 (4.1): graded posture refund (base 12 at the window edge).
+      const refund = ppGrade ? ppGrade.postureRefund : PERFECT_PARRY_BALANCE_REFUND;
+      otherPlayer.balance = Math.min(BALANCE_MAX, otherPlayer.balance + refund);
       perfectParryBalanceGain = otherPlayer.balance - balanceBefore;
     }
 
@@ -973,8 +1032,10 @@ function processHit(player, otherPlayer, rooms, io) {
 
     // Apply stun for perfect parries (separate from knockback)
     if (isPerfectParry) {
-      // Perfect parries stun the attacker for 1.1s (fixed duration, no mash reduction)
-      const baseStunDuration = PERFECT_PARRY_ATTACKER_STUN_DURATION;
+      // Perfect parries stun the attacker (base 700ms). MASTERY Phase 4 (4.1):
+      // a frame-perfect read stuns longer (up to _MAX); a window-edge parry pays
+      // exactly the base (floor preserved).
+      const baseStunDuration = ppGrade ? ppGrade.attackerStun : PERFECT_PARRY_ATTACKER_STUN_DURATION;
       player.isRawParryStun = true;
       
       // Apply stronger knockback velocity for perfect parry (causes sliding on ice)
@@ -991,7 +1052,9 @@ function processHit(player, otherPlayer, rooms, io) {
       const overlapAmount = Math.max(0, ppMinSep - ppDistance);
       const overlapCompensation = overlapAmount / 110;
 
-      player.knockbackVelocity.x = (PERFECT_PARRY_KNOCKBACK + overlapCompensation) * pushDirection;
+      // MASTERY Phase 4 (4.1): graded parry shove (base 0.65 at the window edge).
+      const parryShove = ppGrade ? ppGrade.parryShove : PERFECT_PARRY_KNOCKBACK;
+      player.knockbackVelocity.x = (parryShove + overlapCompensation) * pushDirection;
       player.knockbackVelocity.y = 0;
       
       // Track stun start time (sim clock)
@@ -1019,6 +1082,9 @@ function processHit(player, otherPlayer, rooms, io) {
           stunnedPlayerFighter: player.fighter, // Add fighter info to help with positioning
           showStarStunEffect: true, // Explicit flag for the star stun effect
           balanceGain: perfectParryBalanceGain, // Drives balance bar gain animation on client
+          // MASTERY Phase 4 (4.1): parry timing precision (0..1). Client scales
+          // the flash/shake slightly with it. 0 with the flag off (base feel).
+          quality: ppGrade ? ppGrade.quality : 0,
         });
       }
 
@@ -1099,6 +1165,8 @@ function processHit(player, otherPlayer, rooms, io) {
 
     otherPlayer.isHit = true;
     otherPlayer.lastHitType = isSlapAttack ? "slap" : "charged";
+    // MASTERY Phase 3: taking a hit breaks the victim's tsuppari rhythm.
+    otherPlayer.cadenceChain = 0;
 
     // Block multiple hits from this same attack
     otherPlayer.isAlreadyHit = true;
@@ -1106,17 +1174,63 @@ function processHit(player, otherPlayer, rooms, io) {
     // Increment hit counter for reliable hit sound triggering
     otherPlayer.hitCounter = (otherPlayer.hitCounter || 0) + 1;
 
-    // Light stamina chip on hit; balance is the primary hit tax.
+    // MASTERY Phase 4 (4.2 tip/deep spacing) + (4.5 follow-through). Resolved
+    // ONCE here (positions are still at the connect moment) so the posture-drain
+    // block, the on-hit ground transfer, and the recovery adjustment all read
+    // the same values. All collapse to today's behavior with the flag off:
+    //   isTipSlap = false, followThroughDir = 0.
+    // 4.2: a slap that connects at the TIP of its range (attacker↔victim
+    //   distance > SLAP_TIP_DISTANCE) rewards the spacing — deeper posture
+    //   damage + a touch more drift; a point-blank (deep) slap is baseline.
+    // 4.5: the attacker's held direction at connect (or CPU archetype intent)
+    //   dials the pair-shift and their own recovery (see resolveSlapFollowThrough).
+    const isTipSlap =
+      MASTERY_P4_ANALOG &&
+      isSlapAttack &&
+      Math.abs(player.x - otherPlayer.x) > SLAP_TIP_DISTANCE;
+    let followThroughDir = 0;
+    if (MASTERY_P4_ANALOG && isSlapAttack) {
+      const ftPushDir = player.facing === 1 ? -1 : 1;
+      followThroughDir = resolveSlapFollowThrough(player, otherPlayer, ftPushDir, currentRoom);
+    }
+    const followShiftMult =
+      followThroughDir > 0
+        ? FOLLOW_THROUGH_TOWARD_SHIFT
+        : followThroughDir < 0
+        ? FOLLOW_THROUGH_AWAY_SHIFT
+        : 1;
+    const tipDriftMult = isTipSlap ? SLAP_TIP_DRIFT_MULT : 1;
+
+    // Light stamina chip on hit; balance (POSTURE) is the primary hit tax.
     // Slap: no stam drain. Charged: ~one slap cost. Palm: even lighter chip.
+    // MASTERY Phase 2 (2.2): posture drains deepen (tsuppari breaks posture,
+    // the palm is the dedicated posture-breaker) and a COUNTER hit drains ×1.5
+    // (its frame bonus is unchanged). Flag off ⇒ today's BALANCE_* values with
+    // no counter multiplier (byte-identical).
+    const postureCounterMult =
+      MASTERY_P2_POSTURE && isCounterHit ? POSTURE_COUNTER_DRAIN_MULT : 1;
     if (isSlapAttack) {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
-      otherPlayer.balance = Math.max(0, otherPlayer.balance - BALANCE_SLAP_HIT_DRAIN);
+      // MASTERY Phase 3: an enhanced (cadence) slap breaks posture harder than a
+      // normal one — the rhythm player's tsuppari bites. Falls back to the P2
+      // drain (then today's base if P2 is off), so flag off ⇒ unchanged.
+      const slapDrainBase =
+        MASTERY_P3_CADENCE && player.isEnhancedSlap
+          ? BALANCE_SLAP_HIT_DRAIN_ENHANCED
+          : (MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN);
+      // MASTERY Phase 4 (4.2): a tip slap breaks posture harder (spacing reward);
+      // deep/point-blank is baseline. tipPostureMult === 1 with the flag off.
+      const tipPostureMult = isTipSlap ? SLAP_TIP_POSTURE_MULT : 1;
+      const slapDrain = slapDrainBase * postureCounterMult * tipPostureMult;
+      otherPlayer.balance = Math.max(0, otherPlayer.balance - slapDrain);
     } else if (player.isPalmThrust) {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN);
-      otherPlayer.balance = Math.max(0, otherPlayer.balance - BALANCE_CHARGED_HIT_DRAIN);
+      const palmDrain = (MASTERY_P2_POSTURE ? BALANCE_PALM_HIT_DRAIN_P2 : BALANCE_CHARGED_HIT_DRAIN) * postureCounterMult;
+      otherPlayer.balance = Math.max(0, otherPlayer.balance - palmDrain);
     } else {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - CHARGED_HIT_VICTIM_STAMINA_DRAIN);
-      otherPlayer.balance = Math.max(0, otherPlayer.balance - BALANCE_CHARGED_HIT_DRAIN);
+      const chargedDrain = (MASTERY_P2_POSTURE ? BALANCE_CHARGED_HIT_DRAIN_P2 : BALANCE_CHARGED_HIT_DRAIN) * postureCounterMult;
+      otherPlayer.balance = Math.max(0, otherPlayer.balance - chargedDrain);
     }
 
     // Update opponent's facing direction based on attacker's position
@@ -1134,6 +1248,31 @@ function processHit(player, otherPlayer, rooms, io) {
     // This prevents visual confusion when a player dodges through the opponent and releases a charged attack,
     // where they might pass back through the opponent during the attack movement
     const knockbackDirection = player.facing === 1 ? -1 : 1;
+
+    // MASTERY Phase 1 (1.3): victim-side momentum. `intoHit` (+) = the victim
+    // was moving INTO the hit (charging in → carries more distance); (−) = they
+    // were BRACING away (a well-timed brake → less distance). `victimKbScale`
+    // multiplies the knockback for slap and charged below; the palm uses
+    // `victimIntoHit` for its matador base instead (see palm branch). Kill-band
+    // checks still evaluate at the connect position (unchanged) and every rope
+    // clamp still applies (invariant #3). Flag off ⇒ 1 / 0, no change.
+    let victimKbScale = 1;
+    let victimIntoHit = 0;
+    // MASTERY Phase 5 (5.2): legibility tell computed here, emitted in player_hit.
+    // A "momentum hit" (heavier spark + deeper SFX) is set in the slap branch once
+    // the on-hit ground-transfer mult clears MOMENTUM_HIT_MULT_THRESHOLD.
+    let momentumHitTell = false;
+    if (MASTERY_P1_MOMENTUM) {
+      victimIntoHit = alignedEntryVelocity(victimEntryV, knockbackDirection * -1);
+      victimKbScale =
+        1 +
+        K_VICTIM_INTO * Math.max(0, victimIntoHit) -
+        K_VICTIM_BRACE * Math.max(0, -victimIntoHit);
+      victimKbScale = Math.max(
+        VICTIM_KB_SCALE_MIN,
+        Math.min(victimKbScale, VICTIM_KB_SCALE_MAX)
+      );
+    }
 
     // Calculate knockback multiplier based on attack type.
     // Slap: base 1.0 — its knockback is the fixed ground-transfer drift; the
@@ -1159,10 +1298,6 @@ function processHit(player, otherPlayer, rooms, io) {
     // PUNISH IS A LABEL, GAME-WIDE: no knockback bonus, no stun bonus, no
     // ring-out bypass. The free hit itself is the whole prize — the banner
     // just tells both players what happened.
-
-    if (otherPlayer.isCrouchStance) {
-      finalKnockbackMultiplier *= 0.9;
-    }
 
     if (player.activePowerUp === POWER_UP_TYPES.POWER) {
       if (isSlapAttack) {
@@ -1198,6 +1333,36 @@ function processHit(player, otherPlayer, rooms, io) {
       if (isSlapAttack) {
         const pushDirection = player.facing === 1 ? -1 : 1;
 
+        // MASTERY Phase 1 (1.2): on-hit ground transfer INHERITS the attacker's
+        // entry momentum. momentumMult scales BOTH the attacker's forward slide
+        // and the victim's drift by the same factor, so a dash-in slap shoves
+        // for real ground while a flat-footed slap is exactly today's value
+        // (slapEntryAligned 0 ⇒ momentumMult 1). Each is separately capped.
+        const slapMomentumMult = MASTERY_P1_MOMENTUM
+          ? 1 + K_SLAP_KB_INHERIT * (player.slapEntryAligned || 0)
+          : 1;
+        // MASTERY Phase 5 (5.2): tag the hit as a "momentum hit" for the heavy
+        // spark/SFX tell once the carried entry clears the threshold. Pure
+        // presentation — gated on P5 so it's absent with the flag off.
+        momentumHitTell =
+          MASTERY_P5_ASSISTS && slapMomentumMult > MOMENTUM_HIT_MULT_THRESHOLD;
+        // MASTERY Phase 3: an enhanced (cadence) slap shifts the pair ~15% more
+        // (step-in). Scales BOTH the attacker push and the victim drift equally
+        // (so it's a positional pair-shift, not a knockback change) and stays
+        // under the same Phase 1 caps. cadenceStepMult === 1 with the flag off or
+        // on a normal slap ⇒ byte-identical.
+        const cadenceStepMult =
+          MASTERY_P3_CADENCE && player.isEnhancedSlap ? CADENCE_STEP_IN_MULT : 1;
+        // MASTERY Phase 4 (4.5): follow-through scales the pair-shift — holding
+        // TOWARD commits (×1.35 shift), holding AWAY fades (×0.8). Applied to
+        // BOTH the attacker push and the victim drift so it stays a positional
+        // pair-shift under the existing caps. followShiftMult === 1 (neutral /
+        // flag off) ⇒ byte-identical. The tip drift bonus (4.2) rides the drift
+        // only (tipDriftMult === 1 when deep / flag off).
+        const attackerPush = MASTERY_P1_MOMENTUM
+          ? Math.min(SLAP_ONHIT_ATTACKER_PUSH * slapMomentumMult * cadenceStepMult * followShiftMult, SLAP_ONHIT_ATTACKER_PUSH_CAP)
+          : Math.min(SLAP_ONHIT_ATTACKER_PUSH * cadenceStepMult * followShiftMult, SLAP_ONHIT_ATTACKER_PUSH_CAP);
+
         // HIT-CONFIRM (unconditional): a slap that connects is a confirmed hit
         // even while the victim is knockback-immune. These flags (and the
         // VFX/hitstop below) must NOT sit behind canApplyKnockback: when a slap
@@ -1205,7 +1370,7 @@ function processHit(player, otherPlayer, rooms, io) {
         // cover the next slap's connect moment — gating the confirm there would
         // make it land as a silent "phantom hit" (victim stunned, but no VFX,
         // no hitstop).
-        player.movementVelocity = pushDirection * SLAP_ONHIT_ATTACKER_PUSH;
+        player.movementVelocity = pushDirection * attackerPush;
         player.isSlapSliding = true;
         player.lastSlapHitLandedTime = currentTime;
         player.currentSlapHitConnected = true;
@@ -1224,16 +1389,27 @@ function processHit(player, otherPlayer, rooms, io) {
           const distanceToBoundaryInKbDir = knockbackDirection > 0
             ? MAP_RIGHT_BOUNDARY - otherPlayer.x
             : otherPlayer.x - MAP_LEFT_BOUNDARY;
+          // MASTERY Phase 2 (2.4): the kill band expands with the attacker's
+          // carried momentum + the victim's broken posture (flag off ⇒
+          // SLAP_KILL_RANGE, unchanged).
           otherPlayer.slapKnockbackCanRingOut =
-            distanceToBoundaryInKbDir <= SLAP_KILL_RANGE;
+            distanceToBoundaryInKbDir <= slapKillBand(player, otherPlayer);
 
           // GROUND TRANSFER: both players slide toward the victim's rope, but
           // the victim drifts slightly FASTER (SLAP_ONHIT_VICTIM_DRIFT >
           // attacker push), so back-to-back slaps self-space out of range.
           // finalKnockbackMultiplier carries counter (×1.25) / POWER / BASHO
           // scaling into the drift — extra shove on an earned read.
-          otherPlayer.knockbackVelocity.x =
-            pushDirection * SLAP_ONHIT_VICTIM_DRIFT * finalKnockbackMultiplier;
+          // MASTERY Phase 1: the drift also inherits the attacker's entry
+          // (slapMomentumMult, 1.2) AND the victim's into/brace momentum
+          // (victimKbScale, 1.3), capped in total. Flag off ⇒ today's formula.
+          otherPlayer.knockbackVelocity.x = MASTERY_P1_MOMENTUM
+            ? pushDirection *
+              Math.min(
+                SLAP_ONHIT_VICTIM_DRIFT * slapMomentumMult * finalKnockbackMultiplier * victimKbScale * cadenceStepMult * followShiftMult * tipDriftMult,
+                SLAP_ONHIT_VICTIM_DRIFT_CAP
+              )
+            : pushDirection * SLAP_ONHIT_VICTIM_DRIFT * finalKnockbackMultiplier * cadenceStepMult * followShiftMult * tipDriftMult;
         }
 
       } else if (player.isPalmThrust) {
@@ -1256,8 +1432,20 @@ function processHit(player, otherPlayer, rooms, io) {
         otherPlayer.isBurstKnockback = true;
         otherPlayer.isChargedKnockback = false;
         otherPlayer.burstKnockbackStartTime = currentTime;
-        otherPlayer.knockbackVelocity.x =
-          knockbackDirection * PALM_THRUST_KB_VELOCITY * bashoKbFactor;
+        // MASTERY Phase 1 (1.6): matador. The palm stays rooted, but a read on a
+        // CHARGING opponent turns their own closing speed against them —
+        // victimIntoHit (+) is the victim advancing into the thrust. Capped at
+        // PALM_MATADOR_KB_CAP so the flap body-slam (3.1) stays the heaviest
+        // strike. This IS the palm's momentum treatment (it deliberately skips
+        // the generic 1.3 victim scale to avoid double-counting closing speed).
+        // Flag off / closing speed 0 ⇒ today's PALM_THRUST_KB_VELOCITY.
+        const palmBase = MASTERY_P1_MOMENTUM
+          ? Math.min(
+              PALM_THRUST_KB_VELOCITY + K_PALM_MATADOR * Math.max(0, victimIntoHit),
+              PALM_MATADOR_KB_CAP
+            )
+          : PALM_THRUST_KB_VELOCITY;
+        otherPlayer.knockbackVelocity.x = knockbackDirection * palmBase * bashoKbFactor;
         otherPlayer.knockbackVelocity.y = 0;
         otherPlayer.movementVelocity = 0;
 
@@ -1265,8 +1453,10 @@ function processHit(player, otherPlayer, rooms, io) {
           knockbackDirection > 0
             ? MAP_RIGHT_BOUNDARY - otherPlayer.x
             : otherPlayer.x - MAP_LEFT_BOUNDARY;
+        // MASTERY Phase 2 (2.4): the palm (rooted → no momentum term) still gets
+        // the broken-posture band extension. Flag off ⇒ SLAP_KILL_RANGE.
         otherPlayer.slapKnockbackCanRingOut =
-          distanceToBoundaryInKbDir <= SLAP_KILL_RANGE;
+          distanceToBoundaryInKbDir <= slapKillBand(player, otherPlayer);
 
         // Palm holds its ground — no backward recoil on a connected hit.
         player.movementVelocity = 0;
@@ -1293,7 +1483,17 @@ function processHit(player, otherPlayer, rooms, io) {
           ? MAP_RIGHT_BOUNDARY - otherPlayer.x
           : otherPlayer.x - MAP_LEFT_BOUNDARY;
 
-        const killReach = chargedKillReach(finalKnockbackMultiplier);
+        let killReach = chargedKillReach(finalKnockbackMultiplier);
+        // MASTERY Phase 2 (2.4): a charged hit reaches farther into a
+        // broken-posture victim (×1.25), still re-capped at
+        // CHARGED_KILL_REACH_CAP so the 325px midscreen deadzone survives
+        // (invariant #3). Flag off / posture intact ⇒ unchanged.
+        if (MASTERY_P2_POSTURE && otherPlayer.isPostureBroken) {
+          killReach = Math.min(
+            killReach * POSTURE_CHARGED_KILL_REACH_MULT,
+            CHARGED_KILL_REACH_CAP
+          );
+        }
         isCinematicKill = distToBoundaryChargedKb <= killReach;
 
         // Marker + gate for the index.js rope clamp: a charged hit that is NOT a
@@ -1320,8 +1520,13 @@ function processHit(player, otherPlayer, rooms, io) {
         }
 
         const kbBoost = isCinematicKill ? CINEMATIC_KILL_KNOCKBACK_BOOST : 1;
+        // MASTERY Phase 1 (1.3): a victim charging INTO a charged hit carries
+        // farther; a braced victim eats less. The kill gate above already
+        // resolved at the connect position, so this only changes carry distance
+        // (rope clamps still apply). victimKbScale is exactly 1 when the flag is
+        // off ⇒ byte-identical.
         otherPlayer.knockbackVelocity.x =
-          2.7 * knockbackDirection * finalKnockbackMultiplier * kbBoost;
+          2.7 * knockbackDirection * finalKnockbackMultiplier * kbBoost * victimKbScale;
         otherPlayer.movementVelocity = 0;
 
         const attackerBounceDirection = -knockbackDirection;
@@ -1413,6 +1618,19 @@ function processHit(player, otherPlayer, rooms, io) {
           // which is the AAA-feel detail every premium fighting game has.
           attackerId: player.id,
           victimId: otherPlayer.id,
+          // MASTERY Phase 3 (tsuppari cadence): flag an enhanced slap so the
+          // client layers a sharper, rising-pitch "crack" (pitch climbs with the
+          // consecutive-enhanced chain) + hand-flash. 0 / false with the flag off.
+          isCadence: MASTERY_P3_CADENCE && isSlapAttack && !!player.isEnhancedSlap,
+          cadenceChain: player.cadenceChain || 0,
+          // MASTERY Phase 5 (5.2) legibility tells (client-only presentation):
+          //  • momentumHit — a dash-in / carried-momentum slap: heavier hitspark
+          //    variant + deeper SFX so a big-momentum hit reads across the room.
+          //  • braked — the victim BRACED into the hit (their brace reduction
+          //    applied): a "dig-in" ice-chip puff + skid SFX rewards the read.
+          // Both false with the flag off ⇒ the client renders today's VFX.
+          momentumHit: momentumHitTell,
+          braked: MASTERY_P5_ASSISTS && MASTERY_P1_MOMENTUM && victimIntoHit < 0,
         });
         
         // ============================================
@@ -1503,6 +1721,26 @@ function processHit(player, otherPlayer, rooms, io) {
       }
     }
 
+    // MASTERY Phase 4 (4.5): follow-through recovery dial. The victim's hitstun
+    // above is derived from the BASE cycle, so shifting the ATTACKER's cycle
+    // here makes the exchange deliberately ±0 instead of +0 (invariant #1's
+    // explicit Phase-4 frame exception): holding TOWARD lengthens the attacker's
+    // recovery (slightly minus — the victim can answer), holding AWAY shortens it
+    // (slightly plus, but they gained less ground). We push BOTH the cooldown
+    // gate and the pending "slapCycle" timeout (which clears isAttacking / fires
+    // the buffered follow-up) by the same offset so actionability matches.
+    // followThroughDir === 0 (neutral / flag off) ⇒ no shift, the +0 default.
+    if (isSlapAttack && followThroughDir !== 0) {
+      const recoveryOffset =
+        followThroughDir > 0
+          ? FOLLOW_THROUGH_TOWARD_RECOVERY_MS
+          : -FOLLOW_THROUGH_AWAY_RECOVERY_MS;
+      player.attackCooldownUntil = (player.attackCooldownUntil || currentTime) + recoveryOffset;
+      // advanceNamed pulls a deadline EARLIER by its arg, so negate the offset:
+      // +offset (toward) → later cycle end; −offset (away) → earlier.
+      timeoutManager.advanceNamed(player.id, "slapCycle", -recoveryOffset);
+    }
+
     // No hitstop extension needed: the stun timer below runs on the sim clock,
     // which freezes during hitstop — victim stun and attacker cycle pause in
     // perfect lockstep, so the +0 margin is frame-exact by construction.
@@ -1587,6 +1825,8 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
   const currentTime = simNowForPlayer(opponent);
   const parryDuration = currentTime - opponent.rawParryStartTime;
   const isPerfectParry = parryDuration <= PERFECT_PARRY_WINDOW;
+  // MASTERY Phase 4 (4.1): grade the perfect parry by timing precision.
+  const ppGrade = MASTERY_P4_ANALOG && isPerfectParry ? gradePerfectParry(parryDuration) : null;
 
   // End the flapper's flight and ground them (the parry beats the slam). The
   // connect can only happen within FLAP_BODYSLAM_CONTACT_HEIGHT of the ground,
@@ -1609,7 +1849,9 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
   let perfectParryBalanceGain = 0;
   if (isPerfectParry) {
     const balanceBefore = opponent.balance;
-    opponent.balance = Math.min(BALANCE_MAX, opponent.balance + PERFECT_PARRY_BALANCE_REFUND);
+    // MASTERY Phase 4 (4.1): graded posture refund (base 12 at the window edge).
+    const refund = ppGrade ? ppGrade.postureRefund : PERFECT_PARRY_BALANCE_REFUND;
+    opponent.balance = Math.min(BALANCE_MAX, opponent.balance + refund);
     perfectParryBalanceGain = opponent.balance - balanceBefore;
   }
 
@@ -1679,7 +1921,9 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
     // Perfect parry stuns the flapper (the big punish), like a strike.
     flapper.isRawParryStun = true;
     const pushDirection = flapper.x < opponent.x ? -1 : 1;
-    flapper.knockbackVelocity.x = PERFECT_PARRY_KNOCKBACK * pushDirection;
+    // MASTERY Phase 4 (4.1): graded parry shove (base 0.65 at the window edge).
+    const parryShove = ppGrade ? ppGrade.parryShove : PERFECT_PARRY_KNOCKBACK;
+    flapper.knockbackVelocity.x = parryShove * pushDirection;
     flapper.knockbackVelocity.y = 0;
     flapper.perfectParryStunStartTime = currentTime;
     if (flapper.perfectParryStunBaseTimeout) {
@@ -1695,6 +1939,8 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
         stunnedPlayerFighter: flapper.fighter,
         showStarStunEffect: true,
         balanceGain: perfectParryBalanceGain,
+        // MASTERY Phase 4 (4.1): parry timing precision (0..1) for client scaling.
+        quality: ppGrade ? ppGrade.quality : 0,
       });
     }
     setPlayerTimeout(
@@ -1704,7 +1950,7 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
         flapper.perfectParryStunStartTime = 0;
         flapper.perfectParryStunBaseTimeout = null;
       },
-      PERFECT_PARRY_ATTACKER_STUN_DURATION,
+      ppGrade ? ppGrade.attackerStun : PERFECT_PARRY_ATTACKER_STUN_DURATION,
       "perfectParryStunReset"
     );
     flapper.perfectParryStunBaseTimeout = true;
@@ -1776,6 +2022,29 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   // Knockback away from the flapper (burst model — no DI).
   const knockbackDirection = opponent.x >= flapper.x ? 1 : -1;
 
+  // MASTERY Phase 1 (1.3): victim-side momentum — capture the victim's velocity
+  // BEFORE clearAllActionStates zeroes it. Charging under a descending slam eats
+  // more; bracing eats less. Flag off ⇒ 1 (byte-identical).
+  let flapKbScale = 1;
+  let flapBraked = false;
+  if (MASTERY_P1_MOMENTUM) {
+    const intoHit = alignedEntryVelocity(
+      opponent.movementVelocity || 0,
+      knockbackDirection * -1
+    );
+    flapKbScale =
+      1 +
+      K_VICTIM_INTO * Math.max(0, intoHit) -
+      K_VICTIM_BRACE * Math.max(0, -intoHit);
+    flapKbScale = Math.max(
+      VICTIM_KB_SCALE_MIN,
+      Math.min(flapKbScale, VICTIM_KB_SCALE_MAX)
+    );
+    // MASTERY Phase 5 (5.2): the victim braced into the slam (brace reduction
+    // applied) → "dig-in" tell client-side. Gated on P5 for the emit below.
+    flapBraked = intoHit < 0;
+  }
+
   clearAllActionStates(opponent);
   opponent.isRawParrySuccess = false;
   opponent.isPerfectRawParrySuccess = false;
@@ -1786,7 +2055,8 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   opponent.hitCounter = (opponent.hitCounter || 0) + 1;
   opponent.isBurstKnockback = true;
   opponent.burstKnockbackStartTime = currentTime;
-  opponent.knockbackVelocity.x = knockbackDirection * FLAP_BODYSLAM_KB_VELOCITY;
+  opponent.knockbackVelocity.x =
+    knockbackDirection * FLAP_BODYSLAM_KB_VELOCITY * flapKbScale;
   opponent.knockbackVelocity.y = 0;
   opponent.movementVelocity = 0;
 
@@ -1801,14 +2071,21 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
     knockbackDirection > 0
       ? MAP_RIGHT_BOUNDARY - opponent.x
       : opponent.x - MAP_LEFT_BOUNDARY;
-  opponent.slapKnockbackCanRingOut = distanceToBoundaryInKbDir <= SLAP_KILL_RANGE;
+  // MASTERY Phase 2 (2.4): flap body-slam (airborne → no momentum term) still
+  // gets the broken-posture band extension. Flag off ⇒ SLAP_KILL_RANGE.
+  opponent.slapKnockbackCanRingOut =
+    distanceToBoundaryInKbDir <= slapKillBand(flapper, opponent);
 
   if (!opponent.isAtTheRopes && !opponent.atTheRopesFacingDirection) {
     opponent.facing = flapper.x < opponent.x ? 1 : -1;
   }
 
   opponent.stamina = Math.max(0, opponent.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
-  opponent.balance = Math.max(0, opponent.balance - BALANCE_SLAP_HIT_DRAIN);
+  // MASTERY Phase 2 (2.2): slap-class posture drain while the flag is on.
+  opponent.balance = Math.max(
+    0,
+    opponent.balance - (MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN)
+  );
 
   setKnockbackImmunity(opponent);
 
@@ -1828,6 +2105,9 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
       isArmorBreak: false,
       attackerId: flapper.id,
       victimId: opponent.id,
+      // MASTERY Phase 5 (5.2): braked-knockback "dig-in" tell (false w/ flag off).
+      momentumHit: false,
+      braked: MASTERY_P5_ASSISTS && flapBraked,
     });
 
     triggerHitstopAndEmit(io, currentRoom, HITSTOP_BURST_MS, "slap_burst");

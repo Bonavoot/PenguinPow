@@ -42,6 +42,11 @@ const HIT_FX = {
         "hue-rotate(232deg) saturate(1.7) brightness(1.12) drop-shadow(0 0 0.4cqw rgba(196, 96, 255, 0.8))",
       armorBreak:
         "hue-rotate(-25deg) saturate(1.45) brightness(1.06) drop-shadow(0 0 0.35cqw rgba(255, 155, 45, 0.75))",
+      // MASTERY Phase 3 (tsuppari cadence): rhythm-timed enhanced slap → cyan
+      // spark at the contact point (rotated up from the sheet's yellow base) so
+      // the reward is obvious WHERE the hands connect, not just a body glow.
+      cadence:
+        "hue-rotate(135deg) saturate(1.9) brightness(1.2) drop-shadow(0 0 0.5cqw rgba(150, 235, 255, 0.9))",
     },
   },
   charged: {
@@ -91,6 +96,10 @@ HIT_FX.slapBurst = {
 // Map hit status → filter key. Shared across sheets (each sheet supplies its own
 // CSS for the key). Power water (isPowered) is intentionally treated as normal.
 const resolveStatusKey = (position) => {
+  // Cadence takes visual priority (slap-only) — it's the tell we most want the
+  // player to see. Charged sheets have no `cadence` filter, but charged hits are
+  // never cadence, so this only ever resolves cyan on the slap sheet.
+  if (position.isCadence) return "cadence";
   if (position.isArmorBreak) return "armorBreak";
   if (position.isCounterHit) return "counter";
   if (position.isPunish) return "punish";
@@ -243,6 +252,7 @@ const SlapHitSpriteEffect = ({ position }) => {
     position?.isPunish,
     position?.isArmorBreak,
     position?.isPowered,
+    position?.isCadence,
   ]);
 
   const handleDone = (effectId) => {
@@ -275,6 +285,7 @@ SlapHitSpriteEffect.propTypes = {
     isPunish: PropTypes.bool,
     isArmorBreak: PropTypes.bool,
     isPowered: PropTypes.bool,
+    isCadence: PropTypes.bool,
   }),
 };
 

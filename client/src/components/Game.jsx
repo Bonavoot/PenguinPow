@@ -848,12 +848,18 @@ const Game = ({
       rewarmDecodedImages();
     };
 
-    const handlePerfectParry = () => {
+    const handlePerfectParry = (data) => {
       setCrowdEvent({
         type: "cheer",
         intensity: "medium",
         timestamp: Date.now(),
       });
+
+      // MASTERY Phase 4 (4.1): a frame-perfect parry (quality → 1) holds the
+      // cool-grade flash a touch longer than a window-edge one. quality is 0
+      // (flag off / base feel) when absent → today's 360ms.
+      const quality = typeof data?.quality === "number" ? data.quality : 0;
+      const flashHold = 360 + Math.round(quality * 140);
 
       // "Time-freeze" flash framing the perfect-parry hitstop: cool grade snap
       // on the world + a faint cyan camera flash (see .perfect-parry-flash in
@@ -870,7 +876,7 @@ const Game = ({
         perfectParryFlashTimeoutRef.current = setTimeout(() => {
           const cur = containerRef.current;
           if (cur) cur.classList.remove("perfect-parry-flash");
-        }, 360);
+        }, flashHold);
       }
     };
 
