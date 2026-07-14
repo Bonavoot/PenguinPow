@@ -1284,9 +1284,14 @@ function processInputPacket(room, player, data, io, rooms) {
   }
 
   // === CLINCH THROW/PULL/LIFT: Mouse2 + direction while in clinch with grip ===
+  //   THROW — Mouse2 + W
+  //   PULL  — Mouse2 + away
+  //   LIFT  — Mouse2 + W + toward  (deliberate chord; Mouse2+toward alone does nothing
+  //           so push can keep the toward axis without accidental carries)
+  // Priority: lift > throw > pull when chords overlap.
   // Detects three patterns:
-  //   1) Mouse2 just pressed + direction already held
-  //   2) Mouse2 already held + direction just pressed (most common — player holds mouse2 during clinch)
+  //   1) Mouse2 just pressed + direction(s) already held
+  //   2) Mouse2 already held + relevant key just pressed
   //   3) Mouse2 just pressed, direction arrives within 200ms buffer
   // Grip must have been acquired on a previous tick — can't throw on the same press that got you the grip.
   const gripTooRecent = player.gripAcquiredTime && (simNowForPlayer(player) - player.gripAcquiredTime < 50);
@@ -1307,20 +1312,22 @@ function processInputPacket(room, player, data, io, rooms) {
       const wEdge = player.wJustPressed;
       const awayJustPressed = awayKey === 'a' ? player.aJustPressed : player.dJustPressed;
       const towardJustPressed = towardKey === 'a' ? player.aJustPressed : player.dJustPressed;
+      const holdingLiftChord = player.keys.w && player.keys[towardKey];
 
       if (player.mouse2JustPressed) {
         player.clinchMouse2BufferTime = simNowForPlayer(player);
       }
 
       let request = null;
-      // Pattern 1 & 3: Mouse2 edge + direction held
-      if (m2Edge && player.keys.w) request = "throw";
+      // Pattern 1 & 3: Mouse2 edge + direction(s) held
+      if (m2Edge && holdingLiftChord) request = "lift";
+      else if (m2Edge && player.keys.w) request = "throw";
       else if (m2Edge && player.keys[awayKey]) request = "pull";
-      else if (m2Edge && player.keys[towardKey]) request = "lift";
-      // Pattern 2: Mouse2 held + direction just pressed
+      // Pattern 2: Mouse2 held — complete the chord on a key edge
+      else if ((wEdge || towardJustPressed) && holdingLiftChord) request = "lift";
       else if (wEdge) request = "throw";
       else if (awayJustPressed) request = "pull";
-      else if (towardJustPressed) request = "lift";
+      // towardJustPressed alone while Mouse2 held → no request (push stance)
 
       if (request) {
         player.clinchThrowRequest = request;

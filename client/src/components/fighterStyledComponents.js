@@ -169,18 +169,10 @@ export const getFighterPopFilter = (props) => {
   if (props.$inClinch && props.$hasDeepGrip) {
     return `${base} drop-shadow(0 0 5px rgba(255, 194, 71, 0.55))`;
   }
-  // MASTERY Phase 2 (2.1): BROKEN POSTURE — the "openable" tell. A pulsing
-  // magenta/violet stagger rim, distinct from the red danger and blue parry
-  // rims, readable from across the room. It sits below the danger/parry/grip
-  // states above (those mean "right now" outcomes and outrank the tell), and
-  // above the neutral offense rims. Only shown while the server-derived
-  // isPostureBroken flag is set (Phase 2 flag off ⇒ always false ⇒ never shown).
-  if (props.$isPostureBroken) {
-    // Tight double rim (mirrors the perfect-parry gold rim's crispness): a
-    // defined magenta/violet contour hugging the silhouette, NOT a wide glow
-    // cloud. Bright but small-radius so it reads premium, not cheap.
-    return `${base} drop-shadow(0 0 3px rgba(214, 92, 255, 0.9)) drop-shadow(0 0 1px rgba(240, 170, 255, 0.95))`;
-  }
+  // MASTERY Phase 2 (2.1): broken posture no longer uses a colored rim —
+  // the openable tell is the feet-planted teeter (see postureBrokenTeeter
+  // on StyledImage / AnimatedFighterContainer). Keeping filter neutral here
+  // so "vulnerable" reads as body language, not a status-glow.
   if (props.$isGrabPushing) {
     return `${base} drop-shadow(0 0 4px rgba(255, 150, 50, 0.5))`;
   }
@@ -232,6 +224,41 @@ const grabArmNudge = (props) => {
   return ` translateX(${x}%) translateY(${y}%)`;
 };
 
+// Lifter arm: (1) translate up by lift Δy so the HAND stays on the belt,
+// then (2) rotate around that hand so the shoulder swings down into the body
+// instead of riding straight up with the tip. Hand ≈ (25.2%, 73%) on the
+// arm sheet; conjugate from center-bottom. Victim arm: no extra motion.
+const GRAB_ARM_HAND_DX_PCT = -24.8; // 25.2 - 50
+const GRAB_ARM_HAND_DY_PCT = -27; // 73 - 100
+const grabArmLiftMotion = (props) => {
+  const deg = props.$grabArmLiftDeg || 0;
+  const dx = GRAB_ARM_HAND_DX_PCT;
+  const dy = GRAB_ARM_HAND_DY_PCT;
+  let t = " translateY(var(--grab-arm-belt-y, 0px))";
+  if (deg) {
+    t += ` translate(${dx}%, ${dy}%) rotate(${deg}deg) translate(${-dx}%, ${-dy}%)`;
+  }
+  return t;
+};
+
+const grabArmExtra = (props) =>
+  props.$grabArmBeltTrackActive
+    ? grabArmLiftMotion(props)
+    : grabArmNudge(props);
+
+// Clinch-lift leans — different tool per role:
+// Lifter (grounded): skewX ONLY. On a single sprite that includes the feet,
+// any rotate tips the foot pixels; skew shears the torso while keeping the
+// whole bottom edge flat on the ice (same reason clinchTeeter uses skew).
+// Kept mild so it doesn't read as a warped squash.
+// Victim (airborne): plain forward rotate — feet aren't planted, so tipping
+// the whole body toward the lifter is what we want. Never use the lifter lean.
+const clinchLiftLean = (props) => {
+  if (props.$isClinchLifting) return " skewX(-7deg)";
+  if (props.$isBeingLifted) return " rotate(-14deg)";
+  return "";
+};
+
 export const StyledImage = styled("img")
   .withConfig({
     shouldForwardProp: (prop) =>
@@ -249,6 +276,7 @@ export const StyledImage = styled("img")
         "isReady",
         "readyIntroComplete",
         "isHit",
+        "lastHitType",
         "isDead",
         "x",
         "y",
@@ -432,19 +460,19 @@ export const StyledImage = styled("img")
           ? props.$facing === 1
             ? "scaleX(1) translateY(10%)"
             : "scaleX(-1) translateY(10%)"
-          // $grabArmNudgeXPct / $grabArmNudgeYPct: planting-pose nudge for the
-          // grab-arm overlay only. translateX is in the sprite's LOCAL space
-          // (applied before the scaleX flip), so the SAME X value shifts each
-          // penguin toward its own back regardless of facing; translateY isn't
-          // mirrored, so +Y is down for both. Percentages scale with the sprite.
-          // Tune/ flip the values in GameFighter.
+          // Clinch-lift leans (skewX) + lift arm belt-track / hand-pivot rotate
+          // (or planting nudge).
           : props.$facing === 1
-          ? `scaleX(1)${grabArmNudge(props)}`
-          : `scaleX(-1)${grabArmNudge(props)}`,
+          ? `scaleX(1)${clinchLiftLean(props)}${grabArmExtra(props)}`
+          : `scaleX(-1)${clinchLiftLean(props)}${grabArmExtra(props)}`,
       // Grab-arm overlay: rides above BOTH locked bodies (which sit at ~98–99
       // during a grab). $grabArmLayer carries the resolved z (facing decides
       // which of the two arms wins). Still sinks with the body when outside the
       // ring, so fall through to the normal formula (→ 0) in that case.
+      // Slap victim sinks under the attacker so the slap arm reads on top.
+      // Gated on lastHitType==="slap" (set only by processHit slap connects) —
+      // slap parry never sets isHit, so clashes stay equal-layer. Throws that
+      // reuse isHit without clearing lastHitType are excluded via isBeingThrown.
       zIndex: props.$grabArmLayer && !isOutsideDohyo(props.$x, props.$y)
         ? props.$grabArmLayer
         : props.$isClinchKillPullVictim
@@ -457,6 +485,10 @@ export const StyledImage = styled("img")
         ? 101
         : props.$isThrowing || props.$isDodging || props.$isGrabbing
         ? 98
+        : props.$isHit &&
+          props.$lastHitType === "slap" &&
+          !props.$isBeingThrown
+        ? 97
         : 99,
       // Grab-arm overlay: NO filter. getFighterPopFilter emits an all-around
       // dark edge contour + a downward ground shadow; on a layer stacked over
@@ -524,12 +556,23 @@ export const StyledImage = styled("img")
         ? "grabTechShake 0.25s ease-in-out infinite"
         : props.$isGrabTeching
         ? "grabTechShake 0.25s ease-in-out infinite"
+        // Lift pose is a static skew lean + optional lifter arm belt-track.
+        : props.$isBeingLifted ||
+          props.$isClinchLifting ||
+          props.$grabArmBeltTrackActive
+        ? "none"
         : props.$clinchThrowFailStagger
         ? "clinchFailStumble 0.3s cubic-bezier(0.22, 0.6, 0.35, 1)"
         : props.$inClinch && props.$balanceDanger
         ? "clinchTeeterHeavy 0.95s ease-in-out infinite"
         : props.$inClinch && props.$balanceWobble
         ? "clinchTeeter 1.5s ease-in-out infinite"
+        // MASTERY Phase 2 (2.1): outside clinch, broken posture uses the same
+        // feet-pinned skew teeter as the clinch balance tell — no colored rim.
+        // Priority matches clinch wobble so the "openable" read stays on
+        // between other verbs (ropes / kill-throw / grab actions still win).
+        : props.$isPostureBroken
+        ? "postureBrokenTeeter 2.1s linear infinite"
         : props.$isHit
         ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
         : props.$isDodging
@@ -585,7 +628,12 @@ export const StyledImage = styled("img")
         ? "breathe 1.5s ease-in-out infinite"
         : "none",
       width:
-        props.$isAtTheRopes && props.$fighter === "player 1"
+        // Clinch kill-throw landing art reads small at the default fighter
+        // footprint (extra transparent padding in the PNG). Bump ONLY that
+        // pose — spin / pull-kill / everyone else stay on the standard size.
+        props.$showClinchKillThrowLanding
+          ? "min(12.75%, 393px)"
+          : props.$isAtTheRopes && props.$fighter === "player 1"
           ? "min(11.56%, 356px)"
           : "min(12.30%, 379px)",
       height: "auto",
@@ -670,6 +718,22 @@ export const StyledImage = styled("img")
     30% { transform: scaleX(var(--facing, 1)) skewX(-4deg); }
     55% { transform: scaleX(var(--facing, 1)) skewX(2.2deg); }
     78% { transform: scaleX(var(--facing, 1)) skewX(-2.4deg); }
+  }
+  /* Open-field broken-posture tell — feet pinned (origin center bottom).
+     Mostly still, with short tremor bursts so it reads "shaken / open"
+     instead of a constant drunk sway. Tiny skew + micro lateral jitter. */
+  @keyframes postureBrokenTeeter {
+    0%, 12%, 38%, 62%, 100% { transform: scaleX(var(--facing, 1)) skewX(0deg) translateX(0); }
+    /* burst 1 */
+    14% { transform: scaleX(var(--facing, 1)) skewX(-1.1deg) translateX(-0.6px); }
+    17% { transform: scaleX(var(--facing, 1)) skewX(0.9deg) translateX(0.5px); }
+    20% { transform: scaleX(var(--facing, 1)) skewX(-0.5deg) translateX(-0.3px); }
+    23% { transform: scaleX(var(--facing, 1)) skewX(0deg) translateX(0); }
+    /* burst 2 — slightly later / softer */
+    64% { transform: scaleX(var(--facing, 1)) skewX(0.8deg) translateX(0.4px); }
+    67% { transform: scaleX(var(--facing, 1)) skewX(-0.7deg) translateX(-0.4px); }
+    70% { transform: scaleX(var(--facing, 1)) skewX(0.35deg) translateX(0.2px); }
+    73% { transform: scaleX(var(--facing, 1)) skewX(0deg) translateX(0); }
   }
   /* Failed clinch throw/pull — the attacker's weight drops as the attempt
      dies. Pure squash-and-recover in the hitSquash family (no rotation, no
@@ -840,11 +904,12 @@ export const StyledImage = styled("img")
   /* Heavy body-slam plant: flatten into the ice, then a short dead-weight
      jiggle settle. translateY stays planted (rest pose is 10%) — no hop. */
   @keyframes clinchKillThrowLandSquash {
-    0%   { transform: scaleX(calc(var(--facing, 1) * 1.28)) scaleY(0.55) translateY(18%); transform-origin: center bottom; }
-    18%  { transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.78) translateY(13%); transform-origin: center bottom; }
-    36%  { transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.04) translateY(9.5%); transform-origin: center bottom; }
-    52%  { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.94) translateY(11%); transform-origin: center bottom; }
-    70%  { transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.02) translateY(9.8%); transform-origin: center bottom; }
+    0%   { transform: scaleX(calc(var(--facing, 1) * 1.42)) scaleY(0.42) translateY(22%); transform-origin: center bottom; }
+    16%  { transform: scaleX(calc(var(--facing, 1) * 1.18)) scaleY(0.72) translateY(14%); transform-origin: center bottom; }
+    34%  { transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.06) translateY(9%);  transform-origin: center bottom; }
+    48%  { transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.9)  translateY(12%); transform-origin: center bottom; }
+    62%  { transform: scaleX(calc(var(--facing, 1) * 0.97)) scaleY(1.03) translateY(9.5%); transform-origin: center bottom; }
+    78%  { transform: scaleX(calc(var(--facing, 1) * 1.03)) scaleY(0.97) translateY(10.5%); transform-origin: center bottom; }
     100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(10%); transform-origin: center bottom; }
   }
 `;
@@ -889,7 +954,7 @@ export const AnimatedFighterContainer = styled.div
         "x", "y", "facing", "fighter", "isThrowing", "isDodging",
         "isGrabbing", "isRingOutThrowCutscene", "isAtTheRopes", "isHit", "isBurstKnockback",
         "isRawParryStun", "isCinematicKillAttacker", "isSidestepping",
-        "attackerConfirmTier",
+        "attackerConfirmTier", "isPostureBroken",
       ].includes(prop),
   })
   .attrs((props) => {
@@ -930,10 +995,25 @@ export const AnimatedFighterContainer = styled.div
           ? "burstHitSquash 0.35s cubic-bezier(0.22, 0.6, 0.35, 1)"
           : props.$isHit
           ? "hitSquashContainer 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
+          // MASTERY Phase 2 (2.1): feet-pinned openable teeter on spritesheet
+          // path too (hit squash still outranks — impact feedback wins).
+          : props.$isPostureBroken
+          ? "postureBrokenTeeter 2.1s linear infinite"
           : "none",
       },
     };
   })`
+  @keyframes postureBrokenTeeter {
+    0%, 12%, 38%, 62%, 100% { transform: scaleX(var(--facing, 1)) skewX(0deg) translateX(0); }
+    14% { transform: scaleX(var(--facing, 1)) skewX(-1.1deg) translateX(-0.6px); }
+    17% { transform: scaleX(var(--facing, 1)) skewX(0.9deg) translateX(0.5px); }
+    20% { transform: scaleX(var(--facing, 1)) skewX(-0.5deg) translateX(-0.3px); }
+    23% { transform: scaleX(var(--facing, 1)) skewX(0deg) translateX(0); }
+    64% { transform: scaleX(var(--facing, 1)) skewX(0.8deg) translateX(0.4px); }
+    67% { transform: scaleX(var(--facing, 1)) skewX(-0.7deg) translateX(-0.4px); }
+    70% { transform: scaleX(var(--facing, 1)) skewX(0.35deg) translateX(0.2px); }
+    73% { transform: scaleX(var(--facing, 1)) skewX(0deg) translateX(0); }
+  }
   @keyframes hitSquashContainer {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
     6% { transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.75) translateX(calc(var(--facing, 1) * -3%)) rotate(calc(var(--facing, 1) * 2deg)); }

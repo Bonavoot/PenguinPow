@@ -61,6 +61,7 @@ import pumo from "../assets/pumo-idle.png";
  * (which stays imported for preloading + use in lobby/game).
  */
 import pumoMainMenu from "../assets/pumo-main-menu.png";
+import pumoLogo from "../assets/pumo-logo.png";
 /*
  * Single locked-in hero scene for the main menu — the two-penguins-fighting
  * sketch reads as "this is what the game IS." We deliberately do not cycle
@@ -337,53 +338,28 @@ const LeftColumn = styled.div`
 // --- Title block ---
 
 /*
- * The wordmark stands on its own — no decorative left bar, no gradient
- * accent. A single confident lockup reads as a real game logo; the
- * old vertical gradient rule was fighting the type for attention and
- * making the two PUMO halves feel like two separate brands.
+ * Logo lockup — image wordmark sized to roughly match the old
+ * "Pumo Pumo!" text footprint (width-driven so the stacked mark
+ * reads at a similar scale to the previous single-line title).
  */
 const TitleBlock = styled.div`
   position: relative;
 `;
 
-const MainTitle = styled.h1`
-  font-family: "Bungee", cursive;
-  font-size: clamp(1.85rem, 4.55cqw, 3.45rem);
-  margin: 0;
-  line-height: 0.94;
-  color: ${C.inkTextStrong};
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  position: relative;
+const LogoImage = styled.img`
+  display: block;
+  width: clamp(8rem, 18cqw, 13.5rem);
+  height: auto;
   /*
-   * Stamped poster depth: a thin white emboss highlight up top makes
-   * the letterforms feel pressed INTO the snow surface, a solid dark
-   * drop at the bottom anchors the wordmark, and a soft cool ambient
-   * shadow lifts it off the arena art behind. No more vermillion
-   * misregistration — that was literally muddying the letterforms
-   * and killing legibility.
+   * Sit on the same left edge as the menu labels (MenuButton text
+   * padding), with a light optical tuck for the topknot sitting above
+   * the wordmark baseline.
    */
-  text-shadow:
-    0 -1px 0 rgba(255, 255, 255, 0.55),
-    0 2px 0 rgba(15, 29, 46, 0.18),
-    0 4px 0 rgba(15, 29, 46, 0.30),
-    0 8px 18px ${C.snowShadowStrong};
+  margin: clamp(-10px, -1.4cqh, -6px) 0 0 clamp(16px, 2cqw, 24px);
+  object-fit: contain;
+  filter: drop-shadow(0 4px 0 rgba(15, 29, 46, 0.3))
+    drop-shadow(0 8px 18px ${C.snowShadowStrong});
   animation: ${slideInLeft} 0.6s ease-out 0.35s backwards;
-
-  span {
-    display: inline-block;
-  }
-
-  /*
-   * Both PUMO halves now share the same deep ink — the wordmark
-   * reads as ONE word. The exclamation is the single punch of red,
-   * acting like a hanko seal at the end of the lockup.
-   */
-  span.bang {
-    color: ${C.vermillion};
-    margin-left: 0.08em;
-  }
 `;
 
 // --- Menu list ---
@@ -1569,10 +1545,7 @@ const MainMenu = ({
         <HeroStage>
           <LeftColumn>
             <TitleBlock>
-              <MainTitle>
-                <span>Pumo</span> <span>Pumo</span>
-                <span className="bang">!</span>
-              </MainTitle>
+              <LogoImage src={pumoLogo} alt="Pumo Pumo!" />
             </TitleBlock>
 
             <MenuList>

@@ -49,6 +49,7 @@ const PlayerShadow = memo(forwardRef(({
   isRingOutThrowCutscene,
   isRopeJumping,
   isFlapping,
+  isBeingLifted,
   width,
   height,
   offsetLeft,
@@ -62,6 +63,7 @@ const PlayerShadow = memo(forwardRef(({
       isGrabStartup ||
       isThrowing ||
       isBeingThrown ||
+      isBeingLifted ||
       isRingOutThrowCutscene ||
       isRopeJumping ||
       isFlapping
@@ -109,6 +111,7 @@ PlayerShadow.propTypes = {
   isRingOutThrowCutscene: PropTypes.bool,
   isRopeJumping: PropTypes.bool,
   isFlapping: PropTypes.bool,
+  isBeingLifted: PropTypes.bool,
   width: PropTypes.string,
   height: PropTypes.string,
   offsetLeft: PropTypes.string,

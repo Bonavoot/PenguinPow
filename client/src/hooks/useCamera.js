@@ -469,7 +469,7 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
           shakeRot = nr * amt * shakeState.rot;
           // Comic body-slam rumble decays slower so the hit "stays" a beat.
           const decay =
-            amp > 1.2 ? TRAUMA_DECAY * 0.62 : TRAUMA_DECAY;
+            amp > 1.2 ? TRAUMA_DECAY * 0.52 : TRAUMA_DECAY;
           // Time-based linear trauma decay (frame-rate independent). Paused
           // during the perfect-parry freeze so the shake "sticks" then releases.
           if (!frozen) {

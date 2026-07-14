@@ -4,6 +4,7 @@ import styled, { keyframes } from "styled-components";
 import gamepadHandler from "../utils/gamepadHandler";
 import Snowfall from "./Snowfall";
 import { C, fadeIn, slideInLeft, fadeUp } from "./menuTheme";
+import pumoLogo from "../assets/pumo-logo.png";
 
 // ============================================
 // ANIMATIONS
@@ -199,67 +200,29 @@ const LogoSection = styled.div`
   margin-bottom: clamp(60px, 12cqh, 120px);
   display: flex;
   justify-content: center;
-  /*
-   * Lets the inline TitleBlock (with its left vermillion accent bar)
-   * stay attached to the title while the whole block centers in the
-   * screen. Mirrors MainMenu's title treatment exactly — both pages
-   * read as "the same logo wordmark."
-   */
 `;
 
 /*
- * TitleBlock + LogoTitle mirror MainMenu's TitleBlock + MainTitle so
- * the wordmark looks identical on both surfaces — both pages read
- * as "the same product." The decorative vertical accent bar that
- * used to live here was fighting the type for attention; the new
- * lockup carries itself on type alone.
+ * TitleBlock + LogoImage mirror MainMenu so both pages share the
+ * same image wordmark treatment.
  */
 const TitleBlock = styled.div`
   position: relative;
   animation: ${fadeUp} 0.8s ease-out 0.2s backwards;
 `;
 
-const LogoTitle = styled.h1`
-  font-family: "Bungee", cursive;
-  font-size: clamp(2rem, 7cqw, 4rem);
+const LogoImage = styled.img`
+  display: block;
+  width: clamp(12.5rem, 34cqw, 24rem);
+  height: auto;
   margin: 0;
-  line-height: 0.94;
-  color: ${C.inkTextStrong};
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  position: relative;
-  /*
-   * Stamped poster depth: thin white emboss highlight, solid dark
-   * drop at the bottom, and a soft cool ambient shadow that lifts
-   * the wordmark off the snow surface. The previous vermillion
-   * misregistration was muddying the letterforms — the new layered
-   * shadow is what gives the type its real "pressed into paper"
-   * weight without the color smudge.
-   */
-  text-shadow:
-    0 -1px 0 rgba(255, 255, 255, 0.55),
-    0 2px 0 rgba(15, 29, 46, 0.18),
-    0 4px 0 rgba(15, 29, 46, 0.30),
-    0 8px 18px ${C.snowShadowStrong};
+  object-fit: contain;
+  filter: drop-shadow(0 4px 0 rgba(15, 29, 46, 0.3))
+    drop-shadow(0 8px 18px ${C.snowShadowStrong});
   animation: ${slideInLeft} 0.6s ease-out 0.35s backwards;
 
-  span {
-    display: inline-block;
-  }
-
-  /*
-   * Both PUMO halves share the deep ink so the wordmark reads as
-   * ONE word, not two. Only the exclamation mark gets the red
-   * accent — it works like a hanko seal closing the lockup.
-   */
-  span.bang {
-    color: ${C.vermillion};
-    margin-left: 0.08em;
-  }
-
   @media (max-width: 600px) {
-    font-size: clamp(1.5rem, 8cqw, 2.5rem);
+    width: clamp(10rem, 55cqw, 18rem);
   }
 `;
 
@@ -516,10 +479,7 @@ const StartupScreen = ({ onContinue, connectionError, steamDeckMode }) => {
       <Content>
         <LogoSection>
           <TitleBlock>
-            <LogoTitle>
-              <span>Pumo</span> <span>Pumo</span>
-              <span className="bang">!</span>
-            </LogoTitle>
+            <LogoImage src={pumoLogo} alt="Pumo Pumo!" />
           </TitleBlock>
         </LogoSection>
 

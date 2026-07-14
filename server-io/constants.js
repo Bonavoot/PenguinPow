@@ -24,7 +24,7 @@ const DELTA_TRACKED_PROPS = [
   'isBurstKnockback',
   'isGrabbing', 'isBeingGrabbed', 'grabbedOpponent', 'grabState', 'grabAttemptType',
   'isGrabbingMovement', 'isWhiffingGrab', 'isGrabWhiffRecovery', 'isGrabTeching', 'grabTechRole', 'isGrabStartup',
-  'isHit', 'isDead', 'isRecovering', 'isDodging', 'isDodgeStartup', 'isDodgeRecovery', 'dodgeDirection', 'justLandedFromDodge',
+  'isHit', 'lastHitType', 'isDead', 'isRecovering', 'isDodging', 'isDodgeStartup', 'isDodgeRecovery', 'dodgeDirection', 'justLandedFromDodge',
   'isRawParrying', 'isRawParryStun', 'isRawParrySuccess', 'isPerfectRawParrySuccess',
   'isThrowing', 'isBeingThrown', 'isThrowTeching', 'isBeingPulled', 'isBeingPushed',
   'isThrowingSalt', 'isReady', 'isBowing', 'isAtTheRopes',
@@ -98,23 +98,28 @@ const SLAP_HITBOX_DISTANCE_VALUE = Math.round(152 * 0.96); // ~146 — must exce
 //                 nobody gains ground. Fair, never random.
 // Win clashes REPEATEDLY to walk an opponent to the edge — no single clash is
 // ever a free hit or a guaranteed follow-up.
-const SLAP_PARRY_WINDOW = 75; // Near-simultaneous only (~4–5 frames). Wider than this
-// and the clash becomes the constant, neutral, no-progress loop that felt clunky.
+const SLAP_PARRY_WINDOW = 45; // Near-simultaneous only (~2–3 frames). Was 75 —
+// that made mash-vs-mash almost always clang; tighter so one slap lands clean.
 const SLAP_PARRY_NEUTRAL_WINDOW_MS = 30; // Starts within ~1 tick (64Hz ≈ 15.6ms) read
 // as a genuine tie → NEUTRAL (symmetric). Beyond this, someone clearly went first.
 // Symmetric recovery — IDENTICAL for both players, every outcome. Both unlock
 // together, so mashing-after-clash simply re-clashes (fair) instead of letting
 // the winner run away with the tempo. The reward for winning is GROUND, not frames.
 const SLAP_PARRY_RECOVERY_MS = 135;
-const SLAP_PARRY_HITSTOP_MS = 110; // Heavy freeze — this is the CLANG. Affordable now
-// that clashes are rare; it's the single biggest "this was a big moment" cue.
+const SLAP_PARRY_HITSTOP_MS = 110; // Clash freeze — keep as the CLANG beat (hitstop
+// on a clean slap connect is separate: HITSTOP_SLAP_MS).
 // Asymmetric knockback (decisive) — the readable tell, and the ONLY advantage a
 // clash grants. Winner barely moves (holds the center); loser is shoved back
-// toward the rope (~4× the winner's nudge). Purely positional → always contestable.
+// toward the rope. Purely positional → always contestable.
 const SLAP_PARRY_KNOCKBACK_WINNER = 0.8;
-const SLAP_PARRY_KNOCKBACK_LOSER = 3.5;
-const SLAP_PARRY_KNOCKBACK_NEUTRAL = 2.0; // Tie → equal, clean pop-apart (no ground change).
+const SLAP_PARRY_KNOCKBACK_LOSER = 5.0; // Was 3.5 — harder shove ends the war
+const SLAP_PARRY_KNOCKBACK_NEUTRAL = 2.8; // Was 2.0 — ties also create real space
 const SLAP_PARRY_KB_FRICTION = 0.82; // Strong friction — quick settle after the shove
+// Instant separation snap on clash resolve — expand centers to this gap BEFORE
+// hitstop. Must sit CLEAR of slap reach (~146) so post-clash mash doesn't
+// instantly re-clang; never pulls closer.
+const SLAP_PARRY_TIP_SEPARATION = 175;
+
 const GRAB_RANGE = Math.round(158 * 0.96); // ~152px - command grab range (scaled for camera zoom) [8% tighter]
 
 // ============================================
@@ -827,11 +832,13 @@ const CLINCH_PULL_DISTANCE = 280;                // How far opponent is pulled b
 const CLINCH_PULL_TWEEN_DURATION = 600;          // Tween duration for pull movement
 const CLINCH_PULL_INPUT_LOCK_MS = 650;           // Input lock after pull
 
-// Clinch lift/carry system (Mouse2 + toward during clinch)
+// Clinch lift/carry system (Mouse2 + W + toward during clinch)
 const CLINCH_LIFT_TOTAL_MS = 700;                // Total lift duration (rise + move + descend)
 const CLINCH_LIFT_RISE_MS = 150;                 // Time to lift opponent off ground
 const CLINCH_LIFT_DESCEND_MS = 150;              // Time to set opponent down
-const CLINCH_LIFT_Y_OFFSET = 35;                 // How high opponent is lifted (pixels)
+// Kept modest so belt-grab arm overlays can stay glued to the same belt
+// contact throughout the carry (client tracks this Δy on the arm layer).
+const CLINCH_LIFT_Y_OFFSET = 16;                 // How high opponent is lifted (pixels)
 const CLINCH_LIFT_BALANCE_COST = 12;             // Balance cost for lifter
 const CLINCH_LIFT_STAMINA_COST = 15;             // Stamina cost for lifter (still the most expensive action)
 const CLINCH_LIFT_TARGET_BALANCE_DRAIN = 8;      // Balance drain on target — being lifted is destabilizing
@@ -905,10 +912,9 @@ const GASSED_RECOVERY_STAMINA = 55; // Granted on exit — enough to actually fi
 // Scales with power - stronger hits freeze longer
 // ============================================
 const SLAP_CHAIN_HIT_GAP_MS = 40;  // Minimum visual gap after slap hitstun before victim can be hit again
-// Flat slap connect freeze (~4 frames). Snappy pop — every slap is an
-// individual hit now, so one value covers them all. Symmetric (sim clock pauses
-// for both), so the +0 frame math is unaffected by hitstop.
-const HITSTOP_SLAP_MS = 70;
+// Flat slap connect freeze (~8 frames at 60fps). Symmetric (sim clock pauses for
+// both), so the +0 frame math is unaffected by hitstop.
+const HITSTOP_SLAP_MS = 130;
 // Heavy burst-hit freeze (~12 frames) — the "BOOM" for palm thrust / flap
 // body-slam class impacts.
 const HITSTOP_BURST_MS = 200;
@@ -1056,6 +1062,15 @@ const MOMENTUM_WINDOW_MS = 220;
 const K_SLAP_INHERIT = 0.55; // SAFE 0.35
 const SLAP_SLIDE_MIN = 0.45; // fade-away slap floor: a retreating entry produces a short, safe step-in — keep > 0 so the ground-transfer identity survives
 const SLAP_SLIDE_MAX = 2.0;
+// Slap-slide TRAVEL damp (index.js). Contact used to hard-cap at 0.3× while any
+// open gap ran at full velocity — after tip-sep / on-hit drift that read as a
+// free rocket. Gap-lerp softens the cliff. Standing spaced stays near the
+// pocket step; inheritance ABOVE the standing slide (1.0) keeps most of its
+// surplus once you're out of contact so dash-in still pays.
+const SLAP_SLIDE_CONTACT_DAMP = 0.3;       // colliding / body-meet (unchanged)
+const SLAP_SLIDE_AT_REACH_DAMP = 0.55;     // at slap hitbox reach, not colliding
+const SLAP_SLIDE_SPACED_DAMP = 0.45;       // at/beyond tip-sep gap
+const SLAP_SLIDE_INHERIT_SURPLUS_BLEND = 0.75; // 0 = damp surplus like base, 1 = undamped surplus
 
 // 1.2 Slap on-hit ground-transfer inheritance (processHit slap branch):
 //   momentumMult = 1 + K_SLAP_KB_INHERIT * slapEntryAligned
@@ -1224,9 +1239,9 @@ const SLAP_TIP_DRIFT_MULT = 1.1;    // SAFE 1.05 — tip slap victim drift scale
 //   winnerKb = lerp(CLASH_WINNER_KB_MAX, CLASH_WINNER_KB_MIN, t)  // more margin ⇒ winner holds ground harder
 // Neutral (genuine tie) case is unchanged; recovery stays symmetric (fairness).
 const CLASH_MARGIN_MIN_MS = 30;   // == SLAP_PARRY_NEUTRAL_WINDOW_MS (the smallest decisive gap)
-const CLASH_MARGIN_MAX_MS = 75;   // gap ≥ this saturates the margin curve
-const CLASH_LOSER_KB_MIN = 2.6;   // razor-thin loss shove
-const CLASH_LOSER_KB_MAX = 4.2;   // clean-loss shove
+const CLASH_MARGIN_MAX_MS = 45;   // == SLAP_PARRY_WINDOW — saturate within clashable gaps
+const CLASH_LOSER_KB_MIN = 3.5;   // razor-thin loss shove
+const CLASH_LOSER_KB_MAX = 5.8;   // clean-loss shove
 const CLASH_WINNER_KB_MAX = 1.2;  // razor-thin win: winner still pops back a little
 const CLASH_WINNER_KB_MIN = 0.6;  // clean win: winner holds center
 
@@ -1316,6 +1331,7 @@ module.exports = {
   SLAP_PARRY_KNOCKBACK_LOSER,
   SLAP_PARRY_KNOCKBACK_NEUTRAL,
   SLAP_PARRY_KB_FRICTION,
+  SLAP_PARRY_TIP_SEPARATION,
   GRAB_RANGE,
   DOHYO_FALL_SPEED,
   DOHYO_FALL_DEPTH,
@@ -1690,6 +1706,10 @@ module.exports = {
   K_SLAP_INHERIT,
   SLAP_SLIDE_MIN,
   SLAP_SLIDE_MAX,
+  SLAP_SLIDE_CONTACT_DAMP,
+  SLAP_SLIDE_AT_REACH_DAMP,
+  SLAP_SLIDE_SPACED_DAMP,
+  SLAP_SLIDE_INHERIT_SURPLUS_BLEND,
   K_SLAP_KB_INHERIT,
   SLAP_ONHIT_ATTACKER_PUSH_CAP,
   SLAP_ONHIT_VICTIM_DRIFT_CAP,

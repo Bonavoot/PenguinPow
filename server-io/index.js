@@ -61,6 +61,9 @@ const {
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS, SLAP_PARRY_KB_FRICTION,
   BURST_KB_FRICTION,
   SLAP_ROPE_RESIST_BUFFER,
+  SLAP_HITBOX_DISTANCE_VALUE, SLAP_PARRY_TIP_SEPARATION,
+  SLAP_SLIDE_CONTACT_DAMP, SLAP_SLIDE_AT_REACH_DAMP, SLAP_SLIDE_SPACED_DAMP,
+  SLAP_SLIDE_INHERIT_SURPLUS_BLEND,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_RECOVERY_MS,
   SIDESTEP_ARC_DEPTH, SIDESTEP_TRAVEL, SIDESTEP_TRAVEL_EDGE, SIDESTEP_GRAB_TRACK_RANGE,
   SIDESTEP_GRAB_TRACK_RANGE_P5,
@@ -173,6 +176,56 @@ const { openLog: openAuditLog } = require("./inputAuditLog");
 const { registerSocketHandlers, processInputPacket } = require("./socketHandlers");
 
 const { getCleanedRoomsData } = require("./playerCleanup");
+
+// Slap-slide travel: gap-damp so post-parry / on-hit separation doesn't rocket at
+// full undamped velocity. Contact = hard 0.3× (unchanged). Standing spaced ≈
+// pocket step; inheritance above |1.0| keeps most of its surplus once out of
+// body contact so dash-in still reads.
+function getSlapSlideEffectiveVelocity(player, opponent) {
+  const vel = player.movementVelocity || 0;
+  if (!opponent || vel === 0) return vel;
+
+  const sign = vel < 0 ? -1 : 1;
+  const mag = Math.abs(vel);
+  let damp = SLAP_SLIDE_CONTACT_DAMP;
+
+  if (!arePlayersColliding(player, opponent)) {
+    const dist = Math.abs(player.x - opponent.x);
+    const s1 = player.sizeMultiplier || 1;
+    const s2 = opponent.sizeMultiplier || 1;
+    const contactDist = HITBOX_DISTANCE_VALUE * (s1 + s2);
+    const reachDist = SLAP_HITBOX_DISTANCE_VALUE * Math.max(s1, s2);
+    const spacedDist = SLAP_PARRY_TIP_SEPARATION;
+
+    if (dist <= contactDist) {
+      damp = SLAP_SLIDE_CONTACT_DAMP;
+    } else if (dist <= reachDist) {
+      const t = (dist - contactDist) / Math.max(1, reachDist - contactDist);
+      damp =
+        SLAP_SLIDE_CONTACT_DAMP +
+        (SLAP_SLIDE_AT_REACH_DAMP - SLAP_SLIDE_CONTACT_DAMP) * t;
+    } else if (dist <= spacedDist) {
+      const t = (dist - reachDist) / Math.max(1, spacedDist - reachDist);
+      damp =
+        SLAP_SLIDE_AT_REACH_DAMP +
+        (SLAP_SLIDE_SPACED_DAMP - SLAP_SLIDE_AT_REACH_DAMP) * t;
+    } else {
+      damp = SLAP_SLIDE_SPACED_DAMP;
+    }
+  }
+
+  // Standing/base portion always takes the gap damp. Inheritance surplus above
+  // the standing slide (1.0) only escapes damp when out of contact — keeps the
+  // pocket skate mute, lets dash-in still travel when spaced.
+  const stand = Math.min(mag, 1.0);
+  const surplus = Math.max(0, mag - 1.0);
+  const atContact = damp <= SLAP_SLIDE_CONTACT_DAMP + 0.001;
+  const surplusDamp = atContact
+    ? damp
+    : damp + (1 - damp) * SLAP_SLIDE_INHERIT_SURPLUS_BLEND;
+
+  return sign * (stand * damp + surplus * surplusDamp);
+}
 
 const app = express();
 app.use(cors());
@@ -2968,10 +3021,7 @@ function tick(delta) {
             let newX;
             if (player.isSlapSliding) {
               const opponent = room.players.find((p) => p.id !== player.id);
-              let effectiveVelocity = player.movementVelocity;
-              if (opponent && arePlayersColliding(player, opponent)) {
-                effectiveVelocity *= 0.3;
-              }
+              const effectiveVelocity = getSlapSlideEffectiveVelocity(player, opponent);
               newX = player.x + delta * speedFactor * effectiveVelocity;
             } else {
               newX = player.x + delta * currentSpeedFactor * player.movementVelocity;

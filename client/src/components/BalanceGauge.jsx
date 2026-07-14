@@ -46,12 +46,19 @@ const GaugeCanvas = styled.canvas`
 
 const BalLabel = styled.div`
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: ${GAUGE_HEIGHT};
   font-family: "Bungee", cursive;
   font-size: clamp(7px, 0.82cqw, 10px);
   color: rgba(245, 236, 217, 0.72);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  /* Cancel trailing letter-spacing so the gap to the bar stays even. */
+  margin-inline-end: -0.08em;
   line-height: 1;
+  /* Bungee caps sit optically high in the em-box vs the painted track. */
+  transform: translateY(1px);
   text-shadow:
     1px 1px 2px rgba(0, 0, 0, 1),
     0 0 4px rgba(0, 0, 0, 0.85),

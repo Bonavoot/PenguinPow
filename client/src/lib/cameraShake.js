@@ -60,7 +60,7 @@ export const SHAKE_PROFILES = {
   // Clinch kill-throw BODY SLAM — comically over-the-top, this landing only.
   // amp multiplies rendered shake offsets past the normal trauma=1 ceiling;
   // punch is the rare zoom exception (same policy bucket as perfect_parry).
-  kill_throw_land: { trauma: 1.0, punch: 0.11, rot: 2.0, amp: 1.85 },
+  kill_throw_land: { trauma: 1.0, punch: 0.15, rot: 2.6, amp: 2.15 },
 
   default:         { trauma: 0.50, punch: 0.0, rot: 0.10 },
 };

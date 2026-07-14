@@ -217,8 +217,11 @@ const getImageSrc = (
   if (isRecovering) return recovering;
   if (isThrowingSnowball) return snowballThrow;
   if (isSpawningPumoArmy) return pumoArmy;
-  if (isClinchLifting) return attemptingGrabThrow;
-  if (isBeingLifted) return beingGrabbed;
+  // Lift/carry (Mouse2 + W + toward): both stay in the clinch grab pose. The
+  // victim's airborne read comes from server Y + a client-side lean; the
+  // lifter's carry tell is a shoulder-pivoted arm overlay rotate.
+  if (isClinchLifting) return grabbing;
+  if (isBeingLifted) return grabbing;
   if (isAttemptingGrabThrow) return attemptingGrabThrow;
   if (isResistingThrow) return hit;
   if (isResistingPull) return hit;

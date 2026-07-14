@@ -5,6 +5,7 @@ const {
   SLAP_PARRY_WINDOW, SLAP_PARRY_NEUTRAL_WINDOW_MS, SLAP_PARRY_HITSTOP_MS,
   SLAP_PARRY_RECOVERY_MS,
   SLAP_PARRY_KNOCKBACK_WINNER, SLAP_PARRY_KNOCKBACK_LOSER, SLAP_PARRY_KNOCKBACK_NEUTRAL,
+  SLAP_PARRY_TIP_SEPARATION,
   DOHYO_FALL_DEPTH,
   POWER_UP_TYPES,
   PERFECT_PARRY_WINDOW, PERFECT_PARRY_KNOCKBACK,
@@ -505,6 +506,39 @@ function resolveSlapParry(player1, player2, room, io) {
   } else {
     p2Kb = winnerKb;
     p1Kb = loserKb;
+  }
+
+  // Tip-separation snap — expand to tip-meet spacing BEFORE hitstop so the
+  // freeze shows flippers touching through the clash VFX, not belly mash.
+  // Only expands (never pulls closer). Midpoint preserved unless a wall steals
+  // range from one side; then the free player takes the leftover gap.
+  const BOUNDARY_BUFFER = 10; // matches slap-parry KB clamp in index.js
+  const leftBound = MAP_LEFT_BOUNDARY + BOUNDARY_BUFFER;
+  const rightBound = MAP_RIGHT_BOUNDARY - BOUNDARY_BUFFER;
+  const curDist = Math.abs(player1.x - player2.x);
+  if (curDist < SLAP_PARRY_TIP_SEPARATION) {
+    const left = player1.x <= player2.x ? player1 : player2;
+    const right = left === player1 ? player2 : player1;
+    const mid = (player1.x + player2.x) / 2;
+    let leftX = mid - SLAP_PARRY_TIP_SEPARATION / 2;
+    let rightX = mid + SLAP_PARRY_TIP_SEPARATION / 2;
+
+    if (leftX < leftBound) {
+      leftX = leftBound;
+      rightX = leftX + SLAP_PARRY_TIP_SEPARATION;
+    }
+    if (rightX > rightBound) {
+      rightX = rightBound;
+      leftX = rightX - SLAP_PARRY_TIP_SEPARATION;
+      if (leftX < leftBound) {
+        // Both walls / too narrow for a full tip gap — span the arena max.
+        leftX = leftBound;
+        rightX = rightBound;
+      }
+    }
+
+    left.x = leftX;
+    right.x = rightX;
   }
 
   const dir1 = player1.x < player2.x ? -1 : 1;

@@ -2000,6 +2000,21 @@ const GameFighter = ({
         if (grabArmEl) {
           grabArmEl.style.left = leftPct;
           grabArmEl.style.bottom = bottomPct;
+          // Lifter only: raise the pre-aligned arm by the victim's lift Δy so
+          // the hand rides their belt. Victim arm stays body-locked (no track)
+          // — sliding it down ripped it off the shoulder.
+          let beltTrackY = 0;
+          if (p.isClinchLifting) {
+            const opp =
+              index === 0
+                ? allPlayersDataRef.current.player2
+                : allPlayersDataRef.current.player1;
+            beltTrackY = -Math.max(
+              0,
+              (opp?.y ?? SHADOW_GROUND_LEVEL) - SHADOW_GROUND_LEVEL
+            );
+          }
+          grabArmEl.style.setProperty("--grab-arm-belt-y", `${beltTrackY}px`);
         }
         const animEl = animContainerDomRef.current;
         if (animEl) {
@@ -2016,6 +2031,7 @@ const GameFighter = ({
               p.isGrabStartup ||
               p.isThrowing ||
               p.isBeingThrown ||
+              p.isBeingLifted ||
               p.isRingOutThrowCutscene ||
               p.isRopeJumping ||
               p.isFlapping);
@@ -2491,6 +2507,7 @@ const GameFighter = ({
           prev.isAttacking !== newState.isAttacking ||
           prev.isDodging !== newState.isDodging ||
           prev.isHit !== newState.isHit ||
+          prev.lastHitType !== newState.lastHitType ||
           prev.isGrabbing !== newState.isGrabbing ||
           prev.isBeingGrabbed !== newState.isBeingGrabbed ||
           prev.isThrowing !== newState.isThrowing ||
@@ -2586,7 +2603,7 @@ const GameFighter = ({
           prev.isArmClamped !== newState.isArmClamped ||
           prev.clinchThrowFailStagger !== newState.clinchThrowFailStagger ||
           prev.hasDeepGrip !== newState.hasDeepGrip ||
-          // MASTERY Phase 2 (2.1): broken-posture tell drives the stagger rim.
+          // MASTERY Phase 2 (2.1): broken-posture tell drives the openable teeter.
           prev.isPostureBroken !== newState.isPostureBroken ||
           // Balance threshold crossings (throwable <=50, kill zone <15) drive the
           // clinch wobble/stagger animations — balance is ALWAYS_SEND so a plain
@@ -2852,7 +2869,6 @@ const GameFighter = ({
             isPunish: data.isPunish || false,
             isArmorBreak: data.isArmorBreak || false,
             isPowered: data.isPowered || false,
-            isCadence: data.isCadence || false,
             cinematicKill: data.cinematicKill || false,
             cinematicHitstopMs: data.cinematicKill ? 550 : 0,
           });
@@ -3171,7 +3187,7 @@ const GameFighter = ({
 
       // MASTERY Phase 2 (2.1): posture-crack SFX on the break edge — the audible
       // half of the broken-posture "openable" tell (the visual half is the
-      // magenta stagger rim driven by isPostureBroken). Fires once per break,
+      // feet-planted teeter driven by isPostureBroken). Fires once per break,
       // panned to the staggered fighter. Server only emits this behind the
       // MASTERY_P2_POSTURE flag, so it's silent when the phase is off.
       handlePostureBreak = (data) => {
@@ -3983,7 +3999,7 @@ const GameFighter = ({
         // Aftershock — server already fired the main kill_throw_land boom;
         // a delayed echo sells the comic "the ground is still ringing" beat.
         echoId = setTimeout(() => {
-          addShake("kill_throw_land", { scale: 0.42 });
+          addShake("kill_throw_land", { scale: 0.55 });
         }, 95);
       } else {
         emitParticles("throwLand", { x: landX, y: penguin.y });
@@ -5669,6 +5685,12 @@ const GameFighter = ({
   const grabArmNudgeXPct = isPlantingArm ? GRAB_ARM_PLANT_NUDGE_X_PCT : 0;
   const grabArmNudgeYPct = isPlantingArm ? GRAB_ARM_PLANT_NUDGE_Y_PCT : 0;
 
+  // Lifter arm: belt-track the tip, then hand-pivot rotate so the shoulder
+  // settles back onto the torso (pure vertical track parked it up by the beak).
+  const grabArmBeltTrackActive =
+    !isPlantingArm && !!penguin.isClinchLifting;
+  const grabArmLiftDeg = grabArmBeltTrackActive ? 14 : 0;
+
   // Shared style-driving props for the static fighter <img>. Spread into BOTH
   // the body sprite and the grab-arm overlay so the arm inherits the exact same
   // position/facing/animation/filter and stays pixel-locked to the body through
@@ -5687,6 +5709,7 @@ const GameFighter = ({
     $isReady: penguin.isReady,
     $readyIntroComplete: readyIntroComplete,
     $isHit: penguin.isHit,
+    $lastHitType: penguin.lastHitType,
     $isDead: penguin.isDead,
     $isSlapAttack: displayPenguin.isSlapAttack,
     $isThrowing: penguin.isThrowing,
@@ -5750,6 +5773,8 @@ const GameFighter = ({
     $grabTechRole: penguin.grabTechRole,
     $isGrabWhiffRecovery: penguin.isGrabWhiffRecovery,
     $isClinchClashing: penguin.isClinchClashing,
+    $isClinchLifting: penguin.isClinchLifting,
+    $isBeingLifted: penguin.isBeingLifted,
     $isClinchJolting: penguin.isClinchJolting,
     $isBeingClinchJolted: penguin.isBeingClinchJolted,
     $isClinchJoltClashing: penguin.isClinchJoltClashing,
@@ -5757,9 +5782,10 @@ const GameFighter = ({
     $clinchThrowFailStagger: penguin.clinchThrowFailStagger,
     $inClinch: penguin.inClinch,
     $hasDeepGrip: penguin.hasDeepGrip,
-    // MASTERY Phase 2 (2.1): broken-posture stagger rim (server-derived tell;
-    // false when the Phase 2 flag is off).
-    $isPostureBroken: penguin.isPostureBroken,
+    // MASTERY Phase 2 (2.1): broken-posture openable teeter (server-derived;
+    // false when the Phase 2 flag is off). Kill it on gameOver so the loser
+    // isn't still trembling under the round-result / next-round transition.
+    $isPostureBroken: !!penguin.isPostureBroken && !gameOver,
     $balanceDanger: (penguin.balance ?? 100) < 15,
     $balanceWobble: (penguin.balance ?? 100) <= 50,
     $isCinematicKillAttacker: isCinematicKillAttacker,
@@ -6034,6 +6060,7 @@ const GameFighter = ({
             isGrabStartup={penguin.isGrabStartup}
             isThrowing={penguin.isThrowing}
             isBeingThrown={penguin.isBeingThrown}
+            isBeingLifted={penguin.isBeingLifted}
             isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
             isRopeJumping={penguin.isRopeJumping}
             isFlapping={penguin.isFlapping}
@@ -6092,6 +6119,7 @@ const GameFighter = ({
           $isRawParryStun={penguin.isRawParryStun}
           $isCinematicKillAttacker={isCinematicKillAttacker}
           $attackerConfirmTier={attackerConfirmTier}
+          $isPostureBroken={!!penguin.isPostureBroken && !gameOver}
         >
           <AnimatedFighterImage
             key={`${baseSpriteSrc}|${spriteColorKey}`}
@@ -6144,6 +6172,8 @@ const GameFighter = ({
           $grabArmLayer={grabArmZ}
           $grabArmNudgeXPct={grabArmNudgeXPct}
           $grabArmNudgeYPct={grabArmNudgeYPct}
+          $grabArmBeltTrackActive={grabArmBeltTrackActive}
+          $grabArmLiftDeg={grabArmLiftDeg}
           decoding="async"
           draggable={false}
           style={{ display: showRitualSprite ? "none" : "block" }}
