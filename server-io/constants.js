@@ -1062,15 +1062,6 @@ const MOMENTUM_WINDOW_MS = 220;
 const K_SLAP_INHERIT = 0.55; // SAFE 0.35
 const SLAP_SLIDE_MIN = 0.45; // fade-away slap floor: a retreating entry produces a short, safe step-in — keep > 0 so the ground-transfer identity survives
 const SLAP_SLIDE_MAX = 2.0;
-// Slap-slide TRAVEL damp (index.js). Contact used to hard-cap at 0.3× while any
-// open gap ran at full velocity — after tip-sep / on-hit drift that read as a
-// free rocket. Gap-lerp softens the cliff. Standing spaced stays near the
-// pocket step; inheritance ABOVE the standing slide (1.0) keeps most of its
-// surplus once you're out of contact so dash-in still pays.
-const SLAP_SLIDE_CONTACT_DAMP = 0.3;       // colliding / body-meet (unchanged)
-const SLAP_SLIDE_AT_REACH_DAMP = 0.55;     // at slap hitbox reach, not colliding
-const SLAP_SLIDE_SPACED_DAMP = 0.45;       // at/beyond tip-sep gap
-const SLAP_SLIDE_INHERIT_SURPLUS_BLEND = 0.75; // 0 = damp surplus like base, 1 = undamped surplus
 
 // 1.2 Slap on-hit ground-transfer inheritance (processHit slap branch):
 //   momentumMult = 1 + K_SLAP_KB_INHERIT * slapEntryAligned
@@ -1706,10 +1697,6 @@ module.exports = {
   K_SLAP_INHERIT,
   SLAP_SLIDE_MIN,
   SLAP_SLIDE_MAX,
-  SLAP_SLIDE_CONTACT_DAMP,
-  SLAP_SLIDE_AT_REACH_DAMP,
-  SLAP_SLIDE_SPACED_DAMP,
-  SLAP_SLIDE_INHERIT_SURPLUS_BLEND,
   K_SLAP_KB_INHERIT,
   SLAP_ONHIT_ATTACKER_PUSH_CAP,
   SLAP_ONHIT_VICTIM_DRIFT_CAP,
