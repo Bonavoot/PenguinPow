@@ -1889,12 +1889,8 @@ function tick(delta) {
                 )
               )
             : DODGE_SLIDE_MOMENTUM;
-          if ((player.keys.c || player.keys.control) && room.gameStart && !room.gameOver && !room.matchOver) {
-            player.movementVelocity = landingDirection * landingBase * DODGE_POWERSLIDE_BOOST;
-            player.isPowerSliding = true;
-          } else {
-            player.movementVelocity = landingDirection * landingBase;
-          }
+          // Power slide removed — dodge landing just carries the base landing momentum.
+          player.movementVelocity = landingDirection * landingBase;
 
           if (player.keys.a && !player.keys.d) {
             player.movementVelocity -= 0.2;
@@ -1935,11 +1931,6 @@ function tick(delta) {
         }
       }
       
-      // POWER SLIDE FROM DODGE: If just landed and holding C/CTRL, ensure power slide is active
-      if (player.justLandedFromDodge && (player.keys.c || player.keys.control) && Math.abs(player.movementVelocity) > SLIDE_MAINTAIN_VELOCITY && room.gameStart && !room.gameOver && !room.matchOver) {
-        player.isPowerSliding = true;
-      }
-
       // MASTERY Phase 1: an active power slide continuously refreshes the
       // momentum carry window, so a slap fired DURING or just AFTER the slide
       // reliably inherits its speed (this is the "same with the sliding" fix —
@@ -2631,68 +2622,10 @@ function tick(delta) {
           player.movementVelocity = 0;
         }
 
-        // ============================================
-        // POWER SLIDE (C key) - Commit to momentum for speed
-        // Can only slide if moving fast enough, can cancel with dodge
-        // ============================================
-        const canPowerSlide = 
-          room.gameStart && // Only during active gameplay (not during walk-up)
-          !room.gameOver && // Not after round ends
-          !room.matchOver && // Not after match ends
-          !player.isDodging &&
-          !player.isThrowing &&
-          !player.isGrabbing &&
-          !player.isWhiffingGrab &&
-          !player.isAttacking &&
-          !player.isChargingAttack &&
-          !player.isRecovering &&
-          !player.isRawParrying &&
-          !player.isHit &&
-          !player.isBeingGrabbed &&
-          !player.isBeingThrown &&
-          !player.isAtTheRopes &&
-          !player.isGrabClashing &&
-          !player.isGrabBreaking &&
-          !player.isGrabBreakSeparating;
-
-        if ((player.keys.c || player.keys.control) && canPowerSlide) {
-          const currentSpeed = Math.abs(player.movementVelocity);
-          const strafeDuration = player.strafeStartTime > 0 ? now - player.strafeStartTime : 0;
-          // Can start power slide if: came from dodge landing OR strafed long enough
-          const canStartSlide = player.justLandedFromDodge || strafeDuration >= SLIDE_STRAFE_TIME_REQUIRED;
-          
-          if (!player.isPowerSliding) {
-            // STARTING a new slide - requires speed AND (dodge landing OR sustained strafe)
-            if (currentSpeed >= SLIDE_MIN_VELOCITY && canStartSlide) {
-              const slideDirection = player.movementVelocity > 0 ? 1 : -1;
-              player.movementVelocity = currentSpeed * SLIDE_SPEED_BOOST * slideDirection;
-              // Cap at slide max speed
-              player.movementVelocity = Math.max(
-                Math.min(player.movementVelocity, SLIDE_MAX_SPEED),
-                -SLIDE_MAX_SPEED
-              );
-              player.isPowerSliding = true;
-              player.isBraking = false;
-              player.isStrafing = false;
-            }
-            // else: not enough speed or not strafing long enough - don't set isPowerSliding
-          } else {
-            // MAINTAINING an existing slide - use maintain threshold
-            if (currentSpeed >= SLIDE_MAINTAIN_VELOCITY) {
-              player.isBraking = false;
-              player.isStrafing = false;
-              // Already sliding, don't boost again
-            } else {
-              // Dropped below maintain threshold - end slide cleanly
-              player.isPowerSliding = false;
-            }
-          }
-        } else if (!player.keys.c && !player.keys.control) {
-          // C/CTRL key released - exit power slide
-          player.isPowerSliding = false;
-        }
-        // Note: if C/CTRL is held but canPowerSlide is false (e.g., still in dodge),
-        // preserve isPowerSliding state - dodge landing may have set it
+        // POWER SLIDE (C key) removed — the slide mechanic was unbound (C/Ctrl no
+        // longer tracked client-side). Keep isPowerSliding permanently cleared so the
+        // remaining (now-dead) guards/physics that reference it stay inert.
+        player.isPowerSliding = false;
 
         // Calculate effective boundary based on player size with different multipliers
         const sizeOffset = 0;

@@ -34,16 +34,16 @@ const MAP_WIDTH = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
 // AI Configuration - Tuned for expert sumo gameplay
 const AI_CONFIG = {
   // Distance thresholds — adjusted for new frame data hitbox ranges
-  SLAP_RANGE: 125,         // Must exceed pushbox distance (~116px) so AI attacks at body contact
-  GRAB_RANGE: 136,         // Scaled down 8% to match tighter pushbox
-  GRAB_APPROACH_RANGE: 170, // Scaled down 8% to match tighter pushbox
+  SLAP_RANGE: 120,         // Must exceed pushbox (~110px @ 0.85 size) so AI attacks at body contact
+  GRAB_RANGE: 135,
+  GRAB_APPROACH_RANGE: 165,
   MID_RANGE: 185,          // Scaled for camera zoom (was 250)
   CHARGED_ATTACK_RANGE: 200, // Adjusted for buffed charged hitbox (~106px)
   
   // Edge/corner awareness
   EDGE_DANGER_ZONE: 89,    // Scaled for camera zoom (was 120)
   CORNER_CRITICAL_ZONE: 59, // Scaled for camera zoom (was 80)
-  BACK_TO_BOUNDARY_THROW_ZONE: 136, // Scaled down 8% to match tighter pushbox
+  BACK_TO_BOUNDARY_THROW_ZONE: 130,
   
   // Reaction chances (0-1) — intentionally imperfect to feel human
   PARRY_CHANCE: 0.38,      // Base chance to parry incoming attacks (expert AI)
@@ -2435,7 +2435,7 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
     const dirToOpponent = getDirectionToOpponent(cpu, human);
 
     if (midRoll < 0.40 && canAttack(cpu)) {
-      // Slap while approaching — slap hitbox (146px) reaches past pushbox
+      // Slap while approaching — slap hitbox reaches just past pushbox
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
       if (dirToOpponent === 1) cpu.keys.d = true;

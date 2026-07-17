@@ -28,8 +28,13 @@ import { C, FONT_KANJI } from "./menuTheme";
  *
  * MOTION — fighting-game impact, not informational fade:
  *   Bar slides in from its frame edge with a tiny overshoot (~200ms) →
- *   kanji presses in → headline settles → hold → ~320ms fade-up exit.
- *   One-shot beats only.
+ *   kanji presses in → headline settles → hold → ~300ms slide-out
+ *   back into the frame edge. One-shot beats only.
+ *
+ * STACK — SF6-style toast queue per side (max 3):
+ *   Newest = primary slot (full size). Older bump up with mild scale/
+ *   opacity falloff. Exit retreats sideways so it never fights the
+ *   upward reflow. Cap overflow is evicted and exits immediately.
  *
  * COLOR / TYPE MAPPING (game canonical action colors):
  *     punish / counterhit / counter / countergrab / counterthrow /
@@ -144,6 +149,8 @@ const TYPE_KANJI = {
 // SIDE STACK COORDINATION
 // ============================================
 
+const MAX_ANNOUNCEMENT_STACK = 3;
+
 const activeAnnouncementStacks = {
   left: [],
   right: [],
@@ -164,6 +171,7 @@ const getStackSnapshot = (id, sideKey) => {
 
   return {
     slotIndex: slotIndex === -1 ? 0 : slotIndex,
+    inStack: slotIndex !== -1,
   };
 };
 
@@ -184,19 +192,30 @@ const useAnnouncementStack = (isLeftSide) => {
   }
 
   const sideKey = getSideKey(isLeftSide);
-  const [stackState, setStackState] = useState(() =>
-    getStackSnapshot(idRef.current, sideKey),
-  );
+  const joinedRef = useRef(false);
+  const [stackState, setStackState] = useState({
+    slotIndex: 0,
+    evicted: false,
+  });
 
   useEffect(() => {
     const id = idRef.current;
     removeFromStacks(id);
-    activeAnnouncementStacks[sideKey].unshift({
-      id,
-    });
+    activeAnnouncementStacks[sideKey].unshift({ id });
+    // Cap: drop oldest beyond max so the column never piles up.
+    if (activeAnnouncementStacks[sideKey].length > MAX_ANNOUNCEMENT_STACK) {
+      activeAnnouncementStacks[sideKey].length = MAX_ANNOUNCEMENT_STACK;
+    }
+    joinedRef.current = true;
 
     const updateStackState = () => {
-      setStackState(getStackSnapshot(id, sideKey));
+      const snap = getStackSnapshot(id, sideKey);
+      setStackState((prev) => ({
+        // Keep last slot on eviction so the banner doesn't jump to primary
+        // while it slides out.
+        slotIndex: snap.inStack ? snap.slotIndex : prev.slotIndex,
+        evicted: joinedRef.current && !snap.inStack,
+      }));
     };
 
     stackListeners.add(updateStackState);
@@ -228,9 +247,15 @@ const slabInFromRight = keyframes`
   100% { opacity: 1; transform: translateX(0) scaleX(1); }
 `;
 
-const fadeOutUp = keyframes`
-  0%   { opacity: 1; transform: translateY(0); }
-  100% { opacity: 0; transform: translateY(-10px); }
+/* Exit retreats into the frame edge — never up, so it doesn't fight the stack. */
+const slabOutToLeft = keyframes`
+  0%   { opacity: 1; transform: translateX(0) scaleX(1); }
+  100% { opacity: 0; transform: translateX(-28px) scaleX(0.94); }
+`;
+
+const slabOutToRight = keyframes`
+  0%   { opacity: 1; transform: translateX(0) scaleX(1); }
+  100% { opacity: 0; transform: translateX(28px) scaleX(0.94); }
 `;
 
 /*
@@ -287,32 +312,45 @@ const BannerWrapper = styled.div`
     translateY(var(--announcement-stack-y))
     scale(var(--announcement-stack-scale));
   transform-origin: ${(p) => (p.$isLeftSide ? "left center" : "right center")};
+  /* Slightly longer ease so survivors glide into vacated slots. */
   transition:
-    transform 0.16s cubic-bezier(0.2, 0.7, 0.2, 1),
-    opacity 0.16s ease-out;
+    transform 0.22s cubic-bezier(0.22, 0.8, 0.2, 1),
+    opacity 0.2s ease-out;
   will-change: transform, opacity;
   --announcement-stack-y: calc(
-    ${(p) => Math.min(p.$stackIndex, 3)} * clamp(-36px, -3.8cqh, -26px)
+    ${(p) => Math.min(p.$stackIndex, 2)} * clamp(-32px, -3.4cqh, -28px)
   );
   --announcement-stack-scale: ${(p) =>
-    Math.max(0.7, 1 - Math.min(p.$stackIndex, 3) * 0.11)};
+    Math.max(0.84, 1 - Math.min(p.$stackIndex, 2) * 0.07)};
   --announcement-stack-opacity: ${(p) =>
-    Math.max(0.38, 0.96 - Math.min(p.$stackIndex, 3) * 0.28)};
-  z-index: ${(p) => 220 - Math.min(p.$stackIndex, 5)};
+    Math.max(0.72, 1 - Math.min(p.$stackIndex, 2) * 0.13)};
+  z-index: ${(p) => 220 - Math.min(p.$stackIndex, 2)};
 
   @media (max-width: 900px) {
     top: clamp(300px, 54cqh, 380px);
   }
 `;
 
+const EXIT_DURATION_S = 0.3;
+
 const BannerMotion = styled.div`
   position: relative;
-  animation:
-    ${(p) => (p.$isLeftSide ? slabInFromLeft : slabInFromRight)}
-      0.22s cubic-bezier(0.2, 0.7, 0.2, 1) both,
-    ${fadeOutUp} 0.32s ease-in forwards;
-  animation-delay: 0s,
-    ${(p) => Math.max(0.4, (p.$duration || 1.2) - 0.32)}s;
+  ${(p) =>
+    p.$evicted
+      ? css`
+          /* Cap overflow: drop the enter timeline and retreat now. */
+          animation: ${p.$isLeftSide ? slabOutToLeft : slabOutToRight}
+            ${EXIT_DURATION_S}s ease-in forwards;
+        `
+      : css`
+          animation:
+            ${p.$isLeftSide ? slabInFromLeft : slabInFromRight}
+              0.22s cubic-bezier(0.2, 0.7, 0.2, 1) both,
+            ${p.$isLeftSide ? slabOutToLeft : slabOutToRight}
+              ${EXIT_DURATION_S}s ease-in forwards;
+          animation-delay: 0s,
+            ${Math.max(0.4, (p.$duration || 1.2) - EXIT_DURATION_S)}s;
+        `}
 `;
 
 /*
@@ -518,13 +556,17 @@ const SumoAnnouncementBanner = ({
   duration = 1.5,
   subText = null,
 }) => {
-  const { slotIndex } = useAnnouncementStack(isLeftSide);
+  const { slotIndex, evicted } = useAnnouncementStack(isLeftSide);
   const kanji = TYPE_KANJI[type];
   const label = typeof text === "string" ? text.replace(/\s*\n\s*/g, " ") : text;
 
   return (
     <BannerWrapper $isLeftSide={isLeftSide} $stackIndex={slotIndex}>
-      <BannerMotion $isLeftSide={isLeftSide} $duration={duration}>
+      <BannerMotion
+        $isLeftSide={isLeftSide}
+        $duration={duration}
+        $evicted={evicted}
+      >
         <Haze $isLeftSide={isLeftSide} $type={type} aria-hidden />
         <Slab $isLeftSide={isLeftSide} $type={type}>
           {kanji && (

@@ -46,7 +46,7 @@ export const PREDICTION_CONSTANTS = {
   DOHYO_LEFT_BOUNDARY: 250,
   DOHYO_RIGHT_BOUNDARY: 1030,
   GROUND_LEVEL: 286,
-  HITBOX_DISTANCE_VALUE: 68, // Math.round(71 * 0.96) — pushbox half-width
+  HITBOX_DISTANCE_VALUE: 65, // Pushbox half-width — must match server-io/constants.js
   OUTSIDE_DOHYO_VELOCITY_PENALTY: 0.92,
 };
 

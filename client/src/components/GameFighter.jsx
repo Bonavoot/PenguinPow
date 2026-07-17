@@ -2756,14 +2756,11 @@ const GameFighter = ({
         // instance whose player.id matches the server-provided attackerId, so each
         // local fighter pulses independently when *they* land a hit. The tier
         // scales the glow intensity in the styled-component pop filter.
-        if (data.attackerId && data.attackerId === player.id) {
+        // Palm thrust skips the outline flash — burst VFX/hitstop already sell it.
+        if (data.attackerId && data.attackerId === player.id && !data.isPalmThrust) {
           let tier = "slap";
           if (data.attackType === "charged") tier = "charged";
           if (data.cinematicKill) tier = "cinematic";
-          // MASTERY Phase 3: a rhythm-timed (enhanced) slap flashes a crisp
-          // white hand-flash instead of the warm gold confirm — the visible tell
-          // that pairs with the rising-pitch crack.
-          if (data.isCadence && tier === "slap") tier = "cadence";
           setAttackerConfirmTier(tier);
           if (attackerConfirmTimeoutRef.current) {
             clearTimeout(attackerConfirmTimeoutRef.current);

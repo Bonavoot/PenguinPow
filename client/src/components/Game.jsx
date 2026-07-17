@@ -291,8 +291,6 @@ const Game = ({
       shift: false,
       e: false,
       f: false,
-      c: false,
-      control: false,
       mouse1: false,
       mouse2: false,
     };
@@ -429,19 +427,6 @@ const Game = ({
         applyPrediction("parry_release");
       }
       // ICE PHYSICS: Power slide predictions for gamepad
-      if (
-        (gamepadKeyState.c || gamepadKeyState.control) &&
-        !(keyState.c || keyState.control)
-      ) {
-        applyPrediction("power_slide_start");
-      }
-      if (
-        !(gamepadKeyState.c || gamepadKeyState.control) &&
-        (keyState.c || keyState.control)
-      ) {
-        applyPrediction("power_slide_end");
-      }
-
       // Diff each tracked key against keyState BEFORE the bulk assign so we
       // can emit per-key edge events for the gamepad path (the keyboard/mouse
       // handlers below push events directly at the change site).
@@ -504,10 +489,6 @@ const Game = ({
               applyPrediction("parry_start");
             }
           }
-          // ICE PHYSICS: Power slide (c or control key)
-          else if (key === "c" || key === "control") {
-            applyPrediction("power_slide_start");
-          }
         }
 
         scheduleEmit();
@@ -542,10 +523,6 @@ const Game = ({
         if (!inputsBlocked) {
           if (key === " ") {
             applyPrediction("parry_release");
-          }
-          // ICE PHYSICS: End power slide when c/control released
-          else if (key === "c" || key === "control") {
-            applyPrediction("power_slide_end");
           }
         }
 

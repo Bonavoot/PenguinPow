@@ -77,9 +77,9 @@ const SCREEN_SHAKE_MIN_INTERVAL = 100; // Minimum ms between screen shakes
 // ============================================
 const speedFactor = 0.185; // Scaled for camera zoom (was 0.25)
 const GROUND_LEVEL = 286;
-const HITBOX_DISTANCE_VALUE = Math.round(71 * 0.96); // ~68 — PUSHBOX size (body collision, keeps players separated) [8% tighter]
-const CHARGED_HITBOX_DISTANCE_VALUE = Math.round(147 * 0.96); // ~141 → just past pushbox 136 — hit fires at body contact; lunge provides range [8% tighter]
-const SLAP_HITBOX_DISTANCE_VALUE = Math.round(152 * 0.96); // ~146 — must exceed pushbox (136px) so slaps connect at pushbox distance [8% tighter]
+const HITBOX_DISTANCE_VALUE = 65; // Pushbox half-width (was 68). Light belly-gap trim — 62 was still too tight.
+const CHARGED_HITBOX_DISTANCE_VALUE = 135; // Just past pushbox 130 (+5)
+const SLAP_HITBOX_DISTANCE_VALUE = 138; // Just past pushbox (+8)
 // ── SLAP CLASH ("slap parry") — RARE, GROUND-based GAIN / LOSE / NEUTRAL ────
 // Design intent: the clash is NOT the texture of close-range fighting — it's a
 // rare highlight you hit on a genuinely simultaneous read. The DEFAULT outcome
@@ -116,11 +116,11 @@ const SLAP_PARRY_KNOCKBACK_LOSER = 5.0; // Was 3.5 — harder shove ends the war
 const SLAP_PARRY_KNOCKBACK_NEUTRAL = 2.8; // Was 2.0 — ties also create real space
 const SLAP_PARRY_KB_FRICTION = 0.82; // Strong friction — quick settle after the shove
 // Instant separation snap on clash resolve — expand centers to this gap BEFORE
-// hitstop. Must sit CLEAR of slap reach (~146) so post-clash mash doesn't
+// hitstop. Must sit CLEAR of slap reach (~138) so post-clash mash doesn't
 // instantly re-clang; never pulls closer.
-const SLAP_PARRY_TIP_SEPARATION = 175;
+const SLAP_PARRY_TIP_SEPARATION = 165;
 
-const GRAB_RANGE = Math.round(158 * 0.96); // ~152px - command grab range (scaled for camera zoom) [8% tighter]
+const GRAB_RANGE = 146; // Command grab range — same +16 past pushbox overhang as before
 
 // ============================================
 // FRAME DATA SYSTEM — Formal startup/active/recovery for every move
@@ -243,7 +243,7 @@ const PALM_THRUST_KB_VELOCITY = 2.4;
 const PALM_THRUST_STAMINA_COST = 4;        // Slightly above slap (3) — committed poke, not a gas tax
 // Rooted (no lunge), so it needs a little more raw reach than the charged
 // hitbox to feel like a committed extended-arm thrust — a touch past slap.
-const PALM_THRUST_HITBOX_DISTANCE_VALUE = Math.round(177 * 0.96); // ~170
+const PALM_THRUST_HITBOX_DISTANCE_VALUE = 164; // Rooted thrust — same +34 past pushbox tip overhang as before
 
 const GRAB_STARTUP_MS = 165;      // Readable telegraph. Trimmed 180→165 to let
                                   // grabs win the timing race vs slaps a bit
@@ -914,7 +914,7 @@ const GASSED_RECOVERY_STAMINA = 55; // Granted on exit — enough to actually fi
 const SLAP_CHAIN_HIT_GAP_MS = 40;  // Minimum visual gap after slap hitstun before victim can be hit again
 // Flat slap connect freeze (~8 frames at 60fps). Symmetric (sim clock pauses for
 // both), so the +0 frame math is unaffected by hitstop.
-const HITSTOP_SLAP_MS = 130;
+const HITSTOP_SLAP_MS = 100;
 // Heavy burst-hit freeze (~12 frames) — the "BOOM" for palm thrust / flap
 // body-slam class impacts.
 const HITSTOP_BURST_MS = 200;

@@ -197,10 +197,6 @@ export const getFighterPopFilter = (props) => {
       tier === "cinematic" ? "drop-shadow(0 0 18px rgba(255, 220, 100, 1)) drop-shadow(0 0 32px rgba(255, 200, 80, 0.55))"
       : tier === "charged" ? "drop-shadow(0 0 12px rgba(255, 235, 160, 0.9))"
       : tier === "burst"   ? "drop-shadow(0 0 9px rgba(255, 230, 140, 0.78))"
-      // MASTERY Phase 3 (tsuppari cadence): crisp white/cyan hand-flash for a
-      // rhythm-timed enhanced slap — reads "precise", distinct from the warm
-      // gold "I scored" confirm.
-      : tier === "cadence" ? "drop-shadow(0 0 9px rgba(220, 250, 255, 0.95)) drop-shadow(0 0 15px rgba(150, 225, 255, 0.6))"
       :                       "drop-shadow(0 0 6px rgba(255, 245, 220, 0.62))";
     return `${base} ${glow}`;
   }

@@ -44,10 +44,10 @@ const PP_TILT_DEG = 62;
 // an exact hue, so use the tint recipe: grayscale strips the green, sepia re-tones
 // to a uniform warm base, a big hue-rotate swings it around to a cool electric
 // blue, and saturate/brightness set the intensity.
-//   • Perfect = richer, more saturated electric blue + a two-stop blue bloom.
-//   • Regular = lighter, brighter "bluish-white" (less saturation, more brightness)
-//     so it still reads as the routine tier while sharing the blue color language.
-const PERFECT_PARRY_FILTER = `grayscale(1) sepia(1) hue-rotate(178deg) saturate(3.2) brightness(1.18) drop-shadow(0 0 5px rgba(95, 190, 255, 0.9)) drop-shadow(0 0 13px rgba(70, 165, 255, 0.5))`;
+//   • Perfect = hot electric ice-blue — brighter, more saturated, thick neon bloom
+//     so it clearly out-glows the regular tier.
+//   • Regular = lighter, softer cyan-blue (unchanged) so hierarchy stays obvious.
+const PERFECT_PARRY_FILTER = `grayscale(1) sepia(1) hue-rotate(168deg) saturate(5.2) brightness(1.55) drop-shadow(0 0 4px rgba(160, 240, 255, 1)) drop-shadow(0 0 10px rgba(40, 200, 255, 1)) drop-shadow(0 0 22px rgba(0, 150, 255, 0.95)) drop-shadow(0 0 36px rgba(0, 110, 255, 0.65))`;
 // Regular: clearly BLUE (blue = block/parry language), just a touch lighter than
 // perfect — slightly less saturation + a hair more brightness — so the perfect
 // tier still reads as the richer, more intense blue.
@@ -163,7 +163,8 @@ const LineStreak = styled.div`
   width: 4cqw;
   height: 0.32cqw;
   border-radius: 0.32cqw;
-  background: linear-gradient(90deg, rgba(200, 235, 255, 0.95), rgba(90, 190, 255, 0));
+  background: linear-gradient(90deg, rgba(200, 250, 255, 1), rgba(40, 200, 255, 0.9), rgba(0, 130, 255, 0));
+  box-shadow: 0 0 6px rgba(60, 210, 255, 0.85);
   transform-origin: left center;
   animation: ${lineBurst} 300ms cubic-bezier(0.2, 0.85, 0.25, 1) forwards;
 `;
