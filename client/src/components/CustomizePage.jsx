@@ -2,13 +2,14 @@
  * CustomizePage — Wardrobe screen.
  *
  * Left: big rikishi (Prematch energy, no boxed portrait).
- * Right: one clear picker dock — tabs always visible, swatches in a
- * fixed content area (not buried under accordion menus).
+ * Right: one clear picker dock — outfit slots, then category tabs +
+ * swatches in a fixed content area.
  *
  * Hair / Gear tabs are wired for a future item-grid layout.
+ * Edits persist to saveStore.customization.outfits[].
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
 import styled, { keyframes } from "styled-components";
 import { usePlayerColors } from "../context/PlayerColorContext";
@@ -33,6 +34,7 @@ import {
   clipRevealLeft,
   clipRevealRight,
   clipRevealUp,
+  TEXT_SHADOW_DISPLAY,
 } from "./menuTheme";
 import { SHADOW_GRADIENT } from "./PlayerShadow";
 import {
@@ -41,6 +43,15 @@ import {
   BODY_COLORS,
   BELT_ALL,
 } from "../config/customizeColors";
+import { loadSave, writeSave, makeDefaultSave } from "../lib/saveStore";
+import {
+  normalizeCustomization,
+  getOutfitById,
+  withOutfitPatch,
+  withActiveOutfitId,
+  applyOutfitToPlayer1Setters,
+  makeDefaultCustomization,
+} from "../lib/outfits";
 
 const WARDROBE_TABS = [
   { id: "belt", label: "Belt", layout: "colors", ready: true },
@@ -393,12 +404,7 @@ const FighterName = styled.div`
   text-transform: uppercase;
   letter-spacing: 0.04em;
   line-height: 0.92;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000,
-    0 2px 0 rgba(0, 0, 0, 0.85);
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
   white-space: nowrap;
 `;
 
@@ -511,11 +517,7 @@ const HeadTitle = styled.h2`
   color: ${C.cream};
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
 
   &::before {
     content: "";
@@ -532,6 +534,64 @@ const HeadMeta = styled.div`
   color: ${(p) => (p.$accent ? C.ice : C.creamMute)};
   letter-spacing: 0.2em;
   text-transform: uppercase;
+`;
+
+const OutfitSlotBar = styled.div`
+  display: flex;
+  flex-shrink: 0;
+  gap: clamp(6px, 0.9cqw, 8px);
+  padding: clamp(10px, 1.3cqh, 12px) clamp(14px, 1.8cqw, 20px) 0;
+  background: ${D.chrome};
+`;
+
+const OutfitSlot = styled.button`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  min-width: 0;
+  padding: clamp(6px, 0.8cqh, 8px);
+  background: ${(p) => (p.$active ? D.softHover : D.soft)};
+  border: 1px solid ${(p) => (p.$active ? C.gold : D.borderSoft)};
+  border-radius: 0;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+
+  &:hover {
+    border-color: ${(p) => (p.$active ? C.gold : "rgba(245, 236, 217, 0.35)")};
+    background: ${D.softHover};
+  }
+`;
+
+const OutfitSlotSwatches = styled.span`
+  display: flex;
+  height: clamp(10px, 1.3cqh, 14px);
+  border: 1px solid rgba(245, 236, 217, 0.18);
+  overflow: hidden;
+`;
+
+const OutfitSlotBelt = styled.span`
+  flex: 1.15;
+  background: ${(p) => p.$gradient || p.$color || SPRITE_BASE_COLOR};
+`;
+
+const OutfitSlotBody = styled.span`
+  flex: 1;
+  background: ${(p) => p.$gradient || p.$color || "#888"};
+`;
+
+const OutfitSlotLabel = styled.span`
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.38rem, 0.58cqw, 0.46rem);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: ${(p) => (p.$active ? C.cream : C.creamMute)};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
 `;
 
 const TabBar = styled.div`
@@ -707,11 +767,7 @@ const SoonTitle = styled.div`
   color: ${C.gold};
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
 `;
 
 const SoonCopy = styled.p`
@@ -812,14 +868,79 @@ function CustomizePage({ onBack }) {
   const [previewSrc, setPreviewSrc] = useState(pumo);
   const [isLoading, setIsLoading] = useState(false);
   const [tab, setTab] = useState("belt");
+  const [customization, setCustomization] = useState(() =>
+    makeDefaultCustomization(),
+  );
+  const [selectedOutfitId, setSelectedOutfitId] = useState(
+    makeDefaultCustomization().activeOutfitId,
+  );
+  const [saveState, setSaveState] = useState("loading"); // loading | saved | saving
   const mountedRef = useRef(true);
+  const saveDocRef = useRef(null);
+  const saveTimerRef = useRef(null);
+  const hydratedRef = useRef(false);
+  const customizationRef = useRef(customization);
+  const selectedOutfitIdRef = useRef(selectedOutfitId);
+  customizationRef.current = customization;
+  selectedOutfitIdRef.current = selectedOutfitId;
+
+  const persistCustomization = useCallback(async (nextCustomization) => {
+    const normalized = normalizeCustomization(nextCustomization);
+    customizationRef.current = normalized;
+    setCustomization(normalized);
+    setSaveState("saving");
+    const base = saveDocRef.current || makeDefaultSave();
+    const written = await writeSave({
+      ...base,
+      customization: normalized,
+    });
+    if (!mountedRef.current) return;
+    saveDocRef.current = written;
+    setSaveState("saved");
+  }, []);
+
+  const schedulePersist = useCallback(
+    (nextCustomization) => {
+      const normalized = normalizeCustomization(nextCustomization);
+      customizationRef.current = normalized;
+      setCustomization(normalized);
+      setSaveState("saving");
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        persistCustomization(normalized);
+      }, 280);
+    },
+    [persistCustomization],
+  );
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSave().then((doc) => {
+      if (cancelled) return;
+      saveDocRef.current = doc;
+      const c = normalizeCustomization(doc.customization);
+      setCustomization(c);
+      setSelectedOutfitId(c.activeOutfitId);
+      const outfit = getOutfitById(c, c.activeOutfitId);
+      applyOutfitToPlayer1Setters(outfit, {
+        setPlayer1Color,
+        setPlayer1BodyColor,
+      });
+      hydratedRef.current = true;
+      setSaveState("saved");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [setPlayer1Color, setPlayer1BodyColor]);
 
   useEffect(() => {
     const needsMawashi = player1Color && player1Color !== SPRITE_BASE_COLOR;
@@ -855,6 +976,7 @@ function CustomizePage({ onBack }) {
   const isBelt = tab === "belt";
   const isBody = tab === "body";
   const canReset = activeTab.ready && activeTab.layout === "colors";
+  const editingOutfit = getOutfitById(customization, selectedOutfitId);
 
   const selectedBelt = BELT_ALL.find((c) => c.hex === player1Color);
   const selectedBody = BODY_COLORS.find((c) => c.hex === player1BodyColor);
@@ -863,11 +985,6 @@ function CustomizePage({ onBack }) {
   const currentName = showingBody
     ? selectedBody?.name || "Default"
     : selectedBelt?.name || "Default";
-  const currentCategory = showingBody
-    ? "Body"
-    : selectedBelt?.gradient
-      ? "Belt Pattern"
-      : "Mawashi";
   const brushColor = showingBody
     ? player1BodyColor || "#888"
     : player1Color || SPRITE_BASE_COLOR;
@@ -882,21 +999,48 @@ function CustomizePage({ onBack }) {
     setTab(id);
   };
 
+  const handleOutfitSelect = (outfitId) => {
+    if (outfitId === selectedOutfitIdRef.current) return;
+    playButtonPressSound2();
+    const outfit = getOutfitById(customizationRef.current, outfitId);
+    selectedOutfitIdRef.current = outfitId;
+    setSelectedOutfitId(outfitId);
+    applyOutfitToPlayer1Setters(outfit, {
+      setPlayer1Color,
+      setPlayer1BodyColor,
+    });
+    const next = withActiveOutfitId(customizationRef.current, outfitId);
+    schedulePersist(next);
+  };
+
+  const commitOutfitPatch = (patch) => {
+    if (!hydratedRef.current) return;
+    const outfitId = selectedOutfitIdRef.current;
+    let next = withOutfitPatch(customizationRef.current, outfitId, patch);
+    next = withActiveOutfitId(next, outfitId);
+    const outfit = getOutfitById(next, outfitId);
+    applyOutfitToPlayer1Setters(outfit, {
+      setPlayer1Color,
+      setPlayer1BodyColor,
+    });
+    schedulePersist(next);
+  };
+
   const handleBeltSelect = (hex) => {
     playButtonPressSound2();
-    setPlayer1Color(hex);
+    commitOutfitPatch({ mawashiColor: hex });
   };
 
   const handleBodySelect = (hex) => {
     playButtonPressSound2();
-    setPlayer1BodyColor(hex);
+    commitOutfitPatch({ bodyColor: hex });
   };
 
   const handleReset = () => {
     if (!canReset) return;
     playButtonPressSound2();
-    if (isBelt) setPlayer1Color(SPRITE_BASE_COLOR);
-    else if (isBody) setPlayer1BodyColor(null);
+    if (isBelt) commitOutfitPatch({ mawashiColor: SPRITE_BASE_COLOR });
+    else if (isBody) commitOutfitPatch({ bodyColor: null });
   };
 
   const renderPickerContent = () => {
@@ -1037,10 +1181,18 @@ function CustomizePage({ onBack }) {
             </FighterFigure>
           </Portrait>
           <IdentityBlock>
-            <SideLabel $accent={accent}>{currentCategory}</SideLabel>
+            <SideLabel $accent={accent}>{editingOutfit.name}</SideLabel>
             <FighterName>{currentName}</FighterName>
             <BrushStroke $color={brushColor} $gradient={brushGradient} />
-            <MetaItem>{isLoading ? "Updating…" : "Auto-saved"}</MetaItem>
+            <MetaItem>
+              {isLoading
+                ? "Updating…"
+                : saveState === "saving"
+                  ? "Saving…"
+                  : saveState === "loading"
+                    ? "Loading…"
+                    : "Auto-saved"}
+            </MetaItem>
           </IdentityBlock>
         </FighterColumn>
 
@@ -1051,6 +1203,40 @@ function CustomizePage({ onBack }) {
               {activeTab.ready ? activeTab.label : `${activeTab.label} · Soon`}
             </HeadMeta>
           </PanelHead>
+
+          <OutfitSlotBar role="listbox" aria-label="Outfit presets">
+            {customization.outfits.map((outfit) => {
+              const belt = BELT_ALL.find((c) => c.hex === outfit.mawashiColor);
+              const body = BODY_COLORS.find((c) => c.hex === outfit.bodyColor);
+              const active = outfit.id === selectedOutfitId;
+              return (
+                <OutfitSlot
+                  key={outfit.id}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  $active={active}
+                  onClick={() => handleOutfitSelect(outfit.id)}
+                  onMouseEnter={playButtonHoverSound}
+                  title={outfit.name}
+                >
+                  <OutfitSlotSwatches>
+                    <OutfitSlotBelt
+                      $color={outfit.mawashiColor || SPRITE_BASE_COLOR}
+                      $gradient={belt?.gradient}
+                    />
+                    <OutfitSlotBody
+                      $color={outfit.bodyColor || "#888"}
+                      $gradient={body?.gradient}
+                    />
+                  </OutfitSlotSwatches>
+                  <OutfitSlotLabel $active={active}>
+                    {outfit.name}
+                  </OutfitSlotLabel>
+                </OutfitSlot>
+              );
+            })}
+          </OutfitSlotBar>
 
           <TabBar role="tablist" aria-label="Wardrobe categories">
             {WARDROBE_TABS.map((t) => (
@@ -1076,7 +1262,7 @@ function CustomizePage({ onBack }) {
           <PickerFooter>
             <FooterHint>
               {activeTab.ready
-                ? `${activeTab.label} colors`
+                ? `Editing ${editingOutfit.name}`
                 : `${activeTab.label} catalog`}
             </FooterHint>
             <ResetButton

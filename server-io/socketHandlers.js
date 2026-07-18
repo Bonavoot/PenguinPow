@@ -1539,15 +1539,48 @@ function registerSocketHandlers(socket, io, rooms, context) {
       // Don't set canMoveToReady here - it should only be set during actual salt throwing phase
     }
 
+    const joinColors = {
+      mawashiColor:
+        data.mawashiColor ||
+        (rooms[roomIndex].players.length < 1
+          ? PLAYER_1_SPAWN.mawashiColor
+          : PLAYER_2_SPAWN.mawashiColor),
+      bodyColor: data.bodyColor !== undefined ? data.bodyColor : null,
+    };
+
     if (rooms[roomIndex].players.length < 1) {
       rooms[roomIndex].players.push(
-        createInitialPlayerState({ id: data.socketId, ...PLAYER_1_SPAWN })
+        createInitialPlayerState({
+          id: data.socketId,
+          ...PLAYER_1_SPAWN,
+          mawashiColor: joinColors.mawashiColor,
+          bodyColor: joinColors.bodyColor,
+        })
       );
       // PERFORMANCE: Register player 1 in lookup maps
       registerPlayerInMaps(rooms[roomIndex].players[0], rooms[roomIndex]);
     } else if (rooms[roomIndex].players.length === 1) {
+      // Avoid spawning into an identical mawashi as the waiting player.
+      let mawashiColor = joinColors.mawashiColor;
+      const other = rooms[roomIndex].players[0];
+      const otherHex = (other.mawashiColor || "").toString().toLowerCase();
+      if (
+        mawashiColor &&
+        otherHex &&
+        mawashiColor.toString().toLowerCase() === otherHex
+      ) {
+        mawashiColor = PLAYER_2_SPAWN.mawashiColor;
+        if (mawashiColor.toString().toLowerCase() === otherHex) {
+          mawashiColor = PLAYER_1_SPAWN.mawashiColor;
+        }
+      }
       rooms[roomIndex].players.push(
-        createInitialPlayerState({ id: data.socketId, ...PLAYER_2_SPAWN })
+        createInitialPlayerState({
+          id: data.socketId,
+          ...PLAYER_2_SPAWN,
+          mawashiColor,
+          bodyColor: joinColors.bodyColor,
+        })
       );
       // PERFORMANCE: Register player 2 in lookup maps
       registerPlayerInMaps(rooms[roomIndex].players[1], rooms[roomIndex]);
@@ -1609,12 +1642,17 @@ function registerSocketHandlers(socket, io, rooms, context) {
     // Add the CPU room to the rooms array
     rooms.push(room);
 
-    // Add human player as player 1
+    // Add human player as player 1 (seeded from saved outfit when provided)
     socket.join(room.id);
     socket.roomId = room.id;
 
     room.players.push(
-      createInitialPlayerState({ id: data.socketId, ...PLAYER_1_SPAWN })
+      createInitialPlayerState({
+        id: data.socketId,
+        ...PLAYER_1_SPAWN,
+        mawashiColor: data.mawashiColor || PLAYER_1_SPAWN.mawashiColor,
+        bodyColor: data.bodyColor !== undefined ? data.bodyColor : null,
+      })
     );
 
     // Add CPU player as player 2 with unique ID tied to the room

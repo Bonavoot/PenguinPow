@@ -13,7 +13,10 @@ import {
   slideInLeft,
   arrowNudge,
   livePulse,
+  TEXT_SHADOW_DISPLAY,
 } from "./menuTheme";
+import { loadSave } from "../lib/saveStore";
+import { getActiveOutfit } from "../lib/outfits";
 
 /*
  * Room row — lacquer blade on the dohyo list.
@@ -97,10 +100,7 @@ const RoomId = styled.div`
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-shadow: ${(p) =>
-    p.$isFull
-      ? "none"
-      : `-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000`};
+  text-shadow: ${(p) => (p.$isFull ? "none" : TEXT_SHADOW_DISPLAY)};
 `;
 
 const RikishiBlock = styled.div`
@@ -218,12 +218,18 @@ const Room = ({ room, setRoomName, handleJoinRoom, index }) => {
   const isFull = room.players.length === 2;
   const rowNum = String((index ?? 0) + 1).padStart(2, "0");
 
-  const handleJoin = () => {
-    if (!isFull) {
-      socket.emit("join_room", { socketId: socket.id, roomId: room.id });
-      setRoomName(room.id);
-      handleJoinRoom();
-    }
+  const handleJoin = async () => {
+    if (isFull) return;
+    const save = await loadSave();
+    const outfit = getActiveOutfit(save.customization);
+    socket.emit("join_room", {
+      socketId: socket.id,
+      roomId: room.id,
+      mawashiColor: outfit.mawashiColor,
+      bodyColor: outfit.bodyColor,
+    });
+    setRoomName(room.id);
+    handleJoinRoom();
   };
 
   return (

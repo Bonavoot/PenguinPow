@@ -1,12 +1,11 @@
 import PropTypes from "prop-types";
 import React from "react";
 import styled from "styled-components";
+import { FONT_DISPLAY } from "./menuTheme";
 
 /*
- * BashoDayHud — center broadcast readout for an in-progress honbasho bout.
- *
- * Matches the ROUND counter typography exactly; double-digit days (10+)
- * scale down only slightly so they don't overflow the slot.
+ * BashoDayHud — bare center numerals for an in-progress honbasho bout.
+ * Sized to fit UiPlayerInfo's fixed CenterRound slot (1–15 digits).
  */
 
 const DayStack = styled.div`
@@ -14,44 +13,37 @@ const DayStack = styled.div`
   flex-direction: column;
   align-items: center;
   text-align: center;
+  width: 100%;
 `;
 
 const DayNum = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: ${(p) =>
-    p.$doubleDigit
-      ? "clamp(25px, 4.5cqw, 64px)"
-      : "clamp(28px, 5cqw, 72px)"};
-  color: #fff;
-  -webkit-text-stroke: ${(p) =>
-    p.$doubleDigit
-      ? "clamp(1.3px, 0.18cqw, 2.5px) rgba(0, 0, 0, 0.9)"
-      : "clamp(1.5px, 0.2cqw, 3px) rgba(0, 0, 0, 0.9)"};
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(24px, 4cqw, 56px);
+  color: #f3ede2;
+  -webkit-text-stroke: clamp(1.4px, 0.18cqw, 2.75px) rgba(0, 0, 0, 0.9);
   text-shadow:
-    0 0 12px rgba(232, 197, 71, 0.32),
-    0 3px 8px rgba(0, 0, 0, 0.95);
+    0 0 12px rgba(243, 237, 226, 0.16),
+    0 3px 10px rgba(0, 0, 0, 0.95);
   line-height: 1;
   user-select: none;
-  min-width: 2ch;
+  width: 100%;
   text-align: center;
 `;
 
 const DayLabel = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(7px, 0.9cqw, 13px);
-  color: rgba(232, 197, 71, 0.7);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(7px, 0.9cqw, 12px);
+  color: rgba(232, 197, 71, 0.78);
   text-transform: uppercase;
-  letter-spacing: 0.25em;
-  text-indent: 0.25em;
+  letter-spacing: 0.24em;
+  text-indent: 0.24em;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
   margin-top: clamp(1px, 0.2cqh, 3px);
 `;
 
 const BashoDayHud = ({ day = 1 }) => (
   <DayStack>
-    <DayNum $doubleDigit={day >= 10} aria-label={`Day ${day}`}>
-      {day}
-    </DayNum>
+    <DayNum aria-label={`Day ${day}`}>{day}</DayNum>
     <DayLabel>DAY</DayLabel>
   </DayStack>
 );

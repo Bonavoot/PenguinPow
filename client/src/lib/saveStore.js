@@ -14,13 +14,18 @@
  * shape is intentionally "DB-ready" so it can migrate to a real DB / Steam
  * Cloud later without a rewrite.
  *
- * GUARDRAIL: persistence is single-player BASHO only. It must never read
- * from or write to anything that affects PvP or VS CPU.
+ * GUARDRAIL: career / bashoRun persistence is single-player BASHO only and
+ * must never alter PvP or VS CPU combat. Cosmetics (`customization` outfits)
+ * are the exception — they are applied as visual loadout when joining lobbies.
  */
 
 import { STARTING_RANK } from "../config/bashoConfig";
+import {
+  makeDefaultCustomization,
+  normalizeCustomization,
+} from "./outfits";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 // localStorage key used only when Electron IPC is unavailable (browser/dev).
 const LS_KEY = "penguinpow-basho-save";
@@ -65,7 +70,7 @@ export function makeDefaultSave() {
       modifiers: [],
       seed: null,
     },
-    customization: { mawashiColor: null, bodyColor: null },
+    customization: makeDefaultCustomization(),
     settings: { hardcoreUnlocked: false },
   };
 }
@@ -117,12 +122,18 @@ function migrate(raw) {
     v = 1;
   }
 
-  // Future migrations:
-  // if (v < 2) { ...transform save...; v = 2; }
+  // v1 → v2: single { mawashiColor, bodyColor } → outfit slots.
+  if (v < 2) {
+    save.customization = normalizeCustomization(save.customization);
+    v = 2;
+  }
 
   save.schemaVersion = SCHEMA_VERSION;
   // Normalize: fill any missing keys from defaults without dropping data.
-  return mergeDefaults(makeDefaultSave(), save);
+  const merged = mergeDefaults(makeDefaultSave(), save);
+  // Always re-normalize customization so corrupt/partial outfit arrays heal.
+  merged.customization = normalizeCustomization(merged.customization);
+  return merged;
 }
 
 // ============================================
@@ -175,11 +186,15 @@ export async function loadSave() {
  * written document (so callers can keep their in-memory copy in sync).
  */
 export async function writeSave(save) {
+  const base = makeDefaultSave();
   const doc = {
-    ...makeDefaultSave(),
+    ...base,
     ...save,
     schemaVersion: SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
+    customization: normalizeCustomization(
+      save?.customization ?? base.customization,
+    ),
   };
   try {
     if (isElectronSave() && typeof window.electron.save.write === "function") {

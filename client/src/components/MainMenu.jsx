@@ -10,7 +10,11 @@ import BashoHub from "./BashoHub";
 import DayCard from "./DayCard";
 import BashoResults from "./BashoResults";
 import { usePlayerColors } from "../context/PlayerColorContext";
-import { writeSave, makeDefaultSave } from "../lib/saveStore";
+import { writeSave, makeDefaultSave, loadSave } from "../lib/saveStore";
+import {
+  getActiveOutfit,
+  applyOutfitToPlayer1Setters,
+} from "../lib/outfits";
 import {
   startDay,
   currentOpponent,
@@ -35,7 +39,7 @@ import {
   applyBashoDraftPick,
   normalizeBashoDraftList,
 } from "../config/powerUpConfig";
-import styled, { keyframes, css } from "styled-components";
+import styled, { keyframes } from "styled-components";
 import { SocketContext } from "../SocketContext";
 
 /*
@@ -83,6 +87,8 @@ import {
   fadeUp,
   slideInLeft,
   broadcastSlideDown,
+  TEXT_SHADOW_DISPLAY,
+  TEXT_SHADOW_DISPLAY_SOFT,
 } from "./menuTheme";
 
 // ============================================
@@ -124,19 +130,18 @@ const BackgroundImage = styled.img`
   object-position: 50% 55%;
   z-index: 0;
   pointer-events: none;
-  transform: scale(1.06);
+  transform: scale(1.08);
   /*
-   * Natural arena grade — not a flat brightness pump (that washed the
-   * midtones). Lift comes from frost air overlays below, not from
-   * bleaching the plate.
+   * Obscure plate that still keeps festival color — dim + slight blur so
+   * the arena sits behind the UI instead of fighting it for focus.
    */
-  filter: saturate(0.94) brightness(0.78) contrast(1.12);
+  filter: saturate(1.06) brightness(0.78) contrast(1.08) blur(1.2px);
   animation: ${kenBurns} 28s ease-in-out infinite alternate;
 `;
 
 /*
- * Lighting: keep a real vignette for depth, then lift with cool frost
- * air (corners + soft left wash) instead of thinning the black to grey.
+ * Obscure grade without the old icy-blue mud: neutral sumi dim + a real
+ * left rail for type. Snowfall owns frost; we don't double-wash here.
  */
 const CinematicOverlay = styled.div`
   position: absolute;
@@ -144,48 +149,35 @@ const CinematicOverlay = styled.div`
   z-index: 1;
   pointer-events: none;
   background:
-    /* frost corner blooms — icy light, not white paint */
-    radial-gradient(
-      ellipse 55% 50% at 0% 0%,
-      rgba(190, 225, 255, 0.22) 0%,
-      transparent 58%
-    ),
-    radial-gradient(
-      ellipse 50% 48% at 100% 0%,
-      rgba(170, 215, 255, 0.16) 0%,
-      transparent 55%
-    ),
-    radial-gradient(
-      ellipse 48% 42% at 0% 100%,
-      rgba(200, 230, 255, 0.12) 0%,
-      transparent 52%
-    ),
-    radial-gradient(
-      ellipse 52% 45% at 100% 100%,
-      rgba(180, 220, 255, 0.14) 0%,
-      transparent 55%
-    ),
-    /* soft ice wash over the menu rail — readability without greying */
+    /* menu rail — dark enough that white Bungee never meets bright snow */
     linear-gradient(
       90deg,
-      rgba(126, 203, 240, 0.14) 0%,
-      rgba(126, 203, 240, 0.05) 22%,
-      transparent 42%
+      rgba(4, 6, 10, 0.62) 0%,
+      rgba(4, 6, 10, 0.36) 18%,
+      rgba(4, 6, 10, 0.12) 34%,
+      transparent 48%
     ),
-    /* letterbox + vignette for depth (kept stronger than the bright pass) */
+    /* soft pool of light around the hero — keeps Pumo readable */
     radial-gradient(
-      ellipse 50% 56% at 56% 44%,
-      transparent 0%,
-      rgba(4, 6, 10, 0.18) 50%,
-      rgba(4, 6, 10, 0.68) 100%
+      ellipse 46% 58% at 72% 48%,
+      rgba(255, 248, 235, 0.07) 0%,
+      transparent 62%
     ),
+    /* vignette — obscure edges, open center */
+    radial-gradient(
+      ellipse 58% 60% at 56% 42%,
+      transparent 0%,
+      rgba(4, 6, 10, 0.22) 52%,
+      rgba(4, 6, 10, 0.62) 100%
+    ),
+    /* letterbox */
     linear-gradient(
       180deg,
-      rgba(4, 6, 10, 0.55) 0%,
-      rgba(4, 6, 10, 0.1) 26%,
-      rgba(4, 6, 10, 0.06) 50%,
-      rgba(4, 6, 10, 0.4) 76%,
-      rgba(4, 6, 10, 0.82) 100%
+      rgba(4, 6, 10, 0.5) 0%,
+      rgba(4, 6, 10, 0.12) 20%,
+      rgba(4, 6, 10, 0.04) 48%,
+      rgba(4, 6, 10, 0.28) 76%,
+      rgba(4, 6, 10, 0.72) 100%
     );
 `;
 
@@ -194,8 +186,8 @@ const GrainOverlay = styled.div`
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  opacity: 0.2;
-  mix-blend-mode: overlay;
+  opacity: 0.08;
+  mix-blend-mode: soft-light;
   background-image:
     repeating-linear-gradient(
       0deg,
@@ -211,20 +203,21 @@ const GrainOverlay = styled.div`
     );
 `;
 
-/* Giant atmospheric kanji — flat ink watermark, PreMatch GiantKanji recipe. */
+/* Giant atmospheric kanji — whisper only; never compete with Pumo. */
 const AtmosphereKanji = styled.div`
   position: absolute;
-  top: 10%;
-  right: 2%;
+  top: 6%;
+  right: -2%;
   z-index: 1;
   font-family: ${FONT_KANJI};
   font-weight: 900;
-  font-size: clamp(160px, 30cqw, 360px);
+  font-size: clamp(180px, 34cqw, 400px);
   line-height: 0.72;
-  color: rgba(245, 236, 217, 0.045);
+  color: rgba(245, 236, 217, 0.035);
   pointer-events: none;
   user-select: none;
   letter-spacing: -0.04em;
+  transform: rotate(-6deg);
 `;
 
 // ============================================
@@ -248,24 +241,27 @@ const TopSlug = styled.div`
 const SlugText = styled.span`
   font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.42rem, 0.72cqw, 0.56rem);
+  font-size: clamp(0.48rem, 0.78cqw, 0.62rem);
   color: ${(p) =>
     p.$warn ? C.vermillionBright : p.$accent ? C.ice : C.creamMute};
-  letter-spacing: 0.3em;
+  letter-spacing: 0.28em;
   text-transform: uppercase;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
   white-space: nowrap;
+  opacity: 0.92;
 
   strong {
     color: ${C.cream};
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
   }
 `;
 
 const SlugRule = styled.span`
-  width: 16px;
+  width: 18px;
   height: 1px;
-  background: rgba(245, 236, 217, 0.35);
+  background: rgba(245, 236, 217, 0.45);
 `;
 
 // ============================================
@@ -301,7 +297,7 @@ const LeftColumn = styled.div`
   flex-direction: column;
   justify-content: center;
   align-items: flex-start;
-  gap: clamp(20px, 3cqh, 32px);
+  gap: clamp(22px, 3.2cqh, 36px);
   min-width: 0;
   max-width: clamp(320px, 38cqw, 440px);
   will-change: transform, opacity;
@@ -319,18 +315,21 @@ const BrandBlock = styled.div`
 
 const LogoImage = styled.img`
   display: block;
-  width: clamp(12rem, 26cqw, 18.5rem);
+  width: clamp(12.5rem, 27cqw, 19.5rem);
   height: auto;
   object-fit: contain;
-  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.85))
-    drop-shadow(0 10px 24px rgba(0, 0, 0, 0.55));
+  /* Soft lift — hard 2px shelf made the logo mark read as aliased. */
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.65))
+    drop-shadow(0 18px 32px rgba(0, 0, 0, 0.45));
 `;
 
-/* Structural accent under logo — BashoHub title underline, not identity brush. */
+/* Structural accent under logo — short vermillion underline with soft seat. */
 const BrandRule = styled.div`
-  width: clamp(48px, 7cqw, 72px);
-  height: 2px;
+  width: clamp(56px, 8cqw, 84px);
+  height: 3px;
+  border-radius: 1px;
   background: ${C.vermillion};
+  box-shadow: 0 0 12px rgba(196, 48, 38, 0.45);
   opacity: 0;
   animation: ${fadeIn} 0.4s ease-out 0.4s forwards;
 `;
@@ -338,7 +337,7 @@ const BrandRule = styled.div`
 const MenuList = styled.nav`
   display: flex;
   flex-direction: column;
-  gap: clamp(12px, 1.8cqh, 18px);
+  gap: clamp(10px, 1.6cqh, 16px);
 `;
 
 const MenuButton = styled.button`
@@ -355,20 +354,23 @@ const MenuButton = styled.button`
   font-family: ${FONT_DISPLAY};
   font-size: ${(p) =>
     p.$primary
-      ? "clamp(1.65rem, 2.8cqw, 2.25rem)"
+      ? "clamp(1.7rem, 2.9cqw, 2.35rem)"
       : "clamp(1.05rem, 1.7cqw, 1.4rem)"};
   font-weight: 400;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   text-align: left;
   line-height: 0.95;
-  color: #ffffff;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000,
-    0 2px 0 rgba(0, 0, 0, 0.85);
+  /* Secondary items sit quieter until hover — clearer fighting-game hierarchy */
+  color: ${(p) => (p.$primary ? C.cream : "rgba(255, 255, 255, 0.78)")};
+  /*
+   * Soft ambient seat — same lesson as SumoAnnouncementBanner.
+   * The old 4-way 1px black stroke + hard shelf made Bungee look
+   * jagged / "sharpness too high" at these sizes.
+   */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
   transition:
     transform 0.28s cubic-bezier(0.2, 0.85, 0.2, 1),
     color 0.2s ease;
@@ -382,12 +384,16 @@ const MenuButton = styled.button`
     left: 0;
     top: 50%;
     width: ${(p) => (p.$primary ? "4px" : "3px")};
-    height: ${(p) => (p.$primary ? "0.62em" : "0.7em")};
+    height: ${(p) => (p.$primary ? "0.68em" : "0.7em")};
     background: ${C.vermillion};
     border-radius: 1px;
-    transform: translate(-12px, -50%) scaleY(0.35);
+    box-shadow: 0 0 10px rgba(196, 48, 38, 0.55);
+    transform: ${(p) =>
+      p.$primary
+        ? "translate(0, -50%) scaleY(1)"
+        : "translate(-12px, -50%) scaleY(0.35)"};
     transform-origin: center;
-    opacity: 0;
+    opacity: ${(p) => (p.$primary ? 1 : 0)};
     transition:
       transform 0.32s cubic-bezier(0.25, 0.85, 0.2, 1),
       opacity 0.22s ease;
@@ -405,12 +411,6 @@ const MenuButton = styled.button`
   &:active {
     transform: translateX(clamp(3px, 0.5cqw, 6px)) scale(0.99);
   }
-
-  ${(p) =>
-    p.$primary &&
-    css`
-      color: ${C.cream};
-    `}
 `;
 
 const SystemButton = styled.button`
@@ -418,7 +418,7 @@ const SystemButton = styled.button`
   display: inline-flex;
   align-items: center;
   align-self: flex-start;
-  margin-top: clamp(14px, 2.2cqh, 24px);
+  margin-top: clamp(10px, 1.8cqh, 18px);
   background: none;
   border: none;
   padding: clamp(2px, 0.4cqh, 5px) clamp(4px, 0.6cqw, 8px)
@@ -427,12 +427,14 @@ const SystemButton = styled.button`
   font-family: ${FONT_DISPLAY};
   font-weight: 400;
   font-size: clamp(0.72rem, 1.15cqw, 0.92rem);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   text-align: left;
   line-height: 0.95;
-  color: ${C.creamMute};
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  color: rgba(245, 236, 217, 0.48);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
   transition:
     color 0.2s ease,
     transform 0.28s cubic-bezier(0.2, 0.85, 0.2, 1);
@@ -492,15 +494,37 @@ const PumoHeroWrapper = styled.div`
   user-select: none;
   will-change: opacity, transform;
   animation: ${fadeUp} 0.8s ease-out 0.22s backwards;
+
+  /* Ground contact shadow — stops the "sticker on the art" look */
+  &::after {
+    content: "";
+    position: absolute;
+    left: 18%;
+    right: 22%;
+    bottom: 14%;
+    height: 7%;
+    background: radial-gradient(
+      ellipse at center,
+      rgba(0, 0, 0, 0.55) 0%,
+      rgba(0, 0, 0, 0.22) 42%,
+      transparent 72%
+    );
+    filter: blur(10px);
+    z-index: 0;
+    pointer-events: none;
+  }
 `;
 
 const PumoHero = styled.img`
+  position: relative;
+  z-index: 1;
   display: block;
   height: 100%;
   width: auto;
   transform-origin: 50% 100%;
-  filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000)
-    drop-shadow(0 18px 28px rgba(0, 0, 0, 0.55));
+  filter: brightness(1.05) contrast(1.06) saturate(1.08)
+    drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000)
+    drop-shadow(0 28px 40px rgba(0, 0, 0, 0.55));
   will-change: transform;
   animation: ${pumoBreathe} 3s ease-in-out infinite;
 `;
@@ -811,6 +835,23 @@ const MainMenu = ({
     });
   };
 
+  // Apply saved active outfit to P1 context so VS CPU / Custom / BASHO
+  // all start from the wardrobe loadout without visiting Customize first.
+  useEffect(() => {
+    let cancelled = false;
+    loadSave().then((doc) => {
+      if (cancelled) return;
+      const outfit = getActiveOutfit(doc.customization);
+      applyOutfitToPlayer1Setters(outfit, {
+        setPlayer1Color,
+        setPlayer1BodyColor,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [setPlayer1Color, setPlayer1BodyColor]);
+
   useEffect(() => {
     preGameImages.forEach((src) => {
       const img = new Image();
@@ -956,10 +997,19 @@ const MainMenu = ({
     setShowSettings((prev) => !prev);
   };
 
-  const handleVsCPU = () => {
+  const handleVsCPU = async () => {
     playButtonPressSound2();
-    console.log("Starting VS CPU match...");
-    socket.emit("create_cpu_match", { socketId: socket.id });
+    const save = await loadSave();
+    const outfit = getActiveOutfit(save.customization);
+    applyOutfitToPlayer1Setters(outfit, {
+      setPlayer1Color,
+      setPlayer1BodyColor,
+    });
+    socket.emit("create_cpu_match", {
+      socketId: socket.id,
+      mawashiColor: outfit.mawashiColor,
+      bodyColor: outfit.bodyColor,
+    });
   };
 
   const handleBasho = () => {
@@ -991,7 +1041,7 @@ const MainMenu = ({
         <CinematicOverlay />
         <GrainOverlay />
         <AtmosphereKanji aria-hidden>相撲</AtmosphereKanji>
-        <Snowfall intensity={16} showFrost zIndex={3} />
+        <Snowfall intensity={12} showFrost zIndex={3} />
 
         <TopSlug>
           <SlugText $accent>
@@ -1099,6 +1149,8 @@ const MainMenu = ({
           // fights the whole basho at their entry rank; opponents are
           // division-mates, so they carry the division label.
           playerRankLabel: formatRank(bashoRun.startRank),
+          // Raw rank for systems that key off division (e.g. crowd density).
+          playerRank: bashoRun.startRank,
           opponentRankLabel: bashoOpp?.rank
             ? formatRank(bashoOpp.rank)
             : getDivision(bashoRun.startRank)?.label,
@@ -1178,7 +1230,12 @@ const MainMenu = ({
     case "customize":
       return (
         <div className="current-page">
-          <CustomizePage onBack={() => setCurrentPage("mainMenu")} />
+          <CustomizePage
+            onBack={() => {
+              setIsCPUMatch(false);
+              setCurrentPage("mainMenu");
+            }}
+          />
         </div>
       );
     case "basho":

@@ -42,12 +42,9 @@ import PropTypes from "prop-types";
 // gameMusicAudio.loop = true;
 // gameMusicAudio.volume = 0.02;
 
-// PERFORMANCE: Hidden element that forces the browser to download, parse, and rasterize
-// the "Noto Serif JP" font at the exact size/weight used by RoundResult (22rem, weight 900).
-// Without this, the first win triggers a freeze while the browser downloads the CJK font file
-// (potentially several hundred KB) and rasterizes the 勝/敗 kanji at 350px+.
-// This renders invisibly on mount so the font is warm before it's ever needed.
-// The text-shadow matches RoundResult's MainKanji so the shadow rasterization is also cached.
+// PERFORMANCE: Hidden element that forces the browser to download, parse, and
+// rasterize Noto Serif JP at the size/weight used by RoundResult kimarite
+// subtitles. Without this, the first win can hitch while the CJK font loads.
 const FontWarmup = () => (
   <div
     aria-hidden="true"
@@ -65,19 +62,16 @@ const FontWarmup = () => (
     <span
       style={{
         fontFamily: '"Noto Serif JP", serif',
-        fontSize: "22rem",
-        fontWeight: 900,
+        fontSize: "1.4rem",
+        fontWeight: 700,
+        letterSpacing: "0.3em",
         lineHeight: 1,
+        color: "#F5E6C8",
         textShadow:
-          "4px 4px 0 #E6B800, 8px 8px 0 #CC9900, 12px 12px 0 #B38600, 0 0 40px rgba(255, 215, 0, 0.35)",
-        background:
-          "linear-gradient(145deg, #FFFFFF 0%, #FFD700 40%, #FF8000 100%)",
-        WebkitBackgroundClip: "text",
-        WebkitTextFillColor: "transparent",
-        backgroundClip: "text",
+          "1px 1px 3px rgba(0,0,0,0.9), 0 0 8px rgba(255,220,140,0.12)",
       }}
     >
-      勝敗
+      突き出し寄り切り場外
     </span>
   </div>
 );
@@ -939,7 +933,10 @@ const Game = ({
         {/* Scene — everything inside moves together when the camera pans/zooms */}
         <div className="game-scene">
           <div className="game-map"></div>
-          <CrowdLayer crowdEvent={crowdEvent} />
+          <CrowdLayer
+            crowdEvent={crowdEvent}
+            bashoRank={isBashoMatch ? bashoBout?.playerRank : null}
+          />
           {/* Behind-dohyo particle canvas (engine `ctxBehind`). Sits below the
               dohyo so `behindDohyo` particles render behind the platform; the
               engine receives this via ParticleProvider's `behindCanvasRef`. */}

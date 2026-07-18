@@ -38,6 +38,7 @@ import CROWD_POSITIONS from "./crowdPositionsData";
 import winnerSound from "../sounds/winner-sound.ogg";
 import { playBuffer, preloadSound } from "../utils/audioEngine";
 import { getGlobalVolume } from "./Settings";
+import { bashoCrowdFill } from "../config/bashoConfig";
 
 preloadSound(winnerSound);
 
@@ -421,10 +422,14 @@ const computeCrowdLightingFilter = (y, { foreground = false } = {}) => {
 // sizeMultiplier adjusts for different image dimensions to keep them uniform
 // yOffsetRatio adjusts vertical position as a ratio of size (scales with distance)
 // weight controls how frequently this type appears (higher = more common)
+// Red beanie (1) and yellow striped beanie (2) retired from the random pool —
+// assets stay loaded so the editor / old saves can remap off them cleanly.
+const RETIRED_CROWD_TYPE_INDICES = new Set([1, 2]);
+
 const CROWD_TYPES = [
   { idle: crowdBoyIdle1, cheering: crowdBoyCheering1, sizeMultiplier: 1, yOffsetRatio: 0, weight: 3 },
-  { idle: crowdBoyIdle2, cheering: crowdBoyCheering2, sizeMultiplier: 1, yOffsetRatio: 0, weight: 1 },
-  { idle: crowdBoyIdle3, cheering: crowdBoyCheering3, sizeMultiplier: 1, yOffsetRatio: 0, weight: 2 },
+  { idle: crowdBoyIdle2, cheering: crowdBoyCheering2, sizeMultiplier: 1, yOffsetRatio: 0, weight: 0 }, // retired: red hat
+  { idle: crowdBoyIdle3, cheering: crowdBoyCheering3, sizeMultiplier: 1, yOffsetRatio: 0, weight: 0 }, // retired: yellow hat
   { idle: crowdGirlIdle1, cheering: crowdGirlCheering1, sizeMultiplier: 1, yOffsetRatio: 0, weight: 3 },
   { idle: crowdGeishaIdle1, cheering: crowdGeishaCheering1, sizeMultiplier: 1, yOffsetRatio: 0, weight: 1 },
   { idle: crowdSalarymanIdle1, cheering: crowdSalarymanCheering1, sizeMultiplier: 1, yOffsetRatio: 0, weight: 3 },
@@ -572,13 +577,15 @@ const loadCrowdPositions = () => {
 
 // Re-roll typeIndex for regular crowd members (weight > 0) each session.
 // Special characters like oyakata (weight === 0) keep their assigned type.
+// Retired hat variants are always remapped even though their weight is 0.
 // Preserves the visual size/position by swapping type multipliers.
 const randomizeCrowdTypes = (positions) => {
   const totalWeight = CROWD_TYPES.reduce((sum, t) => sum + t.weight, 0);
 
   return positions.map(m => {
     const currentType = CROWD_TYPES[m.typeIndex];
-    if (!currentType || currentType.weight === 0) return m;
+    const isRetired = RETIRED_CROWD_TYPE_INDICES.has(m.typeIndex);
+    if (!isRetired && (!currentType || currentType.weight === 0)) return m;
 
     let roll = Math.random() * totalWeight;
     let newTypeIndex = 0;
@@ -588,8 +595,8 @@ const randomizeCrowdTypes = (positions) => {
     }
 
     const newType = CROWD_TYPES[newTypeIndex];
-    const oldMult = m.sizeMultiplier || currentType.sizeMultiplier || 1;
-    const oldYOR = m.yOffsetRatio || currentType.yOffsetRatio || 0;
+    const oldMult = m.sizeMultiplier || currentType?.sizeMultiplier || 1;
+    const oldYOR = m.yOffsetRatio || currentType?.yOffsetRatio || 0;
     const newMult = newType.sizeMultiplier || 1;
     const newYOR = newType.yOffsetRatio || 0;
 
@@ -610,6 +617,25 @@ const randomizeCrowdTypes = (positions) => {
   });
 };
 
+// Thin the stands for early BASHO ranks. VIP / fixed seats (weight === 0) stay;
+// regular seats keep/drop via a stable hash of id so the house looks consistent
+// for a given fill factor across remounts within the same session.
+const applyCrowdFill = (positions, fill) => {
+  if (fill == null || fill >= 1) return positions;
+  const threshold = Math.max(0, Math.min(1, fill)) * 1000;
+  return positions.filter((m) => {
+    const t = CROWD_TYPES[m.typeIndex];
+    if (!t || t.weight === 0) return true;
+    const hash = ((m.id * 2654435761) >>> 0) % 1000;
+    return hash < threshold;
+  });
+};
+
+const buildCrowd = (bashoRank = null) => {
+  const fill = bashoRank ? bashoCrowdFill(bashoRank) : 1;
+  return applyCrowdFill(randomizeCrowdTypes(loadCrowdPositions()), fill);
+};
+
 const CHEER_DURATION_MS = 3500;
 const CHEER_VOLUME = { light: 0.003, medium: 0.006, heavy: 0.01 };
 const CHEER_PITCH = { light: 1.0, medium: 1.0, heavy: 1.12 };
@@ -620,10 +646,20 @@ const CHEER_TICK_MS = 100;
 const CHEER_TOGGLE_MIN = 200;
 const CHEER_TOGGLE_MAX = 600;
 
-const CrowdLayer = ({ crowdEvent = null }) => {
-  const [crowdPositions, setCrowdPositions] = useState(
-    () => randomizeCrowdTypes(loadCrowdPositions())
-  );
+const CrowdLayer = ({ crowdEvent = null, bashoRank = null }) => {
+  const [crowdPositions, setCrowdPositions] = useState(() => buildCrowd(bashoRank));
+  const bashoRankKey = bashoRank
+    ? `${bashoRank.division}:${bashoRank.number ?? ""}:${bashoRank.title ?? ""}`
+    : null;
+  const bashoRankKeyRef = useRef(bashoRankKey);
+
+  // Rebuild when BASHO rank changes (promotion into a new basho). Skip the
+  // initial mount — useState already built the crowd for that rank.
+  useEffect(() => {
+    if (bashoRankKeyRef.current === bashoRankKey) return;
+    bashoRankKeyRef.current = bashoRankKey;
+    setCrowdPositions(buildCrowd(bashoRank));
+  }, [bashoRankKey, bashoRank]);
 
   const normalCrowd = useMemo(() => crowdPositions.filter(m => m.customZIndex === undefined), [crowdPositions]);
   const foregroundCrowd = useMemo(() => crowdPositions.filter(m => m.customZIndex !== undefined), [crowdPositions]);
@@ -664,8 +700,8 @@ const CrowdLayer = ({ crowdEvent = null }) => {
 
   const handleEditorClose = useCallback(() => {
     setEditorMode(false);
-    setCrowdPositions(randomizeCrowdTypes(loadCrowdPositions()));
-  }, []);
+    setCrowdPositions(buildCrowd(bashoRank));
+  }, [bashoRank]);
 
   const lastCheerTimeRef = useRef(0);
   const cheerStartRef = useRef(0);

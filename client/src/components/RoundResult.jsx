@@ -1,22 +1,21 @@
-        import React, { memo } from "react";
+import React, { memo } from "react";
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
-
-const ANNOUNCE_Y = "clamp(100px, 28cqh, 190px)";
+import { ANNOUNCE_Y } from "./SumoGameAnnouncement";
 
 const WIN_TYPE_CONFIG = {
-  slap: { english: "THRUST OUT !", japanese: "突き出し" },
-  charged: { english: "PUSH OUT !", japanese: "押し出し" },
-  cinematicKill: { english: "DEMOLISHED !", japanese: "破壊された" },
-  grabPush: { english: "FORCE OUT !", japanese: "寄り切り" },
-  grabThrow: { english: "OVERARM THROW !", japanese: "上手投げ" },
-  clinchKillThrow: { english: "CRUSHING THROW !", japanese: "掛け投げ" },
-  clinchKillPull: { english: "PULL DOWN !", japanese: "引き落とし" },
+  slap: { english: "THRUST OUT!", japanese: "突き出し" },
+  charged: { english: "PUSH OUT!", japanese: "押し出し" },
+  cinematicKill: { english: "DEMOLISHED!", japanese: "破壊された" },
+  grabPush: { english: "FORCE OUT!", japanese: "寄り切り" },
+  grabThrow: { english: "OVERARM THROW!", japanese: "上手投げ" },
+  clinchKillThrow: { english: "CRUSHING THROW!", japanese: "掛け投げ" },
+  clinchKillPull: { english: "PULL DOWN!", japanese: "引き落とし" },
   okuridashi: { english: "REAR PUSH OUT!", japanese: "送り出し" },
-  flap: { english: "BODY SLAM !", japanese: "浴びせ倒し" },
-  snowball: { english: "RING OUT !", japanese: "場外" },
-  pumoClone: { english: "RING OUT !", japanese: "場外" },
-  ringOut: { english: "RING OUT !", japanese: "場外" },
+  flap: { english: "BODY SLAM!", japanese: "浴びせ倒し" },
+  snowball: { english: "RING OUT!", japanese: "場外" },
+  pumoClone: { english: "RING OUT!", japanese: "場外" },
+  ringOut: { english: "RING OUT!", japanese: "場外" },
 };
 
 /**
@@ -48,34 +47,10 @@ const hazePulse = keyframes`
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
 `;
 
-/* Round result reveal — hanko stamp impression.
- *
- * Iteration history on this animation:
- *   v1 (original): drop from translateY(-180%) with simultaneous
- *                  scaleY(1.2)/scaleX(0.92) stretch, then bounce
- *                  through FOUR squash/stretch overshoots before
- *                  settling. Cartoon-fighter rubber-band.
- *   v2 (clip-path): single left-to-right clip-path calligraphy
- *                  reveal. Identical motion to HAKKI-YOI and
- *                  TE WO TSUITE. Three different events collapsing
- *                  into one wipe. Read as boring and same-y.
- *   v3 (this):     hanko stamp impression. Text starts oversized
- *                  and tilted (scale 1.35, rotate -1.5°), lands at
- *                  final size and orientation (scale 1, rotate 0°)
- *                  with sharp ease-out, no rebound.
- *
- * Different from HAKKI-YOI on purpose: HAKKI-YOI is pure scale
- * (release of energy), this is scale + rotation (a physical object
- * pressed onto paper). Same vocabulary as the GASSED hanko stamp
- * on the HUD — the kimarite call is the moment the move name gets
- * stamped onto the bout record. It IS a stamp.
- *
- * Rotation is intentionally subtle (-1.5° → 0°), only present
- * during entry — leaving permanent tilt on 5.8rem text would read
- * as a CSS bug rather than as design intent. The rotation kick
- * during the impact frame is enough to register the physical
- * gesture without committing to a tilted final state. */
-const textDrop = keyframes`
+/* Hanko stamp — anchored on the English line only (same Y center as
+ * HAKKI-YOI / HANDS DOWN). Brush + kanji hang below and must NOT be
+ * included in the centered box, or the hero text rides too high. */
+const stackStamp = keyframes`
   0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.35) rotate(-1.5deg); }
   10%  { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
   78%  { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
@@ -164,13 +139,22 @@ const ContrastHaze = styled.div`
   }
 `;
 
-const MainText = styled.div`
+/* Sized by MainText only so translate(-50%, -50%) lands on the same
+ * band as HAKKI-YOI / HANDS DOWN. Support layers hang below. */
+const CalloutAnchor = styled.div`
   position: absolute;
   top: ${ANNOUNCE_Y};
   left: 50%;
   z-index: 1005;
   pointer-events: none;
+  max-width: 92cqw;
 
+  animation: ${css`
+      ${stackStamp}`} 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+`;
+
+const MainText = styled.div`
   font-family: "Bungee", "Impact", sans-serif;
   font-size: clamp(2.2rem, 6.5cqw, 5.8rem);
   font-weight: 400;
@@ -178,6 +162,7 @@ const MainText = styled.div`
   letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
+  text-align: center;
 
   color: #ffffff;
   -webkit-text-stroke: ${(p) =>
@@ -202,13 +187,6 @@ const MainText = styled.div`
       0 clamp(3px, 0.3cqw, 6px) clamp(12px, 1cqw, 22px) rgba(0,0,0,0.7)
     `};
 
-  /* Sharp out-expo decel for the stamp impression — scale + rotation
-     decelerate aggressively into the final value without rebounding
-     past it. See textDrop keyframes comment for the full rationale. */
-  animation: ${css`
-      ${textDrop}`} 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  will-change: transform, opacity;
-
   @media (max-width: 900px) {
     font-size: clamp(1.8rem, 5.6cqw, 4.2rem);
     letter-spacing: 0.08em;
@@ -219,17 +197,40 @@ const MainText = styled.div`
   }
 `;
 
-const BrushStroke = styled.div`
+const SupportStack = styled.div`
   position: absolute;
-  top: calc(${ANNOUNCE_Y} + clamp(22px, 3.5cqh, 48px));
+  top: calc(100% + clamp(5px, 0.75cqh, 10px));
   left: 50%;
-  transform: translateX(-50%) rotate(-0.8deg);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(5px, 0.75cqh, 10px);
+`;
+
+const BrushRow = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: clamp(240px, 38cqw, 480px);
   height: clamp(7px, 1cqh, 14px);
-  pointer-events: none;
-  z-index: 1004;
+  flex-shrink: 0;
+
+  @media (max-width: 900px) {
+    width: clamp(200px, 35cqw, 380px);
+  }
+  @media (max-width: 600px) {
+    width: clamp(160px, 34cqw, 300px);
+  }
+`;
+
+const BrushStroke = styled.div`
+  width: 100%;
+  height: 100%;
   border-radius: 60% 25% 45% 50% / 80% 50% 40% 65%;
   filter: blur(0.5px);
+  transform: rotate(-0.8deg);
 
   background: ${(p) =>
     p.$isVictory
@@ -253,51 +254,32 @@ const BrushStroke = styled.div`
         transparent)`};
 
   animation: ${brushPaint} 3s ease-out forwards;
-
-  @media (max-width: 900px) {
-    width: clamp(200px, 35cqw, 380px);
-  }
-  @media (max-width: 600px) {
-    width: clamp(160px, 34cqw, 300px);
-  }
 `;
 
 const BrushSplash = styled.div`
   position: absolute;
-  top: calc(${ANNOUNCE_Y} + clamp(24px, 3.8cqh, 50px));
-  left: calc(50% + clamp(100px, 16cqw, 200px));
+  right: clamp(-6px, -0.8cqw, -2px);
+  top: 50%;
   width: clamp(10px, 1.5cqw, 20px);
   height: clamp(4px, 0.5cqh, 7px);
-  pointer-events: none;
-  z-index: 1004;
   border-radius: 50% 30% 45% 55% / 60% 40% 55% 45%;
+  transform-origin: center center;
 
   background: ${(p) =>
     p.$isVictory ? "rgba(255,215,0,0.5)" : "rgba(200,50,50,0.4)"};
 
   animation: ${splashAppear} 3s ease-out forwards;
-
-  @media (max-width: 900px) {
-    left: calc(50% + clamp(80px, 14cqw, 160px));
-  }
-  @media (max-width: 600px) {
-    left: calc(50% + clamp(65px, 14cqw, 125px));
-  }
 `;
 
 const KimariteText = styled.div`
-  position: absolute;
-  top: calc(${ANNOUNCE_Y} + clamp(36px, 5.5cqh, 68px));
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1005;
-  pointer-events: none;
-
   font-family: "Noto Serif JP", "Yu Mincho", serif;
   font-size: clamp(0.8rem, 1.7cqw, 1.4rem);
   font-weight: 700;
   color: ${(p) => (p.$isVictory ? "#F5E6C8" : "#D0D4DE")};
   letter-spacing: 0.3em;
+  padding-left: 0.3em;
+  text-align: center;
+  white-space: nowrap;
 
   text-shadow: ${(p) =>
     p.$isVictory
@@ -308,19 +290,8 @@ const KimariteText = styled.div`
 
   @media (max-width: 600px) {
     font-size: clamp(0.65rem, 1.4cqw, 1rem);
-    top: calc(${ANNOUNCE_Y} + clamp(30px, 4.5cqh, 56px));
   }
 `;
-
-/* The 6-shard particle burst that used to live here was the same
- * floating-mote vocabulary the HAKKI-YOI ice crystals were —
- * little squares flying outward, scaling down, rotating to random
- * angles. That's a templated AI-fighting-game render fingerprint
- * (always 4-8 particles, always radial, always rotating). Removed
- * entirely. The kimarite (winning move) Japanese text, the brush
- * stroke, and the brush splash already carry the whole call —
- * they do it with hand-painted vocabulary instead of a generic
- * burst, so the result reads as broadcast sumo, not AI fighter. */
 
 // ============================================
 // COMPONENT
@@ -335,14 +306,20 @@ const RoundResult = ({ isVictory, winType }) => {
       <ScreenFlash $isVictory={isVictory} />
       <ContrastHaze $isVictory={isVictory} />
 
-      <MainText $isVictory={isVictory}>{config.english}</MainText>
-
-      <BrushStroke $isVictory={isVictory} />
-      <BrushSplash $isVictory={isVictory} />
-
-      {hasKimarite && (
-        <KimariteText $isVictory={isVictory}>{config.japanese}</KimariteText>
-      )}
+      <CalloutAnchor>
+        <MainText $isVictory={isVictory}>{config.english}</MainText>
+        <SupportStack>
+          <BrushRow>
+            <BrushStroke $isVictory={isVictory} />
+            <BrushSplash $isVictory={isVictory} />
+          </BrushRow>
+          {hasKimarite && (
+            <KimariteText $isVictory={isVictory}>
+              {config.japanese}
+            </KimariteText>
+          )}
+        </SupportStack>
+      </CalloutAnchor>
     </>
   );
 };

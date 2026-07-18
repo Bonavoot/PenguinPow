@@ -20,6 +20,8 @@ import {
   broadcastSlideDown,
   clipRevealLeft,
   clipRevealRight,
+  TEXT_SHADOW_DISPLAY,
+  TEXT_SHADOW_DISPLAY_SOFT,
 } from "./menuTheme";
 
 /*
@@ -281,12 +283,7 @@ const PageTitle = styled.h1`
   text-transform: uppercase;
   letter-spacing: 0.18em;
   line-height: 1;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000,
-    0 2px 0 rgba(0, 0, 0, 0.85);
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
 `;
 
 const PageSubtitle = styled.div`
@@ -397,11 +394,7 @@ const HeadTitle = styled.h2`
   color: ${C.cream};
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
 
   &::before {
     content: "";
@@ -418,7 +411,7 @@ const HeadMeta = styled.div`
   color: ${(p) => (p.$accent ? C.ice : C.creamMute)};
   text-transform: uppercase;
   letter-spacing: 0.22em;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
 `;
 
 // ============================================
@@ -454,11 +447,7 @@ const BriefLead = styled.p`
   letter-spacing: 0.08em;
   text-transform: uppercase;
   line-height: 1.25;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
 `;
 
 const BriefCopy = styled.p`
@@ -625,11 +614,7 @@ const EmptyTitle = styled.div`
   text-transform: uppercase;
   letter-spacing: 0.14em;
   margin-bottom: clamp(8px, 1.2cqh, 12px);
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
 `;
 
 const EmptySubtext = styled.div`

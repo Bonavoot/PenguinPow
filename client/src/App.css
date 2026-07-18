@@ -386,15 +386,16 @@ body {
 
      Backdrop (game-map) now runs through the filmic #scene-grade S-curve
      (deep blacks + rolled highlights — fixes the milky/faded look) and a
-     depth-of-field blur so the furthest plane recedes and the wrestlers snap
-     forward. The flat `contrast()` multiply was the old, washed approach; the
-     S-curve does the contrast properly with a real black point. The map art is
-     1536×1024 (soft after camera + display zoom) so the DoF blur doubles as
-     cover for its under-resolution until it's re-exported.
+     light depth-of-field blur so the furthest plane recedes and the wrestlers
+     snap forward. The flat `contrast()` multiply was the old, washed approach;
+     the S-curve does the contrast properly with a real black point. The map
+     art is 1536×1024 (soft after camera + display zoom) so a touch of DoF
+     also covers its under-resolution.
      NOTE: blur is multiplied by --cam-scale × --app-zoom, so the effective
-     radius on-screen is ~2–2.6× this value. The far backdrop can stay heavily
-     defocused (it's just ambient depth) so this stays higher than the crowd. */
-  --arena-map-filter: brightness(0.9) saturate(0.96) url(#scene-grade) blur(2.5px);
+     radius on-screen is ~2–2.6× this value. Keep this near the upper-deck
+     crowd soft end (~1.3px in CrowdLayer) — higher than that made the painted
+     stadium look blurrier than the people sitting in front of it. */
+  --arena-map-filter: brightness(0.9) saturate(0.96) url(#scene-grade) blur(1.35px);
 
   /* ── Dohyo grade + spotlight are BAKED into dohyo.webp ──
      The cool/vivid color grade, the icy center light-pool, the warm rope ring

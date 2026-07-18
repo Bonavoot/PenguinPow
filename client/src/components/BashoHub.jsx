@@ -3,7 +3,7 @@
  *
  * One-screen, no-scroll fighter dossier laid out as two columns:
  *   LEFT  — the rikishi: large portrait, persistent ATTRIBUTES, and
- *           belt/body appearance controls (popovers).
+ *           outfit slots (same customization as Lobby / Customize).
  *   RIGHT — the LOADOUT board: one row per discipline, five slots each
  *           (real sidegrades + greyed "coming soon" placeholders), with an
  *           integrated detail strip that previews on hover and equips/buys on
@@ -45,6 +45,8 @@ import {
   clipRevealLeft,
   clipRevealRight,
   clipRevealUp,
+  TEXT_SHADOW_DISPLAY,
+  TEXT_SHADOW_DISPLAY_SOFT,
 } from "./menuTheme";
 import {
   ATTRIBUTES,
@@ -61,18 +63,21 @@ import {
   formatRank,
   boutsForRank,
 } from "../config/bashoConfig";
-import {
-  BELT_SOLIDS,
-  BELT_PATTERNS,
-  BODY_COLORS,
-  BELT_ALL,
-} from "../config/customizeColors";
+import { BODY_COLORS, BELT_ALL } from "../config/customizeColors";
 import {
   loadSave,
   writeSave,
   resetSave,
   makeDefaultSave,
 } from "../lib/saveStore";
+import {
+  makeDefaultCustomization,
+  normalizeCustomization,
+  getOutfitById,
+  getActiveOutfit,
+  withActiveOutfitId,
+  applyOutfitToPlayer1Setters,
+} from "../lib/outfits";
 import { createRun, ensureOpponentRanks } from "../lib/bashoRun";
 import BanzukeBoard from "./BanzukeBoard";
 import { SHADOW_GRADIENT } from "./PlayerShadow";
@@ -85,58 +90,56 @@ const SLOTS_PER_CATEGORY = 5;
 /**
  * D — hub surface palette tuned to the PreMatch "printed banzuke" language.
  * Cream type on sumi ink, vermillion rules, gold ranks — not cool SaaS grey
- * glass. Panels are flat plaques (no blur, no ice bloom). Accents from C.
+ * glass. Panels are lacquer plaques (no blur, no ice bloom). Accents from C.
+ * Contrast tuned for Steam-distance readability on the locker-room photo.
  */
 const D = {
-  page: "#080a0e",
-  panel: "rgba(14, 16, 22, 0.88)",
-  panelSolid: "#12151c",
-  head: "#171a20",
-  chrome: "#14171e",
-  soft: "#22262d",
-  softHover: "#2c313a",
-  deep: "#0c0e14",
-  border: "rgba(245, 236, 217, 0.20)",
-  borderSoft: "rgba(245, 236, 217, 0.10)",
-  shadow: "rgba(0, 0, 0, 0.45)",
-  shadowStrong: "rgba(0, 0, 0, 0.62)",
+  page: "#06080c",
+  panel: "rgba(12, 14, 20, 0.94)",
+  panelSolid: "#141820",
+  head: "#1a1f28",
+  chrome: "#161a22",
+  soft: "#252a34",
+  softHover: "#303642",
+  deep: "#0a0c12",
+  border: "rgba(245, 236, 217, 0.28)",
+  borderSoft: "rgba(245, 236, 217, 0.14)",
+  shadow: "rgba(0, 0, 0, 0.5)",
+  shadowStrong: "rgba(0, 0, 0, 0.72)",
   textHi: C.cream,
   text: C.creamWarm,
-  textMute: C.creamMute,
-  textFaint: "rgba(245, 236, 217, 0.28)",
+  textMute: "rgba(245, 236, 217, 0.78)",
+  textFaint: "rgba(245, 236, 217, 0.4)",
   // Warm washi lightbox for the fighter — same paper stock as rank plaques.
-  stageTop: "#f7f0e2",
-  stageMid: "#ebe0c8",
-  stageBottom: "#d8c7a4",
+  stageTop: "#faf4e8",
+  stageMid: "#efe4cc",
+  stageBottom: "#d4c09a",
 };
 
-/* Washi paper weave — same crosshatch recipe as the PowerUpSelection
-   cards and the in-game RankPlaque, so every printed surface reads as
-   the same paper stock. Two variants: dark ink fibers for light
-   surfaces (the portrait stage), faint cream fibers for dark chrome
-   (panel headers). Used sparingly, only for tactile depth. */
+/* Soft paper grain — kept VERY faint and only on a few surfaces (portrait
+   stage, panel headers). Full-panel washi read as a busy grid. */
 const WASHI_DARK_ON_LIGHT = `
   repeating-linear-gradient(
     90deg,
-    transparent 0, transparent 2px,
-    rgba(60, 40, 20, 0.05) 2px, rgba(60, 40, 20, 0.05) 3px
+    transparent 0, transparent 3px,
+    rgba(60, 40, 20, 0.03) 3px, rgba(60, 40, 20, 0.03) 4px
   ),
   repeating-linear-gradient(
     0deg,
-    transparent 0, transparent 4px,
-    rgba(60, 40, 20, 0.04) 4px, rgba(60, 40, 20, 0.04) 5px
+    transparent 0, transparent 5px,
+    rgba(60, 40, 20, 0.025) 5px, rgba(60, 40, 20, 0.025) 6px
   )
 `;
 const WASHI_LIGHT_ON_DARK = `
   repeating-linear-gradient(
     90deg,
-    transparent 0, transparent 3px,
-    rgba(232, 210, 170, 0.045) 3px, rgba(232, 210, 170, 0.045) 4px
+    transparent 0, transparent 4px,
+    rgba(232, 210, 170, 0.025) 4px, rgba(232, 210, 170, 0.025) 5px
   ),
   repeating-linear-gradient(
     0deg,
-    transparent 0, transparent 5px,
-    rgba(232, 210, 170, 0.035) 5px, rgba(232, 210, 170, 0.035) 6px
+    transparent 0, transparent 6px,
+    rgba(232, 210, 170, 0.02) 6px, rgba(232, 210, 170, 0.02) 7px
   )
 `;
 
@@ -154,8 +157,6 @@ const LOADOUT_OPTION_ICONS = {
       "linear-gradient(180deg, #fff9c4 0%, #ffe566 52%, #ffd024 100%)",
     main: "#ffe566",
     deep: "#c99200",
-    imgSize: "86%",
-    imgScale: 1.08,
   },
   thick_blubber: {
     icon: thickBlubberIcon,
@@ -174,8 +175,8 @@ function getLoadoutOptionIcon(optionId) {
 // ============================================
 
 const breathe = keyframes`
-  0%, 100% { transform: scaleY(1);     }
-  50%      { transform: scaleY(1.018); }
+  0%, 100% { transform: scaleX(-1) scaleY(1); }
+  50%      { transform: scaleX(-1) scaleY(1.015); }
 `;
 
 const pipFill = keyframes`
@@ -183,14 +184,19 @@ const pipFill = keyframes`
   to   { transform: scaleX(1); }
 `;
 
-const popIn = keyframes`
-  from { opacity: 0; transform: translateY(6px) scale(0.98); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-`;
-
 const detailShift = keyframes`
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
+`;
+
+const brushDraw = keyframes`
+  from { opacity: 0; transform: scaleX(0.12); }
+  to   { opacity: 1; transform: scaleX(1); }
+`;
+
+const slotGlow = keyframes`
+  0%, 100% { box-shadow: 0 0 0 2px rgba(232, 197, 71, 0.4), 0 4px 14px rgba(232, 197, 71, 0.22); }
+  50% { box-shadow: 0 0 0 2px rgba(232, 197, 71, 0.55), 0 6px 18px rgba(232, 197, 71, 0.34); }
 `;
 
 // ============================================
@@ -218,7 +224,7 @@ const BackgroundImage = styled.div`
   transform: scale(1.06) translateX(0.8%);
   transform-origin: 50% 100%;
   opacity: 1;
-  filter: saturate(0.78) brightness(0.72) contrast(1.12);
+  filter: saturate(0.85) brightness(0.68) contrast(1.14);
   z-index: 0;
   pointer-events: none;
 `;
@@ -231,18 +237,18 @@ const CinematicOverlay = styled.div`
   pointer-events: none;
   background:
     radial-gradient(
-      ellipse 48% 56% at 50% 42%,
+      ellipse 52% 58% at 50% 40%,
       transparent 0%,
-      rgba(4, 6, 10, 0.22) 48%,
-      rgba(4, 6, 10, 0.78) 100%
+      rgba(4, 6, 10, 0.18) 46%,
+      rgba(4, 6, 10, 0.82) 100%
     ),
     linear-gradient(
       180deg,
-      rgba(4, 6, 10, 0.72) 0%,
-      rgba(4, 6, 10, 0.18) 22%,
-      rgba(4, 6, 10, 0.08) 48%,
-      rgba(4, 6, 10, 0.42) 74%,
-      rgba(4, 6, 10, 0.88) 100%
+      rgba(4, 6, 10, 0.78) 0%,
+      rgba(4, 6, 10, 0.2) 20%,
+      rgba(4, 6, 10, 0.06) 46%,
+      rgba(4, 6, 10, 0.48) 74%,
+      rgba(4, 6, 10, 0.92) 100%
     );
 `;
 
@@ -251,7 +257,7 @@ const GrainOverlay = styled.div`
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  opacity: 0.2;
+  opacity: 0.18;
   mix-blend-mode: overlay;
   background-image:
     repeating-linear-gradient(
@@ -271,14 +277,14 @@ const GrainOverlay = styled.div`
 /* Giant atmospheric kanji — flat ink watermark, PreMatch GiantKanji recipe. */
 const AtmosphereKanji = styled.div`
   position: absolute;
-  top: 18%;
-  right: 4%;
+  top: 14%;
+  right: 2%;
   z-index: 1;
   font-family: ${FONT_KANJI};
   font-weight: 900;
-  font-size: clamp(160px, 28cqw, 340px);
+  font-size: clamp(180px, 30cqw, 380px);
   line-height: 0.72;
-  color: rgba(245, 236, 217, 0.04);
+  color: rgba(245, 236, 217, 0.055);
   pointer-events: none;
   user-select: none;
   letter-spacing: -0.04em;
@@ -294,22 +300,10 @@ const TopBar = styled.header`
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  padding: clamp(10px, 1.5cqh, 16px) clamp(18px, 2.8cqw, 36px);
+  padding: clamp(12px, 1.7cqh, 18px) clamp(18px, 2.8cqw, 36px);
   background: transparent;
   border-bottom: none;
   animation: ${fadeIn} 0.35s ease both;
-
-  /* Thin vermillion rule under the title block — broadcast slug energy. */
-  &::after {
-    content: "";
-    position: absolute;
-    left: 50%;
-    bottom: 0;
-    transform: translateX(-50%);
-    width: clamp(48px, 7cqw, 72px);
-    height: 2px;
-    background: ${C.vermillion};
-  }
 `;
 
 const TopBarLeft = styled.div`
@@ -329,19 +323,20 @@ const GhostButton = styled.button`
   display: inline-flex;
   align-items: center;
   gap: clamp(7px, 1cqw, 11px);
-  min-height: 38px;
-  padding: clamp(7px, 1cqh, 10px) clamp(13px, 1.8cqw, 20px);
+  min-height: 40px;
+  padding: clamp(8px, 1.1cqh, 11px) clamp(14px, 1.9cqw, 22px);
   font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.52rem, 0.8cqw, 0.64rem);
+  font-size: clamp(0.56rem, 0.84cqw, 0.68rem);
   text-transform: uppercase;
-  letter-spacing: 0.28em;
-  color: ${C.creamMute};
-  background: ${C.sumi};
-  border: 1px solid rgba(245, 236, 217, 0.22);
+  letter-spacing: 0.26em;
+  color: ${D.textMute};
+  background: linear-gradient(180deg, #1c212a 0%, ${C.sumi} 100%);
+  border: 1px solid rgba(245, 236, 217, 0.28);
   border-radius: 0;
   cursor: pointer;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease,
     transform 0.18s ease;
 
@@ -351,7 +346,7 @@ const GhostButton = styled.button`
   }
   &:hover {
     color: ${C.cream};
-    border-color: rgba(245, 236, 217, 0.4);
+    border-color: rgba(245, 236, 217, 0.5);
     .arrow {
       transform: translateX(-3px);
     }
@@ -362,60 +357,73 @@ const GhostButton = styled.button`
 `;
 
 const TitleBlock = styled.div`
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   will-change: transform, opacity;
   animation: ${fadeUp} 0.42s cubic-bezier(0.2, 0.7, 0.2, 1) 0.04s both;
+
+  &::after {
+    content: "";
+    width: clamp(56px, 8cqw, 88px);
+    height: 3px;
+    margin-top: 2px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      ${C.vermillion} 18%,
+      ${C.vermillionBright} 50%,
+      ${C.vermillion} 82%,
+      transparent 100%
+    );
+    transform-origin: center;
+    animation: ${brushDraw} 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) 0.2s both;
+  }
 `;
 
 const PageTitle = styled.h1`
   margin: 0;
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(1.15rem, 2.2cqw, 1.7rem);
+  font-size: clamp(1.35rem, 2.5cqw, 2rem);
   color: #ffffff;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.2em;
   line-height: 1;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000,
-    0 2px 0 rgba(0, 0, 0, 0.85);
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
 `;
 
 const PageSubtitle = styled.div`
   font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.42rem, 0.68cqw, 0.52rem);
-  color: ${C.ice};
+  font-size: clamp(0.48rem, 0.74cqw, 0.58rem);
+  color: ${C.iceBright};
   text-transform: uppercase;
-  letter-spacing: 0.34em;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  letter-spacing: 0.32em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
 `;
 
-// Currency readout — the Kenshō balance sits directly in the top bar as
-// free-standing chrome (envelope glyph + gold figure), NOT boxed in its own
-// plate. A container here just added a competing rectangle next to the
-// title; the icon + gold weight are enough to read it as the wallet.
+// Currency readout — lacquer wallet plate with gold weight.
 const Currency = styled.div`
   display: inline-flex;
   align-items: center;
-  gap: clamp(6px, 0.9cqw, 10px);
-  min-height: 38px;
-  padding: 0 clamp(10px, 1.2cqw, 14px);
+  gap: clamp(7px, 1cqw, 11px);
+  min-height: 40px;
+  padding: 0 clamp(12px, 1.4cqw, 16px);
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.62rem, 0.96cqw, 0.8rem);
+  font-size: clamp(0.68rem, 1.02cqw, 0.86rem);
   color: ${C.gold};
   letter-spacing: 0.06em;
-  background: ${C.sumi};
-  border: 1px solid rgba(232, 197, 71, 0.35);
-  text-shadow: 0 0 10px rgba(232, 197, 71, 0.35);
+  background: linear-gradient(180deg, #222836 0%, ${C.sumi} 100%);
+  border: 1px solid rgba(232, 197, 71, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 252, 244, 0.08),
+    0 4px 14px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 0 12px rgba(232, 197, 71, 0.4);
 
   .envelope {
-    height: 2.4em;
+    height: 2.35em;
     width: auto;
     object-fit: contain;
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
@@ -455,25 +463,28 @@ const Stage = styled.main`
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.16fr);
+  grid-template-columns: minmax(0, 0.94fr) minmax(0, 1.14fr);
   align-items: stretch;
-  gap: clamp(18px, 2.6cqw, 36px);
-  padding: clamp(8px, 1.4cqh, 16px) clamp(22px, 3.6cqw, 54px)
-    clamp(14px, 2cqh, 24px);
+  gap: clamp(20px, 2.8cqw, 40px);
+  padding: clamp(6px, 1.2cqh, 14px) clamp(22px, 3.6cqw, 54px)
+    clamp(16px, 2.2cqh, 28px);
 `;
 
-/* Flat sumi plaque — solid fill, cream hairline, vermillion crown rule.
-   No glass blur, no ice glow bloom. Reads like VsMetaPlate, not a SaaS card. */
+/* Lacquer plaque — solid ink fill, cream rim, vermillion crown.
+   No full-panel washi (that read as a busy grid). */
 const Panel = styled.section`
   position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: ${D.panel};
+  background: linear-gradient(180deg, #1a1f28 0%, #12151c 55%, #0e1118 100%);
   border: 1px solid ${D.border};
   border-radius: 0;
   overflow: hidden;
-  box-shadow: 0 16px 36px ${D.shadowStrong};
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.55),
+    0 18px 42px ${D.shadowStrong},
+    inset 0 1px 0 rgba(255, 252, 244, 0.06);
 
   &::before {
     content: "";
@@ -481,8 +492,14 @@ const Panel = styled.section`
     top: 0;
     left: 0;
     right: 0;
-    height: 2px;
-    background: ${C.vermillion};
+    height: 3px;
+    background: linear-gradient(
+      90deg,
+      ${C.vermillionDeep} 0%,
+      ${C.vermillionBright} 35%,
+      ${C.vermillion} 70%,
+      ${C.vermillionDeep} 100%
+    );
     z-index: 2;
   }
 `;
@@ -492,12 +509,8 @@ const LeftPanel = styled(Panel)`
   animation: ${clipRevealLeft} 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) 0.1s both;
 `;
 
-/* Loadout = lacquer technique board. Opaque ink + washi so the room never
-   fights the icons; still flat/printed, not glass. */
 const RightPanel = styled(Panel)`
-  background:
-    ${WASHI_LIGHT_ON_DARK},
-    linear-gradient(180deg, #161a22 0%, #10141b 100%);
+  background: linear-gradient(180deg, #1c222c 0%, #141820 50%, #0f131a 100%);
   will-change: transform, opacity;
   animation: ${clipRevealRight} 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) 0.16s both;
 `;
@@ -509,8 +522,8 @@ const PanelHead = styled.header`
   justify-content: space-between;
   gap: 12px;
   flex-shrink: 0;
-  padding: clamp(9px, 1.2cqh, 13px) clamp(14px, 1.8cqw, 22px);
-  background: ${D.head};
+  padding: clamp(8px, 1cqh, 11px) clamp(12px, 1.5cqw, 18px);
+  background: linear-gradient(180deg, #222836 0%, ${D.head} 100%);
   border-bottom: 1px solid ${D.borderSoft};
 
   &::before {
@@ -518,9 +531,29 @@ const PanelHead = styled.header`
     position: absolute;
     inset: 0;
     background-image: ${WASHI_LIGHT_ON_DARK};
-    opacity: 0.7;
+    opacity: 0.35;
     pointer-events: none;
   }
+
+  /* Ice sash — secondary accent under the vermillion crown. */
+  &::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(126, 203, 240, 0.35) 30%,
+      rgba(126, 203, 240, 0.55) 50%,
+      rgba(126, 203, 240, 0.35) 70%,
+      transparent 100%
+    );
+    z-index: 1;
+  }
+
   & > * {
     position: relative;
     z-index: 1;
@@ -533,32 +566,29 @@ const HeadTitle = styled.h2`
   align-items: center;
   gap: clamp(8px, 1.1cqw, 12px);
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.68rem, 1.05cqw, 0.88rem);
-  color: ${C.cream};
+  font-size: clamp(0.78rem, 1.15cqw, 0.98rem);
+  color: #fff8ee;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+  letter-spacing: 0.16em;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
 
   &::before {
     content: "";
-    width: clamp(14px, 1.8cqw, 20px);
-    height: 2px;
+    width: clamp(16px, 2cqw, 24px);
+    height: 3px;
     background: ${C.vermillion};
+    box-shadow: 0 0 8px rgba(216, 59, 39, 0.45);
   }
 `;
 
 const HeadMeta = styled.div`
   font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.42rem, 0.66cqw, 0.52rem);
-  color: ${(p) => (p.$accent ? C.ice : D.textMute)};
+  font-size: clamp(0.48rem, 0.72cqw, 0.58rem);
+  color: ${(p) => (p.$accent ? C.iceBright : D.textMute)};
   text-transform: uppercase;
-  letter-spacing: 0.22em;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  letter-spacing: 0.2em;
+  text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
 `;
 
 /* Lacquer rank plaque — matches PreMatch / HUD, not a pill chip. */
@@ -566,39 +596,41 @@ const RankChip = styled.button`
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: clamp(5px, 0.7cqw, 8px);
+  gap: clamp(6px, 0.8cqw, 9px);
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.48rem, 0.76cqw, 0.62rem);
+  font-size: clamp(0.52rem, 0.8cqw, 0.66rem);
   color: ${C.gold};
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  background:
-    ${WASHI_LIGHT_ON_DARK},
-    linear-gradient(
-      180deg,
-      rgba(22, 28, 48, 0.96) 0%,
-      rgba(12, 16, 32, 0.98) 100%
-    );
-  border: 1px solid rgba(245, 236, 217, 0.28);
+  background: linear-gradient(
+    180deg,
+    rgba(28, 34, 56, 0.98) 0%,
+    rgba(14, 18, 36, 0.99) 100%
+  );
+  border: 1px solid rgba(232, 197, 71, 0.4);
   border-radius: 2px;
-  padding: clamp(4px, 0.55cqh, 6px) clamp(10px, 1.3cqw, 14px);
+  padding: clamp(5px, 0.65cqh, 7px) clamp(11px, 1.4cqw, 15px);
   cursor: pointer;
   box-shadow:
-    inset 0 1px 0 rgba(255, 252, 244, 0.08),
-    0 2px 6px rgba(0, 0, 0, 0.35);
-  text-shadow: 0 0 10px rgba(232, 197, 71, 0.35);
-  transition: border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
+    inset 0 1px 0 rgba(255, 252, 244, 0.1),
+    0 3px 10px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 0 12px rgba(232, 197, 71, 0.4);
+  transition: border-color 0.15s ease, color 0.15s ease, transform 0.12s ease,
+    box-shadow 0.15s ease;
 
   .ladder {
     font-family: ${FONT_BODY};
     font-size: 0.95em;
     line-height: 1;
-    opacity: 0.65;
+    opacity: 0.7;
   }
   &:hover {
     border-color: ${C.gold};
     color: #ffe07a;
     transform: translateY(-1px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 252, 244, 0.12),
+      0 4px 14px rgba(232, 197, 71, 0.2);
   }
 `;
 
@@ -610,27 +642,28 @@ const PortraitStage = styled.div`
   flex: 1 1 0;
   min-height: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  padding: clamp(4px, 0.8cqh, 10px) clamp(10px, 1.5cqw, 18px);
+  padding: clamp(4px, 0.6cqh, 8px) clamp(6px, 1cqw, 12px)
+    clamp(6px, 0.9cqh, 10px);
   position: relative;
   overflow: hidden;
-  /* Warm washi lightbox — paper stage for the rikishi, no ice frame. */
   background: radial-gradient(
-    ellipse at 50% 30%,
+    ellipse 90% 70% at 50% 28%,
     ${D.stageTop} 0%,
-    ${D.stageMid} 55%,
+    ${D.stageMid} 52%,
     ${D.stageBottom} 100%
   );
   box-shadow:
-    inset 0 0 0 1px rgba(60, 40, 20, 0.14),
-    inset 0 -28px 48px -20px rgba(70, 48, 24, 0.48),
-    inset 0 18px 32px -18px rgba(255, 252, 244, 0.55);
+    inset 0 0 0 1px rgba(60, 40, 20, 0.16),
+    inset 0 -28px 44px -18px rgba(70, 48, 24, 0.45),
+    inset 0 18px 32px -18px rgba(255, 252, 244, 0.5);
   &::before {
     content: "";
     position: absolute;
     inset: 0;
     background-image: ${WASHI_DARK_ON_LIGHT};
+    opacity: 0.4;
     pointer-events: none;
   }
   &::after {
@@ -638,25 +671,57 @@ const PortraitStage = styled.div`
     position: absolute;
     inset: 0;
     background: radial-gradient(
-      ellipse 70% 55% at 50% 40%,
-      transparent 40%,
-      rgba(40, 28, 14, 0.18) 100%
+      ellipse 72% 58% at 50% 38%,
+      transparent 42%,
+      rgba(40, 28, 14, 0.16) 100%
     );
     pointer-events: none;
     z-index: 1;
   }
 `;
 
-// Ground shadow — same three-zone cool slate recipe as in-game PlayerShadow
-// (contact / core / ambient). Footprint scaled to the portrait sprite
-// (~4.4:1 oval); no warm brown drop-shadow on the sprite itself.
+/* Shrink-wraps to the sprite so ring + shadow center on him, not the stage. */
+const FighterFigure = styled.div`
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 96%;
+  max-height: 100%;
+  width: fit-content;
+  max-width: 96%;
+`;
+
+/* Soft dohyo ring — sized to the figure, not the full stage. */
+const PortraitRing = styled.div`
+  position: absolute;
+  left: 50%;
+  bottom: 1%;
+  transform: translateX(-50%);
+  width: 86%;
+  height: 12%;
+  min-height: 20px;
+  max-height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(90, 60, 30, 0.2);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 248, 230, 0.3),
+    0 0 0 4px rgba(90, 60, 30, 0.05);
+  z-index: 1;
+  pointer-events: none;
+`;
+
+// Ground shadow — centered on FighterFigure (same recipe as CustomizePage).
 const PortraitFloor = styled.div`
   position: absolute;
   left: 50%;
-  bottom: clamp(8px, 1.5cqh, 17px);
+  bottom: 1%;
   transform: translateX(-50%);
-  width: clamp(120px, 16cqw, 190px);
-  height: clamp(27px, 3.6cqh, 43px);
+  width: 66%;
+  height: 10%;
+  min-height: 16px;
+  max-height: 34px;
   border-radius: 50%;
   background: ${SHADOW_GRADIENT};
   z-index: 1;
@@ -666,45 +731,37 @@ const PortraitFloor = styled.div`
 const PortraitSpotlight = styled.div`
   position: absolute;
   inset: 0;
-  /* Soft warm key light — character presence without ice bloom. */
   background: radial-gradient(
     ellipse at center 42%,
-    rgba(255, 248, 230, 0.35) 0%,
-    rgba(232, 197, 71, 0.08) 36%,
-    transparent 64%
+    rgba(255, 252, 240, 0.42) 0%,
+    rgba(232, 197, 71, 0.1) 34%,
+    transparent 62%
   );
   pointer-events: none;
-`;
-
-const AvatarBreath = styled.div`
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  animation: ${breathe} 2.8s ease-in-out infinite;
-  transform-origin: center bottom;
+  z-index: 1;
 `;
 
 const PortraitImage = styled.img`
-  height: 110%;
-  max-height: 110%;
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  max-height: 100%;
   width: auto;
   max-width: 100%;
   object-fit: contain;
-  transform: scaleX(-1);
+  object-position: center bottom;
   transform-origin: center bottom;
-  filter: drop-shadow(0 0 1.5px #000);
+  transform: scaleX(-1) scaleY(1);
+  animation: ${breathe} 2.4s ease-in-out infinite;
+  filter: drop-shadow(0 0 1.5px #000)
+    drop-shadow(0 8px 14px rgba(40, 28, 14, 0.2));
 `;
 
 const Block = styled.div`
   flex-shrink: 0;
-  padding: clamp(7px, 1cqh, 11px) clamp(14px, 1.7cqw, 20px);
+  padding: clamp(5px, 0.7cqh, 8px) clamp(12px, 1.5cqw, 16px);
   border-top: 1px solid ${D.borderSoft};
-  background: ${D.chrome};
+  background: linear-gradient(180deg, #1a1f28 0%, ${D.chrome} 100%);
 `;
 
 const BlockHead = styled.div`
@@ -712,24 +769,24 @@ const BlockHead = styled.div`
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: clamp(5px, 0.7cqh, 8px);
+  margin-bottom: clamp(3px, 0.5cqh, 6px);
 `;
 
 const BlockLabel = styled.div`
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: clamp(7px, 1cqw, 10px);
+  gap: clamp(6px, 0.8cqw, 9px);
   font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.48rem, 0.74cqw, 0.6rem);
-  color: ${C.cream};
+  font-size: clamp(0.46rem, 0.7cqw, 0.56rem);
+  color: #fff8ee;
   text-transform: uppercase;
-  letter-spacing: 0.26em;
+  letter-spacing: 0.22em;
 
   &::before {
     content: "";
-    width: clamp(10px, 1.4cqw, 14px);
+    width: clamp(10px, 1.2cqw, 14px);
     height: 2px;
     background: ${C.vermillion};
   }
@@ -738,26 +795,26 @@ const BlockLabel = styled.div`
 const BlockMeta = styled.div`
   font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.4rem, 0.62cqw, 0.48rem);
-  color: ${(p) => (p.$accent ? C.ice : D.textMute)};
+  font-size: clamp(0.4rem, 0.6cqw, 0.48rem);
+  color: ${(p) => (p.$accent ? C.iceBright : D.textMute)};
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
 `;
 
-// --- Attribute rows (compact for the narrow column) ---
+// --- Attribute rows (compact — keep portrait dominant) ---
 
 const StatList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(2px, 0.4cqh, 4px);
+  gap: 1px;
 `;
 
 const StatRow = styled.div`
   display: grid;
-  grid-template-columns: clamp(22px, 2.6cqw, 28px) minmax(0, 1fr) auto;
+  grid-template-columns: clamp(20px, 2.2cqw, 24px) minmax(0, 1fr) auto;
   align-items: center;
-  gap: clamp(6px, 0.9cqw, 10px);
-  padding: clamp(3px, 0.4cqh, 5px) clamp(4px, 0.6cqw, 7px);
+  gap: clamp(5px, 0.7cqw, 8px);
+  padding: clamp(2px, 0.3cqh, 3px) clamp(3px, 0.45cqw, 5px);
   border-radius: 0;
   background: transparent;
   border: none;
@@ -769,24 +826,24 @@ const StatRow = styled.div`
 `;
 
 const StatKanji = styled.div`
-  width: clamp(22px, 2.6cqw, 28px);
-  height: clamp(22px, 2.6cqw, 28px);
+  width: clamp(20px, 2.2cqw, 24px);
+  height: clamp(20px, 2.2cqw, 24px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-family: ${FONT_KANJI};
-  font-size: clamp(0.72rem, 1.05cqw, 0.9rem);
-  color: ${C.cream};
+  font-size: clamp(0.68rem, 0.95cqw, 0.82rem);
+  color: #fff8ee;
   line-height: 1;
   border-radius: 0;
-  background: ${D.deep};
-  border: 1px solid rgba(245, 236, 217, 0.18);
+  background: linear-gradient(180deg, #1e2430 0%, ${D.deep} 100%);
+  border: 1px solid rgba(245, 236, 217, 0.2);
 `;
 
 const StatBody = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(1px, 0.3cqh, 3px);
+  gap: 1px;
   min-width: 0;
 `;
 
@@ -800,30 +857,31 @@ const StatLabelRow = styled.div`
 const StatLabel = styled.div`
   font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.46rem, 0.72cqw, 0.58rem);
-  color: ${C.creamMute};
-  letter-spacing: 0.14em;
+  font-size: clamp(0.42rem, 0.64cqw, 0.52rem);
+  color: ${D.textMute};
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 `;
 
 const PipTrack = styled.div`
   display: flex;
-  gap: clamp(2px, 0.3cqw, 3px);
+  gap: 2px;
   padding: 1px;
   border-radius: 0;
   background: ${D.deep};
-  border: 1px solid rgba(245, 236, 217, 0.08);
+  border: 1px solid rgba(245, 236, 217, 0.1);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
 `;
 
 const Pip = styled.div`
   flex: 1;
-  height: clamp(4px, 0.55cqh, 5px);
+  height: clamp(3px, 0.5cqh, 5px);
   border-radius: 0;
   background: ${(p) =>
     p.$filled
-      ? `linear-gradient(180deg, ${C.iceBright} 0%, ${C.iceMid} 100%)`
-      : "rgba(245, 236, 217, 0.06)"};
-  border: 1px solid ${(p) => (p.$filled ? C.ice : "transparent")};
+      ? `linear-gradient(180deg, ${C.iceBright} 0%, ${C.ice} 45%, ${C.iceMid} 100%)`
+      : "rgba(245, 236, 217, 0.07)"};
+  border: 1px solid ${(p) => (p.$filled ? "rgba(168, 224, 255, 0.55)" : "transparent")};
   transform-origin: left center;
   ${(p) =>
     p.$filled &&
@@ -836,18 +894,18 @@ const Pip = styled.div`
 const StatControls = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(2px, 0.35cqw, 4px);
+  gap: 2px;
 `;
 
 const StepButton = styled.button`
-  width: clamp(16px, 2cqw, 22px);
-  height: clamp(16px, 2cqw, 22px);
+  width: clamp(14px, 1.7cqw, 18px);
+  height: clamp(14px, 1.7cqw, 18px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.7rem, 1.05cqw, 0.88rem);
+  font-size: clamp(0.6rem, 0.9cqw, 0.74rem);
   line-height: 1;
   color: ${C.cream};
   background: ${D.soft};
@@ -866,23 +924,19 @@ const StepButton = styled.button`
     transform: scale(0.9);
   }
   &:disabled {
-    opacity: 0.26;
+    opacity: 0.28;
     cursor: default;
   }
 `;
 
 const StatValue = styled.div`
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.54rem, 0.82cqw, 0.7rem);
+  font-size: clamp(0.48rem, 0.72cqw, 0.6rem);
   color: #ffffff;
   letter-spacing: 0.02em;
-  min-width: clamp(22px, 2.5cqw, 30px);
+  min-width: clamp(20px, 2.2cqw, 26px);
   text-align: center;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
 
   .max {
     color: ${D.textFaint};
@@ -891,193 +945,127 @@ const StatValue = styled.div`
   }
 `;
 
-// --- Appearance (belt / body) ---
+// --- Appearance (outfit slots — same system as Lobby / Customize) ---
 
-const AppearanceRow = styled.div`
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: clamp(6px, 0.9cqw, 10px);
+const OutfitSlotBar = styled.div`
+  display: flex;
+  gap: clamp(4px, 0.6cqw, 6px);
 `;
 
-const AppearanceButton = styled.button`
+const OutfitSlot = styled.button`
+  flex: 1;
   display: flex;
-  align-items: center;
-  gap: clamp(6px, 0.9cqw, 10px);
-  width: 100%;
-  text-align: left;
-  padding: clamp(5px, 0.7cqh, 8px) clamp(8px, 1cqw, 11px);
-  background: ${(p) => (p.$open ? D.softHover : D.soft)};
-  border: 1px solid ${(p) => (p.$open ? C.cream : D.borderSoft)};
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-width: 0;
+  padding: clamp(4px, 0.55cqh, 6px);
+  background: ${(p) => (p.$active ? D.softHover : D.soft)};
+  border: 1px solid ${(p) => (p.$active ? C.gold : D.borderSoft)};
   border-radius: 0;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
 
   &:hover {
-    border-color: rgba(245, 236, 217, 0.35);
+    border-color: ${(p) => (p.$active ? C.gold : "rgba(245, 236, 217, 0.4)")};
     background: ${D.softHover};
+    transform: translateY(-1px);
   }
 `;
 
-const AppearanceSwatch = styled.span`
-  flex-shrink: 0;
-  width: clamp(16px, 2cqw, 22px);
-  height: clamp(16px, 2cqw, 22px);
-  border-radius: 50%;
-  background: ${(p) => p.$gradient || p.$color};
-  border: 2px solid rgba(245, 236, 217, 0.35);
-  box-shadow: 0 1px 3px ${D.shadow};
-`;
-
-const AppearanceText = styled.span`
+const OutfitSlotSwatches = styled.span`
   display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-
-  .cat {
-    font-family: ${FONT_BODY};
-    font-weight: 600;
-    font-size: clamp(0.38rem, 0.58cqw, 0.46rem);
-    color: ${D.textMute};
-    text-transform: uppercase;
-    letter-spacing: 0.24em;
-  }
-  .name {
-    font-family: ${FONT_BODY};
-    font-weight: 700;
-    font-size: clamp(0.48rem, 0.74cqw, 0.6rem);
-    color: ${C.cream};
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+  height: clamp(8px, 1cqh, 11px);
+  border: 1px solid rgba(245, 236, 217, 0.2);
+  overflow: hidden;
 `;
 
-const Popover = styled.div`
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  right: 0;
-  z-index: 8;
-  display: flex;
-  flex-direction: column;
-  gap: clamp(9px, 1.3cqh, 13px);
-  padding: clamp(11px, 1.5cqh, 15px);
-  max-height: min(46cqh, 380px);
-  overflow-y: auto;
-  background: ${D.panelSolid};
-  border: 1px solid ${D.border};
-  border-radius: 0;
-  box-shadow: 0 14px 32px ${D.shadowStrong};
-  animation: ${popIn} 0.16s ease-out both;
-
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: ${C.vermillion};
-    border-radius: 0;
-  }
+const OutfitSlotBelt = styled.span`
+  flex: 1.15;
+  background: ${(p) => p.$gradient || p.$color || SPRITE_BASE_COLOR};
 `;
 
-const PopoverGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: clamp(6px, 0.9cqh, 9px);
+const OutfitSlotBody = styled.span`
+  flex: 1;
+  background: ${(p) => p.$gradient || p.$color || "#888"};
 `;
 
-const PopoverTitle = styled.div`
+const OutfitSlotLabel = styled.span`
   font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.4rem, 0.6cqw, 0.48rem);
-  color: ${D.textMute};
+  font-size: clamp(0.36rem, 0.54cqw, 0.44rem);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  letter-spacing: 0.22em;
-`;
-
-const SwatchGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(${(p) => p.$cols ?? 6}, minmax(0, 1fr));
-  gap: clamp(6px, 0.9cqw, 10px);
-`;
-
-const ColorSwatch = styled.button`
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1;
-  border-radius: ${(p) => (p.$square ? "2px" : "50%")};
-  border: 2px solid ${(p) => (p.$selected ? C.gold : D.border)};
-  background: ${(p) => p.$gradient || p.$color};
-  cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: ${(p) =>
-    p.$selected
-      ? `0 0 0 2px rgba(232, 197, 71, 0.45), 0 2px 6px ${D.shadow}`
-      : `0 2px 5px ${D.shadow}`};
-
-  &:hover {
-    transform: scale(1.12);
-    border-color: ${(p) => (p.$selected ? C.gold : C.cream)};
-  }
-  &:active {
-    transform: scale(0.94);
-  }
+  color: ${(p) => (p.$active ? C.cream : D.textMute)};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
 `;
 
 const IdentityFooter = styled.footer`
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-shrink: 0;
-  padding: clamp(8px, 1.1cqh, 12px) clamp(14px, 1.7cqw, 20px);
+  padding: clamp(6px, 0.85cqh, 10px) clamp(12px, 1.5cqw, 16px);
   border-top: 1px solid ${D.borderSoft};
-  background: ${C.sumi};
+  background: linear-gradient(180deg, #1c212a 0%, ${C.sumi} 100%);
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 12%;
+    right: 12%;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(232, 197, 71, 0.45),
+      transparent
+    );
+  }
 `;
 
 const IdentityStack = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   align-items: ${(p) => (p.$right ? "flex-end" : "flex-start")};
 `;
 
 const IdentityLabel = styled.div`
   font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.38rem, 0.6cqw, 0.48rem);
-  color: ${C.creamMute};
+  font-size: clamp(0.36rem, 0.54cqw, 0.44rem);
+  color: ${D.textMute};
   text-transform: uppercase;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.24em;
 `;
 
 const IdentityRank = styled.div`
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.78rem, 1.2cqw, 1.05rem);
+  font-size: clamp(0.72rem, 1.05cqw, 0.92rem);
   color: ${C.gold};
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  text-shadow: 0 0 12px rgba(232, 197, 71, 0.35);
+  text-shadow: 0 0 14px rgba(232, 197, 71, 0.42);
 `;
 
 const IdentityRecord = styled.div`
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.78rem, 1.2cqw, 1.05rem);
+  font-size: clamp(0.72rem, 1.05cqw, 0.92rem);
   letter-spacing: 0.04em;
   display: inline-flex;
   align-items: baseline;
-  gap: 0.12em;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+  gap: 0.14em;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
 
   .w {
-    color: ${C.success};
+    color: ${C.successBright};
   }
   .l {
     color: ${C.vermillionBright};
@@ -1097,7 +1085,7 @@ const LoadoutBody = styled.div`
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: clamp(12px, 1.7cqh, 18px) clamp(14px, 1.9cqw, 24px);
+  padding: clamp(8px, 1.1cqh, 12px) clamp(12px, 1.5cqw, 18px);
   overflow: hidden;
   background: transparent;
 `;
@@ -1109,104 +1097,112 @@ const LoadoutBoard = styled.div`
   display: flex;
   flex-direction: column;
   gap: clamp(6px, 0.9cqh, 10px);
-  padding: clamp(8px, 1.1cqh, 12px) clamp(8px, 1cqw, 12px);
-  /* Solid lacquer tray — no see-through to the panel washi underneath. */
-  background: #0a0c11;
-  border: 1px solid rgba(245, 236, 217, 0.18);
+  padding: clamp(8px, 1cqh, 12px) clamp(8px, 1cqw, 12px);
+  background: linear-gradient(180deg, #0e1118 0%, #080a0f 100%);
+  border: 1px solid rgba(245, 236, 217, 0.2);
   box-shadow:
-    inset 0 1px 0 rgba(255, 252, 244, 0.04),
-    0 2px 8px rgba(0, 0, 0, 0.35);
+    inset 0 1px 0 rgba(255, 252, 244, 0.05),
+    inset 0 0 20px rgba(0, 0, 0, 0.3);
+  /* Room for corner check badges that poke outside slots. */
+  overflow: visible;
 `;
 
 const CategoryRow = styled.div`
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: clamp(96px, 12.5cqw, 138px) minmax(0, 1fr);
+  grid-template-columns: clamp(72px, 9.5cqw, 108px) minmax(0, 1fr);
   align-items: center;
-  gap: clamp(10px, 1.4cqw, 18px);
+  gap: clamp(6px, 0.9cqw, 12px);
   padding: 0;
   background: transparent;
-  border: none;
+  overflow: visible;
 `;
 
 const CategoryLabel = styled.div`
   position: relative;
   display: flex;
   align-items: center;
-  gap: clamp(7px, 1cqw, 11px);
+  gap: clamp(5px, 0.7cqw, 8px);
   min-width: 0;
-  padding-left: clamp(10px, 1.2cqw, 14px);
+  padding-left: clamp(8px, 1cqw, 12px);
 
   &::before {
     content: "";
     position: absolute;
     left: 0;
-    top: 14%;
-    bottom: 14%;
+    top: 18%;
+    bottom: 18%;
     width: 2px;
-    background: ${C.vermillion};
+    background: linear-gradient(
+      180deg,
+      ${C.vermillionBright} 0%,
+      ${C.vermillion} 100%
+    );
   }
 `;
 
 const CategoryKanji = styled.div`
   font-family: ${FONT_KANJI};
   font-weight: 900;
-  font-size: clamp(1.1rem, 1.8cqw, 1.55rem);
-  color: ${C.cream};
+  font-size: clamp(0.95rem, 1.45cqw, 1.25rem);
+  color: #fff8ee;
   line-height: 1;
   flex-shrink: 0;
-  opacity: 0.9;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
 `;
 
 const CategoryNameStack = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
   min-width: 0;
 `;
 
 const CategoryName = styled.div`
   font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.52rem, 0.82cqw, 0.66rem);
+  font-size: clamp(0.48rem, 0.72cqw, 0.58rem);
   color: #ffffff;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  letter-spacing: 0.1em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
 `;
 
 const CategorySub = styled.div`
   font-family: ${FONT_BODY};
-  font-weight: 500;
-  font-size: clamp(0.38rem, 0.56cqw, 0.46rem);
+  font-weight: 600;
+  font-size: clamp(0.34rem, 0.5cqw, 0.42rem);
   color: ${D.textMute};
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
 `;
 
-/* Recessed slot trough — solid ink well, 5 equal cells, fixed square plates. */
+/* Slots fill their strip cells; max size grows with board height.
+   Overflow visible so corner checkmarks can sit outside. */
 const SlotStrip = styled.div`
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   align-items: center;
+  justify-items: center;
   width: 100%;
   min-width: 0;
-  gap: clamp(5px, 0.8cqw, 10px);
-  padding: clamp(5px, 0.7cqh, 8px) clamp(7px, 0.9cqw, 10px);
+  gap: clamp(5px, 0.75cqw, 9px);
+  padding: clamp(5px, 0.7cqh, 8px) clamp(6px, 0.85cqw, 10px);
   background: #050608;
-  border: 1px solid rgba(245, 236, 217, 0.1);
+  border: 1px solid rgba(245, 236, 217, 0.12);
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.55);
   box-sizing: border-box;
+  overflow: visible;
 `;
 
 const Slot = styled.button`
   position: relative;
-  width: 100%;
-  max-width: clamp(42px, 6.2cqh, 64px);
+  width: min(100%, clamp(44px, 7.8cqh, 68px));
   aspect-ratio: 1;
   height: auto;
-  justify-self: center;
+  max-height: min(100%, clamp(44px, 7.8cqh, 68px));
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1220,92 +1216,76 @@ const Slot = styled.button`
         ? C.gold
         : p.$focused
           ? C.cream
-          : p.$deep || "rgba(245, 236, 217, 0.16)"};
+          : p.$deep || "rgba(245, 236, 217, 0.18)"};
   border-radius: 2px;
   cursor: ${(p) => (p.$interactive ? "pointer" : "default")};
   box-shadow: ${(p) =>
     p.$selected
-      ? `0 0 0 2px rgba(232, 197, 71, 0.45), 0 4px 12px ${D.shadow}`
-      : `inset 0 -2px 0 rgba(0,0,0,0.18), 0 2px 6px ${D.shadow}`};
+      ? `0 0 0 1px rgba(232, 197, 71, 0.45), 0 2px 8px rgba(0, 0, 0, 0.4)`
+      : `inset 0 -1px 0 rgba(0,0,0,0.2), 0 1px 3px ${D.shadow}`};
   transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  ${(p) =>
+    p.$selected &&
+    css`
+      animation: ${slotGlow} 2.2s ease-in-out infinite;
+    `}
 
   img {
-    width: ${(p) => p.$imgSize || "78%"};
-    height: ${(p) => p.$imgSize || "78%"};
+    width: ${(p) => p.$imgSize || "82%"};
+    height: ${(p) => p.$imgSize || "82%"};
     object-fit: contain;
     transform: scale(${(p) => p.$imgScale ?? 1});
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+    pointer-events: none;
   }
 
   &:hover {
-    transform: ${(p) => (p.$interactive ? "translateY(-2px)" : "none")};
+    transform: ${(p) => (p.$interactive ? "translateY(-1px)" : "none")};
     border-color: ${(p) =>
       !p.$interactive
         ? p.$deep || D.border
         : p.$selected
           ? C.gold
           : C.cream};
+    z-index: 3;
   }
   &:active {
-    transform: ${(p) => (p.$interactive ? "scale(0.95)" : "none")};
+    transform: ${(p) => (p.$interactive ? "scale(0.96)" : "none")};
   }
 `;
 
-// Locked sidegrade: the icon art stays visible but is dimmed + desaturated
-// so it reads as "dormant / not yours yet" — the small corner padlock does
-// the labelling instead of a big glyph stamped over the artwork.
 const LockedSlot = styled(Slot)`
   background: ${(p) => p.$gradient || p.$main || D.deep};
 
   img {
     opacity: 0.82;
     filter: saturate(0.72) brightness(0.86)
-      drop-shadow(0 2px 4px rgba(0, 0, 0, 0.34));
+      drop-shadow(0 1px 2px rgba(0, 0, 0, 0.34));
   }
 `;
 
 const PlaceholderSlot = styled(Slot)`
-  position: relative;
   overflow: hidden;
-  background: ${D.deep};
+  background: #0c0e14;
   border-style: solid;
   border-color: rgba(245, 236, 217, 0.1);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
   color: ${D.textFaint};
-  opacity: 0.7;
+  opacity: 0.75;
   cursor: default;
-
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 18%;
-    border-radius: 50%;
-    border: 1px solid rgba(245, 236, 217, 0.08);
-    pointer-events: none;
-  }
-
-  &::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image: ${WASHI_LIGHT_ON_DARK};
-    opacity: 0.5;
-    pointer-events: none;
-  }
 `;
 
 const SlotKanji = styled.span`
   font-family: ${FONT_KANJI};
-  font-size: clamp(1rem, 1.5cqw, 1.35rem);
+  font-size: clamp(0.95rem, 1.35cqw, 1.2rem);
   color: ${C.cream};
   line-height: 1;
 `;
 
 const PlaceholderGlyph = styled.span`
-  position: relative;
-  z-index: 1;
   font-family: ${FONT_KANJI};
-  font-size: clamp(0.72rem, 1.1cqw, 0.92rem);
+  font-weight: 700;
+  font-size: clamp(0.7rem, 1cqw, 0.88rem);
   color: rgba(210, 220, 232, 0.28);
   line-height: 1;
   letter-spacing: 0;
@@ -1315,28 +1295,28 @@ const SlotCheck = styled.span`
   position: absolute;
   top: -6px;
   right: -6px;
-  width: clamp(15px, 1.9cqw, 20px);
-  height: clamp(15px, 1.9cqw, 20px);
+  width: clamp(15px, 1.85cqw, 19px);
+  height: clamp(15px, 1.85cqw, 19px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: clamp(0.55rem, 0.85cqw, 0.7rem);
+  font-size: clamp(0.52rem, 0.78cqw, 0.66rem);
+  font-weight: 700;
   color: ${C.sumi};
-  background: ${C.gold};
+  background: linear-gradient(180deg, #ffe07a 0%, ${C.gold} 100%);
   border: 1px solid ${C.goldDeep};
   border-radius: 50%;
-  box-shadow: 0 1px 3px ${C.sumiShadow};
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  z-index: 2;
+  pointer-events: none;
 `;
 
-// Small padlock badge pinned to the bottom-right corner — a dark disc with a
-// cream lock, so it stays legible over any icon color without covering the
-// artwork. Replaces the oversized centered padlock that hid half the icon.
 const SlotLock = styled.span`
   position: absolute;
-  bottom: -6px;
-  right: -6px;
-  width: clamp(16px, 2cqw, 21px);
-  height: clamp(16px, 2cqw, 21px);
+  bottom: -5px;
+  right: -5px;
+  width: clamp(14px, 1.7cqw, 18px);
+  height: clamp(14px, 1.7cqw, 18px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1344,8 +1324,9 @@ const SlotLock = styled.span`
   color: ${C.cream};
   background: ${C.sumi};
   border: 1px solid ${D.border};
-  box-shadow: 0 1px 3px ${D.shadowStrong};
+  box-shadow: 0 1px 2px ${D.shadowStrong};
   pointer-events: none;
+  z-index: 2;
 
   svg {
     width: 58%;
@@ -1353,35 +1334,40 @@ const SlotLock = styled.span`
   }
 `;
 
-// --- Detail strip (integrated, reserved height, no boxed callout) ---
+// --- Detail strip (compact — board/icons get the vertical room) ---
 
 const DetailStrip = styled.div`
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: clamp(11px, 1.5cqw, 16px);
-  min-height: clamp(70px, 10.5cqh, 92px);
-  margin-top: clamp(10px, 1.5cqh, 16px);
-  padding: clamp(10px, 1.5cqh, 14px) clamp(12px, 1.5cqw, 16px);
+  gap: clamp(10px, 1.3cqw, 14px);
+  min-height: clamp(58px, 8cqh, 74px);
+  margin-top: clamp(8px, 1.1cqh, 12px);
+  padding: clamp(8px, 1.1cqh, 11px) clamp(10px, 1.3cqw, 14px);
   border: 1px solid ${D.border};
-  border-top: 2px solid ${C.vermillion};
+  border-top: 3px solid ${C.vermillion};
   border-radius: 0;
-  background: ${C.sumi};
+  background: linear-gradient(180deg, #1e2430 0%, ${C.sumi} 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 252, 244, 0.06),
+    0 4px 12px rgba(0, 0, 0, 0.3);
 `;
 
 const DetailIcon = styled.div`
   position: relative;
   flex-shrink: 0;
-  width: clamp(46px, 5.8cqw, 60px);
-  height: clamp(46px, 5.8cqw, 60px);
+  width: clamp(40px, 5cqw, 52px);
+  height: clamp(40px, 5cqw, 52px);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: visible;
   background: ${(p) => p.$gradient || p.$main || D.deep};
-  border: 1px solid ${(p) => p.$deep || D.border};
+  border: 2px solid ${(p) => p.$deep || D.border};
   border-radius: 2px;
-  box-shadow: 0 2px 6px ${D.shadow};
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 2px 6px ${D.shadow};
 
   img {
     width: ${(p) => p.$imgSize || "80%"};
@@ -1390,19 +1376,16 @@ const DetailIcon = styled.div`
     opacity: ${(p) => (p.$locked ? 0.82 : 1)};
     filter: ${(p) =>
       p.$locked
-        ? "saturate(0.72) brightness(0.86) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.34))"
-        : "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.34))"};
+        ? "saturate(0.72) brightness(0.86) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.34))"
+        : "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.34))"};
   }
 
-  /* Small padlock badge pinned to the true bottom-right corner — identical
-     to the loadout slot lock (pokes just outside the icon) so both locks
-     read as the same badge on the same shelf. */
   .lock {
     position: absolute;
-    bottom: -6px;
-    right: -6px;
-    width: clamp(16px, 2cqw, 21px);
-    height: clamp(16px, 2cqw, 21px);
+    bottom: -5px;
+    right: -5px;
+    width: clamp(14px, 1.7cqw, 18px);
+    height: clamp(14px, 1.7cqw, 18px);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1410,7 +1393,7 @@ const DetailIcon = styled.div`
     color: ${C.cream};
     background: ${C.sumi};
     border: 1px solid ${D.border};
-    box-shadow: 0 1px 3px ${D.shadowStrong};
+    box-shadow: 0 1px 2px ${D.shadowStrong};
 
     svg {
       width: 58%;
@@ -1428,7 +1411,7 @@ const DetailIconKanji = styled.span`
 const DetailBody = styled.div`
   display: flex;
   flex-direction: column;
-  gap: clamp(2px, 0.5cqh, 5px);
+  gap: clamp(3px, 0.55cqh, 6px);
   min-width: 0;
   flex: 1;
   animation: ${detailShift} 0.18s ease-out;
@@ -1443,30 +1426,26 @@ const DetailTopRow = styled.div`
 
 const DetailName = styled.span`
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.68rem, 1.05cqw, 0.88rem);
+  font-size: clamp(0.62rem, 0.95cqw, 0.8rem);
   color: #ffffff;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
 `;
 
 const DetailTag = styled.span`
   font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.4rem, 0.6cqw, 0.48rem);
+  font-size: clamp(0.38rem, 0.56cqw, 0.46rem);
   color: ${(p) => (p.$accent ? C.gold : D.textMute)};
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  padding: 2px 7px;
+  padding: 3px 8px;
   border-radius: 0;
   background: ${(p) =>
-    p.$accent ? "rgba(232, 197, 71, 0.12)" : "transparent"};
+    p.$accent ? "rgba(232, 197, 71, 0.16)" : "rgba(245, 236, 217, 0.06)"};
   border: 1px solid
-    ${(p) => (p.$accent ? "rgba(232, 197, 71, 0.4)" : D.borderSoft)};
+    ${(p) => (p.$accent ? "rgba(232, 197, 71, 0.5)" : D.borderSoft)};
 `;
 
 const DetailEmpty = styled.div`
@@ -1479,40 +1458,42 @@ const DetailEmpty = styled.div`
 
 const DetailEmptySeal = styled.div`
   flex-shrink: 0;
-  width: clamp(40px, 5cqw, 52px);
-  height: clamp(40px, 5cqw, 52px);
+  width: clamp(42px, 5.2cqw, 54px);
+  height: clamp(42px, 5.2cqw, 54px);
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 0;
   font-family: ${FONT_KANJI};
-  font-size: clamp(1rem, 1.5cqw, 1.25rem);
-  color: rgba(245, 236, 217, 0.4);
-  background: ${D.deep};
-  border: 1px solid ${D.borderSoft};
+  font-weight: 900;
+  font-size: clamp(1.05rem, 1.55cqw, 1.3rem);
+  color: rgba(238, 81, 65, 0.65);
+  background: rgba(138, 31, 18, 0.2);
+  border: 2px solid rgba(216, 59, 39, 0.4);
+  transform: rotate(-6deg);
 `;
 
 const DetailEmptyCopy = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 
   .title {
     font-family: ${FONT_BODY};
     font-weight: 700;
-    font-size: clamp(0.48rem, 0.72cqw, 0.58rem);
-    color: ${C.cream};
+    font-size: clamp(0.54rem, 0.8cqw, 0.64rem);
+    color: #fff8ee;
     text-transform: uppercase;
     letter-spacing: 0.16em;
   }
   .hint {
     font-family: ${FONT_BODY};
     font-weight: 500;
-    font-size: clamp(0.42rem, 0.64cqw, 0.52rem);
+    font-size: clamp(0.48rem, 0.7cqw, 0.56rem);
     color: ${D.textMute};
-    letter-spacing: 0.04em;
-    line-height: 1.35;
+    letter-spacing: 0.03em;
+    line-height: 1.4;
   }
 `;
 
@@ -1520,10 +1501,10 @@ const DetailDesc = styled.p`
   margin: 0;
   font-family: ${FONT_BODY};
   font-weight: 500;
-  font-size: clamp(0.44rem, 0.66cqw, 0.54rem);
-  color: ${C.creamMute};
+  font-size: clamp(0.44rem, 0.64cqw, 0.52rem);
+  color: rgba(245, 236, 217, 0.88);
   letter-spacing: 0.01em;
-  line-height: 1.42;
+  line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -1540,45 +1521,47 @@ const ActionButton = styled.button`
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  min-height: clamp(32px, 3.8cqh, 40px);
-  padding: clamp(7px, 1cqh, 10px) clamp(13px, 1.7cqw, 19px);
+  min-height: clamp(30px, 3.6cqh, 38px);
+  padding: clamp(6px, 0.85cqh, 9px) clamp(12px, 1.5cqw, 16px);
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.5rem, 0.76cqw, 0.62rem);
+  font-size: clamp(0.48rem, 0.7cqw, 0.58rem);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
   border-radius: 0;
   cursor: pointer;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease,
-    transform 0.1s ease, opacity 0.15s ease;
+    transform 0.1s ease, opacity 0.15s ease, box-shadow 0.15s ease;
 
   ${(p) =>
     p.$variant === "buy" &&
     css`
       color: ${C.sumi};
-      background: ${C.gold};
-      border: 1px solid ${C.gold};
+      background: linear-gradient(180deg, #ffe07a 0%, ${C.gold} 100%);
+      border: 1px solid ${C.goldDeep};
       font-weight: 700;
       &:hover:not(:disabled) {
-        background: ${C.goldDeep};
-        border-color: ${C.goldDeep};
+        background: linear-gradient(180deg, ${C.gold} 0%, ${C.goldDeep} 100%);
+        box-shadow: 0 4px 14px rgba(232, 197, 71, 0.35);
       }
     `}
   ${(p) =>
     p.$variant === "equip" &&
     css`
-      color: ${C.cream};
-      background: ${C.iceDeep};
+      color: #fff8ee;
+      background: linear-gradient(180deg, ${C.iceMid} 0%, ${C.iceDeep} 100%);
       border: 1px solid ${C.ice};
       &:hover:not(:disabled) {
-        background: ${C.iceMid};
+        background: linear-gradient(180deg, ${C.ice} 0%, ${C.iceMid} 100%);
+        box-shadow: 0 4px 14px rgba(126, 203, 240, 0.3);
       }
     `}
   ${(p) =>
     p.$variant === "equipped" &&
     css`
       color: ${C.sumi};
-      background: ${C.iceBright};
+      background: linear-gradient(180deg, #e8f7ff 0%, ${C.iceBright} 100%);
       border: 1px solid ${C.ice};
       &:hover:not(:disabled) {
         background: #dff3ff;
@@ -1590,21 +1573,22 @@ const ActionButton = styled.button`
   }
   &:disabled {
     cursor: default;
-    opacity: 0.4;
+    opacity: 0.45;
     background: ${D.deep};
     color: ${D.textMute};
     border-color: ${D.border};
+    box-shadow: none;
   }
 `;
 
 const StartFooter = styled.footer`
   display: flex;
   align-items: center;
-  gap: clamp(12px, 1.8cqw, 20px);
+  gap: clamp(10px, 1.4cqw, 16px);
   flex-shrink: 0;
-  padding: clamp(12px, 1.6cqh, 18px) clamp(14px, 1.9cqw, 24px);
+  padding: clamp(8px, 1.1cqh, 12px) clamp(12px, 1.5cqw, 18px);
   border-top: 1px solid ${D.borderSoft};
-  background: ${C.sumi};
+  background: linear-gradient(180deg, #1c212a 0%, ${C.sumi} 100%);
   animation: ${clipRevealUp} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.22s both;
 `;
 
@@ -1612,25 +1596,26 @@ const StartNote = styled.div`
   flex: 1;
   font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.44rem, 0.68cqw, 0.54rem);
-  color: ${C.creamMute};
+  font-size: clamp(0.42rem, 0.62cqw, 0.52rem);
+  color: ${D.textMute};
   text-transform: uppercase;
-  letter-spacing: 0.16em;
-  line-height: 1.4;
+  letter-spacing: 0.12em;
+  line-height: 1.35;
 
   em {
     font-style: normal;
     color: ${C.gold};
     font-weight: 700;
+    text-shadow: 0 0 10px rgba(232, 197, 71, 0.3);
   }
 `;
 
 const readyPulse = keyframes`
   0%, 100% {
-    box-shadow: 0 0 18px rgba(216, 59, 39, 0.45);
+    box-shadow: 0 0 20px rgba(216, 59, 39, 0.5), 0 4px 14px rgba(0, 0, 0, 0.4);
   }
   50% {
-    box-shadow: 0 0 28px rgba(238, 81, 65, 0.7);
+    box-shadow: 0 0 34px rgba(238, 81, 65, 0.78), 0 6px 18px rgba(0, 0, 0, 0.45);
   }
 `;
 
@@ -1644,34 +1629,39 @@ const StartButton = styled.button`
   align-items: center;
   justify-content: center;
   gap: clamp(8px, 1.1cqw, 12px);
-  min-height: clamp(44px, 5.2cqh, 52px);
-  padding: clamp(10px, 1.4cqh, 14px) clamp(28px, 3.6cqw, 52px);
+  min-height: clamp(40px, 4.8cqh, 48px);
+  padding: clamp(8px, 1.1cqh, 12px) clamp(24px, 3.2cqw, 44px);
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.82rem, 1.2cqw, 1.05rem);
+  font-size: clamp(0.78rem, 1.1cqw, 0.95rem);
   text-transform: uppercase;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.2em;
   color: #ffffff;
   background: linear-gradient(
     180deg,
     ${C.vermillionBright} 0%,
-    ${C.vermillion} 55%,
+    ${C.vermillion} 52%,
     ${C.vermillionDeep} 100%
   );
   border: 1px solid ${C.vermillionDeep};
   border-radius: 0;
   cursor: pointer;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
   animation: ${readyPulse} 1.8s ease-in-out infinite;
   transition: background 0.16s ease, transform 0.12s ease, filter 0.16s ease;
 
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    pointer-events: none;
+  }
+
   &:hover {
-    filter: brightness(1.08);
+    filter: brightness(1.1);
     animation: none;
-    box-shadow: 0 0 32px rgba(238, 81, 65, 0.75);
+    box-shadow: 0 0 38px rgba(238, 81, 65, 0.82), 0 6px 18px rgba(0, 0, 0, 0.45);
+    transform: translateY(-1px);
   }
 
   &:active {
@@ -1785,6 +1775,12 @@ function BashoHub({ onBack, onStartRun }) {
 
   const [career, setCareer] = useState(() => makeDefaultSave().career);
   const [resumeRun, setResumeRun] = useState(null);
+  const [customization, setCustomization] = useState(() =>
+    makeDefaultCustomization(),
+  );
+  const [activeOutfitId, setActiveOutfitId] = useState(
+    () => makeDefaultCustomization().activeOutfitId,
+  );
 
   const saveDocRef = useRef(null);
   const loadedRef = useRef(false);
@@ -1794,10 +1790,6 @@ function BashoHub({ onBack, onStartRun }) {
   const mountedRef = useRef(true);
 
   const [showBanzuke, setShowBanzuke] = useState(false);
-
-  // Appearance popover ("belt" | "body" | null).
-  const [customizeOpen, setCustomizeOpen] = useState(null);
-  const customizeRef = useRef(null);
 
   // Option shown in the detail strip. Updated on hover + click of REAL slots.
   const [focused, setFocused] = useState(() => firstFocus());
@@ -1824,6 +1816,13 @@ function BashoHub({ onBack, onStartRun }) {
       if (cancelled) return;
       saveDocRef.current = doc;
       setCareer(doc.career);
+      const c = normalizeCustomization(doc.customization);
+      setCustomization(c);
+      setActiveOutfitId(c.activeOutfitId);
+      applyOutfitToPlayer1Setters(getActiveOutfit(c), {
+        setPlayer1Color,
+        setPlayer1BodyColor,
+      });
       if (doc.bashoRun?.active) {
         const migrated = ensureOpponentRanks(doc.bashoRun);
         if (migrated !== doc.bashoRun) {
@@ -1840,7 +1839,7 @@ function BashoHub({ onBack, onStartRun }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setPlayer1Color, setPlayer1BodyColor]);
 
   useEffect(() => {
     if (!loadedRef.current) return;
@@ -1874,25 +1873,6 @@ function BashoHub({ onBack, onStartRun }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  // Close the appearance popover on outside click / Escape.
-  useEffect(() => {
-    if (!customizeOpen) return;
-    const onDown = (e) => {
-      if (customizeRef.current && !customizeRef.current.contains(e.target)) {
-        setCustomizeOpen(null);
-      }
-    };
-    const onKey = (e) => {
-      if (e.key === "Escape") setCustomizeOpen(null);
-    };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [customizeOpen]);
 
   useEffect(() => {
     const needsMawashi = player1Color && player1Color !== SPRITE_BASE_COLOR;
@@ -2014,19 +1994,23 @@ function BashoHub({ onBack, onStartRun }) {
     setFocused({ catKey, optId: opt.id });
   };
 
-  const handleBeltSelect = (hex) => {
+  const handleOutfitSelect = (outfitId) => {
+    if (outfitId === activeOutfitId) return;
     playButtonPressSound2();
-    setPlayer1Color(hex);
-  };
-
-  const handleBodySelect = (hex) => {
-    playButtonPressSound2();
-    setPlayer1BodyColor(hex);
-  };
-
-  const toggleCustomize = (which) => {
-    playButtonPressSound2();
-    setCustomizeOpen((cur) => (cur === which ? null : which));
+    const outfit = getOutfitById(customization, outfitId);
+    const next = withActiveOutfitId(customization, outfitId);
+    setCustomization(next);
+    setActiveOutfitId(outfitId);
+    applyOutfitToPlayer1Setters(outfit, {
+      setPlayer1Color,
+      setPlayer1BodyColor,
+    });
+    const doc = {
+      ...(saveDocRef.current || makeDefaultSave()),
+      customization: next,
+    };
+    saveDocRef.current = doc;
+    writeSave(doc);
   };
 
   // ---- Debug actions (in-memory only) ----
@@ -2096,6 +2080,14 @@ function BashoHub({ onBack, onStartRun }) {
     const doc = await resetSave();
     saveDocRef.current = doc;
     setCareer(doc.career);
+    const c = normalizeCustomization(doc.customization);
+    setCustomization(c);
+    setActiveOutfitId(c.activeOutfitId);
+    applyOutfitToPlayer1Setters(getActiveOutfit(c), {
+      setPlayer1Color,
+      setPlayer1BodyColor,
+    });
+    setResumeRun(null);
   };
 
   // ---- Derived display values ----
@@ -2106,11 +2098,6 @@ function BashoHub({ onBack, onStartRun }) {
 
   const loadoutUsed = loadoutSpent(career.loadout);
   const loadoutRemaining = LOADOUT_BUDGET - loadoutUsed;
-
-  const selectedBelt = BELT_ALL.find((c) => c.hex === player1Color);
-  const selectedBody = BODY_COLORS.find((c) => c.hex === player1BodyColor);
-  const beltName = selectedBelt?.name || "Default";
-  const bodyName = selectedBody?.name || "Default";
 
   // Focused option → detail strip state.
   const focusedOpt = focused
@@ -2216,10 +2203,11 @@ function BashoHub({ onBack, onStartRun }) {
 
           <PortraitStage>
             <PortraitSpotlight />
-            <PortraitFloor />
-            <AvatarBreath>
+            <FighterFigure>
+              <PortraitRing aria-hidden />
+              <PortraitFloor />
               <PortraitImage src={previewSrc} alt="Your wrestler" />
-            </AvatarBreath>
+            </FighterFigure>
           </PortraitStage>
 
           <Block>
@@ -2280,104 +2268,44 @@ function BashoHub({ onBack, onStartRun }) {
             </StatList>
           </Block>
 
-          <Block ref={customizeRef}>
+          <Block>
             <BlockHead>
-              <BlockLabel>Appearance</BlockLabel>
+              <BlockLabel>Outfit</BlockLabel>
+              <BlockMeta>From Customize</BlockMeta>
             </BlockHead>
-            <AppearanceRow>
-              <AppearanceButton
-                type="button"
-                $open={customizeOpen === "belt"}
-                onClick={() => toggleCustomize("belt")}
-                onMouseEnter={playButtonHoverSound}
-              >
-                <AppearanceSwatch
-                  $color={player1Color || SPRITE_BASE_COLOR}
-                  $gradient={selectedBelt?.gradient}
-                />
-                <AppearanceText>
-                  <span className="cat">Belt</span>
-                  <span className="name">{beltName}</span>
-                </AppearanceText>
-              </AppearanceButton>
-
-              <AppearanceButton
-                type="button"
-                $open={customizeOpen === "body"}
-                onClick={() => toggleCustomize("body")}
-                onMouseEnter={playButtonHoverSound}
-              >
-                <AppearanceSwatch
-                  $color={player1BodyColor || "#888"}
-                  $gradient={selectedBody?.gradient}
-                />
-                <AppearanceText>
-                  <span className="cat">Body</span>
-                  <span className="name">{bodyName}</span>
-                </AppearanceText>
-              </AppearanceButton>
-
-              {customizeOpen === "belt" && (
-                <Popover role="menu" aria-label="Belt colors">
-                  <PopoverGroup>
-                    <PopoverTitle>Belt Colors</PopoverTitle>
-                    <SwatchGrid $cols={5}>
-                      {BELT_SOLIDS.map((color) => (
-                        <ColorSwatch
-                          key={color.name}
-                          $color={color.hex}
-                          $selected={player1Color === color.hex}
-                          onClick={() => handleBeltSelect(color.hex)}
-                          onMouseEnter={playButtonHoverSound}
-                          title={color.name}
-                          aria-label={color.name}
-                        />
-                      ))}
-                    </SwatchGrid>
-                  </PopoverGroup>
-                  <PopoverGroup>
-                    <PopoverTitle>Special Patterns</PopoverTitle>
-                    <SwatchGrid $cols={5}>
-                      {BELT_PATTERNS.map((color) => (
-                        <ColorSwatch
-                          key={color.name}
-                          $square
-                          $color={color.hex}
-                          $gradient={color.gradient}
-                          $selected={player1Color === color.hex}
-                          onClick={() => handleBeltSelect(color.hex)}
-                          onMouseEnter={playButtonHoverSound}
-                          title={color.name}
-                          aria-label={color.name}
-                        />
-                      ))}
-                    </SwatchGrid>
-                  </PopoverGroup>
-                </Popover>
-              )}
-
-              {customizeOpen === "body" && (
-                <Popover role="menu" aria-label="Body colors">
-                  <PopoverGroup>
-                    <PopoverTitle>Body Colors</PopoverTitle>
-                    <SwatchGrid $cols={5}>
-                      {BODY_COLORS.map((color) => (
-                        <ColorSwatch
-                          key={color.name}
-                          $color={color.hex || "#888"}
-                          $gradient={color.gradient}
-                          $selected={player1BodyColor === color.hex}
-                          onClick={() => handleBodySelect(color.hex)}
-                          onMouseEnter={playButtonHoverSound}
-                          title={color.name}
-                          aria-label={color.name}
-                        />
-                      ))}
-                    </SwatchGrid>
-                  </PopoverGroup>
-                </Popover>
-              )}
-            </AppearanceRow>
+            <OutfitSlotBar role="listbox" aria-label="Outfit presets">
+              {customization.outfits.map((outfit) => {
+                const belt = BELT_ALL.find((c) => c.hex === outfit.mawashiColor);
+                const body = BODY_COLORS.find((c) => c.hex === outfit.bodyColor);
+                const active = outfit.id === activeOutfitId;
+                return (
+                  <OutfitSlot
+                    key={outfit.id}
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    $active={active}
+                    onClick={() => handleOutfitSelect(outfit.id)}
+                    onMouseEnter={playButtonHoverSound}
+                    title={outfit.name}
+                  >
+                    <OutfitSlotSwatches>
+                      <OutfitSlotBelt
+                        $color={outfit.mawashiColor || SPRITE_BASE_COLOR}
+                        $gradient={belt?.gradient}
+                      />
+                      <OutfitSlotBody
+                        $color={outfit.bodyColor || "#888"}
+                        $gradient={body?.gradient}
+                      />
+                    </OutfitSlotSwatches>
+                    <OutfitSlotLabel $active={active}>
+                      {outfit.name}
+                    </OutfitSlotLabel>
+                  </OutfitSlot>
+                );
+              })}
+            </OutfitSlotBar>
           </Block>
 
           <IdentityFooter>

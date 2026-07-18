@@ -82,25 +82,21 @@ const FrostOverlay = styled.div`
   height: 100%;
   pointer-events: none;
   z-index: ${(props) => props.$zIndex || 2};
+  /* Soft rim light only — keep color in the plate, not in a blue wash */
   background: radial-gradient(
       ellipse at top left,
-      rgba(200, 230, 255, 0.08) 0%,
-      transparent 50%
+      rgba(220, 240, 255, 0.05) 0%,
+      transparent 48%
     ),
     radial-gradient(
       ellipse at top right,
-      rgba(180, 220, 255, 0.06) 0%,
-      transparent 45%
-    ),
-    radial-gradient(
-      ellipse at bottom left,
-      rgba(200, 230, 255, 0.04) 0%,
-      transparent 40%
+      rgba(210, 235, 255, 0.04) 0%,
+      transparent 42%
     ),
     radial-gradient(
       ellipse at bottom right,
-      rgba(190, 225, 255, 0.07) 0%,
-      transparent 48%
+      rgba(200, 230, 255, 0.04) 0%,
+      transparent 45%
     );
   animation: ${frostPulse} 8s ease-in-out infinite;
 `;

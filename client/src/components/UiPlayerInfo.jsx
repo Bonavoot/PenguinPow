@@ -8,22 +8,26 @@ import pumoArmyIcon from "./pumo-army-icon.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 import flapIcon from "../assets/flap-icon.png";
 import shatterPalmIcon from "../assets/shatter-palm-icon.png";
-import { C } from "./menuTheme";
+import {
+  C,
+  FONT_DISPLAY,
+  FONT_KANJI,
+  TEXT_SHADOW_DISPLAY,
+} from "./menuTheme";
 import BalanceGauge from "./BalanceGauge";
 
 /*
- * Pumo Pumo HUD — palette aligned with the canonical menuTheme tokens
- * (ink / cream / gold / ice / vermillion). All warm-brown gold has been
- * migrated to theme saffron gold (`C.gold` / `#e8c547`) and a deeper
- * cool-saffron shadow (`#c9a614` — same hue/saturation as C.gold but
- * darker, so it reads as deep gold instead of brown). The legacy
- * darkgoldenrod (`#b8860b`) and old-gold (`#d4af37`) values have been
- * fully removed because they read as brown next to the menu's saffron
- * gold token. Greens (regen) and reds (stamina danger) are intentionally
- * preserved — they carry semantic meaning that overrides the cool
- * palette. The balance gauge uses brand vermillion for the kill-mark
- * and gold for the throw / Deep Grip install marks so stance risk
- * reads in the same color language as the rest of the HUD.
+ * Pumo Pumo HUD — "Ice Dohyo Broadcast" chrome.
+ *
+ * Palette stays on canonical menuTheme tokens (ink / cream / gold / ice /
+ * vermillion). The look is lacquered sumi plates + gold-leaf hairlines +
+ * frost edge catches — enough ceremonial weight for a Steam launch without
+ * reintroducing the old chiseled brass rings / corner rivets that read as
+ * overbuilt arcade cabinet UI.
+ *
+ * Greens (regen) and reds (stamina danger / gassed) stay semantic. The
+ * balance gauge keeps vermillion kill-marks and gold throw / Deep Grip
+ * marks so stance risk speaks the same color language as the rest of the HUD.
  */
 
 // ============================================
@@ -338,16 +342,42 @@ const HudShell = styled.div`
     filter 260ms ease;
 
   background:
+    /* Cool frost wash — ties the letterbox to the ice dohyo instead of
+       a generic black cinema bar. */
     linear-gradient(
       180deg,
-      rgba(0, 0, 0, 0.9) 0%,
-      rgba(0, 0, 0, 0.82) 16%,
-      rgba(0, 0, 0, 0.58) 44%,
-      rgba(0, 0, 0, 0.28) 70%,
-      rgba(0, 0, 0, 0.08) 88%,
+      rgba(18, 32, 48, 0.22) 0%,
+      rgba(12, 22, 36, 0.1) 28%,
+      transparent 62%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(6, 8, 14, 0.92) 0%,
+      rgba(6, 8, 14, 0.78) 18%,
+      rgba(6, 8, 14, 0.48) 46%,
+      rgba(6, 8, 14, 0.2) 72%,
+      rgba(6, 8, 14, 0.06) 88%,
       transparent 100%
     );
 
+  /* Thin gold-leaf rule at the very top — broadcast frame, not a panel. */
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 8%;
+    right: 8%;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(232, 197, 71, 0.15) 18%,
+      rgba(232, 197, 71, 0.42) 50%,
+      rgba(232, 197, 71, 0.15) 82%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
 `;
 
 // ============================================
@@ -394,18 +424,10 @@ const NameBlock = styled.div`
 `;
 
 const FighterName = styled.div`
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_DISPLAY};
   font-size: clamp(11px, 1.55cqw, 19px);
-  color: #ffffff;
-  text-shadow:
-    clamp(2px, 0.16cqw, 4px) clamp(2px, 0.16cqw, 4px) 0 #000,
-    clamp(-2px, -0.16cqw, -1px) clamp(-2px, -0.16cqw, -1px) 0 #000,
-    clamp(2px, 0.16cqw, 4px) clamp(-2px, -0.16cqw, -1px) 0 #000,
-    clamp(-2px, -0.16cqw, -1px) clamp(2px, 0.16cqw, 4px) 0 #000,
-    0 0 clamp(12px, 1.4cqw, 24px) rgba(0, 0, 0, 0.8),
-    0 0 clamp(4px, 0.4cqw, 8px) rgba(0, 0, 0, 1),
-    0 0 6px rgba(255, 255, 255, 0.25),
-    0 0 3px rgba(255, 255, 255, 0.15);
+  color: #f3ede2;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
   letter-spacing: 0.16em;
   text-transform: uppercase;
   line-height: 1;
@@ -418,19 +440,16 @@ const FighterName = styled.div`
 // RANK PLAQUE — sumo banzuke-style ranking plate
 // ============================================
 
-/* Sumo banzuke plate — sits below the stamina bar.
+/* Sumo banzuke plate — lacquered ink with a gold-leaf hairline.
  *
- * Lacquered ink base with a hint of vertical washi paper grain. The
- * previous version had ornamental gold-leaf side BRACKETS plus a
- * 1.5px gold border — a third piece of "premium hardware" on the
- * HUD competing with the stamina bar AND the power-up slot. Stripped
- * to a quiet cream-faint border so the rank text + the gold rank
- * letters do the work; the plate itself is just a backdrop. */
+ * Side ornaments are thin gold ticks (not brackets / rivets) so the
+ * plate reads as a printed banzuke entry without competing with the
+ * stamina bar for "premium hardware" attention. */
 const RankPlaque = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(4px, 0.5cqw, 8px);
+  gap: clamp(5px, 0.55cqw, 9px);
   padding: ${(p) =>
     p.$compact
       ? "clamp(3px, 0.4cqh, 6px) clamp(8px, 1cqw, 14px)"
@@ -438,62 +457,63 @@ const RankPlaque = styled.div`
   position: relative;
 
   background:
-    /* vertical washi paper-fibre grain — barely visible */
     repeating-linear-gradient(
       90deg,
       transparent 0px,
       transparent 2px,
-      rgba(245, 236, 217, 0.018) 2px,
-      rgba(245, 236, 217, 0.018) 3px
+      rgba(245, 236, 217, 0.028) 2px,
+      rgba(245, 236, 217, 0.028) 3px
     ),
-    /* very faint horizontal weave to add a second axis of texture */
     repeating-linear-gradient(
       0deg,
       transparent 0px,
       transparent 4px,
-      rgba(245, 236, 217, 0.012) 4px,
-      rgba(245, 236, 217, 0.012) 5px
+      rgba(245, 236, 217, 0.018) 4px,
+      rgba(245, 236, 217, 0.018) 5px
     ),
     linear-gradient(
       180deg,
-      rgba(14, 18, 36, 0.94) 0%,
-      rgba(10, 14, 28, 0.97) 50%,
-      rgba(8, 10, 22, 0.94) 100%
+      rgba(22, 28, 40, 0.96) 0%,
+      rgba(12, 16, 26, 0.98) 48%,
+      rgba(8, 10, 18, 0.96) 100%
     );
   border-radius: 3px;
-  border: 1px solid rgba(245, 236, 217, 0.18);
+  border: 1px solid rgba(232, 197, 71, 0.42);
   box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(245, 236, 217, 0.08),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.32);
+    0 2px 10px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 246, 210, 0.14),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.4);
+
+  &::before,
+  &::after {
+    content: "";
+    width: 2px;
+    height: 55%;
+    border-radius: 1px;
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(232, 197, 71, 0.55) 30%,
+      rgba(232, 197, 71, 0.75) 50%,
+      rgba(232, 197, 71, 0.55) 70%,
+      transparent 100%
+    );
+    flex-shrink: 0;
+  }
 `;
 
-/* Rank text — aged saffron gold on lacquered ink plate.
- *
- * Previously painted in #ffe56c, a candy-warm yellow that read as neon
- * once the arena around it darkened in Phase 1. The plaque started
- * fighting the stamina bar and the power-up slot for attention from
- * an off-axis position on the HUD.
- *
- * Pulled to ${C.gold} (#e8c547) — the canonical menu/prematch saffron.
- * Same temperature family, but darker and more amber, so it reads as
- * tarnished gold-leaf on dark lacquer rather than a glowing yellow LED.
- * Halo softened (alphas 0.5 → 0.35, 0.55 → 0.30) so the plate settles
- * into the HUD as a quiet identity tag instead of a beacon. Font cap
- * dropped to 14px to match the prematch RankText exactly — the two
- * surfaces should print at the same scale so the wrestler sees the
- * same plaque they were assigned at character select. */
 const RankText = styled.div`
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_DISPLAY};
   font-size: clamp(10px, 1.2cqw, 14px);
   color: ${C.gold};
   text-transform: uppercase;
   letter-spacing: 0.16em;
   line-height: 1;
   text-shadow:
-    0 0 8px rgba(232, 197, 71, 0.35),
-    0 0 3px rgba(232, 197, 71, 0.3),
-    0 1px 3px rgba(0, 0, 0, 0.9);
+    0 0 10px rgba(232, 197, 71, 0.4),
+    0 0 3px rgba(232, 197, 71, 0.35),
+    0 1px 3px rgba(0, 0, 0, 0.95);
   white-space: nowrap;
 `;
 
@@ -501,47 +521,88 @@ const RankText = styled.div`
 // STAMINA BAR  — THE HERO OF THE HUD
 // ============================================
 
-/* Stamina bar frame — minimalist hairline.
+/* Stamina bar frame — lacquered track with a frost/gold hairline.
  *
- * Stripped HARD from the previous "chiseled banzuke plate" treatment
- * (cream highlight rim + 4px gold-leaf ring + 4px dark gunmetal
- * underlayer + 4 corner rivets via stacked radial gradients). That
- * stack was the single most "premium hardware overdesign" element on
- * the HUD — it read as a brass-fitted arcade cabinet UI, not a
- * minimalist game UI. Trying too hard to look expensive is exactly
- * what reads as cheap.
+ * Deliberately NOT the old chiseled brass ring + corner rivets. Those
+ * read as arcade-cabinet cosplay. This is a tighter broadcast gauge:
+ * cream/ice hairline by default, vermillion when gassed/danger, inset
+ * catch-light so the bar lifts off the dohyo, quiet L-brackets at the
+ * outer corners for a ceremonial frame without hardware clutter.
  *
- * What's left:
- *   1. A single 1.5px hairline border. Cream by default for legibility
- *      against the dim arena; vermillion when $gassed, so the alarm
- *      signal is the one piece of color information the frame carries.
- *   2. A short warm drop shadow underneath, so the bar lifts off the
- *      dohyo backdrop. Bar still reads as a discrete "thing" sitting
- *      on top of the scene rather than a flat decal.
- *
- * That's it. No rivets, no rings, no chiselling. The bar's identity
- * comes from its FILL (the matcha-green stamina + the impact strike +
- * the gassed overlay), not from ornamental hardware around it.
- *
- * The dangerFramePulse + gassedFramePulse animations are still wired
- * up — they now just modulate brightness/saturation gently (the color
- * shift to vermillion handles the visual alarm; the pulse is the
- * life on top of the shift). */
+ * Fill + impact strike + gassed overlay still carry the bar's identity;
+ * the frame just stops looking like a placeholder rectangle. */
 const BarFrame = styled.div`
   position: relative;
   flex: 1;
   min-width: 0;
-  border-radius: 3px;
+  border-radius: 4px;
   border: 1.5px solid ${(p) =>
     p.$gassed
       ? "rgba(216, 59, 39, 0.95)"
       : p.$danger
         ? "rgba(238, 81, 65, 0.85)"
-        : "rgba(245, 236, 217, 0.32)"};
-  box-shadow: 0 clamp(2px, 0.18cqw, 4px) clamp(8px, 0.7cqw, 16px)
-    rgba(0, 0, 0, 0.55);
+        : "rgba(232, 197, 71, 0.38)"};
+  box-shadow:
+    0 clamp(2px, 0.18cqw, 4px) clamp(10px, 0.85cqw, 18px) rgba(0, 0, 0, 0.58),
+    0 0 0 1px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 246, 210, 0.16),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
   opacity: ${(p) => (p.$matchOver ? 0.95 : 1)};
-  transition: border-color 240ms ease, opacity 220ms ease;
+  transition: border-color 240ms ease, opacity 220ms ease, box-shadow 240ms ease;
+  overflow: visible;
+
+  /* Quiet corner brackets — outer corners only (away from center screen). */
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    width: clamp(7px, 0.7cqw, 11px);
+    height: clamp(7px, 0.7cqw, 11px);
+    pointer-events: none;
+    z-index: 3;
+    opacity: ${(p) => (p.$gassed || p.$danger ? 0.35 : 0.7)};
+    border-color: ${(p) =>
+      p.$gassed || p.$danger
+        ? "rgba(238, 81, 65, 0.85)"
+        : "rgba(232, 197, 71, 0.7)"};
+    border-style: solid;
+    border-width: 0;
+  }
+
+  ${(p) =>
+    p.$isRight
+      ? css`
+          &::before {
+            top: -1px;
+            right: -1px;
+            border-top-width: 1.5px;
+            border-right-width: 1.5px;
+            border-top-right-radius: 3px;
+          }
+          &::after {
+            bottom: -1px;
+            right: -1px;
+            border-bottom-width: 1.5px;
+            border-right-width: 1.5px;
+            border-bottom-right-radius: 3px;
+          }
+        `
+      : css`
+          &::before {
+            top: -1px;
+            left: -1px;
+            border-top-width: 1.5px;
+            border-left-width: 1.5px;
+            border-top-left-radius: 3px;
+          }
+          &::after {
+            bottom: -1px;
+            left: -1px;
+            border-bottom-width: 1.5px;
+            border-left-width: 1.5px;
+            border-bottom-left-radius: 3px;
+          }
+        `}
 
   ${(p) => {
     const gassedDur = p.$matchOver ? "2.4s" : "1.6s";
@@ -565,7 +626,7 @@ const BarFrame = styled.div`
   }}
 `;
 
-/* Dark inner track — stamina gauge */
+/* Dark inner track — stamina gauge with a cool well tint */
 const BarTrack = styled.div`
   position: relative;
   width: 100%;
@@ -575,14 +636,19 @@ const BarTrack = styled.div`
 
   background:
     linear-gradient(
+      180deg,
+      rgba(126, 203, 240, 0.06) 0%,
+      transparent 45%
+    ),
+    linear-gradient(
       ${(p) => (p.$isRight ? "280deg" : "100deg")},
-      rgba(2, 2, 2, 0.97) 0%,
-      rgba(6, 6, 6, 0.95) 50%,
-      rgba(10, 10, 10, 0.92) 100%
+      rgba(4, 6, 12, 0.98) 0%,
+      rgba(8, 10, 16, 0.96) 50%,
+      rgba(12, 14, 22, 0.94) 100%
     );
   box-shadow:
-    inset 0 2px 6px rgba(0, 0, 0, 0.6),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.25);
+    inset 0 2px 7px rgba(0, 0, 0, 0.65),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.3);
 `;
 
 /* Stamina gauge tally — kanji-style tick. A short top notch + a longer
@@ -654,21 +720,17 @@ const BarFill = styled.div.attrs((p) => ({
   background: ${(p) =>
     p.$danger
       ? p.$isRight
-        ? "linear-gradient(90deg, #b91c1c 0%, #dc2626 40%, #ef4444 80%, #f87171 100%)"
-        : "linear-gradient(90deg, #f87171 0%, #ef4444 20%, #dc2626 60%, #b91c1c 100%)"
+        ? "linear-gradient(90deg, #8f1515 0%, #c41e1e 35%, #e23a3a 70%, #f07171 100%)"
+        : "linear-gradient(90deg, #f07171 0%, #e23a3a 30%, #c41e1e 65%, #8f1515 100%)"
       : p.$isRight
-        ? "linear-gradient(90deg, #2d6638 0%, #4f9852 28%, #7dc46a 62%, #b6e088 100%)"
-        : "linear-gradient(90deg, #b6e088 0%, #7dc46a 38%, #4f9852 72%, #2d6638 100%)"};
+        ? "linear-gradient(90deg, #1f4f2c 0%, #3a7a42 26%, #6bb85a 58%, #a8d878 82%, #d4efb0 100%)"
+        : "linear-gradient(90deg, #d4efb0 0%, #a8d878 18%, #6bb85a 42%, #3a7a42 74%, #1f4f2c 100%)"};
 
-  /* Outer glows removed — they bled into BarTrack's 2px inset gap
-     above and below the fill, making the fill appear flush with
-     (or taller than) the dark track. The inner glow alone gives
-     the fill internal lighting character without extending its
-     visual height past its actual pixel bounds. */
+  /* Inner lighting only — outer glows bleed into the track inset. */
   box-shadow: ${(p) =>
     p.$danger
-      ? "inset 0 0 4px rgba(255, 100, 100, 0.22)"
-      : "inset 0 0 6px rgba(182, 224, 136, 0.22)"};
+      ? "inset 0 1px 0 rgba(255, 200, 190, 0.28), inset 0 -2px 4px rgba(80, 10, 10, 0.35), inset 0 0 5px rgba(255, 100, 100, 0.18)"
+      : "inset 0 1px 0 rgba(245, 255, 230, 0.32), inset 0 -2px 5px rgba(20, 50, 25, 0.35), inset 0 0 6px rgba(182, 224, 136, 0.18)"};
 
   animation: ${(p) =>
     p.$danger
@@ -1109,7 +1171,7 @@ const GassedText = styled.span`
  * than the Romanized text so it carries a touch more visual weight,
  * matching the proportion the prematch hanko uses. */
 const GassedKanji = styled.span`
-  font-family: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  font-family: ${FONT_KANJI};
   font-weight: 900;
   font-size: 1.35em;
   line-height: 1;
@@ -1181,9 +1243,9 @@ const BarLabel = styled.div`
   top: 50%;
   transform: translateY(-50%);
   ${(p) => (p.$isRight ? "left: clamp(6px, 1cqw, 14px);" : "right: clamp(6px, 1cqw, 14px);")}
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_DISPLAY};
   font-size: clamp(8px, 0.95cqw, 12px);
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(245, 236, 217, 0.82);
   text-transform: uppercase;
   letter-spacing: 0.18em;
   text-shadow:
@@ -1195,22 +1257,31 @@ const BarLabel = styled.div`
   user-select: none;
 `;
 
-/* "YOU" label on the outer side of the local player's stamina bar */
+/* "YOU" — bare in-bar type on the outer end of the local stamina track.
+ * No plate, no border: just a stroked label that reads on fill or empty well. */
 const YouLabel = styled.div`
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  ${(p) => (p.$isRight ? "right: clamp(6px, 1cqw, 14px);" : "left: clamp(6px, 1cqw, 14px);")}
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 700;
+  ${(p) =>
+    p.$isRight
+      ? "right: clamp(6px, 0.9cqw, 14px);"
+      : "left: clamp(6px, 0.9cqw, 14px);"}
+  z-index: 6;
+  font-family: ${FONT_DISPLAY};
   font-size: clamp(8px, 0.95cqw, 12px);
   color: rgba(255, 255, 255, 0.92);
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
+  /* Cancel trailing tracking so the glyph cluster doesn't look right-heavy. */
+  margin-inline-end: -0.16em;
+  line-height: 1;
+  -webkit-text-stroke: clamp(0.5px, 0.06cqw, 0.9px) rgba(0, 0, 0, 0.9);
   text-shadow:
-    1px 1px 3px rgba(0, 0, 0, 1),
-    0 0 8px rgba(0, 0, 0, 0.8),
-    0 0 2px rgba(0, 0, 0, 1);
-  z-index: 6;
+    1px 0 0 #000,
+    -1px 0 0 #000,
+    0 1px 0 #000,
+    0 -1px 0 #000,
+    0 2px 4px rgba(0, 0, 0, 0.75);
   pointer-events: none;
   user-select: none;
 `;
@@ -1398,7 +1469,7 @@ const PowerUpSlot = styled.div`
   justify-content: center;
   width: ${SLOT_SIZE};
   align-self: stretch;
-  border-radius: 3px;
+  border-radius: 4px;
   box-sizing: border-box;
   position: relative;
   transition: all 0.25s ease;
@@ -1406,43 +1477,48 @@ const PowerUpSlot = styled.div`
   /* Clip only the BASHO N/A strike — charge mark sits outside the frame. */
   overflow: ${(p) => (!p.$active && p.$bashoNa ? "hidden" : "visible")};
 
-  border: 1px solid rgba(245, 236, 217, 0.22);
+  border: 1px solid
+    ${(p) =>
+      !p.$active && p.$bashoNa
+        ? "rgba(245, 236, 217, 0.2)"
+        : p.$active
+          ? "rgba(232, 197, 71, 0.4)"
+          : "rgba(245, 236, 217, 0.28)"};
+  border-style: ${(p) => (!p.$active && p.$bashoNa ? "dashed" : "solid")};
 
   background: ${(p) => {
     if (!p.$active)
-      return "linear-gradient(145deg, rgba(2, 2, 2, 0.97), rgba(6, 6, 6, 0.95), rgba(10, 10, 10, 0.92))";
+      return `
+        linear-gradient(180deg, rgba(126, 203, 240, 0.06) 0%, transparent 40%),
+        linear-gradient(145deg, rgba(14, 18, 28, 0.98), rgba(6, 8, 14, 0.97), rgba(4, 6, 10, 0.96))
+      `;
     if (p.$cooldown)
       return "linear-gradient(135deg, #4a5568, #2d3748)";
     switch (p.$active) {
       case "speed":
-        return "linear-gradient(135deg, #00d2ff, #0066cc)";
+        return "linear-gradient(145deg, #4de0ff 0%, #00a8e0 45%, #0066cc 100%)";
       case "power":
-        return "linear-gradient(135deg, var(--edo-sakura, #ff8fa3), #dc2626)";
+        return "linear-gradient(145deg, #ffb0c0 0%, #ff8fa3 40%, #dc2626 100%)";
       case "snowball":
-        return "linear-gradient(135deg, #e0f6ff, #87ceeb)";
+        return "linear-gradient(145deg, #f4fcff 0%, #c8ebf8 42%, #6eb8d8 100%)";
       case "pumo_army":
-        return "linear-gradient(135deg, #ffcc80, #ff8c00)";
+        return "linear-gradient(145deg, #ffd9a0 0%, #ffb040 45%, #e07000 100%)";
       case "thick_blubber":
-        return "linear-gradient(135deg, #ff5087, #a01f4a)";
+        return "linear-gradient(145deg, #ff7aa8 0%, #ff5087 45%, #a01f4a 100%)";
       case "flap":
-        return "linear-gradient(135deg, #34e0c0, #15705f)";
+        return "linear-gradient(145deg, #6af0d4 0%, #34e0c0 45%, #15705f 100%)";
       case "shatter_palm":
-        return "linear-gradient(135deg, #fff9c4, #ffd024)";
+        return "linear-gradient(145deg, #fff6c8 0%, #ffe056 45%, #e0a010 100%)";
       default:
-        return "linear-gradient(135deg, #6c757d, #343a40)";
+        return "linear-gradient(145deg, #6c757d, #343a40)";
     }
   }};
 
-  border-style: ${(p) => (!p.$active && p.$bashoNa ? "dashed" : "solid")};
-  border-color: ${(p) =>
-    !p.$active && p.$bashoNa
-      ? "rgba(245, 236, 217, 0.2)"
-      : "rgba(245, 236, 217, 0.22)"};
-
   box-shadow:
-    0 clamp(2px, 0.18cqw, 4px) clamp(8px, 0.8cqw, 16px) rgba(0, 0, 0, 0.5),
-    inset 0 1px 2px rgba(255, 255, 255, 0.05),
-    inset 0 2px 4px rgba(0, 0, 0, 0.4);
+    0 clamp(2px, 0.18cqw, 4px) clamp(10px, 0.85cqw, 18px) rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -2px 5px rgba(0, 0, 0, 0.35);
 
   opacity: ${(p) => (p.$active ? 1 : 0.78)};
 
@@ -1478,17 +1554,26 @@ const PowerUpSlot = styled.div`
 `;
 
 // ============================================
-// CENTER ROUND INDICATOR — bare floating text
+// CENTER ROUND / DAY — lacquered broadcast seal
 // ============================================
 
+/* Center day/round — bare broadcast numerals, no plate.
+ *
+ * The lacquered box fought the rank plaques for center-screen space and
+ * read as a floating UI card rather than match chrome. Fixed width keeps
+ * 1-digit and 2-digit days from shifting the wings; the type does the work. */
 const CenterRound = styled.div`
   position: absolute;
-  top: ${(p) =>
-    p.$customCenter
-      ? "clamp(26px, 3.5cqh, 42px)"
-      : "clamp(14px, 3cqh, 36px)"};
+  /* Anchor on the stamina-bar midline (HudShell pad + name row + gaps +
+     half bar height), then translateY(-50%) so the numeral stack centers
+     on the bar rather than floating in the top letterbox. */
+  top: calc(
+    clamp(24px, 3cqh, 34px) + clamp(18px, 2.2cqh, 26px) +
+      clamp(8px, 1cqh, 14px) + clamp(4px, 0.55cqh, 8px) +
+      (clamp(22px, 4cqh, 40px) * 0.5)
+  );
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   z-index: 1001;
   display: flex;
   flex-direction: column;
@@ -1496,6 +1581,8 @@ const CenterRound = styled.div`
   pointer-events: none;
   opacity: ${(p) => (p.$matchOver ? 0.7 : 1)};
   transition: opacity 260ms ease;
+  box-sizing: border-box;
+  width: clamp(52px, 6.5cqw, 78px);
 `;
 
 // ============================================
@@ -1600,23 +1687,26 @@ const GoStone = styled.div`
  * actually-distinct glyph shapes and reads at a glance. The
  * "ceremonial enumeration" idea wasn't worth the legibility loss. */
 const RoundNum = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(28px, 5cqw, 72px);
-  color: #fff;
-  -webkit-text-stroke: clamp(1.5px, 0.2cqw, 3px) rgba(0, 0, 0, 0.9);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(24px, 4cqw, 56px);
+  color: #f3ede2;
+  -webkit-text-stroke: clamp(1.4px, 0.18cqw, 2.75px) rgba(0, 0, 0, 0.9);
   text-shadow:
-    0 0 12px rgba(232, 197, 71, 0.32),
-    0 3px 8px rgba(0, 0, 0, 0.95);
+    0 0 12px rgba(243, 237, 226, 0.16),
+    0 3px 10px rgba(0, 0, 0, 0.95);
   line-height: 1;
   user-select: none;
+  width: 100%;
+  text-align: center;
 `;
 
 const RoundText = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(7px, 0.9cqw, 13px);
-  color: rgba(232, 197, 71, 0.7);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(7px, 0.9cqw, 12px);
+  color: rgba(232, 197, 71, 0.78);
   text-transform: uppercase;
-  letter-spacing: 0.25em;
+  letter-spacing: 0.24em;
+  text-indent: 0.24em;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
   margin-top: clamp(1px, 0.2cqh, 3px);
 `;

@@ -29,15 +29,26 @@ import {
   clipRevealLeft,
   clipRevealRight,
   clipRevealUp,
+  TEXT_SHADOW_DISPLAY,
+  TEXT_SHADOW_DISPLAY_HEAVY,
 } from "./menuTheme";
+import { loadSave, writeSave, makeDefaultSave } from "../lib/saveStore";
+import {
+  makeDefaultCustomization,
+  normalizeCustomization,
+  getOutfitById,
+  withActiveOutfitId,
+  firstNonClashingOutfit,
+  outfitClashesWith,
+} from "../lib/outfits";
 
 /*
  * Lobby — VS CPU + Custom Match prep room.
  *
  * Same printed-banzuke language as PreMatch / BashoHub / MainMenu:
  * locker-room stage, letterbox dim, cream type, vermillion rules.
- * No full-width header or footer bars — floating slug, corner leave,
- * identity type, and compact control clusters only.
+ * Looks are built on Customize; lobby picks a saved outfit via the same
+ * slim strip pattern as CPU Skill — under the nameplate. Bodies own the floor.
  */
 
 const D = {
@@ -83,11 +94,6 @@ const vsStampIn = keyframes`
   }
 `;
 
-const swatchPop = keyframes`
-  from { opacity: 0; transform: scale(0.6); }
-  to   { opacity: 1; transform: scale(1); }
-`;
-
 // ============================================
 // SHELL
 // ============================================
@@ -107,22 +113,28 @@ const LobbyContainer = styled.div`
 `;
 
 /*
- * Background — obscure AI detail without a black cave or blur mush.
- * Desat + frost scrim + vignette + dense grain = room as atmosphere.
+ * Background — one light even blur. Soften AI detail without mush or
+ * fake depth masks. Scaled past the frame to hide gaussian fringe.
  */
-const BackgroundImage = styled.div`
+const BackgroundPlate = styled.div`
   position: absolute;
   inset: 0;
-  background: url(${lobbyBackground}) center bottom / cover;
-  transform: scale(1.08) translateX(1.7%);
-  transform-origin: 50% 100%;
-  opacity: 1;
-  filter: saturate(0.42) brightness(0.78) contrast(1.1);
   z-index: 0;
+  overflow: hidden;
   pointer-events: none;
+  background: ${D.page};
 `;
 
-/* Translucent frost — softens AI micro-detail while keeping the room lit. */
+const BackgroundImage = styled.div`
+  position: absolute;
+  inset: -4%;
+  background: url(${lobbyBackground}) center bottom / cover;
+  /* Keep the room framed — no aggressive crop for floor chasing. */
+  transform: scale(1.05) translateX(1.4%);
+  transform-origin: 50% 100%;
+  filter: blur(3px) saturate(0.65) brightness(0.74) contrast(1.06);
+`;
+
 const FrostScrim = styled.div`
   position: absolute;
   inset: 0;
@@ -131,16 +143,16 @@ const FrostScrim = styled.div`
   background:
     radial-gradient(
       ellipse 70% 58% at 50% 48%,
-      rgba(234, 241, 247, 0.14) 0%,
-      rgba(234, 241, 247, 0.04) 45%,
+      rgba(234, 241, 247, 0.09) 0%,
+      rgba(234, 241, 247, 0.025) 45%,
       transparent 72%
     ),
     linear-gradient(
       180deg,
-      rgba(18, 24, 36, 0.38) 0%,
-      rgba(18, 24, 36, 0.12) 36%,
-      rgba(18, 24, 36, 0.18) 62%,
-      rgba(18, 24, 36, 0.5) 100%
+      rgba(18, 24, 36, 0.3) 0%,
+      rgba(18, 24, 36, 0.09) 36%,
+      rgba(18, 24, 36, 0.13) 62%,
+      rgba(18, 24, 36, 0.4) 100%
     );
 `;
 
@@ -154,27 +166,27 @@ const CinematicOverlay = styled.div`
       ellipse 42% 40% at 26% 70%,
       transparent 0%,
       transparent 50%,
-      rgba(4, 6, 10, 0.35) 100%
+      rgba(4, 6, 10, 0.3) 100%
     ),
     radial-gradient(
       ellipse 42% 40% at 74% 70%,
       transparent 0%,
       transparent 50%,
-      rgba(4, 6, 10, 0.35) 100%
+      rgba(4, 6, 10, 0.3) 100%
     ),
     radial-gradient(
       ellipse 60% 50% at 50% 55%,
       transparent 0%,
-      rgba(4, 6, 10, 0.18) 58%,
-      rgba(4, 6, 10, 0.55) 100%
+      rgba(4, 6, 10, 0.12) 58%,
+      rgba(4, 6, 10, 0.48) 100%
     ),
     linear-gradient(
       180deg,
-      rgba(4, 6, 10, 0.55) 0%,
-      rgba(4, 6, 10, 0.18) 20%,
-      rgba(4, 6, 10, 0.06) 45%,
-      rgba(4, 6, 10, 0.22) 72%,
-      rgba(4, 6, 10, 0.58) 100%
+      rgba(4, 6, 10, 0.48) 0%,
+      rgba(4, 6, 10, 0.14) 20%,
+      rgba(4, 6, 10, 0.04) 45%,
+      rgba(4, 6, 10, 0.18) 72%,
+      rgba(4, 6, 10, 0.52) 100%
     );
 `;
 
@@ -183,21 +195,10 @@ const GrainOverlay = styled.div`
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  opacity: 0.38;
+  opacity: 0.2;
   mix-blend-mode: overlay;
-  background-image:
-    repeating-linear-gradient(
-      0deg,
-      rgba(60, 40, 20, 0.07) 0,
-      transparent 1px,
-      transparent 2px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      rgba(60, 40, 20, 0.05) 0,
-      transparent 1px,
-      transparent 3px
-    );
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  background-size: 260px 260px;
 `;
 
 // ============================================
@@ -296,9 +297,30 @@ const Stage = styled.main`
   display: grid;
   grid-template-columns: 1fr minmax(64px, 10cqw) 1fr;
   align-items: stretch;
-  padding: clamp(44px, 6.5cqh, 58px) clamp(18px, 3cqw, 48px)
-    clamp(64px, 10cqh, 88px);
+  /*
+   * Bottom pad = Ready clearance. Ready sits raised under the bout,
+   * so fighters need extra floor room above it.
+   */
+  padding: clamp(48px, 6.5cqh, 60px) clamp(18px, 3cqw, 48px)
+    clamp(96px, 15cqh, 128px);
   overflow: hidden;
+`;
+
+/* Soft ground plane under the bout — sells contact with the room floor. */
+const FloorPlane = styled.div`
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: min(34%, 280px);
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    rgba(4, 6, 10, 0.55) 0%,
+    rgba(4, 6, 10, 0.22) 42%,
+    transparent 100%
+  );
 `;
 
 const FighterColumn = styled.div`
@@ -308,7 +330,7 @@ const FighterColumn = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  gap: clamp(56px, 10cqh, 110px);
+  gap: clamp(10px, 1.6cqh, 16px);
   min-height: 0;
   min-width: 0;
   will-change: transform, opacity;
@@ -330,12 +352,13 @@ const FighterPortrait = styled.div`
 const FloorShadow = styled.div`
   position: absolute;
   left: 50%;
-  bottom: clamp(0px, 0.2cqh, 4px);
-  transform: translateX(-50%);
-  width: clamp(150px, 20cqw, 240px);
-  height: clamp(28px, 4.2cqh, 48px);
+  bottom: clamp(1px, 0.35cqh, 4px);
+  transform: translateX(-50%) scaleY(0.85);
+  width: clamp(150px, 21cqw, 240px);
+  height: clamp(22px, 3.4cqh, 36px);
   border-radius: 50%;
   background: ${SHADOW_GRADIENT};
+  opacity: 0.95;
   z-index: 1;
   pointer-events: none;
 `;
@@ -369,9 +392,9 @@ const AvatarBreath = styled.div`
 `;
 
 const PreviewImage = styled.img`
-  max-height: clamp(220px, 52cqh, 460px);
+  max-height: clamp(170px, 40cqh, 340px);
   height: auto;
-  max-width: 100%;
+  max-width: min(100%, 42cqw);
   width: auto;
   object-fit: contain;
   filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000);
@@ -389,9 +412,9 @@ const WaitingState = styled.div`
 `;
 
 const WaitingSilhouette = styled.img`
-  max-height: clamp(220px, 52cqh, 460px);
+  max-height: clamp(170px, 40cqh, 340px);
   height: auto;
-  max-width: 100%;
+  max-width: min(100%, 42cqw);
   width: auto;
   object-fit: contain;
   filter: brightness(0) opacity(0.16);
@@ -435,18 +458,30 @@ const Dot = styled.span`
 // IDENTITY — floating type ABOVE each fighter
 // ============================================
 
-const IdentityBlock = styled.div`
+/*
+ * Nameplate + control strip sit above the fighter. Bodies own the
+ * floor band below — keeps chrome out of the ground contact zone.
+ */
+const IdentityStack = styled.div`
   position: relative;
   z-index: 5;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(2px, 0.4cqh, 5px);
-  padding: 0;
-  flex-shrink: 0;
+  gap: clamp(10px, 1.4cqh, 14px);
+  width: 100%;
   max-width: 92%;
   margin-top: auto;
+  flex-shrink: 0;
   animation: ${fadeUp} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.22s both;
+`;
+
+const IdentityBlock = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(2px, 0.4cqh, 5px);
+  padding: 0;
 `;
 
 const SideLabel = styled.div`
@@ -466,12 +501,7 @@ const FighterName = styled.div`
   text-transform: uppercase;
   letter-spacing: 0.08em;
   line-height: 0.95;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000,
-    0 2px 0 rgba(0, 0, 0, 0.85);
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -494,10 +524,10 @@ const VsColumn = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   z-index: 6;
-  /* Drop the stamp toward the fighter midsection. */
-  padding-top: clamp(160px, 32cqh, 280px);
+  /* Drop the stamp onto fighter chests — not floating at nameplate height. */
+  padding-bottom: clamp(72px, 14cqh, 120px);
   pointer-events: none;
 `;
 
@@ -508,6 +538,7 @@ const VsMark = styled.div`
   align-items: center;
   justify-content: center;
   gap: clamp(4px, 0.6cqh, 8px);
+  width: 100%;
   will-change: transform, opacity;
   animation: ${vsStampIn} 0.58s cubic-bezier(0.34, 1.5, 0.64, 1) 0.18s both;
 `;
@@ -528,12 +559,8 @@ const VsKanji = styled.div`
   color: ${C.cream};
   letter-spacing: 0.28em;
   line-height: 1;
-  margin-right: -0.28em;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+  padding-left: 0.28em;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
 `;
 
 const VsLetters = styled.div`
@@ -544,12 +571,8 @@ const VsLetters = styled.div`
   color: #ffffff;
   letter-spacing: 0.04em;
   line-height: 0.82;
-  text-shadow:
-    -2px -2px 0 #000,
-    2px -2px 0 #000,
-    -2px 2px 0 #000,
-    2px 2px 0 #000,
-    0 3px 0 rgba(0, 0, 0, 0.9);
+  text-align: center;
+  text-shadow: ${TEXT_SHADOW_DISPLAY_HEAVY};
 `;
 
 const VsMetaPlate = styled.div`
@@ -558,6 +581,7 @@ const VsMetaPlate = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   margin-top: 2px;
   padding: clamp(5px, 0.7cqh, 8px) clamp(12px, 1.6cqw, 18px);
@@ -573,102 +597,102 @@ const VsMode = styled.div`
   letter-spacing: 0.28em;
   text-transform: uppercase;
   line-height: 1;
+  padding-left: 0.28em;
 `;
 
 // ============================================
-// CPU SKILL — slim strip under West identity
+// FIGHTER CONTROL STRIP — CPU skill / outfit
+// Same slim segmented control under each nameplate.
 // ============================================
 
-const SkillStrip = styled.div`
+const ControlStrip = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(5px, 0.7cqh, 8px);
-  margin-top: clamp(4px, 0.7cqh, 8px);
-  animation: ${fadeUp} 0.4s ease-out 0.28s both;
+  gap: clamp(4px, 0.55cqh, 6px);
+  flex-shrink: 0;
+  white-space: nowrap;
+  /* Invisible twin keeps opposing nameplate controls level. */
+  visibility: ${(p) => (p.$ghost ? "hidden" : "visible")};
+  pointer-events: ${(p) => (p.$ghost ? "none" : "auto")};
 `;
 
-const SkillCaption = styled.div`
+const StripCaption = styled.div`
+  display: flex;
+  align-items: center;
+  gap: clamp(7px, 0.9cqw, 10px);
   font-family: ${FONT_BODY};
   font-weight: 700;
   font-size: clamp(0.38rem, 0.58cqw, 0.46rem);
   color: ${C.creamMute};
-  letter-spacing: 0.28em;
+  letter-spacing: 0.3em;
+  margin-right: -0.3em;
   text-transform: uppercase;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+
+  &::before,
+  &::after {
+    content: "";
+    width: clamp(10px, 1.4cqw, 16px);
+    height: 1px;
+    background: ${C.vermillion};
+    opacity: 0.85;
+  }
 `;
 
-const SkillOptions = styled.div`
+/*
+ * Shared footprint for Outfit + CPU Skill — compact lacquer stamps
+ * under the nameplate (same width keeps East/West level).
+ */
+const StripOptions = styled.div`
   display: flex;
   align-items: stretch;
-  border: 1px solid rgba(245, 236, 217, 0.28);
-  background: rgba(14, 16, 22, 0.82);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  gap: 3px;
+  width: clamp(200px, 24cqw, 280px);
+  height: clamp(28px, 3.4cqh, 34px);
 `;
 
-const SkillOption = styled.button`
-  padding: clamp(6px, 0.9cqh, 9px) clamp(8px, 1.1cqw, 12px);
-  background: ${(p) => (p.$selected ? C.vermillion : "transparent")};
-  border: 0;
-  cursor: pointer;
+const StripOption = styled.button`
+  position: relative;
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 clamp(2px, 0.4cqw, 5px);
+  overflow: hidden;
+  white-space: nowrap;
+  background: ${(p) =>
+    p.$selected
+      ? `linear-gradient(180deg, ${C.vermillionBright} 0%, ${C.vermillion} 55%, ${C.vermillionDeep} 100%)`
+      : "linear-gradient(180deg, #1c212b 0%, #12161e 100%)"};
+  border: 1px solid
+    ${(p) =>
+      p.$taken
+        ? "rgba(245, 236, 217, 0.1)"
+        : p.$selected
+          ? "rgba(245, 236, 217, 0.45)"
+          : "rgba(245, 236, 217, 0.22)"};
+  border-radius: 0;
+  box-shadow: ${(p) =>
+    p.$selected
+      ? `inset 0 1px 0 rgba(255, 255, 255, 0.18),
+         0 0 0 1px rgba(216, 59, 39, 0.35),
+         0 6px 14px rgba(0, 0, 0, 0.45)`
+      : `inset 0 1px 0 rgba(255, 255, 255, 0.05),
+         0 4px 10px rgba(0, 0, 0, 0.4)`};
+  cursor: ${(p) => (p.$taken ? "not-allowed" : "pointer")};
+  opacity: ${(p) => (p.$taken ? 0.38 : 1)};
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.48rem, 0.72cqw, 0.58rem);
-  letter-spacing: 0.1em;
+  font-size: clamp(0.44rem, 0.66cqw, 0.54rem);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   line-height: 1;
-  color: ${(p) => (p.$selected ? C.cream : C.creamMute)};
-  transition: background 0.15s ease, color 0.15s ease;
-
-  & + & {
-    border-left: 1px solid rgba(245, 236, 217, 0.18);
-  }
-
-  &:hover {
-    ${(p) =>
-      !p.$selected &&
-      css`
-        color: ${C.cream};
-        background: rgba(245, 236, 217, 0.06);
-      `}
-  }
-`;
-
-// ============================================
-// CONTROL DOCK — floating clusters (not a footer bar)
-// ============================================
-
-const ControlDock = styled.div`
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: clamp(12px, 2cqw, 24px);
-  padding: 0 clamp(14px, 2.4cqw, 32px) clamp(12px, 2cqh, 22px);
-  pointer-events: none;
-  animation: ${clipRevealUp} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.2s both;
-
-  & > * {
-    pointer-events: auto;
-  }
-`;
-
-const CustomizePlaque = styled.div`
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: clamp(8px, 1.2cqw, 14px);
-  min-width: 0;
-  max-width: min(62cqw, 720px);
-  min-height: clamp(44px, 5.2cqh, 52px);
-  padding: clamp(8px, 1.1cqh, 12px) clamp(10px, 1.4cqw, 16px);
-  background: ${D.panel};
-  border: 1px solid ${D.border};
-  box-shadow: 0 10px 28px ${D.shadow};
-  overflow: hidden;
+  color: ${(p) => (p.$selected ? "#ffffff" : C.creamMute)};
+  text-shadow: ${(p) =>
+    p.$selected ? TEXT_SHADOW_DISPLAY : "0 1px 2px rgba(0, 0, 0, 0.65)"};
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease,
+    box-shadow 0.15s ease, transform 0.12s ease;
 
   &::before {
     content: "";
@@ -677,261 +701,52 @@ const CustomizePlaque = styled.div`
     left: 0;
     right: 0;
     height: 2px;
-    background: ${C.vermillion};
-    z-index: 2;
-  }
-`;
-
-const TabGroup = styled.div`
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  flex-shrink: 0;
-  border: 1px solid rgba(245, 236, 217, 0.18);
-`;
-
-const Tab = styled.button`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
-  font-size: clamp(0.48rem, 0.74cqw, 0.58rem);
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
-  padding: clamp(7px, 1cqh, 10px) clamp(10px, 1.4cqw, 14px);
-  background: ${(p) => (p.$active ? C.vermillion : "transparent")};
-  border: 0;
-  color: ${(p) => (p.$active ? C.cream : C.creamMute)};
-  cursor: pointer;
-  transition: color 0.18s ease, background 0.18s ease;
-
-  & + & {
-    border-left: 1px solid rgba(245, 236, 217, 0.18);
+    background: ${(p) => (p.$selected ? C.gold : "rgba(245, 236, 217, 0.12)")};
+    opacity: ${(p) => (p.$selected ? 1 : 0.7)};
   }
 
   &:hover {
-    color: ${C.cream};
     ${(p) =>
-      !p.$active &&
+      !p.$selected &&
+      !p.$taken &&
       css`
-        background: rgba(245, 236, 217, 0.06);
+        color: ${C.cream};
+        border-color: rgba(245, 236, 217, 0.4);
+        background: linear-gradient(180deg, #252b38 0%, #171c26 100%);
+        transform: translateY(-1px);
       `}
   }
-`;
 
-const SwatchLane = styled.div`
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: stretch;
-`;
-
-const SwatchSection = styled.div`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: clamp(3px, 0.5cqw, 6px);
-  flex-wrap: nowrap;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-block: clamp(4px, 0.6cqh, 6px);
-  padding-inline: clamp(4px, 0.6cqw, 6px);
-  scroll-padding-inline: clamp(4px, 0.6cqw, 6px);
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-
-  &::-webkit-scrollbar {
-    display: none;
+  &:active {
+    transform: ${(p) => (p.$taken ? "none" : "translateY(0) scale(0.98)")};
   }
 `;
 
-const ScrollArrow = styled.button`
+// ============================================
+// CONTROL DOCK — Ready cluster only (not a footer bar)
+// ============================================
+
+const ControlDock = styled.div`
   position: absolute;
-  top: 0;
-  bottom: 0;
-  ${(p) => (p.$dir === "left" ? "left: 0;" : "right: 0;")}
-  width: clamp(26px, 3cqw, 34px);
-  display: inline-flex;
-  align-items: center;
-  justify-content: ${(p) => (p.$dir === "left" ? "flex-start" : "flex-end")};
-  padding: 0 clamp(3px, 0.5cqw, 6px);
-  border: 0;
-  cursor: pointer;
-  background: linear-gradient(
-    ${(p) => (p.$dir === "left" ? "90deg" : "270deg")},
-    ${D.deep} 0%,
-    rgba(12, 14, 20, 0.92) 35%,
-    rgba(12, 14, 20, 0) 100%
-  );
-  color: ${C.gold};
-  font-family: ${FONT_BODY};
-  font-weight: 700;
-  font-size: clamp(13px, 1.4cqw, 17px);
-  line-height: 1;
-  z-index: 2;
-  opacity: ${(p) => (p.$visible ? 1 : 0)};
-  pointer-events: ${(p) => (p.$visible ? "auto" : "none")};
-  transition: opacity 0.18s ease, color 0.18s ease, transform 0.15s ease;
-
-  &:hover {
-    color: ${C.cream};
-  }
-
-  &:active {
-    transform: scale(0.92);
-  }
-
-  span {
-    display: inline-block;
-    transition: transform 0.18s ease;
-  }
-
-  &:hover span {
-    transform: ${(p) =>
-      p.$dir === "left" ? "translateX(-2px)" : "translateX(2px)"};
-  }
-`;
-
-const SwatchDivider = styled.div`
-  width: 1px;
-  height: clamp(18px, 2.4cqh, 26px);
-  background: rgba(245, 236, 217, 0.22);
-  margin: 0 clamp(2px, 0.4cqw, 5px);
-  flex-shrink: 0;
-`;
-
-const ColorSwatch = styled.button`
-  position: relative;
-  width: clamp(18px, 2cqw, 26px);
-  height: clamp(18px, 2cqw, 26px);
-  border-radius: 50%;
-  border: 2px solid
-    ${(p) => (p.$selected ? C.gold : "rgba(245, 236, 217, 0.32)")};
-  background: ${(p) => p.$gradient || p.$color};
-  cursor: ${(p) => (p.$taken ? "not-allowed" : "pointer")};
-  transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-  flex-shrink: 0;
-  animation: ${swatchPop} 0.35s ease-out both;
-  animation-delay: ${(p) => Math.min(p.$index ?? 0, 20) * 0.015}s;
-  overflow: hidden;
-  box-shadow: ${(p) =>
-    p.$selected
-      ? `inset 0 0 6px 1px rgba(0, 0, 0, 0.26),
-         0 0 0 2px rgba(232, 197, 71, 0.45),
-         0 3px 8px rgba(0, 0, 0, 0.52)`
-      : `inset 0 0 5px 1px rgba(0, 0, 0, 0.2),
-         0 2px 6px rgba(0, 0, 0, 0.48)`};
-
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: radial-gradient(
-      circle at 50% 44%,
-      rgba(255, 255, 255, 0.18) 0%,
-      transparent 58%
-    );
-    pointer-events: none;
-  }
-
-  ${(p) =>
-    p.$taken &&
-    css`
-      opacity: 0.35;
-      &::after {
-        content: "✕";
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 900;
-        font-size: clamp(9px, 1.2cqw, 13px);
-        color: ${C.cream};
-        z-index: 2;
-        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
-      }
-    `}
-
-  &:hover {
-    transform: ${(p) => (p.$taken ? "none" : "scale(1.18)")};
-    border-color: ${(p) =>
-      p.$taken
-        ? "rgba(245, 236, 217, 0.32)"
-        : p.$selected
-          ? C.gold
-          : C.cream};
-  }
-
-  &:active {
-    transform: ${(p) => (p.$taken ? "none" : "scale(0.94)")};
-  }
-`;
-
-const PatternSwatch = styled(ColorSwatch)`
-  width: clamp(21px, 2.3cqw, 30px);
-  height: clamp(21px, 2.3cqw, 30px);
-  border-radius: 5px;
-
-  &::before {
-    background: radial-gradient(
-      ellipse 100% 78% at 50% 20%,
-      rgba(255, 255, 255, 0.24) 0%,
-      transparent 58%
-    );
-  }
-`;
-
-const SelectedBlock = styled.div`
+  left: 0;
+  right: 0;
+  /*
+   * Raised under the bout — part of the stage composition, not
+   * chrome glued to the viewport edge.
+   */
+  bottom: clamp(40px, 6.5cqh, 64px);
+  z-index: 20;
   display: flex;
   align-items: center;
-  gap: clamp(7px, 1cqw, 11px);
-  border-left: 1px solid rgba(245, 236, 217, 0.18);
-  padding-left: clamp(10px, 1.4cqw, 14px);
-  min-width: clamp(96px, 11cqw, 132px);
-  flex-shrink: 0;
-`;
+  justify-content: center;
+  gap: clamp(12px, 2cqw, 24px);
+  padding: 0 clamp(14px, 2.4cqw, 32px);
+  pointer-events: none;
+  animation: ${clipRevealUp} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.2s both;
 
-const SelectedSwatchPreview = styled.div`
-  position: relative;
-  width: clamp(20px, 2.2cqw, 26px);
-  height: clamp(20px, 2.2cqw, 26px);
-  border-radius: 50%;
-  background: ${(p) => p.$gradient || p.$color};
-  border: 2px solid ${C.gold};
-  flex-shrink: 0;
-  overflow: hidden;
-  box-shadow:
-    inset 0 0 5px 1px rgba(0, 0, 0, 0.22),
-    0 1px 5px rgba(0, 0, 0, 0.42);
-`;
-
-const SelectedNameStack = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-`;
-
-const SelectedCategory = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 600;
-  font-size: clamp(0.38rem, 0.58cqw, 0.46rem);
-  color: ${C.creamMute};
-  text-transform: uppercase;
-  letter-spacing: 0.24em;
-`;
-
-const SelectedNameLabel = styled.div`
-  font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.52rem, 0.82cqw, 0.68rem);
-  color: ${C.cream};
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  & > * {
+    pointer-events: auto;
+  }
 `;
 
 const ActionCluster = styled.div`
@@ -976,11 +791,7 @@ const ReadyButton = styled.button`
   border: 1px solid ${C.vermillionDeep};
   border-radius: 0;
   cursor: pointer;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
   animation: ${readyPulse} 1.8s ease-in-out infinite;
   transition: background 0.16s ease, transform 0.12s ease, filter 0.16s ease;
 
@@ -1115,7 +926,14 @@ ColoredPlayerPreview.propTypes = {
 // LOBBY COMPONENT
 // ============================================
 
-const CPU_DIFFICULTIES = ["EASY", "NORMAL", "HARD", "IMPOSSIBLE"];
+/* id is what the server expects; label is what fits the stamp strip. */
+const CPU_DIFFICULTIES = [
+  { id: "EASY", label: "EASY" },
+  { id: "NORMAL", label: "NORMAL" },
+  { id: "HARD", label: "HARD" },
+  { id: "IMPOSSIBLE", label: "BRUTAL" },
+];
+const OUTFIT_MARKS = ["1", "2", "3"];
 
 const Lobby = ({
   rooms,
@@ -1139,46 +957,15 @@ const Lobby = ({
   } = usePlayerColors();
 
   const [selectedDifficulty, setSelectedDifficulty] = useState("HARD");
-  const [customizeTab, setCustomizeTab] = useState("body");
-
-  const swatchScrollRef = useRef(null);
-  const [canScrollLeftSwatches, setCanScrollLeftSwatches] = useState(false);
-  const [canScrollRightSwatches, setCanScrollRightSwatches] = useState(false);
-
-  const measureSwatchScroll = useCallback(() => {
-    const el = swatchScrollRef.current;
-    if (!el) {
-      setCanScrollLeftSwatches(false);
-      setCanScrollRightSwatches(false);
-      return;
-    }
-    const max = el.scrollWidth - el.clientWidth;
-    setCanScrollLeftSwatches(el.scrollLeft > 1);
-    setCanScrollRightSwatches(el.scrollLeft < max - 1);
-  }, []);
-
-  const scrollSwatchesBy = useCallback((direction) => {
-    const el = swatchScrollRef.current;
-    if (!el) return;
-    el.scrollBy({
-      left: direction * el.clientWidth * 0.72,
-      behavior: "smooth",
-    });
-  }, []);
-
+  const [customization, setCustomization] = useState(() =>
+    makeDefaultCustomization(),
+  );
+  const [activeOutfitId, setActiveOutfitId] = useState(
+    makeDefaultCustomization().activeOutfitId,
+  );
+  const saveDocRef = useRef(null);
+  const clashResolvedRef = useRef(false);
   const myPlayerIndex = players.findIndex((p) => p.id === socket.id);
-
-  useEffect(() => {
-    measureSwatchScroll();
-    const el = swatchScrollRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(() => {
-      measureSwatchScroll();
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [measureSwatchScroll, customizeTab, myPlayerIndex]);
-
   const isPlayer1 = myPlayerIndex === 0;
 
   const serverPlayer1Color = players[0]?.mawashiColor || SPRITE_BASE_COLOR;
@@ -1195,115 +982,85 @@ const Lobby = ({
   const otherPlayerBody = isPlayer1
     ? serverPlayer2BodyColor
     : serverPlayer1BodyColor;
-  const isColorTakenByOther = (hex) =>
-    isPvP &&
-    otherPlayerMawashi &&
-    hex?.toLowerCase() === otherPlayerMawashi.toLowerCase();
-  const isBodyColorTakenByOther = (hex) =>
-    isPvP &&
-    hex !== null &&
-    otherPlayerBody !== null &&
-    hex?.toLowerCase() === otherPlayerBody?.toLowerCase();
 
-  const myMawashiColor = isPlayer1 ? serverPlayer1Color : serverPlayer2Color;
-  const myBodyColor = isPlayer1 ? serverPlayer1BodyColor : serverPlayer2BodyColor;
-
-  const beltSolids = [
-    { name: "Default", hex: SPRITE_BASE_COLOR },
-    { name: "Graphite", hex: "#525252" },
-    { name: "Scarlet", hex: "#D94848" },
-    { name: "Coral", hex: "#E87070" },
-    { name: "Tangerine", hex: "#E8913A" },
-    { name: "Gold", hex: "#D4A520" },
-    { name: "Emerald", hex: "#2E9E5A" },
-    { name: "Cobalt", hex: "#3B5EB0" },
-    { name: "Orchid", hex: "#A85DBF" },
-  ];
-
-  const beltPatterns = [
-    {
-      name: "Rainbow",
-      hex: "rainbow",
-      gradient:
-        "linear-gradient(to right, red, orange, yellow, green, cyan, blue, violet)",
+  const emitOutfitColors = useCallback(
+    (outfit) => {
+      if (myPlayerIndex === -1 || !outfit) return;
+      socket.emit("update_mawashi_color", {
+        roomId: roomName,
+        playerId: socket.id,
+        color: outfit.mawashiColor,
+      });
+      socket.emit("update_body_color", {
+        roomId: roomName,
+        playerId: socket.id,
+        color: outfit.bodyColor,
+      });
     },
-    {
-      name: "Fire",
-      hex: "fire",
-      gradient: "linear-gradient(to bottom, #FFD700, #FF8C00, #DC143C, #8B0000)",
-    },
-    {
-      name: "Vaporwave",
-      hex: "vaporwave",
-      gradient: "linear-gradient(to bottom, #FF69B4, #DA70D6, #9370DB, #00CED1)",
-    },
-    {
-      name: "Camo",
-      hex: "camo",
-      gradient:
-        "repeating-conic-gradient(#556B2F 0% 25%, #2E4E1A 25% 50%, #5D3A1A 50% 75%, #1a1a0a 75% 100%)",
-    },
-    {
-      name: "Galaxy",
-      hex: "galaxy",
-      gradient:
-        "linear-gradient(135deg, #2E0854, #4B0082, #6A0DAD, #9932CC, #4B0082)",
-    },
-    {
-      name: "Shiny Gold",
-      hex: "gold",
-      gradient:
-        "linear-gradient(135deg, #B8860B, #FFD700, #FFF8DC, #FFD700, #B8860B)",
-    },
-  ];
-
-  const bodyColors = [
-    {
-      name: "Default",
-      hex: null,
-      gradient: "linear-gradient(135deg, #888 0%, #aaa 50%, #888 100%)",
-    },
-    { name: "Black", hex: "#4d4d4d" },
-    { name: "Blue", hex: "#2656A8" },
-    { name: "Purple", hex: "#9932CC" },
-    { name: "Green", hex: "#32CD32" },
-    { name: "Aqua", hex: "#17A8A0" },
-    { name: "Orange", hex: "#E27020" },
-    { name: "Pink", hex: "#FFB6C1" },
-    { name: "Yellow", hex: "#F5C422" },
-    { name: "Brown", hex: "#8B5E3C" },
-    { name: "Silver", hex: "#A8A8A8" },
-    { name: "Light Blue", hex: "#6ABED0" },
-    { name: "Red", hex: "#CC3333" },
-  ];
-
-  const allBeltOptions = [...beltSolids, ...beltPatterns];
-  const selectedBeltOption = allBeltOptions.find(
-    (c) => c.hex === myMawashiColor
+    [myPlayerIndex, roomName, socket],
   );
-  const selectedBodyOption = bodyColors.find((c) => c.hex === myBodyColor);
-  const selectedBeltName = selectedBeltOption?.name || "Default";
-  const selectedBodyName = selectedBodyOption?.name || "Default";
 
-  const handleColorSelect = (color) => {
-    if (myPlayerIndex === -1) return;
-    if (isColorTakenByOther(color)) return;
-    socket.emit("update_mawashi_color", {
-      roomId: roomName,
-      playerId: socket.id,
-      color,
+  const persistActiveOutfit = useCallback(async (nextCustomization) => {
+    const normalized = normalizeCustomization(nextCustomization);
+    setCustomization(normalized);
+    setActiveOutfitId(normalized.activeOutfitId);
+    const base = saveDocRef.current || makeDefaultSave();
+    const written = await writeSave({
+      ...base,
+      customization: normalized,
     });
-  };
+    saveDocRef.current = written;
+  }, []);
 
-  const handleBodyColorSelect = (color) => {
-    if (myPlayerIndex === -1) return;
-    if (isBodyColorTakenByOther(color)) return;
-    socket.emit("update_body_color", {
-      roomId: roomName,
-      playerId: socket.id,
-      color,
+  useEffect(() => {
+    let cancelled = false;
+    loadSave().then((doc) => {
+      if (cancelled) return;
+      saveDocRef.current = doc;
+      const c = normalizeCustomization(doc.customization);
+      setCustomization(c);
+      setActiveOutfitId(c.activeOutfitId);
     });
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isPvP) clashResolvedRef.current = false;
+  }, [isPvP]);
+
+  // If the active outfit clashes with the opponent in PvP, auto-pick a free slot.
+  useEffect(() => {
+    if (!isPvP || myPlayerIndex === -1 || clashResolvedRef.current) return;
+    const preferred = getOutfitById(customization, activeOutfitId);
+    if (!outfitClashesWith(preferred, otherPlayerMawashi, otherPlayerBody)) {
+      clashResolvedRef.current = true;
+      return;
+    }
+    const nextOutfit = firstNonClashingOutfit(
+      customization,
+      otherPlayerMawashi,
+      otherPlayerBody,
+    );
+    if (!nextOutfit || nextOutfit.id === preferred.id) {
+      clashResolvedRef.current = true;
+      return;
+    }
+    clashResolvedRef.current = true;
+    const next = withActiveOutfitId(customization, nextOutfit.id);
+    persistActiveOutfit(next);
+    emitOutfitColors(nextOutfit);
+  }, [
+    isPvP,
+    myPlayerIndex,
+    customization,
+    activeOutfitId,
+    otherPlayerMawashi,
+    otherPlayerBody,
+    persistActiveOutfit,
+    emitOutfitColors,
+  ]);
 
   useEffect(() => {
     if (serverPlayer1Color) setPlayer1Color(serverPlayer1Color);
@@ -1319,6 +1076,16 @@ const Lobby = ({
     setPlayer1BodyColor,
     setPlayer2BodyColor,
   ]);
+
+  const handleOutfitSelect = (outfitId) => {
+    if (myPlayerIndex === -1) return;
+    const outfit = getOutfitById(customization, outfitId);
+    if (outfitClashesWith(outfit, otherPlayerMawashi, otherPlayerBody)) return;
+    playButtonPressSound2();
+    const next = withActiveOutfitId(customization, outfitId);
+    persistActiveOutfit(next);
+    emitOutfitColors(outfit);
+  };
 
   const currentRoom = rooms.find((room) => room.id === roomName);
   const playerCount = currentRoom ? currentRoom.players.length : 0;
@@ -1406,6 +1173,87 @@ const Lobby = ({
     });
   };
 
+  const renderOutfitStrip = ({ ghost = false } = {}) => (
+    <ControlStrip
+      $ghost={ghost}
+      aria-hidden={ghost}
+      role={ghost ? undefined : "listbox"}
+      aria-label={ghost ? undefined : "Outfit"}
+    >
+      <StripCaption>Outfit</StripCaption>
+      <StripOptions>
+        {customization.outfits.map((outfit, index) => {
+          const taken =
+            !ghost &&
+            isPvP &&
+            outfitClashesWith(outfit, otherPlayerMawashi, otherPlayerBody);
+          const selected = !ghost && outfit.id === activeOutfitId;
+          const mark = OUTFIT_MARKS[index] || String(index + 1);
+          return (
+            <StripOption
+              key={outfit.id}
+              type="button"
+              role={ghost ? undefined : "option"}
+              aria-selected={ghost ? undefined : selected}
+              $selected={selected}
+              $taken={taken}
+              tabIndex={ghost || taken ? -1 : 0}
+              disabled={ghost || taken}
+              onClick={() => {
+                if (ghost || taken) return;
+                handleOutfitSelect(outfit.id);
+              }}
+              onMouseEnter={
+                ghost || taken ? undefined : playButtonHoverSound
+              }
+              title={
+                ghost
+                  ? undefined
+                  : taken
+                    ? `${outfit.name} — taken`
+                    : outfit.name
+              }
+            >
+              {mark}
+            </StripOption>
+          );
+        })}
+      </StripOptions>
+    </ControlStrip>
+  );
+
+  const renderSkillStrip = ({ ghost = false } = {}) => (
+    <ControlStrip $ghost={ghost} aria-hidden={ghost}>
+      <StripCaption>Skill</StripCaption>
+      <StripOptions>
+        {CPU_DIFFICULTIES.map(({ id, label }) => {
+          const selected = !ghost && id === selectedDifficulty;
+          return (
+            <StripOption
+              key={id}
+              type="button"
+              $selected={selected}
+              tabIndex={ghost ? -1 : 0}
+              disabled={ghost}
+              title={label}
+              onClick={() => {
+                if (ghost) return;
+                if (id !== selectedDifficulty) {
+                  playButtonPressSound2();
+                  setSelectedDifficulty(id);
+                  socket.emit("set_cpu_difficulty", { difficulty: id });
+                }
+              }}
+              onMouseEnter={ghost ? undefined : playButtonHoverSound}
+            >
+              {label}
+            </StripOption>
+          );
+        })}
+      </StripOptions>
+    </ControlStrip>
+  );
+
   const renderFighter = (side) => {
     const isLeft = side === "left";
     const player = isLeft ? players[0] : players[1];
@@ -1423,51 +1271,43 @@ const Lobby = ({
       : player?.isCPU
         ? "CPU"
         : player?.fighter || "Open Slot";
-    const showSkillStrip = showAsCPU;
+
+    const isMySide =
+      myPlayerIndex !== -1 &&
+      ((isLeft && isPlayer1) || (!isLeft && !isPlayer1));
+
+    /*
+     * Controls live under the nameplate; bodies own the floor.
+     *   VS CPU: East outfit / West skill
+     *   Custom: my side outfit / other side ghost outfit
+     */
+    const showOutfit = isMySide;
+    const showOutfitGhost = !isCPUMatch && myPlayerIndex !== -1 && !isMySide;
+    const showSkill = showAsCPU;
 
     return (
       <FighterColumn $side={side}>
-        <IdentityBlock>
-          <SideLabel $hasFighter={showFighter}>{sideLabel}</SideLabel>
-          <FighterName $hasFighter={showFighter}>{fighterName}</FighterName>
-          <IdentityRule $hasFighter={showFighter} aria-hidden />
-          {!showFighter && (
-            <WaitingText>
-              Waiting
-              <LoadingDots>
-                <Dot $delay={0} />
-                <Dot $delay={1} />
-                <Dot $delay={2} />
-              </LoadingDots>
-            </WaitingText>
-          )}
-          {showSkillStrip && (
-            <SkillStrip>
-              <SkillCaption>CPU Skill</SkillCaption>
-              <SkillOptions>
-                {CPU_DIFFICULTIES.map((id) => {
-                  const selected = id === selectedDifficulty;
-                  return (
-                    <SkillOption
-                      key={id}
-                      $selected={selected}
-                      onClick={() => {
-                        if (id !== selectedDifficulty) {
-                          playButtonPressSound2();
-                          setSelectedDifficulty(id);
-                          socket.emit("set_cpu_difficulty", { difficulty: id });
-                        }
-                      }}
-                      onMouseEnter={playButtonHoverSound}
-                    >
-                      {id}
-                    </SkillOption>
-                  );
-                })}
-              </SkillOptions>
-            </SkillStrip>
-          )}
-        </IdentityBlock>
+        <IdentityStack>
+          <IdentityBlock>
+            <SideLabel $hasFighter={showFighter}>{sideLabel}</SideLabel>
+            <FighterName $hasFighter={showFighter}>{fighterName}</FighterName>
+            <IdentityRule $hasFighter={showFighter} aria-hidden />
+            {!showFighter && (
+              <WaitingText>
+                Waiting
+                <LoadingDots>
+                  <Dot $delay={0} />
+                  <Dot $delay={1} />
+                  <Dot $delay={2} />
+                </LoadingDots>
+              </WaitingText>
+            )}
+          </IdentityBlock>
+
+          {showOutfit && renderOutfitStrip()}
+          {showOutfitGhost && renderOutfitStrip({ ghost: true })}
+          {showSkill && renderSkillStrip()}
+        </IdentityStack>
 
         <FighterPortrait>
           {showFighter ? (
@@ -1492,136 +1332,14 @@ const Lobby = ({
     );
   };
 
-  const renderCustomizePlaque = () => {
-    if (myPlayerIndex === -1) return null;
-
-    const isBody = customizeTab === "body";
-    const isPattern = !isBody && !!selectedBeltOption?.gradient;
-    const selectedColorHex = isBody ? myBodyColor || "#888" : myMawashiColor;
-    const selectedColorGradient = isBody
-      ? selectedBodyOption?.gradient
-      : selectedBeltOption?.gradient;
-    const selectedColorName = isBody ? selectedBodyName : selectedBeltName;
-    const selectedCategoryLabel = isBody
-      ? "Body Color"
-      : isPattern
-        ? "Belt Pattern"
-        : "Belt Color";
-
-    const handleTabChange = (tab) => {
-      if (tab !== customizeTab) {
-        playButtonHoverSound();
-        setCustomizeTab(tab);
-      }
-    };
-
-    return (
-      <CustomizePlaque>
-        <TabGroup>
-          <Tab $active={isBody} onClick={() => handleTabChange("body")}>
-            Body
-          </Tab>
-          <Tab $active={!isBody} onClick={() => handleTabChange("belt")}>
-            Belt
-          </Tab>
-        </TabGroup>
-
-        <SwatchLane>
-          <SwatchSection ref={swatchScrollRef} onScroll={measureSwatchScroll}>
-            {isBody
-              ? bodyColors.map((color, i) => {
-                  const taken = isBodyColorTakenByOther(color.hex);
-                  return (
-                    <ColorSwatch
-                      key={color.name}
-                      $index={i}
-                      $color={color.hex || "#888"}
-                      $gradient={color.gradient}
-                      $selected={myBodyColor === color.hex}
-                      $taken={taken}
-                      onClick={() => !taken && handleBodyColorSelect(color.hex)}
-                      onMouseEnter={() => !taken && playButtonHoverSound()}
-                      title={taken ? "Taken by opponent" : color.name}
-                    />
-                  );
-                })
-              : (
-                <>
-                  {beltSolids.map((color, i) => {
-                    const taken = isColorTakenByOther(color.hex);
-                    return (
-                      <ColorSwatch
-                        key={color.name}
-                        $index={i}
-                        $color={color.hex}
-                        $selected={myMawashiColor === color.hex}
-                        $taken={taken}
-                        onClick={() => !taken && handleColorSelect(color.hex)}
-                        onMouseEnter={() => !taken && playButtonHoverSound()}
-                        title={taken ? "Taken by opponent" : color.name}
-                      />
-                    );
-                  })}
-                  <SwatchDivider />
-                  {beltPatterns.map((color, i) => {
-                    const taken = isColorTakenByOther(color.hex);
-                    return (
-                      <PatternSwatch
-                        key={color.name}
-                        $index={i + beltSolids.length}
-                        $color={color.hex}
-                        $gradient={color.gradient}
-                        $selected={myMawashiColor === color.hex}
-                        $taken={taken}
-                        onClick={() => !taken && handleColorSelect(color.hex)}
-                        onMouseEnter={() => !taken && playButtonHoverSound()}
-                        title={taken ? "Taken by opponent" : color.name}
-                      />
-                    );
-                  })}
-                </>
-              )}
-          </SwatchSection>
-          <ScrollArrow
-            $dir="left"
-            $visible={canScrollLeftSwatches}
-            onClick={() => scrollSwatchesBy(-1)}
-            aria-label="Scroll colors left"
-            tabIndex={canScrollLeftSwatches ? 0 : -1}
-          >
-            <span aria-hidden>‹</span>
-          </ScrollArrow>
-          <ScrollArrow
-            $dir="right"
-            $visible={canScrollRightSwatches}
-            onClick={() => scrollSwatchesBy(1)}
-            aria-label="Scroll colors right"
-            tabIndex={canScrollRightSwatches ? 0 : -1}
-          >
-            <span aria-hidden>›</span>
-          </ScrollArrow>
-        </SwatchLane>
-
-        <SelectedBlock>
-          <SelectedSwatchPreview
-            $color={selectedColorHex}
-            $gradient={selectedColorGradient}
-          />
-          <SelectedNameStack>
-            <SelectedCategory>{selectedCategoryLabel}</SelectedCategory>
-            <SelectedNameLabel>{selectedColorName}</SelectedNameLabel>
-          </SelectedNameStack>
-        </SelectedBlock>
-      </CustomizePlaque>
-    );
-  };
-
   const matchModeLabel = isCPUMatch ? "VS CPU" : "CUSTOM";
   const slugSecondary = isCPUMatch ? "Practice Bout" : roomName;
 
   return (
     <LobbyContainer>
-      <BackgroundImage />
+      <BackgroundPlate>
+        <BackgroundImage />
+      </BackgroundPlate>
       <FrostScrim />
       <CinematicOverlay />
       <GrainOverlay />
@@ -1645,6 +1363,7 @@ const Lobby = ({
       </TopSlug>
 
       <Stage>
+        <FloorPlane aria-hidden />
         {renderFighter("left")}
 
         <VsColumn>
@@ -1662,10 +1381,8 @@ const Lobby = ({
         {renderFighter("right")}
       </Stage>
 
-      <ControlDock>
-        {renderCustomizePlaque() || <div />}
-
-        {canShowReadyButton ? (
+      {canShowReadyButton && (
+        <ControlDock>
           <ActionCluster>
             {ready ? (
               <CancelButton
@@ -1699,10 +1416,8 @@ const Lobby = ({
               </ReadyChip>
             )}
           </ActionCluster>
-        ) : (
-          <div />
-        )}
-      </ControlDock>
+        </ControlDock>
+      )}
     </LobbyContainer>
   );
 };

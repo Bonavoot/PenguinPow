@@ -30,9 +30,9 @@ const DB_VERSION = 1;
 const STORE = "recolors";
 
 // Bump this to invalidate ALL persisted recolors after a recolor-algorithm
-// change. (Asset content changes invalidate automatically via the hashed
-// source URL baked into each key.)
-export const SPRITE_CACHE_VERSION = "v2";
+// change OR a source-art update in Vite DEV (dev URLs are NOT content-hashed,
+// so asset edits alone won't orphan old blobs — production hashed URLs do).
+export const SPRITE_CACHE_VERSION = "v3";
 
 let available =
   typeof indexedDB !== "undefined" && indexedDB !== null;

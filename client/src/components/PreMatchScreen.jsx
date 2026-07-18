@@ -15,6 +15,8 @@ import {
   FONT_DISPLAY,
   FONT_KANJI,
   broadcastSlideDown,
+  TEXT_SHADOW_DISPLAY,
+  TEXT_SHADOW_DISPLAY_HEAVY,
 } from "./menuTheme";
 import { SHADOW_GRADIENT } from "./PlayerShadow";
 
@@ -263,11 +265,12 @@ const FighterWrap = styled.div`
   top: 6%;
   /* Raised off the identity strip so feet sit on the dohyo surface */
   bottom: clamp(18px, 3.5cqh, 36px);
-  /* Pull sprites inward toward the ring center */
+  /* Equal inward pull toward the ring center */
   ${(p) =>
     p.$side === "left"
-      ? "left: 20%; right: -6%;"
-      : "right: 22%; left: -8%;"}
+      ? "left: 28%; right: -4%;"
+      : "right: 28%; left: -4%;"}
+  ${(p) => (p.$side === "left" ? "transform: translateX(-10px);" : "")}
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -286,8 +289,8 @@ const FloorShadow = styled.div`
   left: 50%;
   bottom: 0;
   transform: translateX(-50%);
-  width: clamp(180px, 26cqw, 300px);
-  height: clamp(40px, 5.9cqw, 68px);
+  width: clamp(160px, 23cqw, 270px);
+  height: clamp(36px, 5.2cqw, 60px);
   border-radius: 50%;
   background: ${SHADOW_GRADIENT};
   z-index: 3;
@@ -299,8 +302,8 @@ const FighterImg = styled.img`
   z-index: 4;
   --facing: ${(p) => (p.$flip ? 1 : -1)};
   width: auto;
-  height: 84%;
-  max-width: min(100%, 36cqw);
+  height: 80%;
+  max-width: min(100%, 33cqw);
   object-fit: contain;
   object-position: center bottom;
   transform-origin: center bottom;
@@ -322,7 +325,8 @@ const VsColumn = styled.div`
   align-items: center;
   justify-content: center;
   z-index: 25;
-  padding-bottom: 6%;
+  padding-top: 32%;
+  padding-bottom: 0;
   /* Subtle left bias — less than the left fighter nudge */
   transform: translateX(-0.15cqw);
 `;
@@ -355,11 +359,7 @@ const VsKanji = styled.div`
   letter-spacing: 0.28em;
   line-height: 1;
   margin-right: -0.28em;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
 `;
 
 const VsLetters = styled.div`
@@ -370,12 +370,7 @@ const VsLetters = styled.div`
   color: #ffffff;
   letter-spacing: 0.04em;
   line-height: 0.82;
-  text-shadow:
-    -2px -2px 0 #000,
-    2px -2px 0 #000,
-    -2px 2px 0 #000,
-    2px 2px 0 #000,
-    0 3px 0 rgba(0, 0, 0, 0.9);
+  text-shadow: ${TEXT_SHADOW_DISPLAY_HEAVY};
 `;
 
 /* Solid plate so mode + loading stay readable over the gyoji. */
@@ -482,13 +477,8 @@ const FighterName = styled.div`
   text-transform: uppercase;
   letter-spacing: 0.04em;
   line-height: 0.92;
-  /* Hard outline only — no soft glow bloom */
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000,
-    0 2px 0 rgba(0, 0, 0, 0.85);
+  /* Soft ambient seat — hard 1px stroke read as jagged at these sizes */
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
   white-space: nowrap;
   min-width: 0;
   overflow: hidden;
@@ -506,8 +496,8 @@ const RankRow = styled.div`
 `;
 
 /*
- * Rank plaque — copied from UiPlayerInfo so prematch and HUD
- * print the same lacquered banzuke plate.
+ * Rank plaque — kept in lockstep with UiPlayerInfo so prematch and HUD
+ * print the same lacquered banzuke plate (gold-leaf hairline + side ticks).
  */
 const RankPlaque = styled.div`
   position: relative;
@@ -515,6 +505,7 @@ const RankPlaque = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: clamp(5px, 0.55cqw, 9px);
   flex-shrink: 0;
   padding: clamp(3px, 0.4cqh, 6px) clamp(8px, 1cqw, 14px);
   background:
@@ -522,28 +513,46 @@ const RankPlaque = styled.div`
       90deg,
       transparent 0px,
       transparent 2px,
-      rgba(245, 236, 217, 0.018) 2px,
-      rgba(245, 236, 217, 0.018) 3px
+      rgba(245, 236, 217, 0.028) 2px,
+      rgba(245, 236, 217, 0.028) 3px
     ),
     repeating-linear-gradient(
       0deg,
       transparent 0px,
       transparent 4px,
-      rgba(245, 236, 217, 0.012) 4px,
-      rgba(245, 236, 217, 0.012) 5px
+      rgba(245, 236, 217, 0.018) 4px,
+      rgba(245, 236, 217, 0.018) 5px
     ),
     linear-gradient(
       180deg,
-      rgba(14, 18, 36, 0.94) 0%,
-      rgba(10, 14, 28, 0.97) 50%,
-      rgba(8, 10, 22, 0.94) 100%
+      rgba(22, 28, 40, 0.96) 0%,
+      rgba(12, 16, 26, 0.98) 48%,
+      rgba(8, 10, 18, 0.96) 100%
     );
   border-radius: 3px;
-  border: 1px solid rgba(245, 236, 217, 0.18);
+  border: 1px solid rgba(232, 197, 71, 0.42);
   box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(245, 236, 217, 0.08),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.32);
+    0 2px 10px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 246, 210, 0.14),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.4);
+
+  &::before,
+  &::after {
+    content: "";
+    width: 2px;
+    height: 55%;
+    border-radius: 1px;
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(232, 197, 71, 0.55) 30%,
+      rgba(232, 197, 71, 0.75) 50%,
+      rgba(232, 197, 71, 0.55) 70%,
+      transparent 100%
+    );
+    flex-shrink: 0;
+  }
 `;
 
 const RankText = styled.div`
@@ -554,9 +563,9 @@ const RankText = styled.div`
   letter-spacing: 0.16em;
   line-height: 1;
   text-shadow:
-    0 0 8px rgba(232, 197, 71, 0.35),
-    0 0 3px rgba(232, 197, 71, 0.3),
-    0 1px 3px rgba(0, 0, 0, 0.9);
+    0 0 10px rgba(232, 197, 71, 0.4),
+    0 0 3px rgba(232, 197, 71, 0.35),
+    0 1px 3px rgba(0, 0, 0, 0.95);
   white-space: nowrap;
 `;
 

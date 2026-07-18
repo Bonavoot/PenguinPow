@@ -26,6 +26,22 @@ export const FONT_BODY = `"Space Grotesk", "Inter", system-ui, sans-serif`;
 export const FONT_DISPLAY = `"Bungee", cursive`;
 export const FONT_KANJI = `"Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif`;
 
+/*
+ * Soft ambient seat for cream/white Bungee (and related display type)
+ * on photo / dark menu rails. Replaces the old 4-way 1px black stroke
+ * (+ hard shelf) that made glyphs read as jagged / oversharpened at
+ * menu sizes — same lesson as SumoAnnouncementBanner MainText.
+ *
+ *   TEXT_SHADOW_DISPLAY       — titles, CTA buttons, fighter names
+ *   TEXT_SHADOW_DISPLAY_HEAVY — oversized marks (VS letters)
+ */
+export const TEXT_SHADOW_DISPLAY =
+  "0 0 14px rgba(0, 0, 0, 0.4), 0 2px 10px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.7)";
+export const TEXT_SHADOW_DISPLAY_HEAVY =
+  "0 0 18px rgba(0, 0, 0, 0.45), 0 3px 14px rgba(0, 0, 0, 0.55), 0 2px 4px rgba(0, 0, 0, 0.75)";
+export const TEXT_SHADOW_DISPLAY_SOFT =
+  "0 0 10px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.65)";
+
 // ============================================
 // COLOR TOKENS
 // ============================================

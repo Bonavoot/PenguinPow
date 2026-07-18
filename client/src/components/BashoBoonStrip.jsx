@@ -58,17 +58,18 @@ const BoonChip = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 3px;
+  border-radius: 4px;
   background: linear-gradient(
     150deg,
     ${(p) => p.$color.main} 0%,
     ${(p) => p.$color.deep} 100%
   );
-  border: 1px solid rgba(245, 236, 217, 0.24);
+  border: 1px solid rgba(245, 236, 217, 0.32);
   box-shadow:
-    0 2px 5px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.32);
+    0 2px 7px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -2px 5px rgba(0, 0, 0, 0.35);
   opacity: ${(p) => (p.$matchOver ? 0.82 : 1)};
   transition: opacity 240ms ease;
   animation: ${boonDealIn} 0.26s ease-out backwards;
@@ -86,7 +87,7 @@ const BoonChip = styled.div`
   }
 `;
 
-/* Stack count — plain stroked numeral, anchored top-right of the chip. */
+/* Stack count — same hard stroke as PowerUpChargeMark on the big slots. */
 const StackMark = styled.span`
   position: absolute;
   top: clamp(-5px, -0.45cqw, -3px);

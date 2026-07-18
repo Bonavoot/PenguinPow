@@ -311,6 +311,32 @@ export function getDivision(rank) {
   return DIVISION_BY_KEY[raw] || DIVISION_BY_KEY.jonokuchi;
 }
 
+/*
+ * Fraction of regular (non-VIP) crowd seats filled in BASHO, by division.
+ * Lower ranks play in thinner houses; Yokozuna fills the arena. PvP / VS CPU
+ * always use a full house (CrowdLayer ignores this outside BASHO).
+ */
+const BASHO_CROWD_FILL_BY_DIVISION = {
+  jonokuchi: 0.28,
+  jonidan: 0.36,
+  sandanme: 0.45,
+  makushita: 0.55,
+  juryo: 0.68,
+  maegashira: 0.80,
+  komusubi: 0.88,
+  sekiwake: 0.93,
+  ozeki: 0.97,
+  yokozuna: 1.0,
+};
+
+/**
+ * Crowd fill factor for a BASHO rank (0–1). Higher divisions → denser stands.
+ */
+export function bashoCrowdFill(rank) {
+  const key = getDivision(rank).key;
+  return BASHO_CROWD_FILL_BY_DIVISION[key] ?? 1;
+}
+
 /**
  * Human-readable rank string, e.g. "Jonokuchi #30" or "Yokozuna".
  */

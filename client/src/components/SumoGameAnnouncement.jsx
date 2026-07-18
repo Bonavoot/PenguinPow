@@ -182,8 +182,9 @@ const DarkVignette = styled.div`
  * Keeping DarkVignette alone gives the call its grounding without
  * the AI-rendered double-glow signature. */
 
-/* Impact streaks — support the slam without reading like a reticle */
-const ImpactLine = styled.div`
+/* Wrapper holds rotation so the scaleX burst isn't overridden by
+ * an inline transform (that bug silently killed the streak animation). */
+const ImpactLineWrap = styled.div`
   position: absolute;
   top: ${ANNOUNCE_Y};
   left: 50%;
@@ -193,8 +194,23 @@ const ImpactLine = styled.div`
   margin-top: ${(p) => p.$yOffset || "0px"};
   pointer-events: none;
   z-index: 1003;
-  opacity: 0;
+  transform: rotate(${(p) => p.$rotation || 0}deg);
+  transform-origin: center center;
 
+  @media (max-width: 900px) {
+    width: clamp(190px, 30cqw, 320px);
+    margin-left: calc(-0.5 * clamp(190px, 30cqw, 320px));
+  }
+  @media (max-width: 600px) {
+    width: clamp(140px, 28cqw, 220px);
+    margin-left: calc(-0.5 * clamp(140px, 28cqw, 220px));
+  }
+`;
+
+const ImpactLine = styled.div`
+  width: 100%;
+  height: 100%;
+  opacity: 0;
   background: linear-gradient(
     90deg,
     transparent 0%,
@@ -209,15 +225,6 @@ const ImpactLine = styled.div`
   animation: ${impactBurst} 0.45s ease-out forwards;
   animation-delay: ${(p) => p.$delay || "0.04s"};
   filter: blur(0.4px);
-
-  @media (max-width: 900px) {
-    width: clamp(190px, 30cqw, 320px);
-    margin-left: calc(-0.5 * clamp(190px, 30cqw, 320px));
-  }
-  @media (max-width: 600px) {
-    width: clamp(140px, 28cqw, 220px);
-    margin-left: calc(-0.5 * clamp(140px, 28cqw, 220px));
-  }
 `;
 
 /* Broad ceremonial brush under the call — ties it into the stage presentation */
@@ -305,10 +312,10 @@ const HakkiyoiText = styled.div`
   }
 `;
 
-/* Japanese subtitle 八卦良い — gold, below the main text */
+/* Japanese subtitle 八卦良い — below the brush, not overlapping it */
 const HakkiyoiKanji = styled.div`
   position: absolute;
-  top: calc(${ANNOUNCE_Y} + clamp(28px, 4.5cqh, 48px));
+  top: calc(${ANNOUNCE_Y} + clamp(42px, 6.5cqh, 72px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 1004;
@@ -329,7 +336,7 @@ const HakkiyoiKanji = styled.div`
   @media (max-width: 600px) {
     font-size: clamp(0.65rem, 1.5cqw, 1rem);
     letter-spacing: 0.25em;
-    top: calc(${ANNOUNCE_Y} + clamp(22px, 3.5cqh, 38px));
+    top: calc(${ANNOUNCE_Y} + clamp(34px, 5.5cqh, 58px));
   }
 `;
 
@@ -454,10 +461,10 @@ const TeWoBrush = styled.div`
   }
 `;
 
-/* Japanese subtitle 手を付いて below HANDS DOWN */
+/* Japanese subtitle 手を付いて — below the brush */
 const TeWoKanji = styled.div`
   position: absolute;
-  top: calc(${ANNOUNCE_Y} + clamp(24px, 4cqh, 46px));
+  top: calc(${ANNOUNCE_Y} + clamp(36px, 5.5cqh, 62px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 1004;
@@ -476,7 +483,7 @@ const TeWoKanji = styled.div`
 
   @media (max-width: 600px) {
     font-size: clamp(0.55rem, 1.1cqw, 0.8rem);
-    top: calc(${ANNOUNCE_Y} + clamp(20px, 3.2cqh, 36px));
+    top: calc(${ANNOUNCE_Y} + clamp(28px, 4.5cqh, 50px));
   }
 `;
 
@@ -506,15 +513,16 @@ const SumoGameAnnouncement = ({ type = "hakkiyoi", duration = null }) => {
 
         <DarkVignette $duration={durationStr} />
         {impactLines.map((line, i) => (
-          <ImpactLine
+          <ImpactLineWrap
             key={i}
-            $delay={line.delay}
+            $rotation={line.rotation}
             $yOffset={line.yOffset}
-            style={{ transform: `rotate(${line.rotation}deg)` }}
-          />
+          >
+            <ImpactLine $delay={line.delay} />
+          </ImpactLineWrap>
         ))}
 
-        <HakkiyoiText $duration={durationStr}>HAKKI-YOI !</HakkiyoiText>
+        <HakkiyoiText $duration={durationStr}>HAKKI-YOI!</HakkiyoiText>
         <HakkiyoiBrush $duration={durationStr} />
         <HakkiyoiKanji $duration={durationStr}>八卦良い</HakkiyoiKanji>
 
@@ -546,7 +554,7 @@ const SumoGameAnnouncement = ({ type = "hakkiyoi", duration = null }) => {
   return (
     <>
       <ScreenFlash $type="tewotsuite" />
-      <TeWoTsuiteText $duration={durationStr}>HANDS DOWN !</TeWoTsuiteText>
+      <TeWoTsuiteText $duration={durationStr}>HANDS DOWN!</TeWoTsuiteText>
       <TeWoKanji $duration={durationStr}>手を付いて</TeWoKanji>
       <TeWoBrush $duration={durationStr} />
     </>
