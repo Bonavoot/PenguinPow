@@ -183,13 +183,27 @@ function createInitialPlayerState(overrides = {}) {
     isSlapParrying: false,
     slapParryKnockbackVelocity: 0,
     slapParryImmunityUntil: 0,
-    isSlapParryRecovering: false,
+    isSlapParryRecovering: false, // Repurposed: also guards the same-tick slap-trade resolution
+    // ── GUARD & PARRY (Space) — one stance, three outcomes. Reuses these flags:
+    //   isRawParrying        = in the defensive stance (parry window live OR guarding)
+    //   isGuarding           = HOLDING the block floor (no live parry window)
+    //   isRawParrySuccess    = a parry landed (brief impact pose)
+    //   rawParryStartTime    = sim time the tap armed (perfect grade + projectile/flap read this)
     isRawParrying: false,
+    isGuarding: false,         // holding Space as the block floor (no live parry window)
     rawParryStartTime: 0,
     rawParryPressGameTime: 0,
+    apActiveUntil: 0,          // Sim time the PARRY window closes (→ guard if held, whiff if released cold)
+    apFlowUntil: 0,            // DEPRECATED (Deflect Flow removed) — kept zeroed so lingering reads don't throw
+    apChainCount: 0,           // Consecutive parries (crescendo VFX/SFX on the client; reset when the stance drops)
+    isApWhiffRecovering: false, // Cold tap into nothing → punishable recovery
+    apRecoveryUntil: 0,        // Sim time the whiff recovery ends
+    apCooldownUntil: 0,        // Earliest sim time the next fresh tap may arm
+    apSpaceConsumed: false,    // One parry window per physical press (clears on release; a re-tap re-arms)
+    // Legacy raw-parry fields kept so lingering references don't throw; unused by AP.
     rawParryMinDurationMet: false,
     rawParryCooldownUntil: 0,
-    rawParryRearmUntil: 0, // Earliest sim time a held parry may re-arm its perfect window (see RAW_PARRY_REARM_INTERVAL_MS)
+    rawParryRearmUntil: 0,
     isRawParryStun: false,
     perfectParryStunStartTime: 0,
     perfectParryStunBaseTimeout: null,

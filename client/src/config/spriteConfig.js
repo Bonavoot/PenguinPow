@@ -70,6 +70,8 @@ import dodging from "../assets/dodging.png";
 import crouchStance from "../assets/crouch-stance.png";
 import recovering from "../assets/recovering.png";
 import rawParrySuccess from "../assets/raw-parry-success.png";
+import blocking from "../assets/blocking.png";
+import blockParry from "../assets/block-parry.png";
 import slapAttack1 from "../assets/slapAttack1.png";
 import slapAttack2 from "../assets/slapAttack2.png";
 import slapAttack3 from "../assets/attack.png";
@@ -237,6 +239,8 @@ const BLUE_STATIC_SPRITES = {
   crouchStance: crouchStance,
   recovering: recovering,
   rawParrySuccess: rawParrySuccess,
+  blocking: blocking,
+  blockParry: blockParry,
   slapAttack1: slapAttack1,
   slapAttack2: slapAttack2,
   slapAttack3: slapAttack3,

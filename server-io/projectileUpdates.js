@@ -251,6 +251,11 @@ function updateProjectiles(room, io, delta) {
           // scheduled frame — keeps the impact crisp with no lingering ball.
           room.forceBroadcast = true;
 
+          // Consume any armed Attack-Parry window so the AP state machine treats
+          // this as a USED parry (not a whiff) once the success pose clears.
+          opponent.apActiveUntil = 0;
+          opponent.isApWhiffRecovering = false;
+
           // Check if this is a perfect parry (within 100ms of parry start)
           const currentTime = simNow(room);
           const parryDuration = currentTime - opponent.rawParryStartTime;
@@ -591,6 +596,9 @@ function updateProjectiles(room, io, delta) {
           // Trigger parry success animation and sound + allow early exit
           opponent.isRawParrySuccess = true;
           opponent.rawParryMinDurationMet = true;
+          // Consume any armed AP window so the state machine treats this as USED.
+          opponent.apActiveUntil = 0;
+          opponent.isApWhiffRecovering = false;
           // Emit raw parry success event for visual effect and sound
           // Send both positions so client can calculate center
           const parryingPlayerNumber = room.players.findIndex(p => p.id === opponent.id) + 1;

@@ -107,6 +107,10 @@ const {
   setSimRoomResolver,
   advanceRoomSimTime,
   lagCompensatedParryStart,
+  canArmAttackParry,
+  armAttackParry,
+  enterGuard,
+  updateAttackParryState,
   emitThrottledScreenShake,
   clearHitFall,
   clearSidestepHitReturn,
@@ -3028,26 +3032,31 @@ function tick(delta) {
         player.isStrafing = false;
       }
 
-      // raw parry
+      // ── GUARD & PARRY (Space) ─────────────────────────────────────────────
+      // Edge (a fresh tap) opens a PARRY window; HOLDING with no live window is
+      // GUARD (the block floor). The primary parry arm is the edge-triggered
+      // socket path; this loop path is the fallback (fires if that press was
+      // dropped) AND owns GUARD entry. (The CPU drives its parry off keys.s in
+      // cpuAI.js, so this human-only block leaves it alone.)
       if (
+        !player.isCPU &&
         player.keys[" "] &&
-        player.activePowerUp !== POWER_UP_TYPES.FLAP && // Flap replaces raw parry on Space
+        player.activePowerUp !== POWER_UP_TYPES.FLAP && // Flap replaces AP on Space
         !player.loadout?.flapReplacesParry && // BASHO Flap loadout also replaces parry (absent → falsy for non-BASHO)
         !player.isFlapping &&
-        !player.isGrabBreaking && // Block raw parry while grab break is active
+        !player.isGrabBreaking && // Block while grab break is active
         !player.isGrabBreakCountered && // Block while countered by grab break
         !player.isGrabBreakSeparating && // Block during grab break separation
         !player.isGrabSeparating && // Block during grab push separation
         !player.grabBreakSpaceConsumed && // Block until the triggering space press is released
-        now >= (player.rawParryCooldownUntil || 0) &&
-        !player.isDodging && // Block raw parry during dodge - don't interrupt dodge hop
-        !player.isSidestepping && // Block raw parry during sidestep
+        !player.isDodging && // Don't interrupt dodge hop
+        !player.isSidestepping && // Block during sidestep
         !player.isGrabbing &&
         !player.isBeingGrabbed &&
-        !player.isGrabStartup && // Block raw parry during grab startup (the lunge windup) — otherwise parry coexists with the grab attempt
-        !player.isGrabbingMovement && // Block raw parry during grab movement
-        !player.isWhiffingGrab && // Block raw parry during grab whiff recovery
-        !player.isGrabClashing && // Block raw parry during grab clashing
+        !player.isGrabStartup && // Block during grab startup (the lunge windup)
+        !player.isGrabbingMovement && // Block during grab movement
+        !player.isWhiffingGrab && // Block during grab whiff recovery
+        !player.isGrabClashing && // Block during grab clashing
         !player.isThrowing &&
         !player.isBeingThrown &&
         !player.isRecovering &&
@@ -3056,40 +3065,32 @@ function tick(delta) {
         !player.isRawParryStun &&
         !player.isAtTheRopes
       ) {
-        // Start raw parry if not already parrying
-        if (!player.isRawParrying) {
-          // Clear parry success state when starting a new parry
-          player.isRawParrySuccess = false;
-          player.isPerfectRawParrySuccess = false;
-          
-          player.isRawParrying = true;
-          // Backdate toward the true press moment so the perfect-parry window is
-          // judged on when the player pressed, not when the packet arrived.
-          player.rawParryStartTime = lagCompensatedParryStart(player, now);
-          player.rawParryMinDurationMet = false;
-          // Flat stamina cost on parry initiation
-          player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
-          // Clear any existing charge attack when starting raw parry
+        if (player.spaceJustPressed && canArmAttackParry(player, now)) {
+          // Fresh tap → open a PARRY window (fallback for the socket edge path).
+          armAttackParry(player, now, lagCompensatedParryStart(player, now));
           clearChargeState(player, true); // true = cancelled
-          // Clear movement momentum when starting raw parry to prevent dodge momentum interference
-          player.movementVelocity = 0;
-          player.isStrafing = false;
-          // Cancel power slide when parrying
-          player.isPowerSliding = false;
-          // Clear crouch states when starting raw parry
-          player.isCrouchStance = false;
-          player.isCrouchStrafing = false;
-          player.pendingSlapCount = 0;
-        }
-        // Only set isReady to false if we're not in an attack state
-        if (!player.isAttacking && !player.isChargingAttack) {
-          player.isReady = false;
+          if (!player.isAttacking && !player.isChargingAttack) {
+            player.isReady = false;
+          }
+        } else if (
+          !player.isRawParrying &&
+          !player.isApWhiffRecovering &&
+          now >= (player.apCooldownUntil || 0)
+        ) {
+          // Held with no live parry window → GUARD (the block floor).
+          enterGuard(player);
+          clearChargeState(player, true);
+          if (!player.isAttacking && !player.isChargingAttack) {
+            player.isReady = false;
+          }
         }
       }
 
-      // Handle raw parry ending logic
-      if (player.isRawParrying) {
-        // Force clear all movement states during raw parry to ensure animation priority
+      // During the AP active window OR its punishable whiff recovery, hold
+      // animation priority (clear movement/dodge/crouch) — same as the old parry
+      // stance. The whiff-recovery hold is what makes a poorly-timed AP a real,
+      // punishable commitment (the player is rooted until recovery ends).
+      if (player.isRawParrying || player.isApWhiffRecovering) {
         player.isStrafing = false;
         player.movementVelocity = 0;
         player.isDodging = false;
@@ -3097,31 +3098,19 @@ function tick(delta) {
         player.isDodgeRecovery = false;
         player.isAttacking = false;
         player.isJumping = false;
-        // Force clear crouch states during raw parry to prevent concurrent use
         player.isCrouchStance = false;
         player.isCrouchStrafing = false;
+      }
 
-        const parryDuration = now - player.rawParryStartTime;
-
-        // Check if minimum duration has been met (whiffed parries use full commitment)
-        if (parryDuration >= RAW_PARRY_MIN_DURATION) {
-          player.rawParryMinDurationMet = true;
-        }
-
-        // Auto-end: parry expires after max duration (forces timing, prevents camping)
-        const maxDurationReached = parryDuration >= RAW_PARRY_MAX_DURATION && !player.isPerfectRawParrySuccess;
-
-        // End parry if: (spacebar released AND min duration met) OR max duration reached
-        // Don't end parry if in perfect parry animation lock
-        if (maxDurationReached || (!player.keys[" "] && player.rawParryMinDurationMet && !player.isPerfectRawParrySuccess)) {
-          player.isRawParrying = false;
-          player.rawParryStartTime = 0;
-          player.rawParryMinDurationMet = false;
-          player.isRawParrySuccess = false;
-          player.rawParryCooldownUntil = now + RAW_PARRY_COOLDOWN_MS;
-          // Space released - clear grab-break consumption so future parries can occur
-          player.grabBreakSpaceConsumed = false;
-        }
+      // AP state machine: Deflect Flow (auto-re-arm while held+in-flow), whiff
+      // punish on a mistimed first read, clean drop on Flow lapse/release. The
+      // "parry held" key is SPACE for humans but S for the CPU (it arms/holds AP
+      // on keys.s), so Flow must read the right key or the CPU could never ride it.
+      const apHeld = player.isCPU ? !!player.keys.s : !!player.keys[" "];
+      updateAttackParryState(player, now, apHeld);
+      if (!player.keys[" "]) {
+        // Space released — clear grab-break consumption so future parries can occur.
+        player.grabBreakSpaceConsumed = false;
       }
 
       if (

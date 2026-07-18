@@ -268,6 +268,8 @@ export const StyledImage = styled("img")
         "isDodging",
         "isStrafing",
         "isRawParrying",
+        "isGuarding",
+        "isGuardBlockSuccess",
         "isGrabBreaking",
         "isReady",
         "readyIntroComplete",
@@ -427,7 +429,10 @@ export const StyledImage = styled("img")
         undefined, // flapUseDodgePose
         undefined, // isPalmThrust
         2, // palmThrustFrame
-        props.$isBeingThrown && !props.$showClinchKillThrowLanding
+        props.$isBeingThrown && !props.$showClinchKillThrowLanding,
+        undefined, // slapFrame
+        props.$isGuarding,
+        props.$isGuardBlockSuccess
       ),
     style: {
       position: "absolute",

@@ -21,6 +21,8 @@ import {
   salt,
   recovering,
   rawParrySuccess,
+  blocking,
+  blockParry,
   crouchStance,
   flap1,
   flap2,
@@ -139,7 +141,12 @@ const getImageSrc = (
   //   0 = windup (ready stance)   1 = blur (DISABLED in timeline)
   //   2 = hit (active strike)     3 = recovery (settles back to the ready stance)
   // Default 2 (the hit/active pose) is the safe money-frame fallback.
-  slapFrame = 2
+  slapFrame = 2,
+  // True GUARD floor (parry window already expired while still holding Space).
+  // Distinct from isRawParrying, which is also true during the live parry window.
+  isGuarding = false,
+  // Guard SUCCESS pose — briefly true after a chip absorb (mirrors isRawParrySuccess).
+  isGuardBlockSuccess = false
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -174,7 +181,11 @@ const getImageSrc = (
   if (isGrabSeparating) return rawParrySuccess;
   if (isGrabBreaking) return crouching;
   if (isGrabBreakCountered) return hit;
+  // Attack Parry — IMPACT frame: the moment a parry actually lands (held for
+  // ~the blue burst's duration via AP_SUCCESS_RECOVERY_MS). raw-parry-success.png.
   if (isRawParrySuccess || isPerfectRawParrySuccess) return rawParrySuccess;
+  // Guard SUCCESS — chip absorb lands; hold block-parry.png for the block VFX.
+  if (isGuardBlockSuccess) return blockParry;
   if (isRawParryStun) return isPerfectParried;
   if (isHit) return hit;
   if (isAtTheRopes) return atTheRopes;
@@ -271,7 +282,10 @@ const getImageSrc = (
     }
     return grabbing;
   }
-  if (isRawParrying) return crouching;
+  // Parry / guard ATTEMPTING stance (space held, no absorb this frame).
+  // Same blocking.png for the live parry window AND the guard floor — success
+  // poses are handled above (raw-parry-success / block-parry).
+  if (isGuarding || isRawParrying) return blocking;
   if (isReady) {
     return readyIntroComplete ? pumoTachiaiPosition : pumoSideProfile;
   }

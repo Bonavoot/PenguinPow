@@ -56,6 +56,10 @@ function cleanupPlayerStates(player) {
   player.slapActiveEndTime = 0;
   player.chargedActiveEndTime = 0;
   player.isRawParrying = false;
+  player.isGuarding = false;
+  player.apActiveUntil = 0;
+  player.apChainCount = 0;
+  player.isApWhiffRecovering = false;
   player.isRawParryStun = false;
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
@@ -209,6 +213,8 @@ function getCleanedRoomData(room) {
       isParryKnockback: false,
       isDodging: false,
       isRawParrying: false,
+      isGuarding: false,
+      apChainCount: 0,
       isRawParryStun: false,
       isRawParrySuccess: false,
       isPerfectRawParrySuccess: false,
@@ -333,6 +339,8 @@ function getCleanedRoomsData(rooms) {
         isAttacking: false,
         isStrafing: false,
         isRawParrying: false,
+        isGuarding: false,
+        apChainCount: 0,
         isRawParryStun: false,
         isDodging: false,
         isSidestepping: false,

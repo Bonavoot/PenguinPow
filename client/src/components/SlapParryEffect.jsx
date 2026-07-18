@@ -1,35 +1,50 @@
 import { useEffect, useState, useRef, memo } from "react";
 import styled from "styled-components";
 import PropTypes from "prop-types";
-import parrySheet from "../assets/grab-break-effect.png";
+import parrySheet from "../assets/raw-parry-effect.png";
 
-// TEST: slap parry now reuses the grab-break burst sprite in its WHITE default
-// (no green recolor). Same 4x4 / frames 1–15 sheet, played once, but smaller and
-// a touch quicker to suit the fast, frequent slap-parry clash. The old CSS
-// ring/cross/bloom/core/afterglow layers are disabled.
-const GRID = 4;
-const START_FRAME = 1; // frame 0 is empty
-const END_FRAME = 15;
-const DURATION_MS = 280; // 15 frames → ~19ms/frame: snappy for a rapid parry
-const SIZE_CQW = 13; // a touch under grab break's 14 — still the lighter beat, just more readable
+// ATTACK PARRY (AP) burst — same expanding-ring sheet as snowball/raw parry
+// (raw-parry-effect.png), with the classic perfect = hot electric blue /
+// regular = lighter steel-blue recolor. 8x4 padded columns; short duration
+// auto-skips dupes. Frame steps write background-position on a DOM ref.
+const GRID = 8;
+const START_FRAME = 8; // 0–7 ~empty
+const END_FRAME = 63;
+const DURATION_MS = 360;
+const PERFECT_DURATION_MS = 420;
+// Perfect = former regular size; regular steps down so the hierarchy still reads.
+const SIZE_CQW = 13.5;
+const PERFECT_SIZE_CQW = 19;
+const CHAIN_SIZE_STEP = 0.5;
+const CHAIN_SIZE_MAX = 3;
+const PERSPECTIVE = "400px";
+const TILT_DEG = 62;
+
+// Perfect = warm gold (matches the perfect-parry rim). Regular = soft steel-cyan.
+const AP_BLUE_FILTER = `grayscale(1) sepia(1) hue-rotate(185deg) saturate(2.8) brightness(1.24) drop-shadow(0 0 4px rgba(120, 195, 255, 0.6))`;
+const AP_PERFECT_FILTER = `grayscale(1) sepia(1) hue-rotate(8deg) saturate(4.2) brightness(1.35) drop-shadow(0 0 4px rgba(255, 230, 140, 1)) drop-shadow(0 0 12px rgba(255, 190, 60, 0.9))`;
+
+const filterFor = (variant) =>
+  variant === "perfect" ? AP_PERFECT_FILTER : AP_BLUE_FILTER;
+
+const baseSizeFor = (variant) =>
+  variant === "perfect" ? PERFECT_SIZE_CQW : SIZE_CQW;
+
 const SpriteContainer = styled.div`
   position: absolute;
   left: ${(props) => (props.$x / 1280) * 100}%;
   bottom: ${(props) => (props.$y / 720) * 100}%;
-  width: ${SIZE_CQW}cqw;
-  height: ${SIZE_CQW}cqw;
-  transform: translate(-50%, 50%);
+  width: ${(props) => props.$size}cqw;
+  height: ${(props) => props.$size}cqw;
+  transform: translate(-50%, 50%) perspective(${PERSPECTIVE})
+    rotateY(${(props) => (props.$facing === -1 ? TILT_DEG : -TILT_DEG)}deg);
   transform-origin: center;
   z-index: 100;
   pointer-events: none;
-  /* White default: the sheet is already pure white with its shape in the alpha
-     channel, so drawing it directly keeps the bright flash. A soft white glow
-     gives it presence against the scene without tinting it. */
   background-image: url(${parrySheet});
   background-repeat: no-repeat;
   background-size: ${GRID * 100}% ${GRID * 100}%;
-  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.55));
-  will-change: background-position;
+  filter: ${(props) => props.$filter};
 `;
 
 const frameToBackgroundPosition = (frame) => {
@@ -40,9 +55,8 @@ const frameToBackgroundPosition = (frame) => {
   return `${x}% ${y}%`;
 };
 
-// Plays the sheet once, then removes itself via onDone.
-const ParryBurst = ({ x, y, onDone }) => {
-  const [frame, setFrame] = useState(START_FRAME);
+const ParryBurst = ({ x, y, facing, variant, size, onDone }) => {
+  const elRef = useRef(null);
   const rafRef = useRef(null);
   const startRef = useRef(null);
   const onDoneRef = useRef(onDone);
@@ -50,7 +64,9 @@ const ParryBurst = ({ x, y, onDone }) => {
 
   useEffect(() => {
     const totalFrames = END_FRAME - START_FRAME + 1;
-    const frameDuration = DURATION_MS / totalFrames;
+    const duration = variant === "perfect" ? PERFECT_DURATION_MS : DURATION_MS;
+    const frameDuration = duration / totalFrames;
+    let lastIdx = -1;
 
     const step = (t) => {
       if (startRef.current === null) startRef.current = t;
@@ -59,22 +75,33 @@ const ParryBurst = ({ x, y, onDone }) => {
         onDoneRef.current();
         return;
       }
-      setFrame(START_FRAME + idx);
+      if (idx !== lastIdx && elRef.current) {
+        lastIdx = idx;
+        elRef.current.style.backgroundPosition = frameToBackgroundPosition(
+          START_FRAME + idx
+        );
+      }
       rafRef.current = requestAnimationFrame(step);
     };
 
+    if (elRef.current) {
+      elRef.current.style.backgroundPosition =
+        frameToBackgroundPosition(START_FRAME);
+    }
     rafRef.current = requestAnimationFrame(step);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, []);
+  }, [variant]);
 
-  const pos = frameToBackgroundPosition(frame);
   return (
     <SpriteContainer
+      ref={elRef}
       $x={x}
       $y={y}
-      style={{ backgroundPosition: pos }}
+      $facing={facing}
+      $size={size}
+      $filter={filterFor(variant)}
     />
   );
 };
@@ -82,6 +109,9 @@ const ParryBurst = ({ x, y, onDone }) => {
 ParryBurst.propTypes = {
   x: PropTypes.number.isRequired,
   y: PropTypes.number.isRequired,
+  facing: PropTypes.number,
+  variant: PropTypes.string,
+  size: PropTypes.number.isRequired,
   onDone: PropTypes.func.isRequired,
 };
 
@@ -92,12 +122,26 @@ const SlapParryEffect = ({ position }) => {
 
   useEffect(() => {
     if (!position) return;
-    // Each parry hands in a fresh position object; ignore identical references
-    // so we don't double-spawn on unrelated re-renders.
     if (position === lastPosRef.current) return;
     lastPosRef.current = position;
     const id = ++idRef.current;
-    setBursts((prev) => [...prev, { id, x: position.x, y: position.y }]);
+    const variant = position.variant || "parry";
+    const chainGrow = Math.min(
+      (Math.max(position.chain || 1, 1) - 1) * CHAIN_SIZE_STEP,
+      CHAIN_SIZE_MAX
+    );
+    const size = baseSizeFor(variant) + chainGrow;
+    setBursts((prev) => [
+      ...prev,
+      {
+        id,
+        x: position.x,
+        y: position.y,
+        facing: position.facing || 1,
+        variant,
+        size,
+      },
+    ]);
   }, [position]);
 
   const handleDone = (id) =>
@@ -106,7 +150,15 @@ const SlapParryEffect = ({ position }) => {
   return (
     <>
       {bursts.map((b) => (
-        <ParryBurst key={b.id} x={b.x} y={b.y} onDone={() => handleDone(b.id)} />
+        <ParryBurst
+          key={b.id}
+          x={b.x}
+          y={b.y}
+          facing={b.facing}
+          variant={b.variant}
+          size={b.size}
+          onDone={() => handleDone(b.id)}
+        />
       ))}
     </>
   );
@@ -116,6 +168,10 @@ SlapParryEffect.propTypes = {
   position: PropTypes.shape({
     x: PropTypes.number.isRequired,
     y: PropTypes.number.isRequired,
+    facing: PropTypes.number,
+    variant: PropTypes.string,
+    chain: PropTypes.number,
+    isPerfect: PropTypes.bool,
   }),
 };
 

@@ -236,7 +236,11 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
 
       cin.active = true;
       cin.phase = "freeze";
-      cin.impactFraction = (data.impactX ?? 640) / GAME_WIDTH;
+      // noPan (AP slap-down kill): the victim doesn't fly across the screen, so
+      // keep the camera CENTERED — zoom + darken + freeze only, no lock-and-pan.
+      // (The pan exists for the charged kill where the victim rockets to the edge.)
+      cin.noPan = !!data.noPan;
+      cin.impactFraction = cin.noPan ? 0.5 : (data.impactX ?? 640) / GAME_WIDTH;
       cin.startTime = performance.now();
       cin.hitstopMs = data.hitstopMs || 550;
       cin.targetScale = CINEMATIC_ZOOM_SCALE;
@@ -340,15 +344,19 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
         if (cin.active) {
           const elapsed = performance.now() - cin.startTime;
 
+          // noPan (AP slap-down kill): a PURE zoom-in-place. The camera keeps
+          // whatever it was already centered on (the normal player-tracking
+          // center) and ONLY the scale changes — no pan to impact, no lock to a
+          // knockout edge. cam.x ∝ scale for a fixed center (see
+          // getCameraTargetForPositions), so tracking normalTargetX scaled by the
+          // current zoom keeps the exact same view centered while it zooms.
+          const noPanCenteredX = () =>
+            normalTargetX * (cam.scale / (normalTargetScale || 1));
+
           if (cin.phase === "freeze") {
-            // Zoom IN toward impact point.
             // Zoom-punch: for the first CINEMATIC_PUNCH_DURATION_MS we aim past the
             // target scale (overshoot), then settle. Reads as a sharp exclamation
             // point at the exact frame of impact — the AAA "I just got KO'd" feel.
-            const cinematicTargetX =
-              -(cin.impactFraction - 0.5) * cin.targetScale * 100;
-            const cinematicTargetY = Y_OFFSET + 2;
-
             const punchT = Math.min(elapsed / CINEMATIC_PUNCH_DURATION_MS, 1);
             // Bell curve: 0 → 1 → 0 over the punch duration.
             const punchEnvelope = punchT < 1 ? Math.sin(punchT * Math.PI) : 0;
@@ -359,8 +367,19 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
               punchedTarget,
               lerpT(CINEMATIC_ZOOM_IN_SPEED),
             );
-            cam.x = lerp(cam.x, cinematicTargetX, lerpT(CINEMATIC_ZOOM_IN_SPEED));
-            cam.y = lerp(cam.y, cinematicTargetY, lerpT(CINEMATIC_ZOOM_IN_SPEED));
+
+            if (cin.noPan) {
+              // Pure zoom in place — no positional change at all.
+              cam.x = noPanCenteredX();
+              cam.y = normalTargetY;
+            } else {
+              // Zoom IN toward the impact point (charged kill).
+              const cinematicTargetX =
+                -(cin.impactFraction - 0.5) * cin.targetScale * 100;
+              const cinematicTargetY = Y_OFFSET + 2;
+              cam.x = lerp(cam.x, cinematicTargetX, lerpT(CINEMATIC_ZOOM_IN_SPEED));
+              cam.y = lerp(cam.y, cinematicTargetY, lerpT(CINEMATIC_ZOOM_IN_SPEED));
+            }
 
             // Heavy screen shake during freeze — drive the trauma floor.
             cin.shakeTrauma *= decayT(CINEMATIC_SHAKE_DECAY);
@@ -371,40 +390,53 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
             if (elapsed >= cin.hitstopMs) {
               cin.phase = "release";
               cin.releaseStartTime = performance.now();
-              // DON'T snap scale — let release phase ease the pull-back so we
-              // get a smooth "exhale" instead of a hard cut.
-              cam.y = cin.preY;
+              if (!cin.noPan) cam.y = cin.preY;
             }
           } else if (cin.phase === "release") {
             // "Exhale" pull: for ~120ms after freeze ends, pull the camera
             // slightly *past* the locked scale (zoom out a hair) before settling.
-            // Tiny detail, big impact — reads as the camera relaxing after the kill.
             const lockedScale = Math.max(cin.preScale, DEFAULT_SCALE);
             const releaseElapsed = performance.now() - cin.releaseStartTime;
             const pullT = Math.min(releaseElapsed / CINEMATIC_RELEASE_DURATION_MS, 1);
             const pullEnvelope = pullT < 1 ? Math.sin(pullT * Math.PI) : 0;
             const releaseTargetScale = lockedScale - CINEMATIC_RELEASE_PULL * pullEnvelope;
             cam.scale = lerp(cam.scale, releaseTargetScale, lerpT(CINEMATIC_ZOOM_IN_SPEED));
-            cam.y = lerp(cam.y, normalTargetY, lerpT(SMOOTH_FACTOR));
 
-            // Pan toward the knockout edge at locked zoom
-            const maxPan = 50 * (cam.scale - 1);
-            const edgeTargetX = cin.knockbackDir < 0 ? maxPan : -maxPan;
-            cam.x = lerp(cam.x, edgeTargetX, lerpT(CINEMATIC_PAN_SPEED));
-
-            if (Math.abs(cam.x - edgeTargetX) < 0.5 && pullT >= 1) {
-              cam.x = edgeTargetX;
-              cam.scale = lockedScale;
-              cin.phase = "hold";
-              cin.holdStartTime = performance.now();
+            if (cin.noPan) {
+              // Ease the zoom back out while staying centered — no pan.
+              cam.x = noPanCenteredX();
+              cam.y = normalTargetY;
+              if (pullT >= 1) {
+                cam.scale = lockedScale;
+                cam.x = noPanCenteredX();
+                cin.phase = "hold";
+                cin.holdStartTime = performance.now();
+              }
+            } else {
+              cam.y = lerp(cam.y, normalTargetY, lerpT(SMOOTH_FACTOR));
+              const maxPan = 50 * (cam.scale - 1);
+              const edgeTargetX = cin.knockbackDir < 0 ? maxPan : -maxPan;
+              cam.x = lerp(cam.x, edgeTargetX, lerpT(CINEMATIC_PAN_SPEED));
+              if (Math.abs(cam.x - edgeTargetX) < 0.5 && pullT >= 1) {
+                cam.x = edgeTargetX;
+                cam.scale = lockedScale;
+                cin.phase = "hold";
+                cin.holdStartTime = performance.now();
+              }
             }
           } else if (cin.phase === "hold") {
-            // Stay locked at the edge — only game_reset clears cinematic state
+            // Stay locked — only game_reset clears cinematic state. noPan (AP
+            // kill) holds at NORMAL zoom, centered (i.e. exactly the normal
+            // camera); the charged kill holds zoomed at the knockout edge.
             cam.scale = Math.max(cin.preScale, DEFAULT_SCALE);
-            const maxPan = 50 * (cam.scale - 1);
-            const edgeTargetX = cin.knockbackDir < 0 ? maxPan : -maxPan;
-            cam.x = edgeTargetX;
-            cam.y = lerp(cam.y, normalTargetY, lerpT(SMOOTH_FACTOR));
+            if (cin.noPan) {
+              cam.x = noPanCenteredX();
+              cam.y = normalTargetY;
+            } else {
+              const maxPan = 50 * (cam.scale - 1);
+              cam.x = cin.knockbackDir < 0 ? maxPan : -maxPan;
+              cam.y = lerp(cam.y, normalTargetY, lerpT(SMOOTH_FACTOR));
+            }
           }
         } else if (frozen) {
           // ── Perfect-parry freeze-frame — hold the camera exactly where it is.

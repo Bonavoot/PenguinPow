@@ -103,10 +103,16 @@ const BLOCKING_FLAGS = [
   "isGrabSeparating",
   "isGrabBreaking",
   "isGrabBreakCountered",
+  // Server drives the grab-break / pull-reversal SEPARATION via a position tween;
+  // without these the local predictor keeps sim'ing movement against that tween
+  // (once space is released) and rubber-bands → the character "shakes".
+  "isGrabBreakSeparating",
+  "isBeingPullReversaled",
   "isRawParrying",
   "isRawParryStun",
   "isRawParrySuccess",
   "isPerfectRawParrySuccess",
+  "isApWhiffRecovering",
   "isRecovering",
   "isThrowingSnowball",
   "isSpawningPumoArmy",

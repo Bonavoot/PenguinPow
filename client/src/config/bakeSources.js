@@ -51,6 +51,8 @@ export const BAKE_SOURCES = [
   { id: "crouch-stance", file: "crouch-stance.png" },
   { id: "recovering", file: "recovering.png" },
   { id: "raw-parry-success", file: "raw-parry-success.png" },
+  { id: "blocking", file: "blocking.png" },
+  { id: "block-parry", file: "block-parry.png" },
   { id: "slapAttack1", file: "slapAttack1.png" },
   { id: "slapAttack2", file: "slapAttack2.png" },
   { id: "slap-attack-1-blur-frame", file: "slap-attack-1-blur-frame.png" },

@@ -17,6 +17,7 @@ import {
 import PlayerShadow from "./PlayerShadow";
 import ThrowTechEffect from "./ThrowTechEffect";
 import SlapParryEffect from "./SlapParryEffect";
+import BlockingEffect, { BLOCK_SUCCESS_POSE_MS } from "./BlockingEffect";
 import ChargeClashEffect from "./ChargeClashEffect";
 import { useParticles } from "../particles/ParticleContext";
 import StarStunEffect from "./StarStunEffect";
@@ -923,6 +924,12 @@ const GameFighter = ({
         !penguin.isRawParrying &&
         !penguin.isThrowingSnowball &&
         !penguin.isAtTheRopes &&
+        // Clinch: SPACE in a clinch is a GRAB BREAK, not an AP — never predict a
+        // parry (or any action) here, or the predicted parry pose flickers
+        // against the real clinch/grab-break state ("shaking").
+        !penguin.inClinch &&
+        !penguin.hasGrip &&
+        !penguin.isBeingLifted &&
         // Grab-related intermediate states
         !penguin.isGrabStartup &&
         !penguin.isGrabbingMovement &&
@@ -1532,6 +1539,9 @@ const GameFighter = ({
       dodgeDirection: p.isDodging ? p.dodgeDirection : penguin.dodgeDirection,
       isChargingAttack: p.isChargingAttack || penguin.isChargingAttack,
       isRawParrying: p.isRawParrying || penguin.isRawParrying,
+      // Guard floor is server-authored (window expired while holding). Don't
+      // OR-predict it — the live parry window must keep the parry stance.
+      isGuarding: !!penguin.isGuarding,
       isGrabbing: p.isGrabbing || penguin.isGrabbing,
       // ICE PHYSICS: Movement predictions
       isPowerSliding: p.isPowerSliding || penguin.isPowerSliding,
@@ -1625,6 +1635,11 @@ const GameFighter = ({
   const [roundHistory, setRoundHistory] = useState([]); // Track order of wins: ["player1", "player2", "player1", ...]
   const [matchOver, setMatchOver] = useState(false);
   const [parryEffectPosition, setParryEffectPosition] = useState(null);
+  const [blockingEffectPosition, setBlockingEffectPosition] = useState(null);
+  // Guard SUCCESS pose — mirrors isRawParrySuccess. True only for the absorb
+  // window after a chip lands; held-guard "attempting" uses blocking.png.
+  const [guardBlockSuccess, setGuardBlockSuccess] = useState(false);
+  const guardBlockSuccessTimeoutRef = useRef(null);
   const [chargeClashEffectPosition, setChargeClashEffectPosition] = useState(null);
   const [hitEffectPosition, setHitEffectPosition] = useState(null);
   const [rawParryEffectPosition, setRawParryEffectPosition] = useState(null);
@@ -2513,6 +2528,7 @@ const GameFighter = ({
           prev.isThrowing !== newState.isThrowing ||
           prev.isBeingThrown !== newState.isBeingThrown ||
           prev.isRawParrying !== newState.isRawParrying ||
+          prev.isGuarding !== newState.isGuarding ||
           prev.isChargingAttack !== newState.isChargingAttack ||
           prev.isBraking !== newState.isBraking ||
           prev.isPowerSliding !== newState.isPowerSliding ||
@@ -3012,17 +3028,60 @@ const GameFighter = ({
       if (data && typeof data.parrierX === "number") {
         // Two GameFighter instances both listen to this event; only index 0
         // owns the HUD portal + shared VFX state (same pattern as UiPlayerInfo).
-        // Without this guard, RawParryEffect mounts twice and PERFECT banners
-        // stack in #game-hud.
         if (index !== 0) return;
         // Position effect in front of the parrying player (where a hit effect would appear)
         const facing = data.facing || 1;
-        // Offset in front of the parrier based on facing direction
-        const frontOffset = facing === 1 ? 80 : -80;
+        // Front offset — regular snowball/raw parry sits ahead of the body.
+        const frontOffset = facing === 1 ? 55 : -55;
+        const parryPan = xToPan(data.parrierX);
+
+        // ── ATTACK PARRY (AP) ──────────────────────────────────────────────
+        // Blue slap-parry burst + the slap-parry SFX. Centered at the CONTACT
+        // POINT (midpoint of parrier + attacker) so it lands correctly for BOTH
+        // players regardless of facing/side — SlapParryEffect centers on x
+        // (SPRITE_HALF_W === 0), so no per-facing offset is needed. No refund
+        // (AP is a committed gamble). The KILL rides the pull cinematic + the
+        // perfect-parry darken/zoom beat.
+        if (data.isAttackParry) {
+          // Sit close to the parrier (not the mid-contact gap). Perfect keeps a
+          // slightly forward read; regular hugs the body.
+          const isPerfect = !!data.isPerfect;
+          const towardAttacker =
+            typeof data.attackerX === "number"
+              ? data.attackerX < data.parrierX
+                ? -1
+                : 1
+              : facing === 1
+                ? 1
+                : -1;
+          const frontPx = isPerfect ? 28 : 36;
+          const chain = data.chainCount || 1;
+          setParryEffectPosition({
+            x: data.parrierX + towardAttacker * frontPx,
+            y: HIT_EFFECT_Y,
+            facing,
+            parryId: data.parryId,
+            variant: isPerfect ? "perfect" : "parry",
+            chain,
+            isPerfect,
+          });
+          // Chain crescendo: each consecutive deflect rises in pitch so a flurry
+          // of parries builds musically instead of flatly repeating.
+          const chainRate = Math.min(1.0 + (chain - 1) * 0.06, 1.6);
+          if (data.isPerfect) {
+            // Perfect: the bright success clink + a hotter clang layered on top.
+            playSound(slapParrySound, data.isKill ? 0.035 : 0.024, null, chainRate * 1.08, parryPan);
+            playSound(rawParrySuccessSound, 0.02, null, 1.0, parryPan);
+          } else {
+            playSound(slapParrySound, data.isKill ? 0.03 : 0.018, null, chainRate, parryPan);
+          }
+          return;
+        }
+
+        // ── Snowball / pumo-clone parry (still the blue ring + refund cues) ──
         const effectData = {
           x: data.parrierX + 150 + frontOffset,
-          // Match the hit-spark height so parry/perfect-parry sit inline with
-          // where hits land (HIT_EFFECT_Y is a touch lower than PLAYER_MID_Y).
+          // Match the hit-spark height so parry sits inline with where hits land.
           y: HIT_EFFECT_Y,
           facing: facing,
           timestamp: data.timestamp,
@@ -3031,14 +3090,11 @@ const GameFighter = ({
           playerNumber: data.playerNumber || 1,
         };
         setRawParryEffectPosition(effectData);
-        // Signal parry stamina refund to the HUD
         if (data.playerNumber === 1) {
           setP1ParryRefund(Date.now());
         } else if (data.playerNumber === 2) {
           setP2ParryRefund(Date.now());
         }
-        // Signal perfect-parry balance gain to the HUD (only for perfect parries
-        // that actually moved the balance bar — server reports clamped delta)
         if (data.isPerfect && data.balanceGain > 0) {
           if (data.playerNumber === 1) {
             setP1BalanceGain(Date.now());
@@ -3046,7 +3102,6 @@ const GameFighter = ({
             setP2BalanceGain(Date.now());
           }
         }
-        const parryPan = xToPan(data.parrierX);
         playSound(rawParryGruntSound, 0.025, null, 1.0, parryPan);
         if (data.isPerfect) {
           playSound(rawParrySuccessSound, 0.015, null, 1.0, parryPan);
@@ -3056,6 +3111,52 @@ const GameFighter = ({
       }
     };
     socket.on("raw_parry_success", handleRawParrySuccess);
+
+    // GUARD BLOCK — the block floor absorbed a slap/palm as chip. Tilted blue
+    // absorb ring + muffled thud; distinctly weaker than a parry's bright clink.
+    // Pose: brief block-parry.png SUCCESS (BLOCK_SUCCESS_POSE_MS ≈ AP's 120ms),
+    // then back to attempting so a flurry re-fires instead of freezing on success.
+    // Index 0 owns VFX.
+    const handleGuardBlock = (data) => {
+      if (!data || typeof data.parrierX !== "number") return;
+      // SUCCESS pose on the fighter who absorbed the hit (both instances listen).
+      if (data.parrierId === player.id) {
+        // Force attempting → success on every chip (even if already in success)
+        // so the sprite swap re-triggers like AP's isRawParrySuccess re-fire.
+        setGuardBlockSuccess(false);
+        if (guardBlockSuccessTimeoutRef.current) {
+          clearTimeout(guardBlockSuccessTimeoutRef.current);
+          guardBlockSuccessTimeoutRef.current = null;
+        }
+        requestAnimationFrame(() => {
+          setGuardBlockSuccess(true);
+          guardBlockSuccessTimeoutRef.current = setTimeout(() => {
+            setGuardBlockSuccess(false);
+            guardBlockSuccessTimeoutRef.current = null;
+          }, BLOCK_SUCCESS_POSE_MS);
+        });
+      }
+      if (index !== 0) return;
+      // parrierX is the sprite CENTER (fighters use translate:-50%).
+      // Place in front along facing: facing 1 → +x (right), facing -1 → -x (left).
+      const facing = data.facing || 1;
+      const FRONT_PX = 16;
+      const blockPan = xToPan(data.parrierX);
+      setBlockingEffectPosition({
+        x: data.parrierX + facing * FRONT_PX,
+        y: HIT_EFFECT_Y,
+        facing,
+        blockId: data.blockId,
+        timestamp: data.timestamp,
+      });
+      // Same cue as a regular (non-perfect) raw parry — block is the lesser
+      // outcome so it plays a hair quieter. A guard-crush adds a sharper snap.
+      playSound(regularRawParrySound, data.isPalm ? 0.035 : 0.028, null, 1.0, blockPan);
+      if (data.guardCrushed) {
+        playSound(glassBreakSound, 0.03, null, 1.0, blockPan);
+      }
+    };
+    socket.on("guard_block", handleGuardBlock);
 
     const handlePerfectParry = (data) => {
       if (
@@ -3268,6 +3369,12 @@ const GameFighter = ({
       setHasUsedPowerUp(false);
       setGyojiCall(null); // Clear gyoji call
       setRawParryEffectPosition(null); // Clear any active parry effects
+      setBlockingEffectPosition(null);
+      setGuardBlockSuccess(false);
+      if (guardBlockSuccessTimeoutRef.current) {
+        clearTimeout(guardBlockSuccessTimeoutRef.current);
+        guardBlockSuccessTimeoutRef.current = null;
+      }
       setChargeClashEffectPosition(null); // Clear any active charge clash effects
       setNoStaminaEffectKey(0); // Clear "No Stamina" effect on round reset
       onResetDisconnectState(); // Reset opponent disconnected state for new games
@@ -3335,6 +3442,12 @@ const GameFighter = ({
       setGyojiState("ready");
       setHakkiyoi(true);
       setRawParryEffectPosition(null); // Clear any leftover parry effects
+      setBlockingEffectPosition(null);
+      setGuardBlockSuccess(false);
+      if (guardBlockSuccessTimeoutRef.current) {
+        clearTimeout(guardBlockSuccessTimeoutRef.current);
+        guardBlockSuccessTimeoutRef.current = null;
+      }
       setChargeClashEffectPosition(null); // Clear any leftover charge clash effects
       // Clear stale predictions to prevent phantom charge at round start
       predictedState.current = {
@@ -3504,7 +3617,12 @@ const GameFighter = ({
       socket.off("charge_clash", handleChargeClash);
       socket.off("player_hit", handlePlayerHit);
       socket.off("raw_parry_success", handleRawParrySuccess);
+      socket.off("guard_block", handleGuardBlock);
       socket.off("perfect_parry", handlePerfectParry);
+      if (guardBlockSuccessTimeoutRef.current) {
+        clearTimeout(guardBlockSuccessTimeoutRef.current);
+        guardBlockSuccessTimeoutRef.current = null;
+      }
       if (attackerConfirmTimeoutRef.current) {
         clearTimeout(attackerConfirmTimeoutRef.current);
         attackerConfirmTimeoutRef.current = null;
@@ -4859,13 +4977,22 @@ const GameFighter = ({
     socket.on("ring_out", handleRingOut);
 
     const handleCinematicKill = (data) => {
+      // AP slap-down KILL: reuses the charged cinematic CAMERA beat (zoom +
+      // screen-darken, via useCamera + Game.jsx) but the victim belly-slides
+      // through the parrier (pull tween), NOT a charged fly-out. So skip the
+      // charged flight VFX (orange impact spark, charged SFX, launch sounds,
+      // smoke trail) — the blue AP burst + slap-parry clang play via
+      // raw_parry_success instead.
+      const isApPullKill = !!data.apPullKill;
       if (index === 0) {
-        emitParticles("cinematicKillImpact", {
-          x: data.impactX,
-          y: data.victimY,
-        });
+        if (!isApPullKill) {
+          emitParticles("cinematicKillImpact", {
+            x: data.impactX,
+            y: data.victimY,
+          });
 
-        playSound(pickRandomSound(chargedHitSounds), 0.07, null, 0.55, xToPan(data.impactX));
+          playSound(pickRandomSound(chargedHitSounds), 0.07, null, 0.55, xToPan(data.impactX));
+        }
 
         // ── Suspend the particle sim for the hitstop ──
         // The scene + CSS rings already freeze on a cinematic kill (HitEffect's
@@ -4883,12 +5010,14 @@ const GameFighter = ({
           pendingTimeouts.push(freezeId, unfreezeId);
         }
 
-        const launchDelay = data.hitstopMs || 550;
-        const launchSoundId = setTimeout(() => {
-          playSound(chargeAttackLaunchSound, 0.2, null, 1.5, xToPan(data.victimX));
-          playSound(gunLaunchSound, 0.06, null, 1.0, xToPan(data.victimX));
-        }, launchDelay);
-        pendingTimeouts.push(launchSoundId);
+        if (!isApPullKill) {
+          const launchDelay = data.hitstopMs || 550;
+          const launchSoundId = setTimeout(() => {
+            playSound(chargeAttackLaunchSound, 0.2, null, 1.5, xToPan(data.victimX));
+            playSound(gunLaunchSound, 0.06, null, 1.0, xToPan(data.victimX));
+          }, launchDelay);
+          pendingTimeouts.push(launchSoundId);
+        }
       }
 
       if (player.id === data.attackerId) {
@@ -4900,7 +5029,7 @@ const GameFighter = ({
       }
 
       const isVictim = player.id === data.victimId;
-      if (isVictim) {
+      if (isVictim && !isApPullKill) {
         const trailDir = data.knockbackDirection;
         const trailStartDelay = data.hitstopMs || 550;
 
@@ -5429,7 +5558,10 @@ const GameFighter = ({
     palmThrustFrame,
     // Aerial hit+spin only while thrown AND not yet in the early-landing window.
     penguin.isBeingThrown && !showClinchKillThrowLanding,
-    slapFrame
+    slapFrame,
+    // True block floor only — not the live parry window (see getImageSrc).
+    !!penguin.isGuarding,
+    guardBlockSuccess
   );
 
   // Dash frames: the dodge now has real anticipation + landing poses.
@@ -5702,6 +5834,8 @@ const GameFighter = ({
     $isBraking: displayPenguin.isBraking && !penguin.isRawParryStun,
     $isPowerSliding: displayPenguin.isPowerSliding,
     $isRawParrying: displayPenguin.isRawParrying,
+    $isGuarding: !!penguin.isGuarding,
+    $isGuardBlockSuccess: guardBlockSuccess,
     $isGrabBreaking: penguin.isGrabBreaking,
     $isReady: penguin.isReady,
     $readyIntroComplete: readyIntroComplete,
@@ -6214,6 +6348,9 @@ const GameFighter = ({
         ))}
 
       <SlapParryEffect position={parryEffectPosition} />
+      {index === 0 && (
+        <BlockingEffect position={blockingEffectPosition} />
+      )}
       <ChargeClashEffect position={chargeClashEffectPosition} />
       <HitEffect position={hitEffectPosition} />
       <SlapHitSpriteEffect position={hitEffectPosition} />

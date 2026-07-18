@@ -14,7 +14,7 @@
 module.exports = {
   MASTERY_P1_MOMENTUM: true, // Phase 1 — momentum inheritance
   MASTERY_P2_POSTURE: true, // Phase 2 — posture coupling (ON for playtest)
-  MASTERY_P3_CADENCE: true, // Phase 3 — tsuppari cadence (ON for playtest)
+  MASTERY_P3_CADENCE: false, // Phase 3 — tsuppari cadence (OFF)
   MASTERY_P4_ANALOG: true, // Phase 4 — analog resolutions + risk dials (ON for playtest)
   MASTERY_P5_ASSISTS: true, // Phase 5 — assist removal & legibility (ON for playtest)
 };

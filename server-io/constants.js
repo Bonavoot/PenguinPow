@@ -25,7 +25,8 @@ const DELTA_TRACKED_PROPS = [
   'isGrabbing', 'isBeingGrabbed', 'grabbedOpponent', 'grabState', 'grabAttemptType',
   'isGrabbingMovement', 'isWhiffingGrab', 'isGrabWhiffRecovery', 'isGrabTeching', 'grabTechRole', 'isGrabStartup',
   'isHit', 'lastHitType', 'isDead', 'isRecovering', 'isDodging', 'isDodgeStartup', 'isDodgeRecovery', 'dodgeDirection', 'justLandedFromDodge',
-  'isRawParrying', 'isRawParryStun', 'isRawParrySuccess', 'isPerfectRawParrySuccess',
+  'isRawParrying', 'isGuarding', 'isRawParryStun', 'isRawParrySuccess', 'isPerfectRawParrySuccess',
+  'isApWhiffRecovering',
   'isThrowing', 'isBeingThrown', 'isThrowTeching', 'isBeingPulled', 'isBeingPushed',
   'isThrowingSalt', 'isReady', 'isBowing', 'isAtTheRopes',
   'isThrowingSnowball', 'isSpawningPumoArmy',
@@ -183,7 +184,7 @@ const BURST_KB_FRICTION = 0.982;           // Per-tick decay during the forced w
 // (using the victim's distance to the boundary in the knockback direction),
 // so repeated slaps naturally walk the opponent into the zone first. There
 // is NO bypass — not even on a punish. Slap rings out ONLY inside this band.
-const SLAP_KILL_RANGE = 45;
+const SLAP_KILL_RANGE = 25;
 // Where a rope-caught victim comes to rest, measured INWARD from the boundary.
 // Keeps them a few px off the literal edge (not pixel-perfect on the rope) and
 // safely short of the ring-out line so the win check never trips on a save.
@@ -503,7 +504,7 @@ const RINGOUT_THROW_DURATION_MS = 400; // Match normal throw timing for consiste
 const RAW_PARRY_KNOCKBACK = 0.49; // Knockback velocity for charged attack parries
 const RAW_PARRY_SLAP_KNOCKBACK = 0.5; // Lighter knockback for slap parries
 const PERFECT_PARRY_KNOCKBACK = 0.65; // Slightly stronger than regular parry
-const PERFECT_PARRY_WINDOW = 120; // Perfect-parry window (ms) measured from the (re-armed) press. Bumped 100→120 for latency/precision forgiveness — still a real read, not braindead.
+const PERFECT_PARRY_WINDOW = 75; // PERFECT tier window (ms), measured as (hitTime − rawParryStartTime, lag-comp). The inner ~half of the 140ms parry window: a dead-on tap perfect-parries; the outer portion is a regular parry. Also gates the snowball perfect-reflect.
 const PERFECT_PARRY_SUCCESS_DURATION = 850; // Compressed parry — fast enough to keep pace, long enough for visual read
 const PERFECT_PARRY_ATTACKER_STUN_DURATION = 700; // Stun — comfortable window for slap/grab follow-up
 const PERFECT_PARRY_ANIMATION_LOCK = 370; // 250ms hitstop + 120ms real post-freeze "cool pose" before parrier can act
@@ -551,6 +552,104 @@ const RAW_PARRY_STAMINA_REFUND = 12; // Full refund on success — correct reads
 // More than the 8 you'd have lost from eating the slap, so a perfect read is a net
 // defensive gain. Capped well below clinch throw thresholds so it can't trivialize pressure.
 const PERFECT_PARRY_BALANCE_REFUND = 12;
+
+// ============================================
+// GUARD & PARRY (Space) — one stance, three outcomes
+// ============================================
+// Space is a Guard & Parry stance. There is no more "Deflect Flow" (hold-to-
+// auto-cover): a flurry is answered by RE-TAPPING in rhythm, one tap per slap.
+//
+//   • TAP (rising edge), timed as the strike connects → PARRY. Deflects a slap
+//     or palm thrust (NOT grabs, NOT charged). The attacker eats their move's
+//     own recovery (rendered in their ATTACK pose — never hit.png), loses
+//     balance, and is shoved back OUT of range: you REVERSE the ground, not just
+//     stop losing it. Graded by how dead-on the tap was:
+//        – REGULAR: position payout (shove + balance drain), ~neutral frames.
+//        – PERFECT (inner PERFECT_PARRY_WINDOW): bigger shove + balance drain +
+//          balance refund to you + real frame advantage (a guaranteed poke).
+//     If the attacker's balance is already inside the KILL band when parried, it
+//     becomes the lethal slap-down (pull cinematic).
+//   • HOLD → GUARD (the block floor): you survive slaps/palms as chip + a little
+//     ground lost + stamina bleed — but no reward. Rooted; does NOT stop grabs or
+//     charged. Bleed to 0 → guard-crush → gassed. A MISTIMED tap while holding
+//     just becomes a guard (no punish), so you can attempt parries fearlessly.
+//   • The ONLY hard punish is a COLD tap released into empty air →
+//     AP_WHIFF_RECOVERY_MS.
+//
+// RPS: parry/guard both LOSE to GRAB (counter-grab is the anti-defense read) and
+// to CHARGED (blows through). Every parry costs stamina; turtling gasses you.
+// (Reuses the isRawParrying / isRawParrySuccess flags + the spacebar plumbing.)
+const AP_ACTIVE_MS = 140;            // PARRY WINDOW: a tap deflects if the strike connects within this of the (lag-comp) press. ~9 frames — forgiving enough to re-tap a flurry.
+const AP_FLOW_WINDOW_MS = 400;       // DEPRECATED (Deflect Flow removed). Kept only so existing imports resolve; unreferenced by the new state machine.
+const AP_SUCCESS_RECOVERY_MS = 120;  // IMPACT-pose hold PER deflect. MUST stay < the slap cadence (SLAP_TOTAL_MS 230) so a flurry RE-FIRES the pose every parry instead of freezing on one frame (this was the 280ms static-sprite bug).
+const AP_WHIFF_RECOVERY_MS = 260;    // Punishable recovery — ONLY on a COLD tap released into nothing (a mistimed tap while HOLDING becomes guard, no punish).
+const AP_COOLDOWN_MS = 40;           // Tiny anti-double-arm gap between fresh taps.
+const AP_STAMINA_COST = 3;           // Charged per parry tap — cheap (reward using it), but re-tapping a long flurry still drains you.
+// KILL gate: the parried attacker's balance must be DEEPLY broken (< this) for the
+// lethal slap-down. Set well UNDER the clinch kill threshold (15) and the posture
+// break (35) so a parry kill is a hard-earned finish, not "slap a bit + fish it".
+const AP_KILL_THRESHOLD = 8;
+const AP_PERFECT_KILL_THRESHOLD = 12; // A PERFECT parry can finish a hair higher — the dead-on read is rewarded.
+// Balance drained from the parried attacker. The parry is the game's dedicated
+// POSTURE tool — it bites posture HARDER than a raw slap (BALANCE_SLAP_HIT_DRAIN_P2),
+// so it's worth throwing on a high-posture opponent for the damage, not only the kill.
+const AP_BALANCE_DRAIN = 12;          // Regular parry
+const AP_PERFECT_BALANCE_DRAIN = 18;  // Perfect parry — a real posture swing
+// Attacker SHOVE on a parry. Delivered via the smooth "slap-parry" slide
+// (slapParryKnockbackVelocity, friction SLAP_PARRY_KB_FRICTION ≈ 0.82) so the
+// attacker slides back in their ATTACK/recovery pose — NOT a hit reaction. Travel
+// ≈ v · 2.89 / (1 − 0.82) ≈ v · 16px. Regular sends them just past slap range
+// (you regain the space); perfect sends them a real beat farther.
+const AP_ATTACKER_KNOCKBACK = 4.4;         // Regular ≈ 70px
+const AP_PERFECT_ATTACKER_KNOCKBACK = 8.0; // Perfect ≈ 128px
+const AP_HITSTOP_MS = 120;           // Regular parry "clink" — flurry-friendly.
+const AP_PERFECT_HITSTOP_MS = 220;   // Perfect parry — the "time stops" beat (long enough to digest the read).
+const AP_KILL_HITSTOP_MS = 550;      // Heavy finisher freeze on the lethal slap-down — matches the charged CINEMATIC_KILL_HITSTOP_MS so the zoom/darken beat lands identically.
+// PERFECT-only balance refund to the PARRIER: a dead-on read is a net posture
+// GAIN, not just mitigation. Sits below clinch thresholds so it can't trivialize pressure.
+const AP_PERFECT_BALANCE_REFUND = 12;
+// Attacker lockout after being parried, keyed to the move they committed, and
+// rendered in the move's OWN recovery pose (NOT hit.png). A slap recovers
+// ~with the parrier (regular = near-neutral by design — a slap is too fast to
+// punish on a plain parry); palm/flap's long recovery hands the parrier a free
+// hit. A PERFECT slap parry adds AP_PERFECT_ADVANTAGE_MS on top so even the fast
+// slap becomes a guaranteed poke — the perfect read's frame reward.
+const AP_STAGGER_SLAP_MS = 150;
+const AP_STAGGER_PALM_MS = 420;
+const AP_STAGGER_FLAP_MS = 500;
+const AP_PERFECT_ADVANTAGE_MS = 220; // Extra attacker lockout on a PERFECT slap parry → the parrier's guaranteed poke.
+// Belly-slide travel on a lethal AP slap-down — matches the clinch KILL-PULL feel
+// (victim is dragged THROUGH the parrier and slides out the far side). Slightly
+// SLOWER than the clinch pull (felt too fast) for a weightier finisher.
+const AP_KILL_SLIDE_DISTANCE = 210;      // == CLINCH_KILL_PULL_DISTANCE
+const AP_KILL_SLIDE_DURATION_MS = 950;   // clinch pull is 850; +100 for a weightier slide-to-stop
+
+// ── GUARD (hold Space) — the block floor ────────────────────────────────────
+// A blocked strike is chip + ground lost + stamina bled, no reward. Uses the same
+// smooth slide as the parry shove (rendered without a hurt pose). Guard is ROOTED,
+// does NOT stop grabs or charged, and bleeding stamina to 0 while guarding crushes
+// the guard into a gassed break — turtling is self-punishing.
+const GUARD_SLAP_BALANCE_CHIP = 2;    // Blocked slap posture chip (vs 7 on a clean slap)
+const GUARD_PALM_BALANCE_CHIP = 6;    // Palm keeps its posture-breaker bite even into block
+const GUARD_SLAP_STAMINA_DRAIN = 4;   // Blocking costs stamina — a long flurry gasses a turtle
+const GUARD_PALM_STAMINA_DRAIN = 7;
+const GUARD_SLAP_PUSHBACK = 2.0;      // Slide-model velocity — blocked slap nudges you back ≈ 32px (ground still bleeds)
+const GUARD_PALM_PUSHBACK = 4.0;      // Palm shoves a blocker hard ≈ 64px
+const GUARD_HITSTOP_MS = 45;          // Light "tink" on a block — shorter than the parry clink so blocks read as the lesser outcome
+const GUARD_CRUSH_STUN_MS = 500;      // Guard broken (stamina hit 0 while blocking): a brief stun, then the gassed penalty takes over
+
+// ── SLAP TRADE (replaces the slap clash / "slap parry") ─────────────────────
+// The slap clash is gone. Two slaps now resolve by WHO CONNECTED FIRST: the
+// earlier active slap lands cleanly and stuffs the later one (order-independent —
+// judged on attackStartTime, not player index, so there's no P1 bias). Only a
+// genuine SAME-TICK tie TRADES: both take a hit. A 1-frame gap is NOT a trade
+// (the earlier slap wins, like a real fighting game), so trades are rare. On a
+// trade both players are shoved well apart (SLAP_TRADE_KNOCKBACK) so they exit
+// slap range and must re-approach — this breaks the +0 "sync-lock" that would
+// otherwise make synced mashers trade over and over. A trade CAN still ring out
+// the boundary-side player (a double ring-out is geometrically impossible).
+const SLAP_TRADE_WINDOW_MS = 8;      // Same-tick only (<1 tick @64Hz). A 1-frame gap → earlier wins, no trade.
+const SLAP_TRADE_KNOCKBACK = 2.8;    // Hard mutual shove on a trade — spaces both out of slap range → re-approach desyncs them.
 
 // ============================================
 // At the Ropes
@@ -1134,7 +1233,7 @@ const POSTURE_RECOVER_THRESHOLD = 45;    // balance > this ⇒ isPostureBroken =
 // values; SAFE fallbacks noted). Counter-hits multiply the posture drain by
 // POSTURE_COUNTER_DRAIN_MULT (their frame bonus is unchanged). Perfect parry's
 // existing +12 balance refund is kept as-is (it's now a posture swing for free).
-const BALANCE_SLAP_HIT_DRAIN_P2 = 12;       // today 8;  SAFE 10 — tsuppari breaks posture
+const BALANCE_SLAP_HIT_DRAIN_P2 = 7;        // was 12 — a single slap chipped posture absurdly fast (a few slaps ≈ a break). 7 makes the slap a POKE that chips; posture pressure now comes from reads (AP, palm, counters), not raw mash.
 const BALANCE_CHARGED_HIT_DRAIN_P2 = 18;    // today 15; SAFE 16
 const BALANCE_PALM_HIT_DRAIN_P2 = 20;       // today 15 (charged); SAFE 18 — the posture-breaker identity
 const BALANCE_PASSIVE_REGEN_PER_SEC_P2 = 6; // today 5;  SAFE 5 — disengaging resets the war a touch faster
@@ -1179,7 +1278,7 @@ const CADENCE_WINDOW_MS = 85;          // gap ≤ this (cycleEnd − buffered pr
                                        // so mashing/early-buffered presses stay normal).
 const SLAP_TOTAL_MS_ENHANCED = 205;    // SAFE 215 — enhanced cycle (today 230); startup/active
                                        // are untouched, only the recovery tail shortens (still +0)
-const BALANCE_SLAP_HIT_DRAIN_ENHANCED = 16; // SAFE 14 — enhanced posture drain (P2 base 12)
+const BALANCE_SLAP_HIT_DRAIN_ENHANCED = 10; // was 16 — scaled down with the base slap drain (P2 base now 7); a cadence slap still bites a bit harder than a plain one
 const CADENCE_STEP_IN_MULT = 1.15;     // SAFE 1.1 — enhanced on-hit pair shift (step-in) scale
 // CPU cadence competence by difficulty tier — the fraction of follow-up slaps a
 // CPU times INTO the window (rollout protocol / cross-phase CPU table). EASY
@@ -1481,6 +1580,40 @@ module.exports = {
   RAW_PARRY_STAMINA_COST,
   RAW_PARRY_STAMINA_REFUND,
   PERFECT_PARRY_BALANCE_REFUND,
+  // Guard & Parry (AP)
+  AP_ACTIVE_MS,
+  AP_FLOW_WINDOW_MS,
+  AP_SUCCESS_RECOVERY_MS,
+  AP_WHIFF_RECOVERY_MS,
+  AP_COOLDOWN_MS,
+  AP_STAMINA_COST,
+  AP_KILL_THRESHOLD,
+  AP_PERFECT_KILL_THRESHOLD,
+  AP_BALANCE_DRAIN,
+  AP_PERFECT_BALANCE_DRAIN,
+  AP_ATTACKER_KNOCKBACK,
+  AP_PERFECT_ATTACKER_KNOCKBACK,
+  AP_HITSTOP_MS,
+  AP_PERFECT_HITSTOP_MS,
+  AP_KILL_HITSTOP_MS,
+  AP_PERFECT_BALANCE_REFUND,
+  AP_STAGGER_SLAP_MS,
+  AP_STAGGER_PALM_MS,
+  AP_STAGGER_FLAP_MS,
+  AP_PERFECT_ADVANTAGE_MS,
+  AP_KILL_SLIDE_DISTANCE,
+  AP_KILL_SLIDE_DURATION_MS,
+  // Guard (block floor)
+  GUARD_SLAP_BALANCE_CHIP,
+  GUARD_PALM_BALANCE_CHIP,
+  GUARD_SLAP_STAMINA_DRAIN,
+  GUARD_PALM_STAMINA_DRAIN,
+  GUARD_SLAP_PUSHBACK,
+  GUARD_PALM_PUSHBACK,
+  GUARD_HITSTOP_MS,
+  GUARD_CRUSH_STUN_MS,
+  SLAP_TRADE_WINDOW_MS,
+  SLAP_TRADE_KNOCKBACK,
 
   // At the ropes
   AT_THE_ROPES_DURATION,

@@ -1,14 +1,16 @@
 /**
- * CustomizePage — Full-page character customization screen.
+ * CustomizePage — Wardrobe screen.
  *
- * Premium, cinematic single-screen wardrobe inspired by AAA fighter character
- * editors. Uses the shared "Aizome Banzuke" palette (sumi ink, ice,
- * vermillion, cream, gold) defined in menuTheme.js.
+ * Left: big rikishi (Prematch energy, no boxed portrait).
+ * Right: one clear picker dock — tabs always visible, swatches in a
+ * fixed content area (not buried under accordion menus).
+ *
+ * Hair / Gear tabs are wired for a future item-grid layout.
  */
 
 import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
-import styled, { keyframes, css } from "styled-components";
+import styled, { keyframes } from "styled-components";
 import { usePlayerColors } from "../context/PlayerColorContext";
 import {
   recolorImage,
@@ -20,30 +22,76 @@ import {
   playButtonHoverSound,
   playButtonPressSound2,
 } from "../utils/soundUtils";
-import Snowfall from "./Snowfall";
 import pumo from "../assets/pumo-idle.png";
 import mainMenuBackground from "../assets/main-menu-bkg-3.webp";
 import {
   C,
+  FONT_BODY,
+  FONT_DISPLAY,
+  broadcastSlideDown,
   fadeIn,
-  fadeUp,
-  slideInLeft,
-  slideInRight,
-  livePulse,
+  clipRevealLeft,
+  clipRevealRight,
+  clipRevealUp,
 } from "./menuTheme";
-import { BELT_SOLIDS, BELT_PATTERNS, BODY_COLORS } from "../config/customizeColors";
+import { SHADOW_GRADIENT } from "./PlayerShadow";
+import {
+  BELT_SOLIDS,
+  BELT_PATTERNS,
+  BODY_COLORS,
+  BELT_ALL,
+} from "../config/customizeColors";
+
+const WARDROBE_TABS = [
+  { id: "belt", label: "Belt", layout: "colors", ready: true },
+  { id: "body", label: "Body", layout: "colors", ready: true },
+  { id: "hair", label: "Hair", layout: "items", ready: false },
+  { id: "accessories", label: "Gear", layout: "items", ready: false },
+];
+
+/*
+ * BashoHub plaque tokens — opaque sumi lacquer + washi fibers.
+ * Flat printed board, not translucent glass.
+ */
+const D = {
+  panel: "#12151c",
+  head: "#171a20",
+  soft: "#22262d",
+  softHover: "#2c313a",
+  deep: "#0c0e14",
+  chrome: "#14171e",
+  border: "rgba(245, 236, 217, 0.20)",
+  borderSoft: "rgba(245, 236, 217, 0.10)",
+  shadow: "rgba(0, 0, 0, 0.62)",
+};
+
+const WASHI = `
+  repeating-linear-gradient(
+    90deg, transparent 0, transparent 3px,
+    rgba(232, 210, 170, 0.045) 3px, rgba(232, 210, 170, 0.045) 4px
+  ),
+  repeating-linear-gradient(
+    0deg, transparent 0, transparent 5px,
+    rgba(232, 210, 170, 0.035) 5px, rgba(232, 210, 170, 0.035) 6px
+  )
+`;
 
 // ============================================
-// LOCAL ANIMATIONS
+// ANIMATIONS
 // ============================================
 
 const breathe = keyframes`
-  0%, 100% { transform: scaleY(1);     }
-  50%      { transform: scaleY(1.018); }
+  0%, 100% { transform: scaleX(-1) scaleY(1); }
+  50%      { transform: scaleX(-1) scaleY(1.03); }
+`;
+
+const brushDraw = keyframes`
+  from { opacity: 0; transform: scaleX(0.15); }
+  to   { opacity: 1; transform: scaleX(1); }
 `;
 
 const swatchPop = keyframes`
-  from { opacity: 0; transform: scale(0.6); }
+  from { opacity: 0; transform: scale(0.7); }
   to   { opacity: 1; transform: scale(1); }
 `;
 
@@ -53,14 +101,12 @@ const swatchPop = keyframes`
 
 const PageContainer = styled.div`
   position: relative;
-  display: flex;
-  flex-direction: column;
   width: 100%;
   height: 100%;
-  background: ${C.snow};
   overflow: hidden;
+  font-family: ${FONT_BODY};
   container-type: size;
-  font-family: "Space Grotesk", sans-serif;
+  animation: ${fadeIn} 0.22s ease-out;
 `;
 
 const BackgroundImage = styled.img`
@@ -69,234 +115,349 @@ const BackgroundImage = styled.img`
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /*
-   * Soft frosted suggestion of the arena bg — brightness up,
-   * saturation slightly down so the colorful banners read as
-   * a pale watermark behind the snow surface, not a competing
-   * mid-tone.
-   */
-  opacity: 0.45;
-  filter: saturate(0.78) brightness(1.18) blur(1.5px);
   z-index: 0;
   pointer-events: none;
 `;
 
-const CinematicOverlay = styled.div`
+const StageDim = styled.div`
   position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  /*
-   * Snow-tinted readability veil. Mirrors the lobby treatment so
-   * both screens read as part of the same Hokkaido-winter world.
-   * Stronger at the top (where the page header sits) and the
-   * bottom (where panels anchor), faintly transparent through the
-   * middle so the arena watermark breathes.
-   */
   background:
     radial-gradient(
-      ellipse at 50% 100%,
-      rgba(35, 70, 110, 0.18) 0%,
-      transparent 55%
+      ellipse 50% 58% at 36% 46%,
+      transparent 0%,
+      rgba(4, 6, 10, 0.2) 50%,
+      rgba(4, 6, 10, 0.8) 100%
     ),
     linear-gradient(
       180deg,
-      rgba(234, 241, 247, 0.7) 0%,
-      rgba(234, 241, 247, 0.25) 30%,
-      rgba(234, 241, 247, 0.25) 70%,
-      rgba(234, 241, 247, 0.7) 100%
+      rgba(4, 6, 10, 0.7) 0%,
+      rgba(4, 6, 10, 0.12) 28%,
+      rgba(4, 6, 10, 0.1) 52%,
+      rgba(4, 6, 10, 0.52) 78%,
+      rgba(4, 6, 10, 0.9) 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(4, 6, 10, 0.15) 0%,
+      transparent 40%,
+      rgba(4, 6, 10, 0.55) 100%
     );
 `;
 
 const GrainOverlay = styled.div`
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 2;
   pointer-events: none;
-  opacity: 0.12;
-  background-image: repeating-linear-gradient(
-    0deg,
-    transparent 0px,
-    rgba(35, 70, 110, 0.05) 1px,
-    transparent 2px
-  );
+  opacity: 0.18;
+  mix-blend-mode: overlay;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(60, 40, 20, 0.05) 0,
+      transparent 1px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(60, 40, 20, 0.04) 0,
+      transparent 1px,
+      transparent 4px
+    );
 `;
 
 // ============================================
-// TOP BAR
+// TOP
 // ============================================
-
-const TopBar = styled.header`
-  position: relative;
-  z-index: 10;
-  flex-shrink: 0;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: clamp(12px, 2cqw, 28px);
-  padding: clamp(14px, 2.4cqh, 26px) clamp(20px, 3.5cqw, 48px);
-  /*
-   * Sumi anchor band — same role as Lobby's TopBar. Frames the
-   * page so the snow PreviewPanel + ControlsPanel below have
-   * dark chrome to sit against, not just float in white space.
-   */
-  background: ${C.sumi};
-  border-bottom: 1px solid ${C.sumiBorder};
-  box-shadow: 0 3px 10px ${C.sumiShadow};
-  animation: ${fadeIn} 0.5s ease-out;
-`;
-
-const TopBarLeft = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-`;
-
-const TopBarRight = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-`;
 
 const BackButton = styled.button`
-  position: relative;
+  position: absolute;
+  top: clamp(14px, 2.2cqh, 24px);
+  left: clamp(18px, 2.6cqw, 36px);
+  z-index: 40;
   display: inline-flex;
   align-items: center;
-  gap: clamp(8px, 1.1cqw, 12px);
-  padding: clamp(8px, 1.2cqh, 12px) clamp(14px, 2cqw, 22px);
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.62rem, 0.95cqw, 0.78rem);
+  gap: 8px;
+  padding: 0;
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.5rem, 0.8cqw, 0.64rem);
+  letter-spacing: 0.28em;
   text-transform: uppercase;
-  letter-spacing: 0.22em;
-  /*
-   * Dark-context ghost button (matches Lobby ExitButton). Lives on
-   * the sumi TopBar so it stays subordinate to the central PageTitle.
-   */
   color: ${C.creamMute};
-  background: transparent;
-  border: 1px solid ${C.sumiBorder};
-  border-radius: 2px;
+  background: none;
+  border: none;
   cursor: pointer;
-  transition:
-    color 0.18s ease,
-    border-color 0.18s ease,
-    background 0.18s ease,
-    transform 0.18s ease;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  transition: color 0.18s ease;
+  animation: ${clipRevealLeft} 0.4s ease-out 0.05s both;
 
   .arrow {
-    font-family: "Space Grotesk", sans-serif;
-    font-weight: 700;
     transition: transform 0.2s ease;
   }
 
   &:hover {
     color: ${C.cream};
-    border-color: ${C.iceMid};
-    background: rgba(234, 241, 247, 0.06);
-
     .arrow {
       transform: translateX(-3px);
     }
   }
+`;
 
-  &:active {
-    transform: scale(0.98);
+const TopSlug = styled.div`
+  position: absolute;
+  top: clamp(12px, 1.8cqh, 20px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1.1cqw, 12px);
+  animation: ${broadcastSlideDown} 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) 0.04s
+    both;
+`;
+
+const SlugText = styled.span`
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.42rem, 0.72cqw, 0.56rem);
+  color: ${(p) => (p.$accent ? C.ice : C.creamMute)};
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+
+  strong {
+    color: ${C.cream};
+    letter-spacing: 0.1em;
   }
 `;
 
-const TitleBlock = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-`;
-
-const PageTitle = styled.h1`
-  margin: 0;
-  font-family: "Bungee", cursive;
-  font-size: clamp(1rem, 1.8cqw, 1.4rem);
-  color: ${C.cream};
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  line-height: 1;
-`;
-
-const PageSubtitle = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.45rem, 0.7cqw, 0.55rem);
-  color: ${C.creamMute};
-  text-transform: uppercase;
-  letter-spacing: 0.32em;
-`;
-
-const SaveIndicator = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: clamp(6px, 0.9cqw, 10px);
-  padding: clamp(6px, 1cqh, 10px) clamp(12px, 1.6cqw, 18px);
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.45rem, 0.72cqw, 0.55rem);
-  /*
-   * Plate-on-plate dark chip on the sumi TopBar — slightly elevated
-   * (sumiSoft) so it reads as a status pill on the bunting strip
-   * without competing with the PageTitle for attention.
-   */
-  color: ${C.creamMute};
-  background: ${C.sumiSoft};
-  border: 1px solid ${C.sumiBorder};
-  border-radius: 2px;
-  text-transform: uppercase;
-  letter-spacing: 0.28em;
-`;
-
-const SaveDot = styled.span`
-  width: clamp(7px, 0.9cqw, 9px);
-  height: clamp(7px, 0.9cqw, 9px);
-  border-radius: 50%;
-  background: ${(p) => (p.$busy ? C.gold : C.success)};
-  animation: ${livePulse} 2s ease-in-out infinite;
+const SlugRule = styled.span`
+  width: 16px;
+  height: 1px;
+  background: rgba(245, 236, 217, 0.35);
 `;
 
 // ============================================
 // STAGE
 // ============================================
 
-const Stage = styled.main`
-  position: relative;
-  z-index: 2;
-  flex: 1;
-  min-height: 0;
+const Stage = styled.div`
+  position: absolute;
+  inset: 0;
+  z-index: 10;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  align-items: stretch;
-  gap: clamp(20px, 3cqw, 48px);
-  padding: clamp(20px, 3cqh, 36px) clamp(24px, 4cqw, 64px);
+  /*
+   * Fighter left, then dock pulled inward (not edge-hugging).
+   * Trailing empty track keeps air on the right.
+   */
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 380px) minmax(24px, 8cqw);
+  align-items: center;
+  gap: clamp(16px, 2.5cqw, 32px);
+  padding:
+    clamp(52px, 8cqh, 72px)
+    clamp(20px, 3cqw, 40px)
+    clamp(24px, 4cqh, 40px)
+    clamp(20px, 3cqw, 40px);
+
+  @media (max-width: 780px) {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: clamp(12px, 2cqh, 20px);
+    padding-bottom: clamp(14px, 2.5cqh, 24px);
+  }
 `;
 
-// ============================================
-// PREVIEW PANEL (LEFT)
-// ============================================
+// --------------------------------------------
+// LEFT — fighter + identity BELOW (never over the sprite)
+// --------------------------------------------
 
-const PreviewPanel = styled.section`
+const FighterColumn = styled.div`
   position: relative;
   display: flex;
   flex-direction: column;
-  /*
-   * Snow panel — pure white card with a vermillion top accent
-   * strip (the canonical brand mark for this surface). Solid fill,
-   * crisp 1px ice-blue border, single soft cool shadow. Mirrors
-   * the Lobby PlayerCard treatment so both screens read as part
-   * of one design language.
-   */
-  background: ${C.snowPanel};
-  border: 1px solid ${C.snowBorder};
-  border-radius: 2px;
+  align-items: flex-start;
+  justify-content: flex-end;
+  min-width: 0;
+  min-height: 0;
+  height: min(84cqh, 740px);
+  animation: ${clipRevealLeft} 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) 0.08s both;
+
+  @media (max-width: 780px) {
+    height: min(46cqh, 360px);
+    align-items: center;
+  }
+`;
+
+const Portrait = styled.div`
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: min(100%, 480px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+
+  @media (max-width: 780px) {
+    justify-content: center;
+    max-width: none;
+  }
+`;
+
+/* Shrink-wraps to the sprite so the shadow can center on him, not the column. */
+const FighterFigure = styled.div`
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 100%;
+  width: fit-content;
+  max-width: 100%;
+`;
+
+const FloorShadow = styled.div`
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 72%;
+  max-width: clamp(200px, 28cqw, 330px);
+  height: clamp(44px, 6cqw, 74px);
+  border-radius: 50%;
+  background: ${SHADOW_GRADIENT};
+  z-index: 1;
+  pointer-events: none;
+`;
+
+const FighterImg = styled.img`
+  position: relative;
+  z-index: 2;
+  height: 108%;
+  max-height: 108%;
+  width: auto;
+  max-width: min(100%, 52cqw);
+  object-fit: contain;
+  object-position: center bottom;
+  transform-origin: center bottom;
+  transform: scaleX(-1) scaleY(1);
+  animation: ${breathe} 1.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000)
+    drop-shadow(0 14px 22px rgba(0, 0, 0, 0.45));
+  opacity: ${(p) => (p.$ready ? 1 : 0.55)};
+  transition: opacity 0.22s ease-out;
+
+  @media (max-width: 780px) {
+    max-width: 78vw;
+  }
+`;
+
+const IdentityBlock = styled.div`
+  position: relative;
+  z-index: 3;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: clamp(10px, 1.6cqh, 18px);
+  padding-left: clamp(4px, 0.8cqw, 12px);
+  animation: ${clipRevealUp} 0.4s ease-out 0.28s both;
+
+  @media (max-width: 780px) {
+    align-items: center;
+    text-align: center;
+    padding-left: 0;
+  }
+`;
+
+const SideLabel = styled.span`
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.42rem, 0.7cqw, 0.55rem);
+  color: ${(p) => p.$accent || C.ice};
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  line-height: 1;
+  margin-bottom: clamp(4px, 0.5cqh, 7px);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+`;
+
+const FighterName = styled.div`
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(22px, 3.4cqw, 42px);
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 0.92;
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000,
+    0 2px 0 rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+`;
+
+const BrushStroke = styled.div`
+  width: clamp(110px, 15cqw, 200px);
+  height: 3px;
+  margin-top: clamp(5px, 0.7cqh, 8px);
+  background: ${(p) => p.$gradient || p.$color};
+  transform-origin: left center;
+  clip-path: polygon(
+    0 30%,
+    8% 0%,
+    40% 20%,
+    70% 0%,
+    100% 35%,
+    94% 100%,
+    60% 80%,
+    30% 100%,
+    0 70%
+  );
+  animation: ${brushDraw} 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) 0.4s both;
+
+  @media (max-width: 780px) {
+    transform-origin: center;
+  }
+`;
+
+const MetaItem = styled.span`
+  margin-top: clamp(6px, 0.85cqh, 10px);
+  font-family: ${FONT_BODY};
+  font-weight: 600;
+  font-size: clamp(0.4rem, 0.65cqw, 0.5rem);
+  color: rgba(245, 236, 217, 0.5);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+`;
+
+// --------------------------------------------
+// RIGHT — BashoHub lacquer plaque (opaque, washi, vermillion crown)
+// --------------------------------------------
+
+const PickerDock = styled.aside`
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  /* Fixed footprint — tab content scrolls inside, dock never resizes */
+  height: min(68cqh, 520px);
+  min-height: 0;
+  justify-self: stretch;
+  background:
+    ${WASHI},
+    linear-gradient(180deg, #161a22 0%, #10141b 100%);
+  border: 1px solid ${D.border};
+  border-radius: 0;
   overflow: hidden;
-  box-shadow: 0 8px 22px ${C.snowShadow};
-  animation: ${slideInLeft} 0.5s ease-out 0.15s both;
+  box-shadow: 0 16px 36px ${D.shadow};
+  animation: ${clipRevealRight} 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) 0.14s both;
 
   &::before {
     content: "";
@@ -304,409 +465,225 @@ const PreviewPanel = styled.section`
     top: 0;
     left: 0;
     right: 0;
-    height: 3px;
+    height: 2px;
     background: ${C.vermillion};
+    z-index: 3;
+  }
+
+  @media (max-width: 780px) {
+    height: min(38cqh, 320px);
   }
 `;
 
-const PanelHeader = styled.header`
+const PanelHead = styled.header`
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: clamp(10px, 1.6cqh, 16px) clamp(16px, 2.2cqw, 24px);
-  /*
-   * Sumi header band over the snow PreviewStage. Same banzuke-poster
-   * pattern as the BanzukeCard on the main menu: dark band on top of
-   * a snow body, framed by the panel's vermillion top accent.
-   */
-  background: ${C.sumi};
-  border-bottom: 1px solid ${C.sumiBorder};
-`;
-
-const PanelHeaderLeft = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-`;
-
-const PanelLabel = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 0.95cqw, 0.78rem);
-  color: ${C.cream};
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
-`;
-
-const PanelMeta = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.42rem, 0.65cqw, 0.5rem);
-  color: ${C.creamMute};
-  text-transform: uppercase;
-  letter-spacing: 0.32em;
-`;
-
-const LiveBadge = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: clamp(5px, 0.7cqw, 8px);
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 700;
-  font-size: clamp(0.42rem, 0.65cqw, 0.5rem);
-  color: ${(p) => (p.$busy ? C.gold : C.success)};
-  text-transform: uppercase;
-  letter-spacing: 0.28em;
-`;
-
-const LiveDot = styled.span`
-  width: clamp(6px, 0.8cqw, 8px);
-  height: clamp(6px, 0.8cqw, 8px);
-  border-radius: 50%;
-  background: ${(p) => (p.$busy ? C.gold : C.success)};
-  animation: ${livePulse} 2s ease-in-out infinite;
-`;
-
-const PreviewStage = styled.div`
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: clamp(16px, 2.4cqh, 28px);
-  position: relative;
-  overflow: hidden;
-  /*
-   * Subtle icy stage — flat color, no inset highlights. Acts as
-   * the "snowfield Pumo is standing on" inside the panel.
-   */
-  background: ${C.snowSoft};
-`;
-
-/*
- * Pumo backdrop wash — replaces the previous warm vermillion
- * spotlight (which read as a red glow on a white floor and
- * fought the icy brand). A single soft cool ambient pool puts
- * Pumo on a faint "snow halo" without competing with the panel.
- */
-const PreviewSpotlight = styled.div`
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(
-    ellipse at center 65%,
-    rgba(126, 203, 240, 0.18) 0%,
-    transparent 60%
-  );
-  pointer-events: none;
-`;
-
-const AvatarBreath = styled.div`
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  animation: ${breathe} 2.8s ease-in-out infinite;
-  transform-origin: center bottom;
-  filter: drop-shadow(0 14px 18px rgba(35, 70, 110, 0.32));
-`;
-
-const PreviewImage = styled.img`
-  height: clamp(220px, 50cqh, 480px);
-  max-height: 100%;
-  width: auto;
-  max-width: 100%;
-  object-fit: contain;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-`;
-
-const PanelFooter = styled.footer`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: clamp(12px, 1.8cqw, 22px);
-  padding: clamp(12px, 1.8cqh, 18px) clamp(16px, 2.2cqw, 24px);
-  /*
-   * Sumi footer band closes the bottom of the PreviewPanel so the
-   * snow body is bracketed top-and-bottom by dark chrome (matching
-   * the banzuke header pattern). Holds the "currently selected
-   * swatch" label + the dark-ghost reset button.
-   */
-  background: ${C.sumi};
-  border-top: 1px solid ${C.sumiBorder};
-`;
-
-const CurrentSelection = styled.div`
-  display: flex;
-  align-items: center;
-  gap: clamp(10px, 1.4cqw, 14px);
-`;
-
-const CurrentSwatch = styled.div`
-  width: clamp(28px, 3cqw, 36px);
-  height: clamp(28px, 3cqw, 36px);
-  border-radius: 50%;
-  background: ${(p) => p.$gradient || p.$color};
-  border: 2px solid ${C.gold};
-  box-shadow: 0 2px 6px ${C.sumiShadow};
   flex-shrink: 0;
-`;
-
-const CurrentNameStack = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-`;
-
-const CurrentCategory = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.45rem, 0.68cqw, 0.55rem);
-  color: ${C.creamMute};
-  text-transform: uppercase;
-  letter-spacing: 0.32em;
-`;
-
-const CurrentName = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.85rem, 1.4cqw, 1.1rem);
-  color: ${C.cream};
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-`;
-
-const ResetButton = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: clamp(6px, 0.9cqw, 10px);
-  padding: clamp(7px, 1cqh, 10px) clamp(12px, 1.6cqw, 18px);
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.5rem, 0.78cqw, 0.62rem);
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
-  /* Dark-context ghost — sits on the sumi PanelFooter. */
-  color: ${C.creamMute};
-  background: transparent;
-  border: 1px solid ${C.sumiBorder};
-  border-radius: 2px;
-  cursor: pointer;
-  transition:
-    color 0.18s ease,
-    border-color 0.18s ease,
-    background 0.18s ease;
-
-  &:hover {
-    color: ${C.cream};
-    border-color: ${C.iceMid};
-    background: rgba(234, 241, 247, 0.06);
-  }
-
-  &:active {
-    transform: scale(0.98);
-  }
-`;
-
-// ============================================
-// CONTROLS PANEL (RIGHT)
-// ============================================
-
-const ControlsPanel = styled.section`
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  background: ${C.snowPanel};
-  border: 1px solid ${C.snowBorder};
-  border-radius: 2px;
-  overflow: hidden;
-  box-shadow: 0 8px 22px ${C.snowShadow};
-  animation: ${slideInRight} 0.5s ease-out 0.2s both;
+  padding: clamp(9px, 1.2cqh, 13px) clamp(14px, 1.8cqw, 22px);
+  background: ${D.head};
+  border-bottom: 1px solid ${D.borderSoft};
 
   &::before {
     content: "";
     position: absolute;
-    top: 0;
-    left: 30%;
-    right: 30%;
-    height: 2px;
-    background: ${C.gold};
-    opacity: 0.85;
+    inset: 0;
+    background-image: ${WASHI};
+    opacity: 0.7;
+    pointer-events: none;
   }
+
+  & > * {
+    position: relative;
+    z-index: 1;
+  }
+`;
+
+const HeadTitle = styled.h2`
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(8px, 1.1cqw, 12px);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.68rem, 1.05cqw, 0.88rem);
+  color: ${C.cream};
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000;
+
+  &::before {
+    content: "";
+    width: clamp(14px, 1.8cqw, 20px);
+    height: 2px;
+    background: ${C.vermillion};
+  }
+`;
+
+const HeadMeta = styled.div`
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.4rem, 0.62cqw, 0.48rem);
+  color: ${(p) => (p.$accent ? C.ice : C.creamMute)};
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
 `;
 
 const TabBar = styled.div`
   display: flex;
-  align-items: stretch;
-  gap: clamp(2px, 0.4cqw, 4px);
-  padding: clamp(10px, 1.4cqh, 14px) clamp(16px, 2.2cqw, 24px) 0;
-  /*
-   * Sumi tab strip — same banzuke header pattern as PreviewPanel.
-   * The active tab is a snow plate that "pulls down" out of the
-   * dark bunting and merges with the snow ControlsBody beneath,
-   * making the bar/body read as one continuous panel folded over
-   * a dark spine.
-   */
-  background: ${C.sumi};
-  border-bottom: 1px solid ${C.sumiBorder};
+  flex-shrink: 0;
+  gap: clamp(6px, 0.9cqw, 8px);
+  padding: clamp(10px, 1.3cqh, 14px) clamp(14px, 1.8cqw, 20px);
+  background: ${D.chrome};
+  border-bottom: 1px solid ${D.borderSoft};
 `;
 
 const Tab = styled.button`
-  position: relative;
-  display: inline-flex;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: clamp(8px, 1.2cqw, 12px);
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.65rem, 1cqw, 0.85rem);
-  text-transform: uppercase;
+  gap: 3px;
+  min-width: 0;
+  min-height: clamp(36px, 4.5cqh, 44px);
+  padding: clamp(6px, 0.8cqh, 9px) 4px;
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.48rem, 0.74cqw, 0.6rem);
   letter-spacing: 0.18em;
-  padding: clamp(10px, 1.4cqh, 14px) clamp(18px, 2.4cqw, 28px);
-  background: ${(p) => (p.$active ? C.snowPanel : "transparent")};
-  border: 1px solid ${(p) => (p.$active ? C.snowPanel : "transparent")};
-  border-bottom: ${(p) =>
-    p.$active ? `1px solid ${C.snowPanel}` : "none"};
-  border-radius: 2px 2px 0 0;
-  color: ${(p) => (p.$active ? C.iceDeep : C.creamMute)};
+  text-transform: uppercase;
+  color: ${(p) => {
+    if (p.$active) return C.cream;
+    if (!p.$ready) return "rgba(245, 236, 217, 0.28)";
+    return C.creamMute;
+  }};
+  background: ${(p) => (p.$active ? D.softHover : D.soft)};
+  border: 1px solid
+    ${(p) => (p.$active ? C.cream : D.borderSoft)};
+  border-radius: 0;
   cursor: pointer;
-  transition:
-    color 0.18s ease,
-    background 0.18s ease,
-    border-color 0.18s ease;
-  margin-bottom: -1px;
-
-  ${(p) =>
-    p.$active &&
-    css`
-      &::after {
-        content: "";
-        position: absolute;
-        top: -1px;
-        left: 18%;
-        right: 18%;
-        height: 2px;
-        background: ${C.vermillion};
-      }
-    `}
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 
   &:hover {
-    color: ${(p) => (p.$active ? C.iceDeep : C.cream)};
-    ${(p) =>
-      !p.$active &&
-      css`
-        background: rgba(234, 241, 247, 0.06);
-      `}
+    color: ${(p) => (!p.$ready && !p.$active ? "rgba(245, 236, 217, 0.4)" : C.cream)};
+    border-color: ${(p) => (p.$active ? C.cream : "rgba(245, 236, 217, 0.35)")};
+    background: ${D.softHover};
   }
 `;
 
-const TabIcon = styled.span`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 700;
-  font-size: 1.1em;
+const TabSoon = styled.span`
+  font-size: 0.72em;
+  letter-spacing: 0.16em;
+  color: ${C.gold};
   opacity: 0.85;
 `;
 
-const ControlsBody = styled.div`
-  flex: 1;
+const PickerBody = styled.div`
+  flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: clamp(14px, 2cqh, 22px);
-  padding: clamp(16px, 2.4cqh, 26px) clamp(18px, 2.4cqw, 28px);
+  overflow-x: hidden;
   overflow-y: auto;
+  padding: clamp(14px, 1.9cqh, 20px) clamp(14px, 1.8cqw, 20px);
 
-  /* Ice scrollbar */
   &::-webkit-scrollbar {
-    width: 6px;
-  }
-  &::-webkit-scrollbar-track {
-    background: ${C.snowPanelDeep};
+    width: 4px;
   }
   &::-webkit-scrollbar-thumb {
-    background: ${C.iceMid};
-    border-radius: 2px;
-  }
-  &::-webkit-scrollbar-thumb:hover {
-    background: ${C.iceDeep};
+    background: ${C.vermillion};
   }
 `;
 
-const CategorySection = styled.section`
+/* Stable content shell — every tab fills the same body region */
+const Pane = styled.div`
+  flex: 1;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: clamp(8px, 1.2cqh, 12px);
-  animation: ${fadeUp} 0.4s ease-out;
 `;
 
-const SectionHeader = styled.div`
+const ColorGroup = styled.section`
+  display: flex;
+  flex-direction: column;
+  gap: clamp(9px, 1.2cqh, 12px);
+  margin-bottom: clamp(16px, 2.2cqh, 22px);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const GroupHead = styled.div`
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
-  padding-bottom: clamp(6px, 0.8cqh, 8px);
-  border-bottom: 1px solid ${C.snowBorderSoft};
+  gap: 10px;
 `;
 
-const SectionTitle = styled.h2`
-  margin: 0;
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.65rem, 1cqw, 0.82rem);
-  color: ${C.inkText};
+const GroupLabel = styled.div`
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(7px, 1cqw, 10px);
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.48rem, 0.74cqw, 0.6rem);
+  color: ${C.cream};
+  letter-spacing: 0.26em;
   text-transform: uppercase;
-  letter-spacing: 0.22em;
+
+  &::before {
+    content: "";
+    width: clamp(10px, 1.4cqw, 14px);
+    height: 2px;
+    background: ${C.vermillion};
+  }
 `;
 
-const SectionMeta = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.42rem, 0.65cqw, 0.5rem);
-  color: ${C.inkTextMute};
+const GroupMeta = styled.div`
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.4rem, 0.62cqw, 0.48rem);
+  color: rgba(245, 236, 217, 0.35);
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  letter-spacing: 0.28em;
 `;
 
 const SwatchGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(${(p) => p.$cols ?? 9}, minmax(0, 1fr));
-  gap: clamp(7px, 1cqw, 12px);
-`;
-
-const SwatchCell = styled.div`
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: clamp(4px, 0.6cqh, 6px);
+  flex-wrap: wrap;
+  gap: clamp(9px, 1.1cqw, 12px);
+  padding: 4px;
+  margin: -4px;
 `;
 
 const ColorSwatch = styled.button`
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  border: 2px solid
-    ${(p) => (p.$selected ? C.gold : C.snowBorder)};
+  width: clamp(32px, 3.8cqw, 42px);
+  height: clamp(32px, 3.8cqw, 42px);
+  flex: 0 0 auto;
+  border-radius: ${(p) => (p.$square ? "2px" : "50%")};
+  border: 2px solid ${(p) => (p.$selected ? C.gold : D.border)};
   background: ${(p) => p.$gradient || p.$color};
   cursor: pointer;
-  transition:
-    transform 0.15s ease,
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
   box-shadow: ${(p) =>
     p.$selected
-      ? `0 0 0 2px rgba(232, 197, 71, 0.5), 0 2px 6px ${C.snowShadow}`
-      : `0 2px 5px ${C.snowShadow}`};
-  animation: ${swatchPop} 0.3s ease-out both;
-  animation-delay: ${(p) => Math.min(p.$index ?? 0, 16) * 0.02}s;
+      ? `0 0 0 2px rgba(232, 197, 71, 0.45), 0 2px 6px ${D.shadow}`
+      : `0 2px 5px ${D.shadow}`};
+  animation: ${swatchPop} 0.24s ease-out both;
+  animation-delay: ${(p) => Math.min(p.$index ?? 0, 14) * 0.015}s;
+  transition: transform 0.14s ease, border-color 0.16s ease;
 
   &:hover {
-    transform: scale(1.12);
-    border-color: ${(p) => (p.$selected ? C.gold : C.iceMid)};
+    transform: scale(1.1);
+    border-color: ${(p) => (p.$selected ? C.gold : C.cream)};
+    z-index: 1;
   }
 
   &:active {
@@ -714,27 +691,115 @@ const ColorSwatch = styled.button`
   }
 `;
 
-const PatternSwatch = styled(ColorSwatch)`
-  border-radius: 6px;
+const SoonWrap = styled.div`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: clamp(12px, 1.8cqh, 18px);
+  padding: clamp(6px, 1cqh, 12px) 0;
 `;
 
-const SwatchName = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.4rem, 0.62cqw, 0.5rem);
-  color: ${(p) => (p.$selected ? C.inkText : C.inkTextMute)};
+const SoonTitle = styled.div`
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.72rem, 1.1cqw, 0.9rem);
+  color: ${C.gold};
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000;
+`;
+
+const SoonCopy = styled.p`
+  margin: 0;
+  font-family: ${FONT_BODY};
+  font-weight: 600;
+  font-size: clamp(0.7rem, 0.98cqw, 0.82rem);
+  color: ${C.creamMute};
+  letter-spacing: 0.03em;
+  line-height: 1.45;
+  max-width: 32ch;
+`;
+
+const ItemGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(8px, 1.1cqw, 12px);
   width: 100%;
+`;
+
+const ItemSlot = styled.div`
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${D.deep};
+  border: 1px solid ${D.borderSoft};
+  color: rgba(245, 236, 217, 0.22);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.85rem, 1.3cqw, 1.1rem);
+`;
+
+const PickerFooter = styled.footer`
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: clamp(10px, 1.3cqh, 14px) clamp(14px, 1.8cqw, 20px);
+  border-top: 1px solid ${D.borderSoft};
+  background: ${D.chrome};
+`;
+
+const FooterHint = styled.div`
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.4rem, 0.62cqw, 0.48rem);
+  color: rgba(245, 236, 217, 0.4);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+`;
+
+const ResetButton = styled.button`
+  min-height: 32px;
+  padding: 6px 14px;
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.42rem, 0.68cqw, 0.52rem);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: ${C.creamMute};
+  background: ${D.soft};
+  border: 1px solid ${D.borderSoft};
+  border-radius: 0;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+
+  &:hover:not(:disabled) {
+    color: ${C.cream};
+    border-color: rgba(245, 236, 217, 0.35);
+    background: ${D.softHover};
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
 `;
 
 // ============================================
 // COMPONENT
 // ============================================
+
+function resolveAccent(color, gradient) {
+  if (gradient) return C.gold;
+  if (!color || color === SPRITE_BASE_COLOR) return C.ice;
+  return color;
+}
 
 function CustomizePage({ onBack }) {
   const {
@@ -756,7 +821,6 @@ function CustomizePage({ onBack }) {
     };
   }, []);
 
-  // Recolor preview whenever belt or body color changes
   useEffect(() => {
     const needsMawashi = player1Color && player1Color !== SPRITE_BASE_COLOR;
     const needsBody = !!player1BodyColor;
@@ -787,6 +851,37 @@ function CustomizePage({ onBack }) {
       });
   }, [player1Color, player1BodyColor]);
 
+  const activeTab = WARDROBE_TABS.find((t) => t.id === tab) || WARDROBE_TABS[0];
+  const isBelt = tab === "belt";
+  const isBody = tab === "body";
+  const canReset = activeTab.ready && activeTab.layout === "colors";
+
+  const selectedBelt = BELT_ALL.find((c) => c.hex === player1Color);
+  const selectedBody = BODY_COLORS.find((c) => c.hex === player1BodyColor);
+
+  const showingBody = isBody;
+  const currentName = showingBody
+    ? selectedBody?.name || "Default"
+    : selectedBelt?.name || "Default";
+  const currentCategory = showingBody
+    ? "Body"
+    : selectedBelt?.gradient
+      ? "Belt Pattern"
+      : "Mawashi";
+  const brushColor = showingBody
+    ? player1BodyColor || "#888"
+    : player1Color || SPRITE_BASE_COLOR;
+  const brushGradient = showingBody
+    ? selectedBody?.gradient
+    : selectedBelt?.gradient;
+  const accent = resolveAccent(brushColor, brushGradient);
+
+  const handleTab = (id) => {
+    if (id === tab) return;
+    playButtonHoverSound();
+    setTab(id);
+  };
+
   const handleBeltSelect = (hex) => {
     playButtonPressSound2();
     setPlayer1Color(hex);
@@ -797,219 +892,203 @@ function CustomizePage({ onBack }) {
     setPlayer1BodyColor(hex);
   };
 
-  const handleTabChange = (next) => {
-    if (next === tab) return;
-    playButtonHoverSound();
-    setTab(next);
-  };
-
   const handleReset = () => {
+    if (!canReset) return;
     playButtonPressSound2();
-    if (tab === "belt") {
-      setPlayer1Color(SPRITE_BASE_COLOR);
-    } else {
-      setPlayer1BodyColor(null);
-    }
+    if (isBelt) setPlayer1Color(SPRITE_BASE_COLOR);
+    else if (isBody) setPlayer1BodyColor(null);
   };
 
-  // Resolve current selection details for the preview footer
-  const allBelt = [...BELT_SOLIDS, ...BELT_PATTERNS];
-  const selectedBelt = allBelt.find((c) => c.hex === player1Color);
-  const selectedBody = BODY_COLORS.find((c) => c.hex === player1BodyColor);
-  const isBeltTab = tab === "belt";
+  const renderPickerContent = () => {
+    if (activeTab.layout === "colors" && activeTab.ready) {
+      if (isBelt) {
+        return (
+          <Pane>
+            <ColorGroup>
+              <GroupHead>
+                <GroupLabel>Solids</GroupLabel>
+                <GroupMeta>{BELT_SOLIDS.length}</GroupMeta>
+              </GroupHead>
+              <SwatchGrid>
+                {BELT_SOLIDS.map((color, i) => (
+                  <ColorSwatch
+                    key={color.name}
+                    type="button"
+                    $index={i}
+                    $color={color.hex}
+                    $selected={player1Color === color.hex}
+                    onClick={() => handleBeltSelect(color.hex)}
+                    onMouseEnter={playButtonHoverSound}
+                    title={color.name}
+                    aria-label={color.name}
+                  />
+                ))}
+              </SwatchGrid>
+            </ColorGroup>
+            <ColorGroup>
+              <GroupHead>
+                <GroupLabel>Patterns</GroupLabel>
+                <GroupMeta>{BELT_PATTERNS.length}</GroupMeta>
+              </GroupHead>
+              <SwatchGrid>
+                {BELT_PATTERNS.map((color, i) => (
+                  <ColorSwatch
+                    key={color.name}
+                    type="button"
+                    $square
+                    $index={i + BELT_SOLIDS.length}
+                    $color={color.hex}
+                    $gradient={color.gradient}
+                    $selected={player1Color === color.hex}
+                    onClick={() => handleBeltSelect(color.hex)}
+                    onMouseEnter={playButtonHoverSound}
+                    title={color.name}
+                    aria-label={color.name}
+                  />
+                ))}
+              </SwatchGrid>
+            </ColorGroup>
+          </Pane>
+        );
+      }
 
-  const currentName = isBeltTab
-    ? selectedBelt?.name || "Default"
-    : selectedBody?.name || "Default";
-  const currentCategoryLabel = isBeltTab
-    ? selectedBelt?.gradient
-      ? "Belt Pattern"
-      : "Belt Color"
-    : "Body Color";
-  const currentColor = isBeltTab
-    ? player1Color || SPRITE_BASE_COLOR
-    : player1BodyColor || "#888";
-  const currentGradient = isBeltTab
-    ? selectedBelt?.gradient
-    : selectedBody?.gradient;
+      return (
+        <Pane>
+          <ColorGroup>
+            <GroupHead>
+              <GroupLabel>Hues</GroupLabel>
+              <GroupMeta>{BODY_COLORS.length}</GroupMeta>
+            </GroupHead>
+            <SwatchGrid>
+              {BODY_COLORS.map((color, i) => (
+                <ColorSwatch
+                  key={color.name}
+                  type="button"
+                  $index={i}
+                  $color={color.hex || "#888"}
+                  $gradient={color.gradient}
+                  $selected={player1BodyColor === color.hex}
+                  onClick={() => handleBodySelect(color.hex)}
+                  onMouseEnter={playButtonHoverSound}
+                  title={color.name}
+                  aria-label={color.name}
+                />
+              ))}
+            </SwatchGrid>
+          </ColorGroup>
+        </Pane>
+      );
+    }
+
+    return (
+      <Pane>
+        <SoonWrap>
+          <SoonTitle>Coming Soon</SoonTitle>
+          <SoonCopy>
+            {activeTab.label} unlocks later — topknots, ornaments, and
+            kesho-mawashi pieces.
+          </SoonCopy>
+          <ItemGrid aria-hidden>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <ItemSlot key={i}>?</ItemSlot>
+            ))}
+          </ItemGrid>
+        </SoonWrap>
+      </Pane>
+    );
+  };
 
   return (
     <PageContainer>
       <BackgroundImage src={mainMenuBackground} alt="" />
-      <CinematicOverlay />
+      <StageDim />
       <GrainOverlay />
-      <Snowfall intensity={15} showFrost={false} zIndex={2} />
 
-      <TopBar>
-        <TopBarLeft>
-          <BackButton
-            onClick={() => {
-              playButtonPressSound2();
-              onBack();
-            }}
-            onMouseEnter={playButtonHoverSound}
-          >
-            <span className="arrow">←</span>
-            Back
-          </BackButton>
-        </TopBarLeft>
+      <BackButton
+        type="button"
+        onClick={() => {
+          playButtonPressSound2();
+          onBack();
+        }}
+        onMouseEnter={playButtonHoverSound}
+      >
+        <span className="arrow">←</span>
+        Back
+      </BackButton>
 
-        <TitleBlock>
-          <PageTitle>Customize</PageTitle>
-          <PageSubtitle>Edit Your Wrestler</PageSubtitle>
-        </TitleBlock>
-
-        <TopBarRight>
-          <SaveIndicator>
-            <SaveDot $busy={isLoading} />
-            {isLoading ? "Saving" : "Auto-saved"}
-          </SaveIndicator>
-        </TopBarRight>
-      </TopBar>
+      <TopSlug>
+        <SlugText $accent>
+          <strong>VER.</strong> HATSU
+        </SlugText>
+        <SlugRule aria-hidden />
+        <SlugText>Wardrobe</SlugText>
+      </TopSlug>
 
       <Stage>
-        <PreviewPanel>
-          <PanelHeader>
-            <PanelHeaderLeft>
-              <PanelLabel>Preview</PanelLabel>
-              <PanelMeta>Mirror Reflection</PanelMeta>
-            </PanelHeaderLeft>
-            <LiveBadge $busy={isLoading}>
-              <LiveDot $busy={isLoading} />
-              {isLoading ? "Updating" : "Live"}
-            </LiveBadge>
-          </PanelHeader>
-
-          <PreviewStage>
-            <PreviewSpotlight />
-            <AvatarBreath>
-              <PreviewImage src={previewSrc} alt="Penguin preview" />
-            </AvatarBreath>
-          </PreviewStage>
-
-          <PanelFooter>
-            <CurrentSelection>
-              <CurrentSwatch
-                $color={currentColor}
-                $gradient={currentGradient}
+        <FighterColumn>
+          <Portrait>
+            <FighterFigure>
+              <FloorShadow />
+              <FighterImg
+                src={previewSrc}
+                alt="Your wrestler"
+                $ready={!isLoading}
               />
-              <CurrentNameStack>
-                <CurrentCategory>{currentCategoryLabel}</CurrentCategory>
-                <CurrentName>{currentName}</CurrentName>
-              </CurrentNameStack>
-            </CurrentSelection>
-            <ResetButton
-              onClick={handleReset}
-              onMouseEnter={playButtonHoverSound}
-            >
-              Reset {isBeltTab ? "Belt" : "Body"}
-            </ResetButton>
-          </PanelFooter>
-        </PreviewPanel>
+            </FighterFigure>
+          </Portrait>
+          <IdentityBlock>
+            <SideLabel $accent={accent}>{currentCategory}</SideLabel>
+            <FighterName>{currentName}</FighterName>
+            <BrushStroke $color={brushColor} $gradient={brushGradient} />
+            <MetaItem>{isLoading ? "Updating…" : "Auto-saved"}</MetaItem>
+          </IdentityBlock>
+        </FighterColumn>
 
-        <ControlsPanel>
-          <TabBar>
-            <Tab
-              $active={isBeltTab}
-              onClick={() => handleTabChange("belt")}
-              onMouseEnter={playButtonHoverSound}
-            >
-              <TabIcon>◉</TabIcon>
-              Belt
-            </Tab>
-            <Tab
-              $active={!isBeltTab}
-              onClick={() => handleTabChange("body")}
-              onMouseEnter={playButtonHoverSound}
-            >
-              <TabIcon>◍</TabIcon>
-              Body
-            </Tab>
+        <PickerDock>
+          <PanelHead>
+            <HeadTitle>Wardrobe</HeadTitle>
+            <HeadMeta $accent={activeTab.ready}>
+              {activeTab.ready ? activeTab.label : `${activeTab.label} · Soon`}
+            </HeadMeta>
+          </PanelHead>
+
+          <TabBar role="tablist" aria-label="Wardrobe categories">
+            {WARDROBE_TABS.map((t) => (
+              <Tab
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                $active={tab === t.id}
+                $ready={t.ready}
+                onClick={() => handleTab(t.id)}
+                onMouseEnter={playButtonHoverSound}
+                title={t.ready ? t.label : `${t.label} — coming soon`}
+              >
+                {t.label}
+                {!t.ready && <TabSoon>Soon</TabSoon>}
+              </Tab>
+            ))}
           </TabBar>
 
-          <ControlsBody>
-            {isBeltTab ? (
-              <>
-                <CategorySection>
-                  <SectionHeader>
-                    <SectionTitle>Belt Colors</SectionTitle>
-                    <SectionMeta>{BELT_SOLIDS.length} Solids</SectionMeta>
-                  </SectionHeader>
-                  <SwatchGrid $cols={9}>
-                    {BELT_SOLIDS.map((color, i) => (
-                      <SwatchCell key={color.name}>
-                        <ColorSwatch
-                          $index={i}
-                          $color={color.hex}
-                          $selected={player1Color === color.hex}
-                          onClick={() => handleBeltSelect(color.hex)}
-                          onMouseEnter={playButtonHoverSound}
-                          title={color.name}
-                          aria-label={color.name}
-                        />
-                        <SwatchName $selected={player1Color === color.hex}>
-                          {color.name}
-                        </SwatchName>
-                      </SwatchCell>
-                    ))}
-                  </SwatchGrid>
-                </CategorySection>
+          <PickerBody>{renderPickerContent()}</PickerBody>
 
-                <CategorySection>
-                  <SectionHeader>
-                    <SectionTitle>Special Patterns</SectionTitle>
-                    <SectionMeta>{BELT_PATTERNS.length} Premium</SectionMeta>
-                  </SectionHeader>
-                  <SwatchGrid $cols={6}>
-                    {BELT_PATTERNS.map((color, i) => (
-                      <SwatchCell key={color.name}>
-                        <PatternSwatch
-                          $index={i + BELT_SOLIDS.length}
-                          $color={color.hex}
-                          $gradient={color.gradient}
-                          $selected={player1Color === color.hex}
-                          onClick={() => handleBeltSelect(color.hex)}
-                          onMouseEnter={playButtonHoverSound}
-                          title={color.name}
-                          aria-label={color.name}
-                        />
-                        <SwatchName $selected={player1Color === color.hex}>
-                          {color.name}
-                        </SwatchName>
-                      </SwatchCell>
-                    ))}
-                  </SwatchGrid>
-                </CategorySection>
-              </>
-            ) : (
-              <CategorySection>
-                <SectionHeader>
-                  <SectionTitle>Body Colors</SectionTitle>
-                  <SectionMeta>{BODY_COLORS.length} Hues</SectionMeta>
-                </SectionHeader>
-                <SwatchGrid $cols={7}>
-                  {BODY_COLORS.map((color, i) => (
-                    <SwatchCell key={color.name}>
-                      <ColorSwatch
-                        $index={i}
-                        $color={color.hex || "#888"}
-                        $gradient={color.gradient}
-                        $selected={player1BodyColor === color.hex}
-                        onClick={() => handleBodySelect(color.hex)}
-                        onMouseEnter={playButtonHoverSound}
-                        title={color.name}
-                        aria-label={color.name}
-                      />
-                      <SwatchName $selected={player1BodyColor === color.hex}>
-                        {color.name}
-                      </SwatchName>
-                    </SwatchCell>
-                  ))}
-                </SwatchGrid>
-              </CategorySection>
-            )}
-          </ControlsBody>
-        </ControlsPanel>
+          <PickerFooter>
+            <FooterHint>
+              {activeTab.ready
+                ? `${activeTab.label} colors`
+                : `${activeTab.label} catalog`}
+            </FooterHint>
+            <ResetButton
+              type="button"
+              disabled={!canReset}
+              onClick={handleReset}
+              onMouseEnter={canReset ? playButtonHoverSound : undefined}
+            >
+              Reset
+            </ResetButton>
+          </PickerFooter>
+        </PickerDock>
       </Stage>
     </PageContainer>
   );

@@ -20,7 +20,8 @@ const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
         BALANCE_MAX } = require("./constants");
 const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
         canPlayerSidestep, getSidestepInitData, simNowForPlayer,
-        logVerbInitiation, beginFlapStartup } = require("./gameUtils");
+        logVerbInitiation, beginFlapStartup,
+        canArmAttackParry, armAttackParry } = require("./gameUtils");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum, Phase 2: posture, Phase 3: cadence).
 const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P3_CADENCE } = require("./masteryFlags");
@@ -3465,11 +3466,13 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     }
   }
 
-  // Process raw parry — FLAP replaces raw parry entirely (same as humans).
+  // Process ATTACK PARRY — the CPU "taps" s (edge-triggered via keyJustPressed).
+  // Arms one short deflect window via the shared helper; the main-loop AP state
+  // machine handles the active→whiff-recovery transition (so NO manual release
+  // here). FLAP replaces AP entirely (same as humans).
   if (keyJustPressed("s") && 
       cpu.activePowerUp !== POWER_UP_TYPES.FLAP &&
       !shouldBlockAction() &&
-      !cpu.isRawParrying &&
       !cpu.isRawParryStun &&
       !cpu.isSidestepping &&
       !cpu.isGrabbing &&
@@ -3484,31 +3487,15 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       !cpu.isThrowingSnowball &&
       !cpu.isSpawningPumoArmy &&
       !cpu.canMoveToReady &&
+      canArmAttackParry(cpu, currentTime) &&
       canPlayerUseAction(cpu)) {
     
-    cpu.isRawParrySuccess = false;
-    cpu.isPerfectRawParrySuccess = false;
-    cpu.isRawParrying = true;
-    cpu.rawParryStartTime = currentTime;
-    cpu.rawParryMinDurationMet = false;
-    cpu.stamina = Math.max(0, cpu.stamina - RAW_PARRY_STAMINA_COST);
+    armAttackParry(cpu, currentTime);
     clearChargeState(cpu, true);
-    cpu.movementVelocity = 0;
-    cpu.isStrafing = false;
-    cpu.isPowerSliding = false;
-    cpu.isCrouchStance = false;
-    cpu.isCrouchStrafing = false;
-    cpu.pendingSlapCount = 0;
     
     if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
     else Object.assign(cpu._prevKeys, cpu.keys);
     return;
-  }
-  
-  // Release parry
-  if (!cpu.keys.s && cpu.isRawParrying) {
-    cpu.isRawParrying = false;
-    cpu.rawParryStartTime = 0;
   }
   
   // Neutral charged attack REMOVED from the CPU's neutral game.

@@ -77,6 +77,37 @@ const {
   PALM_THRUST_KB_VELOCITY,
   PALM_THRUST_ACTIVE_MS,
   FLAP_BODYSLAM_KB_VELOCITY,
+  AP_ACTIVE_MS,
+  AP_FLOW_WINDOW_MS,
+  AP_KILL_THRESHOLD,
+  AP_PERFECT_KILL_THRESHOLD,
+  AP_BALANCE_DRAIN,
+  AP_PERFECT_BALANCE_DRAIN,
+  AP_ATTACKER_KNOCKBACK,
+  AP_PERFECT_ATTACKER_KNOCKBACK,
+  AP_HITSTOP_MS,
+  AP_PERFECT_HITSTOP_MS,
+  AP_KILL_HITSTOP_MS,
+  AP_PERFECT_BALANCE_REFUND,
+  AP_STAGGER_SLAP_MS,
+  AP_STAGGER_PALM_MS,
+  AP_STAGGER_FLAP_MS,
+  AP_PERFECT_ADVANTAGE_MS,
+  AP_SUCCESS_RECOVERY_MS,
+  AP_COOLDOWN_MS,
+  AP_STAMINA_COST,
+  AP_KILL_SLIDE_DISTANCE,
+  AP_KILL_SLIDE_DURATION_MS,
+  GUARD_SLAP_BALANCE_CHIP,
+  GUARD_PALM_BALANCE_CHIP,
+  GUARD_SLAP_STAMINA_DRAIN,
+  GUARD_PALM_STAMINA_DRAIN,
+  GUARD_SLAP_PUSHBACK,
+  GUARD_PALM_PUSHBACK,
+  GUARD_HITSTOP_MS,
+  GUARD_CRUSH_STUN_MS,
+  SLAP_TRADE_WINDOW_MS,
+  SLAP_TRADE_KNOCKBACK,
 } = require("./constants");
 
 const {
@@ -112,6 +143,10 @@ const {
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
 } = require("./combatHelpers");
+
+// handleWinCondition is used by the lethal AP slap-down. gameFunctions does not
+// require collisionSystem, so this top-level require introduces no cycle.
+const { handleWinCondition } = require("./gameFunctions");
 
 function playerPalmBreaksGrabArmor(player) {
   return (
@@ -349,20 +384,24 @@ function checkCollision(player, otherPlayer, rooms, io) {
     const horizontalDistance = Math.abs(deltaX);
     if (opponentInFront && horizontalDistance < hitboxDistance) {
       if (otherPlayer.isAttacking && otherPlayer.attackType === "slap") {
-        // Slap parry: both slaps active within the parry window
-        if (player.isSlapParryRecovering || otherPlayer.isSlapParryRecovering) return;
-        const timeDifference = Math.abs(
-          player.attackStartTime - otherPlayer.attackStartTime
-        );
-        if (timeDifference <= SLAP_PARRY_WINDOW) {
-          const currentRoom = rooms.find((room) =>
-            room.players.some((p) => p.id === player.id)
-          );
-          if (currentRoom) {
-            resolveSlapParry(player, otherPlayer, currentRoom, io);
-          }
+        // ── SLAP vs SLAP: earlier-connect wins; same-tick tie TRADES ──────────
+        // The old clash ("slap parry") is gone. Resolution is now purely by who
+        // connected first (judged on attackStartTime, so it's order-independent —
+        // no P1 bias). Only a genuine ~1-tick tie is a TRADE (both take a hit).
+        const diff = player.attackStartTime - otherPlayer.attackStartTime;
+        if (Math.abs(diff) <= SLAP_TRADE_WINDOW_MS) {
+          // Genuine tie → TRADE. resolveSlapTrade applies BOTH hits and clears
+          // both attacks, so the reciprocal checkCollision(other, player) this
+          // tick self-skips (its isAttacking gate is now false).
+          resolveSlapTrade(player, otherPlayer, rooms, io);
           return;
         }
+        if (diff > 0) {
+          // player pressed LATER → the earlier otherPlayer wins; this slap is
+          // stuffed. otherPlayer's own checkCollision call lands their hit.
+          return;
+        }
+        // diff < 0 → player pressed EARLIER → fall through to processHit (wins clean).
       }
 
       // Slap vs Charged: if opponent is executing a charged attack above the
@@ -459,159 +498,108 @@ function checkCollision(player, otherPlayer, rooms, io) {
   }
 }
 
-function resolveSlapParry(player1, player2, room, io) {
-  // Sim clock — parry triggers hitstop, so its own recovery deadlines must
-  // live on the clock that pauses with it.
-  const now = simNow(room);
+// ── SLAP TRADE ──────────────────────────────────────────────────────────────
+// Applies ONE slap hit to `victim` (as if struck by `attacker`). Used only for a
+// genuine same-tick tie, so it deliberately skips the MASTERY momentum nuances
+// (a trade is a rare 1-tick event): balance/stamina chip, a slap knockback with
+// the standard rope-resistance ring-out gate, hit VFX/SFX. The main-loop
+// knockback + boundary logic converts a boundary-side victim into a ring-out —
+// and since both players are shoved toward OPPOSITE ropes while inside slap
+// range of each other, at most ONE can ever be in kill range (no double-KO).
+function applyTradeHit(victim, attacker, room, io) {
+  const currentTime = simNow(room);
+  const knockbackDirection = attacker.x < victim.x ? 1 : -1; // shove victim away from attacker
 
-  // ── GAIN / LOSE / NEUTRAL (GROUND only) ──────────────────────────────────
-  // The clash is rare (tight SLAP_PARRY_WINDOW), so it resolves into a real
-  // result instead of a coinflip. The timing GAP between the two slaps decides
-  // who gains GROUND — and ONLY ground:
-  //   • gap < NEUTRAL window  → genuine tie  → NEUTRAL (both pop back equally).
-  //   • gap ≥ NEUTRAL window  → someone went first → that player holds center
-  //                             and shoves the other back (ground gained/lost).
-  // Recovery is SYMMETRIC regardless of outcome (see below): both players unlock
-  // at the same instant, so mashing-after-clash re-clashes fairly instead of the
-  // winner snowballing a tempo lead. A near-tie is honestly a tie, so a win
-  // always feels EARNED, never random.
-  const gap = Math.abs(player1.attackStartTime - player2.attackStartTime);
-  const isNeutral = gap < SLAP_PARRY_NEUTRAL_WINDOW_MS;
+  const slapDrain = MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN;
+  victim.balance = Math.max(0, victim.balance - slapDrain);
+  victim.stamina = Math.max(0, victim.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
 
-  // MASTERY Phase 4 (4.3): the decisive-clash shove scales with the timing
-  // MARGIN between the two presses — a razor-thin win barely nudges, a clean
-  // first-move win sends. At the smallest decisive gap (t=0) the pair equals
-  // today's fixed WINNER/LOSER-ish floor; a wide margin (t=1) spreads them.
-  // Neutral (tie) is unchanged; recovery stays symmetric (fairness invariant).
-  // Flag off ⇒ today's exact SLAP_PARRY_KNOCKBACK_WINNER/LOSER (byte-identical).
-  let winnerKb = SLAP_PARRY_KNOCKBACK_WINNER;
-  let loserKb = SLAP_PARRY_KNOCKBACK_LOSER;
-  if (MASTERY_P4_ANALOG) {
-    const t = Math.max(
-      0,
-      Math.min(1, (gap - CLASH_MARGIN_MIN_MS) / (CLASH_MARGIN_MAX_MS - CLASH_MARGIN_MIN_MS))
-    );
-    loserKb = CLASH_LOSER_KB_MIN + (CLASH_LOSER_KB_MAX - CLASH_LOSER_KB_MIN) * t;
-    winnerKb = CLASH_WINNER_KB_MAX + (CLASH_WINNER_KB_MIN - CLASH_WINNER_KB_MAX) * t;
+  clearAllActionStates(victim);
+  victim.y = GROUND_LEVEL;
+  victim.cadenceChain = 0;
+  if (!victim.isAtTheRopes && !victim.atTheRopesFacingDirection) {
+    victim.facing = attacker.x < victim.x ? 1 : -1; // face the attacker
   }
 
-  // Per-player knockback strength (the ONLY thing the outcome changes).
-  let p1Kb, p2Kb;
-  if (isNeutral) {
-    p1Kb = p2Kb = SLAP_PARRY_KNOCKBACK_NEUTRAL;
-  } else if (player1.attackStartTime <= player2.attackStartTime) {
-    // player1 went first → player1 wins (holds ground), player2 loses (shoved).
-    p1Kb = winnerKb;
-    p2Kb = loserKb;
-  } else {
-    p2Kb = winnerKb;
-    p1Kb = loserKb;
-  }
+  victim.isHit = true;
+  victim.isAlreadyHit = true;
+  victim.lastHitType = "slap";
+  victim.hitCounter = (victim.hitCounter || 0) + 1;
+  victim.isSlapKnockback = true;
+  victim.isChargedKnockback = false;
+  victim.isBurstKnockback = false;
 
-  // Tip-separation snap — expand to tip-meet spacing BEFORE hitstop so the
-  // freeze shows flippers touching through the clash VFX, not belly mash.
-  // Only expands (never pulls closer). Midpoint preserved unless a wall steals
-  // range from one side; then the free player takes the leftover gap.
-  const BOUNDARY_BUFFER = 10; // matches slap-parry KB clamp in index.js
-  const leftBound = MAP_LEFT_BOUNDARY + BOUNDARY_BUFFER;
-  const rightBound = MAP_RIGHT_BOUNDARY - BOUNDARY_BUFFER;
-  const curDist = Math.abs(player1.x - player2.x);
-  if (curDist < SLAP_PARRY_TIP_SEPARATION) {
-    const left = player1.x <= player2.x ? player1 : player2;
-    const right = left === player1 ? player2 : player1;
-    const mid = (player1.x + player2.x) / 2;
-    let leftX = mid - SLAP_PARRY_TIP_SEPARATION / 2;
-    let rightX = mid + SLAP_PARRY_TIP_SEPARATION / 2;
+  const distToBoundaryInKbDir = knockbackDirection > 0
+    ? MAP_RIGHT_BOUNDARY - victim.x
+    : victim.x - MAP_LEFT_BOUNDARY;
+  victim.slapKnockbackCanRingOut = distToBoundaryInKbDir <= slapKillBand(attacker, victim);
 
-    if (leftX < leftBound) {
-      leftX = leftBound;
-      rightX = leftX + SLAP_PARRY_TIP_SEPARATION;
-    }
-    if (rightX > rightBound) {
-      rightX = rightBound;
-      leftX = rightX - SLAP_PARRY_TIP_SEPARATION;
-      if (leftX < leftBound) {
-        // Both walls / too narrow for a full tip gap — span the arena max.
-        leftX = leftBound;
-        rightX = rightBound;
+  // Hard mutual shove (not the normal on-hit drift) so a trade SPACES both
+  // players out of slap range — they must re-approach, which breaks the +0
+  // "sync-lock" that would otherwise make synced mashers re-trade every cycle.
+  victim.knockbackVelocity = { x: knockbackDirection * SLAP_TRADE_KNOCKBACK, y: 0 };
+  victim.movementVelocity = 0;
+  victim.lastHitTime = currentTime;
+  victim.inputLockUntil = Math.max(victim.inputLockUntil || 0, currentTime + SLAP_MIN_HITSTUN_MS);
+
+  timeoutManager.clearPlayerSpecific(victim.id, "hitStateReset");
+  setPlayerTimeout(
+    victim.id,
+    () => {
+      // Hand the leftover knockback off to the ice coast (movementVelocity) so
+      // the shove flows into a smooth slide-to-stop — exactly like a normal slap
+      // victim. Without this the trade slide hard-stopped and read as "no slide".
+      if (Math.abs(victim.knockbackVelocity.x) > 0.01) {
+        victim.movementVelocity = victim.knockbackVelocity.x;
       }
-    }
+      victim.knockbackVelocity.x = 0;
+      victim.isHit = false;
+      victim.isAlreadyHit = false;
+      victim.isSlapKnockback = false;
+      victim.slapKnockbackCanRingOut = false;
+    },
+    SLAP_MIN_HITSTUN_MS + 60,
+    "hitStateReset"
+  );
 
-    left.x = leftX;
-    right.x = rightX;
-  }
-
-  const dir1 = player1.x < player2.x ? -1 : 1;
-  const dir2 = -dir1;
-
-  // Boundary safety: if a player is pinned at the wall their shove has nowhere
-  // to go (they'd overlap the other). Transfer half of it to the other player
-  // so the pair still separates cleanly.
-  const BOUNDARY_PROXIMITY = 30;
-  const p1NearWall = player1.x <= MAP_LEFT_BOUNDARY + BOUNDARY_PROXIMITY ||
-                     player1.x >= MAP_RIGHT_BOUNDARY - BOUNDARY_PROXIMITY;
-  const p2NearWall = player2.x <= MAP_LEFT_BOUNDARY + BOUNDARY_PROXIMITY ||
-                     player2.x >= MAP_RIGHT_BOUNDARY - BOUNDARY_PROXIMITY;
-  if (p1NearWall && !p2NearWall) p2Kb += p1Kb * 0.5;
-  else if (p2NearWall && !p1NearWall) p1Kb += p2Kb * 0.5;
-
-  // Recovery (lockout + immunity) is IDENTICAL for both — no tempo advantage.
-  applyParryEffect(player1, dir1, p1Kb, SLAP_PARRY_RECOVERY_MS);
-  applyParryEffect(player2, dir2, p2Kb, SLAP_PARRY_RECOVERY_MS);
-
-  // Clear slap state and schedule both players' (symmetric) recovery end.
-  const applyRecovery = (p) => {
-    p.isSlapSliding = false;
-    p.isSlapParryRecovering = true;
-    p.pendingSlapCount = 0;
-    // MASTERY Phase 3: a clash interrupts both players' tsuppari rhythm.
-    p.cadenceChain = 0;
-
-    timeoutManager.clearPlayerSpecific(p.id, "slapCycle");
-    p.attackCooldownUntil = now + SLAP_PARRY_RECOVERY_MS;
-    setPlayerTimeout(p.id, () => {
-      p.isAttacking = false;
-      p.isSlapAttack = false;
-      p.attackType = null;
-      p.isSlapSliding = false;
-      p.slapFacingDirection = null;
-      p.isInStartupFrames = false;
-      p.slapActiveEndTime = 0;
-      p.currentAction = null;
-      p.slapCycleEndCallback = null;
-      p.isSlapParryRecovering = false;
-    }, SLAP_PARRY_RECOVERY_MS, "slapCycle");
-  };
-  applyRecovery(player1);
-  applyRecovery(player2);
-
-  // Heavy freeze — THE CLANG. This is now a rare highlight, so it can hit hard.
-  triggerHitstopAndEmit(io, room, SLAP_PARRY_HITSTOP_MS, "slap_parry");
-
-  // Heavy, distinct screen shake (slap_parry profile). No escalation/zoom — one
-  // decisive thump per clash.
-  emitThrottledScreenShake(room, io, { type: "slap_parry" });
-
-  const midpointX = (player1.x + player2.x) / 2;
-  const midpointY = (player1.y + player2.y) / 2;
-  io.in(room.id).emit("slap_parry", {
-    x: midpointX,
-    y: midpointY,
-    intensity: 1.4,
-    neutral: isNeutral,
-    p1x: player1.x,
-    p2x: player2.x,
+  const attackerPlayerNumber = room.players.findIndex((p) => p.id === attacker.id) + 1;
+  io.in(room.id).emit("player_hit", {
+    x: victim.x,
+    y: victim.y,
+    facing: victim.facing,
+    attackType: "slap",
+    isPalmThrust: false,
+    chargePercentage: 0,
+    timestamp: Date.now(),
+    hitId: Math.random().toString(36).substr(2, 9),
+    isCounterHit: false,
+    isPunish: false,
+    showCounterBanner: false,
+    showPunishBanner: false,
+    attackerPlayerNumber,
+    cinematicKill: false,
+    knockbackDirection,
+    isArmorBreak: false,
+    isPowered: false,
+    attackerId: attacker.id,
+    victimId: victim.id,
+    isCadence: false,
+    cadenceChain: 0,
+    momentumHit: false,
+    braked: false,
   });
 }
 
-function applyParryEffect(player, knockbackDirection, knockbackStrength, recoveryMs) {
-  player.slapParryKnockbackVelocity = knockbackStrength * knockbackDirection;
-
-  // Immunity spans only the no-action (recovery) window so the clash can't
-  // resolve into a phantom/free hit while a player is still frozen. It ends WITH
-  // recovery: once a player can act again, slaps connect normally — the winner's
-  // edge is positional (center control), not an unblockable punish.
-  player.slapParryImmunityUntil = simNowForPlayer(player) + recoveryMs;
+// Genuine same-tick slap tie → both take a hit. Clears both attacks (so the
+// reciprocal checkCollision self-skips this tick), applies a symmetric slap hit
+// to each, and freezes once.
+function resolveSlapTrade(player1, player2, rooms, io) {
+  const room = rooms.find((r) => r.players.some((p) => p.id === player1.id));
+  if (!room) return;
+  applyTradeHit(player1, player2, room, io); // player1 struck by player2's slap
+  applyTradeHit(player2, player1, room, io); // player2 struck by player1's slap
+  // One symmetric freeze (the sim clock pauses for both).
+  triggerHitstopAndEmit(io, room, HITSTOP_SLAP_MS, "slap");
 }
 
 function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
@@ -804,6 +792,7 @@ function processHit(player, otherPlayer, rooms, io) {
   const isPunish = otherPlayer.isRecovering
     || otherPlayer.isWhiffingGrab
     || otherPlayer.isGrabWhiffRecovery
+    || otherPlayer.isApWhiffRecovering // a whiffed Attack Parry is punishable
     || (otherPlayer.isRopeJumping && otherPlayer.ropeJumpPhase === "landing")
     || otherPlayer.isSidestepRecovery;
 
@@ -931,228 +920,314 @@ function processHit(player, otherPlayer, rooms, io) {
   }
   // For slap attacks: no special handling - executeSlapAttack timeout handles everything
 
-  // Check if the other player is blocking (crouching)
-  if (otherPlayer.isRawParrying) {
-    // Determine if this is a slap attack being parried
-    const isSlapBeingParried = player.attackType === "slap" || isSlapAttack;
+  // ── GUARD & PARRY ─────────────────────────────────────────────────────────
+  // The defender is in the Space stance (a live PARRY window OR holding GUARD)
+  // and the incoming move is a SLAP or PALM THRUST (a charged non-palm attack
+  // BLOWS THROUGH — it falls to the normal hit path below, the anti-defense hard
+  // read; grabs never reach here — a grab vs the stance is the counter-grab in
+  // index.js). A live parry window (a timed tap) deflects for a reward, graded
+  // regular vs PERFECT; otherwise the defender is GUARDING and eats chip.
+  if (otherPlayer.isRawParrying && (isSlapAttack || player.isPalmThrust)) {
+    const attacker = player;
+    const parrier = otherPlayer;
+    const currentTime = simNowForPlayer(parrier);
+    const knockbackDirection = attacker.x < parrier.x ? -1 : 1;
+    const isPalm = !!player.isPalmThrust;
+    const parryingPlayerNumber = currentRoom
+      ? currentRoom.players.findIndex((p) => p.id === parrier.id) + 1
+      : 1;
 
-    // Check if this is a perfect parry (within 100ms of parry start)
-    // Sim clock — rawParryStartTime is written on the sim clock too.
-    const currentTime = simNowForPlayer(otherPlayer);
-    const parryDuration = currentTime - otherPlayer.rawParryStartTime;
-    const isPerfectParry = parryDuration <= PERFECT_PARRY_WINDOW;
-    // MASTERY Phase 4 (4.1): grade the perfect parry by timing precision. Null
-    // (and the flat base payouts below) with the flag off or on a regular parry.
-    const ppGrade = MASTERY_P4_ANALOG && isPerfectParry ? gradePerfectParry(parryDuration) : null;
+    // A live PARRY window (a timed tap that hasn't lapsed into guard) deflects
+    // for a reward; anything else means the defender is GUARDING → block chip.
+    const inParryWindow =
+      !parrier.isGuarding && currentTime < (parrier.apActiveUntil || 0);
 
-    // Apply appropriate knockback based on attack type
-    const knockbackAmount = isSlapBeingParried
-      ? RAW_PARRY_SLAP_KNOCKBACK
-      : RAW_PARRY_KNOCKBACK;
+    if (!inParryWindow) {
+      // ── GUARD BLOCK — chip + ground lost + stamina bled, NO reward ──────────
+      // The attacker is NOT nullified (their slap cycle continues, keeping
+      // pressure); the guard just mitigates. Dedup via isAlreadyHit so the same
+      // active window chips once. Stamina to 0 while guarding = guard-crush.
+      const chip = isPalm ? GUARD_PALM_BALANCE_CHIP : GUARD_SLAP_BALANCE_CHIP;
+      const stamDrain = isPalm ? GUARD_PALM_STAMINA_DRAIN : GUARD_SLAP_STAMINA_DRAIN;
+      const pushback = isPalm ? GUARD_PALM_PUSHBACK : GUARD_SLAP_PUSHBACK;
+      const guardPushDir = parrier.x < attacker.x ? -1 : 1;
 
-    // Apply knockback to the attacking player
-    // Calculate knockback direction based on relative positions to ensure attacker is always pushed away from defender
-    const knockbackDirection = player.x < otherPlayer.x ? -1 : 1;
-    
-    // CRITICAL: Clear ALL action states before setting isHit
-    clearAllActionStates(player);
-    player.y = GROUND_LEVEL;
-    // MASTERY Phase 3: a parried slap breaks the attacker's tsuppari rhythm.
-    player.cadenceChain = 0;
-    
-    player.knockbackVelocity.x = knockbackAmount * knockbackDirection;
-    player.knockbackVelocity.y = 0;
-    player.isHit = true;
-    player.isParryKnockback = true;
-    player.lastHitTime = currentTime; // Track hit time for safety mechanism
+      parrier.balance = Math.max(0, parrier.balance - chip);
+      parrier.stamina = Math.max(0, parrier.stamina - stamDrain);
+      parrier.slapParryKnockbackVelocity = pushback * guardPushDir;
+      // One chip per attack: the per-attack isAlreadyHit reset (top of
+      // checkCollision, keyed to attackStartTime) clears this before the NEXT
+      // swing, so the current active window can't re-chip. No timeout needed.
+      parrier.isAlreadyHit = true;
+      parrier.apChainCount = 0;    // a block breaks the parry chain
 
-    // Side-switch fix: set parried player's facing to face the parrier immediately so is_perfect_parried
-    // (and parry stun) plays the correct direction from frame one. When the parrier dodged through and
-    // is "inside" them, the main loop only updates the non-hit player's facing so the parried player
-    // would otherwise correct later and the animation would flip. Use "face parrier" (not face knockback)
-    // so it's correct both when sides switched and when they didn't.
-    if (!player.isAtTheRopes && !player.atTheRopesFacingDirection) {
-      player.facing = player.x < otherPlayer.x ? -1 : 1; // Face the parrier (right = -1, left = 1)
-    }
-
-    // Set parry success state for the defending player
-    // Both regular and perfect parries refund the flat parry cost
-    otherPlayer.stamina = Math.min(100, otherPlayer.stamina + RAW_PARRY_STAMINA_REFUND);
-
-    // Perfect parries also refund a chunk of balance — net defensive gain on a correct read
-    let perfectParryBalanceGain = 0;
-    if (isPerfectParry) {
-      const balanceBefore = otherPlayer.balance;
-      // MASTERY Phase 4 (4.1): graded posture refund (base 12 at the window edge).
-      const refund = ppGrade ? ppGrade.postureRefund : PERFECT_PARRY_BALANCE_REFUND;
-      otherPlayer.balance = Math.min(BALANCE_MAX, otherPlayer.balance + refund);
-      perfectParryBalanceGain = otherPlayer.balance - balanceBefore;
-    }
-
-    if (isPerfectParry) {
-      // Perfect parry: keep isRawParrying active and lock movement
-      otherPlayer.isRawParrying = true;
-      otherPlayer.isPerfectRawParrySuccess = true;
-      otherPlayer.inputLockUntil = Math.max(otherPlayer.inputLockUntil || 0, currentTime + PERFECT_PARRY_ANIMATION_LOCK);
-    } else {
-      // Regular parry: neutral advantage — parrier can reposition but can't attack freely.
-      // 350ms lock vs 400ms attacker isHit = 50ms advantage (not enough for guaranteed follow-up)
-      otherPlayer.isRawParrySuccess = true;
-      otherPlayer.rawParryMinDurationMet = true;
-      otherPlayer.inputLockUntil = Math.max(otherPlayer.inputLockUntil || 0, currentTime + 350);
-    }
-
-    // Emit raw parry success event for visual effect
-    // Send both players' positions so client can calculate center (like grab break)
-    // Determine which player number (1 or 2) performed the parry
-    const parryingPlayerNumber = currentRoom ? 
-      (currentRoom.players.findIndex(p => p.id === otherPlayer.id) + 1) : 1;
-    const parryData = {
-      attackerX: player.x,
-      parrierX: otherPlayer.x,
-      facing: player.facing,
-      isPerfect: isPerfectParry,
-      timestamp: Date.now(),
-      parryId: `${otherPlayer.id}_parry_${Date.now()}`,
-      playerNumber: parryingPlayerNumber, // 1 or 2
-      parrierId: otherPlayer.id,
-      balanceGain: perfectParryBalanceGain, // 0 for non-perfect; drives client balance gain anim
-    };
-    if (currentRoom) {
-      io.to(currentRoom.id).emit("raw_parry_success", parryData);
-    }
-
-    // Clear parry success state after duration
-    if (isPerfectParry) {
-      // For perfect parry: clear the parry pose after animation lock duration
-      setPlayerTimeout(
-        otherPlayer.id,
-        () => {
-          otherPlayer.isRawParrying = false;
-          otherPlayer.isPerfectRawParrySuccess = false;
-          otherPlayer.rawParryCooldownUntil = simNowForPlayer(otherPlayer) + RAW_PARRY_COOLDOWN_MS;
-        },
-        PERFECT_PARRY_ANIMATION_LOCK,
-        "perfectParryAnimationEnd"
-      );
-    } else {
-      // For regular parry: clear success state after normal duration
-      setPlayerTimeout(
-        otherPlayer.id,
-        () => {
-          otherPlayer.isRawParrySuccess = false;
-        },
-        PARRY_SUCCESS_DURATION,
-        "parrySuccess"
-      );
-    }
-
-    // Knockback duration: 400ms of sim time. The sim clock (and this timer)
-    // pause during the parry hitstop, so the full slide window survives the
-    // freeze with no manual +hitstop compensation.
-    setPlayerTimeout(
-      player.id,
-      () => {
-        player.isHit = false;
-        player.isAlreadyHit = false;
-        player.isParryKnockback = false;
-      },
-      400,
-      "parryKnockbackReset"
-    );
-
-    // Brief post-freeze input lock (sim clock — freeze itself doesn't consume it)
-    player.inputLockUntil = Math.max(player.inputLockUntil || 0, currentTime + 100);
-
-    // Apply stun for perfect parries (separate from knockback)
-    if (isPerfectParry) {
-      // Perfect parries stun the attacker (base 700ms). MASTERY Phase 4 (4.1):
-      // a frame-perfect read stuns longer (up to _MAX); a window-edge parry pays
-      // exactly the base (floor preserved).
-      const baseStunDuration = ppGrade ? ppGrade.attackerStun : PERFECT_PARRY_ATTACKER_STUN_DURATION;
-      player.isRawParryStun = true;
-      
-      // Apply stronger knockback velocity for perfect parry (causes sliding on ice)
-      const pushDirection = player.x < otherPlayer.x ? -1 : 1;
-
-      // When overlapping (e.g. dodge cancel inside opponent), boost knockback velocity
-      // to compensate for the overlap distance. This keeps the slide smooth (no teleport)
-      // while ensuring the stunned player always ends up at the same final distance from
-      // the parrier regardless of how deep the overlap was.
-      // ~110px of displacement per 1.0 velocity unit over the 400ms knockback window
-      // (derived from 64Hz tick, 0.185 speedFactor, 0.985 friction, 0.8x mvVel transfer)
-      const ppDistance = Math.abs(player.x - otherPlayer.x);
-      const ppMinSep = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, otherPlayer.sizeMultiplier || 1);
-      const overlapAmount = Math.max(0, ppMinSep - ppDistance);
-      const overlapCompensation = overlapAmount / 110;
-
-      // MASTERY Phase 4 (4.1): graded parry shove (base 0.65 at the window edge).
-      const parryShove = ppGrade ? ppGrade.parryShove : PERFECT_PARRY_KNOCKBACK;
-      player.knockbackVelocity.x = (parryShove + overlapCompensation) * pushDirection;
-      player.knockbackVelocity.y = 0;
-      
-      // Track stun start time (sim clock)
-      player.perfectParryStunStartTime = currentTime;
-      
-      // Clear any previous perfect parry stun timeout
-      if (player.perfectParryStunBaseTimeout) {
-        timeoutManager.clearPlayerSpecific(player.id, "perfectParryStunReset");
+      // GUARD CRUSH — bled dry while blocking: drop the guard into a brief stun,
+      // then the stamina<=0 gassed path (index.js) takes over.
+      const guardCrushed = parrier.stamina <= 0;
+      if (guardCrushed) {
+        parrier.isRawParrying = false;
+        parrier.isGuarding = false;
+        parrier.apActiveUntil = 0;
+        parrier.isRawParrySuccess = false;
+        parrier.isPerfectRawParrySuccess = false;
+        parrier.isRawParryStun = true;
+        parrier.inputLockUntil = Math.max(parrier.inputLockUntil || 0, currentTime + GUARD_CRUSH_STUN_MS);
+        timeoutManager.clearPlayerSpecific(parrier.id, "guardCrushReset");
+        setPlayerTimeout(
+          parrier.id,
+          () => { parrier.isRawParryStun = false; },
+          GUARD_CRUSH_STUN_MS,
+          "guardCrushReset"
+        );
       }
 
-      // Perfect-parry screen shake is driven client-side by useCamera's
-      // "perfect_parry" listener (addShake("perfect_parry")) so the heavy
-      // trauma+zoom+roll fires exactly with the freeze and can't be dropped by
-      // the shake throttle.
       if (currentRoom) {
+        triggerHitstopAndEmit(io, currentRoom, GUARD_HITSTOP_MS, "guard_block");
+        io.in(currentRoom.id).emit("guard_block", {
+          attackerX: attacker.x,
+          parrierX: parrier.x,
+          // ATTACKER facing — RawParryEffect's world/CSS front offsets are
+          // calibrated for this (same as snowball/pumo-clone parry emits).
+          // Parrier facing inverts the "in front" nudge on one side.
+          facing: attacker.facing,
+          isPalm,
+          guardCrushed,
+          timestamp: Date.now(),
+          blockId: `${parrier.id}_guard_${Date.now()}`,
+          playerNumber: parryingPlayerNumber,
+          parrierId: parrier.id,
+        });
+      }
+      return; // guard handled — never fall through to the normal-hit path
+    }
 
-        triggerHitstopAndEmit(io, currentRoom, HITSTOP_PERFECT_PARRY_MS, "perfect_parry");
+    // ── PARRY — graded regular vs PERFECT by how dead-on the tap landed ───────
+    const parryDuration = currentTime - (parrier.rawParryStartTime || currentTime);
+    const isPerfect = parryDuration >= 0 && parryDuration <= PERFECT_PARRY_WINDOW;
 
-        // Emit perfect parry event
-        io.in(currentRoom.id).emit("perfect_parry", {
-          parryingPlayerId: otherPlayer.id,
-          attackingPlayerId: player.id,
-          stunnedPlayerX: player.x,
-          stunnedPlayerY: player.y,
-          stunnedPlayerFighter: player.fighter, // Add fighter info to help with positioning
-          showStarStunEffect: true, // Explicit flag for the star stun effect
-          balanceGain: perfectParryBalanceGain, // Drives balance bar gain animation on client
-          // MASTERY Phase 4 (4.1): parry timing precision (0..1). Client scales
-          // the flash/shake slightly with it. 0 with the flag off (base feel).
-          quality: ppGrade ? ppGrade.quality : 0,
+    // KILL CHECK — attacker already inside the kill band when parried ⇒ slap-down
+    // KO. A perfect parry finishes a hair higher.
+    const killThreshold = isPerfect ? AP_PERFECT_KILL_THRESHOLD : AP_KILL_THRESHOLD;
+    const isApKill =
+      attacker.balance < killThreshold && currentRoom && !currentRoom.gameOver;
+
+    attacker.cadenceChain = 0;
+    if (!attacker.isAtTheRopes && !attacker.atTheRopesFacingDirection) {
+      attacker.facing = attacker.x < parrier.x ? -1 : 1; // face the parrier
+    }
+
+    if (isApKill) {
+      // ── LETHAL AP SLAP-DOWN — FREEZE FRAME, then the PULL-KILL slam ─────────
+      // FREEZE (during the hitstop): the victim is held on their SLAP HIT frame
+      // — keep isSlapAttack so the client slap animation freezes mid-hit through
+      // the hitstop — and the parrier holds the raw-parry-success (impact) pose.
+      // We only kill the hitbox + motion here; the pose is NOT cleared yet.
+      const pullDirection = attacker.x < parrier.x ? 1 : -1;
+      const victimFacingBeforeKill = attacker.facing;
+
+      attacker.isAttacking = false; // stop collision processing (pose stays via isSlapAttack)
+      attacker.slapActiveEndTime = 0;
+      attacker.isSlapSliding = false;
+      attacker.movementVelocity = 0;
+      attacker.knockbackVelocity = { x: 0, y: 0 };
+      attacker.isStrafing = false;
+      attacker.isHit = false;
+      timeoutManager.clearPlayerSpecific(attacker.id, "slapCycle");
+
+      // Parrier holds the impact pose through the freeze.
+      parrier.isRawParrying = false;
+      parrier.isRawParrySuccess = true;
+      parrier.apActiveUntil = 0;
+      parrier.isApWhiffRecovering = false;
+      parrier.apFlowUntil = 0;
+
+      if (currentRoom) {
+        // Heavy finisher freeze — the moment of impact is held.
+        triggerHitstopAndEmit(io, currentRoom, AP_KILL_HITSTOP_MS, "cinematic_kill");
+        // Charged-kill cinematic CAMERA beat (zoom + screen-darken), but noPan so
+        // the camera stays centered (the victim belly-slides, doesn't fly across).
+        // apPullKill tells the client to skip the charged flight VFX.
+        io.in(currentRoom.id).emit("cinematic_kill", {
+          attackerId: parrier.id,
+          victimId: attacker.id,
+          victimX: attacker.x,
+          victimY: attacker.y,
+          attackerX: parrier.x,
+          attackerY: parrier.y,
+          knockbackDirection: pullDirection,
+          hitstopMs: AP_KILL_HITSTOP_MS,
+          impactX: (parrier.x + attacker.x) / 2,
+          impactY: attacker.y,
+          apPullKill: true,
+          noPan: true,
+        });
+        // Blue AP burst + slap-parry clang at the contact point.
+        io.in(currentRoom.id).emit("raw_parry_success", {
+          attackerX: attacker.x,
+          parrierX: parrier.x,
+          facing: parrier.facing,
+          isPerfect,
+          isAttackParry: true,
+          isKill: true,
+          timestamp: Date.now(),
+          parryId: `${parrier.id}_apkill_${Date.now()}`,
+          playerNumber: parryingPlayerNumber,
+          parrierId: parrier.id,
+          balanceGain: 0,
         });
       }
 
-      // Stun duration on the sim clock — the timer pauses through the
-      // perfect-parry freeze, so the full stun window is available for
-      // follow-up attacks post-freeze without manual +hitstop compensation.
+      // After the freeze: SLAM. The victim is dragged THROUGH the parrier and
+      // belly-slides out the far side, then the round ends. Scheduled on the sim
+      // clock (frozen during the hitstop) so it fires right as the freeze ends.
       setPlayerTimeout(
-        player.id,
+        attacker.id,
         () => {
-          player.isRawParryStun = false;
-          player.perfectParryStunStartTime = 0;
-          player.perfectParryStunBaseTimeout = null;
+          clearAllActionStates(attacker);
+          attacker.y = GROUND_LEVEL;
+          attacker.isClinchKillPullVictim = true;
+          attacker.isBeingPullReversaled = true; // belly-slide jolt+slide tween
+          attacker.pullReversalPullerId = parrier.id;
+          attacker.isGrabBreakSeparating = true;
+          attacker.grabBreakSepStartTime = simNow(currentRoom);
+          attacker.grabBreakSepDuration = AP_KILL_SLIDE_DURATION_MS;
+          attacker.grabBreakStartX = attacker.x;
+          attacker.grabBreakTargetX = parrier.x + pullDirection * AP_KILL_SLIDE_DISTANCE;
+          attacker.movementVelocity = 0;
+          attacker.knockbackVelocity = { x: 0, y: 0 };
+          attacker.isStrafing = false;
+          attacker.facing = victimFacingBeforeKill; // belly-lay keeps original facing
+          handleWinCondition(currentRoom, attacker, parrier, io, "clinchKillPull");
         },
-        baseStunDuration,
-        "perfectParryStunReset"
+        20, // tiny sim delay → fires ~1 tick after the (sim-frozen) hitstop ends
+        "apKillSlam"
       );
-      
-      // Store that we have an active stun timeout
-      player.perfectParryStunBaseTimeout = true;
     } else {
-      // Regular parry - lighter rattle, no zoom (parry profile)
-      if (currentRoom) {
-        emitThrottledScreenShake(currentRoom, io, { type: "parry" });
-        // Hitstop on parry
-        triggerHitstopAndEmit(io, currentRoom, HITSTOP_PARRY_MS, "parry");
-      }
-      // If movement ended or was interrupted without grabbing, clear telegraph
+      // ── NON-LETHAL PARRY — FREEZE-FRAME the attacker, then shove + recover ───
+      // SFV-style: the attacker is NOT thrown into a hurt animation. Their hitbox
+      // dies but their ATTACK pose is kept, so during the hitstop the swing
+      // FREEZES mid-strike. After the freeze they slide back (via the smooth
+      // slap-parry slide, NOT knockbackVelocity+isHit) in their own move's
+      // recovery — reads as "my swing got deflected and I stumbled back", never
+      // as "I got hit". Position is the payout: the shove sends them OUT of range
+      // so the parrier REVERSES the ground. Perfect adds bigger shove/drain,
+      // a balance refund, and real frame advantage (a guaranteed poke).
+      attacker.isAttacking = false;      // kill the hitbox (pose stays via isSlapAttack/isPalmThrust)
+      attacker.slapActiveEndTime = 0;
+      attacker.chargedActiveEndTime = 0;
+      attacker.attackEndTime = 0;        // cancel the normal recovery handoff (loop reads this)
+      attacker.isChargingAttack = false;
+      attacker.isSlapSliding = false;
+      attacker.isHit = false;            // NEVER hit.png on a parry
+      attacker.isParryKnockback = false;
+      attacker.knockbackVelocity = { x: 0, y: 0 };
+      attacker.movementVelocity = 0;
+      attacker.isStrafing = false;
+      attacker.slapParryKnockbackVelocity = 0; // applied after the freeze
+      attacker.lastHitTime = currentTime;
+      timeoutManager.clearPlayerSpecific(attacker.id, "slapCycle");
+      timeoutManager.clearPlayerSpecific(attacker.id, "palmThrustVisualEnd");
+      timeoutManager.clearPlayerSpecific(attacker.id, "palmThrustStartupEnd");
+      timeoutManager.clearPlayerSpecific(attacker.id, "parryStaggerBegin");
+      timeoutManager.clearPlayerSpecific(attacker.id, "parryStaggerReset");
+
+      const drain = isPerfect ? AP_PERFECT_BALANCE_DRAIN : AP_BALANCE_DRAIN;
+      attacker.balance = Math.max(0, attacker.balance - drain);
+
+      const shove = isPerfect ? AP_PERFECT_ATTACKER_KNOCKBACK : AP_ATTACKER_KNOCKBACK;
+      // Lockout keyed to the committed move. A slap recovers ~with the parrier
+      // (regular = near-neutral by design); palm's long recovery is already a
+      // free punish. A PERFECT slap parry adds advantage so even the fast slap
+      // becomes a guaranteed poke.
+      let staggerMs = isSlapAttack ? AP_STAGGER_SLAP_MS : AP_STAGGER_PALM_MS;
+      if (isPerfect && isSlapAttack) staggerMs += AP_PERFECT_ADVANTAGE_MS;
+      // Immediate lock covers the freeze + stagger (can't act during the freeze).
+      attacker.inputLockUntil = Math.max(attacker.inputLockUntil || 0, currentTime + staggerMs);
+
+      // After the freeze (~1 tick past the sim-frozen hitstop): drop the attack
+      // pose into recovery and apply the shove slide.
+      const shoveVel = shove * knockbackDirection;
+      setPlayerTimeout(
+        attacker.id,
+        () => {
+          attacker.isSlapAttack = false;
+          attacker.isPalmThrust = false;
+          attacker.attackType = null;
+          attacker.isRecovering = true;
+          attacker.slapParryKnockbackVelocity = shoveVel;
+          attacker.inputLockUntil = Math.max(attacker.inputLockUntil || 0, simNow(currentRoom) + staggerMs);
+          timeoutManager.clearPlayerSpecific(attacker.id, "parryStaggerReset");
+          setPlayerTimeout(
+            attacker.id,
+            () => { attacker.isRecovering = false; },
+            staggerMs,
+            "parryStaggerReset"
+          );
+        },
+        20,
+        "parryStaggerBegin"
+      );
+
+      // If the attacker's grab telegraph is stale, clear it.
       if (
-        !player.isGrabbingMovement &&
-        !player.isGrabbing &&
-        !player.isGrabClashing
+        !attacker.isGrabbingMovement &&
+        !attacker.isGrabbing &&
+        !attacker.isGrabClashing
       ) {
-        player.grabState = GRAB_STATES.INITIAL;
-        player.grabAttemptType = null;
+        attacker.grabState = GRAB_STATES.INITIAL;
+        attacker.grabAttemptType = null;
+      }
+
+      // ── PARRIER reward. Each parry costs stamina (re-tapping a flurry drains
+      // you). Post-deflect the parrier is left GUARDING (holding = block the next
+      // slap unless they re-tap in rhythm). Perfect refunds balance — a net
+      // posture GAIN on a dead-on read.
+      parrier.stamina = Math.max(0, parrier.stamina - AP_STAMINA_COST);
+      parrier.isRawParrying = true;
+      parrier.isGuarding = true;         // window consumed → guard until a fresh re-tap
+      parrier.isRawParrySuccess = !isPerfect;
+      parrier.isPerfectRawParrySuccess = isPerfect;
+      parrier.apActiveUntil = 0;         // consume the window (re-tap to parry again)
+      parrier.apChainCount = (parrier.apChainCount || 0) + 1;
+      parrier.isApWhiffRecovering = false;
+      parrier.apRecoveryUntil = 0;
+
+      let perfectBalanceGain = 0;
+      if (isPerfect) {
+        const before = parrier.balance;
+        parrier.balance = Math.min(BALANCE_MAX, parrier.balance + AP_PERFECT_BALANCE_REFUND);
+        perfectBalanceGain = parrier.balance - before;
+      }
+
+      timeoutManager.clearPlayerSpecific(parrier.id, "parrySuccess");
+      setPlayerTimeout(
+        parrier.id,
+        () => {
+          parrier.isRawParrySuccess = false;
+          parrier.isPerfectRawParrySuccess = false;
+        },
+        AP_SUCCESS_RECOVERY_MS,
+        "parrySuccess"
+      );
+
+      if (currentRoom) {
+        const hitstop = isPerfect ? AP_PERFECT_HITSTOP_MS : AP_HITSTOP_MS;
+        triggerHitstopAndEmit(io, currentRoom, hitstop, isPerfect ? "perfect_parry" : "slap_parry");
+        emitThrottledScreenShake(currentRoom, io, { type: isPerfect ? "perfect_parry" : "parry" });
+        io.in(currentRoom.id).emit("raw_parry_success", {
+          attackerX: attacker.x,
+          parrierX: parrier.x,
+          facing: parrier.facing,
+          isPerfect,
+          isAttackParry: true,
+          isKill: false,
+          chainCount: parrier.apChainCount,
+          timestamp: Date.now(),
+          parryId: `${parrier.id}_ap_${Date.now()}`,
+          playerNumber: parryingPlayerNumber,
+          parrierId: parrier.id,
+          balanceGain: perfectBalanceGain,
+        });
       }
     }
   } else {
@@ -1856,141 +1931,163 @@ const FLAP_BODYSLAM_WIDTH_SCALE = 0.7;   // Horizontal reach as a fraction of pu
 // rewards the defender (regular OR perfect). Flap is not a slap, so it uses the
 // non-slap knockback values.
 function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
+  // GUARD/PARRY vs the flap body-slam: ends the flight and grounds the flapper
+  // (their landing recovery is fully punishable). A live PARRY window grades
+  // regular vs PERFECT; GUARDING still stuffs the slam (flap is a huge
+  // commitment) but at the regular tier. A parried flap can KILL if the flapper
+  // is inside the kill band.
   const currentTime = simNowForPlayer(opponent);
-  const parryDuration = currentTime - opponent.rawParryStartTime;
-  const isPerfectParry = parryDuration <= PERFECT_PARRY_WINDOW;
-  // MASTERY Phase 4 (4.1): grade the perfect parry by timing precision.
-  const ppGrade = MASTERY_P4_ANALOG && isPerfectParry ? gradePerfectParry(parryDuration) : null;
+  const knockbackDirection = flapper.x < opponent.x ? -1 : 1;
+  const parryingPlayerNumber = currentRoom
+    ? currentRoom.players.findIndex((p) => p.id === opponent.id) + 1
+    : 1;
 
-  // End the flapper's flight and ground them (the parry beats the slam). The
-  // connect can only happen within FLAP_BODYSLAM_CONTACT_HEIGHT of the ground,
-  // so this snap is small.
+  const inParryWindow =
+    !opponent.isGuarding && currentTime < (opponent.apActiveUntil || 0);
+  const parryDuration = currentTime - (opponent.rawParryStartTime || currentTime);
+  const isPerfect =
+    inParryWindow && parryDuration >= 0 && parryDuration <= PERFECT_PARRY_WINDOW;
+
+  const killThreshold = isPerfect ? AP_PERFECT_KILL_THRESHOLD : AP_KILL_THRESHOLD;
+  const isApKill =
+    flapper.balance < killThreshold && currentRoom && !currentRoom.gameOver;
+
+  // End the flight and ground the flapper (the parry beats the slam).
   clearAllActionStates(flapper);
   flapper.y = GROUND_LEVEL;
-
-  const knockbackDirection = flapper.x < opponent.x ? -1 : 1;
-  flapper.knockbackVelocity.x = RAW_PARRY_KNOCKBACK * knockbackDirection;
-  flapper.knockbackVelocity.y = 0;
-  flapper.isHit = true;
-  flapper.isParryKnockback = true;
-  flapper.lastHitTime = currentTime;
+  flapper.cadenceChain = 0;
   if (!flapper.isAtTheRopes && !flapper.atTheRopesFacingDirection) {
     flapper.facing = flapper.x < opponent.x ? -1 : 1;
   }
 
-  // Defender rewards — refund parry cost (+ balance on a perfect read).
-  opponent.stamina = Math.min(100, opponent.stamina + RAW_PARRY_STAMINA_REFUND);
-  let perfectParryBalanceGain = 0;
-  if (isPerfectParry) {
-    const balanceBefore = opponent.balance;
-    // MASTERY Phase 4 (4.1): graded posture refund (base 12 at the window edge).
-    const refund = ppGrade ? ppGrade.postureRefund : PERFECT_PARRY_BALANCE_REFUND;
-    opponent.balance = Math.min(BALANCE_MAX, opponent.balance + refund);
-    perfectParryBalanceGain = opponent.balance - balanceBefore;
-  }
+  if (isApKill) {
+    // Lethal slap-down — the pull cinematic, fully (same as the strike AP kill):
+    // the victim is dragged THROUGH the parrier and belly-slides out the far side.
+    const nowSim = simNow(currentRoom);
+    const victimFacingBeforeKill = flapper.facing;
+    const pullDirection = flapper.x < opponent.x ? 1 : -1;
+    flapper.isClinchKillPullVictim = true;
+    flapper.isBeingPullReversaled = true;
+    flapper.pullReversalPullerId = opponent.id;
+    flapper.isGrabBreakSeparating = true;
+    flapper.grabBreakSepStartTime = nowSim;
+    flapper.grabBreakSepDuration = AP_KILL_SLIDE_DURATION_MS;
+    flapper.grabBreakStartX = flapper.x;
+    flapper.grabBreakTargetX = opponent.x + pullDirection * AP_KILL_SLIDE_DISTANCE;
+    flapper.movementVelocity = 0;
+    flapper.knockbackVelocity = { x: 0, y: 0 };
+    flapper.isStrafing = false;
+    flapper.facing = victimFacingBeforeKill;
 
-  if (isPerfectParry) {
-    opponent.isRawParrying = true;
-    opponent.isPerfectRawParrySuccess = true;
-    opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, currentTime + PERFECT_PARRY_ANIMATION_LOCK);
-  } else {
+    opponent.isRawParrying = false;
     opponent.isRawParrySuccess = true;
-    opponent.rawParryMinDurationMet = true;
-    opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, currentTime + 350);
+    opponent.apActiveUntil = 0;
+    opponent.isApWhiffRecovering = false;
+
+    if (currentRoom) {
+      triggerHitstopAndEmit(io, currentRoom, AP_KILL_HITSTOP_MS, "cinematic_kill");
+      io.in(currentRoom.id).emit("cinematic_kill", {
+        attackerId: opponent.id,
+        victimId: flapper.id,
+        victimX: flapper.x,
+        victimY: flapper.y,
+        attackerX: opponent.x,
+        attackerY: opponent.y,
+        knockbackDirection: pullDirection,
+        hitstopMs: AP_KILL_HITSTOP_MS,
+        impactX: (opponent.x + flapper.x) / 2,
+        impactY: flapper.y,
+        apPullKill: true,
+        noPan: true,
+      });
+      io.in(currentRoom.id).emit("raw_parry_success", {
+        attackerX: flapper.x,
+        parrierX: opponent.x,
+        facing: opponent.facing,
+        isPerfect,
+        isAttackParry: true,
+        isKill: true,
+        timestamp: Date.now(),
+        parryId: `${opponent.id}_apkill_${Date.now()}`,
+        playerNumber: parryingPlayerNumber,
+        parrierId: opponent.id,
+        balanceGain: 0,
+      });
+    }
+    handleWinCondition(currentRoom, flapper, opponent, io, "clinchKillPull");
+    return;
   }
 
-  const parryingPlayerNumber = currentRoom
-    ? currentRoom.players.findIndex((p) => p.id === opponent.id) + 1
-    : 1;
-  if (currentRoom) {
-    io.to(currentRoom.id).emit("raw_parry_success", {
-      attackerX: flapper.x,
-      parrierX: opponent.x,
-      facing: flapper.facing,
-      isPerfect: isPerfectParry,
-      timestamp: Date.now(),
-      parryId: `${opponent.id}_parry_${Date.now()}`,
-      playerNumber: parryingPlayerNumber,
-      parrierId: opponent.id,
-      balanceGain: perfectParryBalanceGain,
-    });
-  }
-
-  if (isPerfectParry) {
-    setPlayerTimeout(
-      opponent.id,
-      () => {
-        opponent.isRawParrying = false;
-        opponent.isPerfectRawParrySuccess = false;
-        opponent.rawParryCooldownUntil = simNowForPlayer(opponent) + RAW_PARRY_COOLDOWN_MS;
-      },
-      PERFECT_PARRY_ANIMATION_LOCK,
-      "perfectParryAnimationEnd"
-    );
-  } else {
-    setPlayerTimeout(
-      opponent.id,
-      () => {
-        opponent.isRawParrySuccess = false;
-      },
-      PARRY_SUCCESS_DURATION,
-      "parrySuccess"
-    );
-  }
-
-  // Reset the flapper's knockback/hit state after the slide window.
+  // ── NON-LETHAL: grounded + shoved back in RECOVERY (no hit.png) + drain ──
+  const drain = isPerfect ? AP_PERFECT_BALANCE_DRAIN : AP_BALANCE_DRAIN;
+  const shove = isPerfect ? AP_PERFECT_ATTACKER_KNOCKBACK : AP_ATTACKER_KNOCKBACK;
+  flapper.balance = Math.max(0, flapper.balance - drain);
+  flapper.knockbackVelocity = { x: 0, y: 0 };
+  flapper.slapParryKnockbackVelocity = shove * knockbackDirection;
+  flapper.isHit = false;
+  flapper.isParryKnockback = false;
+  flapper.isRecovering = true;
+  flapper.lastHitTime = currentTime;
+  flapper.inputLockUntil = Math.max(flapper.inputLockUntil || 0, currentTime + AP_STAGGER_FLAP_MS);
+  timeoutManager.clearPlayerSpecific(flapper.id, "parryStaggerReset");
   setPlayerTimeout(
     flapper.id,
     () => {
-      flapper.isHit = false;
+      flapper.isRecovering = false;
       flapper.isAlreadyHit = false;
-      flapper.isParryKnockback = false;
     },
-    400,
-    "parryKnockbackReset"
+    AP_STAGGER_FLAP_MS,
+    "parryStaggerReset"
   );
-  flapper.inputLockUntil = Math.max(flapper.inputLockUntil || 0, currentTime + 100);
 
-  if (isPerfectParry) {
-    // Perfect parry stuns the flapper (the big punish), like a strike.
-    flapper.isRawParryStun = true;
-    const pushDirection = flapper.x < opponent.x ? -1 : 1;
-    // MASTERY Phase 4 (4.1): graded parry shove (base 0.65 at the window edge).
-    const parryShove = ppGrade ? ppGrade.parryShove : PERFECT_PARRY_KNOCKBACK;
-    flapper.knockbackVelocity.x = parryShove * pushDirection;
-    flapper.knockbackVelocity.y = 0;
-    flapper.perfectParryStunStartTime = currentTime;
-    if (flapper.perfectParryStunBaseTimeout) {
-      timeoutManager.clearPlayerSpecific(flapper.id, "perfectParryStunReset");
-    }
-    if (currentRoom) {
-      triggerHitstopAndEmit(io, currentRoom, HITSTOP_PERFECT_PARRY_MS, "perfect_parry");
-      io.in(currentRoom.id).emit("perfect_parry", {
-        parryingPlayerId: opponent.id,
-        attackingPlayerId: flapper.id,
-        stunnedPlayerX: flapper.x,
-        stunnedPlayerY: flapper.y,
-        stunnedPlayerFighter: flapper.fighter,
-        showStarStunEffect: true,
-        balanceGain: perfectParryBalanceGain,
-        // MASTERY Phase 4 (4.1): parry timing precision (0..1) for client scaling.
-        quality: ppGrade ? ppGrade.quality : 0,
-      });
-    }
-    setPlayerTimeout(
-      flapper.id,
-      () => {
-        flapper.isRawParryStun = false;
-        flapper.perfectParryStunStartTime = 0;
-        flapper.perfectParryStunBaseTimeout = null;
-      },
-      ppGrade ? ppGrade.attackerStun : PERFECT_PARRY_ATTACKER_STUN_DURATION,
-      "perfectParryStunReset"
-    );
-    flapper.perfectParryStunBaseTimeout = true;
-  } else if (currentRoom) {
-    emitThrottledScreenShake(currentRoom, io, { type: "parry" });
-    triggerHitstopAndEmit(io, currentRoom, HITSTOP_PARRY_MS, "parry");
+  // Parrier reward. Post-deflect the parrier is left GUARDING (re-tap to parry
+  // again). Perfect refunds balance. Chain increments.
+  opponent.stamina = Math.max(0, opponent.stamina - AP_STAMINA_COST);
+  opponent.isRawParrying = true;
+  opponent.isGuarding = true;
+  opponent.isRawParrySuccess = !isPerfect;
+  opponent.isPerfectRawParrySuccess = isPerfect;
+  opponent.apActiveUntil = 0;
+  opponent.apChainCount = (opponent.apChainCount || 0) + 1;
+  opponent.isApWhiffRecovering = false;
+  opponent.apRecoveryUntil = 0;
+
+  let perfectBalanceGain = 0;
+  if (isPerfect) {
+    const before = opponent.balance;
+    opponent.balance = Math.min(BALANCE_MAX, opponent.balance + AP_PERFECT_BALANCE_REFUND);
+    perfectBalanceGain = opponent.balance - before;
+  }
+
+  timeoutManager.clearPlayerSpecific(opponent.id, "parrySuccess");
+  setPlayerTimeout(
+    opponent.id,
+    () => {
+      opponent.isRawParrySuccess = false;
+      opponent.isPerfectRawParrySuccess = false;
+    },
+    AP_SUCCESS_RECOVERY_MS,
+    "parrySuccess"
+  );
+
+  if (currentRoom) {
+    const hitstop = isPerfect ? AP_PERFECT_HITSTOP_MS : AP_HITSTOP_MS;
+    triggerHitstopAndEmit(io, currentRoom, hitstop, isPerfect ? "perfect_parry" : "slap_parry");
+    emitThrottledScreenShake(currentRoom, io, { type: isPerfect ? "perfect_parry" : "parry" });
+    io.in(currentRoom.id).emit("raw_parry_success", {
+      attackerX: flapper.x,
+      parrierX: opponent.x,
+      facing: opponent.facing,
+      isPerfect,
+      isAttackParry: true,
+      isKill: false,
+      chainCount: opponent.apChainCount,
+      timestamp: Date.now(),
+      parryId: `${opponent.id}_ap_${Date.now()}`,
+      playerNumber: parryingPlayerNumber,
+      parrierId: opponent.id,
+      balanceGain: perfectBalanceGain,
+    });
   }
 }
 
@@ -2170,4 +2267,4 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   );
 }
 
-module.exports = { checkCollision, processHit, checkFlapBodySlam, resolveSlapParry, applyParryEffect, resolveChargeClash };
+module.exports = { checkCollision, processHit, checkFlapBodySlam, resolveSlapTrade, resolveChargeClash };

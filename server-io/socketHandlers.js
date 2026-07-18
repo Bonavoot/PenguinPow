@@ -34,6 +34,8 @@ const {
   simNowForPlayer,
   logVerbInitiation,
   lagCompensatedParryStart,
+  canArmAttackParry,
+  armAttackParry,
 } = require("./gameUtils");
 
 const {
@@ -608,21 +610,26 @@ function processInputPacket(room, player, data, io, rooms) {
     }
   }
 
-  // SPACE PRESS: Fire raw parry immediately for zero-tick-delay responsiveness
-  // Same pattern as slap — execute on the socket event instead of waiting for the game tick
+  // SPACE PRESS (rising edge): open a PARRY window immediately for zero-tick-delay
+  // responsiveness. A fresh TAP is a timed read that deflects the incoming
+  // strike; HOLDING (handled in the main loop) settles into GUARD once the window
+  // closes. A re-tap while guarding re-arms a fresh window (a flurry is answered
+  // by re-tapping in rhythm — no more hold-to-Flow). canArmAttackParry gates on
+  // apSpaceConsumed (clears on release) so one press only ever opens one window.
+  // This is the PRIMARY route for human parries (fires the same tick the press
+  // arrives); timing is judged on the lag-compensated true press moment.
   if (
     player.spaceJustPressed &&
     player.activePowerUp !== POWER_UP_TYPES.FLAP &&
     !player.loadout?.flapReplacesParry && // BASHO Flap loadout also suppresses parry
     !shouldBlockAction() &&
-    !player.isRawParrying &&
     !player.isRawParryStun &&
     !player.grabBreakSpaceConsumed &&
-    simNowForPlayer(player) >= (player.rawParryCooldownUntil || 0) &&
+    canArmAttackParry(player, simNowForPlayer(player)) &&
     !player.isSidestepping &&
     !player.isGrabbing &&
     !player.isBeingGrabbed &&
-    !player.isGrabStartup && // Block raw parry during grab startup (lunge windup) — prevents parry/grab state coexistence
+    !player.isGrabStartup && // Block AP during grab startup (lunge windup) — prevents parry/grab state coexistence
     !player.isGrabbingMovement &&
     !player.isWhiffingGrab &&
     !player.isGrabClashing &&
@@ -634,59 +641,9 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.isSpawningPumoArmy &&
     !player.canMoveToReady
   ) {
-    player.isRawParrySuccess = false;
-    player.isPerfectRawParrySuccess = false;
-    player.isRawParrying = true;
-    // PARRY TIMING CONSISTENCY: this edge-triggered path is the PRIMARY route
-    // for human parries (fires the same tick the space press arrives, for
-    // zero-tick responsiveness). It previously stamped raw packet-arrival sim
-    // time, baking network latency + send-throttle + tick phase into the
-    // perfect-parry window — and those JITTER, so an identically-timed press
-    // read "perfect" one round and "regular" the next. The fallback tick path
-    // already backdated via lagCompensatedParryStart; this aligns the primary
-    // path with it so perfect-parry timing is judged on the true press moment
-    // and feels consistent. (Consumes rawParryPressGameTime; the tick path is
-    // skipped once isRawParrying is set, so there's no double-consume.)
-    player.rawParryStartTime = lagCompensatedParryStart(
-      player,
-      simNowForPlayer(player)
-    );
-    player.rawParryMinDurationMet = false;
-    player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
-    clearChargeState(player, true);
-    player.movementVelocity = 0;
-    player.isStrafing = false;
-    player.isPowerSliding = false;
-    player.isCrouchStance = false;
-    player.isCrouchStrafing = false;
-    player.pendingSlapCount = 0;
-  } else if (
-    // PARRY RE-ARM (Sekiro-style re-tap): a FRESH space press while ALREADY
-    // parrying re-stamps the perfect window so the player can re-time the
-    // just-frame against a slow/lunging/delayed attack instead of being locked
-    // to their first press. HOLD stays a reliable block (no new press = no
-    // re-arm). Only re-stamps timing + charges stamina; does NOT touch the
-    // parry pose or any effect. `else if` guarantees the initial-start block
-    // above (which requires !isRawParrying) and this are mutually exclusive, so
-    // the very first press can't also re-arm in the same tick.
-    player.spaceJustPressed &&
-    player.isRawParrying &&
-    !player.isPerfectRawParrySuccess && // never interrupt a landed perfect's lock
-    !player.isRawParrySuccess &&        // or a landed regular parry's success pose
-    player.activePowerUp !== POWER_UP_TYPES.FLAP &&
-    !player.loadout?.flapReplacesParry &&
-    !player.grabBreakSpaceConsumed &&
-    simNowForPlayer(player) >= (player.rawParryRearmUntil || 0)
-  ) {
     const nowSim = simNowForPlayer(player);
-    // Re-open the perfect window from this press (lag-compensated to the true
-    // press moment, same as the initial start). Re-stamping forward also pushes
-    // back the MAX_DURATION auto-end, so an actively re-tapped block won't drop
-    // right before a committed lunge lands. rawParryMinDurationMet is left as-is
-    // (the main loop only ever sets it true), so release stays responsive.
-    player.rawParryStartTime = lagCompensatedParryStart(player, nowSim);
-    player.stamina = Math.max(0, player.stamina - RAW_PARRY_REARM_STAMINA_COST);
-    player.rawParryRearmUntil = nowSim + RAW_PARRY_REARM_INTERVAL_MS;
+    armAttackParry(player, nowSim, lagCompensatedParryStart(player, nowSim));
+    clearChargeState(player, true);
   }
 
   // MOUSE1 PRESS: S+FORWARD+MOUSE1 = charged, BACK+MOUSE1 = open-palm thrust,

@@ -339,6 +339,10 @@ function resetRoomAndPlayers(room, io) {
     player.recoveryDirection = null;
     player.isChargedHitRecoil = false;
     player.isRawParrying = false;
+    player.isGuarding = false;
+    player.apActiveUntil = 0;
+    player.apChainCount = 0;
+    player.isApWhiffRecovering = false;
     player.rawParryStartTime = 0;
     player.rawParryMinDurationMet = false;
     player.isRawParryStun = false;

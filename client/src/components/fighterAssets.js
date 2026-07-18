@@ -39,6 +39,10 @@ import saltBasket from "../assets/salt-basket.png";
 import saltBasketEmpty from "../assets/salt-basket-empty.png";
 import recovering from "../assets/recovering.png";
 import rawParrySuccess from "../assets/raw-parry-success.png";
+// Active parry WINDOW stance (space just pressed — can still deflect).
+import blocking from "../assets/blocking.png";
+// True GUARD / block floor (parry window expired while still holding).
+import blockParry from "../assets/block-parry.png";
 import snowball from "../assets/snowball.png";
 import crouchStance from "../assets/crouch-stance.png";
 import flap1 from "../assets/pumo-flap-1.png";
@@ -49,7 +53,7 @@ import flap2 from "../assets/pumo-flap-2.png";
 // ============================================
 import pumoWaddle from "../assets/pumo-waddle.png"; // APNG
 import pumoArmy from "../assets/pumo-army.png"; // APNG
-import crouching from "../assets/blocking.png"; // APNG
+import crouching from "../assets/blocking.png"; // grab-break crouch
 import bow from "../assets/bow.png"; // APNG
 import grabAttempt from "../assets/grab-attempt.png"; // APNG
 import hit from "../assets/hit.png"; // APNG
@@ -149,6 +153,7 @@ import dashSmokeSheet from "../assets/dash-smoke-effect.png";
 import chargedSmokeSheet from "../assets/charged-attack-smoke-effect.png";
 import cinematicThrowLandSmokeSheet from "../assets/cinematicKill-throw-landing-smoke-effect.png";
 import parryEffectSheet from "../assets/raw-parry-effect.png";
+import blockingEffectSheet from "../assets/blocking-effect.png";
 import clampedEffectSheet from "../assets/clamped-effect.png";
 
 // ============================================
@@ -279,6 +284,8 @@ const initializeImagePreloading = () => {
   preloadImage(saltBasketEmpty);
   preloadImage(recovering);
   preloadImage(rawParrySuccess);
+  preloadImage(blocking);
+  preloadImage(blockParry);
   preloadImage(atTheRopes);
   preloadImage(snowball);
   preloadImage(flap1);
@@ -312,6 +319,7 @@ const initializeImagePreloading = () => {
   preloadImage(chargedSmokeSheet);
   preloadImage(cinematicThrowLandSmokeSheet);
   preloadImage(parryEffectSheet);
+  preloadImage(blockingEffectSheet);
   preloadImage(clampedEffectSheet);
 };
 
@@ -427,6 +435,8 @@ export {
   saltBasketEmpty,
   recovering,
   rawParrySuccess,
+  blocking,
+  blockParry,
   snowball,
   crouchStance,
   flap1,

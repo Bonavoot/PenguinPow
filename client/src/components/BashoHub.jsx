@@ -42,8 +42,9 @@ import {
   FONT_KANJI,
   fadeIn,
   fadeUp,
-  slideInLeft,
-  slideInRight,
+  clipRevealLeft,
+  clipRevealRight,
+  clipRevealUp,
 } from "./menuTheme";
 import {
   ATTRIBUTES,
@@ -82,44 +83,31 @@ const DEBUG_FLAG_KEY = "bashoDebug";
 const SLOTS_PER_CATEGORY = 5;
 
 /**
- * D — the hub's dusk surface palette. Same cool sumi / ice / vermillion /
- * gold world as the in-game HUD (menuTheme C), but tuned as layered charcoal
- * with room for frost and the locker-room art to breathe. Dark chrome still
- * anchors headers and footers; mid surfaces sit a step lighter and cooler so
- * the dossier doesn't read as "dark mode on dark." Accents still come from C.
- *
- * Surfaces climb in three steps — deep (inset) < panel (base) < soft (raised)
- * — which is what gives the UI depth: recessed tracks, floating cards, and
- * chrome bands all read as distinct planes under one cool light.
+ * D — hub surface palette tuned to the PreMatch "printed banzuke" language.
+ * Cream type on sumi ink, vermillion rules, gold ranks — not cool SaaS grey
+ * glass. Panels are flat plaques (no blur, no ice bloom). Accents from C.
  */
 const D = {
-  page: "#12161c", // page fallthrough — cool slate, not pure black
-  panelTop: "#2a323c", // panel gradient — lit cool charcoal
-  panelBottom: "#1a2028", // panel gradient — sinks cooler at the base
-  panel: "#222933", // panel solid fallback
-  headTop: "#343c48", // header nameplate band (elevated, still dark)
-  headBottom: "#242b34",
-  chromeTop: "#1e2530", // footer chrome band
-  chromeBottom: "#141920",
-  soft: "#323a46", // raised surface — rows, slots, buttons
-  softHover: "#3e4755",
-  deep: "#12171e", // recessed inset — empty pips, placeholders
-  frost: "rgba(203, 219, 231, 0.10)", // icy wash over dark content bands
-  frostStrong: "rgba(234, 241, 247, 0.14)",
-  border: "rgba(234, 241, 247, 0.18)", // cleaner cool-white hairline
-  borderSoft: "rgba(234, 241, 247, 0.10)",
-  shadow: "rgba(12, 18, 28, 0.38)",
-  shadowStrong: "rgba(8, 12, 20, 0.52)",
-  textHi: "#f5f8fb", // headings — near-white
-  text: "#dce4ed", // body — cool light gray
-  textMute: "#9aa6b4", // meta / captions — muted gray
-  textFaint: "rgba(210, 220, 232, 0.32)", // disabled / hints
-  // Single accent glow — the character's mawashi ice-blue.
-  accentGlow: C.iceGlow,
-  // Bright washi stage the fighter stands on (high-contrast "lightbox").
-  stageTop: "#fdfaf2",
-  stageMid: "#efe6d3",
-  stageBottom: "#e2d3b6",
+  page: "#080a0e",
+  panel: "rgba(14, 16, 22, 0.88)",
+  panelSolid: "#12151c",
+  head: "#171a20",
+  chrome: "#14171e",
+  soft: "#22262d",
+  softHover: "#2c313a",
+  deep: "#0c0e14",
+  border: "rgba(245, 236, 217, 0.20)",
+  borderSoft: "rgba(245, 236, 217, 0.10)",
+  shadow: "rgba(0, 0, 0, 0.45)",
+  shadowStrong: "rgba(0, 0, 0, 0.62)",
+  textHi: C.cream,
+  text: C.creamWarm,
+  textMute: C.creamMute,
+  textFaint: "rgba(245, 236, 217, 0.28)",
+  // Warm washi lightbox for the fighter — same paper stock as rank plaques.
+  stageTop: "#f7f0e2",
+  stageMid: "#ebe0c8",
+  stageBottom: "#d8c7a4",
 };
 
 /* Washi paper weave — same crosshatch recipe as the PowerUpSelection
@@ -218,26 +206,24 @@ const PageContainer = styled.div`
   background: ${D.page};
   overflow: hidden;
   container-type: size;
-  font-family: "Space Grotesk", sans-serif;
+  font-family: ${FONT_BODY};
 `;
 
-// Backdrop mirrors the VS CPU lobby: locker-room art on center-bottom cover,
-// nudged/zoomed, dimmed and blurred for shallow DoF.
+/* Locker-room art kept sharper — PreMatch wins because the place feels real.
+   Light desat + vignette do the mood; heavy blur/sepia made it muddy. */
 const BackgroundImage = styled.div`
   position: absolute;
   inset: 0;
   background: url(${lobbyBackground}) center bottom / cover;
-  transform: scale(1.04) translateX(1.1%);
+  transform: scale(1.06) translateX(0.8%);
   transform-origin: 50% 100%;
-  opacity: 0.9;
-  filter: saturate(0.62) brightness(0.86) contrast(1.07) sepia(0.08)
-    blur(2.4px);
+  opacity: 1;
+  filter: saturate(0.78) brightness(0.72) contrast(1.12);
   z-index: 0;
   pointer-events: none;
 `;
 
-// Cinematic darkener — same stage-light pool + top/bottom atmospheric dim
-// used on the VS CPU lobby.
+/* Prematch-style stage dim — letterbox + radial pool, center clearer. */
 const CinematicOverlay = styled.div`
   position: absolute;
   inset: 0;
@@ -245,28 +231,27 @@ const CinematicOverlay = styled.div`
   pointer-events: none;
   background:
     radial-gradient(
-      ellipse 70% 42% at 50% 70%,
+      ellipse 48% 56% at 50% 42%,
       transparent 0%,
-      rgba(20, 14, 8, 0.22) 55%,
-      rgba(10, 8, 4, 0.62) 100%
+      rgba(4, 6, 10, 0.22) 48%,
+      rgba(4, 6, 10, 0.78) 100%
     ),
     linear-gradient(
       180deg,
-      rgba(12, 10, 6, 0.42) 0%,
-      rgba(12, 10, 6, 0.18) 22%,
-      rgba(12, 10, 6, 0) 44%,
-      rgba(12, 10, 6, 0) 78%,
-      rgba(8, 12, 20, 0.34) 100%
+      rgba(4, 6, 10, 0.72) 0%,
+      rgba(4, 6, 10, 0.18) 22%,
+      rgba(4, 6, 10, 0.08) 48%,
+      rgba(4, 6, 10, 0.42) 74%,
+      rgba(4, 6, 10, 0.88) 100%
     );
 `;
 
-// Paper-grain pass — same recipe/strength as the VS CPU lobby.
 const GrainOverlay = styled.div`
   position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  opacity: 0.34;
+  opacity: 0.2;
   mix-blend-mode: overlay;
   background-image:
     repeating-linear-gradient(
@@ -283,6 +268,22 @@ const GrainOverlay = styled.div`
     );
 `;
 
+/* Giant atmospheric kanji — flat ink watermark, PreMatch GiantKanji recipe. */
+const AtmosphereKanji = styled.div`
+  position: absolute;
+  top: 18%;
+  right: 4%;
+  z-index: 1;
+  font-family: ${FONT_KANJI};
+  font-weight: 900;
+  font-size: clamp(160px, 28cqw, 340px);
+  line-height: 0.72;
+  color: rgba(245, 236, 217, 0.04);
+  pointer-events: none;
+  user-select: none;
+  letter-spacing: -0.04em;
+`;
+
 // ============================================
 // TOP BAR (slim)
 // ============================================
@@ -293,11 +294,22 @@ const TopBar = styled.header`
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  padding: clamp(8px, 1.3cqh, 13px) clamp(16px, 2.4cqw, 30px);
-  background: ${C.sumi};
-  border-bottom: 1px solid ${C.sumiBorder};
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
-  animation: ${fadeIn} 0.4s ease both;
+  padding: clamp(10px, 1.5cqh, 16px) clamp(18px, 2.8cqw, 36px);
+  background: transparent;
+  border-bottom: none;
+  animation: ${fadeIn} 0.35s ease both;
+
+  /* Thin vermillion rule under the title block — broadcast slug energy. */
+  &::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: clamp(48px, 7cqw, 72px);
+    height: 2px;
+    background: ${C.vermillion};
+  }
 `;
 
 const TopBarLeft = styled.div`
@@ -320,15 +332,16 @@ const GhostButton = styled.button`
   min-height: 38px;
   padding: clamp(7px, 1cqh, 10px) clamp(13px, 1.8cqw, 20px);
   font-family: ${FONT_BODY};
-  font-weight: 600;
-  font-size: clamp(0.58rem, 0.88cqw, 0.72rem);
+  font-weight: 700;
+  font-size: clamp(0.52rem, 0.8cqw, 0.64rem);
   text-transform: uppercase;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.28em;
   color: ${C.creamMute};
-  background: transparent;
-  border: 1px solid ${C.sumiBorder};
-  border-radius: 2px;
+  background: ${C.sumi};
+  border: 1px solid rgba(245, 236, 217, 0.22);
+  border-radius: 0;
   cursor: pointer;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
   transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease,
     transform 0.18s ease;
 
@@ -337,9 +350,8 @@ const GhostButton = styled.button`
     transition: transform 0.2s ease;
   }
   &:hover {
-    color: ${D.textHi};
-    border-color: ${C.iceMid};
-    background: rgba(234, 241, 247, 0.06);
+    color: ${C.cream};
+    border-color: rgba(245, 236, 217, 0.4);
     .arrow {
       transform: translateX(-3px);
     }
@@ -353,26 +365,35 @@ const TitleBlock = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
+  will-change: transform, opacity;
+  animation: ${fadeUp} 0.42s cubic-bezier(0.2, 0.7, 0.2, 1) 0.04s both;
 `;
 
 const PageTitle = styled.h1`
   margin: 0;
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.92rem, 1.6cqw, 1.28rem);
-  color: ${C.cream};
+  font-size: clamp(1.15rem, 2.2cqw, 1.7rem);
+  color: #ffffff;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.18em;
   line-height: 1;
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000,
+    0 2px 0 rgba(0, 0, 0, 0.85);
 `;
 
 const PageSubtitle = styled.div`
   font-family: ${FONT_BODY};
-  font-weight: 600;
-  font-size: clamp(0.42rem, 0.66cqw, 0.52rem);
-  color: ${C.creamMute};
+  font-weight: 700;
+  font-size: clamp(0.42rem, 0.68cqw, 0.52rem);
+  color: ${C.ice};
   text-transform: uppercase;
   letter-spacing: 0.34em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
 `;
 
 // Currency readout — the Kenshō balance sits directly in the top bar as
@@ -384,17 +405,20 @@ const Currency = styled.div`
   align-items: center;
   gap: clamp(6px, 0.9cqw, 10px);
   min-height: 38px;
-  font-family: ${FONT_BODY};
-  font-weight: 700;
-  font-size: clamp(0.6rem, 0.94cqw, 0.78rem);
+  padding: 0 clamp(10px, 1.2cqw, 14px);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.62rem, 0.96cqw, 0.8rem);
   color: ${C.gold};
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
+  background: ${C.sumi};
+  border: 1px solid rgba(232, 197, 71, 0.35);
+  text-shadow: 0 0 10px rgba(232, 197, 71, 0.35);
 
   .envelope {
-    height: 2.7em;
+    height: 2.4em;
     width: auto;
     object-fit: contain;
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
   }
 `;
 
@@ -409,9 +433,9 @@ const DebugToggle = styled.button`
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: ${(p) => (p.$active ? C.sumi : C.creamMute)};
-  background: ${(p) => (p.$active ? C.gold : "transparent")};
-  border: 1px solid ${(p) => (p.$active ? C.gold : C.sumiBorder)};
-  border-radius: 2px;
+  background: ${(p) => (p.$active ? C.gold : C.sumi)};
+  border: 1px solid ${(p) => (p.$active ? C.gold : "rgba(245, 236, 217, 0.22)")};
+  border-radius: 0;
   cursor: pointer;
   transition: all 0.15s ease;
 
@@ -431,34 +455,25 @@ const Stage = styled.main`
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.18fr);
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.16fr);
   align-items: stretch;
-  gap: clamp(16px, 2.4cqw, 34px);
-  padding: clamp(10px, 1.8cqh, 22px) clamp(22px, 3.6cqw, 54px);
+  gap: clamp(18px, 2.6cqw, 36px);
+  padding: clamp(8px, 1.4cqh, 16px) clamp(22px, 3.6cqw, 54px)
+    clamp(14px, 2cqh, 24px);
 `;
 
-// Shared panel shell — dusk-charcoal plaque with a cool frost sheen so the
-// locker-room art can tint through. Top→bottom light falloff, cool hairline,
-// soft top inner-glow, and a glowing accent bar across the crown.
+/* Flat sumi plaque — solid fill, cream hairline, vermillion crown rule.
+   No glass blur, no ice glow bloom. Reads like VsMetaPlate, not a SaaS card. */
 const Panel = styled.section`
   position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(42, 50, 60, 0.90) 0%,
-    rgba(26, 32, 40, 0.93) 100%
-  );
+  background: ${D.panel};
   border: 1px solid ${D.border};
-  border-radius: 4px;
+  border-radius: 0;
   overflow: hidden;
-  box-shadow:
-    0 18px 40px ${D.shadowStrong},
-    0 0 0 1px rgba(126, 203, 240, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.10);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 16px 36px ${D.shadowStrong};
 
   &::before {
     content: "";
@@ -467,23 +482,26 @@ const Panel = styled.section`
     left: 0;
     right: 0;
     height: 2px;
-    background: ${(p) => p.$accent || C.ice};
-    box-shadow: 0 0 14px ${(p) => p.$glow || C.iceGlow};
+    background: ${C.vermillion};
     z-index: 2;
   }
 `;
 
 const LeftPanel = styled(Panel)`
-  animation: ${slideInLeft} 0.5s ease-out 0.12s both;
+  will-change: transform, opacity;
+  animation: ${clipRevealLeft} 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) 0.1s both;
 `;
 
+/* Loadout = lacquer technique board. Opaque ink + washi so the room never
+   fights the icons; still flat/printed, not glass. */
 const RightPanel = styled(Panel)`
-  animation: ${slideInRight} 0.5s ease-out 0.18s both;
+  background:
+    ${WASHI_LIGHT_ON_DARK},
+    linear-gradient(180deg, #161a22 0%, #10141b 100%);
+  will-change: transform, opacity;
+  animation: ${clipRevealRight} 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) 0.16s both;
 `;
 
-// Slim header — a thin elevated nameplate band. Slightly lighter than the
-// panel body so it reads as a raised spine the title sits on, closed off by
-// a cool hairline.
 const PanelHead = styled.header`
   position: relative;
   display: flex;
@@ -491,19 +509,16 @@ const PanelHead = styled.header`
   justify-content: space-between;
   gap: 12px;
   flex-shrink: 0;
-  padding: clamp(7px, 1cqh, 11px) clamp(12px, 1.7cqw, 20px);
-  background: linear-gradient(180deg, ${D.headTop} 0%, ${D.headBottom} 100%);
-  border-bottom: 1px solid ${D.border};
-  box-shadow:
-    0 1px 0 rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  padding: clamp(9px, 1.2cqh, 13px) clamp(14px, 1.8cqw, 22px);
+  background: ${D.head};
+  border-bottom: 1px solid ${D.borderSoft};
 
-  /* Faint printed-paper weave for tactile depth on the nameplate band. */
   &::before {
     content: "";
     position: absolute;
     inset: 0;
     background-image: ${WASHI_LIGHT_ON_DARK};
+    opacity: 0.7;
     pointer-events: none;
   }
   & > * {
@@ -516,18 +531,23 @@ const HeadTitle = styled.h2`
   margin: 0;
   display: inline-flex;
   align-items: center;
-  gap: clamp(7px, 1cqw, 11px);
+  gap: clamp(8px, 1.1cqw, 12px);
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.6rem, 0.94cqw, 0.8rem);
-  color: ${D.textHi};
+  font-size: clamp(0.68rem, 1.05cqw, 0.88rem);
+  color: ${C.cream};
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.18em;
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000;
 
   &::before {
     content: "";
     width: clamp(14px, 1.8cqw, 20px);
     height: 2px;
-    background: ${(p) => p.$accent || C.ice};
+    background: ${C.vermillion};
   }
 `;
 
@@ -535,47 +555,50 @@ const HeadMeta = styled.div`
   font-family: ${FONT_BODY};
   font-weight: 700;
   font-size: clamp(0.42rem, 0.66cqw, 0.52rem);
-  color: ${(p) => (p.$accent ? D.textHi : D.textMute)};
+  color: ${(p) => (p.$accent ? C.ice : D.textMute)};
   text-transform: uppercase;
   letter-spacing: 0.22em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
 `;
 
+/* Lacquer rank plaque — matches PreMatch / HUD, not a pill chip. */
 const RankChip = styled.button`
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: clamp(5px, 0.7cqw, 8px);
-  font-family: ${FONT_BODY};
-  font-weight: 700;
-  font-size: clamp(0.48rem, 0.76cqw, 0.6rem);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.48rem, 0.76cqw, 0.62rem);
   color: ${C.gold};
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  background: linear-gradient(
-    180deg,
-    rgba(232, 197, 71, 0.12) 0%,
-    rgba(232, 197, 71, 0.05) 100%
-  );
-  border: 1px solid rgba(232, 197, 71, 0.32);
-  border-radius: 999px;
-  padding: clamp(3px, 0.5cqh, 5px) clamp(9px, 1.2cqw, 13px);
+  letter-spacing: 0.1em;
+  background:
+    ${WASHI_LIGHT_ON_DARK},
+    linear-gradient(
+      180deg,
+      rgba(22, 28, 48, 0.96) 0%,
+      rgba(12, 16, 32, 0.98) 100%
+    );
+  border: 1px solid rgba(245, 236, 217, 0.28);
+  border-radius: 2px;
+  padding: clamp(4px, 0.55cqh, 6px) clamp(10px, 1.3cqw, 14px);
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease,
-    box-shadow 0.15s ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 252, 244, 0.08),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+  text-shadow: 0 0 10px rgba(232, 197, 71, 0.35);
+  transition: border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
 
   .ladder {
-    font-size: 1.05em;
+    font-family: ${FONT_BODY};
+    font-size: 0.95em;
     line-height: 1;
-    opacity: 0.7;
+    opacity: 0.65;
   }
   &:hover {
     border-color: ${C.gold};
-    color: ${C.cream};
-    background: linear-gradient(
-      180deg,
-      rgba(232, 197, 71, 0.22) 0%,
-      rgba(232, 197, 71, 0.10) 100%
-    );
-    box-shadow: 0 0 14px rgba(232, 197, 71, 0.22);
+    color: #ffe07a;
+    transform: translateY(-1px);
   }
 `;
 
@@ -584,9 +607,6 @@ const RankChip = styled.button`
 // ============================================
 
 const PortraitStage = styled.div`
-  /* Takes ALL leftover column height after the fixed chrome (head, attrs,
-     appearance, footer). No hard min-height — that was clipping the footer
-     on shorter viewports. On tall screens this still grows the fighter. */
   flex: 1 1 0;
   min-height: 0;
   display: flex;
@@ -595,19 +615,17 @@ const PortraitStage = styled.div`
   padding: clamp(4px, 0.8cqh, 10px) clamp(10px, 1.5cqw, 18px);
   position: relative;
   overflow: hidden;
-  /* High-contrast lightbox: the fighter stands on bright washi paper, lit
-     from above and framed by a soft inset vignette — reads as a premium
-     character-viewer pod set into the dark panel. */
+  /* Warm washi lightbox — paper stage for the rikishi, no ice frame. */
   background: radial-gradient(
-    ellipse at 50% 32%,
+    ellipse at 50% 30%,
     ${D.stageTop} 0%,
-    ${D.stageMid} 58%,
+    ${D.stageMid} 55%,
     ${D.stageBottom} 100%
   );
   box-shadow:
-    inset 0 0 0 1px rgba(60, 40, 20, 0.12),
-    inset 0 -24px 42px -18px rgba(70, 48, 24, 0.42),
-    inset 0 16px 30px -18px rgba(255, 252, 244, 0.7);
+    inset 0 0 0 1px rgba(60, 40, 20, 0.14),
+    inset 0 -28px 48px -20px rgba(70, 48, 24, 0.48),
+    inset 0 18px 32px -18px rgba(255, 252, 244, 0.55);
   &::before {
     content: "";
     position: absolute;
@@ -615,14 +633,15 @@ const PortraitStage = styled.div`
     background-image: ${WASHI_DARK_ON_LIGHT};
     pointer-events: none;
   }
-  /* Thin ice frame — behind the fighter so it frames the stage, not the sprite. */
   &::after {
     content: "";
     position: absolute;
-    inset: 5px;
-    border: 1px solid rgba(126, 203, 240, 0.22);
-    border-radius: 2px;
-    box-shadow: inset 0 0 0 1px rgba(255, 252, 244, 0.35);
+    inset: 0;
+    background: radial-gradient(
+      ellipse 70% 55% at 50% 40%,
+      transparent 40%,
+      rgba(40, 28, 14, 0.18) 100%
+    );
     pointer-events: none;
     z-index: 1;
   }
@@ -647,13 +666,12 @@ const PortraitFloor = styled.div`
 const PortraitSpotlight = styled.div`
   position: absolute;
   inset: 0;
-  /* Stronger mawashi-blue halo — ties the bright stage to the ice accent
-     and keeps the lightbox from reading as a flat beige card. */
+  /* Soft warm key light — character presence without ice bloom. */
   background: radial-gradient(
-    ellipse at center 44%,
-    rgba(126, 203, 240, 0.22) 0%,
-    rgba(168, 224, 255, 0.08) 38%,
-    transparent 62%
+    ellipse at center 42%,
+    rgba(255, 248, 230, 0.35) 0%,
+    rgba(232, 197, 71, 0.08) 36%,
+    transparent 64%
   );
   pointer-events: none;
 `;
@@ -672,29 +690,21 @@ const AvatarBreath = styled.div`
 `;
 
 const PortraitImage = styled.img`
-  height: 108%;
-  max-height: 108%;
+  height: 110%;
+  max-height: 110%;
   width: auto;
   max-width: 100%;
   object-fit: contain;
   transform: scaleX(-1);
   transform-origin: center bottom;
+  filter: drop-shadow(0 0 1.5px #000);
 `;
 
-// Section block for Attributes + Appearance in the left column. Cool frost
-// wash separates it from the portrait stage without going pure dark — still
-// reads as one carved plaque, but with a brighter ice band under the stats.
 const Block = styled.div`
   flex-shrink: 0;
-  padding: clamp(6px, 0.9cqh, 10px) clamp(12px, 1.6cqw, 18px);
-  border-top: 1px solid rgba(126, 203, 240, 0.14);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  background: linear-gradient(
-    180deg,
-    ${D.frostStrong} 0%,
-    ${D.frost} 48%,
-    transparent 100%
-  );
+  padding: clamp(7px, 1cqh, 11px) clamp(14px, 1.7cqw, 20px);
+  border-top: 1px solid ${D.borderSoft};
+  background: ${D.chrome};
 `;
 
 const BlockHead = styled.div`
@@ -702,7 +712,7 @@ const BlockHead = styled.div`
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: clamp(4px, 0.6cqh, 7px);
+  margin-bottom: clamp(5px, 0.7cqh, 8px);
 `;
 
 const BlockLabel = styled.div`
@@ -713,16 +723,15 @@ const BlockLabel = styled.div`
   font-family: ${FONT_BODY};
   font-weight: 700;
   font-size: clamp(0.48rem, 0.74cqw, 0.6rem);
-  color: ${D.textHi};
+  color: ${C.cream};
   text-transform: uppercase;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.26em;
 
   &::before {
     content: "";
     width: clamp(10px, 1.4cqw, 14px);
     height: 2px;
-    background: ${C.ice};
-    box-shadow: 0 0 8px ${C.iceGlow};
+    background: ${C.vermillion};
   }
 `;
 
@@ -730,14 +739,9 @@ const BlockMeta = styled.div`
   font-family: ${FONT_BODY};
   font-weight: 700;
   font-size: clamp(0.4rem, 0.62cqw, 0.48rem);
-  color: ${(p) => (p.$accent ? C.iceBright : D.textMute)};
+  color: ${(p) => (p.$accent ? C.ice : D.textMute)};
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  ${(p) =>
-    p.$accent &&
-    css`
-      text-shadow: 0 0 10px ${C.iceGlow};
-    `}
 `;
 
 // --- Attribute rows (compact for the narrow column) ---
@@ -753,11 +757,15 @@ const StatRow = styled.div`
   grid-template-columns: clamp(22px, 2.6cqw, 28px) minmax(0, 1fr) auto;
   align-items: center;
   gap: clamp(6px, 0.9cqw, 10px);
-  padding: clamp(2px, 0.35cqh, 4px) clamp(5px, 0.7cqw, 8px);
-  border-radius: 3px;
-  background: rgba(8, 12, 18, 0.28);
-  border: 1px solid rgba(234, 241, 247, 0.06);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: clamp(3px, 0.4cqh, 5px) clamp(4px, 0.6cqw, 7px);
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid ${D.borderSoft};
+
+  &:last-child {
+    border-bottom: none;
+  }
 `;
 
 const StatKanji = styled.div`
@@ -767,19 +775,12 @@ const StatKanji = styled.div`
   align-items: center;
   justify-content: center;
   font-family: ${FONT_KANJI};
-  font-size: clamp(0.7rem, 1cqw, 0.85rem);
-  color: ${C.iceBright};
+  font-size: clamp(0.72rem, 1.05cqw, 0.9rem);
+  color: ${C.cream};
   line-height: 1;
-  border-radius: 3px;
-  background: linear-gradient(
-    180deg,
-    rgba(126, 203, 240, 0.16) 0%,
-    rgba(54, 130, 170, 0.10) 100%
-  );
-  border: 1px solid rgba(126, 203, 240, 0.28);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 0 10px rgba(126, 203, 240, 0.12);
+  border-radius: 0;
+  background: ${D.deep};
+  border: 1px solid rgba(245, 236, 217, 0.18);
 `;
 
 const StatBody = styled.div`
@@ -798,10 +799,10 @@ const StatLabelRow = styled.div`
 
 const StatLabel = styled.div`
   font-family: ${FONT_BODY};
-  font-weight: 600;
+  font-weight: 700;
   font-size: clamp(0.46rem, 0.72cqw, 0.58rem);
-  color: ${D.text};
-  letter-spacing: 0.12em;
+  color: ${C.creamMute};
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 `;
 
@@ -809,23 +810,20 @@ const PipTrack = styled.div`
   display: flex;
   gap: clamp(2px, 0.3cqw, 3px);
   padding: 1px;
-  border-radius: 2px;
-  background: rgba(8, 12, 18, 0.45);
-  border: 1px solid rgba(234, 241, 247, 0.05);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.28);
+  border-radius: 0;
+  background: ${D.deep};
+  border: 1px solid rgba(245, 236, 217, 0.08);
 `;
 
 const Pip = styled.div`
   flex: 1;
   height: clamp(4px, 0.55cqh, 5px);
-  border-radius: 1px;
+  border-radius: 0;
   background: ${(p) =>
     p.$filled
-      ? "linear-gradient(180deg, #a8e0ff 0%, #4a9fc9 100%)"
-      : "rgba(234, 241, 247, 0.04)"};
-  border: 1px solid ${(p) => (p.$filled ? "#5bb3d9" : "transparent")};
-  box-shadow: ${(p) =>
-    p.$filled ? "0 0 4px rgba(126, 203, 240, 0.45)" : "none"};
+      ? `linear-gradient(180deg, ${C.iceBright} 0%, ${C.iceMid} 100%)`
+      : "rgba(245, 236, 217, 0.06)"};
+  border: 1px solid ${(p) => (p.$filled ? C.ice : "transparent")};
   transform-origin: left center;
   ${(p) =>
     p.$filled &&
@@ -851,21 +849,18 @@ const StepButton = styled.button`
   font-family: ${FONT_DISPLAY};
   font-size: clamp(0.7rem, 1.05cqw, 0.88rem);
   line-height: 1;
-  color: ${D.textHi};
-  background: linear-gradient(180deg, ${D.softHover} 0%, ${D.soft} 100%);
+  color: ${C.cream};
+  background: ${D.soft};
   border: 1px solid ${D.border};
-  border-radius: 2px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  border-radius: 0;
   cursor: pointer;
   transition: color 0.12s ease, border-color 0.12s ease, transform 0.1s ease,
-    box-shadow 0.12s ease;
+    background 0.12s ease;
 
   &:hover:not(:disabled) {
-    color: ${C.iceBright};
-    border-color: ${C.iceMid};
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.08),
-      0 0 10px rgba(126, 203, 240, 0.2);
+    color: #fff;
+    border-color: ${C.cream};
+    background: ${D.softHover};
   }
   &:active:not(:disabled) {
     transform: scale(0.9);
@@ -879,14 +874,20 @@ const StepButton = styled.button`
 const StatValue = styled.div`
   font-family: ${FONT_DISPLAY};
   font-size: clamp(0.54rem, 0.82cqw, 0.7rem);
-  color: ${D.textHi};
+  color: #ffffff;
   letter-spacing: 0.02em;
   min-width: clamp(22px, 2.5cqw, 30px);
   text-align: center;
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000;
 
   .max {
     color: ${D.textFaint};
     font-size: 0.68em;
+    text-shadow: none;
   }
 `;
 
@@ -905,27 +906,16 @@ const AppearanceButton = styled.button`
   gap: clamp(6px, 0.9cqw, 10px);
   width: 100%;
   text-align: left;
-  padding: clamp(4px, 0.6cqh, 7px) clamp(7px, 1cqw, 10px);
-  background: ${(p) =>
-    p.$open
-      ? "linear-gradient(180deg, rgba(72, 84, 98, 0.55) 0%, rgba(42, 50, 60, 0.7) 100%)"
-      : "linear-gradient(180deg, rgba(42, 50, 60, 0.55) 0%, rgba(26, 32, 40, 0.7) 100%)"};
-  border: 1px solid ${(p) => (p.$open ? C.iceMid : D.border)};
-  border-radius: 3px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  padding: clamp(5px, 0.7cqh, 8px) clamp(8px, 1cqw, 11px);
+  background: ${(p) => (p.$open ? D.softHover : D.soft)};
+  border: 1px solid ${(p) => (p.$open ? C.cream : D.borderSoft)};
+  border-radius: 0;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease;
 
   &:hover {
-    border-color: ${C.iceMid};
-    background: linear-gradient(
-      180deg,
-      rgba(72, 84, 98, 0.6) 0%,
-      rgba(42, 50, 60, 0.75) 100%
-    );
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.08),
-      0 0 12px rgba(126, 203, 240, 0.12);
+    border-color: rgba(245, 236, 217, 0.35);
+    background: ${D.softHover};
   }
 `;
 
@@ -935,7 +925,7 @@ const AppearanceSwatch = styled.span`
   height: clamp(16px, 2cqw, 22px);
   border-radius: 50%;
   background: ${(p) => p.$gradient || p.$color};
-  border: 2px solid ${D.border};
+  border: 2px solid rgba(245, 236, 217, 0.35);
   box-shadow: 0 1px 3px ${D.shadow};
 `;
 
@@ -957,7 +947,7 @@ const AppearanceText = styled.span`
     font-family: ${FONT_BODY};
     font-weight: 700;
     font-size: clamp(0.48rem, 0.74cqw, 0.6rem);
-    color: ${D.textHi};
+    color: ${C.cream};
     text-transform: uppercase;
     letter-spacing: 0.06em;
     white-space: nowrap;
@@ -978,9 +968,9 @@ const Popover = styled.div`
   padding: clamp(11px, 1.5cqh, 15px);
   max-height: min(46cqh, 380px);
   overflow-y: auto;
-  background: ${D.panel};
+  background: ${D.panelSolid};
   border: 1px solid ${D.border};
-  border-radius: 4px;
+  border-radius: 0;
   box-shadow: 0 14px 32px ${D.shadowStrong};
   animation: ${popIn} 0.16s ease-out both;
 
@@ -988,8 +978,8 @@ const Popover = styled.div`
     width: 6px;
   }
   &::-webkit-scrollbar-thumb {
-    background: ${C.iceMid};
-    border-radius: 2px;
+    background: ${C.vermillion};
+    border-radius: 0;
   }
 `;
 
@@ -1018,19 +1008,19 @@ const ColorSwatch = styled.button`
   position: relative;
   width: 100%;
   aspect-ratio: 1;
-  border-radius: ${(p) => (p.$square ? "6px" : "50%")};
-  border: 2px solid ${(p) => (p.$selected ? C.iceBright : D.border)};
+  border-radius: ${(p) => (p.$square ? "2px" : "50%")};
+  border: 2px solid ${(p) => (p.$selected ? C.gold : D.border)};
   background: ${(p) => p.$gradient || p.$color};
   cursor: pointer;
   transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   box-shadow: ${(p) =>
     p.$selected
-      ? `0 0 0 2px rgba(126, 203, 240, 0.55), 0 2px 6px ${D.shadow}`
+      ? `0 0 0 2px rgba(232, 197, 71, 0.45), 0 2px 6px ${D.shadow}`
       : `0 2px 5px ${D.shadow}`};
 
   &:hover {
     transform: scale(1.12);
-    border-color: ${(p) => (p.$selected ? C.iceBright : C.iceMid)};
+    border-color: ${(p) => (p.$selected ? C.gold : C.cream)};
   }
   &:active {
     transform: scale(0.94);
@@ -1043,46 +1033,48 @@ const IdentityFooter = styled.footer`
   justify-content: space-between;
   gap: 12px;
   flex-shrink: 0;
-  padding: clamp(6px, 0.9cqh, 10px) clamp(12px, 1.6cqw, 18px);
-  border-top: 1px solid ${D.border};
-  background: linear-gradient(180deg, ${D.chromeTop} 0%, ${D.chromeBottom} 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    inset 0 1px 0 rgba(0, 0, 0, 0.18);
+  padding: clamp(8px, 1.1cqh, 12px) clamp(14px, 1.7cqw, 20px);
+  border-top: 1px solid ${D.borderSoft};
+  background: ${C.sumi};
 `;
 
 const IdentityStack = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   align-items: ${(p) => (p.$right ? "flex-end" : "flex-start")};
 `;
 
 const IdentityLabel = styled.div`
   font-family: ${FONT_BODY};
-  font-weight: 600;
+  font-weight: 700;
   font-size: clamp(0.38rem, 0.6cqw, 0.48rem);
-  color: ${D.textMute};
+  color: ${C.creamMute};
   text-transform: uppercase;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.3em;
 `;
 
 const IdentityRank = styled.div`
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.72rem, 1.1cqw, 0.95rem);
+  font-size: clamp(0.78rem, 1.2cqw, 1.05rem);
   color: ${C.gold};
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  text-shadow: 0 0 12px rgba(232, 197, 71, 0.28);
+  text-shadow: 0 0 12px rgba(232, 197, 71, 0.35);
 `;
 
 const IdentityRecord = styled.div`
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.72rem, 1.1cqw, 0.95rem);
+  font-size: clamp(0.78rem, 1.2cqw, 1.05rem);
   letter-spacing: 0.04em;
   display: inline-flex;
   align-items: baseline;
   gap: 0.12em;
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000;
 
   .w {
     color: ${C.success};
@@ -1092,6 +1084,7 @@ const IdentityRecord = styled.div`
   }
   .sep {
     color: ${D.textFaint};
+    text-shadow: none;
   }
 `;
 
@@ -1106,20 +1099,23 @@ const LoadoutBody = styled.div`
   flex-direction: column;
   padding: clamp(12px, 1.7cqh, 18px) clamp(14px, 1.9cqw, 24px);
   overflow: hidden;
-  background: linear-gradient(
-    180deg,
-    ${D.frostStrong} 0%,
-    transparent 28%,
-    transparent 100%
-  );
+  background: transparent;
 `;
 
 const LoadoutBoard = styled.div`
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: clamp(6px, 0.9cqh, 10px);
+  padding: clamp(8px, 1.1cqh, 12px) clamp(8px, 1cqw, 12px);
+  /* Solid lacquer tray — no see-through to the panel washi underneath. */
+  background: #0a0c11;
+  border: 1px solid rgba(245, 236, 217, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 252, 244, 0.04),
+    0 2px 8px rgba(0, 0, 0, 0.35);
 `;
 
 const CategoryRow = styled.div`
@@ -1129,20 +1125,9 @@ const CategoryRow = styled.div`
   grid-template-columns: clamp(96px, 12.5cqw, 138px) minmax(0, 1fr);
   align-items: center;
   gap: clamp(10px, 1.4cqw, 18px);
-  padding: clamp(5px, 0.8cqh, 9px) clamp(10px, 1.4cqw, 15px);
-  /* Cool slate shelf — lifted above the panel with a frost edge so each
-     discipline reads as its own raised band instead of melting into dusk. */
-  background: linear-gradient(
-    180deg,
-    rgba(72, 84, 98, 0.72) 0%,
-    rgba(48, 58, 70, 0.78) 100%
-  );
-  border: 1px solid rgba(234, 241, 247, 0.16);
-  border-radius: 4px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.22),
-    0 3px 10px ${D.shadow};
+  padding: 0;
+  background: transparent;
+  border: none;
 `;
 
 const CategoryLabel = styled.div`
@@ -1151,29 +1136,27 @@ const CategoryLabel = styled.div`
   align-items: center;
   gap: clamp(7px, 1cqw, 11px);
   min-width: 0;
-  padding-left: clamp(8px, 1cqw, 11px);
+  padding-left: clamp(10px, 1.2cqw, 14px);
 
   &::before {
     content: "";
     position: absolute;
     left: 0;
-    top: 12%;
-    bottom: 12%;
+    top: 14%;
+    bottom: 14%;
     width: 2px;
-    border-radius: 1px;
-    background: ${C.ice};
-    box-shadow: 0 0 8px ${C.iceGlow};
-    opacity: 0.85;
+    background: ${C.vermillion};
   }
 `;
 
 const CategoryKanji = styled.div`
   font-family: ${FONT_KANJI};
-  font-size: clamp(1.05rem, 1.7cqw, 1.45rem);
-  color: ${C.iceBright};
+  font-weight: 900;
+  font-size: clamp(1.1rem, 1.8cqw, 1.55rem);
+  color: ${C.cream};
   line-height: 1;
   flex-shrink: 0;
-  text-shadow: 0 0 12px ${C.iceGlow};
+  opacity: 0.9;
 `;
 
 const CategoryNameStack = styled.div`
@@ -1186,10 +1169,11 @@ const CategoryNameStack = styled.div`
 const CategoryName = styled.div`
   font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.5rem, 0.8cqw, 0.64rem);
-  color: ${D.textHi};
+  font-size: clamp(0.52rem, 0.82cqw, 0.66rem);
+  color: #ffffff;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 `;
 
 const CategorySub = styled.div`
@@ -1201,49 +1185,56 @@ const CategorySub = styled.div`
   letter-spacing: 0.14em;
 `;
 
+/* Recessed slot trough — solid ink well, 5 equal cells, fixed square plates. */
 const SlotStrip = styled.div`
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   align-items: center;
-  justify-content: space-between;
   width: 100%;
-  gap: clamp(6px, 1cqw, 12px);
+  min-width: 0;
+  gap: clamp(5px, 0.8cqw, 10px);
+  padding: clamp(5px, 0.7cqh, 8px) clamp(7px, 0.9cqw, 10px);
+  background: #050608;
+  border: 1px solid rgba(245, 236, 217, 0.1);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.55);
+  box-sizing: border-box;
 `;
 
-// Base square slot. Real options are vivid; placeholders/locked dim out.
 const Slot = styled.button`
   position: relative;
-  flex-shrink: 0;
+  width: 100%;
+  max-width: clamp(42px, 6.2cqh, 64px);
   aspect-ratio: 1;
-  height: clamp(40px, 6cqh, 62px);
-  max-width: 100%;
+  height: auto;
+  justify-self: center;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: visible;
   padding: 0;
+  box-sizing: border-box;
   background: ${(p) => p.$gradient || p.$main || D.deep};
   border: 2px solid
     ${(p) =>
       p.$selected
-        ? C.iceBright
+        ? C.gold
         : p.$focused
-          ? C.iceMid
-          : p.$deep || D.border};
-  border-radius: 6px;
+          ? C.cream
+          : p.$deep || "rgba(245, 236, 217, 0.16)"};
+  border-radius: 2px;
   cursor: ${(p) => (p.$interactive ? "pointer" : "default")};
   box-shadow: ${(p) =>
     p.$selected
-      ? `0 0 0 2px ${C.iceBright}, 0 0 16px ${D.accentGlow}, 0 4px 12px ${D.shadow}`
-      : `inset 0 -2px 0 rgba(0,0,0,0.14), 0 2px 6px ${D.shadow}`};
-  transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease,
-    filter 0.15s ease;
+      ? `0 0 0 2px rgba(232, 197, 71, 0.45), 0 4px 12px ${D.shadow}`
+      : `inset 0 -2px 0 rgba(0,0,0,0.18), 0 2px 6px ${D.shadow}`};
+  transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 
   img {
     width: ${(p) => p.$imgSize || "78%"};
     height: ${(p) => p.$imgSize || "78%"};
     object-fit: contain;
     transform: scale(${(p) => p.$imgScale ?? 1});
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.34));
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
   }
 
   &:hover {
@@ -1252,8 +1243,8 @@ const Slot = styled.button`
       !p.$interactive
         ? p.$deep || D.border
         : p.$selected
-          ? C.iceBright
-          : C.iceMid};
+          ? C.gold
+          : C.cream};
   }
   &:active {
     transform: ${(p) => (p.$interactive ? "scale(0.95)" : "none")};
@@ -1274,25 +1265,14 @@ const LockedSlot = styled(Slot)`
 `;
 
 const PlaceholderSlot = styled(Slot)`
-  /* Reserved technique plates — empty slots should feel intentional
-     ("sealed for later") rather than unfinished UI. Soft ink wash +
-     faint hanko ring + solid hairline; real equipped icons still win. */
   position: relative;
   overflow: hidden;
-  background:
-    radial-gradient(
-      circle at 50% 48%,
-      rgba(126, 203, 240, 0.05) 0%,
-      transparent 58%
-    ),
-    linear-gradient(180deg, #1a212b 0%, #12171e 100%);
+  background: ${D.deep};
   border-style: solid;
-  border-color: rgba(234, 241, 247, 0.10);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  border-color: rgba(245, 236, 217, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
   color: ${D.textFaint};
-  opacity: 0.72;
+  opacity: 0.7;
   cursor: default;
 
   &::before {
@@ -1300,7 +1280,7 @@ const PlaceholderSlot = styled(Slot)`
     position: absolute;
     inset: 18%;
     border-radius: 50%;
-    border: 1px solid rgba(234, 241, 247, 0.08);
+    border: 1px solid rgba(245, 236, 217, 0.08);
     pointer-events: none;
   }
 
@@ -1309,7 +1289,7 @@ const PlaceholderSlot = styled(Slot)`
     position: absolute;
     inset: 0;
     background-image: ${WASHI_LIGHT_ON_DARK};
-    opacity: 0.55;
+    opacity: 0.5;
     pointer-events: none;
   }
 `;
@@ -1333,8 +1313,8 @@ const PlaceholderGlyph = styled.span`
 
 const SlotCheck = styled.span`
   position: absolute;
-  top: -7px;
-  right: -7px;
+  top: -6px;
+  right: -6px;
   width: clamp(15px, 1.9cqw, 20px);
   height: clamp(15px, 1.9cqw, 20px);
   display: inline-flex;
@@ -1342,8 +1322,8 @@ const SlotCheck = styled.span`
   justify-content: center;
   font-size: clamp(0.55rem, 0.85cqw, 0.7rem);
   color: ${C.sumi};
-  background: ${C.iceBright};
-  border: 1px solid ${C.iceMid};
+  background: ${C.gold};
+  border: 1px solid ${C.goldDeep};
   border-radius: 50%;
   box-shadow: 0 1px 3px ${C.sumiShadow};
 `;
@@ -1383,14 +1363,10 @@ const DetailStrip = styled.div`
   min-height: clamp(70px, 10.5cqh, 92px);
   margin-top: clamp(10px, 1.5cqh, 16px);
   padding: clamp(10px, 1.5cqh, 14px) clamp(12px, 1.5cqw, 16px);
-  border: 1px solid rgba(126, 203, 240, 0.18);
-  border-radius: 4px;
-  background: linear-gradient(
-    180deg,
-    rgba(234, 241, 247, 0.12) 0%,
-    rgba(126, 203, 240, 0.06) 100%
-  );
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  border: 1px solid ${D.border};
+  border-top: 2px solid ${C.vermillion};
+  border-radius: 0;
+  background: ${C.sumi};
 `;
 
 const DetailIcon = styled.div`
@@ -1404,7 +1380,7 @@ const DetailIcon = styled.div`
   overflow: visible;
   background: ${(p) => p.$gradient || p.$main || D.deep};
   border: 1px solid ${(p) => p.$deep || D.border};
-  border-radius: 6px;
+  border-radius: 2px;
   box-shadow: 0 2px 6px ${D.shadow};
 
   img {
@@ -1467,25 +1443,30 @@ const DetailTopRow = styled.div`
 
 const DetailName = styled.span`
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.6rem, 0.94cqw, 0.78rem);
-  color: ${D.textHi};
+  font-size: clamp(0.68rem, 1.05cqw, 0.88rem);
+  color: #ffffff;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000;
 `;
 
 const DetailTag = styled.span`
   font-family: ${FONT_BODY};
-  font-weight: 600;
+  font-weight: 700;
   font-size: clamp(0.4rem, 0.6cqw, 0.48rem);
-  color: ${(p) => (p.$accent ? C.iceBright : D.textMute)};
+  color: ${(p) => (p.$accent ? C.gold : D.textMute)};
   text-transform: uppercase;
   letter-spacing: 0.12em;
   padding: 2px 7px;
-  border-radius: 2px;
+  border-radius: 0;
   background: ${(p) =>
-    p.$accent ? "rgba(126, 203, 240, 0.12)" : "rgba(234, 241, 247, 0.05)"};
+    p.$accent ? "rgba(232, 197, 71, 0.12)" : "transparent"};
   border: 1px solid
-    ${(p) => (p.$accent ? "rgba(126, 203, 240, 0.28)" : D.borderSoft)};
+    ${(p) => (p.$accent ? "rgba(232, 197, 71, 0.4)" : D.borderSoft)};
 `;
 
 const DetailEmpty = styled.div`
@@ -1503,13 +1484,12 @@ const DetailEmptySeal = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: 0;
   font-family: ${FONT_KANJI};
   font-size: clamp(1rem, 1.5cqw, 1.25rem);
-  color: rgba(126, 203, 240, 0.45);
-  background: linear-gradient(180deg, #1a212b 0%, #12171e 100%);
-  border: 1px solid rgba(126, 203, 240, 0.18);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  color: rgba(245, 236, 217, 0.4);
+  background: ${D.deep};
+  border: 1px solid ${D.borderSoft};
 `;
 
 const DetailEmptyCopy = styled.div`
@@ -1522,7 +1502,7 @@ const DetailEmptyCopy = styled.div`
     font-family: ${FONT_BODY};
     font-weight: 700;
     font-size: clamp(0.48rem, 0.72cqw, 0.58rem);
-    color: ${D.textHi};
+    color: ${C.cream};
     text-transform: uppercase;
     letter-spacing: 0.16em;
   }
@@ -1541,7 +1521,7 @@ const DetailDesc = styled.p`
   font-family: ${FONT_BODY};
   font-weight: 500;
   font-size: clamp(0.44rem, 0.66cqw, 0.54rem);
-  color: ${D.text};
+  color: ${C.creamMute};
   letter-spacing: 0.01em;
   line-height: 1.42;
   display: -webkit-box;
@@ -1567,7 +1547,7 @@ const ActionButton = styled.button`
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
-  border-radius: 2px;
+  border-radius: 0;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease,
     transform 0.1s ease, opacity 0.15s ease;
@@ -1587,30 +1567,21 @@ const ActionButton = styled.button`
   ${(p) =>
     p.$variant === "equip" &&
     css`
-      color: ${D.textHi};
-      background: ${C.iceMid};
-      border: 1px solid ${C.iceBright};
+      color: ${C.cream};
+      background: ${C.iceDeep};
+      border: 1px solid ${C.ice};
       &:hover:not(:disabled) {
-        background: #4a9fc9;
+        background: ${C.iceMid};
       }
     `}
   ${(p) =>
     p.$variant === "equipped" &&
     css`
-      color: ${C.inkText};
-      background: linear-gradient(
-        180deg,
-        rgba(168, 224, 255, 0.92) 0%,
-        rgba(126, 203, 240, 0.88) 100%
-      );
-      border: 1px solid ${C.iceBright};
-      box-shadow: 0 0 14px ${C.iceGlow};
+      color: ${C.sumi};
+      background: ${C.iceBright};
+      border: 1px solid ${C.ice};
       &:hover:not(:disabled) {
-        background: linear-gradient(
-          180deg,
-          #dff3ff 0%,
-          rgba(168, 224, 255, 0.95) 100%
-        );
+        background: #dff3ff;
       }
     `}
 
@@ -1626,29 +1597,25 @@ const ActionButton = styled.button`
   }
 `;
 
-// --- Start footer (light, prominent CTA) ---
-
 const StartFooter = styled.footer`
   display: flex;
   align-items: center;
   gap: clamp(12px, 1.8cqw, 20px);
   flex-shrink: 0;
-  padding: clamp(11px, 1.5cqh, 16px) clamp(14px, 1.9cqw, 24px);
-  border-top: 1px solid ${D.border};
-  background: linear-gradient(180deg, ${D.chromeTop} 0%, ${D.chromeBottom} 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    inset 0 1px 0 rgba(0, 0, 0, 0.18);
+  padding: clamp(12px, 1.6cqh, 18px) clamp(14px, 1.9cqw, 24px);
+  border-top: 1px solid ${D.borderSoft};
+  background: ${C.sumi};
+  animation: ${clipRevealUp} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.22s both;
 `;
 
 const StartNote = styled.div`
   flex: 1;
   font-family: ${FONT_BODY};
-  font-weight: 600;
+  font-weight: 700;
   font-size: clamp(0.44rem, 0.68cqw, 0.54rem);
-  color: ${D.text};
+  color: ${C.creamMute};
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   line-height: 1.4;
 
   em {
@@ -1658,42 +1625,58 @@ const StartNote = styled.div`
   }
 `;
 
+const readyPulse = keyframes`
+  0%, 100% {
+    box-shadow: 0 0 18px rgba(216, 59, 39, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(238, 81, 65, 0.7);
+  }
+`;
+
+/*
+ * Start CTA — same footprint as Lobby Ready, louder presence.
+ * Bright vermillion + soft red pulse. No cream/white trim.
+ */
 const StartButton = styled.button`
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: clamp(8px, 1.1cqw, 12px);
-  min-height: clamp(42px, 5cqh, 52px);
-  padding: clamp(11px, 1.5cqh, 16px) clamp(22px, 3cqw, 42px);
+  min-height: clamp(44px, 5.2cqh, 52px);
+  padding: clamp(10px, 1.4cqh, 14px) clamp(28px, 3.6cqw, 52px);
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.7rem, 1.05cqw, 0.92rem);
+  font-size: clamp(0.82rem, 1.2cqw, 1.05rem);
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: ${C.cream};
-  background: ${C.vermillion};
-  border: 1px solid ${C.vermillionBright};
-  border-radius: 2px;
+  letter-spacing: 0.22em;
+  color: #ffffff;
+  background: linear-gradient(
+    180deg,
+    ${C.vermillionBright} 0%,
+    ${C.vermillion} 55%,
+    ${C.vermillionDeep} 100%
+  );
+  border: 1px solid ${C.vermillionDeep};
+  border-radius: 0;
   cursor: pointer;
-  /* Even halo: the vermillion glow is centered (0 offset) so it reads the
-     same top and bottom; a separate neutral dark drop grounds the button
-     without dragging the colored glow downward. */
-  box-shadow: 0 0 18px ${C.vermillionGlow}, 0 3px 8px rgba(0, 0, 0, 0.35);
-  transition: background 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease;
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000;
+  animation: ${readyPulse} 1.8s ease-in-out infinite;
+  transition: background 0.16s ease, transform 0.12s ease, filter 0.16s ease;
 
-  .arrow {
-    font-family: ${FONT_BODY};
-    font-weight: 700;
-    transition: transform 0.2s ease;
-  }
   &:hover {
-    background: ${C.vermillionBright};
-    box-shadow: 0 0 26px ${C.vermillionGlow}, 0 4px 10px rgba(0, 0, 0, 0.4);
-    .arrow {
-      transform: translateX(4px);
-    }
+    filter: brightness(1.08);
+    animation: none;
+    box-shadow: 0 0 32px rgba(238, 81, 65, 0.75);
   }
+
   &:active {
-    transform: scale(0.97);
+    transform: scale(0.98);
+    filter: brightness(0.95);
   }
 `;
 
@@ -2164,7 +2147,8 @@ function BashoHub({ onBack, onStartRun }) {
       <BackgroundImage />
       <CinematicOverlay />
       <GrainOverlay />
-      <Snowfall intensity={15} showFrost={false} zIndex={2} />
+      <AtmosphereKanji aria-hidden>場所</AtmosphereKanji>
+      <Snowfall intensity={8} showFrost={false} zIndex={2} />
 
       <TopBar>
         <TopBarLeft>
@@ -2212,9 +2196,9 @@ function BashoHub({ onBack, onStartRun }) {
 
       <Stage>
         {/* LEFT — portrait + attributes + appearance */}
-        <LeftPanel $accent={C.ice} $glow={C.iceGlow}>
+        <LeftPanel>
           <PanelHead>
-            <HeadTitle $accent={C.ice}>Your Rikishi</HeadTitle>
+            <HeadTitle>Your Rikishi</HeadTitle>
             <RankChip
               onClick={() => {
                 playButtonPressSound2();
@@ -2413,9 +2397,9 @@ function BashoHub({ onBack, onStartRun }) {
         </LeftPanel>
 
         {/* RIGHT — loadout board + detail + start */}
-        <RightPanel $accent={C.ice} $glow={C.iceGlow}>
+        <RightPanel>
           <PanelHead>
-            <HeadTitle $accent={C.ice}>Loadout</HeadTitle>
+            <HeadTitle>Loadout</HeadTitle>
             <HeadMeta $accent={!runLocked && loadoutRemaining > 0}>
               {runLocked
                 ? "Locked during basho"
@@ -2619,7 +2603,6 @@ function BashoHub({ onBack, onStartRun }) {
             </StartNote>
             <StartButton onClick={handleStart} onMouseEnter={playButtonHoverSound}>
               {resumeRun ? "Resume Basho" : "Start Basho"}
-              <span className="arrow">&rarr;</span>
             </StartButton>
           </StartFooter>
         </RightPanel>

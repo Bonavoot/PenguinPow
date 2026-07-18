@@ -21,6 +21,8 @@ const {
   getSidestepInitData,
   startCharging,
   lagCompensatedParryStart,
+  canArmAttackParry,
+  armAttackParry,
   beginFlapStartup,
   alignedEntryVelocity,
   takeInheritedVelocity,
@@ -513,12 +515,21 @@ function handleWinCondition(room, loser, winner, io, winType) {
 
     // Clear parry states to prevent jiggle/flash animations persisting into round result
     p.isRawParrying = false;
+    p.isGuarding = false;
     p.rawParryStartTime = 0;
     p.rawParryMinDurationMet = false;
     p.rawParryCooldownUntil = 0;
     p.isRawParrySuccess = false;
     p.isPerfectRawParrySuccess = false;
     p.isRawParryStun = false;
+    // Guard & Parry (AP) state
+    p.apActiveUntil = 0;
+    p.apFlowUntil = 0;
+    p.apChainCount = 0;
+    p.isApWhiffRecovering = false;
+    p.apRecoveryUntil = 0;
+    p.apCooldownUntil = 0;
+    p.apSpaceConsumed = false;
 
     // Clear ALL grab states to prevent grabs persisting into next round
     p.isGrabbing = false;
@@ -1789,20 +1800,11 @@ function activateBufferedInputAfterGrab(player, rooms) {
     return;
   }
 
-  // Priority 1: Raw parry (spacebar) - defensive reversal
-  if (player.keys[" "] && !player.grabBreakSpaceConsumed && simNowForPlayer(player) >= (player.rawParryCooldownUntil || 0)) {
-    player.isRawParrying = true;
-    player.rawParryStartTime = simNowForPlayer(player);
-    player.rawParryMinDurationMet = false;
-    player.isRawParrySuccess = false;
-    player.isPerfectRawParrySuccess = false;
-    player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
-    player.movementVelocity = 0;
-    player.isStrafing = false;
-    player.isPowerSliding = false;
-    player.isCrouchStance = false;
-    player.isCrouchStrafing = false;
-    player.pendingSlapCount = 0;
+  // Priority 1: Attack Parry (spacebar) - tap deflect. canArmAttackParry gates on
+  // apSpaceConsumed so a held key only fires ONE parry (tap-per-attack).
+  if (player.keys[" "] && !player.grabBreakSpaceConsumed &&
+      canArmAttackParry(player, simNowForPlayer(player))) {
+    armAttackParry(player, simNowForPlayer(player));
     clearChargeState(player, true);
     return;
   }
@@ -1932,27 +1934,17 @@ function executeInputBuffer(player, rooms) {
 
   switch (buffer.type) {
     case "rawParry": {
-      if (!player.isRawParrying && !player.isRawParryStun &&
+      const nowSim = simNowForPlayer(player);
+      if (!player.isRawParryStun &&
           !player.isAttacking && !player.isDodging &&
           !player.isRecovering && !player.isGrabbing &&
-          !player.isGrabStartup && // Block buffered parry during grab startup — no parry/grab coexistence
+          !player.isGrabStartup && // Block buffered AP during grab startup — no parry/grab coexistence
           !player.isGrabbingMovement && !player.isWhiffingGrab &&
           !player.isThrowing && !player.grabBreakSpaceConsumed &&
-          simNowForPlayer(player) >= (player.rawParryCooldownUntil || 0)) {
-        player.isRawParrying = true;
-        // Backdate toward the true press moment (lag-compensation) — same as the
-        // main-loop parry path, so buffered parries classify perfect consistently.
-        player.rawParryStartTime = lagCompensatedParryStart(player, simNowForPlayer(player));
-        player.rawParryMinDurationMet = false;
-        player.isRawParrySuccess = false;
-        player.isPerfectRawParrySuccess = false;
-        player.stamina = Math.max(0, player.stamina - RAW_PARRY_STAMINA_COST);
-        player.movementVelocity = 0;
-        player.isStrafing = false;
-        player.isPowerSliding = false;
-        player.isCrouchStance = false;
-        player.isCrouchStrafing = false;
-        player.pendingSlapCount = 0;
+          canArmAttackParry(player, nowSim)) {
+        // Buffered ATTACK PARRY: arm the tap deflect window, lag-compensated to
+        // the true press moment (consistent with the primary socket path).
+        armAttackParry(player, nowSim, lagCompensatedParryStart(player, nowSim));
         clearChargeState(player, true);
         player.inputBuffer = null;
         return true;

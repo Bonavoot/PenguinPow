@@ -6,233 +6,190 @@ import {
   playButtonHoverSound,
   playButtonPressSound2,
 } from "../utils/soundUtils";
-import { C, slideInLeft, arrowNudge } from "./menuTheme";
+import {
+  C,
+  FONT_BODY,
+  FONT_DISPLAY,
+  slideInLeft,
+  arrowNudge,
+  livePulse,
+} from "./menuTheme";
 
-// ============================================
-// ANIMATIONS
-// ============================================
+/*
+ * Room row — lacquer blade on the dohyo list.
+ * Aligns to Rooms ColumnHeaders: Dohyo | Rikishi | Status | Join
+ */
 
 const subtlePulse = keyframes`
   0%, 100% {
-    box-shadow: 0 2px 6px ${C.snowShadow};
+    border-left-color: ${C.successDeep};
   }
   50% {
-    box-shadow: 0 2px 6px ${C.snowShadow}, 0 0 12px rgba(22, 163, 74, 0.18);
+    border-left-color: ${C.success};
   }
 `;
 
-// ============================================
-// ROOM CARD (blade-button style)
-// ============================================
-
 const RoomCard = styled.div`
-  --accent: ${(p) => (p.$isFull ? C.snowBorder : C.successDeep)};
-  --accentBright: ${(p) =>
-    p.$isFull ? C.snowBorder : C.success};
-
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(70px, 0.7fr) minmax(64px, 0.55fr) auto;
   align-items: center;
-  gap: clamp(14px, 2cqw, 22px);
-  padding: clamp(12px, 1.7cqh, 18px) clamp(18px, 2.4cqw, 26px);
-  /*
-   * Snow plaque rows. Joinable = clean white tile (snowPanel) so the
-   * card POPS as the brightest, most-actionable element on the new
-   * snowPanelDeep modal lane behind it. Full = snowFrost (one step
-   * DARKER than the lane) so the card reads as recessed/sunken
-   * rather than just a duplicate surface — the room is closed, the
-   * tile sits below the surrounding snow line.
-   *
-   * Previously full used snowPanelDeep, but now that the Rooms
-   * Panel/RoomListContainer were pulled down to snowPanelDeep
-   * themselves (to fix the "too white" feel), full cards on that
-   * tone would disappear into the lane. Pulling them to snowFrost
-   * keeps them visible AND clearly recessed.
-   *
-   * Single short cool drop shadow — no inset highlights, no gradient
-   * stripes. The clip-path angle on the right gives these rows
-   * their blade-card character without depending on stacked effects.
-   */
-  background: ${(p) => (p.$isFull ? C.snowFrost : C.snowPanel)};
-  border: 1px solid ${C.snowBorder};
-  border-left: 3px solid var(--accent);
-  border-radius: 2px;
-  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease,
-    box-shadow 0.18s ease;
-  box-shadow: 0 2px 6px ${C.snowShadow};
+  gap: clamp(10px, 1.4cqw, 18px);
+  padding: clamp(11px, 1.5cqh, 15px) clamp(14px, 1.8cqw, 20px);
+  background: ${(p) =>
+    p.$isFull ? "rgba(12, 14, 20, 0.72)" : "rgba(23, 26, 32, 0.95)"};
+  border: 1px solid
+    ${(p) =>
+      p.$isFull ? "rgba(245, 236, 217, 0.08)" : "rgba(245, 236, 217, 0.18)"};
+  border-left: 3px solid
+    ${(p) => (p.$isFull ? "rgba(245, 236, 217, 0.18)" : C.successDeep)};
+  border-radius: 0;
   opacity: 0;
   animation: ${slideInLeft} 0.4s ease-out forwards;
   animation-delay: ${(p) => Math.min(p.$index ?? 0, 12) * 0.05}s;
-  clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
 
   ${(p) =>
     !p.$isFull &&
     css`
       animation:
         ${slideInLeft} 0.4s ease-out forwards,
-        ${subtlePulse} 4s ease-in-out infinite;
-      animation-delay: ${Math.min(p.$index ?? 0, 12) * 0.05}s, 0.5s;
+        ${subtlePulse} 3.2s ease-in-out infinite;
+      animation-delay: ${Math.min(p.$index ?? 0, 12) * 0.05}s, 0.45s;
     `}
 
   &:hover {
     ${(p) =>
       !p.$isFull &&
       css`
-        transform: translateX(6px);
-        /* Soft icy hover background — body shifts to a pale ice
-         * tile, green border deepens, single soft cool shadow
-         * grows. No glow halo (was the AI-default tell). */
-        background: #e0eef9;
-        border-color: var(--accentBright);
-        box-shadow: 0 4px 12px ${C.snowShadowStrong};
+        transform: translateX(5px);
+        background: ${C.sumiSoft};
+        border-color: rgba(245, 236, 217, 0.28);
       `}
   }
 `;
 
-// ============================================
-// ROOM INFO
-// ============================================
-
-const InfoBlock = styled.div`
+const DohyoBlock = styled.div`
   display: flex;
-  align-items: center;
-  gap: clamp(14px, 2.4cqw, 28px);
-  flex: 1;
+  align-items: baseline;
+  gap: clamp(10px, 1.3cqw, 14px);
   min-width: 0;
 `;
 
-const RoomIdSection = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: clamp(80px, 9cqw, 110px);
-`;
-
-const RoomLabel = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  font-size: clamp(0.42rem, 0.68cqw, 0.5rem);
-  color: ${C.inkTextMute};
-  text-transform: uppercase;
-  letter-spacing: 0.28em;
+const RowIndex = styled.span`
+  font-family: ${FONT_BODY};
+  font-weight: 700;
+  font-size: clamp(0.42rem, 0.68cqw, 0.52rem);
+  color: ${C.creamMute};
+  letter-spacing: 0.12em;
+  flex-shrink: 0;
+  opacity: 0.7;
 `;
 
 const RoomId = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.85rem, 1.4cqw, 1.1rem);
-  color: ${C.inkText};
-  letter-spacing: 0.06em;
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.82rem, 1.35cqw, 1.05rem);
+  color: ${(p) => (p.$isFull ? C.creamMute : C.cream)};
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   line-height: 1.05;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: ${(p) =>
+    p.$isFull
+      ? "none"
+      : `-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000`};
 `;
 
-const PlayerCount = styled.div`
+const RikishiBlock = styled.div`
   display: flex;
   align-items: center;
-  gap: clamp(6px, 0.9cqw, 10px);
-  flex-shrink: 0;
+  gap: clamp(8px, 1cqw, 12px);
 `;
 
-const PlayerDot = styled.div`
-  width: clamp(9px, 1.1cqw, 12px);
-  height: clamp(9px, 1.1cqw, 12px);
+const Seat = styled.div`
+  width: clamp(11px, 1.3cqw, 14px);
+  height: clamp(11px, 1.3cqw, 14px);
   border-radius: 50%;
-  background: ${(p) => (p.$filled ? C.iceMid : "transparent")};
+  background: ${(p) => (p.$filled ? C.success : "transparent")};
   border: 1.5px solid
-    ${(p) => (p.$filled ? C.iceMid : C.snowBorder)};
+    ${(p) => (p.$filled ? C.success : "rgba(245, 236, 217, 0.28)")};
+  box-shadow: ${(p) =>
+    p.$filled ? `0 0 0 0 rgba(74, 222, 128, 0.45)` : "none"};
+  ${(p) =>
+    p.$filled &&
+    css`
+      animation: ${livePulse} 2.4s ease-out infinite;
+    `}
 `;
 
-const PlayerCountText = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.6rem, 1cqw, 0.75rem);
-  color: ${(p) => (p.$isFull ? C.inkTextMute : C.inkText)};
+const SeatCount = styled.span`
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.58rem, 0.95cqw, 0.72rem);
+  color: ${(p) => (p.$isFull ? C.creamMute : C.cream)};
   letter-spacing: 0.06em;
 `;
 
 const StatusBadge = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.42rem, 0.7cqw, 0.55rem);
+  justify-self: start;
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.42rem, 0.68cqw, 0.52rem);
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  padding: clamp(4px, 0.6cqh, 6px) clamp(9px, 1.3cqw, 14px);
-  border-radius: 2px;
-  flex-shrink: 0;
+  padding: clamp(4px, 0.55cqh, 6px) clamp(8px, 1.2cqw, 12px);
+  border-radius: 0;
 
   ${(p) =>
     p.$isFull
       ? css`
-          /* Snow tone (was snowPanelDeep) — sits one step lighter
-           * than the recessed full-card body (snowFrost), so the
-           * Full pill still has a hint of contrast against the tile
-           * it lives on rather than disappearing into it. */
-          color: ${C.inkTextMute};
-          background: ${C.snow};
-          border: 1px solid ${C.snowBorder};
+          color: ${C.creamMute};
+          background: rgba(245, 236, 217, 0.06);
+          border: 1px solid rgba(245, 236, 217, 0.12);
         `
       : css`
-          color: ${C.goldDeep};
-          background: rgba(232, 197, 71, 0.18);
-          border: 1px solid ${C.gold};
+          color: ${C.gold};
+          background: rgba(232, 197, 71, 0.12);
+          border: 1px solid rgba(232, 197, 71, 0.35);
+          text-shadow: 0 0 10px rgba(232, 197, 71, 0.28);
         `}
 `;
 
-// ============================================
-// JOIN BUTTON
-// ============================================
-
 const JoinButton = styled.button`
   position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: clamp(10px, 1.4cqh, 13px) clamp(18px, 2.5cqw, 28px);
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.65rem, 1.05cqw, 0.85rem);
-  /*
-   * Slightly wider tracking than the dark-on-dark CTAs. Bungee gets
-   * dense fast on a bright tile — a hair more letter-spacing lets each
-   * letter breathe so it reads as confident signage instead of squeezed.
-   */
-  letter-spacing: 0.18em;
+  justify-self: end;
+  padding: clamp(9px, 1.3cqh, 12px) clamp(16px, 2.2cqw, 24px);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.62rem, 1cqw, 0.8rem);
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  border-radius: 2px;
+  border-radius: 0;
   cursor: ${(p) => (p.$isFull ? "not-allowed" : "pointer")};
-  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease,
-    box-shadow 0.2s ease, color 0.2s ease;
-  flex-shrink: 0;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease,
+    box-shadow 0.18s ease, color 0.18s ease;
 
   ${(p) =>
     p.$isFull
       ? css`
-          /* Disabled full-state button — snow (was snowPanelDeep)
-           * to match the StatusBadge above it, so the right edge
-           * of the card has a consistent "ghosted/locked" treatment
-           * sitting on the recessed snowFrost tile body. */
-          color: ${C.inkTextMute};
-          background: ${C.snow};
-          border: 1px solid ${C.snowBorder};
-          opacity: 0.7;
+          color: ${C.creamMute};
+          background: rgba(245, 236, 217, 0.04);
+          border: 1px solid rgba(245, 236, 217, 0.1);
+          opacity: 0.55;
         `
       : css`
-          /*
-           * "Go" green CTA — flat solid green tile with dark ink
-           * text. Reserved exclusively for accept / join /
-           * ready-to-fight CTAs. Dropped the gradient + glow halo
-           * + inset highlight stack from the dark theme; on a snow
-           * page that recipe reads as glossy SaaS chrome. The
-           * single short cool drop shadow is enough to give the
-           * pill some lift.
-           */
           color: ${C.inkTextStrong};
           background: ${C.success};
           border: 1px solid ${C.successDeep};
-          box-shadow: 0 2px 6px rgba(22, 163, 74, 0.32);
+          box-shadow: 0 2px 0 ${C.successDeep};
         `}
 
   .arrow {
-    font-family: "Space Grotesk", sans-serif;
+    font-family: ${FONT_BODY};
     font-weight: 700;
-    color: ${(p) => (p.$isFull ? C.inkTextFaint : C.inkTextStrong)};
     transition: transform 0.2s ease;
   }
 
@@ -241,9 +198,8 @@ const JoinButton = styled.button`
     css`
       &:hover {
         background: ${C.successBright};
-        border-color: ${C.successDeep};
         transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(22, 163, 74, 0.4);
+        box-shadow: 0 3px 0 ${C.successDeep};
 
         .arrow {
           animation: ${arrowNudge} 0.7s ease-in-out infinite;
@@ -251,18 +207,16 @@ const JoinButton = styled.button`
       }
 
       &:active {
-        transform: translateY(0) scale(0.98);
+        transform: translateY(1px);
+        box-shadow: 0 1px 0 ${C.successDeep};
       }
     `}
 `;
 
-// ============================================
-// COMPONENT
-// ============================================
-
 const Room = ({ room, setRoomName, handleJoinRoom, index }) => {
   const { socket } = useContext(SocketContext);
   const isFull = room.players.length === 2;
+  const rowNum = String((index ?? 0) + 1).padStart(2, "0");
 
   const handleJoin = () => {
     if (!isFull) {
@@ -274,24 +228,18 @@ const Room = ({ room, setRoomName, handleJoinRoom, index }) => {
 
   return (
     <RoomCard $isFull={isFull} $index={index}>
-      <InfoBlock>
-        <RoomIdSection>
-          <RoomLabel>Dohyo</RoomLabel>
-          <RoomId>{room.id}</RoomId>
-        </RoomIdSection>
+      <DohyoBlock>
+        <RowIndex>{rowNum}</RowIndex>
+        <RoomId $isFull={isFull}>{room.id}</RoomId>
+      </DohyoBlock>
 
-        <PlayerCount>
-          <PlayerDot $filled={room.players.length >= 1} />
-          <PlayerDot $filled={room.players.length >= 2} />
-          <PlayerCountText $isFull={isFull}>
-            {room.players.length}/2
-          </PlayerCountText>
-        </PlayerCount>
+      <RikishiBlock>
+        <Seat $filled={room.players.length >= 1} />
+        <Seat $filled={room.players.length >= 2} />
+        <SeatCount $isFull={isFull}>{room.players.length}/2</SeatCount>
+      </RikishiBlock>
 
-        <StatusBadge $isFull={isFull}>
-          {isFull ? "Full" : "Open"}
-        </StatusBadge>
-      </InfoBlock>
+      <StatusBadge $isFull={isFull}>{isFull ? "Full" : "Open"}</StatusBadge>
 
       <JoinButton
         $isFull={isFull}
@@ -304,7 +252,7 @@ const Room = ({ room, setRoomName, handleJoinRoom, index }) => {
         onMouseEnter={() => !isFull && playButtonHoverSound()}
         disabled={isFull}
       >
-        {isFull ? "Full" : "Join"}
+        {isFull ? "—" : "Join"}
         {!isFull && <span className="arrow">▶</span>}
       </JoinButton>
     </RoomCard>

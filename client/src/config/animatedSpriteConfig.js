@@ -135,7 +135,10 @@ const FILENAME_TO_CONFIG = {
   'pumo-army': 'pumoArmy',
   'hit': 'hit',
   'bow': 'bow',
-  'blocking': 'blocking',
+  // Anchor on the FULL spritesheet stem so STATIC blocking.png / block-parry.png
+  // poses are NOT misclassified as the (1-frame) blocking spritesheet —
+  // basename.startsWith('blocking') would otherwise catch blocking.png.
+  'blocking_spritesheet': 'blocking',
   'grab-attempt': 'grabAttempt',
   'is-being-grabbed': 'beingGrabbed',
   'being-grabbed': 'beingGrabbed',
