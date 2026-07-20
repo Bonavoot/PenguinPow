@@ -1,0 +1,942 @@
+{
+  "pumo-idle": {
+    "overlay": "overlays/hat-pumo-idle.png",
+    "attach": {
+      "x": 559.1,
+      "y": 208.6,
+      "rotationDeg": 18
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "pumo-tachiai-position": {
+    "overlay": "overlays/hat-pumo-tachiai-position.png",
+    "attach": {
+      "x": 418.9,
+      "y": 337.6,
+      "rotationDeg": 15
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "pumo-ready-position": {
+    "overlay": "overlays/hat-pumo-ready-position.png",
+    "attach": {
+      "x": 488.5,
+      "y": 263,
+      "rotationDeg": 12
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "grabbing": {
+    "overlay": "overlays/hat-grabbing.png",
+    "attach": {
+      "x": 424.1,
+      "y": 233,
+      "rotationDeg": 17
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "clinch-planting": {
+    "overlay": "overlays/hat-clinch-planting.png",
+    "attach": {
+      "x": 454.1,
+      "y": 243,
+      "rotationDeg": 18
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "attempting-grab-throw": {
+    "overlay": "overlays/hat-attempting-grab-throw.png",
+    "attach": {
+      "x": 509.4,
+      "y": 292.6,
+      "rotationDeg": 10
+    },
+    "canvas": {
+      "w": 1024,
+      "h": 1024
+    },
+    "widthPct": 0.351
+  },
+  "is-attempting-pull": {
+    "overlay": "overlays/hat-is-attempting-pull.png",
+    "attach": {
+      "x": 468.9,
+      "y": 127.2,
+      "rotationDeg": 39
+    },
+    "canvas": {
+      "w": 600,
+      "h": 600
+    },
+    "widthPct": 0.351
+  },
+  "slapAttack1": {
+    "overlay": "overlays/hat-slapAttack1.png",
+    "attach": {
+      "x": 603,
+      "y": 249.9,
+      "rotationDeg": 10
+    },
+    "canvas": {
+      "w": 1024,
+      "h": 1024
+    },
+    "widthPct": 0.351
+  },
+  "slapAttack2": {
+    "overlay": "overlays/hat-slapAttack2.png",
+    "attach": {
+      "x": 589.9,
+      "y": 236.9,
+      "rotationDeg": 10
+    },
+    "canvas": {
+      "w": 1024,
+      "h": 1024
+    },
+    "widthPct": 0.351
+  },
+  "slap-attack-1-blur-frame": {
+    "overlay": "overlays/hat-slap-attack-1-blur-frame.png",
+    "attach": {
+      "x": 541.3,
+      "y": 232.2,
+      "rotationDeg": 17
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "slap-attack-1-hit-frame": {
+    "overlay": "overlays/hat-slap-attack-1-hit-frame.png",
+    "attach": {
+      "x": 541.3,
+      "y": 232.2,
+      "rotationDeg": 17
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "slap-attack-2-blur-frame": {
+    "overlay": "overlays/hat-slap-attack-2-blur-frame.png",
+    "attach": {
+      "x": 537.3,
+      "y": 232.2,
+      "rotationDeg": 17
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "slap-attack-2-hit-frame": {
+    "overlay": "overlays/hat-slap-attack-2-hit-frame.png",
+    "attach": {
+      "x": 444.3,
+      "y": 257.2,
+      "rotationDeg": 16
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "palm-thrust": {
+    "overlay": "overlays/hat-palm-thrust.png",
+    "attach": {
+      "x": 537.3,
+      "y": 232.2,
+      "rotationDeg": 19
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "palm-thrust-startup": {
+    "overlay": "overlays/hat-palm-thrust-startup.png",
+    "attach": {
+      "x": 542.3,
+      "y": 232.2,
+      "rotationDeg": 19
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "palm-thrust-smear": {
+    "overlay": "overlays/hat-palm-thrust-smear.png",
+    "attach": {
+      "x": 534.3,
+      "y": 232.2,
+      "rotationDeg": 19
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "blocking": {
+    "overlay": "overlays/hat-blocking.png",
+    "attach": {
+      "x": 599.5,
+      "y": 268.6,
+      "rotationDeg": 17
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "block-parry": {
+    "overlay": "overlays/hat-block-parry.png",
+    "attach": {
+      "x": 342.8,
+      "y": 384.1,
+      "rotationDeg": -18
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "raw-parry-success": {
+    "overlay": "overlays/hat-raw-parry-success.png",
+    "attach": {
+      "x": 599.5,
+      "y": 268.6,
+      "rotationDeg": 17
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "pumo-flap-1": {
+    "overlay": "overlays/hat-pumo-flap-1.png",
+    "attach": {
+      "x": 555.7,
+      "y": 181.8,
+      "rotationDeg": 19
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "pumo-flap-2": {
+    "overlay": "overlays/hat-pumo-flap-2.png",
+    "attach": {
+      "x": 409,
+      "y": 232.4,
+      "rotationDeg": 3
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "recovering": {
+    "overlay": "overlays/hat-recovering.png",
+    "attach": {
+      "x": 528.5,
+      "y": 337.6,
+      "rotationDeg": 16
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "attack": {
+    "overlay": "overlays/hat-attack.png",
+    "attach": {
+      "x": 259,
+      "y": 317.9,
+      "rotationDeg": 5
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "dodging": {
+    "overlay": "overlays/hat-dodging.png",
+    "attach": {
+      "x": 556.6,
+      "y": 187.7,
+      "rotationDeg": 19
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "crown": {
+    "pumo-idle": {
+      "overlay": "overlays/crown-pumo-idle.png",
+      "attach": {
+        "x": 491.1,
+        "y": 185.6,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "pumo-tachiai-position": {
+      "overlay": "overlays/crown-pumo-tachiai-position.png",
+      "attach": {
+        "x": 318.9,
+        "y": 330.6,
+        "rotationDeg": -8
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "pumo-ready-position": {
+      "overlay": "overlays/crown-pumo-ready-position.png",
+      "attach": {
+        "x": 433.5,
+        "y": 236,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "grabbing": {
+      "overlay": "overlays/crown-grabbing.png",
+      "attach": {
+        "x": 344.1,
+        "y": 211,
+        "rotationDeg": -6
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "clinch-planting": {
+      "overlay": "overlays/crown-clinch-planting.png",
+      "attach": {
+        "x": 354.1,
+        "y": 221,
+        "rotationDeg": -6
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "attempting-grab-throw": {
+      "overlay": "overlays/crown-attempting-grab-throw.png",
+      "attach": {
+        "x": 519.4,
+        "y": 275.6,
+        "rotationDeg": 15
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.24
+    },
+    "is-attempting-pull": {
+      "overlay": "overlays/crown-is-attempting-pull.png",
+      "attach": {
+        "x": 482.9,
+        "y": 121.2,
+        "rotationDeg": 41
+      },
+      "canvas": {
+        "w": 600,
+        "h": 600
+      },
+      "widthPct": 0.24
+    },
+    "slapAttack1": {
+      "overlay": "overlays/crown-slapAttack1.png",
+      "attach": {
+        "x": 603,
+        "y": 246.9,
+        "rotationDeg": 22
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.24
+    },
+    "slapAttack2": {
+      "overlay": "overlays/crown-slapAttack2.png",
+      "attach": {
+        "x": 589.9,
+        "y": 244.9,
+        "rotationDeg": 6
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.24
+    },
+    "slap-attack-1-blur-frame": {
+      "overlay": "overlays/crown-slap-attack-1-blur-frame.png",
+      "attach": {
+        "x": 466.3,
+        "y": 206.2,
+        "rotationDeg": -2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "slap-attack-1-hit-frame": {
+      "overlay": "overlays/crown-slap-attack-1-hit-frame.png",
+      "attach": {
+        "x": 466.3,
+        "y": 206.2,
+        "rotationDeg": -2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "slap-attack-2-blur-frame": {
+      "overlay": "overlays/crown-slap-attack-2-blur-frame.png",
+      "attach": {
+        "x": 457.3,
+        "y": 206.2,
+        "rotationDeg": -2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "slap-attack-2-hit-frame": {
+      "overlay": "overlays/crown-slap-attack-2-hit-frame.png",
+      "attach": {
+        "x": 342.3,
+        "y": 246.2,
+        "rotationDeg": -13
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "palm-thrust": {
+      "overlay": "overlays/crown-palm-thrust.png",
+      "attach": {
+        "x": 451.3,
+        "y": 211.2,
+        "rotationDeg": -2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "palm-thrust-startup": {
+      "overlay": "overlays/crown-palm-thrust-startup.png",
+      "attach": {
+        "x": 461.3,
+        "y": 211.2,
+        "rotationDeg": -2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "palm-thrust-smear": {
+      "overlay": "overlays/crown-palm-thrust-smear.png",
+      "attach": {
+        "x": 451.3,
+        "y": 211.2,
+        "rotationDeg": -2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "blocking": {
+      "overlay": "overlays/crown-blocking.png",
+      "attach": {
+        "x": 519.5,
+        "y": 211.6,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "block-parry": {
+      "overlay": "overlays/crown-block-parry.png",
+      "attach": {
+        "x": 322.8,
+        "y": 432.1,
+        "rotationDeg": -7
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "raw-parry-success": {
+      "overlay": "overlays/crown-raw-parry-success.png",
+      "attach": {
+        "x": 519.5,
+        "y": 211.6,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "pumo-flap-1": {
+      "overlay": "overlays/crown-pumo-flap-1.png",
+      "attach": {
+        "x": 478.7,
+        "y": 176.8,
+        "rotationDeg": 2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "pumo-flap-2": {
+      "overlay": "overlays/crown-pumo-flap-2.png",
+      "attach": {
+        "x": 329,
+        "y": 270.4,
+        "rotationDeg": -12
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "recovering": {
+      "overlay": "overlays/crown-recovering.png",
+      "attach": {
+        "x": 438.5,
+        "y": 319.6,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "attack": {
+      "overlay": "overlays/crown-attack.png",
+      "attach": {
+        "x": 144,
+        "y": 355.9,
+        "rotationDeg": -50
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "dodging": {
+      "overlay": "overlays/crown-dodging.png",
+      "attach": {
+        "x": 478.6,
+        "y": 170.7,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    }
+  },
+  "top_hat": {
+    "pumo-idle": {
+      "overlay": "overlays/hat-pumo-idle.png",
+      "attach": {
+        "x": 492.1,
+        "y": 203.6,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "pumo-tachiai-position": {
+      "overlay": "overlays/hat-pumo-tachiai-position.png",
+      "attach": {
+        "x": 352.9,
+        "y": 352.6,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "pumo-ready-position": {
+      "overlay": "overlays/hat-pumo-ready-position.png",
+      "attach": {
+        "x": 432.5,
+        "y": 263,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "grabbing": {
+      "overlay": "overlays/hat-grabbing.png",
+      "attach": {
+        "x": 353.1,
+        "y": 233,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "clinch-planting": {
+      "overlay": "overlays/hat-clinch-planting.png",
+      "attach": {
+        "x": 373.1,
+        "y": 233,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "attempting-grab-throw": {
+      "overlay": "overlays/hat-attempting-grab-throw.png",
+      "attach": {
+        "x": 509.4,
+        "y": 292.6,
+        "rotationDeg": 10
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.351
+    },
+    "is-attempting-pull": {
+      "overlay": "overlays/hat-is-attempting-pull.png",
+      "attach": {
+        "x": 468.9,
+        "y": 127.2,
+        "rotationDeg": 39
+      },
+      "canvas": {
+        "w": 600,
+        "h": 600
+      },
+      "widthPct": 0.351
+    },
+    "slapAttack1": {
+      "overlay": "overlays/hat-slapAttack1.png",
+      "attach": {
+        "x": 603,
+        "y": 249.9,
+        "rotationDeg": 10
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.351
+    },
+    "slapAttack2": {
+      "overlay": "overlays/hat-slapAttack2.png",
+      "attach": {
+        "x": 589.9,
+        "y": 236.9,
+        "rotationDeg": 10
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.351
+    },
+    "slap-attack-1-blur-frame": {
+      "overlay": "overlays/hat-slap-attack-1-blur-frame.png",
+      "attach": {
+        "x": 466.3,
+        "y": 227.2,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "slap-attack-1-hit-frame": {
+      "overlay": "overlays/hat-slap-attack-1-hit-frame.png",
+      "attach": {
+        "x": 461.3,
+        "y": 227.2,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "slap-attack-2-blur-frame": {
+      "overlay": "overlays/hat-slap-attack-2-blur-frame.png",
+      "attach": {
+        "x": 453.3,
+        "y": 227.2,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "slap-attack-2-hit-frame": {
+      "overlay": "overlays/hat-slap-attack-2-hit-frame.png",
+      "attach": {
+        "x": 345.3,
+        "y": 267.2,
+        "rotationDeg": -13
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "palm-thrust": {
+      "overlay": "overlays/hat-palm-thrust.png",
+      "attach": {
+        "x": 457.3,
+        "y": 222.2,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "palm-thrust-startup": {
+      "overlay": "overlays/hat-palm-thrust-startup.png",
+      "attach": {
+        "x": 467.3,
+        "y": 222.2,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "palm-thrust-smear": {
+      "overlay": "overlays/hat-palm-thrust-smear.png",
+      "attach": {
+        "x": 461.3,
+        "y": 222.2,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "blocking": {
+      "overlay": "overlays/hat-blocking.png",
+      "attach": {
+        "x": 519.5,
+        "y": 225.6,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "block-parry": {
+      "overlay": "overlays/hat-block-parry.png",
+      "attach": {
+        "x": 407.8,
+        "y": 389.1,
+        "rotationDeg": 4
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "raw-parry-success": {
+      "overlay": "overlays/hat-raw-parry-success.png",
+      "attach": {
+        "x": 519.5,
+        "y": 225.6,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "pumo-flap-1": {
+      "overlay": "overlays/hat-pumo-flap-1.png",
+      "attach": {
+        "x": 475.7,
+        "y": 196.8,
+        "rotationDeg": 2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "pumo-flap-2": {
+      "overlay": "overlays/hat-pumo-flap-2.png",
+      "attach": {
+        "x": 364,
+        "y": 247.4,
+        "rotationDeg": -15
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "recovering": {
+      "overlay": "overlays/hat-recovering.png",
+      "attach": {
+        "x": 438.5,
+        "y": 342.6,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "attack": {
+      "overlay": "overlays/hat-attack.png",
+      "attach": {
+        "x": 159,
+        "y": 377.9,
+        "rotationDeg": -42
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    },
+    "dodging": {
+      "overlay": "overlays/hat-dodging.png",
+      "attach": {
+        "x": 481.6,
+        "y": 187.7,
+        "rotationDeg": -1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.351
+    }
+  }
+}

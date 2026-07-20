@@ -6,6 +6,7 @@ import Rooms from "./Rooms";
 import Game from "./Game";
 import Settings from "./Settings";
 import CustomizePage from "./CustomizePage";
+import HatTuner from "./HatTuner";
 import BashoHub from "./BashoHub";
 import DayCard from "./DayCard";
 import BashoResults from "./BashoResults";
@@ -813,11 +814,13 @@ const MainMenu = ({
         }),
       ]),
     );
+    const bashoOutfit = getActiveOutfit(bashoSaveRef.current?.customization);
     socket.emit("create_basho_match", {
       socketId: socket.id,
       player: {
         mawashiColor: player1ColorRef.current,
         bodyColor: player1BodyColorRef.current,
+        gearIds: Array.isArray(bashoOutfit?.gearIds) ? bashoOutfit.gearIds : [],
         stats,
         loadout,
         // Resume support: re-apply any picks already drafted this run.
@@ -918,6 +921,7 @@ const MainMenu = ({
                     ...(players[i] || {}),
                     mawashiColor: players[i]?.mawashiColor ?? rp.mawashiColor,
                     bodyColor: players[i]?.bodyColor ?? rp.bodyColor,
+                    gearIds: players[i]?.gearIds ?? rp.gearIds,
                   })),
                 }
               : r
@@ -1009,6 +1013,7 @@ const MainMenu = ({
       socketId: socket.id,
       mawashiColor: outfit.mawashiColor,
       bodyColor: outfit.bodyColor,
+      gearIds: Array.isArray(outfit.gearIds) ? outfit.gearIds : [],
     });
   };
 
@@ -1235,7 +1240,14 @@ const MainMenu = ({
               setIsCPUMatch(false);
               setCurrentPage("mainMenu");
             }}
+            onOpenHatTuner={() => setCurrentPage("hatTuner")}
           />
+        </div>
+      );
+    case "hatTuner":
+      return (
+        <div className="current-page">
+          <HatTuner onBack={() => setCurrentPage("customize")} />
         </div>
       );
     case "basho":

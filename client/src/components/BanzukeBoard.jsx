@@ -21,12 +21,9 @@ import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import styled, { keyframes, css } from "styled-components";
 import { usePlayerColors } from "../context/PlayerColorContext";
-import {
-  recolorImage,
-  BLUE_COLOR_RANGES,
-  GREY_BODY_RANGES,
-  SPRITE_BASE_COLOR,
-} from "../utils/SpriteRecolorizer";
+import { buildIdlePortraitSrc } from "../utils/hatComposite";
+import { loadSave } from "../lib/saveStore";
+import { getActiveOutfit } from "../lib/outfits";
 import {
   playButtonHoverSound,
   playButtonPressSound2,
@@ -409,20 +406,27 @@ function BanzukeBoard({
     };
   }, []);
 
-  // Recolor the marker sprite to the player's colors (shared recolor cache).
+  // Recolor + optional top hat for the ladder marker.
   useEffect(() => {
-    const needsMawashi = player1Color && player1Color !== SPRITE_BASE_COLOR;
-    const needsBody = !!player1BodyColor;
-    if (!needsMawashi && !needsBody) {
-      setSrc(pumo);
-      return;
-    }
-    const bodyOpts = needsBody
-      ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: player1BodyColor }
-      : {};
-    recolorImage(pumo, BLUE_COLOR_RANGES, player1Color || SPRITE_BASE_COLOR, bodyOpts)
-      .then((r) => mountedRef.current && setSrc(r))
-      .catch(() => mountedRef.current && setSrc(pumo));
+    let cancelled = false;
+    (async () => {
+      try {
+        const doc = await loadSave();
+        const outfit = getActiveOutfit(doc.customization);
+        const built = await buildIdlePortraitSrc({
+          baseSrc: pumo,
+          mawashiColor: player1Color,
+          bodyColor: player1BodyColor,
+          gearIds: outfit?.gearIds,
+        });
+        if (!cancelled && mountedRef.current) setSrc(built);
+      } catch {
+        if (!cancelled && mountedRef.current) setSrc(pumo);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [player1Color, player1BodyColor]);
 
   // Drive the climb: hold at the old rank, then release the marker up/down

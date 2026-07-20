@@ -1,0 +1,17 @@
+{
+  "note": "960×960 transparent overlays — stack like grab-arm on matching body pose",
+  "idle": "top-hat-idle-overlay.png",
+  "tachiai": "top-hat-tachiai-overlay.png",
+  "tuning": {
+    "idle": {
+      "nudgeY": 28,
+      "rotationDeg": 12,
+      "widthPct": 0.38
+    },
+    "tachiai": {
+      "nudgeY": 26,
+      "rotationDeg": 34,
+      "widthPct": 0.38
+    }
+  }
+}

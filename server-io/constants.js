@@ -16,7 +16,7 @@ const BROADCAST_EVERY_N_TICKS = 2; // 2 = 32 Hz broadcast (client interpolation 
 // PERFORMANCE: Delta State Updates
 // Only send properties that changed since last tick
 // ============================================
-const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'balance', 'id', 'fighter', 'color', 'mawashiColor', 'bodyColor'];
+const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'balance', 'id', 'fighter', 'color', 'mawashiColor', 'bodyColor', 'gearIds'];
 
 const DELTA_TRACKED_PROPS = [
   'isAttacking', 'isSlapAttack', 'isPalmThrust', 'palmThrustFxId', 'slapAnimation', 'attackType',

@@ -1498,6 +1498,27 @@ function registerSocketHandlers(socket, io, rooms, context) {
     });
   });
 
+  // Handle gear / cosmetics (e.g. top hat) — mirrors body_color logic
+  socket.on("update_gear", (data) => {
+    const { roomId, playerId, gearIds } = data;
+    const roomIndex = rooms.findIndex((room) => room.id === roomId);
+    if (roomIndex === -1) return;
+
+    const room = rooms[roomIndex];
+    const playerIndex = room.players.findIndex((p) => p.id === playerId);
+    if (playerIndex === -1) return;
+
+    room.players[playerIndex].gearIds = Array.isArray(gearIds) ? gearIds : [];
+
+    io.in(roomId).emit("lobby", room.players);
+    io.emit("rooms", getCleanedRoomsData(rooms));
+    io.in(roomId).emit("gear_updated", {
+      playerId,
+      playerIndex,
+      gearIds: room.players[playerIndex].gearIds,
+    });
+  });
+
   socket.on("join_room", (data) => {
     socket.join(data.roomId);
     const roomIndex = rooms.findIndex((room) => room.id === data.roomId);
@@ -1546,6 +1567,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
           ? PLAYER_1_SPAWN.mawashiColor
           : PLAYER_2_SPAWN.mawashiColor),
       bodyColor: data.bodyColor !== undefined ? data.bodyColor : null,
+      gearIds: Array.isArray(data.gearIds) ? data.gearIds : [],
     };
 
     if (rooms[roomIndex].players.length < 1) {
@@ -1555,6 +1577,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
           ...PLAYER_1_SPAWN,
           mawashiColor: joinColors.mawashiColor,
           bodyColor: joinColors.bodyColor,
+          gearIds: joinColors.gearIds,
         })
       );
       // PERFORMANCE: Register player 1 in lookup maps
@@ -1580,6 +1603,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
           ...PLAYER_2_SPAWN,
           mawashiColor,
           bodyColor: joinColors.bodyColor,
+          gearIds: joinColors.gearIds,
         })
       );
       // PERFORMANCE: Register player 2 in lookup maps
@@ -1652,6 +1676,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         ...PLAYER_1_SPAWN,
         mawashiColor: data.mawashiColor || PLAYER_1_SPAWN.mawashiColor,
         bodyColor: data.bodyColor !== undefined ? data.bodyColor : null,
+        gearIds: Array.isArray(data.gearIds) ? data.gearIds : [],
       })
     );
 
@@ -1732,6 +1757,9 @@ function registerSocketHandlers(socket, io, rooms, context) {
         ...PLAYER_1_SPAWN,
         mawashiColor: playerOverrides.mawashiColor || PLAYER_1_SPAWN.mawashiColor,
         bodyColor: playerOverrides.bodyColor ?? null,
+        gearIds: Array.isArray(playerOverrides.gearIds)
+          ? playerOverrides.gearIds
+          : [],
         statMods: deriveStatMods(playerOverrides.stats || {}),
         loadout: deriveLoadout(playerOverrides.loadout || {}),
       })
@@ -1868,6 +1896,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
           fighter: p.fighter,
           mawashiColor: p.mawashiColor,
           bodyColor: p.bodyColor || null,
+          gearIds: Array.isArray(p.gearIds) ? p.gearIds : [],
           isCPU: p.isCPU,
           wins: p.wins || [],
         })),

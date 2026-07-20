@@ -10,12 +10,8 @@ import {
 import Snowfall from "./Snowfall";
 import lobbyBackground from "../assets/lockerroom.webp";
 import { usePlayerColors } from "../context/PlayerColorContext";
-import {
-  recolorImage,
-  BLUE_COLOR_RANGES,
-  GREY_BODY_RANGES,
-  SPRITE_BASE_COLOR,
-} from "../utils/SpriteRecolorizer";
+import { SPRITE_BASE_COLOR } from "../utils/SpriteRecolorizer";
+import { buildIdlePortraitSrc } from "../utils/hatComposite";
 import pumo from "../assets/pumo-idle.png";
 import { SHADOW_GRADIENT } from "./PlayerShadow";
 import {
@@ -869,7 +865,7 @@ const ReadyChipCount = styled.span`
 // COLORED PLAYER PREVIEW
 // ============================================
 
-function ColoredPlayerPreview({ color, bodyColor }) {
+function ColoredPlayerPreview({ color, bodyColor, gearIds }) {
   const [imageSrc, setImageSrc] = useState(pumo);
   const mountedRef = useRef(true);
 
@@ -881,38 +877,24 @@ function ColoredPlayerPreview({ color, bodyColor }) {
   }, []);
 
   useEffect(() => {
-    const needsMawashiRecolor = color && color !== SPRITE_BASE_COLOR;
-    const needsBodyRecolor = !!bodyColor;
-
-    if (!needsMawashiRecolor && !needsBodyRecolor) {
-      setImageSrc(pumo);
-      return;
-    }
-
-    const options = {};
-    if (needsBodyRecolor) {
-      options.bodyColorRange = GREY_BODY_RANGES;
-      options.bodyColorHex = bodyColor;
-    }
-
-    recolorImage(
-      pumo,
-      BLUE_COLOR_RANGES,
-      needsMawashiRecolor ? color : SPRITE_BASE_COLOR,
-      options
-    )
-      .then((recolored) => {
-        if (mountedRef.current) {
-          setImageSrc(recolored);
-        }
+    let cancelled = false;
+    buildIdlePortraitSrc({
+      baseSrc: pumo,
+      mawashiColor: color,
+      bodyColor,
+      gearIds,
+    })
+      .then((src) => {
+        if (!cancelled && mountedRef.current) setImageSrc(src);
       })
       .catch((error) => {
-        console.error("Failed to recolor preview:", error);
-        if (mountedRef.current) {
-          setImageSrc(pumo);
-        }
+        console.error("Failed to build lobby preview:", error);
+        if (!cancelled && mountedRef.current) setImageSrc(pumo);
       });
-  }, [color, bodyColor]);
+    return () => {
+      cancelled = true;
+    };
+  }, [color, bodyColor, JSON.stringify(gearIds || [])]);
 
   return <PreviewImage src={imageSrc} alt="Player Preview" />;
 }
@@ -920,6 +902,7 @@ function ColoredPlayerPreview({ color, bodyColor }) {
 ColoredPlayerPreview.propTypes = {
   color: PropTypes.string,
   bodyColor: PropTypes.string,
+  gearIds: PropTypes.arrayOf(PropTypes.string),
 };
 
 // ============================================
@@ -996,6 +979,11 @@ const Lobby = ({
         playerId: socket.id,
         color: outfit.bodyColor,
       });
+      socket.emit("update_gear", {
+        roomId: roomName,
+        playerId: socket.id,
+        gearIds: Array.isArray(outfit.gearIds) ? outfit.gearIds : [],
+      });
     },
     [myPlayerIndex, roomName, socket],
   );
@@ -1012,6 +1000,8 @@ const Lobby = ({
     saveDocRef.current = written;
   }, []);
 
+  const [saveReady, setSaveReady] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     loadSave().then((doc) => {
@@ -1020,6 +1010,7 @@ const Lobby = ({
       const c = normalizeCustomization(doc.customization);
       setCustomization(c);
       setActiveOutfitId(c.activeOutfitId);
+      setSaveReady(true);
     });
     return () => {
       cancelled = true;
@@ -1077,6 +1068,15 @@ const Lobby = ({
     setPlayer2BodyColor,
   ]);
 
+  // Push wardrobe colors/gear once save + seat are both ready (avoids wiping
+  // gearIds with the default empty outfit before loadSave finishes).
+  useEffect(() => {
+    if (!saveReady || myPlayerIndex === -1) return;
+    const outfit = getOutfitById(customization, activeOutfitId);
+    if (!outfit) return;
+    emitOutfitColors(outfit);
+  }, [saveReady, myPlayerIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleOutfitSelect = (outfitId) => {
     if (myPlayerIndex === -1) return;
     const outfit = getOutfitById(customization, outfitId);
@@ -1126,6 +1126,7 @@ const Lobby = ({
                     mawashiColor:
                       payload.players[i]?.mawashiColor ?? rp.mawashiColor,
                     bodyColor: payload.players[i]?.bodyColor ?? rp.bodyColor,
+                    gearIds: payload.players[i]?.gearIds ?? rp.gearIds,
                   })),
                 }
               : r
@@ -1318,6 +1319,7 @@ const Lobby = ({
                   <ColoredPlayerPreview
                     color={playerColor}
                     bodyColor={playerBodyColor}
+                    gearIds={player?.gearIds}
                   />
                 </AvatarBreath>
               </AvatarFrame>

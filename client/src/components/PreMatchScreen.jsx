@@ -3,12 +3,8 @@ import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 
 import pumo from "../assets/pumo-idle.png";
-import {
-  SPRITE_BASE_COLOR,
-  recolorImage,
-  BLUE_COLOR_RANGES,
-  GREY_BODY_RANGES,
-} from "../utils/SpriteRecolorizer";
+import { SPRITE_BASE_COLOR } from "../utils/SpriteRecolorizer";
+import { buildIdlePortraitSrc } from "../utils/hatComposite";
 import {
   C,
   FONT_BODY,
@@ -721,6 +717,8 @@ const PreMatchScreen = ({
   player2Color = "#D94848",
   player1BodyColor = null,
   player2BodyColor = null,
+  player1GearIds = null,
+  player2GearIds = null,
   player1Record = { wins: 0, losses: 0 },
   player2Record = { wins: 0, losses: 0 },
   player1RankLabel = null,
@@ -758,55 +756,48 @@ const PreMatchScreen = ({
     let cancelled = false;
     setSpritesReady(false);
 
-    const recolorSprites = async () => {
-      const p1BodyOpts = player1BodyColor
-        ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: player1BodyColor }
-        : {};
-      const p2BodyOpts = player2BodyColor
-        ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: player2BodyColor }
-        : {};
-
-      const p1Needs =
-        (player1Color && player1Color !== SPRITE_BASE_COLOR) || player1BodyColor;
-      const p2Needs =
-        (player2Color && player2Color !== SPRITE_BASE_COLOR) || player2BodyColor;
-
-      const p1Promise = p1Needs
-        ? recolorImage(
-            pumo,
-            BLUE_COLOR_RANGES,
-            player1Color || SPRITE_BASE_COLOR,
-            p1BodyOpts
-          ).catch((err) => {
-            console.error("Failed to recolor player 1 sprite:", err);
-            return pumo;
-          })
-        : Promise.resolve(pumo);
-
-      const p2Promise = p2Needs
-        ? recolorImage(
-            pumo,
-            BLUE_COLOR_RANGES,
-            player2Color || SPRITE_BASE_COLOR,
-            p2BodyOpts
-          ).catch((err) => {
-            console.error("Failed to recolor player 2 sprite:", err);
-            return pumo;
-          })
-        : Promise.resolve(pumo);
-
-      const [p1, p2] = await Promise.all([p1Promise, p2Promise]);
-      if (cancelled) return;
-      setPlayer1Sprite(p1);
-      setPlayer2Sprite(p2);
-      setSpritesReady(true);
+    const buildSprites = async () => {
+      try {
+        const [p1, p2] = await Promise.all([
+          buildIdlePortraitSrc({
+            baseSrc: pumo,
+            mawashiColor: player1Color,
+            bodyColor: player1BodyColor,
+            gearIds: player1GearIds,
+          }),
+          buildIdlePortraitSrc({
+            baseSrc: pumo,
+            mawashiColor: player2Color,
+            bodyColor: player2BodyColor,
+            gearIds: player2GearIds,
+          }),
+        ]);
+        if (cancelled) return;
+        setPlayer1Sprite(p1);
+        setPlayer2Sprite(p2);
+        setSpritesReady(true);
+      } catch (err) {
+        console.error("Failed to build prematch sprites:", err);
+        if (!cancelled) {
+          setPlayer1Sprite(pumo);
+          setPlayer2Sprite(pumo);
+          setSpritesReady(true);
+        }
+      }
     };
 
-    recolorSprites();
+    buildSprites();
     return () => {
       cancelled = true;
     };
-  }, [player1Color, player2Color, player1BodyColor, player2BodyColor]);
+  }, [
+    player1Color,
+    player2Color,
+    player1BodyColor,
+    player2BodyColor,
+    JSON.stringify(player1GearIds || []),
+    JSON.stringify(player2GearIds || []),
+  ]);
 
   const p1MawashiColor =
     player1Color === SPRITE_BASE_COLOR ? C.ice : player1Color;
@@ -973,6 +964,8 @@ PreMatchScreen.propTypes = {
   player2Color: PropTypes.string,
   player1BodyColor: PropTypes.string,
   player2BodyColor: PropTypes.string,
+  player1GearIds: PropTypes.arrayOf(PropTypes.string),
+  player2GearIds: PropTypes.arrayOf(PropTypes.string),
   player1Record: PropTypes.shape({
     wins: PropTypes.number,
     losses: PropTypes.number,

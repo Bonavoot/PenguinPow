@@ -1,6 +1,8 @@
 import { getGlobalVolume } from "./Settings";
 import { preloadSounds, playBuffer } from "../utils/audioEngine";
 import { ANIMATED_SPRITES } from "../config/spriteConfig";
+import { ALL_HEAD_OVERLAYS } from "../config/cosmetics";
+import { ALL_BALD_BODY_SRCS } from "../config/baldSprites";
 
 // ============================================
 // STATIC SPRITE IMPORTS (Single frame images)
@@ -290,6 +292,11 @@ const initializeImagePreloading = () => {
   preloadImage(snowball);
   preloadImage(flap1);
   preloadImage(flap2);
+
+  // Decode head-gear overlays early — combat pose swaps composite these onto the body.
+  ALL_HEAD_OVERLAYS.forEach((overlay) => preloadImage(overlay));
+  // Bald underlays for toppers — same poses as hat overlays when present.
+  ALL_BALD_BODY_SRCS.forEach((src) => preloadImage(src));
 
   preloadImage(gameMapBackground);
   preloadImage(dohyoOverlay);

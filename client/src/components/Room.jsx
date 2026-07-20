@@ -227,6 +227,7 @@ const Room = ({ room, setRoomName, handleJoinRoom, index }) => {
       roomId: room.id,
       mawashiColor: outfit.mawashiColor,
       bodyColor: outfit.bodyColor,
+      gearIds: Array.isArray(outfit.gearIds) ? outfit.gearIds : [],
     });
     setRoomName(room.id);
     handleJoinRoom();

@@ -1,0 +1,9 @@
+{
+  "file": "top-hat.png",
+  "width": 256,
+  "height": 150,
+  "pivot": {
+    "x": 128,
+    "y": 128
+  }
+}

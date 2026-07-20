@@ -68,6 +68,30 @@ export const BAKE_SOURCES = [
   { id: "pumo-flap-1", file: "pumo-flap-1.png" },
   { id: "pumo-flap-2", file: "pumo-flap-2.png" },
 
+  // --- bald bodies (topper / head-gear underlays) ---
+  // Longer ids than the haired counterparts so spriteIdFromUrl longest-match
+  // picks these when the URL is `…/pumo-idle-bald….png`.
+  { id: "pumo-idle-bald", file: "bald/pumo-idle-bald.png" },
+  { id: "attack-bald", file: "bald/attack-bald.png" },
+  { id: "grabbing-bald", file: "bald/grabbing-bald.png" },
+  { id: "clinch-planting-bald", file: "bald/clinch-planting-bald.png" },
+  { id: "pumo-ready-position-bald", file: "bald/pumo-ready-position-bald.png" },
+  { id: "pumo-tachiai-position-bald", file: "bald/pumo-tachiai-position-bald.png" },
+  { id: "dodging-bald", file: "bald/dodging-bald.png" },
+  { id: "recovering-bald", file: "bald/recovering-bald.png" },
+  { id: "raw-parry-success-bald", file: "bald/raw-parry-success-bald.png" },
+  { id: "blocking-bald", file: "bald/blocking-bald.png" },
+  { id: "block-parry-bald", file: "bald/block-parry-bald.png" },
+  { id: "slap-attack-1-blur-frame-bald", file: "bald/slap-attack-1-blur-frame-bald.png" },
+  { id: "slap-attack-1-hit-frame-bald", file: "bald/slap-attack-1-hit-frame-bald.png" },
+  { id: "slap-attack-2-blur-frame-bald", file: "bald/slap-attack-2-blur-frame-bald.png" },
+  { id: "slap-attack-2-hit-frame-bald", file: "bald/slap-attack-2-hit-frame-bald.png" },
+  { id: "palm-thrust-startup-bald", file: "bald/palm-thrust-startup-bald.png" },
+  { id: "palm-thrust-smear-bald", file: "bald/palm-thrust-smear-bald.png" },
+  { id: "palm-thrust-bald", file: "bald/palm-thrust-bald.png" },
+  { id: "pumo-flap-1-bald", file: "bald/pumo-flap-1-bald.png" },
+  { id: "pumo-flap-2-bald", file: "bald/pumo-flap-2-bald.png" },
+
   // --- ritual spritesheets (base only) ---
   { id: "ritual_part1_spritesheet", file: "ritual_part1_spritesheet.png", ritual: true },
   { id: "ritual_part2_spritesheet", file: "ritual_part2_spritesheet.png", ritual: true },

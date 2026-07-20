@@ -724,7 +724,9 @@ const Game = ({
           player1Color,
           player2Color,
           player1BodyColor,
-          player2BodyColor
+          player2BodyColor,
+          currentRoom?.players?.[0]?.gearIds || [],
+          isBashoMatch ? [] : currentRoom?.players?.[1]?.gearIds || [],
         );
         if (!isLightReskin) {
           await loadGyojiOutfit(gyojiOutfitRef.current);
@@ -760,6 +762,7 @@ const Game = ({
     player2Color,
     player1BodyColor,
     player2BodyColor,
+    currentRoom?.players,
     socket,
     roomName,
   ]);
@@ -1083,6 +1086,10 @@ const Game = ({
               isBashoMatch
                 ? player2BodyColor
                 : currentRoom.players[1]?.bodyColor || player2BodyColor
+            }
+            player1GearIds={currentRoom.players[0]?.gearIds || []}
+            player2GearIds={
+              isBashoMatch ? [] : currentRoom.players[1]?.gearIds || []
             }
             player1Record={
               isBashoMatch && bashoBout?.playerRecord

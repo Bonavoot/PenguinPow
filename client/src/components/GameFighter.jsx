@@ -154,6 +154,16 @@ import {
 } from "./fighterAssets";
 import getImageSrc from "./getImageSrc";
 import {
+  getHatOverlayForSprite,
+  getEquippedHeadGearId,
+} from "../config/cosmetics";
+import { resolveBodyForHeadGear } from "../config/baldSprites";
+import {
+  compositeHatOntoSprite,
+  compositeHatOntoSpriteSync,
+  getCachedHatComposite,
+} from "../utils/hatComposite";
+import {
   StyledImage,
   RitualSpriteContainer,
   RitualSpriteImage,
@@ -172,6 +182,7 @@ import {
   DisconnectedTitle,
   DisconnectedMessage,
 } from "./fighterStyledComponents";
+
 
 // =====================================================================
 // Hitstop-aware animation clock
@@ -728,7 +739,7 @@ const GameFighter = ({
   const dodgeVisualRef = useRef({ startedAt: 0, active: false });
   const DASH_WINDUP_MS = 50;
 
-  const [penguin, setPenguin] = useState({
+  const [penguin, setPenguin] = useState(() => ({
     id: "",
     fighter: "",
     color: "",
@@ -779,6 +790,8 @@ const GameFighter = ({
     hitAbsorptionUsed: false,
     attackType: null,
     hitCounter: 0,
+    // Seed from room player so wardrobe gear shows before first discrete delta
+    gearIds: Array.isArray(player?.gearIds) ? [...player.gearIds] : [],
     isCrouchStance: false,
     isCrouchStrafing: false,
     isFlapping: false,
@@ -787,7 +800,7 @@ const GameFighter = ({
     flapCharges: 0,
     flapFastFalling: false,
     flapBeatHDir: 0,
-  });
+  }));
 
   // PERFORMANCE: Position is rendered IMPERATIVELY, outside React.
   // The interpolation rAF loop writes left/bottom styles directly to the DOM
@@ -822,6 +835,11 @@ const GameFighter = ({
   // Bumped by the rAF loop when a time-based visual (hit flash / hit tint /
   // idle sprite hold / dohyo-side flip) needs a re-render to update.
   const [, setVisualTick] = useState(0);
+  // Equipped head gear (top hat): body+hat baked to one data-URL so ice-slide
+  // / breathe CSS can't desync a second layer.
+  const [hattedBodySrc, setHattedBodySrc] = useState(null);
+  // Tracks which recolored+overlay pair hattedBodySrc belongs to (stale guard).
+  const [hattedPairKey, setHattedPairKey] = useState(null);
   const forceVisualRender = useCallback(() => setVisualTick((t) => t + 1), []);
 
   // ============================================
@@ -2621,6 +2639,9 @@ const GameFighter = ({
           prev.hasDeepGrip !== newState.hasDeepGrip ||
           // MASTERY Phase 2 (2.1): broken-posture tell drives the openable teeter.
           prev.isPostureBroken !== newState.isPostureBroken ||
+          // Wardrobe gear (top hat) — rare, but must commit when it arrives
+          JSON.stringify(prev.gearIds || []) !==
+            JSON.stringify(newState.gearIds || []) ||
           // Balance threshold crossings (throwable <=50, kill zone <15) drive the
           // clinch wobble/stagger animations — balance is ALWAYS_SEND so a plain
           // value compare would re-render every packet; compare zone membership.
@@ -5687,12 +5708,20 @@ const GameFighter = ({
   // below is untouched.
   const useBlubberTint = false;
 
+  // Toppers composite onto bald underlays when available (knot baked out).
+  // Overlay lookup below still keys off the haired pose URL.
+  const fighterGearIds = Array.isArray(penguin.gearIds) ? penguin.gearIds : [];
+  const headGearId = getEquippedHeadGearId(fighterGearIds);
+  const bodyForRender = headGearId
+    ? resolveBodyForHeadGear(effectiveSpriteSrc, fighterGearIds)
+    : effectiveSpriteSrc;
+
   // Get sprite render info (handles animated spritesheets and recoloring).
   // `renderHitTint` (NOT raw showHitTintThisFrame) is passed for the red tint
   // arg so the white impact flash visually takes priority during its 4-frame
   // window. `showHitFlashThisFrame` is passed as the isWhiteFlash arg.
   const spriteRenderInfo = getSpriteRenderInfo(
-    effectiveSpriteSrc,
+    bodyForRender,
     renderHitTint,
     showHitFlashThisFrame,
     useBlubberTint,
@@ -5762,6 +5791,10 @@ const GameFighter = ({
     // palm thrust.
     : inSlapPhaseAnim
     ? "slap-anim"
+    // Flap rapidly swaps recovering ↔ flap1 ↔ flap2 ↔ dodging. Collapse to one
+    // key so hat composite src swaps don't remount/decode-flash each wing-beat.
+    : penguin.isFlapping
+    ? "flap-anim"
     : effectiveSpriteSrc;
 
   // BASHO no-remount fix: the fighter <img> is keyed on the color-INDEPENDENT
@@ -5819,6 +5852,72 @@ const GameFighter = ({
   const grabArmBeltTrackActive =
     !isPlantingArm && !!penguin.isClinchLifting;
   const grabArmLiftDeg = grabArmBeltTrackActive ? 14 : 0;
+
+  // ── Equipped top hat (composited into body — NOT a second animated layer) ─
+  // Ice slide / brake / breathe apply CSS transforms to the fighter <img>.
+  // Baking the hat onto the recolored (bald) body keeps motion glued to the head.
+  // Only newer pose art has overlays; old sheets (waddle, ritual, salt…) skip.
+  //
+  // GHOST-FRAME GUARD: hat composites mint new blob/data URLs. If we paint one
+  // before it's in the decoded/pin cache — or briefly fall back to the unhatted
+  // body after clearing React state — you get ghosts. Prefer sync cache / sync
+  // composite (warmed at preload); never remount via a "|hat" key suffix; only
+  // fall back to unhatted when this pose's composite isn't ready yet.
+  const hatOverlaySrc =
+    !isKillVictim && !isAnimatedSprite && headGearId
+      ? getHatOverlayForSprite(effectiveSpriteSrc, headGearId)
+      : null;
+
+  const hatPairKey =
+    hatOverlaySrc && recoloredSpriteSrc
+      ? `${recoloredSpriteSrc}||${hatOverlaySrc}`
+      : null;
+  const cachedHatted = hatPairKey
+    ? getCachedHatComposite(recoloredSpriteSrc, hatOverlaySrc) ||
+      compositeHatOntoSpriteSync(recoloredSpriteSrc, hatOverlaySrc)
+    : null;
+
+  useEffect(() => {
+    if (!hatOverlaySrc || !recoloredSpriteSrc) {
+      setHattedBodySrc(null);
+      setHattedPairKey(null);
+      return undefined;
+    }
+    const pairKey = `${recoloredSpriteSrc}||${hatOverlaySrc}`;
+    const ready =
+      getCachedHatComposite(recoloredSpriteSrc, hatOverlaySrc) ||
+      compositeHatOntoSpriteSync(recoloredSpriteSrc, hatOverlaySrc);
+    if (ready) {
+      setHattedBodySrc(ready);
+      setHattedPairKey(pairKey);
+      return undefined;
+    }
+    // Miss: do NOT clear React state here — pairKey mismatch already prevents
+    // painting a stale composite. Clearing forced a 1-frame unhatted flash.
+    let cancelled = false;
+    compositeHatOntoSprite(recoloredSpriteSrc, hatOverlaySrc)
+      .then(async (url) => {
+        await preDecodeImage(url);
+        if (!cancelled) {
+          setHattedBodySrc(url);
+          setHattedPairKey(pairKey);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHattedBodySrc(null);
+          setHattedPairKey(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hatOverlaySrc, recoloredSpriteSrc]);
+
+  const validHatted =
+    cachedHatted ||
+    (hatPairKey && hattedPairKey === hatPairKey ? hattedBodySrc : null);
+  const staticBodySrc = validHatted || recoloredSpriteSrc;
 
   // Shared style-driving props for the static fighter <img>. Spread into BOTH
   // the body sprite and the grab-arm overlay so the arm inherits the exact same
@@ -6281,7 +6380,7 @@ const GameFighter = ({
         <StyledImage
           ref={fighterImgDomRef}
           key={`${baseSpriteSrc}-${chargeAnimKeyRef.current}|${spriteColorKey}`}
-          $overrideSrc={recoloredSpriteSrc}
+          $overrideSrc={staticBodySrc}
           {...fighterImgStyleProps}
           decoding="async"
           style={{ display: showRitualSprite ? "none" : "block" }}

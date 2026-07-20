@@ -834,6 +834,24 @@ export async function pinDecodedImages(srcs, replace = false) {
 }
 
 /**
+ * Sync lookup of a decoded <img> kept alive in the hidden preload container.
+ * Used by hat compositing so pose swaps can bake overlays without waiting on
+ * Image.onload (and without minting a cold src the fighter <img> must decode).
+ */
+export function getDecodedImage(src) {
+  if (!src) return null;
+  const img = decodedImageCache.get(src);
+  if (img && img.complete && img.naturalWidth > 0) return img;
+  return null;
+}
+
+/** Pin extra URLs without wiping the existing fighter working set. */
+export async function pinDecodedImagesAppend(srcs) {
+  if (!Array.isArray(srcs) || !srcs.length) return;
+  await pinDecodedImages(srcs, false);
+}
+
+/**
  * Force the browser to RE-DECODE the pinned fighter sprites.
  *
  * Even though pinned sprites stay in the DOM, the browser/Electron can purge

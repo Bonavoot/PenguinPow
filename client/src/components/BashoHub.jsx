@@ -18,12 +18,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
 import styled, { keyframes, css } from "styled-components";
 import { usePlayerColors } from "../context/PlayerColorContext";
-import {
-  recolorImage,
-  BLUE_COLOR_RANGES,
-  GREY_BODY_RANGES,
-  SPRITE_BASE_COLOR,
-} from "../utils/SpriteRecolorizer";
+import { SPRITE_BASE_COLOR } from "../utils/SpriteRecolorizer";
+import { buildIdlePortraitSrc } from "../utils/hatComposite";
+import { getEquippedHeadGearId } from "../config/cosmetics";
 import {
   playButtonHoverSound,
   playButtonPressSound2,
@@ -1874,31 +1871,27 @@ function BashoHub({ onBack, onStartRun }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const activeOutfit = getOutfitById(customization, activeOutfitId);
+  const equippedHeadGearId = getEquippedHeadGearId(activeOutfit);
+
   useEffect(() => {
-    const needsMawashi = player1Color && player1Color !== SPRITE_BASE_COLOR;
-    const needsBody = !!player1BodyColor;
-
-    if (!needsMawashi && !needsBody) {
-      setPreviewSrc(pumo);
-      return;
-    }
-
-    const bodyOpts = needsBody
-      ? { bodyColorRange: GREY_BODY_RANGES, bodyColorHex: player1BodyColor }
-      : {};
-    recolorImage(
-      pumo,
-      BLUE_COLOR_RANGES,
-      player1Color || SPRITE_BASE_COLOR,
-      bodyOpts,
-    )
-      .then((recolored) => {
-        if (mountedRef.current) setPreviewSrc(recolored);
+    let cancelled = false;
+    buildIdlePortraitSrc({
+      baseSrc: pumo,
+      mawashiColor: player1Color,
+      bodyColor: player1BodyColor,
+      gearIds: activeOutfit?.gearIds,
+    })
+      .then((src) => {
+        if (!cancelled && mountedRef.current) setPreviewSrc(src);
       })
       .catch(() => {
-        if (mountedRef.current) setPreviewSrc(pumo);
+        if (!cancelled && mountedRef.current) setPreviewSrc(pumo);
       });
-  }, [player1Color, player1BodyColor]);
+    return () => {
+      cancelled = true;
+    };
+  }, [player1Color, player1BodyColor, equippedHeadGearId, activeOutfitId]);
 
   const handleStart = useCallback(() => {
     playButtonPressSound2();

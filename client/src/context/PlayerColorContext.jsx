@@ -22,6 +22,9 @@ import {
 } from "../utils/SpriteRecolorizer";
 import { ANIMATED_SPRITES, STATIC_SPRITES, DEFAULT_COLORS, DEFAULT_BODY_COLORS, COLOR_PRESETS, BODY_COLOR_PRESETS, SPRITE_BASE_COLOR } from "../config/spriteConfig";
 import { bakedReady, getBakedUrlsForColor } from "../utils/bakedSprites";
+import { warmHatCompositesForFighter } from "../utils/hatComposite";
+import { ALL_HEAD_OVERLAYS } from "../config/cosmetics";
+import { ALL_BALD_BODY_SRCS } from "../config/baldSprites";
 import { getRosterColorCombos } from "../lib/bashoRun";
 import { SPRITESHEET_CONFIG, SPRITESHEET_CONFIG_BY_NAME } from "../config/animatedSpriteConfig";
 
@@ -102,6 +105,8 @@ const GAME_FIGHTER_STATIC_SPRITES = [
   palmThrustStartup, palmThrustSmear,
   crouching, bow, bellyLaying, bellyLayingEyesOpen, cinematicThrowKillLanding,
   flap1, flap2,
+  // Bald underlays — used when a topper is equipped (must share recolor cache keys)
+  ...ALL_BALD_BODY_SRCS,
 ];
 
 // GameFighter's APNG sprites that get mapped to spritesheets
@@ -436,11 +441,20 @@ export function PlayerColorProvider({ children }) {
   // Preload all sprites with current colors (call before game starts)
   // MEMORY OPTIMIZED: Recolor once via apply functions, skip duplicate work
   // Optional: Pass colors directly to avoid race condition with context state updates
-  const preloadSprites = useCallback(async (overrideP1Color, overrideP2Color, overrideP1Body, overrideP2Body) => {
+  const preloadSprites = useCallback(async (
+    overrideP1Color,
+    overrideP2Color,
+    overrideP1Body,
+    overrideP2Body,
+    overrideP1GearIds,
+    overrideP2GearIds,
+  ) => {
     const p1Color = overrideP1Color || player1Color;
     const p2Color = overrideP2Color || player2Color;
     const p1Body = overrideP1Body !== undefined ? overrideP1Body : player1BodyColor;
     const p2Body = overrideP2Body !== undefined ? overrideP2Body : player2BodyColor;
+    const p1GearIds = Array.isArray(overrideP1GearIds) ? overrideP1GearIds : [];
+    const p2GearIds = Array.isArray(overrideP2GearIds) ? overrideP2GearIds : [];
     
     setIsLoading(true);
     console.log(`[Preload] Starting sprite preload with colors: P1=${p1Color} body=${p1Body}, P2=${p2Color} body=${p2Body}`);
@@ -527,6 +541,15 @@ export function PlayerColorProvider({ children }) {
     const bakedUrls = [...new Set([...p1Baked, ...p2Baked])];
     bakedUrls.forEach((u) => allSourcesToPreload.add(u));
 
+    // Head-gear overlays — needed warm before we composite them onto baked bodies.
+    ALL_HEAD_OVERLAYS.forEach((overlay) => {
+      if (overlay) allSourcesToPreload.add(overlay);
+    });
+    // Bald underlays for toppers (also covered via GAME_FIGHTER_STATIC_SPRITES).
+    ALL_BALD_BODY_SRCS.forEach((src) => {
+      if (src) allSourcesToPreload.add(src);
+    });
+
     const uniqueSources = [...allSourcesToPreload].filter(s => !s.startsWith('data:') && !s.startsWith('blob:'));
     console.log(`[Preload] Pre-decoding ${uniqueSources.length} original sprites + ${recoloredUrls.length} recolored sprites...`);
     
@@ -555,6 +578,27 @@ export function PlayerColorProvider({ children }) {
     // Pinning both covers either color choice. replace=true releases stale pins
     // from any earlier color selection.
     await pinDecodedImages([...recoloredUrls, ...uniqueSources, ...bakedUrls], true);
+
+    // Step 5c: Pre-bake hat composites for anyone wearing a top hat, then pin
+    // those blob URLs. Without this, every pose swap mints a cold composite URL
+    // (or briefly shows the unhatted body) → hat ghost frames in combat.
+    const hatUrls = (
+      await Promise.all([
+        warmHatCompositesForFighter({
+          mawashiColor: p1Color,
+          bodyColor: p1Body,
+          gearIds: p1GearIds,
+        }),
+        warmHatCompositesForFighter({
+          mawashiColor: p2Color,
+          bodyColor: p2Body,
+          gearIds: p2GearIds,
+        }),
+      ])
+    ).flat();
+    if (hatUrls.length) {
+      console.log(`[Preload] Warmed ${hatUrls.length} hat composites`);
+    }
     
     // Step 6: Wait for browser to fully process all decoded images
     // Multiple RAF cycles + extended timeout ensures GPU textures are uploaded

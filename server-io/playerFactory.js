@@ -39,6 +39,7 @@ function createInitialPlayerState(overrides = {}) {
     color: "aqua",
     mawashiColor: "#4169E1",
     bodyColor: null,
+    gearIds: [],
     wins: [],
 
     // === Position / physics ===

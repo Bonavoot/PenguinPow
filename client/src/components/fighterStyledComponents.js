@@ -1040,7 +1040,7 @@ export const AnimatedFighterImage = styled.img
       ![
         "frameCount", "fps", "loop", "isLocalPlayer", "isAtTheRopes",
         "isGrabBreaking", "isRawParrying", "isPerfectRawParrySuccess", "isHit", "isChargingAttack",
-        "animationKey",
+        "animationKey", "noFilter", "overlayLayer",
       ].includes(prop),
   })
   .attrs((props) => {
@@ -1048,15 +1048,21 @@ export const AnimatedFighterImage = styled.img
     const fps = props.$fps || 30;
     const duration = frameCount / fps;
     const totalOffset = ((frameCount - 1) / frameCount) * 100;
+    const isOverlay = !!props.$overlayLayer;
 
     return {
       style: {
-        position: "relative",
+        // Overlay hats share the container box: stack on top of the body strip.
+        position: isOverlay ? "absolute" : "relative",
+        left: isOverlay ? 0 : undefined,
+        top: isOverlay ? 0 : undefined,
         display: "block",
         height: "100%",
-        width: "auto",
+        width: isOverlay ? "auto" : "auto",
         backfaceVisibility: "hidden",
-        filter: getFighterPopFilter(props),
+        filter: props.$noFilter ? "none" : getFighterPopFilter(props),
+        zIndex: isOverlay ? 2 : 1,
+        pointerEvents: "none",
         animation:
           frameCount > 1
             ? `spritesheet-${frameCount} ${duration}s steps(${

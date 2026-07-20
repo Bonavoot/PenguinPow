@@ -1,0 +1,40 @@
+{
+  "generatedAt": "2026-07-18T23:19:04.999Z",
+  "method": "Auto-detect blue topknot tie as attach pivot; rotation from hair-tip vs up. Hat-cover is the recommended lazy path.",
+  "frames": {
+    "idle": {
+      "source": "pumo-idle.png",
+      "attach": {
+        "x": 559.1,
+        "y": 173.6
+      },
+      "rotationDeg": 14.38,
+      "topknotBBox": {
+        "minX": 516,
+        "maxX": 619,
+        "minY": 103,
+        "maxY": 197,
+        "w": 104,
+        "h": 95
+      },
+      "pixelCount": 1912
+    },
+    "tachiai": {
+      "source": "pumo-tachiai-position.png",
+      "attach": {
+        "x": 413.9,
+        "y": 307.6
+      },
+      "rotationDeg": 11.26,
+      "topknotBBox": {
+        "minX": 369,
+        "maxX": 473,
+        "minY": 231,
+        "maxY": 330,
+        "w": 105,
+        "h": 100
+      },
+      "pixelCount": 2087
+    }
+  }
+}
