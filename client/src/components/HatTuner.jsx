@@ -2,7 +2,7 @@
  * Dev tool: step through every hat-using pose, nudge attach + rotation
  * until it looks right. Scale is locked per gear (widthPct).
  *
- * Top Hat is the default; switch gear (Crown, …) to tune each pose
+ * Top Hat is the default; switch gear (Crown, Halo, …) to tune each pose
  * independently. Tweaks persist in localStorage while you work.
  */
 
@@ -15,6 +15,10 @@ import topHatSrc from "../assets/cosmetics/top-hat.png";
 import topHatMeta from "../assets/cosmetics/top-hat.json";
 import crownSrc from "../assets/cosmetics/crown.png";
 import crownMeta from "../assets/cosmetics/crown.json";
+import haloSrc from "../assets/cosmetics/halo.png";
+import haloMeta from "../assets/cosmetics/halo.json";
+import plungerSrc from "../assets/cosmetics/plunger.png";
+import plungerMeta from "../assets/cosmetics/plunger.json";
 
 import pumoIdle from "../assets/pumo-idle.png";
 import pumoTachiai from "../assets/pumo-tachiai-position.png";
@@ -72,6 +76,22 @@ const GEAR_ASSETS = {
     meta: crownMeta,
     prefix: "crown",
   },
+  halo: {
+    id: "halo",
+    label: "Halo",
+    src: haloSrc,
+    meta: haloMeta,
+    prefix: "halo",
+  },
+  plunger: {
+    id: "plunger",
+    label: "Plunger",
+    src: plungerSrc,
+    meta: plungerMeta,
+    prefix: "plunger",
+    /** Match in-game: cup behind the head so it looks suctioned on. */
+    underBody: true,
+  },
 };
 
 const BODY_BY_STEM = {
@@ -116,18 +136,23 @@ const BODY_BY_STEM = {
   dodging: bodyForStem("dodging", dodging),
 };
 
-/** Keep pose edits from localStorage, but always take widthPct from the seed file. */
-function syncWidthPctFromSeed(tweaks) {
+/** Keep pose edits from localStorage, but always take widthPct from the seed file.
+ *  Also merge in any new gears that exist in the seed but not yet in storage.
+ */
+function syncFromSeed(tweaks) {
   if (!tweaks?.gears || !hatTweaksSeed?.gears) return tweaks;
-  for (const id of Object.keys(tweaks.gears)) {
-    const seedPct = hatTweaksSeed.gears[id]?.widthPct;
-    if (seedPct != null) tweaks.gears[id].widthPct = seedPct;
+  for (const [id, seedGear] of Object.entries(hatTweaksSeed.gears)) {
+    if (!tweaks.gears[id]) {
+      tweaks.gears[id] = structuredClone(seedGear);
+      continue;
+    }
+    if (seedGear.widthPct != null) tweaks.gears[id].widthPct = seedGear.widthPct;
   }
   return tweaks;
 }
 
 function normalizeTweaks(raw) {
-  if (raw?.version === 2 && raw?.gears) return syncWidthPctFromSeed(raw);
+  if (raw?.version === 2 && raw?.gears) return syncFromSeed(raw);
   // Migrate legacy v1 { global, poses } → top_hat only; seed other gears from file.
   if (raw?.poses) {
     const seed = structuredClone(hatTweaksSeed);
@@ -207,6 +232,8 @@ const HatTuner = ({ onBack }) => {
   const [index, setIndex] = useState(0);
   const [step, setStep] = useState(5);
   const [showCrosshair, setShowCrosshair] = useState(true);
+  /** Display-only mirror — does not change attach points or bake output. */
+  const [previewFlip, setPreviewFlip] = useState(false);
   const [viewZoom, setViewZoom] = useState(0.45);
   const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
   const [status, setStatus] = useState("");
@@ -314,14 +341,21 @@ const HatTuner = ({ onBack }) => {
       setCanvasSize({ w: body.naturalWidth, h: body.naturalHeight });
       const ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(body, 0, 0);
-      drawGear(ctx, hatImg, gearAsset.meta, {
-        x: pose.x,
-        y: pose.y,
-        rotationDeg: pose.rotationDeg,
-        canvasW: canvas.width,
-        widthPct,
-      });
+      const drawHat = () =>
+        drawGear(ctx, hatImg, gearAsset.meta, {
+          x: pose.x,
+          y: pose.y,
+          rotationDeg: pose.rotationDeg,
+          canvasW: canvas.width,
+          widthPct,
+        });
+      if (gearAsset.underBody) {
+        drawHat();
+        ctx.drawImage(body, 0, 0);
+      } else {
+        ctx.drawImage(body, 0, 0);
+        drawHat();
+      }
       if (showCrosshair) {
         ctx.save();
         ctx.strokeStyle = "rgba(255, 80, 80, 0.85)";
@@ -376,6 +410,21 @@ const HatTuner = ({ onBack }) => {
       if (e.key === "2") {
         e.preventDefault();
         switchGear("crown");
+        return;
+      }
+      if (e.key === "3") {
+        e.preventDefault();
+        switchGear("halo");
+        return;
+      }
+      if (e.key === "4") {
+        e.preventDefault();
+        switchGear("plunger");
+        return;
+      }
+      if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        setPreviewFlip((v) => !v);
         return;
       }
       if (e.key === "-" || e.key === "_") {
@@ -565,6 +614,14 @@ const HatTuner = ({ onBack }) => {
             <ZoomBtn type="button" onClick={fitViewZoom} title="Fit to view (0)">
               Fit
             </ZoomBtn>
+            <ZoomBtn
+              type="button"
+              onClick={() => setPreviewFlip((v) => !v)}
+              title="Flip preview facing (F) — display only"
+              $on={previewFlip}
+            >
+              {previewFlip ? "Flip ←" : "Flip →"}
+            </ZoomBtn>
           </ZoomBar>
           <CanvasWrap ref={canvasWrapRef}>
             <canvas
@@ -574,6 +631,7 @@ const HatTuner = ({ onBack }) => {
                   ? {
                       width: `${canvasSize.w * viewZoom}px`,
                       height: `${canvasSize.h * viewZoom}px`,
+                      transform: previewFlip ? "scaleX(-1)" : "none",
                     }
                   : undefined
               }
@@ -706,6 +764,14 @@ const HatTuner = ({ onBack }) => {
               />
               Crosshair
             </label>
+            <label title="Mirrors the preview only — attach points & bake stay on the original facing">
+              <input
+                type="checkbox"
+                checked={previewFlip}
+                onChange={(e) => setPreviewFlip(e.target.checked)}
+              />
+              Flip preview
+            </label>
             <TextBtn type="button" onClick={resetPoseFromSeed}>
               Reset pose
             </TextBtn>
@@ -728,17 +794,23 @@ const HatTuner = ({ onBack }) => {
 
           <Help>
             <p>
-              <strong>1 / 2</strong> Top Hat / Crown · <strong>Arrows / WASD</strong>{" "}
-              move · <strong>Q / E</strong> rotate · <strong>[ / ]</strong>{" "}
-              prev/next pose · Hold Shift for 3× nudge
+              <strong>1 / 2 / 3 / 4</strong> Top Hat / Crown / Halo / Plunger ·{" "}
+              <strong>Arrows / WASD</strong> move · <strong>Q / E</strong>{" "}
+              rotate · <strong>[ / ]</strong> prev/next pose · Hold Shift for
+              3× nudge
             </p>
             <p>
-              <strong>− / +</strong> zoom · <strong>0</strong> fit · scroll
-              wheel over preview to zoom
+              <strong>− / +</strong> zoom · <strong>0</strong> fit ·{" "}
+              <strong>F</strong> flip preview · scroll wheel over preview to
+              zoom
             </p>
             <p>
-              Each hat has its own attach points. Tune Top Hat first, switch to
-              Crown, then adjust poses that sit wrong (e.g. idle).
+              Flip is display-only (same as in-game <code>scaleX(-1)</code>).
+              Attach points and bake stay on the original facing.
+            </p>
+            <p>
+              Each hat has its own attach points. Tune Top Hat first, switch
+              gear, then adjust poses that sit wrong (e.g. idle).
             </p>
           </Help>
 
@@ -847,11 +919,13 @@ const ZoomBtn = styled.button`
   font-weight: 600;
   cursor: pointer;
   border-radius: 4px;
-  border: 1px solid rgba(240, 235, 227, 0.22);
-  background: #1c222c;
+  border: 1px solid
+    ${(p) =>
+      p.$on ? "rgba(212, 175, 55, 0.65)" : "rgba(240, 235, 227, 0.22)"};
+  background: ${(p) => (p.$on ? "#3a3020" : "#1c222c")};
   color: inherit;
   &:hover:not(:disabled) {
-    background: #262d3a;
+    background: ${(p) => (p.$on ? "#4a3c28" : "#262d3a")};
   }
   &:disabled {
     opacity: 0.35;

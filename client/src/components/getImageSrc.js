@@ -16,6 +16,7 @@ import {
   palmThrust,
   palmThrustStartup,
   palmThrustSmear,
+  lowKick,
   dodging,
   throwing,
   salt,
@@ -132,6 +133,8 @@ const getImageSrc = (
   //   2 = active strike      3 = recovery (reuses the startup pose)
   isPalmThrust,
   palmThrustFrame = 2,
+  // Low kick / trip (S + mouse1) — single-frame art for now.
+  isLowKick = false,
   // Kill-throw flight vs grounded: spin uses `hit` high in the air; flat
   // landing art takes over near the ground (and stays after isBeingThrown clears).
   isBeingThrown = false,
@@ -212,6 +215,8 @@ const getImageSrc = (
   if (isSidestepping) return isPerfectParried;
   if (isBowing) return bow;
   if (isPowerSliding) return crouchStance;
+  // Low kick / trip — single pose for the whole rooted move.
+  if (isLowKick) return lowKick;
   // Palm thrust: a client-driven 4-frame animation spanning the whole move.
   // Server keeps isPalmThrust true from startup through recovery, so we never
   // fall through to the generic recovering sprite — the frame index drives the

@@ -32,6 +32,11 @@ const MAP_RIGHT_BOUNDARY = 940;
 const MAP_CENTER = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
 const MAP_WIDTH = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
 
+// ── PARRY LAB (TEMP) ─────────────────────────────────────────────────────────
+// When true, Easy VS CPU is a slap-only dummy with infinite posture so you can
+// isolate Attack Parry feel. Flip to false to restore normal Easy behavior.
+const EASY_SLAP_PARRY_DUMMY = true;
+
 // AI Configuration - Tuned for expert sumo gameplay
 const AI_CONFIG = {
   // Distance thresholds — adjusted for new frame data hitbox ranges
@@ -157,13 +162,19 @@ const AI_CONFIG = {
 // DIFFICULTY TIERS — one brain, dialed up/down (BASHO_MODE_SPEC §5.5)
 // ============================================================================
 //
-// There is ONE expert brain (this file). EASY / NORMAL are the SAME brain with
-// its reaction quality, decision cadence and power-up usage handicapped down;
-// IMPOSSIBLE is the same brain dialed UP to near frame-perfect. HARD resolves to
-// the exact AI_CONFIG baseline, so HARD/VS-CPU/PvP behaviour is byte-for-byte
-// unchanged. The resolved profile is applied at a handful of chokepoints
-// (reaction miss, reaction jitter, decision cooldown, parry/dodge/snowball/flap
-// defence chances, and the power-up offence gate) — NOT by forking the logic.
+// There is ONE expert brain (this file). Difficulty never forks logic — it dials
+// the SAME chokepoints. HARD resolves to the AI_CONFIG identity (byte-identical
+// troublemaker baseline). IMPOSSIBLE dials reaction quality UP. EASY / NORMAL
+// dial BOTH reaction quality AND conversion competence DOWN so they feel like
+// real fighters that are beatable — not experts who randomly space out, then
+// wake up and scrub-kill you at the ropes.
+//
+// Curve intent:
+//   EASY  — fighty beginner: walks in, slaps, occasional grabs. Slow defense,
+//           no pressure wake-up, no palm gotchas, weak ring-out/clinch converts.
+//   NORMAL — competent mid: can pressure and convert sometimes, but delayed /
+//           soft under fire; gotchas muted, not deleted.
+//   HARD / IMPOSSIBLE — full expert conversion brain (the troublemakers).
 //
 // `DIFF` is set once per tick at the top of updateCPUAI from room.cpuDifficulty
 // (the loop is single-threaded and resolves one CPU at a time before executing
@@ -172,8 +183,19 @@ const AI_CONFIG = {
 // Fields:
 //   missChance/pressureMiss  — chance to whiff a defensive reaction
 //   jitterMin/Max            — reaction delay (ms) before a defensive react fires
+//   pressureJitterMin/Max    — delay while "woken up" under slap pressure
+//   pressureHitThreshold     — consecutive hits before pressure wake-up
 //   decisionCooldown         — ms between major decisions (lower = sharper)
 //   parry/dodge/snowball/flapDefMult — multipliers on those reaction chances
+//   burstChanceMult          — scales slap-burst commitment chance
+//   burstCountMin/Max        — clamps committed slap-burst length
+//   ringOutMult              — scales ring-out conversion aggression
+//   palmEdgeMult/palmPokeMult — scales edge-finish / anti-mash palm
+//   clinchKillMult/clinchLandMult — scales clinch throw convert rates
+//   edgeGrabMult             — scales grab-when-opponent-near-edge rates
+//   offenseGrabMult          — scales mid-screen / general grab offense
+//   diChance                 — chance to hold correct knockback DI
+//   grabBreakChance          — chance to input the correct grab-break
 //   usePowerUps              — may use snowball/army/flap offensively
 //   gripUpMult               — multiplier on clinch grip-up delay (lower = grips
 //                              up faster, so it can defend/break a grab sooner)
@@ -184,40 +206,79 @@ const AI_CONFIG = {
 //   whiffPunish              — reliably punishes the human's recovery/whiff/endlag
 const DIFFICULTY_PROFILES = {
   EASY: {
-    missChance: 0.55, // misses reacting to attacks more than half the time
-    pressureMiss: 0.3,
-    jitterMin: 90,
-    jitterMax: 200, // reactions land ~6-12 frames late
-    decisionCooldown: 240, // sluggish re-decide cadence
-    parryMult: 0.45,
-    dodgeMult: 0.4,
-    snowballParryMult: 0.45,
-    flapDefMult: 0.4,
-    parryPunishChance: 0.05, // rarely grabs the human's raw parry — mostly commits a strike INTO it, so the human's parry pays off
-    usePowerUps: false, // does not use snowball/army/flap offensively
+    // Soft + consistent (not coin-flip god/potato). Softness comes from slow
+    // jitter and muted conversion — not from whiffing 55% then waking up.
+    missChance: 0.42,
+    pressureMiss: 0.50,
+    jitterMin: 100,
+    jitterMax: 210,
+    decisionCooldown: 250,
+    parryMult: 0.42,
+    dodgeMult: 0.38,
+    snowballParryMult: 0.42,
+    flapDefMult: 0.38,
+    // Anti-parry grab: almost never. CPU should mostly press INTO the stance.
+    parryPunishChance: 0.02,
+    parryPunishDelayMin: 280,
+    parryPunishDelayMax: 420,
+    usePowerUps: false,
     gripUpMult: 1,
     clinchEscapeBoost: 1,
     clinchBreakEscape: false,
     perfectParry: false,
     whiffPunish: false,
+    // Conversion dials — still fighty, not cruel
+    pressureJitterMin: 100,
+    pressureJitterMax: 210, // no scrub-killer wake-up spike
+    pressureHitThreshold: 99, // effectively never enters pressure mode
+    burstChanceMult: 0.40,
+    burstCountMin: 2,
+    burstCountMax: 3,
+    ringOutMult: 0.40,
+    palmEdgeMult: 0,
+    palmPokeMult: 0,
+    clinchKillMult: 0.45,
+    clinchLandMult: 0.70,
+    edgeGrabMult: 0.40,
+    offenseGrabMult: 0.55,
+    diChance: 0.55,
+    grabBreakChance: 0.28,
   },
   NORMAL: {
-    missChance: 0.34,
-    pressureMiss: 0.12,
-    jitterMin: 35,
-    jitterMax: 110,
-    decisionCooldown: 165,
-    parryMult: 0.78,
-    dodgeMult: 0.78,
-    snowballParryMult: 0.78,
-    flapDefMult: 0.78,
-    parryPunishChance: 0.15, // still usually presses into a parry; only occasionally grab-punishes it
+    // Competent mid — can fight and sometimes convert, but stays human under fire.
+    missChance: 0.28,
+    pressureMiss: 0.20,
+    jitterMin: 45,
+    jitterMax: 125,
+    decisionCooldown: 170,
+    parryMult: 0.72,
+    dodgeMult: 0.70,
+    snowballParryMult: 0.72,
+    flapDefMult: 0.70,
+    parryPunishChance: 0.08,
+    parryPunishDelayMin: 200,
+    parryPunishDelayMax: 320,
     usePowerUps: true,
     gripUpMult: 1,
     clinchEscapeBoost: 1,
     clinchBreakEscape: false,
     perfectParry: false,
     whiffPunish: false,
+    pressureJitterMin: 35,
+    pressureJitterMax: 95, // wakes up, but still delayed
+    pressureHitThreshold: 3, // needs a real string, not two pokes
+    burstChanceMult: 0.70,
+    burstCountMin: 2,
+    burstCountMax: 4,
+    ringOutMult: 0.70,
+    palmEdgeMult: 0.40,
+    palmPokeMult: 0.35,
+    clinchKillMult: 0.70,
+    clinchLandMult: 0.85,
+    edgeGrabMult: 0.75,
+    offenseGrabMult: 0.80,
+    diChance: 0.80,
+    grabBreakChance: 0.40,
   },
   HARD: {
     // Identity profile — resolves to the literal AI_CONFIG baseline below.
@@ -230,13 +291,31 @@ const DIFFICULTY_PROFILES = {
     dodgeMult: 1,
     snowballParryMult: 1,
     flapDefMult: 1,
-    parryPunishChance: 0.45, // reads the parry and grab-punishes it about half the time (correct counterplay)
+    // Correct RPS exists, but must feel like a read — not a Space-press cancel.
+    parryPunishChance: 0.22,
+    parryPunishDelayMin: 160,
+    parryPunishDelayMax: 260,
     usePowerUps: true,
     gripUpMult: 1,
     clinchEscapeBoost: 1,
     clinchBreakEscape: false,
     perfectParry: false,
     whiffPunish: false,
+    pressureJitterMin: 0,
+    pressureJitterMax: AI_CONFIG.PRESSURE_JITTER_MAX,
+    pressureHitThreshold: AI_CONFIG.PRESSURE_HIT_THRESHOLD,
+    burstChanceMult: 1,
+    burstCountMin: AI_CONFIG.COMMIT_SLAP_BURST_MIN,
+    burstCountMax: AI_CONFIG.COMMIT_SLAP_BURST_MAX,
+    ringOutMult: 1,
+    palmEdgeMult: 1,
+    palmPokeMult: 1,
+    clinchKillMult: 1,
+    clinchLandMult: 1,
+    edgeGrabMult: 1,
+    offenseGrabMult: 1,
+    diChance: 1,
+    grabBreakChance: 0.50,
   },
   IMPOSSIBLE: {
     missChance: 0.02, // virtually never whiffs a reaction
@@ -248,18 +327,71 @@ const DIFFICULTY_PROFILES = {
     dodgeMult: 1.9,
     snowballParryMult: 1.9,
     flapDefMult: 1.7,
-    parryPunishChance: 0.85, // reliably reads and grab-punishes a raw parry (still jittered, never frame-1)
+    parryPunishChance: 0.40,
+    parryPunishDelayMin: 130,
+    parryPunishDelayMax: 200,
     usePowerUps: true,
     gripUpMult: 0.4, // grips up fast so it isn't free-thrown out of a grab
     clinchEscapeBoost: 1.6, // fights its way off the edge in clinch
     clinchBreakEscape: true, // techs out of a lethal clinch instead of dying
     perfectParry: true, // times parries into the perfect-parry punish window
     whiffPunish: true, // capitalizes on the human's recovery frames
+    // Conversion stays at HARD identity — cruelty comes from reaction mastery.
+    pressureJitterMin: 0,
+    pressureJitterMax: AI_CONFIG.PRESSURE_JITTER_MAX,
+    pressureHitThreshold: AI_CONFIG.PRESSURE_HIT_THRESHOLD,
+    burstChanceMult: 1,
+    burstCountMin: AI_CONFIG.COMMIT_SLAP_BURST_MIN,
+    burstCountMax: AI_CONFIG.COMMIT_SLAP_BURST_MAX,
+    ringOutMult: 1,
+    palmEdgeMult: 1,
+    palmPokeMult: 1,
+    clinchKillMult: 1,
+    clinchLandMult: 1,
+    edgeGrabMult: 1,
+    offenseGrabMult: 1,
+    diChance: 1,
+    grabBreakChance: 0.50,
   },
 };
 
 // Cache resolved profiles so we don't rebuild the object every tick.
 const _diffCache = {};
+function isEasySlapParryDummy() {
+  return EASY_SLAP_PARRY_DUMMY && DIFF_KEY === "EASY";
+}
+
+// Slap-only + infinite posture training dummy (Easy only, gated by flag above).
+function runEasySlapParryDummy(cpu, human, aiState, currentTime, distance) {
+  cpu.balance = BALANCE_MAX;
+  if (typeof cpu.stamina === "number" && cpu.stamina < 90) cpu.stamina = 90;
+
+  // Never defend / grab / charge — offense is slap strings only.
+  cpu.palmThrustQueued = false;
+  aiState.pendingParry = false;
+  aiState.parryReleaseTime = 0;
+  aiState.reactionTarget = null;
+
+  // Keep a permanent slap-burst commitment so follow-ups keep coming.
+  if (aiState.commitAction !== "slap_burst" || aiState.commitCount < 2) {
+    startCommitment(aiState, "slap_burst", 99, currentTime);
+  } else {
+    // Refresh the deadline so the burst never times out mid-test.
+    aiState.commitUntil = currentTime + 30000;
+  }
+
+  if (handleCommitment(cpu, human, aiState, currentTime, distance)) {
+    return;
+  }
+
+  // Out of slap range — walk in. No other verbs.
+  resetAllKeys(cpu);
+  const dir = getDirectionToOpponent(cpu, human);
+  if (dir === 1) cpu.keys.d = true;
+  else if (dir === -1) cpu.keys.a = true;
+  aiState.lastActionType = "slap_dummy_approach";
+}
+
 function resolveDifficulty(difficulty) {
   const key =
     difficulty && DIFFICULTY_PROFILES[difficulty] ? difficulty : "HARD";
@@ -283,8 +415,31 @@ const LADDER_ANCHORS = [
 const LADDER_NUM_DIALS = [
   "missChance", "pressureMiss", "jitterMin", "jitterMax", "decisionCooldown",
   "parryMult", "dodgeMult", "snowballParryMult", "flapDefMult", "parryPunishChance",
+  "parryPunishDelayMin", "parryPunishDelayMax",
   "gripUpMult", "clinchEscapeBoost",
+  // Conversion / fairness dials (EASY→HARD curve; HARD/IMPOSSIBLE identity)
+  "pressureJitterMin", "pressureJitterMax", "pressureHitThreshold",
+  "burstChanceMult", "burstCountMin", "burstCountMax",
+  "ringOutMult", "palmEdgeMult", "palmPokeMult",
+  "clinchKillMult", "clinchLandMult", "edgeGrabMult", "offenseGrabMult",
+  "diChance", "grabBreakChance",
 ];
+
+// Clamp a preferred slap-burst length into the active difficulty's burst window.
+// HARD (2–5) + preferred (3–5) → 3–5 (identity). EASY (2–3) + preferred (3–5) → 3.
+// Rounds ladder-lerped floats so randomInRange stays on integers.
+function diffBurstCount(preferredMin, preferredMax) {
+  const lo = Math.round(typeof DIFF.burstCountMin === "number" ? DIFF.burstCountMin : preferredMin);
+  const hi = Math.round(typeof DIFF.burstCountMax === "number" ? DIFF.burstCountMax : preferredMax);
+  const a = Math.min(Math.max(preferredMin, lo), hi);
+  const b = Math.min(Math.max(preferredMax, lo), hi);
+  return randomInRange(Math.min(a, b), Math.max(a, b));
+}
+
+function diffMult(key, fallback = 1) {
+  const v = DIFF[key];
+  return typeof v === "number" ? v : fallback;
+}
 const _ladderCache = {};
 function resolveDifficultyByLadder(L) {
   const x = L < 0 ? 0 : L > 1 ? 1 : L;
@@ -339,16 +494,16 @@ function isHardPlusTier() {
 // MASTERY Phase 2 (2.5): "hunt broken posture". When the opponent's posture is
 // broken, the CPU leans harder into the CONVERSION it's built for — a grappler
 // hunts the yotsu grab, a pusher hunts the oshi edge-thrust — turning the
-// striking setup into a kill. EASY ignores posture entirely (difficulty
-// firewall: the overhaul raises the ceiling, not the floor). Non-archetype
-// (VS CPU) rikishi still get a modest general boost so both paths appear at
-// HARD. Flag off / posture intact ⇒ multiplier 1 (byte-identical).
+// striking setup into a kill. HARD+ only (same firewall as momentum entries) so
+// EASY/NORMAL stay fighty without expert convert reads. Non-archetype (VS CPU)
+// rikishi still get a modest general boost at HARD+. Flag off / posture intact
+// ⇒ multiplier 1 (byte-identical).
 function isHuntingBrokenPosture(human) {
   return (
     MASTERY_P2_POSTURE &&
     !!human &&
     human.isPostureBroken === true &&
-    DIFF_KEY !== "EASY"
+    isHardPlusTier()
   );
 }
 function postureHuntGrabMult(human) {
@@ -598,11 +753,11 @@ function getAIState(playerId) {
       lastReadTime: 0,
       readCooldown: 0,
       // === Parry-response node: rank-gated read of the HUMAN's raw parry ===
-      // Rolled ONCE per detected parry (deduped on the human's rawParryStartTime),
-      // then executed after a reaction delay so the grab-punish is never frame-1.
-      parryResponseHandledStart: 0, // dedupe key = human.rawParryStartTime already rolled
+      // Rolled ONCE per stance enter (not per re-tap), then fired after a real
+      // reaction delay — and only if already in grab range / not mid-string.
+      parryResponseActive: false,   // true while human has been continuously in stance
       parryResponseGrab: false,     // won the roll → commit a grab-punish when the delay elapses
-      parryResponseFireAt: 0,       // sim time the (jittered) grab-punish fires
+      parryResponseFireAt: 0,       // sim time the delayed grab-punish fires
       // === NEW: Movement fluidity ===
       movementIntent: null,      // 'approach', 'retreat', 'feint', 'circle'
       movementIntentUntil: 0,
@@ -797,6 +952,11 @@ function isGoodGrabOpportunity(cpu, human, distance) {
 // Returns true if the AI committed to an action (grab or approach), false if not close enough to even approach.
 function attemptGrabOrApproach(cpu, human, aiState, currentTime, distance) {
   if (!isOpponentGrabbable(human) || !isFacingOpponent(cpu, human)) return false;
+
+  // Parry/guard stance is NOT a generic grab-approach target. Walking into a
+  // rooted parrier was the "CPU freezes / walks into my Space" tell — the
+  // dedicated handleParryResponse node is the only path allowed to grab-punish.
+  if (human.isRawParrying) return false;
 
   if (isAtGrabRange(cpu, human) && canGrab(cpu) && isGoodGrabOpportunity(cpu, human, distance)) {
     cpu.keys.mouse2 = true;
@@ -1116,6 +1276,10 @@ function updateCPUAI(cpu, human, room, currentTime) {
       ? room.cpuDifficulty
       : "HARD";
   }
+  // Parry lab: keep Easy dummy posture topped every tick (even on early returns).
+  if (isEasySlapParryDummy()) {
+    cpu.balance = BALANCE_MAX;
+  }
   // Resolve this CPU's personality archetype (BASHO rival roster). Non-BASHO
   // CPUs have no archetype → `balanced` → legacy behavior.
   PERS = resolvePersonality(cpu && cpu.aiArchetype);
@@ -1197,6 +1361,12 @@ function updateCPUAI(cpu, human, room, currentTime) {
   // Handle pending key releases
   handlePendingKeyReleases(cpu, aiState, currentTime);
 
+  // Parry lab: Easy = slap-only dummy (no grab/parry/dodge/charge).
+  if (isEasySlapParryDummy()) {
+    runEasySlapParryDummy(cpu, human, aiState, currentTime, distance);
+    return;
+  }
+
   // HIGHEST PRIORITY (flap): if WE are airborne, piloting the flight overrides
   // all normal logic (grab-approach, clinch, offense) — steer over the opponent
   // and dive for the body-slam. Checked before everything else because canAct/
@@ -1211,10 +1381,11 @@ function updateCPUAI(cpu, human, room, currentTime) {
     aiState.flapReactProcessed = false;
   }
   
-  // Cancel grab approach if situation changed (hit, grabbed, opponent in i-frames/ungrabable)
+  // Cancel grab approach if situation changed (hit, grabbed, opponent in i-frames/ungrabable,
+  // or they raised a parry/guard — don't keep walking into a rooted Space stance).
   if (aiState.grabApproachIntent && (
     cpu.isHit || cpu.isBeingGrabbed || cpu.isBeingThrown ||
-    human.isAttacking || !isOpponentGrabbable(human) ||
+    human.isAttacking || human.isRawParrying || !isOpponentGrabbable(human) ||
     !isFacingOpponent(cpu, human)
   )) {
     aiState.grabApproachIntent = false;
@@ -1321,10 +1492,9 @@ function updateCPUAI(cpu, human, room, currentTime) {
     return;
   }
 
-  // Priority 2.65: PARRY RESPONSE — the human is raw-parrying. Rank-gated read:
-  // low ranks mostly decline (fall through and commit a strike INTO the parry so
-  // the human's read pays); high ranks reliably grab-punish it (with reaction
-  // jitter, never frame-1). Only returns true when it actually commits the grab.
+  // Priority 2.65: PARRY RESPONSE — occasional delayed grab-punish vs Space.
+  // Never cancels our own string; never walks into a rooted stance. Decline →
+  // keep pressing so the human's parry can actually catch something.
   if (handleParryResponse(cpu, human, aiState, currentTime, distance)) {
     return;
   }
@@ -1350,11 +1520,14 @@ function updateCPUAI(cpu, human, room, currentTime) {
   }
 
   // Priority 3: React to opponent attacks with HUMAN-LIKE TIMING
-  // Under slap pressure (3+ consecutive hits), the AI "wakes up" and gets sharper defensively.
-  // Otherwise, normal jitter + miss chance apply.
+  // Under slap pressure the AI can "wake up" — but EASY/NORMAL keep delayed /
+  // soft reactions (pressureJitter + pressureMiss). HARD+ still snap sharp.
   if (human.isAttacking && !human.isInStartupFrames) {
     const isCommittedToOffense = aiState.commitAction && currentTime < aiState.commitUntil && aiState.commitCount > 0;
-    const underPressure = aiState.consecutiveHitsTaken >= AI_CONFIG.PRESSURE_HIT_THRESHOLD;
+    const pressureThreshold = typeof DIFF.pressureHitThreshold === "number"
+      ? DIFF.pressureHitThreshold
+      : AI_CONFIG.PRESSURE_HIT_THRESHOLD;
+    const underPressure = aiState.consecutiveHitsTaken >= pressureThreshold;
 
     // Under pressure: break out of offensive commitment to defend
     if (!isCommittedToOffense || underPressure) {
@@ -1362,7 +1535,10 @@ function updateCPUAI(cpu, human, room, currentTime) {
         aiState.reactionTarget = human.attackType || 'slap';
         aiState.reactionDetectTime = currentTime;
         aiState.reactionDelay = underPressure
-          ? randomInRange(0, AI_CONFIG.PRESSURE_JITTER_MAX)
+          ? randomInRange(
+              typeof DIFF.pressureJitterMin === "number" ? DIFF.pressureJitterMin : 0,
+              typeof DIFF.pressureJitterMax === "number" ? DIFF.pressureJitterMax : AI_CONFIG.PRESSURE_JITTER_MAX
+            )
           : randomInRange(DIFF.jitterMin, DIFF.jitterMax);
         aiState.reactionProcessed = false;
       }
@@ -1458,19 +1634,21 @@ function handleGrabBreak(cpu, grabber, aiState, currentTime) {
     return;
   }
 
-  // We see a grab action — react once (50/50) with the correct counter
+  // We see a grab action — react once with the correct counter.
+  // HARD+ stays 50/50; EASY/NORMAL break less often (easier to throw them).
   resetAllKeys(cpu);
+  const breakChance = typeof DIFF.grabBreakChance === "number" ? DIFF.grabBreakChance : 0.50;
 
   if (grabber.isAttemptingGrabThrow) {
     if (!aiState.grabBreakReactionDecided) {
       aiState.grabBreakReactionDecided = true;
-      aiState.grabBreakReactS = Math.random() < 0.50; // 50% press S
+      aiState.grabBreakReactS = Math.random() < breakChance;
     }
     if (aiState.grabBreakReactS) cpu.keys.s = true;
   } else if (grabber.isAttemptingPull) {
     if (!aiState.grabBreakReactionDecided) {
       aiState.grabBreakReactionDecided = true;
-      aiState.grabBreakReactDirection = Math.random() < 0.50; // 50% press direction
+      aiState.grabBreakReactDirection = Math.random() < breakChance;
     }
     if (aiState.grabBreakReactDirection) cpu.keys[pullCounterKey] = true;
   }
@@ -1515,8 +1693,10 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
     return;
   }
 
-  // During burst push as grabber: let the auto-push ride (good for positioning)
-  if (cpu.isGrabPushing) {
+  // During burst push as grabber: let the auto-push ride (good for positioning).
+  // ARM CLAMP exception: victim can't tech — allow throw/pull/lift conversion
+  // mid-burst (mirrors human input; cancels Phase A the same way).
+  if (cpu.isGrabPushing && !opponent.isArmClamped) {
     return;
   }
 
@@ -1651,7 +1831,7 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
     aiState.clinchLastThrowCheck = currentTime;
     const aggMult = getAggressionMultiplier(aiState);
 
-    if (canKill && chance(AI_CONFIG.CLINCH_THROW_CHANCE_KILL * Math.min(aggMult.grab, 1.3))) {
+    if (canKill && chance(AI_CONFIG.CLINCH_THROW_CHANCE_KILL * Math.min(aggMult.grab, 1.3) * diffMult("clinchKillMult"))) {
       const liftViable = cpuNearestEdge > 100;
       // CS.liftPullBias: grappler favors lift/pull over the raw throw; pusher the reverse.
       let action;
@@ -1667,7 +1847,7 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
         AI_CONFIG.CLINCH_THROW_REACTION_MIN,
         AI_CONFIG.CLINCH_THROW_REACTION_MAX
       );
-    } else if (canLand && chance(AI_CONFIG.CLINCH_THROW_CHANCE_LAND * Math.min(aggMult.grab, 1.3))) {
+    } else if (canLand && chance(AI_CONFIG.CLINCH_THROW_CHANCE_LAND * Math.min(aggMult.grab, 1.3) * diffMult("clinchLandMult"))) {
       const roll = Math.random();
       let action = null;
       // CS.liftPullBias shrinks the throw slice for grappler (spills into lift/pull).
@@ -1810,8 +1990,27 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
 
 }
 
-// DI (Directional Influence)
+// DI (Directional Influence) — EASY/NORMAL sometimes freeze or DI wrong so
+// knockback isn't a free expert save. HARD+ always holds the correct opposite.
 function handleKnockbackDI(cpu, aiState, currentTime) {
+  const diChance = diffMult("diChance", 1);
+  if (!chance(diChance)) {
+    // Beginner DI: half the time do nothing, half the time hold the wrong way.
+    if (chance(0.5)) {
+      const knockbackDirection = cpu.knockbackVelocity.x > 0 ? 1 : -1;
+      if (knockbackDirection > 0) {
+        cpu.keys.a = false;
+        cpu.keys.d = true;
+      } else {
+        cpu.keys.a = true;
+        cpu.keys.d = false;
+      }
+      aiState.lastActionType = "knockback_di_wrong";
+    } else {
+      aiState.lastActionType = "knockback_di_whiff";
+    }
+    return;
+  }
   const knockbackDirection = cpu.knockbackVelocity.x > 0 ? 1 : -1;
   if (knockbackDirection > 0) {
     cpu.keys.a = true;
@@ -2062,7 +2261,7 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
     
     // When back is very close, heavily favor grab (throw sends them behind us = ring-out)
     if (veryCloseToBackBoundary && canGrab(cpu)) {
-      if (roll < 0.65 * aggMult.grab) {
+      if (roll < 0.65 * aggMult.grab * diffMult("edgeGrabMult")) {
         const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
         if (result) {
           aiState.lastActionType = "grab_corner_throw";
@@ -2079,7 +2278,7 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
       aiState.lastDecisionTime = currentTime;
       aiState.lastActionType = "dodge_escape";
       return true;
-    } else if (roll < 0.55 && canGrab(cpu)) {
+    } else if (roll < 0.55 * diffMult("offenseGrabMult") && canGrab(cpu)) {
       const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
       if (result) {
         aiState.lastActionType = "grab";
@@ -2087,8 +2286,8 @@ function handleCornerEscape(cpu, human, aiState, currentTime, distance, cornered
       }
     }
     if (canAttack(cpu)) {
-      if (chance(0.5)) {
-        startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
+      if (chance(0.5 * diffMult("burstChanceMult"))) {
+        startCommitment(aiState, 'slap_burst', diffBurstCount(2, 4), currentTime);
       }
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
@@ -2212,8 +2411,8 @@ function handleCornerAnswer(cpu, human, aiState, currentTime, distance, cornered
 // "Fight out of the corner" — slap at range, else advance into the opponent.
 function cornerFight(cpu, human, aiState, currentTime, distance) {
   if (distance < AI_CONFIG.SLAP_RANGE && canAttack(cpu)) {
-    if (chance(0.5)) {
-      startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
+    if (chance(0.5 * diffMult("burstChanceMult"))) {
+      startCommitment(aiState, 'slap_burst', diffBurstCount(2, 4), currentTime);
     }
     cpu.keys.mouse1 = true;
     aiState.mouse1ReleaseTime = currentTime + 40;
@@ -2269,7 +2468,7 @@ function handlePalmUsage(cpu, human, aiState, currentTime, distance) {
   // ×1.5). Chance is clamped so the boosted value can't exceed 1.
   const edgeFinishChance = Math.min(
     1,
-    AI_CONFIG.PALM_EDGE_FINISH_CHANCE * postureHuntPalmMult(human)
+    AI_CONFIG.PALM_EDGE_FINISH_CHANCE * postureHuntPalmMult(human) * diffMult("palmEdgeMult")
   );
   if (opponentInFront && opponentFrontEdgeDist <= SLAP_KILL_RANGE &&
       distance < AI_CONFIG.MID_RANGE && chance(edgeFinishChance)) {
@@ -2282,7 +2481,7 @@ function handlePalmUsage(cpu, human, aiState, currentTime, distance) {
   if (slapSpam &&
       distance >= AI_CONFIG.PALM_COUNTERPOKE_MIN_RANGE &&
       distance <= AI_CONFIG.PALM_COUNTERPOKE_MAX_RANGE &&
-      chance(AI_CONFIG.PALM_COUNTERPOKE_CHANCE)) {
+      chance(AI_CONFIG.PALM_COUNTERPOKE_CHANCE * diffMult("palmPokeMult"))) {
     if (tryPalmThrust(cpu, human, aiState, currentTime, distance, 'poke')) return true;
   }
 
@@ -2295,46 +2494,55 @@ function handlePalmUsage(cpu, human, aiState, currentTime, distance) {
 // slap). This is the "attack smarter" lever — a strong human player always
 // punishes a whiffed grab or a blocked/recovered attack; now IMPOSSIBLE does too.
 // ── PARRY RESPONSE (rank-gated read of the HUMAN's raw parry) ───────────────
-// The old behavior — grab EVERY parry on reaction — made the parry feel
-// worthless (the CPU stopped whatever it was doing to punish it, at every rank).
-// This node decides ONCE per parry whether to grab-punish it, scaled by rank:
-//   • low ranks  → almost never (parryPunishChance ~0.05) → the CPU keeps
-//     committing its strike/approach INTO the parry, so the human's read pays.
-//   • high ranks → reliably reads and grab-punishes (correct counterplay).
-// The commit is delayed by the normal reaction jitter so it's never frame-1.
-// Returns true only when it actually commits the grab (preempting other actions).
+// Grab is the correct RPS answer to Space — but it must feel like a READ, not
+// input-watching. Rules that keep the human's parry honest:
+//   • one roll per stance enter (re-taps while holding do NOT re-roll)
+//   • real reaction delay (130–380ms by rank) — never a ~60ms psychic cancel
+//   • never interrupt our own slap burst / active attack to grab
+//   • only grab if ALREADY in range when the delay matures (no walk-into-Space)
+// Decline → fall through and keep pressing INTO the stance so parry pays off.
 function handleParryResponse(cpu, human, aiState, currentTime, distance) {
-  // Not parrying → reset the per-parry dedupe so the NEXT parry rolls fresh.
   if (!human.isRawParrying) {
-    aiState.parryResponseHandledStart = 0;
+    aiState.parryResponseActive = false;
     aiState.parryResponseGrab = false;
     aiState.parryResponseFireAt = 0;
     return false;
   }
 
-  // New parry (deduped on the human's parry start) → roll ONCE.
-  if (aiState.parryResponseHandledStart !== human.rawParryStartTime) {
-    aiState.parryResponseHandledStart = human.rawParryStartTime;
+  // Finish what we started. Canceling a string the frame Space goes down is
+  // exactly the "they're reading my inputs" feel.
+  const committed =
+    (aiState.commitAction &&
+      currentTime < aiState.commitUntil &&
+      aiState.commitCount > 0) ||
+    cpu.isAttacking ||
+    cpu.isChargingAttack ||
+    cpu.isGrabStartup ||
+    cpu.isInStartupFrames ||
+    cpu.isInEndlag ||
+    cpu.isGrabbingMovement;
+  if (committed) return false;
+
+  // One roll per continuous stance — not per re-arm / re-tap.
+  if (!aiState.parryResponseActive) {
+    aiState.parryResponseActive = true;
     const punishChance =
-      typeof DIFF.parryPunishChance === "number" ? DIFF.parryPunishChance : 0.15;
+      typeof DIFF.parryPunishChance === "number" ? DIFF.parryPunishChance : 0.1;
     aiState.parryResponseGrab = chance(punishChance);
-    // Reaction jitter so the grab is never frame-1 (floored so even IMPOSSIBLE
-    // reads it a few frames late — human, not psychic).
-    const jitter = Math.max(60, randomInRange(DIFF.jitterMin, DIFF.jitterMax));
-    aiState.parryResponseFireAt = currentTime + jitter;
+    const delayMin =
+      typeof DIFF.parryPunishDelayMin === "number" ? DIFF.parryPunishDelayMin : 160;
+    const delayMax =
+      typeof DIFF.parryPunishDelayMax === "number" ? DIFF.parryPunishDelayMax : 260;
+    aiState.parryResponseFireAt =
+      currentTime + randomInRange(delayMin, Math.max(delayMin, delayMax));
   }
 
-  // Lost the roll → decline; fall through so the CPU keeps pressing INTO the
-  // parry (the whole point at low ranks).
   if (!aiState.parryResponseGrab) return false;
-
-  // Won the roll but the reaction delay hasn't elapsed → let normal offense /
-  // approach run so we're in range when it fires.
   if (currentTime < aiState.parryResponseFireAt) return false;
-
   if (!canGrab(cpu) || !isFacingOpponent(cpu, human)) return false;
 
-  // In range → grab-punish; otherwise close the gap toward the parrier.
+  // Already in grab range → punish. Otherwise DROP the read (don't walk into
+  // a rooted parrier and freeze the offense).
   if (distance <= AI_CONFIG.GRAB_RANGE) {
     resetAllKeys(cpu);
     cpu.facing = cpu.x < human.x ? -1 : 1;
@@ -2342,15 +2550,11 @@ function handleParryResponse(cpu, human, aiState, currentTime, distance) {
     aiState.mouse2ReleaseTime = currentTime + 50;
     aiState.lastActionType = "parry_grab_punish";
     aiState.lastDecisionTime = currentTime;
-    return true;
-  } else if (distance < AI_CONFIG.GRAB_APPROACH_RANGE) {
-    resetAllKeys(cpu);
-    cpu.facing = cpu.x < human.x ? -1 : 1;
-    if (getDirectionToOpponent(cpu, human) === 1) cpu.keys.d = true;
-    else cpu.keys.a = true;
-    aiState.lastActionType = "parry_grab_approach";
+    aiState.parryResponseGrab = false; // spent
     return true;
   }
+
+  aiState.parryResponseGrab = false;
   return false;
 }
 
@@ -2397,11 +2601,12 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
   
   const roll = Math.random();
   const aggMult = getAggressionMultiplier(aiState);
+  const ringMult = diffMult("ringOutMult");
   
   if (distance < AI_CONFIG.SLAP_RANGE && canAttack(cpu)) {
     // Smart grab decision: if opponent low stamina, grab is almost guaranteed win via push
     const opponentLowStamina = human.stamina < AI_CONFIG.LOW_STAMINA_THRESHOLD;
-    const grabChance = (opponentLowStamina ? 0.60 : 0.40) * postureHuntGrabMult(human);
+    const grabChance = (opponentLowStamina ? 0.60 : 0.40) * postureHuntGrabMult(human) * ringMult;
     
     if (roll < grabChance * aggMult.grab && canGrab(cpu)) {
       const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
@@ -2410,9 +2615,9 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
         return;
       }
     }
-    if (roll < 0.85 * aggMult.attack) {
-      if (chance(0.55)) {
-        startCommitment(aiState, 'slap_burst', randomInRange(3, 5), currentTime);
+    if (roll < 0.85 * aggMult.attack * Math.max(0.55, ringMult)) {
+      if (chance(0.55 * diffMult("burstChanceMult"))) {
+        startCommitment(aiState, 'slap_burst', diffBurstCount(3, 5), currentTime);
       }
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
@@ -2421,7 +2626,10 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
       return;
     } else {
       // Burst pressure: repeated slaps to walk the opponent toward the edge
-      startCommitment(aiState, 'slap_burst', randomInRange(2, 4), currentTime);
+      // EASY often falls through to a single slap instead of a kill string.
+      if (chance(Math.max(0.25, ringMult))) {
+        startCommitment(aiState, 'slap_burst', diffBurstCount(2, 4), currentTime);
+      }
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
       aiState.lastDecisionTime = currentTime;
@@ -2430,7 +2638,8 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
     }
   }
   
-  // Mid-range: approach with attack intent (slaps while walking in, charged attacks)
+  // Mid-range: approach with attack intent (slaps while walking in).
+  // Keep approach fighty on all tiers; only the kill-convert grab is dialed.
   if (distance < AI_CONFIG.MID_RANGE) {
     const midRoll = Math.random();
     const dirToOpponent = getDirectionToOpponent(cpu, human);
@@ -2454,7 +2663,7 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
       aiState.lastDecisionTime = currentTime;
       aiState.lastActionType = "slap_approach";
       return;
-    } else if (midRoll < 0.80 && canGrab(cpu)) {
+    } else if (midRoll < 0.80 && canGrab(cpu) && chance(ringMult)) {
       const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
       if (result) {
         aiState.lastActionType = "grab_ringout";
@@ -2780,7 +2989,7 @@ function handleCloseRange(cpu, human, aiState, currentTime, distance) {
   
   // GRABS when opponent is near edge — especially with low stamina
   if (isOpponentNearEdge(human) && canGrab(cpu)) {
-    const grabChance = (opponentLow ? 0.55 : 0.40) * postureHuntGrabMult(human);
+    const grabChance = (opponentLow ? 0.55 : 0.40) * postureHuntGrabMult(human) * diffMult("edgeGrabMult");
     if (roll < grabChance * aggMult.grab) {
       const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
       if (result) {
@@ -2791,7 +3000,7 @@ function handleCloseRange(cpu, human, aiState, currentTime, distance) {
   }
   
   // MID-SCREEN GRABS — use them more often but not always (must be point-blank)
-  if (roll < 0.22 * aggMult.grab * postureHuntGrabMult(human) && canGrab(cpu)) {
+  if (roll < 0.22 * aggMult.grab * postureHuntGrabMult(human) * diffMult("offenseGrabMult") && canGrab(cpu)) {
     const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
     if (result) {
       aiState.lastActionType = "grab";
@@ -2800,8 +3009,8 @@ function handleCloseRange(cpu, human, aiState, currentTime, distance) {
   }
   
   // SLAP BURST — commit to a flurry of individual presses (each contestable)
-  if (roll < 0.22 + AI_CONFIG.COMMIT_BURST_CHANCE * aggMult.attack && canAttack(cpu)) {
-    const burstCount = randomInRange(AI_CONFIG.COMMIT_SLAP_BURST_MIN, AI_CONFIG.COMMIT_SLAP_BURST_MAX);
+  if (roll < 0.22 + AI_CONFIG.COMMIT_BURST_CHANCE * aggMult.attack * diffMult("burstChanceMult") && canAttack(cpu)) {
+    const burstCount = diffBurstCount(AI_CONFIG.COMMIT_SLAP_BURST_MIN, AI_CONFIG.COMMIT_SLAP_BURST_MAX);
     startCommitment(aiState, 'slap_burst', burstCount, currentTime);
     cpu.keys.mouse1 = true;
     aiState.mouse1ReleaseTime = currentTime + 40;
@@ -2885,7 +3094,8 @@ function handleMidRange(cpu, human, aiState, currentTime, distance) {
   
   // MID-SCREEN GRABS — walk into range, then grab
   if (distance < AI_CONFIG.GRAB_APPROACH_RANGE && canGrab(cpu)) {
-    const grabChance = (opponentLow ? 0.35 : AI_CONFIG.GRAB_MID_SCREEN_CHANCE) * postureHuntGrabMult(human);
+    const grabChance = (opponentLow ? 0.35 : AI_CONFIG.GRAB_MID_SCREEN_CHANCE)
+      * postureHuntGrabMult(human) * diffMult("offenseGrabMult");
     if (roll < grabChance * aggMult.grab) {
       const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
       if (result) {
@@ -3101,11 +3311,14 @@ function scheduleCpuCadence(cpu, human, currentTime) {
     aiState.cadenceBufferAt = 0;
 
     const distance = Math.abs(cpu.x - human.x);
+    // Keep buffering follow-ups even if they raised Space — aborting the string
+    // the instant they parry was the "CPU stops when I defend" tell. Pressing
+    // INTO a tap-parry is what makes the human's read pay; chip into a hold is
+    // fine too. (Grab-punish is handleParryResponse's job, after delay.)
     const wantContinue =
       distance < AI_CONFIG.SLAP_RANGE + 30 &&
       cpu.stamina > SLAP_ATTACK_STAMINA_COST &&
-      !human.isDead &&
-      !human.isRawParrying; // don't tsuppari straight into a held parry
+      !human.isDead;
 
     if (wantContinue) {
       const cycleEnd = cpu.attackCooldownUntil || (currentTime + SLAP_TOTAL_MS);

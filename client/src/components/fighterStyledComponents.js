@@ -153,19 +153,18 @@ export const getFighterPopFilter = (props) => {
   if (props.$isGrabBreaking) {
     return `${base} drop-shadow(0 0 8px rgba(0, 255, 128, 0.85))`;
   }
-  // Perfect raw parry: a tight GOLD rim so the parrying penguin matches the
-  // golden perfect-parry burst/lines/flash. Gold reads as "perfect/premium" and
-  // contrasts hard against the cool steel-white regular parry.
+  // Perfect raw parry: tight ELECTRIC cyan rim — matches the hotter perfect
+  // burst (regular hold stance keeps the deeper blue rim below).
   if (props.$isPerfectRawParrySuccess) {
-    return `${base} drop-shadow(0 0 3px rgba(255, 224, 120, 0.95)) drop-shadow(0 0 1px rgba(255, 240, 175, 1))`;
+    return `${base} drop-shadow(0 0 4px rgba(0, 230, 255, 0.95)) drop-shadow(0 0 1px rgba(200, 250, 255, 1))`;
   }
   if (props.$isRawParrying) {
     return `${base} drop-shadow(0 0 6px rgba(0,130,255,0.9))`;
   }
   // Deep grip holder: a subtle burnished-gold rim for the clinch's earned
   // advantage. Persistent (not a flash), so it stays quieter than the
-  // perfect-parry gold — "who holds the grip" at a glance. Danger red above
-  // still outranks it: "you can die" always wins the rim.
+  // perfect-parry electric cyan flash — "who holds the grip" at a glance.
+  // Danger red above still outranks it: "you can die" always wins the rim.
   if (props.$inClinch && props.$hasDeepGrip) {
     return `${base} drop-shadow(0 0 5px rgba(255, 194, 71, 0.55))`;
   }
@@ -429,6 +428,7 @@ export const StyledImage = styled("img")
         undefined, // flapUseDodgePose
         undefined, // isPalmThrust
         2, // palmThrustFrame
+        props.$isLowKick || false,
         props.$isBeingThrown && !props.$showClinchKillThrowLanding,
         undefined, // slapFrame
         props.$isGuarding,
@@ -888,14 +888,16 @@ export const StyledImage = styled("img")
     70% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) brightness(1.3) saturate(0.7); }
     100% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) brightness(1) saturate(1); }
   }
+  /* Impact juice only — no translateX. Horizontal slide read as "walking
+     in the parry-success pose" while feet should stay planted. */
   @keyframes rawParryRecoil {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0); transform-origin: center bottom; }
-    10% { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.95) translateX(calc(var(--facing, 1) * -8px)); transform-origin: center bottom; }
-    25% { transform: scaleX(calc(var(--facing, 1) * 0.92)) scaleY(1.08) translateX(calc(var(--facing, 1) * -5px)); transform-origin: center bottom; }
-    45% { transform: scaleX(calc(var(--facing, 1) * 1.03)) scaleY(0.97) translateX(calc(var(--facing, 1) * 3px)); transform-origin: center bottom; }
-    65% { transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.02) translateX(calc(var(--facing, 1) * -2px)); transform-origin: center bottom; }
-    85% { transform: scaleX(calc(var(--facing, 1) * 1.01)) scaleY(0.99) translateX(calc(var(--facing, 1) * 1px)); transform-origin: center bottom; }
-    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0); transform-origin: center bottom; }
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: center bottom; }
+    10% { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.95); transform-origin: center bottom; }
+    25% { transform: scaleX(calc(var(--facing, 1) * 0.92)) scaleY(1.08); transform-origin: center bottom; }
+    45% { transform: scaleX(calc(var(--facing, 1) * 1.03)) scaleY(0.97); transform-origin: center bottom; }
+    65% { transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.02); transform-origin: center bottom; }
+    85% { transform: scaleX(calc(var(--facing, 1) * 1.01)) scaleY(0.99); transform-origin: center bottom; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: center bottom; }
   }
   @keyframes clinchKillThrowSpin {
     0% { transform: scaleX(var(--facing, 1)) rotate(0deg); transform-origin: center center; }

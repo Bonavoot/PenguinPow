@@ -1,9 +1,9 @@
 {
   "file": "top-hat.png",
-  "width": 256,
-  "height": 150,
+  "width": 320,
+  "height": 193,
   "pivot": {
-    "x": 128,
-    "y": 128
+    "x": 160,
+    "y": 158
   }
 }

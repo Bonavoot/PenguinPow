@@ -25,6 +25,10 @@ const {
   AP_ACTIVE_MS,
   AP_WHIFF_RECOVERY_MS,
   AP_COOLDOWN_MS,
+  AP_FLURRY_STAGGER_BEGIN_MS,
+  AP_FLURRY_SLACK_MS,
+  AP_STAGGER_SLAP_MS,
+  SLAP_STARTUP_MS,
 } = require("./constants");
 
 // Velocity-at-press telemetry sink (MASTERY Phase 0). appendVerbInit is a
@@ -268,34 +272,59 @@ function lagCompensatedParryStart(player, simNowMs) {
 }
 
 // ── GUARD & PARRY arming ────────────────────────────────────────────────────
-// True when a FRESH tap (rising space edge) may open a PARRY window: not in the
-// punishable whiff recovery, off the tiny anti-double-arm cooldown, no live parry
-// window already open, and this physical press hasn't already armed one
-// (apSpaceConsumed clears on release — one window per press). NOTE: this
-// deliberately does NOT gate on isRawParrying, so a re-tap WHILE GUARDING re-arms
-// a parry window (the flurry is answered by re-tapping in rhythm). Callers layer
-// their own action-state gates (grabbing, hit, etc.) on top.
-function canArmAttackParry(player, simTime) {
-  return (
-    !player.isApWhiffRecovering &&
-    !player.apSpaceConsumed &&
-    simTime >= (player.apCooldownUntil || 0) &&
-    simTime >= (player.apActiveUntil || 0)
-  );
+// True when a FRESH tap (rising space edge) may open / re-stamp a PARRY window.
+// Only gate: this physical press hasn't already armed one (apSpaceConsumed
+// clears on the falling Space edge — one window per press). Intentionally NOT
+// gated on:
+//   • apActiveUntil — a re-press RE-STAMPS timing (flurry re-time / Sekiro loop)
+//   • isApWhiffRecovering — cancel recovery roots movement/offense, but a
+//     rising Space may cut it short by arming a new window
+//   • apCooldownUntil — that gap only delays re-entering GUARD after a drop
+//   • isRawParrying / isGuarding — re-tap while guarding re-arms a read
+// Callers layer their own action-state gates (grabbing, hit, etc.) on top.
+function canArmAttackParry(player, _simTime) {
+  return !player.apSpaceConsumed;
+}
+
+// End a live parry window on release (or orphan expiry): short rooted recovery
+// so empty taps cost something, without inputLockUntil jail. Re-press may arm
+// immediately (canArm ignores whiff; armAttackParry clears it).
+function cancelAttackParryWindow(player, simTime) {
+  player.isRawParrying = false;
+  player.isGuarding = false;
+  player.rawParryStartTime = 0;
+  player.apActiveUntil = 0;
+  player.apChainCount = 0;
+  player.apSpaceConsumed = false;
+  player.isApWhiffRecovering = true;
+  player.apRecoveryUntil = simTime + AP_WHIFF_RECOVERY_MS;
+  player.movementVelocity = 0;
+  player.isStrafing = false;
 }
 
 // Open a PARRY window (a fresh, timed TAP). `startTime` is the (lag-compensated)
 // sim time the tap is judged from — the perfect grade is (hitTime − startTime).
 // Clears guard: a tap is an active read, not a hold. No stamina here — cost is
 // charged PER PARRY when it lands (see processHit). If the window closes with no
-// deflect, updateAttackParryState decides guard (still holding) vs whiff (released).
+// deflect, updateAttackParryState decides guard (still holding) vs cancel (released).
+// After a landed parry, apFlurryUntil may extend this window so an immediate
+// re-tap still covers the attacker's ASAP follow-up (tap-every-slap).
 function armAttackParry(player, simTime, startTime) {
+  // Clear success POSE so the next read shows attempting stance — but do NOT
+  // clear isApPostParryLocked. Re-tapping for a flurry must not unlock walk/act.
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
   player.isRawParrying = true;
   player.isGuarding = false; // a fresh read window, not the block floor
+  player.apGuardNeedsRelease = false; // intentional tap — may later fall into GUARD
   player.rawParryStartTime = startTime != null ? startTime : simTime;
   player.apActiveUntil = simTime + AP_ACTIVE_MS;
+  // Flurry cover: early re-tap after a landed parry keeps the window alive long
+  // enough to meet stagger + slap startup. Perfect still uses press→hit delta.
+  const flurryUntil = player.apFlurryUntil || 0;
+  if (flurryUntil > player.apActiveUntil) {
+    player.apActiveUntil = flurryUntil;
+  }
   player.apFlowUntil = 0; // Flow removed — retained field zeroed for safety
   player.isApWhiffRecovering = false;
   player.apRecoveryUntil = 0;
@@ -309,11 +338,55 @@ function armAttackParry(player, simTime, startTime) {
   player.pendingSlapCount = 0;
 }
 
+// Stamp / refresh the post-parry flurry cover deadline (sim clock).
+// `staggerMs` should be the lockout applied to the attacker on this parry
+// (regular slap / perfect / palm / flap) so cover outlasts their ASAP re-fire.
+function grantAttackParryFlurryCover(player, simTime, staggerMs) {
+  const stagger =
+    typeof staggerMs === "number" && staggerMs > 0 ? staggerMs : AP_STAGGER_SLAP_MS;
+  player.apFlurryUntil =
+    simTime +
+    AP_FLURRY_STAGGER_BEGIN_MS +
+    stagger +
+    SLAP_STARTUP_MS +
+    AP_FLURRY_SLACK_MS;
+}
+
+// DEPRECATED — always false. Space-up soft-clears the armed window in
+// updateAttackParryState so you can't walk in blocking.png unable to attack.
+// Flurry cover still extends the NEXT rising-edge re-arm via apFlurryUntil.
+function isAttackParryFlurryLinger(_player, _simTime) {
+  return false;
+}
+
+// True while move+offense are locked after a landed parry (includes success pose
+// and the gap after a flurry re-tap clears the pose flags).
+function isAttackParryPostLocked(player) {
+  return !!(
+    player &&
+    (player.isApPostParryLocked ||
+      player.isRawParrySuccess ||
+      player.isPerfectRawParrySuccess)
+  );
+}
+
+// Drop an expired/stale armed window with Space up — no cancel-recovery jail.
+function clearAttackParryWindow(player) {
+  player.isRawParrying = false;
+  player.isGuarding = false;
+  player.rawParryStartTime = 0;
+  player.apActiveUntil = 0;
+  player.apSpaceConsumed = false;
+}
+
 // Enter GUARD (the block floor) — holding Space with no live parry window. A
 // blocked strike is chip + ground lost + stamina bled (resolved in processHit),
 // never a reward. Does not disturb a live parry window or a success pose.
+// After a landed parry while Space stayed down, apGuardNeedsRelease blocks
+// auto-GUARD until Space is fully released (then HOLD can block again).
 function enterGuard(player) {
   if (player.isApWhiffRecovering) return; // can't guard mid-whiff-punish
+  if (player.apGuardNeedsRelease) return; // post-parry continuous hold ≠ block
   player.isRawParrying = true;
   player.isGuarding = true;
   player.movementVelocity = 0;
@@ -324,16 +397,21 @@ function enterGuard(player) {
 }
 
 // Per-tick GUARD/PARRY state machine (called from the main loop for each player).
-//   • Space released → drop the stance / clear the press-consumed latch.
-//   • Parry window still open → wait for a deflect.
-//   • Window closes with no deflect AND still holding → fall into GUARD (safe).
-//   • Window closes with no deflect AND released (cold tap) → the one hard punish.
-//   • A landed parry's success pose manages its own clear; underneath, the player
-//     is left GUARDING (holding) so the NEXT slap is blocked unless they re-tap.
+//   • Live window + Space up → CANCEL (short recovery; re-press may re-arm now).
+//   • Window expires while still holding → GUARD (grab-vulnerable block floor).
+//   • Dropping guard → tiny AP_COOLDOWN before guard may re-enter.
+//   • Landed parry: GUARD only while still holding; tap-parry drops the floor.
+// Runs AFTER collision so a same-tick release+hit still grades the live window.
 function updateAttackParryState(player, simTime, spaceHeld) {
-  if (!spaceHeld) player.apSpaceConsumed = false;
+  // Safety net: primary clear is the falling-edge path in processInputPacket
+  // (so a same-tick release→re-press can re-arm). This covers CPU / any path
+  // that never saw a falling edge flag.
+  if (!spaceHeld) {
+    player.apSpaceConsumed = false;
+    player.apGuardNeedsRelease = false; // release unlocks HOLD → GUARD again
+  }
 
-  // Whiff-recovery expiry (independent of stance).
+  // Cancel/whiff-recovery expiry (independent of stance).
   if (player.isApWhiffRecovering && simTime >= (player.apRecoveryUntil || 0)) {
     player.isApWhiffRecovering = false;
     player.apRecoveryUntil = 0;
@@ -341,10 +419,13 @@ function updateAttackParryState(player, simTime, spaceHeld) {
 
   if (!player.isRawParrying) return;
 
-  // Landed-parry impact pose is cosmetic; hold the stance until it clears.
+  // Landed-parry impact pose is cosmetic (stance already dropped on connect).
+  // Keep this path for any leftover flags; never promote a hold into GUARD here.
   if (player.isRawParrySuccess || player.isPerfectRawParrySuccess) {
-    // If they let go during the pose, drop guard once the pose ends (handled
-    // next ticks via isGuarding below) — nothing to expire here.
+    if (!spaceHeld) {
+      player.isGuarding = false;
+      player.isRawParrying = false;
+    }
     return;
   }
 
@@ -369,24 +450,34 @@ function updateAttackParryState(player, simTime, spaceHeld) {
     return;
   }
 
-  if (simTime < activeUntil) return; // window still open — wait
+  // Still inside the window.
+  // Space up → drop the window so move+offense unlock together (no "moonwalk
+  // in blocking.png"). Post-parry flurry cover: soft clear (no 90ms whiff jail)
+  // so piano re-taps stay snappy; the NEXT rising edge still gets apFlurryUntil
+  // extension via armAttackParry. Neutral empty taps pay cancel recovery.
+  if (simTime < activeUntil) {
+    if (!spaceHeld) {
+      const flurryUntil = player.apFlurryUntil || 0;
+      if (flurryUntil > 0 && simTime < flurryUntil) {
+        clearAttackParryWindow(player);
+      } else {
+        cancelAttackParryWindow(player, simTime);
+      }
+    }
+    return;
+  }
 
   // ── Window just closed with no deflect ──
-  if (spaceHeld) {
-    // Still holding → a mistimed tap safely becomes GUARD (no punish).
+  if (spaceHeld && !player.apGuardNeedsRelease) {
+    // Still holding → mistimed tap safely becomes GUARD (grab-vulnerable floor).
     player.isGuarding = true;
     player.apActiveUntil = 0;
   } else {
-    // COLD tap released into nothing → the one hard punish.
-    player.isRawParrying = false;
-    player.rawParryStartTime = 0;
-    player.apActiveUntil = 0;
-    player.apChainCount = 0;
-    player.isApWhiffRecovering = true;
-    player.apRecoveryUntil = simTime + AP_WHIFF_RECOVERY_MS;
-    player.inputLockUntil = Math.max(player.inputLockUntil || 0, simTime + AP_WHIFF_RECOVERY_MS);
-    player.movementVelocity = 0;
-    player.isStrafing = false;
+    // Space up, or post-parry hold still suppressing GUARD: soft drop.
+    // Do NOT apply cancel-recovery here — flurry piano linger often ends this
+    // way, and a 90ms jail after ~300ms of cover felt like mud. Neutral empty
+    // taps already paid cancel cost on release.
+    clearAttackParryWindow(player);
   }
 }
 
@@ -636,6 +727,9 @@ function isPlayerInBasicActiveState(player) {
     !player.isHit &&
     !player.isRawParryStun &&
     !player.isRawParrying &&
+    !player.isApPostParryLocked && // survives flurry re-tap; blocks slap/grab/etc.
+    !player.isRawParrySuccess &&
+    !player.isPerfectRawParrySuccess &&
     !player.isApWhiffRecovering && // AP whiffed → committed, punishable recovery
     !player.isThrowingSnowball &&
     !player.isAtTheRopes &&
@@ -706,6 +800,9 @@ function canPlayerDash(player) {
     !player.isHit &&
     !player.isRawParryStun &&
     !player.isRawParrying &&
+    !player.isApPostParryLocked &&
+    !player.isRawParrySuccess &&
+    !player.isPerfectRawParrySuccess &&
     !player.isApWhiffRecovering && // AP whiffed → committed, punishable recovery
     !player.isThrowingSnowball &&
     !player.isAtTheRopes &&
@@ -747,8 +844,10 @@ function resetPlayerAttackStates(player) {
   player.slapFacingDirection = null;
   player.isSlapAttack = false;
   player.isPalmThrust = false;
+  player.isLowKick = false;
   player.palmThrustVisualUntil = 0;
   timeoutManager.clearPlayerSpecific(player.id, "palmThrustVisualEnd");
+  timeoutManager.clearPlayerSpecific(player.id, "lowKickCycle");
   player.attackStartTime = 0;
   player.attackEndTime = 0;
   player.attackType = null;
@@ -796,8 +895,10 @@ function clearAllActionStates(player) {
   player.slapFacingDirection = null;
   player.isSlapAttack = false;
   player.isPalmThrust = false;
+  player.isLowKick = false;
   player.palmThrustVisualUntil = 0;
   timeoutManager.clearPlayerSpecific(player.id, "palmThrustVisualEnd");
+  timeoutManager.clearPlayerSpecific(player.id, "lowKickCycle");
   player.attackStartTime = 0;
   player.attackEndTime = 0;
   player.attackType = null;
@@ -917,8 +1018,13 @@ function clearAllActionStates(player) {
   player.apActiveUntil = 0;
   player.apFlowUntil = 0;
   player.apChainCount = 0;
+  player.apFlurryUntil = 0;
   player.isApWhiffRecovering = false;
   player.apRecoveryUntil = 0;
+  player.apGuardNeedsRelease = false;
+  player.apSpaceConsumed = false;
+  player.isApPostParryLocked = false;
+  player.apPostParryLockUntil = 0;
   
   // Clear movement states
   player.isStrafing = false;
@@ -1115,13 +1221,17 @@ function cancelPendingSlapWork(player) {
   player.isEnhancedSlap = false;
   player.cadenceChain = 0;
   player.currentSlapHitConnected = false;
+  player.currentLowKickHitConnected = false;
   player.isSlapSliding = false;
   player.slapFacingDirection = null;
   player.isInStartupFrames = false;
   player.startupEndTime = 0;
   player.slapActiveEndTime = 0;
+  player.lowKickActiveEndTime = 0;
+  timeoutManager.clearPlayerSpecific(player.id, "lowKickCycle");
+  player.isLowKick = false;
 
-  if (player.inputBuffer && player.inputBuffer.type === "slap") {
+  if (player.inputBuffer && (player.inputBuffer.type === "slap" || player.inputBuffer.type === "lowKick")) {
     player.inputBuffer = null;
   }
 }
@@ -1199,11 +1309,13 @@ function beginFlapStartup(player, now) {
   player.isAttacking = false;
   player.isSlapAttack = false;
   player.isPalmThrust = false;
+  player.isLowKick = false;
   player.isChargingAttack = false;
   player.attackType = null;
   player.attackStartTime = 0;
   player.attackEndTime = 0;
   player.attackCooldownUntil = 0;
+  timeoutManager.clearPlayerSpecific(player.id, "lowKickCycle");
   return true;
 }
 
@@ -1397,6 +1509,11 @@ module.exports = {
   lagCompensatedParryStart,
   canArmAttackParry,
   armAttackParry,
+  grantAttackParryFlurryCover,
+  isAttackParryFlurryLinger,
+  isAttackParryPostLocked,
+  cancelAttackParryWindow,
+  clearAttackParryWindow,
   enterGuard,
   updateAttackParryState,
   // Classes and instances

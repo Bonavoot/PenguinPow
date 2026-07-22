@@ -386,9 +386,7 @@ const Game = ({
 
       // CLIENT-SIDE PREDICTION for gamepad inputs
       if (gamepadKeyState.mouse1 && !keyState.mouse1) {
-        // Mirror the server's mouse1 branch (charged / palm thrust / slap) so a
-        // back+mouse1 palm thrust isn't mispredicted as a slap (which never gets
-        // server-confirmed and used to lock strafing).
+        // Mirror the server's mouse1 branch (charged / low kick / palm / slap).
         if (cp?.facing != null) {
           const forwardKey = cp.facing === -1 ? 'd' : 'a';
           const backKey = cp.facing === -1 ? 'a' : 'd';
@@ -545,9 +543,7 @@ const Game = ({
         //   S + forward  → charged attack
         //   back only    → rooted palm thrust
         //   otherwise    → slap
-        // Predicting the correct one matters: a palm thrust predicted as a slap
-        // never gets confirmed by the server (it never sets isSlapAttack), which
-        // used to leave the attack prediction latched and lock strafing.
+        // (Low kick / S+mouse1 is gated off via LOW_KICK_ENABLED on the server.)
         if (cp?.facing != null) {
           const forwardKey = cp.facing === -1 ? 'd' : 'a';
           const backKey = cp.facing === -1 ? 'a' : 'd';
@@ -822,36 +818,35 @@ const Game = ({
       rewarmDecodedImages();
     };
 
-    const handlePerfectParry = (data) => {
+    // Perfect-parry screen flash — driven by raw_parry_success (the live emit),
+    // not the legacy "perfect_parry" socket which the server never sends.
+    // Short electric-cyan flash-bulb only — no world darken (KO owns that).
+    const armPerfectParryFlash = () => {
       setCrowdEvent({
         type: "cheer",
         intensity: "medium",
         timestamp: Date.now(),
       });
 
-      // MASTERY Phase 4 (4.1): a frame-perfect parry (quality → 1) holds the
-      // cool-grade flash a touch longer than a window-edge one. quality is 0
-      // (flag off / base feel) when absent → today's 360ms.
-      const quality = typeof data?.quality === "number" ? data.quality : 0;
-      const flashHold = 360 + Math.round(quality * 140);
-
-      // "Time-freeze" flash framing the perfect-parry hitstop: cool grade snap
-      // on the world + a faint cyan camera flash (see .perfect-parry-flash in
-      // App.css). Suppressed if a KO grade-punch is mid-flight so they can't
-      // collide.
       const el = containerRef.current;
       if (el && !el.classList.contains("ko-grade-punch")) {
-        // Re-arm the CSS animation cleanly if one is somehow still active.
         el.classList.remove("perfect-parry-flash");
-        // Force reflow so removing + re-adding restarts the keyframes.
         void el.offsetWidth;
         el.classList.add("perfect-parry-flash");
         clearTimeout(perfectParryFlashTimeoutRef.current);
         perfectParryFlashTimeoutRef.current = setTimeout(() => {
           const cur = containerRef.current;
           if (cur) cur.classList.remove("perfect-parry-flash");
-        }, flashHold);
+        }, 360);
       }
+    };
+
+    const handlePerfectParry = () => {
+      armPerfectParryFlash();
+    };
+
+    const handleRawParrySuccessFlash = (data) => {
+      if (data?.isPerfect) armPerfectParryFlash();
     };
 
     // Cinematic-kill framing: for the duration of the KO hitstop, fade in the
@@ -898,6 +893,7 @@ const Game = ({
     socket.on("game_start", handleGameStart);
     socket.on("power_ups_revealed", handlePowerUpsRevealedRewarm);
     socket.on("perfect_parry", handlePerfectParry);
+    socket.on("raw_parry_success", handleRawParrySuccessFlash);
     socket.on("cinematic_kill", handleCinematicKill);
     socket.on("ring_out", handleRingOut);
 
@@ -908,6 +904,7 @@ const Game = ({
       socket.off("game_start", handleGameStart);
       socket.off("power_ups_revealed", handlePowerUpsRevealedRewarm);
       socket.off("perfect_parry", handlePerfectParry);
+      socket.off("raw_parry_success", handleRawParrySuccessFlash);
       socket.off("cinematic_kill", handleCinematicKill);
       socket.off("ring_out", handleRingOut);
       clearTimeout(koPunchTimeoutRef.current);
@@ -922,10 +919,17 @@ const Game = ({
     };
   }, [socket]);
 
-  // Early return if room doesn't exist (e.g., after disconnect/reconnect for CPU games)
+  // Room can lag a tick behind basho/CPU create (rooms broadcast vs page swap).
+  // Never setState during render — and use the real page id ("mainMenu").
+  useEffect(() => {
+    if (currentRoom) return undefined;
+    const t = setTimeout(() => {
+      setCurrentPage("mainMenu");
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [currentRoom, setCurrentPage]);
+
   if (!currentRoom) {
-    // Redirect to main menu if room doesn't exist
-    setCurrentPage("main-menu");
     return null;
   }
 

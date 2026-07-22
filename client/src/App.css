@@ -523,6 +523,10 @@ body {
   opacity: 1;
 }
 
+/* Perfect parry: NO cinematic dim — KO owns the darken beat. Perfect gets a
+   short electric-cyan flash-bulb only (opacity, no filter layers). Toggled by
+   `.perfect-parry-flash` from Game.jsx on raw_parry_success(isPerfect). */
+
 /* Lighter, shorter sibling for *regular* ring-outs — a quick blip of juice on
    every win without diluting the rare cinematic-kill punch above. Deliberately
    tiered: cinematic = big snap, ring-out = subtle pop. Game.jsx guards against
@@ -535,39 +539,28 @@ body {
    (The `.ko-grade-punch--lite` class may still be toggled by Game.jsx; with no
    rule attached it is now a harmless no-op.) */
 
-/* ── Perfect-parry "time-freeze" beat ────────────────────────────────────
-   Fires alongside the 250ms perfect-parry hitstop. Two layers, both toggled
-   by `.perfect-parry-flash` on .game-container from Game.jsx:
-     1) A brief cool-toned grade snap on .game-scene (eased via the existing
-        `transition: filter` on .game-scene) — the world "charges" for an
-        instant, distinct from the warm/contrasty KO grade-punch.
-     2) A cyan full-screen flash on ::before (::after is the steady vignette),
-        keyed to rise fast and fall over the freeze so it reads as a camera
-        flash-bulb at the clash, not a sustained veil. Cyan matches the parry
-        VFX. Pointer-events disabled; sits above the world, below the HUD. */
-/* PERF: removed the full-viewport grade `filter:` here. It allocated offscreen
-   GPU buffers on .game-scene + .game-actors on every perfect parry = the
-   perfect-parry hiccup. The prominent cyan flash (::before below) is a cheap
-   opacity-only effect and stays, so the parry still reads as a flash-bulb clash
-   without the per-use filter-layer cost. The cyan ::before flash is kept below. */
-
 .game-container.perfect-parry-flash::before {
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 199;
-  /* Flat warm-GOLD wash (kept flat, not radial, so there's no bright-center
-     banding / "weird what gets lit up" feel). A real flash-bulb pop so the
-     perfect parry reads as a decisive clash, not a faint tint. Gold matches the
-     golden perfect-parry burst/lines. Rises fast + falls = flash at impact. */
-  background: rgba(255, 224, 130, 0.32);
-  animation: perfect-parry-flash 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  /* Electric ice-cyan flash-bulb — matches the perfect-tier burst. Radial so
+     the clash center stays brightest; rises fast, dies in ~200ms. */
+  background: radial-gradient(
+    ellipse 55% 50% at 50% 48%,
+    rgba(210, 250, 255, 0.42) 0%,
+    rgba(0, 210, 255, 0.18) 42%,
+    rgba(0, 140, 220, 0.06) 68%,
+    transparent 100%
+  );
+  animation: perfect-parry-flash 0.34s cubic-bezier(0.2, 0.85, 0.25, 1) forwards;
 }
 
 @keyframes perfect-parry-flash {
   0% { opacity: 0; }
-  14% { opacity: 1; }
+  10% { opacity: 1; }
+  42% { opacity: 0.85; }
   100% { opacity: 0; }
 }
 

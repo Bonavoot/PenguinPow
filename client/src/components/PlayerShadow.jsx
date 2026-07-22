@@ -7,27 +7,13 @@ import { isOutsideDohyo } from "../constants";
 export const SHADOW_GROUND_LEVEL = 286;
 const GROUND_LEVEL = SHADOW_GROUND_LEVEL;
 
-// Three-zone ground shadow for real weight, from the inside out:
-//   1. CONTACT — a tight, near-black core right where the penguin meets the ice.
-//      This is the "hard contact" darkening that sells the exact touch point and
-//      stops the sprite reading as floating a hair above the surface.
-//   2. CORE   — the main body of the cast shadow, mid-dark, falling off.
-//   3. AMBIENT— a broad, very soft penumbra (diffuse occlusion) that grounds the
-//      whole mass without a hard edge.
-// The previous two-layer version had a lighter core (0.66) and no dedicated
-// hard-contact point, so at rest the penguins read as *placed on top of* the
-// ice. Deepening the contact + widening the soft ambient plants them.
-// The CONTACT core stays near-neutral black for a crisp, believable touch
-// point, but the CORE and AMBIENT falloff are tinted a cold slate-blue. On ice
-// the diffuse/bounced light is cool, so a pure-black penumbra reads as "sticker
-// dropped on the surface"; the cool cast makes the soft shadow belong to the
-// frozen arena (and quietly pairs with the cool rim light on the sprites).
-// Exported so menu portraits (BashoHub, etc.) can reuse the exact same
-// contact / core / ambient recipe instead of inventing a parallel oval.
+// Soft elliptical ground shadow — cool slate tint for ice, continuous falloff.
+// No hard contact puck: a dense center blob reads as a dark sticker on the
+// dohyo. Peak opacity stays modest; the outer layer is just ambient occlusion.
+// Exported so menu portraits (BashoHub, Lobby, PreMatch) share the same recipe.
 export const SHADOW_GRADIENT =
-  "radial-gradient(ellipse 34% 46% at 50% 53%, rgba(2,4,8,0.82) 0%, rgba(4,8,16,0.52) 40%, rgba(4,8,16,0) 72%), " +
-  "radial-gradient(ellipse 62% 66% at 50% 52%, rgba(9,17,32,0.44) 0%, rgba(9,17,32,0.18) 52%, rgba(9,17,32,0) 78%), " +
-  "radial-gradient(ellipse 104% 100% at 50% 52%, rgba(14,24,42,0.22) 0%, rgba(14,24,42,0.07) 56%, rgba(14,24,42,0) 82%)";
+  "radial-gradient(ellipse 72% 78% at 50% 52%, rgba(6,12,24,0.36) 0%, rgba(8,16,30,0.18) 45%, rgba(10,20,36,0.05) 70%, rgba(10,20,36,0) 88%), " +
+  "radial-gradient(ellipse 100% 100% at 50% 52%, rgba(12,22,40,0.14) 0%, rgba(12,22,40,0.05) 52%, rgba(12,22,40,0) 82%)";
 
 const baseStyle = {
   position: "absolute",

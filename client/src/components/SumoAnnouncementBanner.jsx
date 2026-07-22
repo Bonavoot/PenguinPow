@@ -84,39 +84,15 @@ const TYPE_COLORS = {
   break: { color: "#3eea88", deep: "#008844" },
   perfect: { color: "#ffd54a", deep: "#a07020" },
   /*
-   * perfectparry — saturated electric cyan, bumped up from the
-   * previous #4dd6ff so it doesn't read as the same shade as the
-   * grab tech / parry tech blues (which sit around #64c8ff–#7ed6ff).
-   * Pulling the red channel down to 0 and the green up to ~210 gives
-   * a vivid almost-pure cyan that reads as "premium electric blue"
-   * rather than "another washed cyan in the cyan family".
-   *
-   * The "premium" treatment now lives in two places, not one:
-   *   1. textAccent (yellow #ffd84a) — used by MainText as a single
-   *      hard offset under-shelf below the cyan glyphs, replacing
-   *      the dark drop + halo. No fuzzy glow, no stacked extrusion
-   *      layers — just one solid offset of the accent color, the
-   *      simplest version of the "3D effect text" feel without the
-   *      heavy comic-book layering that didn't land in the previous
-   *      pass.
-   *   2. accent (white) — used by the Rule as its background, so
-   *      the underline is a clean white plate against the cyan text
-   *      with the yellow under-shelf above it.
-   *
-   * Combined read: cyan text on a yellow shelf over a white
-   * underline — three distinct callout colors stacked vertically,
-   * each doing one job, no glow, no haze.
-   *
-   *   color:       electric cyan body (matches the in-arena ring blue)
-   *   deep:        deeper electric blue for the rule 1px separator
-   *   accent:      white — Rule body override
-   *   textAccent:  bright yellow — MainText hard offset under-shelf
+   * perfectparry — hotter electric ice-cyan than the in-arena regular
+   * steel-cyan burst / tech blues. White under-shelf (not yellow) so the
+   * callout stays in the cyan family with the perfect-tier VFX.
    */
   perfectparry: {
-    color: "#00d4ff",
-    deep: "#003a55",
+    color: "#3ef0ff",
+    deep: "#004a66",
     accent: "#ffffff",
-    textAccent: "#ffd84a",
+    textAccent: "#e8fbff",
   },
   default: { color: C.cream, deep: C.sumi },
 };

@@ -129,6 +129,7 @@ import {
   SPRITE_HALF_W,
   PLAYER_MID_Y,
   HIT_EFFECT_Y,
+  LOW_KICK_HIT_EFFECT_Y,
   CLAP_SOUND_OFFSET,
   ritualSpritesheetsPlayer1,
   ritualSpritesheetsPlayer2,
@@ -156,6 +157,7 @@ import getImageSrc from "./getImageSrc";
 import {
   getHatOverlayForSprite,
   getEquippedHeadGearId,
+  isHeadGearUnderBody,
 } from "../config/cosmetics";
 import { resolveBodyForHeadGear } from "../config/baldSprites";
 import {
@@ -705,20 +707,13 @@ const GameFighter = ({
   //   [WINDUP_END, SMEAR_END)  → 1 smear    (slap-attack-{1,2}-blur-frame)
   //   [SMEAR_END,  HIT_END)    → 2 hit      (the strike — slap-attack-{1,2}-hit-frame)
   //   [HIT_END,        ∞)      → 3 recovery (SETTLE BACK to the ready stance)
-  // FAST-JAB MODEL: slaps 1 & 2 are meant to read as SNAPPY jabs, not slow taps, so
-  // the front of the cycle is COMPRESSED — a ~1-frame windup and a short smear whip
-  // so the strike lands almost immediately (SMEAR_END sits just under the server
-  // hitbox, SLAP_STARTUP_MS=55, so the hit pose leads the hitbox by a hair). The
-  // hit then holds briefly for impact, and recovery RETURNS to the ready-stance
-  // pose (same as windup) rather than snapping to idle (idle drops the hands to the
-  // sides → read as a flinch). Plain art-driven frame swaps — no procedural
-  // transform. Recovery (frame 3) is the terminal hold: it stays until isSlapAttack
-  // drops (single slap → idle) or slapAnimation changes (chained slap → next
-  // windup, seamless because it's the same stance pose). WINDUP_END/SMEAR_END/
-  // HIT_END are the SPEED dials — shrink them to make the jab flash faster. Clock
-  // is hitstop-aware (computeAnimElapsed) so a GLOBAL freeze pauses cleanly.
-  // Re-anchored on the isSlapAttack rising edge AND on slapAnimation change, so a
-  // chained slap1→slap2 replays from frame 0.
+  // MUST MATCH SERVER FRAME DATA: SMEAR_END == SLAP_STARTUP_MS (55) so the hit
+  // pose begins only when the hitbox goes live; HIT_END == startup+active (155).
+  // Startup stays a fast jab telegraph (brief ready → smear whip), not a reactable
+  // windup — but hit art must never lead the active frames. Recovery RETURNS to
+  // the ready-stance pose (same as windup) rather than snapping to idle. Clock is
+  // hitstop-aware (computeAnimElapsed). Re-anchored on the isSlapAttack rising
+  // edge AND on slapAnimation change, so a chained slap1→slap2 replays from frame 0.
   const slapAnimRef = useRef({
     startedAt: 0,
     anim: 0,
@@ -728,9 +723,9 @@ const GameFighter = ({
     lastHitstopUntil: 0,
   });
   const SLAP_ANIM = {
-    WINDUP_END: 10, // sub-frame set — essentially instant, no perceptible wind-up
-    SMEAR_END: 28, // ~18ms smear whip (~1 frame) — strike lands almost on press
-    HIT_END: 150, // active/hit frame held ~122ms (longer punch) before settling back
+    WINDUP_END: 18, // brief ready stance inside startup
+    SMEAR_END: 55, // == SLAP_STARTUP_MS — hit pose starts with the hitbox
+    HIT_END: 155, // == SLAP_STARTUP_MS + SLAP_ACTIVE_MS — then settle to recovery
   };
 
   // Dash phase clock. Anchored locally on the rising edge of the (predicted)
@@ -857,6 +852,8 @@ const GameFighter = ({
     // (the server never sets isSlapAttack for a thrust, so a slap prediction here
     // would never get confirmed/cleared and would latch movement off).
     isPalmThrust: false,
+    // Rooted low kick / trip (S + mouse1). Same prediction model as palm thrust.
+    isLowKick: false,
     isDodging: false,
     dodgeDirection: null,
     isChargingAttack: false,
@@ -894,27 +891,43 @@ const GameFighter = ({
     movementPredictorRef.current = new MovementPredictor();
   }
 
-  // Client-side mirror of the server's parry commitment, used to suppress
-  // OFFENSIVE predictions (slap / charge / grab / dash) that the server will
-  // reject because it's parrying. Two reasons the server-confirmed
-  // `penguin.isRawParrying` flag isn't enough on its own:
-  //   1) It lags a round trip behind the keypress, so right after you press
-  //      space the client still thinks it can attack.
-  //   2) The server keeps parrying for RAW_PARRY_MIN_DURATION (~200ms) after a
-  //      press EVEN IF space is released — so spamming space + mashing mouse1
-  //      lands attack presses in the gaps between taps, when space is physically
-  //      up and the lagged flag is false, yet the server is still parrying.
-  // We cover both: the live spacebar (covers holds) OR a commit window stamped
-  // on every space press (covers taps/spam + the round-trip lag). Combined with
-  // the server-confirmed flag in the gates below, the whole parry window is
-  // covered with no hole. Local player only; null keys (mobile) read as inactive.
+  // Client-side mirror of server parry commitment — suppress OFFENSIVE
+  // predictions the server will reject. Server AP:
+  //   • Neutral: live window while held; release cancels (+~90 recovery)
+  //   • Post-parry flurry: re-tap may extend window; release soft-clears
+  //     (no linger). predictedFlurryUntilRef only lengthens the NEXT re-arm.
+  const AP_ACTIVE_MS_CLIENT = 180;
+  const AP_CANCEL_RECOVERY_MS_CLIENT = 90;
+  // Match server grantAttackParryFlurryCover (regular slap ≈ 345; perfect ≈ 565)
+  const AP_FLURRY_COVER_REGULAR_MS_CLIENT = 345;
+  const AP_FLURRY_COVER_PERFECT_MS_CLIENT = 565;
   const predictedParryCommitUntilRef = useRef(0);
+  const predictedFlurryUntilRef = useRef(0);
   const isLocalParryActive = useCallback(() => {
     if (!isLocalPlayer) return false;
-    const k = getLocalKeyState();
-    if (k && k[" "]) return true; // space physically held
+    // Post-parry lock (survives flurry re-tap that clears success pose).
+    if (
+      penguin.isApPostParryLocked ||
+      penguin.isRawParrySuccess ||
+      penguin.isPerfectRawParrySuccess ||
+      penguin.isApWhiffRecovering
+    ) {
+      return true;
+    }
+    // Server-confirmed stance. Do NOT treat bare Space as active — after a
+    // landed parry, apGuardNeedsRelease means continued hold ≠ guard/parry,
+    // and treating Space alone as active caused "can't attack" while walking.
+    if (penguin.isRawParrying || penguin.isGuarding) return true;
     return performance.now() < predictedParryCommitUntilRef.current;
-  }, [isLocalPlayer]);
+  }, [
+    isLocalPlayer,
+    penguin.isApPostParryLocked,
+    penguin.isRawParrySuccess,
+    penguin.isPerfectRawParrySuccess,
+    penguin.isApWhiffRecovering,
+    penguin.isRawParrying,
+    penguin.isGuarding,
+  ]);
 
   // ============================================
   // HELPER: Check if player can perform ANY action
@@ -1047,6 +1060,7 @@ const GameFighter = ({
               isSlapAttack: true,
               isAttacking: true,
               isPalmThrust: false,
+              isLowKick: false,
               slapAnimation: predictedState.current.slapAnimation === 1 ? 2 : 1,
               // CRITICAL: Clear other action predictions to prevent visual flicker
               isChargingAttack: false,
@@ -1070,9 +1084,28 @@ const GameFighter = ({
             predictedState.current = {
               ...predictedState.current,
               isPalmThrust: true,
+              isLowKick: false,
               isAttacking: true,
               isSlapAttack: false,
               // CRITICAL: Clear other action predictions to prevent visual flicker
+              isChargingAttack: false,
+              isDodging: false,
+              isRawParrying: false,
+              isGrabbing: false,
+              timestamp: now,
+            };
+            predictionChanged = true;
+          }
+          break;
+        case "low_kick":
+          // Rooted trip (S + mouse1). Same prediction model as palm thrust.
+          if (canPredictAction(gameStarted) && !penguin.isChargingAttack && !isLocalParryActive()) {
+            predictedState.current = {
+              ...predictedState.current,
+              isLowKick: true,
+              isPalmThrust: false,
+              isAttacking: true,
+              isSlapAttack: false,
               isChargingAttack: false,
               isDodging: false,
               isRawParrying: false,
@@ -1090,6 +1123,7 @@ const GameFighter = ({
               // CRITICAL: Clear other action predictions to prevent visual flicker
               isSlapAttack: false,
               isPalmThrust: false,
+              isLowKick: false,
               isAttacking: false,
               isDodging: false,
               isRawParrying: false,
@@ -1118,6 +1152,7 @@ const GameFighter = ({
               // CRITICAL: Clear other action predictions to prevent visual flicker
               isSlapAttack: false,
               isPalmThrust: false,
+              isLowKick: false,
               // Don't clear dodge state - let dodge continue visually
               isDodging: predictedState.current.isDodging,
               isRawParrying: false,
@@ -1139,6 +1174,7 @@ const GameFighter = ({
               isAttacking: false,
               isSlapAttack: false,
               isPalmThrust: false,
+              isLowKick: false,
               isRawParrying: false,
               isGrabbing: false,
               timestamp: now,
@@ -1147,12 +1183,14 @@ const GameFighter = ({
           }
           break;
         case "parry_start":
-          // Stamp the parry commit window on EVERY space press (even when the
-          // parry itself can't visually predict this instant), so offensive
-          // predictions stay suppressed across the server's min-duration parry
-          // and the round-trip lag. Mirrors server RAW_PARRY_MIN_DURATION (200).
+          // Suppress offense for the live window (+RTT). Flurry cover may extend
+          // the server window on re-arm — keep commit at least until flurry ends
+          // while Space is committing a read.
           if (gameStarted) {
-            predictedParryCommitUntilRef.current = now + 200;
+            predictedParryCommitUntilRef.current = Math.max(
+              now + AP_ACTIVE_MS_CLIENT,
+              predictedFlurryUntilRef.current
+            );
           }
           if (canPredictAction(gameStarted) && !penguin.isChargingAttack) {
             predictedState.current = {
@@ -1163,6 +1201,7 @@ const GameFighter = ({
               isAttacking: false,
               isSlapAttack: false,
               isPalmThrust: false,
+              isLowKick: false,
               isDodging: false,
               isGrabbing: false,
               timestamp: now,
@@ -1171,7 +1210,13 @@ const GameFighter = ({
           }
           break;
         case "parry_release":
-          // Only clear parry if we were parrying
+          // Server soft-clears the armed window on release (no linger). Short
+          // offense suppress only — do NOT hold commit until flurry end or you
+          // can walk while unable to attack for hundreds of ms.
+          if (gameStarted) {
+            predictedParryCommitUntilRef.current =
+              now + AP_CANCEL_RECOVERY_MS_CLIENT;
+          }
           if (penguin.isRawParrying || predictedState.current.isRawParrying) {
             predictedState.current = {
               ...predictedState.current,
@@ -1191,6 +1236,7 @@ const GameFighter = ({
               isAttacking: false,
               isSlapAttack: false,
               isPalmThrust: false,
+              isLowKick: false,
               isDodging: false,
               isRawParrying: false,
               timestamp: now,
@@ -1290,6 +1336,7 @@ const GameFighter = ({
             slapAnimation: predictedState.current.slapAnimation,
             isAttacking: false,
             isPalmThrust: false,
+            isLowKick: false,
             isDodging: false,
             dodgeDirection: null,
             isChargingAttack: false,
@@ -1351,10 +1398,12 @@ const GameFighter = ({
       if (
         predictedState.current.isSlapAttack ||
         predictedState.current.isPalmThrust ||
+        predictedState.current.isLowKick ||
         predictedState.current.isAttacking
       ) {
         predictedState.current.isSlapAttack = false;
         predictedState.current.isPalmThrust = false;
+        predictedState.current.isLowKick = false;
         predictedState.current.isAttacking = false;
       }
       return penguin;
@@ -1382,6 +1431,7 @@ const GameFighter = ({
         // thrust until I press something else" lock.
         predictedState.current.isSlapAttack = false;
         predictedState.current.isPalmThrust = false;
+        predictedState.current.isLowKick = false;
         predictedState.current.isAttacking = false;
         predictedState.current.isDodging = false;
         predictedState.current.isChargingAttack = false;
@@ -1421,6 +1471,7 @@ const GameFighter = ({
         slapAnimation: predictedState.current.slapAnimation,
         isAttacking: false,
         isPalmThrust: false,
+        isLowKick: false,
         isDodging: false,
         dodgeDirection: null,
         isChargingAttack: false,
@@ -1470,18 +1521,33 @@ const GameFighter = ({
       predictedState.current.isAttacking = false;
     }
 
+    // Low kick reconciliation (same model as palm thrust).
+    if (
+      prediction.isLowKick &&
+      !penguin.isLowKick &&
+      !penguin.isAttacking
+    ) {
+      predictedState.current.isLowKick = false;
+      predictedState.current.isAttacking = false;
+    } else if (prediction.isLowKick && penguin.isLowKick) {
+      predictedState.current.isLowKick = false;
+      predictedState.current.isAttacking = false;
+    }
+
     // Charged attack: If we predicted attacking (non-slap) but server says not attacking
     // AND not charging, the server has moved past the attack - clear stale prediction.
     // Use predictionAge > 100ms to give the server time to confirm the attack initially.
     if (
       prediction.isAttacking &&
       !prediction.isSlapAttack &&
+      !prediction.isLowKick &&
       !penguin.isAttacking &&
       !penguin.isChargingAttack &&
       predictionAge > 100
     ) {
       predictedState.current.isAttacking = false;
       predictedState.current.isPalmThrust = false;
+      predictedState.current.isLowKick = false;
     }
 
     // Dodge: If server says no dodge, trust server
@@ -1533,6 +1599,7 @@ const GameFighter = ({
     if (
       !p.isSlapAttack &&
       !p.isPalmThrust &&
+      !p.isLowKick &&
       !p.isAttacking &&
       !p.isDodging &&
       !p.isChargingAttack &&
@@ -1552,6 +1619,7 @@ const GameFighter = ({
       isSlapAttack: p.isSlapAttack || penguin.isSlapAttack,
       slapAnimation: p.isSlapAttack ? p.slapAnimation : penguin.slapAnimation,
       isPalmThrust: p.isPalmThrust || penguin.isPalmThrust,
+      isLowKick: p.isLowKick || penguin.isLowKick,
       isAttacking: p.isAttacking || penguin.isAttacking,
       isDodging: p.isDodging || penguin.isDodging,
       dodgeDirection: p.isDodging ? p.dodgeDirection : penguin.dodgeDirection,
@@ -1569,6 +1637,7 @@ const GameFighter = ({
     if (isInFlapMechanic(penguin)) {
       merged.isSlapAttack = false;
       merged.isPalmThrust = false;
+      merged.isLowKick = false;
       merged.isAttacking = false;
     }
 
@@ -1591,6 +1660,7 @@ const GameFighter = ({
       // Server is parrying — never paint predicted offense over the parry.
       merged.isSlapAttack = penguin.isSlapAttack;
       merged.isPalmThrust = penguin.isPalmThrust;
+      merged.isLowKick = penguin.isLowKick;
       merged.isAttacking = penguin.isAttacking;
       merged.isChargingAttack = penguin.isChargingAttack;
       merged.isGrabbing = penguin.isGrabbing;
@@ -1984,6 +2054,7 @@ const GameFighter = ({
             pendingAction.isAttacking ||
             pendingAction.isSlapAttack ||
             pendingAction.isPalmThrust ||
+            pendingAction.isLowKick ||
             pendingAction.isDodging ||
             pendingAction.isChargingAttack ||
             pendingAction.isRawParrying ||
@@ -2562,6 +2633,7 @@ const GameFighter = ({
           prev.grabState !== newState.grabState ||
           prev.isSlapAttack !== newState.isSlapAttack ||
           prev.isPalmThrust !== newState.isPalmThrust ||
+          prev.isLowKick !== newState.isLowKick ||
           // Per-thrust VFX nonce — MUST force a commit so the palm-thrust cone
           // fires on EVERY thrust. Without it, a buffered thrust (isAttacking
           // already latched true) or a locally-predicted first thrust would
@@ -2576,6 +2648,7 @@ const GameFighter = ({
           prev.isRecovering !== newState.isRecovering ||
           prev.isRawParrySuccess !== newState.isRawParrySuccess ||
           prev.isPerfectRawParrySuccess !== newState.isPerfectRawParrySuccess ||
+          prev.isApPostParryLocked !== newState.isApPostParryLocked ||
           prev.isThrowingSnowball !== newState.isThrowingSnowball ||
           prev.isSpawningPumoArmy !== newState.isSpawningPumoArmy ||
           prev.isBeingPulled !== newState.isBeingPulled ||
@@ -2833,7 +2906,9 @@ const GameFighter = ({
 
         if (index === 0 && !data.cinematicKill) {
           const pan = xToPan(data.x);
-          if (data.attackType === "slap") {
+          const isLowKickHit =
+            data.isLowKick || data.attackType === "lowKick";
+          if (data.attackType === "slap" || isLowKickHit) {
             const baseSound = pickRandomSound(slapHitSounds);
             playSoundVaried(baseSound, 0.038, null, 1.0, pan);
             // A5 sound layering — counter / punish gets a second pitched layer
@@ -2891,14 +2966,18 @@ const GameFighter = ({
         // per-hit DOM/animation cost — same single effect on screen. (Shake,
         // sounds, and the counter/punish banner above are already index-0 only.)
         if (index === 0) {
+          const isLowKickHit =
+            data.isLowKick || data.attackType === "lowKick";
           setHitEffectPosition({
             x: data.x + 70,
-            y: HIT_EFFECT_Y,
+            // Low kick spark sits at the ankles/shins; everything else at chest.
+            y: isLowKickHit ? LOW_KICK_HIT_EFFECT_Y : HIT_EFFECT_Y,
             facing: data.facing || 1,
             timestamp: data.timestamp,
             hitId: data.hitId,
             attackType: data.attackType || "slap",
             isPalmThrust: data.isPalmThrust || false,
+            isLowKick: isLowKickHit,
             isCounterHit: data.isCounterHit || false,
             isPunish: data.isPunish || false,
             isArmorBreak: data.isArmorBreak || false,
@@ -3046,6 +3125,24 @@ const GameFighter = ({
 
     const handleRawParrySuccess = (data) => {
       lastRawParryTime.current = Date.now();
+      // Local parrier: stamp flurry cover for the NEXT rising-edge re-arm only.
+      // Stance already dropped on connect — clear local commit so a held Space
+      // doesn't keep suppressing offense after the plant unlocks.
+      if (
+        isLocalPlayer &&
+        data?.isAttackParry &&
+        data.parrierId === penguin.id
+      ) {
+        predictedFlurryUntilRef.current =
+          performance.now() +
+          (data.isPerfect
+            ? AP_FLURRY_COVER_PERFECT_MS_CLIENT
+            : AP_FLURRY_COVER_REGULAR_MS_CLIENT);
+        predictedParryCommitUntilRef.current = 0;
+        if (predictedState.current.isRawParrying) {
+          predictedState.current.isRawParrying = false;
+        }
+      }
       if (data && typeof data.parrierX === "number") {
         // Two GameFighter instances both listen to this event; only index 0
         // owns the HUD portal + shared VFX state (same pattern as UiPlayerInfo).
@@ -3061,8 +3158,8 @@ const GameFighter = ({
         // POINT (midpoint of parrier + attacker) so it lands correctly for BOTH
         // players regardless of facing/side — SlapParryEffect centers on x
         // (SPRITE_HALF_W === 0), so no per-facing offset is needed. No refund
-        // (AP is a committed gamble). The KILL rides the pull cinematic + the
-        // perfect-parry darken/zoom beat.
+        // (AP is a committed gamble). The KILL rides the pull cinematic; perfect
+        // still gets the electric-cyan burst / flash (no camera zoom/darken).
         if (data.isAttackParry) {
           // Sit close to the parrier (not the mid-contact gap). Perfect keeps a
           // slightly forward read; regular hugs the body.
@@ -3085,6 +3182,7 @@ const GameFighter = ({
             variant: isPerfect ? "perfect" : "parry",
             chain,
             isPerfect,
+            playerNumber: data.playerNumber || 1,
           });
           // Chain crescendo: each consecutive deflect rises in pitch so a flurry
           // of parries builds musically instead of flatly repeating.
@@ -3135,7 +3233,7 @@ const GameFighter = ({
 
     // GUARD BLOCK — the block floor absorbed a slap/palm as chip. Tilted blue
     // absorb ring + muffled thud; distinctly weaker than a parry's bright clink.
-    // Pose: brief block-parry.png SUCCESS (BLOCK_SUCCESS_POSE_MS ≈ AP's 120ms),
+    // Pose: brief block-parry.png SUCCESS (BLOCK_SUCCESS_POSE_MS ≈ AP success pose),
     // then back to attempting so a flurry re-fires instead of freezing on success.
     // Index 0 owns VFX.
     const handleGuardBlock = (data) => {
@@ -3407,6 +3505,7 @@ const GameFighter = ({
         slapAnimation: predictedState.current.slapAnimation,
         isAttacking: false,
         isPalmThrust: false,
+        isLowKick: false,
         isDodging: false,
         dodgeDirection: null,
         isChargingAttack: false,
@@ -3476,6 +3575,7 @@ const GameFighter = ({
         slapAnimation: predictedState.current.slapAnimation,
         isAttacking: false,
         isPalmThrust: false,
+        isLowKick: false,
         isDodging: false,
         dodgeDirection: null,
         isChargingAttack: false,
@@ -3519,6 +3619,7 @@ const GameFighter = ({
         slapAnimation: predictedState.current.slapAnimation,
         isAttacking: false,
         isPalmThrust: false,
+        isLowKick: false,
         isDodging: false,
         dodgeDirection: null,
         isChargingAttack: false,
@@ -3706,7 +3807,7 @@ const GameFighter = ({
 
   useEffect(() => {
     // Trigger swing sound for non-slap attacks. Palm thrust gets its own
-    // dedicated whiff sound; charged attacks keep the generic attack sound.
+    // dedicated whiff sound; charged / low kick keep the generic attack sound.
     if (
       penguin.isAttacking &&
       !penguin.isSlapAttack &&
@@ -3720,7 +3821,7 @@ const GameFighter = ({
     }
     // Update the last attack state
     lastAttackState.current = penguin.isAttacking && !penguin.isSlapAttack;
-  }, [penguin.isAttacking, penguin.isSlapAttack, penguin.isPalmThrust]);
+  }, [penguin.isAttacking, penguin.isSlapAttack, penguin.isPalmThrust, penguin.isLowKick]);
 
   // Separate effect for slap attack sounds based on slapAnimation changes
   useEffect(() => {
@@ -4877,13 +4978,11 @@ const GameFighter = ({
         x: penguin.x,
         y: penguin.y,
       });
-      // Disabled to preview the perfect parry without the gold/yellow flame
-      // smoke (pickGoldPuff burst).
-      // emitParticles("perfectParryFlameBurst", {
-      //   x: penguin.x,
-      //   y: penguin.y,
-      //   facing: penguin.facing,
-      // });
+      emitParticles("perfectParrySparkBurst", {
+        x: penguin.x,
+        y: penguin.y,
+        facing: penguin.facing,
+      });
     }
     lastPerfectParryState.current = penguin.isPerfectRawParrySuccess;
   }, [penguin.isPerfectRawParrySuccess, penguin.x, penguin.y, penguin.facing, emitParticles, clearRawParryBlueHold]);
@@ -5577,6 +5676,7 @@ const GameFighter = ({
     flapUseDodgePose,
     displayPenguin.isPalmThrust,
     palmThrustFrame,
+    displayPenguin.isLowKick,
     // Aerial hit+spin only while thrown AND not yet in the early-landing window.
     penguin.isBeingThrown && !showClinchKillThrowLanding,
     slapFrame,
@@ -5867,14 +5967,19 @@ const GameFighter = ({
     !isKillVictim && !isAnimatedSprite && headGearId
       ? getHatOverlayForSprite(effectiveSpriteSrc, headGearId)
       : null;
+  const hatUnderBody = !!(headGearId && isHeadGearUnderBody(headGearId));
 
   const hatPairKey =
     hatOverlaySrc && recoloredSpriteSrc
-      ? `${recoloredSpriteSrc}||${hatOverlaySrc}`
+      ? `${recoloredSpriteSrc}||${hatOverlaySrc}||${hatUnderBody ? "under" : "over"}`
       : null;
   const cachedHatted = hatPairKey
-    ? getCachedHatComposite(recoloredSpriteSrc, hatOverlaySrc) ||
-      compositeHatOntoSpriteSync(recoloredSpriteSrc, hatOverlaySrc)
+    ? getCachedHatComposite(recoloredSpriteSrc, hatOverlaySrc, hatUnderBody) ||
+      compositeHatOntoSpriteSync(
+        recoloredSpriteSrc,
+        hatOverlaySrc,
+        hatUnderBody,
+      )
     : null;
 
   useEffect(() => {
@@ -5883,10 +5988,14 @@ const GameFighter = ({
       setHattedPairKey(null);
       return undefined;
     }
-    const pairKey = `${recoloredSpriteSrc}||${hatOverlaySrc}`;
+    const pairKey = `${recoloredSpriteSrc}||${hatOverlaySrc}||${hatUnderBody ? "under" : "over"}`;
     const ready =
-      getCachedHatComposite(recoloredSpriteSrc, hatOverlaySrc) ||
-      compositeHatOntoSpriteSync(recoloredSpriteSrc, hatOverlaySrc);
+      getCachedHatComposite(recoloredSpriteSrc, hatOverlaySrc, hatUnderBody) ||
+      compositeHatOntoSpriteSync(
+        recoloredSpriteSrc,
+        hatOverlaySrc,
+        hatUnderBody,
+      );
     if (ready) {
       setHattedBodySrc(ready);
       setHattedPairKey(pairKey);
@@ -5895,7 +6004,7 @@ const GameFighter = ({
     // Miss: do NOT clear React state here — pairKey mismatch already prevents
     // painting a stale composite. Clearing forced a 1-frame unhatted flash.
     let cancelled = false;
-    compositeHatOntoSprite(recoloredSpriteSrc, hatOverlaySrc)
+    compositeHatOntoSprite(recoloredSpriteSrc, hatOverlaySrc, hatUnderBody)
       .then(async (url) => {
         await preDecodeImage(url);
         if (!cancelled) {
@@ -5912,7 +6021,7 @@ const GameFighter = ({
     return () => {
       cancelled = true;
     };
-  }, [hatOverlaySrc, recoloredSpriteSrc]);
+  }, [hatOverlaySrc, recoloredSpriteSrc, hatUnderBody]);
 
   const validHatted =
     cachedHatted ||

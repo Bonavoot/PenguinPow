@@ -17,13 +17,12 @@
 //   rot    : micro-roll amplitude in degrees. 0 for light/repeatable events;
 //            a touch on heavy hits is the AAA "snap". Kept tiny so map edges
 //            are never exposed (useCamera also hard-clamps translation).
-// ZOOM POLICY: the trauma-shake bus does NOT zoom at all. The only zoom-punch
-// in the game is the ceremonial hakkiyoi pulse (useCamera onGameStart), the
-// cinematic-kill camera (useCamera's own CINEMATIC_PUNCH_BOOST), and the single
-// deliberate exception below: perfect_parry (a rare, decisive "read" moment that
-// earns a real punch). Every OTHER profile here is punch: 0 — shake is pure
-// translation + roll. Smaller events still read as clearly lighter because the
-// translation amplitude scales per event. (Per-event roll/trauma keep weight.)
+// ZOOM POLICY: the trauma-shake bus does NOT zoom for combat hits. The only
+// zoom-punches in the game are the ceremonial hakkiyoi pulse (useCamera
+// onGameStart), the cinematic-kill camera (CINEMATIC_PUNCH_BOOST), and the
+// kill_throw_land comic slam. Perfect parry gets weight from a sharp trauma
+// crack + roll — its "punch" lives on the VFX burst (scale pop / flash /
+// spokes), not the camera. Every other profile is punch: 0.
 export const SHAKE_PROFILES = {
   // ── Per-hit tiers (driven by player_hit: attackType) ──
   // Slap pokes — snappy rattle.
@@ -49,17 +48,16 @@ export const SHAKE_PROFILES = {
   // Slap clash — now RARE + DECISIVE, so it reads as a real event: heavy thump
   // with a clear roll (no zoom). Sits with the other "that mattered" hits.
   slap_parry:      { trauma: 0.72, punch: 0.0, rot: 0.40 },
-  // Perfect parry is a rare, decisive "I read you" moment — the exact case the
-  // zoom policy reserves a punch for. Heavier crunch + roll + a real (but capped)
-  // zoom-punch so it lands like an exclamation point, not just a rattle.
-  perfect_parry:   { trauma: 0.82, punch: 0.08, rot: 0.55 },
+  // Perfect parry — decisive read. Sharp crack + roll, no camera zoom (the
+  // burst itself punches). Sits under charged_hit / cinematic kill ceiling.
+  perfect_parry:   { trauma: 0.86, punch: 0.0, rot: 0.52 },
   charge_clash:    { trauma: 0.72, punch: 0.0, rot: 0.45 },
   ring_out:        { trauma: 0.78, punch: 0.0, rot: 0.40 },
   // Legacy alias — clinch kill-throw landing now uses kill_throw_land.
   kill_throw:      { trauma: 0.92, punch: 0.0, rot: 0.60 },
   // Clinch kill-throw BODY SLAM — comically over-the-top, this landing only.
   // amp multiplies rendered shake offsets past the normal trauma=1 ceiling;
-  // punch is the rare zoom exception (same policy bucket as perfect_parry).
+  // punch is the rare zoom exception reserved for this comic landing.
   kill_throw_land: { trauma: 1.0, punch: 0.15, rot: 2.6, amp: 2.15 },
 
   default:         { trauma: 0.50, punch: 0.0, rot: 0.10 },

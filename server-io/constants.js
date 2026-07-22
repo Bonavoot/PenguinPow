@@ -19,13 +19,14 @@ const BROADCAST_EVERY_N_TICKS = 2; // 2 = 32 Hz broadcast (client interpolation 
 const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'balance', 'id', 'fighter', 'color', 'mawashiColor', 'bodyColor', 'gearIds'];
 
 const DELTA_TRACKED_PROPS = [
-  'isAttacking', 'isSlapAttack', 'isPalmThrust', 'palmThrustFxId', 'slapAnimation', 'attackType',
+  'isAttacking', 'isSlapAttack', 'isPalmThrust', 'palmThrustFxId', 'isLowKick', 'slapAnimation', 'attackType',
   'isChargingAttack', 'chargeAttackPower', 'chargeStartTime',
   'isBurstKnockback',
   'isGrabbing', 'isBeingGrabbed', 'grabbedOpponent', 'grabState', 'grabAttemptType',
   'isGrabbingMovement', 'isWhiffingGrab', 'isGrabWhiffRecovery', 'isGrabTeching', 'grabTechRole', 'isGrabStartup',
   'isHit', 'lastHitType', 'isDead', 'isRecovering', 'isDodging', 'isDodgeStartup', 'isDodgeRecovery', 'dodgeDirection', 'justLandedFromDodge',
   'isRawParrying', 'isGuarding', 'isRawParryStun', 'isRawParrySuccess', 'isPerfectRawParrySuccess',
+  'isApPostParryLocked',
   'isApWhiffRecovering',
   'isThrowing', 'isBeingThrown', 'isThrowTeching', 'isBeingPulled', 'isBeingPushed',
   'isThrowingSalt', 'isReady', 'isBowing', 'isAtTheRopes',
@@ -36,7 +37,11 @@ const DELTA_TRACKED_PROPS = [
   'isAttemptingPull', 'isBeingPullReversaled',
   'isGrabSeparating', 'isGrabBellyFlopping', 'isBeingGrabBellyFlopped',
   'isGrabFrontalForceOut', 'isBeingGrabFrontalForceOut',
-  'knockbackVelocity', 'activePowerUp', 'powerUpMultiplier',
+  'knockbackVelocity',
+  // Parry/guard shove slide (separate from isHit knockback). Client prediction
+  // must suspend while this is non-zero — it is not modeled locally.
+  'slapParryKnockbackVelocity',
+  'activePowerUp', 'powerUpMultiplier',
   'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown', 'snowballThrowsRemaining', 'pumoArmySpawnsRemaining',
   'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing', 'effectiveMoveSpeedMult',
   'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
@@ -129,9 +134,9 @@ const GRAB_RANGE = 146; // Command grab range — same +16 past pushbox overhang
 // Startup: committed but can't hit. Active: hitbox live. Recovery: punishable.
 // ============================================
 const SLAP_STARTUP_MS = 55;       // Wind-up before hitbox. Kept SHORT so slaps
-                                  // read as FAST jabs (not slow taps) — the client
-                                  // windup→smear→hit animation is compressed to match
-                                  // (see SLAP_ANIM in GameFighter).
+                                  // read as FAST jabs (not slow taps). Client
+                                  // SLAP_ANIM.SMEAR_END must equal this so hit art
+                                  // never leads the active frames (see GameFighter).
 const SLAP_ACTIVE_MS = 100;       // Hitbox live window
 const SLAP_RECOVERY_MS = 75;      // Can't act, no hitbox. Full cycle = 230ms — the
                                   // press-to-press rhythm of repeated slaps.
@@ -245,6 +250,25 @@ const PALM_THRUST_STAMINA_COST = 4;        // Slightly above slap (3) — commit
 // Rooted (no lunge), so it needs a little more raw reach than the charged
 // hitbox to feel like a committed extended-arm thrust — a touch past slap.
 const PALM_THRUST_HITBOX_DISTANCE_VALUE = 164; // Rooted thrust — same +34 past pushbox tip overhang as before
+
+// ── LOW KICK / TRIP (S + mouse1, no forward) ────────────────────────────────
+// Rooted anti-defense poke. Beats parry/guard and grab startup; loses to slap /
+// palm / charged on trade. No ring-out. Small shove (~one slap of ground),
+// posture-focused reward — a read tool, not a kill move.
+// Flip to true to re-enable input + execution (code kept intact).
+const LOW_KICK_ENABLED = false;
+const LOW_KICK_STARTUP_MS = 95;
+const LOW_KICK_ACTIVE_MS = 85;
+const LOW_KICK_RECOVERY_MS = 300;       // Whiff is rooted + long → punishable
+const LOW_KICK_HIT_RECOVERY_MS = 180;   // Settle on confirm
+const LOW_KICK_TOTAL_MS =
+  LOW_KICK_STARTUP_MS + LOW_KICK_ACTIVE_MS + LOW_KICK_RECOVERY_MS;
+const LOW_KICK_STAMINA_COST = 3;
+const LOW_KICK_HITBOX_DISTANCE_VALUE = 142; // Slightly past slap (138); was 178 (far too long)
+const LOW_KICK_KB_VELOCITY = 1.05;      // ≈ slap victim drift, not a shove
+const LOW_KICK_BALANCE_DRAIN = 12;      // Above slap (~7), under palm (20)
+const LOW_KICK_BALANCE_DRAIN_VS_PARRY = 16; // Bonus for beating Space
+const LOW_KICK_BALANCE_DRAIN_COUNTER = 16;
 
 const GRAB_STARTUP_MS = 165;      // Readable telegraph. Trimmed 180→165 to let
                                   // grabs win the timing race vs slaps a bit
@@ -526,20 +550,12 @@ const RAW_PARRY_MAX_DURATION = 700; // Auto-end after this — forces timing, pr
 // auto-drop right before a telegraphed charged lunge lands. Still finite (anti-camp).
 const RAW_PARRY_COOLDOWN_MS = 150; // Cooldown after a fully-released parry before you can parry again (prevents perfect-window spam). Bypassed by re-arm (see below).
 
-// ── PARRY RE-ARM (Sekiro-style re-tap) ──────────────────────────────────────
-// The perfect window is judged as (hitTime − rawParryStartTime). A single press
-// can't be timed against attacks whose connect time varies wildly (a point-blank
-// slap connects ~55ms after the attacker presses; a charged attack lunges for
-// 300–1000ms+), so one press against a lunge is always "too early" → regular, not
-// perfect. RE-ARM fixes this: a FRESH space press (rising edge) WHILE already
-// parrying re-stamps rawParryStartTime (lag-compensated), re-opening the perfect
-// window so the player can re-time the just-frame against the actual connect.
-// HOLD stays a reliable block (no re-arm without a new press). Anti-mash: each
-// re-arm costs stamina and is rate-limited wider than the perfect window, so
-// spamming leaves gaps and gasses you out instead of guaranteeing a perfect —
-// and a grab still counter-grabs a parry, punishing panic re-taps.
-const RAW_PARRY_REARM_STAMINA_COST = 5;   // Cheaper than the initial 12, but stacks fast when mashed
-const RAW_PARRY_REARM_INTERVAL_MS = 180;  // Min gap between re-arms — wider than PERFECT_PARRY_WINDOW so consecutive re-taps leave real (punishable) gaps
+// ── Legacy RAW_PARRY_REARM_* (unused by live AP) ─────────────────────────────
+// Live re-time is: falling Space clears apSpaceConsumed + rising Space calls
+// armAttackParry (re-stamps start/window). Stamina is charged on land (AP_STAMINA_COST),
+// not per re-arm. These constants remain only so old imports don't throw.
+const RAW_PARRY_REARM_STAMINA_COST = 5;
+const RAW_PARRY_REARM_INTERVAL_MS = 180;
 
 // Parry visual timing
 const PARRY_SUCCESS_DURATION = 500; // How long the parry success pose is held
@@ -560,8 +576,10 @@ const PERFECT_PARRY_BALANCE_REFUND = 12;
 // auto-cover): a flurry is answered by RE-TAPPING in rhythm, one tap per slap.
 //
 //   • TAP (rising edge), timed as the strike connects → PARRY. Deflects a slap
-//     or palm thrust (NOT grabs, NOT charged). The attacker eats their move's
-//     own recovery (rendered in their ATTACK pose — never hit.png), loses
+//     or palm thrust (NOT grabs, NOT charged). A landed parry opens a short
+//     flurry cover (AP_FLURRY_COVER_MS) so the next re-tap can answer an ASAP
+//     follow-up slap — tap-every-slap is intentional. The attacker eats their
+//     move's own recovery (rendered in their ATTACK pose — never hit.png), loses
 //     balance, and is shoved back OUT of range: you REVERSE the ground, not just
 //     stop losing it. Graded by how dead-on the tap was:
 //        – REGULAR: position payout (shove + balance drain), ~neutral frames.
@@ -571,19 +589,36 @@ const PERFECT_PARRY_BALANCE_REFUND = 12;
 //     becomes the lethal slap-down (pull cinematic).
 //   • HOLD → GUARD (the block floor): you survive slaps/palms as chip + a little
 //     ground lost + stamina bleed — but no reward. Rooted; does NOT stop grabs or
-//     charged. Bleed to 0 → guard-crush → gassed. A MISTIMED tap while holding
-//     just becomes a guard (no punish), so you can attempt parries fearlessly.
-//   • The ONLY hard punish is a COLD tap released into empty air →
-//     AP_WHIFF_RECOVERY_MS.
+//     charged (grab is the standard FG answer to a held block). Bleed to 0 →
+//     guard-crush → gassed. A MISTIMED tap while holding just becomes a guard
+//     (no cancel recovery), so you can attempt parries fearlessly into block.
+//     After a LANDED parry, a continued hold does NOT auto-GUARD — release once
+//     then HOLD to block again (keeps release→re-press piano taps clean).
+//   • RELEASE during a live window → CANCEL (window ends). Short rooted recovery
+//     (AP_WHIFF_RECOVERY_MS) so empty taps aren't free, but RE-PRESS may arm a
+//     fresh window immediately (recovery does not lock out parry). This is the
+//     premium FG re-time loop — not a 260ms jail for letting go.
 //
 // RPS: parry/guard both LOSE to GRAB (counter-grab is the anti-defense read) and
 // to CHARGED (blows through). Every parry costs stamina; turtling gasses you.
 // (Reuses the isRawParrying / isRawParrySuccess flags + the spacebar plumbing.)
-const AP_ACTIVE_MS = 140;            // PARRY WINDOW: a tap deflects if the strike connects within this of the (lag-comp) press. ~9 frames — forgiving enough to re-tap a flurry.
+const AP_ACTIVE_MS = 180;            // PARRY WINDOW: a tap deflects if the strike connects within this of the (lag-comp) press. Slightly longer than the old 140 so a correct prediction that isn't super-early still covers connect; Perfect stays PERFECT_PARRY_WINDOW.
+// Early-active slap grace: for the first N ms of slap ACTIVE frames, open hits
+// (defender not in Space stance) are deferred, while live PARRY / GUARD still
+// resolve immediately. Gives a slightly-late tap time to arm during early active
+// without making the jab fully reactable on startup. Slap-only.
+const AP_LATE_PARRY_MS = 45;
 const AP_FLOW_WINDOW_MS = 400;       // DEPRECATED (Deflect Flow removed). Kept only so existing imports resolve; unreferenced by the new state machine.
-const AP_SUCCESS_RECOVERY_MS = 120;  // IMPACT-pose hold PER deflect. MUST stay < the slap cadence (SLAP_TOTAL_MS 230) so a flurry RE-FIRES the pose every parry instead of freezing on one frame (this was the 280ms static-sprite bug).
-const AP_WHIFF_RECOVERY_MS = 260;    // Punishable recovery — ONLY on a COLD tap released into nothing (a mistimed tap while HOLDING becomes guard, no punish).
-const AP_COOLDOWN_MS = 40;           // Tiny anti-double-arm gap between fresh taps.
+// IMPACT-pose + post-parry move/offense lock (sim-clock; frozen during hitstop,
+// so this mostly plays AFTER the freeze). Same duration for regular and perfect
+// — attacker stagger/advantage is THEIR jail, not an extra plant on the parrier.
+// Flurry re-tap still clears/re-arms via armAttackParry (lock flag survives).
+const AP_SUCCESS_RECOVERY_MS = 155;
+// Cancel / empty-tap recovery: rooted endlag when a live window is released (or
+// expires) into nothing. Tuned ≈ slap recovery — real cost, not longer than a
+// slap cycle. Does NOT set inputLockUntil; a rising Space re-arms through it.
+const AP_WHIFF_RECOVERY_MS = 90;
+const AP_COOLDOWN_MS = 40;           // Tiny gap before GUARD may re-enter after a drop. Fresh taps (rising Space) ignore this so release→re-press is an immediate parry window.
 const AP_STAMINA_COST = 3;           // Charged per parry tap — cheap (reward using it), but re-tapping a long flurry still drains you.
 // KILL gate: the parried attacker's balance must be DEEPLY broken (< this) for the
 // lethal slap-down. Set well UNDER the clinch kill threshold (15) and the posture
@@ -602,8 +637,11 @@ const AP_PERFECT_BALANCE_DRAIN = 18;  // Perfect parry — a real posture swing
 // (you regain the space); perfect sends them a real beat farther.
 const AP_ATTACKER_KNOCKBACK = 4.4;         // Regular ≈ 70px
 const AP_PERFECT_ATTACKER_KNOCKBACK = 8.0; // Perfect ≈ 128px
-const AP_HITSTOP_MS = 120;           // Regular parry "clink" — flurry-friendly.
-const AP_PERFECT_HITSTOP_MS = 220;   // Perfect parry — the "time stops" beat (long enough to digest the read).
+// Regular parry freeze — short "clink" so flurry exchanges can breathe between
+// hits (was 120; stacked freezes made slap+parry strings melt together).
+const AP_HITSTOP_MS = 70;
+// Perfect parry — longer freeze so the rare read still feels premium vs regular.
+const AP_PERFECT_HITSTOP_MS = 160;
 const AP_KILL_HITSTOP_MS = 550;      // Heavy finisher freeze on the lethal slap-down — matches the charged CINEMATIC_KILL_HITSTOP_MS so the zoom/darken beat lands identically.
 // PERFECT-only balance refund to the PARRIER: a dead-on read is a net posture
 // GAIN, not just mitigation. Sits below clinch thresholds so it can't trivialize pressure.
@@ -618,6 +656,19 @@ const AP_STAGGER_SLAP_MS = 150;
 const AP_STAGGER_PALM_MS = 420;
 const AP_STAGGER_FLAP_MS = 500;
 const AP_PERFECT_ADVANTAGE_MS = 220; // Extra attacker lockout on a PERFECT slap parry → the parrier's guaranteed poke.
+// Post-parry flurry cover (tap-every-slap). After a landed parry, the next
+// rising-edge re-tap may extend its live window to (parryTime + cover). Cover
+// matches REAL ASAP follow-up timing, not the naive stagger alone:
+//   parryStaggerBegin delay (20) + attacker stagger + slap startup + slack
+// (collision re-applies stagger AFTER hitstop via parryStaggerBegin). Slack
+// absorbs delayed/CPU follow-ups. grantAttackParryFlurryCover() uses the
+// actual staggerMs from that parry (regular vs perfect). Neutral taps stay
+// AP_ACTIVE_MS (plus slap early-active grace). Perfect grade stays
+// (hit − press) ≤ PERFECT_PARRY_WINDOW.
+const AP_FLURRY_STAGGER_BEGIN_MS = 20; // must match collisionSystem parryStaggerBegin delay
+const AP_FLURRY_SLACK_MS = 120;        // delayed follow-up / CPU reaction pad
+const AP_FLURRY_COVER_MS =
+  AP_FLURRY_STAGGER_BEGIN_MS + AP_STAGGER_SLAP_MS + SLAP_STARTUP_MS + AP_FLURRY_SLACK_MS; // 345 default (regular slap)
 // Belly-slide travel on a lethal AP slap-down — matches the clinch KILL-PULL feel
 // (victim is dragged THROUGH the parrier and slides out the far side). Slightly
 // SLOWER than the clinch pull (felt too fast) for a weightier finisher.
@@ -893,10 +944,14 @@ const CLINCH_THROW_FAIL_STAGGER_MS = 300;        // Attacker forced neutral, no 
 
 // Counter-grab ARM CLAMP — grabbing a raw-parrying opponent clamps their arms:
 // they cannot grip up during the Phase A burst carry, and the grabber's mid-burst
-// throw stays untechable. When the clamp ends (burst decays or boundary contact),
-// the victim is granted their grip automatically — punished once, positionally,
-// then the clinch is a fair fight.
+// throw stays untechable. When the clamp ends (burst leaves the lively band,
+// max burst duration, or boundary contact), the victim is granted their grip
+// automatically — punished once, positionally, then the clinch is a fair fight.
+// Arm-clamp ends Phase A earlier than a normal grab so the victim isn't stuck
+// in the exponential crawl with zero inputs.
 const COUNTER_GRAB_BALANCE_DEBUFF = 10;          // Balance hit on counter-grab connect
+const ARM_CLAMP_BURST_END_VELOCITY = 0.55;       // End burst while still shoving (vs GRAB_PUSH_MIN_VELOCITY 0.15)
+const ARM_CLAMP_MAX_BURST_MS = 1000;             // Hard cap — ~1s carry; cuts the old ~1.8s crawl, not the shove
 
 // DEEP GRIP — the clinch's earned-advantage layer. Won by out-wrestling the
 // opponent inside the clinch (jolting a planter, or winning the push for a
@@ -1493,6 +1548,18 @@ module.exports = {
   PALM_THRUST_KB_VELOCITY,
   PALM_THRUST_STAMINA_COST,
   PALM_THRUST_HITBOX_DISTANCE_VALUE,
+  LOW_KICK_ENABLED,
+  LOW_KICK_STARTUP_MS,
+  LOW_KICK_ACTIVE_MS,
+  LOW_KICK_RECOVERY_MS,
+  LOW_KICK_HIT_RECOVERY_MS,
+  LOW_KICK_TOTAL_MS,
+  LOW_KICK_STAMINA_COST,
+  LOW_KICK_HITBOX_DISTANCE_VALUE,
+  LOW_KICK_KB_VELOCITY,
+  LOW_KICK_BALANCE_DRAIN,
+  LOW_KICK_BALANCE_DRAIN_VS_PARRY,
+  LOW_KICK_BALANCE_DRAIN_COUNTER,
   GRAB_STARTUP_MS,
   GRAB_ACTIVE_MS,
   DODGE_STARTUP_MS,
@@ -1582,6 +1649,7 @@ module.exports = {
   PERFECT_PARRY_BALANCE_REFUND,
   // Guard & Parry (AP)
   AP_ACTIVE_MS,
+  AP_LATE_PARRY_MS,
   AP_FLOW_WINDOW_MS,
   AP_SUCCESS_RECOVERY_MS,
   AP_WHIFF_RECOVERY_MS,
@@ -1601,6 +1669,9 @@ module.exports = {
   AP_STAGGER_PALM_MS,
   AP_STAGGER_FLAP_MS,
   AP_PERFECT_ADVANTAGE_MS,
+  AP_FLURRY_STAGGER_BEGIN_MS,
+  AP_FLURRY_SLACK_MS,
+  AP_FLURRY_COVER_MS,
   AP_KILL_SLIDE_DISTANCE,
   AP_KILL_SLIDE_DURATION_MS,
   // Guard (block floor)
@@ -1712,6 +1783,8 @@ module.exports = {
   GASSED_RECOVERY_STAMINA_IN_CLINCH,
   CLINCH_THROW_FAIL_STAGGER_MS,
   COUNTER_GRAB_BALANCE_DEBUFF,
+  ARM_CLAMP_BURST_END_VELOCITY,
+  ARM_CLAMP_MAX_BURST_MS,
   DEEP_GRIP_THROW_THRESHOLD_BONUS,
   DEEP_GRIP_PUSH_MULT,
   DEEP_GRIP_PUSH_WIN_MS,

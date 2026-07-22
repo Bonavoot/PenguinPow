@@ -1,0 +1,9 @@
+{
+  "file": "halo.png",
+  "width": 320,
+  "height": 110,
+  "pivot": {
+    "x": 160,
+    "y": 83
+  }
+}

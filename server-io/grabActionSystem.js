@@ -4,6 +4,7 @@ const {
   GRAB_PUSH_BURST_BASE, GRAB_PUSH_MOMENTUM_TRANSFER,
   GRAB_PUSH_MOMENTUM_TRANSFER_MASTERY,
   GRAB_PUSH_DECAY_RATE, GRAB_PUSH_MIN_VELOCITY,
+  ARM_CLAMP_BURST_END_VELOCITY, ARM_CLAMP_MAX_BURST_MS,
   GRAB_PUSH_STAMINA_DRAIN_INTERVAL, GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL,
   GRAB_STAMINA_DRAIN_INTERVAL,
   RINGOUT_THROW_DURATION_MS,
@@ -249,8 +250,19 @@ function updateGrabActions(player, room, io, delta, rooms) {
     const initialPushSpeed = GRAB_PUSH_BURST_BASE + (player.grabApproachSpeed || 0) * grabMomentumTransfer;
     let currentPushSpeed = initialPushSpeed * Math.exp(-GRAB_PUSH_DECAY_RATE * pushElapsedSec);
 
-    // When burst decays below threshold, transition to manual clinch push
-    if (currentPushSpeed < GRAB_PUSH_MIN_VELOCITY && pushElapsed > 200) {
+    // When burst decays below threshold, transition to manual clinch push.
+    // ARM CLAMP: victim can't act during Phase A, so end while the shove is
+    // still lively (higher velocity floor + hard duration cap) instead of
+    // crawling to GRAB_PUSH_MIN_VELOCITY. Boundary contact still ends early.
+    const burstEndVelocity = opponent.isArmClamped
+      ? ARM_CLAMP_BURST_END_VELOCITY
+      : GRAB_PUSH_MIN_VELOCITY;
+    const armClampBurstTimedOut =
+      opponent.isArmClamped && pushElapsed >= ARM_CLAMP_MAX_BURST_MS;
+    if (
+      (currentPushSpeed < burstEndVelocity || armClampBurstTimedOut) &&
+      pushElapsed > 200
+    ) {
       player.isGrabPushing = false;
       opponent.isBeingGrabPushed = false;
       player.grabPushStartTime = 0;

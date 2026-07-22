@@ -1,50 +1,61 @@
-import { useEffect, useState, useRef, memo } from "react";
-import styled from "styled-components";
+import { useEffect, useState, useRef, memo, Fragment } from "react";
+import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import parrySheet from "../assets/raw-parry-effect.png";
+import {
+  parryFilterFor,
+  PerfectParryExtras,
+} from "./parryVfxShared";
 
-// ATTACK PARRY (AP) burst — same expanding-ring sheet as snowball/raw parry
-// (raw-parry-effect.png), with the classic perfect = hot electric blue /
-// regular = lighter steel-blue recolor. 8x4 padded columns; short duration
-// auto-skips dupes. Frame steps write background-position on a DOM ref.
+// ATTACK PARRY (AP) burst — same expanding-ring sheet as snowball/raw parry.
+// Regular = steel cyan. Perfect = hotter electric ice-cyan + impact punch
+// layers (flash / banner). Scale punch lives on the VFX wrapper so the camera
+// never zooms.
 const GRID = 8;
-const START_FRAME = 8; // 0–7 ~empty
+const START_FRAME = 8;
 const END_FRAME = 63;
 const DURATION_MS = 360;
-const PERFECT_DURATION_MS = 420;
-// Perfect = former regular size; regular steps down so the hierarchy still reads.
+// Perfect sheet linger — spans the ~280ms hitstop + a short post-freeze trail.
+const PERFECT_DURATION_MS = 580;
 const SIZE_CQW = 13.5;
-const PERFECT_SIZE_CQW = 19;
+const PERFECT_SIZE_CQW = 19.5;
 const CHAIN_SIZE_STEP = 0.5;
 const CHAIN_SIZE_MAX = 3;
 const PERSPECTIVE = "400px";
 const TILT_DEG = 62;
 
-// Perfect = warm gold (matches the perfect-parry rim). Regular = soft steel-cyan.
-const AP_BLUE_FILTER = `grayscale(1) sepia(1) hue-rotate(185deg) saturate(2.8) brightness(1.24) drop-shadow(0 0 4px rgba(120, 195, 255, 0.6))`;
-const AP_PERFECT_FILTER = `grayscale(1) sepia(1) hue-rotate(8deg) saturate(4.2) brightness(1.35) drop-shadow(0 0 4px rgba(255, 230, 140, 1)) drop-shadow(0 0 12px rgba(255, 190, 60, 0.9))`;
+const punchIn = keyframes`
+  0%   { transform: translate(-50%, 50%) scale(0.72); }
+  18%  { transform: translate(-50%, 50%) scale(1.12); }
+  45%  { transform: translate(-50%, 50%) scale(0.98); }
+  100% { transform: translate(-50%, 50%) scale(1); }
+`;
 
-const filterFor = (variant) =>
-  variant === "perfect" ? AP_PERFECT_FILTER : AP_BLUE_FILTER;
-
-const baseSizeFor = (variant) =>
-  variant === "perfect" ? PERFECT_SIZE_CQW : SIZE_CQW;
-
-const SpriteContainer = styled.div`
+const Anchor = styled.div`
   position: absolute;
-  left: ${(props) => (props.$x / 1280) * 100}%;
-  bottom: ${(props) => (props.$y / 720) * 100}%;
-  width: ${(props) => props.$size}cqw;
-  height: ${(props) => props.$size}cqw;
-  transform: translate(-50%, 50%) perspective(${PERSPECTIVE})
-    rotateY(${(props) => (props.$facing === -1 ? TILT_DEG : -TILT_DEG)}deg);
+  left: ${(p) => (p.$x / 1280) * 100}%;
+  bottom: ${(p) => (p.$y / 720) * 100}%;
+  width: ${(p) => p.$size}cqw;
+  height: ${(p) => p.$size}cqw;
+  transform: translate(-50%, 50%);
   transform-origin: center;
   z-index: 100;
   pointer-events: none;
+  animation: ${(p) => (p.$isPerfect ? punchIn : "none")} 160ms
+    cubic-bezier(0.16, 0.9, 0.3, 1) both;
+  will-change: ${(p) => (p.$isPerfect ? "transform" : "auto")};
+`;
+
+const SpritePlane = styled.div`
+  width: 100%;
+  height: 100%;
+  transform: perspective(${PERSPECTIVE})
+    rotateY(${(p) => (p.$facing === -1 ? TILT_DEG : -TILT_DEG)}deg);
+  transform-origin: center;
   background-image: url(${parrySheet});
   background-repeat: no-repeat;
   background-size: ${GRID * 100}% ${GRID * 100}%;
-  filter: ${(props) => props.$filter};
+  filter: ${(p) => p.$filter};
 `;
 
 const frameToBackgroundPosition = (frame) => {
@@ -61,10 +72,11 @@ const ParryBurst = ({ x, y, facing, variant, size, onDone }) => {
   const startRef = useRef(null);
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
+  const isPerfect = variant === "perfect";
 
   useEffect(() => {
     const totalFrames = END_FRAME - START_FRAME + 1;
-    const duration = variant === "perfect" ? PERFECT_DURATION_MS : DURATION_MS;
+    const duration = isPerfect ? PERFECT_DURATION_MS : DURATION_MS;
     const frameDuration = duration / totalFrames;
     let lastIdx = -1;
 
@@ -92,17 +104,16 @@ const ParryBurst = ({ x, y, facing, variant, size, onDone }) => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [variant]);
+  }, [isPerfect]);
 
   return (
-    <SpriteContainer
-      ref={elRef}
-      $x={x}
-      $y={y}
-      $facing={facing}
-      $size={size}
-      $filter={filterFor(variant)}
-    />
+    <Anchor $x={x} $y={y} $size={size} $isPerfect={isPerfect}>
+      <SpritePlane
+        ref={elRef}
+        $facing={facing}
+        $filter={parryFilterFor(isPerfect)}
+      />
+    </Anchor>
   );
 };
 
@@ -126,11 +137,13 @@ const SlapParryEffect = ({ position }) => {
     lastPosRef.current = position;
     const id = ++idRef.current;
     const variant = position.variant || "parry";
+    const isPerfect = variant === "perfect" || !!position.isPerfect;
     const chainGrow = Math.min(
       (Math.max(position.chain || 1, 1) - 1) * CHAIN_SIZE_STEP,
       CHAIN_SIZE_MAX
     );
-    const size = baseSizeFor(variant) + chainGrow;
+    const size =
+      (isPerfect ? PERFECT_SIZE_CQW : SIZE_CQW) + chainGrow;
     setBursts((prev) => [
       ...prev,
       {
@@ -138,8 +151,9 @@ const SlapParryEffect = ({ position }) => {
         x: position.x,
         y: position.y,
         facing: position.facing || 1,
-        variant,
+        variant: isPerfect ? "perfect" : "parry",
         size,
+        playerNumber: position.playerNumber || 1,
       },
     ]);
   }, [position]);
@@ -150,15 +164,24 @@ const SlapParryEffect = ({ position }) => {
   return (
     <>
       {bursts.map((b) => (
-        <ParryBurst
-          key={b.id}
-          x={b.x}
-          y={b.y}
-          facing={b.facing}
-          variant={b.variant}
-          size={b.size}
-          onDone={() => handleDone(b.id)}
-        />
+        <Fragment key={b.id}>
+          <ParryBurst
+            x={b.x}
+            y={b.y}
+            facing={b.facing}
+            variant={b.variant}
+            size={b.size}
+            onDone={() => handleDone(b.id)}
+          />
+          {b.variant === "perfect" && (
+            <PerfectParryExtras
+              x={b.x}
+              y={b.y}
+              playerNumber={b.playerNumber}
+              showBanner
+            />
+          )}
+        </Fragment>
       ))}
     </>
   );
@@ -172,6 +195,7 @@ SlapParryEffect.propTypes = {
     variant: PropTypes.string,
     chain: PropTypes.number,
     isPerfect: PropTypes.bool,
+    playerNumber: PropTypes.number,
   }),
 };
 

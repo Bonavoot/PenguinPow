@@ -759,14 +759,24 @@ const MainMenu = ({
   // Entry point called by BashoHub when starting OR resuming a run. Creates the
   // single basho room (handing the server the full opponent-color roster) and,
   // for a resume, the bout index to start from.
-  const startBashoRun = ({ run, save }) => {
-    bashoSaveRef.current = save || makeDefaultSave();
+  const startBashoRun = async ({ run, save }) => {
+    // Prefer disk for cosmetics (Customize flushes on leave); keep career/run
+    // from the hub payload so a mid-edit loadout still applies.
+    const disk = await loadSave();
+    const mergedSave = {
+      ...disk,
+      ...(save || {}),
+      customization: disk.customization,
+      career: save?.career || disk.career,
+    };
+    bashoSaveRef.current = mergedSave;
     const runWithRanks = ensureOpponentRanks(run);
-    if (runWithRanks !== run) {
-      bashoSaveRef.current = { ...bashoSaveRef.current, bashoRun: runWithRanks };
-      writeSave(bashoSaveRef.current);
-    }
     startDay(runWithRanks);
+    bashoSaveRef.current = {
+      ...bashoSaveRef.current,
+      bashoRun: runWithRanks,
+    };
+    await writeSave(bashoSaveRef.current);
     bashoRunRef.current = runWithRanks;
     boutResolvedRef.current = false;
     setBashoRun({ ...runWithRanks });
@@ -814,27 +824,39 @@ const MainMenu = ({
         }),
       ]),
     );
+    // Same source as VS CPU: active outfit from the save, not a mix of live
+    // color refs + stale gearIds.
     const bashoOutfit = getActiveOutfit(bashoSaveRef.current?.customization);
+    applyOutfitToPlayer1Setters(bashoOutfit, {
+      setPlayer1Color,
+      setPlayer1BodyColor,
+    });
     socket.emit("create_basho_match", {
       socketId: socket.id,
       player: {
-        mawashiColor: player1ColorRef.current,
-        bodyColor: player1BodyColorRef.current,
+        mawashiColor: bashoOutfit.mawashiColor,
+        bodyColor: bashoOutfit.bodyColor,
         gearIds: Array.isArray(bashoOutfit?.gearIds) ? bashoOutfit.gearIds : [],
         stats,
         loadout,
         // Resume support: re-apply any picks already drafted this run.
-        draftedPowerUps: normalizeBashoDraftList(run.draftedPowerUps || []),
+        draftedPowerUps: normalizeBashoDraftList(runWithRanks.draftedPowerUps || []),
       },
       opponents,
-      totalBouts: run.totalBouts,
-      startBout: Math.max(0, (run.day || 1) - 1), // resume support
+      totalBouts: runWithRanks.totalBouts,
+      startBout: Math.max(0, (runWithRanks.day || 1) - 1), // resume support
       // Effective difficulty for the starting day — applies the §5.5 division
       // base + intra-basho ramp (depends on the live record, so it's computed
       // here, not baked into the static roster).
-      difficulty: boutDifficulty(run, Math.max(0, (run.day || 1) - 1)),
+      difficulty: boutDifficulty(
+        runWithRanks,
+        Math.max(0, (runWithRanks.day || 1) - 1),
+      ),
       // Phase 4.4: continuous ladder position for the opening bout.
-      ladderPosition: boutLadderPosition(run, Math.max(0, (run.day || 1) - 1)),
+      ladderPosition: boutLadderPosition(
+        runWithRanks,
+        Math.max(0, (runWithRanks.day || 1) - 1),
+      ),
     });
   };
 
@@ -888,12 +910,59 @@ const MainMenu = ({
   // BASHO bout socket flow. Registered once; all dynamic state is read from
   // refs. Guarded by isBashoMatchRef so it never reacts to a PvP/VS CPU match.
   useEffect(() => {
+    const upsertBashoRoom = (roomId, players) => {
+      if (!roomId || !Array.isArray(players)) return;
+      const nextPlayers = players.map((p) => ({
+        id: p.id,
+        fighter: p.fighter,
+        mawashiColor: p.mawashiColor,
+        bodyColor: p.bodyColor ?? null,
+        gearIds: Array.isArray(p.gearIds) ? p.gearIds : [],
+        isCPU: !!p.isCPU,
+        wins: p.wins || [],
+        isReady: !!p.isReady,
+      }));
+      setRooms((prev) => {
+        const idx = prev.findIndex((r) => r.id === roomId);
+        if (idx === -1) {
+          return [
+            ...prev,
+            {
+              id: roomId,
+              isCPURoom: true,
+              readyCount: 0,
+              players: nextPlayers,
+            },
+          ];
+        }
+        return prev.map((r, i) => {
+          if (i !== idx) return r;
+          const basePlayers =
+            Array.isArray(r.players) && r.players.length > 0
+              ? r.players
+              : nextPlayers;
+          return {
+            ...r,
+            players: nextPlayers.map((np, pi) => ({
+              ...(basePlayers[pi] || {}),
+              ...np,
+              mawashiColor: np.mawashiColor ?? basePlayers[pi]?.mawashiColor,
+              bodyColor: np.bodyColor ?? basePlayers[pi]?.bodyColor ?? null,
+              gearIds: np.gearIds ?? basePlayers[pi]?.gearIds ?? [],
+            })),
+          };
+        });
+      });
+    };
+
     const handleBashoCreated = (data) => {
       bashoRoomIdRef.current = data.roomId;
       setRoomName(data.roomId);
       setIsCPUMatch(true); // reuse the CPU AI + auto-ready pipeline
       isBashoMatchRef.current = true;
       setIsBashoMatch(true);
+      // Seed client rooms immediately — don't wait on the broadcast race.
+      upsertBashoRoom(data.roomId, data.players);
       // Auto-ready the human; the server auto-readies the CPU opponent.
       socket.emit("ready_count", {
         playerId: socket.id,
@@ -910,24 +979,7 @@ const MainMenu = ({
       setPlayer1BodyColor(players?.[0]?.bodyColor || null);
       if (players?.[1]?.mawashiColor) setPlayer2Color(players[1].mawashiColor);
       setPlayer2BodyColor(players?.[1]?.bodyColor || null);
-      if (players && Array.isArray(players)) {
-        setRooms((prev) =>
-          prev.map((r) =>
-            r.id === roomId
-              ? {
-                  ...r,
-                  players: r.players.map((rp, i) => ({
-                    ...rp,
-                    ...(players[i] || {}),
-                    mawashiColor: players[i]?.mawashiColor ?? rp.mawashiColor,
-                    bodyColor: players[i]?.bodyColor ?? rp.bodyColor,
-                    gearIds: players[i]?.gearIds ?? rp.gearIds,
-                  })),
-                }
-              : r
-          )
-        );
-      }
+      upsertBashoRoom(roomId, players);
       socket.emit("game_reset", true);
       // First bout: raise DAY 1 card over the (now mounted) game and arm it on
       // Begin. Subsequent bouts are driven entirely by goToNextDay (no remount).

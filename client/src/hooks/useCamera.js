@@ -75,9 +75,9 @@ const SHAKE_DIR_BIAS = 0.5; // share of amplitude given to directional recoil (r
 
 // ── Zoom punch-in ─────────────────────────────────────────────────
 // The coupled scale push is the single biggest "weight" cue, but it's also the
-// most disorienting if overused — so it's RARE by design (only heavy hits,
-// perfect parry, KO, round start opt in via profile). Snappy decay keeps it a
-// crisp punch, not a lingering/floaty zoom.
+// most disorienting if overused — so it's RARE by design (hakkiyoi pulse, KO
+// cinematic, kill-throw land). Perfect parry does NOT zoom — its punch lives
+// on the VFX. Snappy decay keeps punches crisp, not lingering/floaty.
 const PUNCH_DECAY = 0.86; // per-frame multiplier → ~110 ms (snappy)
 const PUNCH_STOP = 0.001; // cut to zero below this
 
@@ -85,12 +85,10 @@ const PUNCH_STOP = 0.001; // cut to zero below this
 const ROUND_START_PUNCH_AMOUNT = 0.035;
 
 // ── Perfect-parry micro-hitstop ──────────────────────────────────
-// A tiny camera freeze on a perfect parry: for this window the camera holds
-// perfectly still (no tracking lerp) and trauma/punch decay is PAUSED, so the
-// shake + zoom-punch "stick" as a freeze-frame at the clash, then release with
-// full energy when it ends. Short enough that catch-up after unfreeze is a
-// pleasing snap, not a lurch. Client-visual only — server sim is untouched.
-const PERFECT_PARRY_FREEZE_MS = 80;
+// Tiny camera freeze on a perfect parry: tracking + trauma decay pause so the
+// shake crack "sticks" at the clash, then releases. No zoom — punch lives on
+// the VFX. Short enough that catch-up is a snap, not a lurch.
+const PERFECT_PARRY_FREEZE_MS = 75;
 
 // ── Cinematic kill camera ────────────────────────────────────────
 const CINEMATIC_ZOOM_SCALE = 1.98; // ~10% out from 2.2
@@ -278,16 +276,12 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
       addTrauma(0, { punch: ROUND_START_PUNCH_AMOUNT });
     };
 
-    // Perfect parry: fire the dedicated heavy shake (trauma + zoom + roll).
-    // Skipped during a kill cinematic so it can never step on the KO moment.
+    // Legacy "perfect_parry" socket (server no longer emits) — keep as a
+    // no-op-safe fallback that still arms the micro-freeze + shake.
     const onPerfectParry = (data) => {
       if (cinematicRef.current.active) return;
-      // MASTERY Phase 4 (4.1): scale the heavy parry shake slightly with the
-      // timing quality (0..1). Undefined/0 (flag off, or window-edge parry) →
-      // scale 1 = today's shake.
       const quality = typeof data?.quality === "number" ? data.quality : 0;
       addShake("perfect_parry", { scale: 1 + quality * 0.3 });
-      // Arm the micro-hitstop freeze-frame (held in the tick loop below).
       microFreezeUntilRef.current = performance.now() + PERFECT_PARRY_FREEZE_MS;
     };
 
@@ -299,6 +293,11 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
       if (cinematicRef.current.active) return;
       if (data?.type) {
         addShake(data.type, { scale: data.scale ?? 1, dirX: data.dirX ?? 0 });
+        // Perfect parry: stick the trauma crack for a beat (no zoom).
+        if (data.type === "perfect_parry") {
+          microFreezeUntilRef.current =
+            performance.now() + PERFECT_PARRY_FREEZE_MS;
+        }
       } else if (typeof data?.intensity === "number") {
         addTrauma(clamp(data.intensity * 0.45, 0, 1), { dirX: data.dirX ?? 0 });
       }

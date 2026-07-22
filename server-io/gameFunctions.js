@@ -82,6 +82,13 @@ const {
   PALM_THRUST_HIT_RECOVERY_MS,
   PALM_THRUST_POWER,
   PALM_THRUST_STAMINA_COST,
+  LOW_KICK_ENABLED,
+  LOW_KICK_STARTUP_MS,
+  LOW_KICK_ACTIVE_MS,
+  LOW_KICK_RECOVERY_MS,
+  LOW_KICK_HIT_RECOVERY_MS,
+  LOW_KICK_TOTAL_MS,
+  LOW_KICK_STAMINA_COST,
   CHARGED_TIER_LIGHT_MS,
   CHARGED_TIER_MED_MS,
   CHARGED_TIER_HEAVY_BASE_MS,
@@ -526,10 +533,14 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.apActiveUntil = 0;
     p.apFlowUntil = 0;
     p.apChainCount = 0;
+    p.apFlurryUntil = 0;
     p.isApWhiffRecovering = false;
     p.apRecoveryUntil = 0;
     p.apCooldownUntil = 0;
     p.apSpaceConsumed = false;
+    p.apGuardNeedsRelease = false;
+    p.isApPostParryLocked = false;
+    p.apPostParryLockUntil = 0;
 
     // Clear ALL grab states to prevent grabs persisting into next round
     p.isGrabbing = false;
@@ -808,6 +819,7 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
 
   player.isSlapAttack = true;
   player.isPalmThrust = false; // A slap is never a palm — clear any lingering hold flag
+  player.isLowKick = false;
   player.attackEndTime = now + attackDuration;
   player.slapActiveEndTime = now + attackDuration;
   player.isAttacking = true;
@@ -984,6 +996,7 @@ function executePalmThrust(player, rooms) {
   player.attackType = "charged";
   player.isPalmThrust = true;
   player.isSlapAttack = false;
+  player.isLowKick = false;
   player.isChargingAttack = false;
   player.chargeStartTime = 0;
   player.chargeAttackPower = PALM_THRUST_POWER;
@@ -1024,6 +1037,101 @@ function executePalmThrust(player, rooms) {
   // animation exists) and lock the action through startup for readability.
   player.currentAction = "charged";
   player.actionLockUntil = now + PALM_THRUST_STARTUP_MS;
+}
+
+// LOW KICK / TRIP (S + mouse1, no forward) — rooted anti-defense poke.
+// Beats parry/guard and grab; loses to slap / palm / charged on trade.
+// No ring-out; small knockback; posture-focused. Single-frame art for now.
+function executeLowKick(player, rooms) {
+  if (!LOW_KICK_ENABLED) return;
+  const ownerRoom = rooms && rooms.find((room) => room.players.some((p) => p.id === player.id));
+  if (ownerRoom && (ownerRoom.gameOver || ownerRoom.matchOver)) return;
+  if (player.isFlapping || player.flapPhase) return;
+  if (player.isAttacking) return;
+
+  const kickEntryVelocity = player.movementVelocity;
+  timeoutManager.clearPlayerSpecific(player.id, "lowKickCycle");
+
+  if (player.isPowerSliding) {
+    player.isPowerSliding = false;
+  }
+  player.isRawParrySuccess = false;
+  player.isPerfectRawParrySuccess = false;
+
+  clearChargeState(player);
+  player.mouse1ConsumedUntilRelease = true;
+
+  const now = simNowForPlayer(player);
+
+  const currentRoom = rooms.find((room) =>
+    room.players.some((p) => p.id === player.id)
+  );
+  if (currentRoom) {
+    const opponent = currentRoom.players.find((p) => p.id !== player.id);
+    if (opponent && !opponent.isDodging && !opponent.isSidestepping) {
+      player.facing = player.x < opponent.x ? -1 : 1;
+    }
+  }
+  logVerbInitiation(currentRoom, player, "lowKick", kickEntryVelocity);
+  player.chargingFacingDirection = player.facing;
+
+  // Rooted: no forward slide.
+  player.movementVelocity = 0;
+  player.isSlapSliding = false;
+  player.isStrafing = false;
+  player.isBraking = false;
+  player.isCrouchStance = false;
+  player.isCrouchStrafing = false;
+
+  player.pendingSlapCount = 0;
+  player.pendingPalmThrust = false;
+  player.currentLowKickHitConnected = false;
+
+  player.stamina = Math.max(0, player.stamina - LOW_KICK_STAMINA_COST);
+
+  player.attackType = "lowKick";
+  player.isLowKick = true;
+  player.isSlapAttack = false;
+  player.isPalmThrust = false;
+  player.isChargingAttack = false;
+  player.chargeStartTime = 0;
+  player.chargeAttackPower = 0;
+  player.chargedAttackHit = false;
+
+  player.isAttacking = true;
+  player.attackStartTime = now;
+  player.attackAttemptTime = now;
+
+  const activeWindowEnd = now + LOW_KICK_STARTUP_MS + LOW_KICK_ACTIVE_MS;
+  player.attackEndTime = now + LOW_KICK_TOTAL_MS;
+  player.lowKickActiveEndTime = activeWindowEnd;
+  player.attackCooldownUntil = now + LOW_KICK_TOTAL_MS;
+
+  player.isInStartupFrames = true;
+  player.startupEndTime = now + LOW_KICK_STARTUP_MS;
+  setPlayerTimeout(
+    player.id,
+    () => {
+      player.isInStartupFrames = false;
+    },
+    LOW_KICK_STARTUP_MS,
+    "lowKickStartupEnd"
+  );
+
+  player.currentAction = "lowKick";
+  player.actionLockUntil = now + LOW_KICK_STARTUP_MS;
+
+  const endLowKick = () => {
+    player.isAttacking = false;
+    player.isLowKick = false;
+    player.attackType = null;
+    player.isInStartupFrames = false;
+    player.lowKickActiveEndTime = 0;
+    player.currentAction = null;
+    player.currentLowKickHitConnected = false;
+  };
+
+  setPlayerTimeout(player.id, endLowKick, LOW_KICK_TOTAL_MS, "lowKickCycle");
 }
 
 function cleanupRoom(room) {
@@ -1088,9 +1196,10 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   player.recoveryDirection = null;
 
   player.isSlapAttack = false;
-  // A real charged attack always lunges — make sure a lingering palm-thrust flag
-  // (from a prior connected thrust that ended into recovery) can never root it.
+  // A real charged attack always lunges — make sure a lingering palm-thrust /
+  // low-kick flag (from a prior rooted move) can never root it.
   player.isPalmThrust = false;
+  player.isLowKick = false;
 
   // Lunge duration scales with charge.
   // MASTERY Phase 4 (4.4): a CONTINUOUS curve replaces the 300/500/1000 tier
@@ -1873,7 +1982,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
     return;
   }
 
-  // Priority 3: Mouse1 held — S+forward = charged, back = palm thrust, else slap
+  // Priority 3: Mouse1 held — S+forward = charged, S = low kick, back = palm, else slap
   if (player.keys.mouse1) {
     player.mouse1PressTime = simNowForPlayer(player);
     const fwdKey = player.facing === -1 ? 'd' : 'a';
@@ -1891,6 +2000,13 @@ function activateBufferedInputAfterGrab(player, rooms) {
       player.isPerfectRawParrySuccess = false;
       player.isCrouchStance = false;
       player.isCrouchStrafing = false;
+    } else if (
+      LOW_KICK_ENABLED &&
+      player.keys.s &&
+      !player.keys[fwdKey] &&
+      canPlayerSlap(player)
+    ) {
+      executeLowKick(player, rooms);
     } else if (player.keys[backKey] && !player.keys[fwdKey] && canPlayerSlap(player)) {
       executePalmThrust(player, rooms);
     } else if (canPlayerSlap(player)) {
@@ -2026,6 +2142,14 @@ function executeInputBuffer(player, rooms) {
       }
       break;
     }
+    case "lowKick": {
+      if (LOW_KICK_ENABLED && canPlayerSlap(player)) {
+        executeLowKick(player, rooms);
+        player.inputBuffer = null;
+        return true;
+      }
+      break;
+    }
     case "sidestep": {
       if (canPlayerSidestep(player) && !player.isGassed) {
         const room = rooms.find(r => r.players.some(p => p.id === player.id));
@@ -2138,6 +2262,7 @@ module.exports = {
   handleWinCondition,
   executeSlapAttack,
   executePalmThrust,
+  executeLowKick,
   cleanupRoom,
   executeChargedAttack,
   calculateEffectiveHitboxSize,

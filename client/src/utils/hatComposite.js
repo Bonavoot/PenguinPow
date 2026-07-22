@@ -16,6 +16,7 @@ import {
   getEquippedHeadGearId,
   getIdleHatOverlay,
   getHatOverlayForSprite,
+  isHeadGearUnderBody,
 } from "../config/cosmetics";
 import { getBaldBodySrc, resolveBodyForHeadGear } from "../config/baldSprites";
 import { getBakedSprite } from "./bakedSprites";
@@ -35,8 +36,8 @@ const MAX_CACHE = 512;
 
 const TINTS = ["base", "hit", "charge", "blubber", "armor"];
 
-function cacheKey(baseSrc, overlaySrc) {
-  return `${baseSrc}||${overlaySrc}`;
+function cacheKey(baseSrc, overlaySrc, underBody) {
+  return `${baseSrc}||${overlaySrc}||${underBody ? "under" : "over"}`;
 }
 
 function loadImage(src) {
@@ -65,18 +66,24 @@ function canvasToBlobUrl(canvas) {
   });
 }
 
-function drawComposite(baseImg, overlayImg) {
+function drawComposite(baseImg, overlayImg, underBody = false) {
   const canvas = document.createElement("canvas");
   canvas.width = baseImg.naturalWidth || baseImg.width;
   canvas.height = baseImg.naturalHeight || baseImg.height;
   const ctx = canvas.getContext("2d");
-  ctx.drawImage(baseImg, 0, 0);
-  ctx.drawImage(overlayImg, 0, 0, canvas.width, canvas.height);
+  if (underBody) {
+    // Plunger etc. — gear behind body so the head occludes the cup.
+    ctx.drawImage(overlayImg, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(baseImg, 0, 0);
+  } else {
+    ctx.drawImage(baseImg, 0, 0);
+    ctx.drawImage(overlayImg, 0, 0, canvas.width, canvas.height);
+  }
   return canvas;
 }
 
-async function storeComposite(baseSrc, overlaySrc, canvas) {
-  const key = cacheKey(baseSrc, overlaySrc);
+async function storeComposite(baseSrc, overlaySrc, canvas, underBody = false) {
+  const key = cacheKey(baseSrc, overlaySrc, underBody);
   const url = await canvasToBlobUrl(canvas);
   await preDecodeImage(url);
   cache.set(key, url);
@@ -91,9 +98,9 @@ async function storeComposite(baseSrc, overlaySrc, canvas) {
 }
 
 /** Sync cache lookup — returns null on miss. */
-export function getCachedHatComposite(baseSrc, overlaySrc) {
+export function getCachedHatComposite(baseSrc, overlaySrc, underBody = false) {
   if (!baseSrc || !overlaySrc) return null;
-  const key = cacheKey(baseSrc, overlaySrc);
+  const key = cacheKey(baseSrc, overlaySrc, underBody);
   const hit = cache.get(key);
   if (!hit) return null;
   cache.delete(key);
@@ -104,10 +111,11 @@ export function getCachedHatComposite(baseSrc, overlaySrc) {
 /**
  * Sync composite when both layers are already decoded. Returns null if either
  * image isn't warm yet (caller should fall through to async / unhatted briefly).
+ * @param {boolean} [underBody] - draw gear under the body (e.g. plunger)
  */
-export function compositeHatOntoSpriteSync(baseSrc, overlaySrc) {
+export function compositeHatOntoSpriteSync(baseSrc, overlaySrc, underBody = false) {
   if (!baseSrc || !overlaySrc) return null;
-  const hit = getCachedHatComposite(baseSrc, overlaySrc);
+  const hit = getCachedHatComposite(baseSrc, overlaySrc, underBody);
   if (hit) return hit;
 
   const base = getDecodedImage(baseSrc);
@@ -115,9 +123,9 @@ export function compositeHatOntoSpriteSync(baseSrc, overlaySrc) {
   if (!base || !overlay) return null;
 
   // Sync path uses data URL so we can return immediately; warm path prefers blobs.
-  const canvas = drawComposite(base, overlay);
+  const canvas = drawComposite(base, overlay, underBody);
   const url = canvas.toDataURL("image/png");
-  const key = cacheKey(baseSrc, overlaySrc);
+  const key = cacheKey(baseSrc, overlaySrc, underBody);
   cache.set(key, url);
   // Fire-and-forget decode so the next paint is warm; first paint may still
   // use this URL — preload warm should make this rare.
@@ -132,24 +140,25 @@ export function compositeHatOntoSpriteSync(baseSrc, overlaySrc) {
 /**
  * @param {string} baseSrc - body sprite (file URL or data/blob URL)
  * @param {string|null} overlaySrc - hat overlay, or null to pass through
+ * @param {boolean} [underBody] - draw gear under the body (e.g. plunger)
  * @returns {Promise<string>} composite URL (or baseSrc when no overlay)
  */
-export async function compositeHatOntoSprite(baseSrc, overlaySrc) {
+export async function compositeHatOntoSprite(baseSrc, overlaySrc, underBody = false) {
   if (!baseSrc) return baseSrc;
   if (!overlaySrc) return baseSrc;
 
-  const hit = getCachedHatComposite(baseSrc, overlaySrc);
+  const hit = getCachedHatComposite(baseSrc, overlaySrc, underBody);
   if (hit) return hit;
 
-  const sync = compositeHatOntoSpriteSync(baseSrc, overlaySrc);
+  const sync = compositeHatOntoSpriteSync(baseSrc, overlaySrc, underBody);
   if (sync) return sync;
 
   const [base, overlay] = await Promise.all([
     loadImage(baseSrc),
     loadImage(overlaySrc),
   ]);
-  const canvas = drawComposite(base, overlay);
-  return storeComposite(baseSrc, overlaySrc, canvas);
+  const canvas = drawComposite(base, overlay, underBody);
+  return storeComposite(baseSrc, overlaySrc, canvas, underBody);
 }
 
 function tintOptionsFor(tint, bodyColor) {
@@ -185,6 +194,7 @@ export async function warmHatCompositesForFighter({
 }) {
   const gearId = getEquippedHeadGearId(gearIds);
   if (!gearId) return [];
+  const underBody = isHeadGearUnderBody(gearId);
 
   const overlayUrls = [];
   const bodyUrls = [];
@@ -208,7 +218,7 @@ export async function warmHatCompositesForFighter({
       if (!base) continue;
       await preDecodeImage(base);
       try {
-        const url = await compositeHatOntoSprite(base, overlaySrc);
+        const url = await compositeHatOntoSprite(base, overlaySrc, underBody);
         if (url && url !== base) out.push(url);
       } catch (err) {
         console.warn("[Hat] warm composite failed", bodySrc, tint, err);
@@ -251,7 +261,11 @@ export async function buildIdlePortraitSrc({
   const gearId = getEquippedHeadGearId(gearIds);
   const overlay = hatOverlay || (gearId ? getIdleHatOverlay(gearId) : null);
   if (overlay) {
-    src = await compositeHatOntoSprite(src, overlay);
+    src = await compositeHatOntoSprite(
+      src,
+      overlay,
+      isHeadGearUnderBody(gearId),
+    );
   }
 
   return src;

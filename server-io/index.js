@@ -111,6 +111,7 @@ const {
   armAttackParry,
   enterGuard,
   updateAttackParryState,
+  isAttackParryPostLocked,
   emitThrottledScreenShake,
   clearHitFall,
   clearSidestepHitReturn,
@@ -705,6 +706,7 @@ function tick(delta) {
             player.recoveryDirection = null;
             player.isChargedHitRecoil = false;
             player.isPalmThrust = false;
+            player.isLowKick = false;
             player.palmThrustVisualUntil = 0;
 
             // Clean up stale chargedAttackHit flag after recovery ends
@@ -2573,10 +2575,33 @@ function tick(delta) {
         }
       }
 
+      // AP SM before movement: Space-up must drop isRawParrying this tick so we
+      // never walk a frame in blocking stance (old flurry-linger moonwalk).
+      const apHeldEarly = player.isCPU ? !!player.keys.s : !!player.keys[" "];
+      updateAttackParryState(player, now, apHeldEarly);
+      if (!player.keys[" "]) {
+        player.grabBreakSpaceConsumed = false;
+      }
+
       // Strafing
+      // Post-parry lock: pin feet for the full lock window. Uses isApPostParryLocked
+      // (survives flurry re-taps that clear success pose flags) so back-to-back
+      // piano taps can't walk mid-string.
+      const apPostLock = isAttackParryPostLocked(player);
+      if (apPostLock) {
+        player.movementVelocity = 0;
+        player.isStrafing = false;
+        player.isBraking = false;
+        player.isPowerSliding = false;
+        player.isCrouchStrafing = false;
+        player.wasStrafingLeft = false;
+        player.wasStrafingRight = false;
+        player.strafeStartTime = 0;
+      }
       if (
+        !apPostLock &&
         !player.isThrowLanded && // Block all movement for throw landed players
-        !player.isRawParrying && // Block all movement during raw parry
+        !player.isRawParrying && // Block movement during held/active parry stance
         !player.isGrabbingMovement && // Block normal movement during grab movement
         !player.isWhiffingGrab && // Block movement during grab whiff recovery
         !player.isGrabWhiffRecovery && // Block movement during grab whiff recovery (new)
@@ -2652,6 +2677,8 @@ function tick(delta) {
           !player.isRecovering &&
           !player.isRawParryStun &&
           !player.isRawParrying &&
+          !player.isApPostParryLocked &&
+          !player.isRawParrySuccess &&
           !player.isPerfectRawParrySuccess &&
           !player.isGrabBreaking &&
           !player.isGrabBreakCountered &&
@@ -2732,6 +2759,8 @@ function tick(delta) {
           !player.isRecovering &&
           !player.isRawParryStun &&
           !player.isRawParrying &&
+          !player.isApPostParryLocked &&
+          !player.isRawParrySuccess &&
           !player.isPerfectRawParrySuccess &&
           !player.isGrabBreaking &&
           !player.isGrabBreakCountered &&
@@ -2811,7 +2840,14 @@ function tick(delta) {
           }
           
           // Freeze movement completely during special states
-          if (player.isPerfectRawParrySuccess || player.isGrabBreaking || player.isGrabBreakCountered || player.isGrabBreakSeparating) {
+          if (
+            player.isApPostParryLocked ||
+            player.isRawParrySuccess ||
+            player.isPerfectRawParrySuccess ||
+            player.isGrabBreaking ||
+            player.isGrabBreakCountered ||
+            player.isGrabBreakSeparating
+          ) {
             player.movementVelocity = 0;
             player.isStrafing = false;
             player.isBraking = false;
@@ -2981,7 +3017,7 @@ function tick(delta) {
           player.isAttacking || // Clear strafing during any attack (slap or charged)
           player.pendingSlapCount || // Clear strafing when buffered slap attack is pending
           player.isHit || // Add isHit to force clear strafing when parried
-          player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
+          player.isRawParrying ||
           player.isAtTheRopes || // Block strafing while at the ropes
           player.isRopeJumping || // Block strafing during rope jump
           player.isFlapping // Block ground strafing during flap (air control is separate)
@@ -3014,7 +3050,7 @@ function tick(delta) {
         player.isAttacking || // Clear strafing during any attack
         player.pendingSlapCount || // Clear strafing when buffered slap attack is pending
         player.isHit || // Add isHit to force clear strafing when parried
-        player.isRawParrying || // Add isRawParrying to force clear strafing during raw parry
+        player.isRawParrying ||
         player.isAtTheRopes || // Block strafing while at the ropes
         player.isFlapping // Block strafing during flap (air steer is separate)
       ) {
@@ -3086,11 +3122,14 @@ function tick(delta) {
         }
       }
 
-      // During the AP active window OR its punishable whiff recovery, hold
-      // animation priority (clear movement/dodge/crouch) — same as the old parry
-      // stance. The whiff-recovery hold is what makes a poorly-timed AP a real,
-      // punishable commitment (the player is rooted until recovery ends).
-      if (player.isRawParrying || player.isApWhiffRecovering) {
+      // During a HELD AP stance OR cancel recovery, hold animation priority
+      // (clear movement/dodge/crouch). Cancel recovery is short rooted endlag;
+      // a rising Space may cut it short. (SM already ran before movement.)
+      const rootApStance =
+        player.isApWhiffRecovering ||
+        player.isApPostParryLocked ||
+        player.isRawParrying;
+      if (rootApStance) {
         player.isStrafing = false;
         player.movementVelocity = 0;
         player.isDodging = false;
@@ -3100,17 +3139,6 @@ function tick(delta) {
         player.isJumping = false;
         player.isCrouchStance = false;
         player.isCrouchStrafing = false;
-      }
-
-      // AP state machine: Deflect Flow (auto-re-arm while held+in-flow), whiff
-      // punish on a mistimed first read, clean drop on Flow lapse/release. The
-      // "parry held" key is SPACE for humans but S for the CPU (it arms/holds AP
-      // on keys.s), so Flow must read the right key or the CPU could never ride it.
-      const apHeld = player.isCPU ? !!player.keys.s : !!player.keys[" "];
-      updateAttackParryState(player, now, apHeld);
-      if (!player.keys[" "]) {
-        // Space released — clear grab-break consumption so future parries can occur.
-        player.grabBreakSpaceConsumed = false;
       }
 
       if (

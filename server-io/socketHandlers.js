@@ -13,6 +13,7 @@ const {
   RAW_PARRY_REARM_STAMINA_COST, RAW_PARRY_REARM_INTERVAL_MS,
   CHARGE_FULL_POWER_MS,
   GRAB_STARTUP_DURATION_MS,
+  LOW_KICK_ENABLED,
 } = require("./constants");
 
 const {
@@ -41,6 +42,7 @@ const {
 const {
   executeSlapAttack,
   executePalmThrust,
+  executeLowKick,
   executeChargedAttack,
 } = require("./gameFunctions");
 
@@ -292,9 +294,15 @@ function processInputPacket(room, player, data, io, rooms) {
       recordParryPressTime(player, data, rising);
 
       // Clear grabBreakSpaceConsumed if spacebar was released during input lock,
-      // so raw parry isn't blocked after the lock expires
-      if (falling[" "] && player.grabBreakSpaceConsumed) {
-        player.grabBreakSpaceConsumed = false;
+      // so raw parry isn't blocked after the lock expires. Also clear the
+      // one-press-per-window latch here so a release→re-press that spans the
+      // lock can re-arm as soon as the lock ends (SM clear is too late).
+      if (falling[" "]) {
+        if (player.grabBreakSpaceConsumed) {
+          player.grabBreakSpaceConsumed = false;
+        }
+        player.apSpaceConsumed = false;
+        player.apGuardNeedsRelease = false;
       }
       // Track mouse1 press/release timing during lock so charging can begin
       // immediately when the lock expires (inputs are READ, not acted on)
@@ -351,6 +359,8 @@ function processInputPacket(room, player, data, io, rooms) {
           const backKey = player.facing === -1 ? 'a' : 'd';
           if (data.keys.s && data.keys[fwdKey]) {
             player.inputBuffer = { type: "chargedAttack", timestamp: simNowForPlayer(player) };
+          } else if (LOW_KICK_ENABLED && data.keys.s && !data.keys[fwdKey]) {
+            player.inputBuffer = { type: "lowKick", timestamp: simNowForPlayer(player) };
           } else if (data.keys[backKey] && !data.keys[fwdKey]) {
             player.inputBuffer = { type: "palmThrust", timestamp: simNowForPlayer(player) };
           } else {
@@ -441,6 +451,16 @@ function processInputPacket(room, player, data, io, rooms) {
     const { rising, falling } = detectEdges(previousKeys, data.events, data.keys);
     player.keys = data.keys;
 
+    // Clear the one-window-per-press latch on the FALLING Space edge, before
+    // rising-edge arm below. Must happen here (not only in the late SM tick):
+    // a same-tick or same-packet release→re-press still has Space held when
+    // updateAttackParryState runs, so the SM never saw the release and the
+    // re-tap would stay stuck in GUARD.
+    if (falling[" "]) {
+      player.apSpaceConsumed = false;
+      player.apGuardNeedsRelease = false; // release unlocks HOLD → GUARD
+    }
+
     // Capture true press moment for lag-compensated parry timing. The main loop
     // (level-triggered on keys[" "]) and the input buffer both consume this when
     // they actually start the parry, so it must be recorded on the rising edge.
@@ -509,6 +529,8 @@ function processInputPacket(room, player, data, io, rooms) {
         const backKey = player.facing === -1 ? 'a' : 'd';
         if (data.keys.s && data.keys[fwdKey]) {
           player.inputBuffer = { type: "chargedAttack", timestamp: simNowForPlayer(player) };
+        } else if (LOW_KICK_ENABLED && data.keys.s && !data.keys[fwdKey]) {
+          player.inputBuffer = { type: "lowKick", timestamp: simNowForPlayer(player) };
         } else if (data.keys[backKey] && !data.keys[fwdKey]) {
           player.inputBuffer = { type: "palmThrust", timestamp: simNowForPlayer(player) };
         } else {
@@ -610,14 +632,12 @@ function processInputPacket(room, player, data, io, rooms) {
     }
   }
 
-  // SPACE PRESS (rising edge): open a PARRY window immediately for zero-tick-delay
-  // responsiveness. A fresh TAP is a timed read that deflects the incoming
-  // strike; HOLDING (handled in the main loop) settles into GUARD once the window
-  // closes. A re-tap while guarding re-arms a fresh window (a flurry is answered
-  // by re-tapping in rhythm — no more hold-to-Flow). canArmAttackParry gates on
-  // apSpaceConsumed (clears on release) so one press only ever opens one window.
-  // This is the PRIMARY route for human parries (fires the same tick the press
-  // arrives); timing is judged on the lag-compensated true press moment.
+  // SPACE PRESS (rising edge): open / RE-STAMP a PARRY window immediately.
+  // A fresh TAP is a timed read; HOLDING settles into GUARD once the window
+  // expires. Release during a live window CANCELS (SM, after collision). A
+  // re-press re-stamps rawParryStartTime even if a prior window was still
+  // live — the flurry re-time loop. canArm gates only on apSpaceConsumed
+  // (cleared on falling Space above). PRIMARY human path; lag-compensated.
   if (
     player.spaceJustPressed &&
     player.activePowerUp !== POWER_UP_TYPES.FLAP &&
@@ -646,12 +666,15 @@ function processInputPacket(room, player, data, io, rooms) {
     clearChargeState(player, true);
   }
 
-  // MOUSE1 PRESS: S+FORWARD+MOUSE1 = charged, BACK+MOUSE1 = open-palm thrust,
-  // else fire slap.
+  // MOUSE1 PRESS: S+FORWARD+MOUSE1 = charged, S+MOUSE1 = low kick,
+  // BACK+MOUSE1 = open-palm thrust, else fire slap.
   if (player.mouse1JustPressed && !shouldBlockAction()) {
     const forwardKey = player.facing === -1 ? 'd' : 'a';
     const backKey = player.facing === -1 ? 'a' : 'd';
     const wantsChargedAttack = player.keys.s && player.keys[forwardKey];
+    // S held without forward — rooted trip (disabled while LOW_KICK_ENABLED is false).
+    const wantsLowKick =
+      LOW_KICK_ENABLED && player.keys.s && !player.keys[forwardKey];
     // Back (away from opponent) held, WITHOUT forward — a deliberate back input.
     const wantsPalmThrust = player.keys[backKey] && !player.keys[forwardKey];
 
@@ -670,6 +693,8 @@ function processInputPacket(room, player, data, io, rooms) {
       player.isCrouchStrafing = false;
     } else if (wantsChargedAttack && player.isAttacking && player.attackType === "slap") {
       player.inputBuffer = { type: "chargedAttack", timestamp: simNowForPlayer(player) };
+    } else if (wantsLowKick && canPlayerSlap(player)) {
+      executeLowKick(player, rooms);
     } else if (wantsPalmThrust && canPlayerSlap(player)) {
       // Rooted "hold your ground" strike — only from neutral (executePalmThrust
       // itself guards !isAttacking so it can never eat a slap string).

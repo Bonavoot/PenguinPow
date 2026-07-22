@@ -342,7 +342,12 @@ function resetRoomAndPlayers(room, io) {
     player.isGuarding = false;
     player.apActiveUntil = 0;
     player.apChainCount = 0;
+    player.apFlurryUntil = 0;
     player.isApWhiffRecovering = false;
+    player.apGuardNeedsRelease = false;
+    player.apSpaceConsumed = false;
+    player.isApPostParryLocked = false;
+    player.apPostParryLockUntil = 0;
     player.rawParryStartTime = 0;
     player.rawParryMinDurationMet = false;
     player.isRawParryStun = false;

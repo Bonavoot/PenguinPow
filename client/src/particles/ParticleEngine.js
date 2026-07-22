@@ -417,10 +417,11 @@ function makeTintedSheet(img, r, g, b, strength = 0.85) {
   return holder;
 }
 
-// Vivid YELLOW variant of the cinematic throw-land splash — reused for the
-// perfect-parry landing smoke so the smoke reads as yellow as the golden burst.
-// The source-atop bake lets us use a saturated yellow without it going muddy.
+// Vivid YELLOW variant of the cinematic throw-land splash (charged / KO paths).
 const cinematicThrowLandSmokeGold = makeTintedSheet(cinematicThrowLandSmokeImg, 255, 240, 95, 0.88);
+// Electric ice-cyan variant — perfect-parry foot splash, matches the hotter
+// perfect-tier burst (distinct from regular steel-cyan hold motes).
+const cinematicThrowLandSmokeCyan = makeTintedSheet(cinematicThrowLandSmokeImg, 40, 230, 255, 0.82);
 
 function spawnCinematicThrowLandSmoke(
   engine,
@@ -429,9 +430,15 @@ function spawnCinematicThrowLandSmoke(
   { scale = 1, alpha = 1, maxLife = 0.55, behindDohyo = false, tint = null } = {}
 ) {
   const goldReady = tint === "gold" && cinematicThrowLandSmokeGold.canvas;
-  const img = goldReady ? cinematicThrowLandSmokeGold.canvas : cinematicThrowLandSmokeImg;
+  const cyanReady = tint === "cyan" && cinematicThrowLandSmokeCyan.canvas;
+  const tintedReady = goldReady || cyanReady;
+  const img = goldReady
+    ? cinematicThrowLandSmokeGold.canvas
+    : cyanReady
+      ? cinematicThrowLandSmokeCyan.canvas
+      : cinematicThrowLandSmokeImg;
   // The baked tint canvas is always render-ready; the raw <img> needs a load check.
-  if (!goldReady && (!img || !img.complete || !img.naturalWidth)) return false;
+  if (!tintedReady && (!img || !img.complete || !img.naturalWidth)) return false;
   const drawSize = CK_THROW_LAND_SIZE * scale;
   engine.spawn({
     x: footX,
@@ -3083,16 +3090,15 @@ const PRESETS = {
     }
   },
 
-  // Perfect raw parry — same cinematic landing splash, lifted slightly so it
-  // reads at the parrier's body rather than buried at the feet.
+  // Perfect raw parry — cinematic landing splash in electric ice-cyan.
   perfectParryLandSmoke(engine, { x, y }) {
     const footX = x;
     const footY = GAME_H - y - 32;
     spawnCinematicThrowLandSmoke(engine, footX, footY, {
       scale: 1,
-      alpha: 1,
-      maxLife: 0.55,
-      tint: "gold", // pale-gold splash matching the golden perfect-parry set
+      alpha: 0.95,
+      maxLife: 0.58,
+      tint: "cyan",
     });
   },
 
@@ -4157,109 +4163,91 @@ const PRESETS = {
     }
   },
 
-  // Perfect raw parry — denser parry-style puff burst, yellow-gold metal read
-  // (CSS RawParryEffect unchanged).
-  perfectParryFlameBurst(engine, { x, y, facing }) {
+  // Perfect parry — tight electric-cyan spark ejecta at the body (not a gold
+  // flame cloud). Short-lived additive shards + a few bright motes so the
+  // clash reads as a steel spark, under the cinematic-kill particle budget.
+  perfectParrySparkBurst(engine, { x, y, facing }) {
     const dir = facing || 1;
-    const bodyX = x + dir * 10;
-    const footY = GAME_H - y - 12;
-    const midY = GAME_H - y - 65;
-    const headY = GAME_H - y - 105;
-    const sz = 1.46;
+    const bodyX = x + dir * 8;
+    const midY = GAME_H - y - 58;
+    const T = engine.textures;
 
-    for (let i = 0; i < 18; i++) {
-      const side = i < 9 ? -1 : 1;
-      const spawnX = bodyX + side * rand(28, 58);
-      const spawnY = rand(midY - 2, footY);
-      const size = rand(24, 40) * sz;
+    // Bright core mote — snappy pop with a brief hold at contact height.
+    engine.spawn({
+      x: bodyX,
+      y: midY,
+      vx: 0,
+      vy: 0,
+      gravity: 0,
+      drag: 1,
+      size: 28,
+      sizeEnd: 56,
+      alpha: 0.95,
+      alphaEnd: 0,
+      ease: "outCubic",
+      easeAlpha: "outQuad",
+      maxLife: 0.18,
+      texture: T.circleBlue || T.circle,
+      blendMode: "lighter",
+      aboveFighters: true,
+    });
+
+    // Sharp radial shards — the "metal clash" read.
+    for (let i = 0; i < 16; i++) {
+      const ang = (Math.PI * 2 * i) / 16 + rand(-0.12, 0.12);
+      const spd = rand(200, 480);
       engine.spawn({
-        x: spawnX,
-        y: spawnY,
-        vx: side * rand(18, 58) + rand(-10, 10),
-        vy: rand(-192, -85),
-        gravity: rand(-24, -9),
-        drag: 0.94,
-        size,
-        sizeEnd: size * rand(0.45, 0.72),
-        alpha: rand(0.7, 0.9),
+        x: bodyX + Math.cos(ang) * rand(2, 8),
+        y: midY + Math.sin(ang) * rand(2, 8),
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd * 0.75 - rand(20, 80),
+        gravity: 260,
+        drag: 0.9,
+        size: rand(3, 7),
+        sizeEnd: rand(1, 2.5),
+        alpha: rand(0.85, 1),
         alphaEnd: 0,
-        ease: "outCubic",
+        ease: "outExpo",
         easeAlpha: "outQuad",
-        rotationSpeed: rand(-1.1, 1.1),
-        maxLife: rand(0.48, 0.7),
-        texture: pickGoldPuff(engine.textures),
+        rotation: ang,
+        rotationSpeed: rand(-6, 6),
+        stretchX: rand(1.6, 2.8),
+        maxLife: rand(0.22, 0.36),
+        texture: pick([T.chunkBlue, T.circleBlue, T.circle]),
         blendMode: "lighter",
+        aboveFighters: true,
       });
     }
 
+    // Soft cyan powder bloom — fills the gap under the sprite burst.
     for (let i = 0; i < 8; i++) {
-      const spawnX = bodyX + rand(-52, 52);
-      const spawnY = rand(headY - 14, headY + 14);
-      const size = rand(22, 36) * sz;
-      engine.spawn({
-        x: spawnX,
-        y: spawnY,
-        vx: rand(-22, 22),
-        vy: rand(-170, -58),
-        gravity: rand(-22, -8),
-        drag: 0.94,
-        size,
-        sizeEnd: size * rand(0.45, 0.75),
-        alpha: rand(0.66, 0.86),
-        alphaEnd: 0,
-        ease: "outCubic",
-        easeAlpha: "outQuad",
-        rotationSpeed: rand(-1.1, 1.1),
-        maxLife: rand(0.5, 0.74),
-        texture: pickGoldPuff(engine.textures),
-        blendMode: "lighter",
-      });
-    }
-
-    for (let i = 0; i < 12; i++) {
-      const side = i < 6 ? -1 : 1;
-      engine.spawn({
-        x: bodyX + side * rand(18, 48),
-        y: rand(midY - 14, footY),
-        vx: side * rand(28, 78),
-        vy: rand(-222, -92),
-        gravity: -16,
-        drag: 0.94,
-        size: rand(4, 8) * sz,
-        sizeEnd: rand(1.4, 3.0),
-        alpha: rand(0.88, 1.0),
-        alphaEnd: 0,
-        ease: "linear",
-        easeAlpha: "outQuad",
-        rotationSpeed: rand(-4.5, 4.5),
-        maxLife: rand(0.22, 0.4),
-        texture: pick([engine.textures.circleGold, engine.textures.chunkGold]),
-        blendMode: "lighter",
-      });
-    }
-
-    for (let i = 0; i < 7; i++) {
-      const side = i === 0 ? -1 : i === 1 ? 1 : Math.random() > 0.5 ? 1 : -1;
-      const size = rand(20, 34) * sz;
+      const side = i < 4 ? -1 : 1;
+      const size = rand(14, 26);
       engine.spawn({
         x: bodyX + side * rand(10, 36),
-        y: footY,
-        vx: side * rand(48, 98),
-        vy: rand(-22, -5),
-        gravity: 18,
-        drag: 0.88,
+        y: midY + rand(-18, 24),
+        vx: side * rand(30, 90),
+        vy: rand(-120, -40),
+        gravity: rand(-8, 20),
+        drag: 0.93,
         size,
-        sizeEnd: size * rand(0.28, 0.46),
-        alpha: rand(0.6, 0.8),
+        sizeEnd: size * rand(0.35, 0.55),
+        alpha: rand(0.45, 0.7),
         alphaEnd: 0,
         ease: "outCubic",
-        easeAlpha: "inQuad",
-        rotationSpeed: rand(-1.1, 1.1),
-        maxLife: rand(0.28, 0.42),
-        texture: pickGoldPuff(engine.textures),
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-1.2, 1.2),
+        maxLife: rand(0.36, 0.52),
+        texture: pickBluePuff(T),
         blendMode: "lighter",
       });
     }
+  },
+
+  // Legacy alias — gold flame path retired; keep name so any stray callers
+  // still resolve to the cyan spark treatment.
+  perfectParryFlameBurst(engine, opts) {
+    PRESETS.perfectParrySparkBurst(engine, opts);
   },
 
   // ─── HIT VFX OVERHAUL (Phase A) — cel-burst impact ───────────────

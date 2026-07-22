@@ -6,7 +6,7 @@
  *
  * Usage: node scripts/bake-hat-overlays.mjs
  *        node scripts/bake-hat-overlays.mjs crown
- *        node scripts/bake-hat-overlays.mjs top_hat crown
+ *        node scripts/bake-hat-overlays.mjs top_hat crown halo plunger
  */
 import sharp from "sharp";
 import fs from "fs";
@@ -30,6 +30,16 @@ const GEARS = {
     file: path.join(ASSETS, "cosmetics/crown.png"),
     meta: path.join(ASSETS, "cosmetics/crown.json"),
     prefix: "crown",
+  },
+  halo: {
+    file: path.join(ASSETS, "cosmetics/halo.png"),
+    meta: path.join(ASSETS, "cosmetics/halo.json"),
+    prefix: "halo",
+  },
+  plunger: {
+    file: path.join(ASSETS, "cosmetics/plunger.png"),
+    meta: path.join(ASSETS, "cosmetics/plunger.json"),
+    prefix: "plunger",
   },
 };
 

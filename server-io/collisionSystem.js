@@ -76,8 +76,15 @@ const {
   PALM_THRUST_HITBOX_DISTANCE_VALUE,
   PALM_THRUST_KB_VELOCITY,
   PALM_THRUST_ACTIVE_MS,
+  LOW_KICK_HIT_RECOVERY_MS,
+  LOW_KICK_HITBOX_DISTANCE_VALUE,
+  LOW_KICK_KB_VELOCITY,
+  LOW_KICK_BALANCE_DRAIN,
+  LOW_KICK_BALANCE_DRAIN_VS_PARRY,
+  LOW_KICK_BALANCE_DRAIN_COUNTER,
   FLAP_BODYSLAM_KB_VELOCITY,
   AP_ACTIVE_MS,
+  AP_LATE_PARRY_MS,
   AP_FLOW_WINDOW_MS,
   AP_KILL_THRESHOLD,
   AP_PERFECT_KILL_THRESHOLD,
@@ -132,6 +139,7 @@ const {
   consumeHitAbsorption,
   schedulePalmThrustVisualEnd,
   alignedEntryVelocity,
+  grantAttackParryFlurryCover,
 } = require("./gameUtils");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum; Phase 2: posture;
@@ -294,6 +302,9 @@ function checkCollision(player, otherPlayer, rooms, io) {
   if (player.attackType === "charged" && player.chargedActiveEndTime && simNowForPlayer(player) > player.chargedActiveEndTime) {
     return;
   }
+  if (player.attackType === "lowKick" && player.lowKickActiveEndTime && simNowForPlayer(player) > player.lowKickActiveEndTime) {
+    return;
+  }
 
   // Dodge no longer grants i-frames against ANY attack type.
   // Previously dodge i-framed charged attacks during its active phase, but that
@@ -372,9 +383,11 @@ function checkCollision(player, otherPlayer, rooms, io) {
   const hitboxDistance =
     player.attackType === "slap"
       ? SLAP_HITBOX_DISTANCE_VALUE
-      : player.isPalmThrust
-        ? PALM_THRUST_HITBOX_DISTANCE_VALUE * (player.sizeMultiplier || 1)
-        : CHARGED_HITBOX_DISTANCE_VALUE * (player.sizeMultiplier || 1);
+      : player.attackType === "lowKick"
+        ? LOW_KICK_HITBOX_DISTANCE_VALUE
+        : player.isPalmThrust
+          ? PALM_THRUST_HITBOX_DISTANCE_VALUE * (player.sizeMultiplier || 1)
+          : CHARGED_HITBOX_DISTANCE_VALUE * (player.sizeMultiplier || 1);
 
   // For slap attacks, only check horizontal distance and ensure opponent is in front
   if (player.attackType === "slap") {
@@ -435,6 +448,53 @@ function checkCollision(player, otherPlayer, rooms, io) {
       // connects cleanly (processHit). There is NO free damage-absorb armor;
       // the ONLY thing that absorbs here is the Thick Blubber loadout/power-up,
       // resolved grabs-only inside processHit.
+      if (eitherHasSlapParryImmunity) return;
+      processHit(player, otherPlayer, rooms, io);
+    }
+    return;
+  }
+
+  // ── LOW KICK / TRIP ───────────────────────────────────────────────────────
+  // Rooted poke: beats parry/guard (falls through processHit — not in the
+  // slap/palm parry gate) and grab startup (no grabSlipsSlap). Loses to live
+  // slap / palm / charged hitboxes on trade.
+  if (player.attackType === "lowKick") {
+    const deltaX = otherPlayer.x - player.x;
+    const attackDir = player.facing === 1 ? -1 : 1;
+    const opponentInFront = deltaX * attackDir >= 0;
+    const horizontalDistance = Math.abs(deltaX);
+    if (opponentInFront && horizontalDistance < hitboxDistance) {
+      if (
+        otherPlayer.isAttacking &&
+        !otherPlayer.isInStartupFrames &&
+        (otherPlayer.attackType === "slap" ||
+          otherPlayer.attackType === "charged" ||
+          otherPlayer.isPalmThrust)
+      ) {
+        // Strike wins the trade — their checkCollision lands the hit.
+        return;
+      }
+      if (
+        otherPlayer.isAttacking &&
+        otherPlayer.attackType === "lowKick" &&
+        !otherPlayer.isInStartupFrames
+      ) {
+        const diff = player.attackStartTime - otherPlayer.attackStartTime;
+        if (Math.abs(diff) <= SLAP_TRADE_WINDOW_MS) {
+          // Simultaneous kicks — both chip lightly via mutual slap-trade shove.
+          resolveSlapTrade(player, otherPlayer, rooms, io);
+          return;
+        }
+        if (diff > 0) return; // later kick loses
+      }
+      // Already in an active clinch — can't trip through a completed grab.
+      if (
+        otherPlayer.isGrabbing &&
+        isOpponentCloseEnoughForGrab(otherPlayer, player) &&
+        isOpponentInFrontOfGrabber(otherPlayer, player)
+      ) {
+        return;
+      }
       if (eitherHasSlapParryImmunity) return;
       processHit(player, otherPlayer, rooms, io);
     }
@@ -703,18 +763,20 @@ function processHit(player, otherPlayer, rooms, io) {
 
   // Use the stored attack type instead of checking isSlapAttack
   const isSlapAttack = player.attackType === "slap";
+  const isLowKick = player.attackType === "lowKick" || !!player.isLowKick;
+  // Capture before clearAllActionStates — trip bonus for beating Space.
+  const victimWasDefending =
+    !!(otherPlayer.isRawParrying || otherPlayer.isGuarding);
 
   // ── ARMOR BREAK VFX ───────────────────────────────────────────────
-  // Charged attack landing during a grab attempt's startup is the canonical
-  // "armor break" — slap armor exists, charged shatters it. This is a visual
-  // annotation of the existing rock-paper-scissors (charged > grab); the hit
-  // proceeds normally below. Skip if thick blubber will absorb the hit anyway,
-  // or if the defender is raw parrying (parry plays its own VFX).
+  // Charged / low-kick landing during a grab attempt's startup is the
+  // "armor break" tell. Slap does not play this VFX. Skip if thick blubber
+  // will absorb, or if the defender is raw parrying (parry plays its own VFX).
   const palmBreaksGrabArmor =
     player.isPalmThrust && playerPalmBreaksGrabArmor(player);
   if (
     !isSlapAttack &&
-    (!player.isPalmThrust || palmBreaksGrabArmor) &&
+    (!player.isPalmThrust || palmBreaksGrabArmor || isLowKick) &&
     otherPlayer.isGrabStartup &&
     !otherPlayer.isRawParrying &&
     !hasHitAbsorption(otherPlayer)
@@ -869,9 +931,30 @@ function processHit(player, otherPlayer, rooms, io) {
     return;
   }
 
+  // Low kick: keep the strike pose briefly, then settle into hit recovery.
+  if (isLowKick) {
+    player.currentLowKickHitConnected = true;
+    player.lowKickActiveEndTime = 0; // kill hitbox; pose stays via isLowKick
+    timeoutManager.clearPlayerSpecific(player.id, "lowKickCycle");
+    setPlayerTimeout(
+      player.id,
+      () => {
+        player.isAttacking = false;
+        player.isLowKick = false;
+        player.attackType = null;
+        player.isInStartupFrames = false;
+        player.lowKickActiveEndTime = 0;
+        player.currentAction = null;
+        player.currentLowKickHitConnected = false;
+      },
+      LOW_KICK_HIT_RECOVERY_MS,
+      "lowKickCycle"
+    );
+  }
+
   // For charged attacks, end the attack immediately on hit — EXCEPT palm thrust,
   // which keeps isAttacking alive through the active window (like slap).
-  if (!isSlapAttack) {
+  if (!isSlapAttack && !isLowKick) {
     // Set hit tracking flag for charged attacks
     player.chargedAttackHit = true;
 
@@ -920,6 +1003,24 @@ function processHit(player, otherPlayer, rooms, io) {
   }
   // For slap attacks: no special handling - executeSlapAttack timeout handles everything
 
+  // ── Early-active slap grace (AP_LATE_PARRY_MS) ─────────────────────────────
+  // First N ms of slap ACTIVE: live PARRY/GUARD still resolve immediately, but
+  // open hits are deferred so a slightly-late tap can arm and catch. Palm /
+  // charged are unchanged. After the grace, open hits land as usual.
+  if (
+    isSlapAttack &&
+    player.attackStartTime &&
+    !otherPlayer.isRawParrying
+  ) {
+    const slapAge = simNowForPlayer(player) - player.attackStartTime;
+    if (
+      slapAge >= SLAP_STARTUP_MS &&
+      slapAge < SLAP_STARTUP_MS + AP_LATE_PARRY_MS
+    ) {
+      return;
+    }
+  }
+
   // ── GUARD & PARRY ─────────────────────────────────────────────────────────
   // The defender is in the Space stance (a live PARRY window OR holding GUARD)
   // and the incoming move is a SLAP or PALM THRUST (a charged non-palm attack
@@ -927,6 +1028,17 @@ function processHit(player, otherPlayer, rooms, io) {
   // read; grabs never reach here — a grab vs the stance is the counter-grab in
   // index.js). A live parry window (a timed tap) deflects for a reward, graded
   // regular vs PERFECT; otherwise the defender is GUARDING and eats chip.
+  //
+  // Pre-clear stale flurry linger: Space UP + window expired + not guarding.
+  // Without this, the block below would phantom-chip instead of a clean hit.
+  if (otherPlayer.isRawParrying && !otherPlayer.isGuarding) {
+    const _apNow = simNowForPlayer(otherPlayer);
+    const _apHeld = otherPlayer.isCPU ? !!otherPlayer.keys.s : !!otherPlayer.keys[" "];
+    if (!_apHeld && _apNow >= (otherPlayer.apActiveUntil || 0)) {
+      otherPlayer.isRawParrying = false;
+      otherPlayer.apActiveUntil = 0;
+    }
+  }
   if (otherPlayer.isRawParrying && (isSlapAttack || player.isPalmThrust)) {
     const attacker = player;
     const parrier = otherPlayer;
@@ -960,6 +1072,7 @@ function processHit(player, otherPlayer, rooms, io) {
       // swing, so the current active window can't re-chip. No timeout needed.
       parrier.isAlreadyHit = true;
       parrier.apChainCount = 0;    // a block breaks the parry chain
+      parrier.apFlurryUntil = 0;   // block breaks tap-every-slap flurry cover
 
       // GUARD CRUSH — bled dry while blocking: drop the guard into a brief stun,
       // then the stamina<=0 gassed path (index.js) takes over.
@@ -1179,18 +1292,27 @@ function processHit(player, otherPlayer, rooms, io) {
       }
 
       // ── PARRIER reward. Each parry costs stamina (re-tapping a flurry drains
-      // you). Post-deflect the parrier is left GUARDING (holding = block the next
-      // slap unless they re-tap in rhythm). Perfect refunds balance — a net
-      // posture GAIN on a dead-on read.
+      // you). Post-deflect: NEVER auto-enter GUARD from a continued hold — that
+      // made fast release→re-press eat block on the next slap. Drop the stance
+      // floor; success + isApPostParryLocked plant for AP_SUCCESS_RECOVERY_MS
+      // (same for regular/perfect). Rising-edge re-tap still arms immediately
+      // (clears pose, lock flag survives). Perfect refunds balance.
+      const stillHolding = parrier.isCPU ? !!parrier.keys.s : !!parrier.keys[" "];
       parrier.stamina = Math.max(0, parrier.stamina - AP_STAMINA_COST);
-      parrier.isRawParrying = true;
-      parrier.isGuarding = true;         // window consumed → guard until a fresh re-tap
+      parrier.isGuarding = false;
+      parrier.isRawParrying = false;
+      parrier.apSpaceConsumed = false; // next rising edge may re-arm immediately
+      if (stillHolding) {
+        parrier.apGuardNeedsRelease = true;
+      }
       parrier.isRawParrySuccess = !isPerfect;
       parrier.isPerfectRawParrySuccess = isPerfect;
       parrier.apActiveUntil = 0;         // consume the window (re-tap to parry again)
       parrier.apChainCount = (parrier.apChainCount || 0) + 1;
       parrier.isApWhiffRecovering = false;
       parrier.apRecoveryUntil = 0;
+      // Tap-every-slap: next rising-edge re-arm may extend to cover ASAP follow-up.
+      grantAttackParryFlurryCover(parrier, currentTime, staggerMs);
 
       let perfectBalanceGain = 0;
       if (isPerfect) {
@@ -1199,12 +1321,18 @@ function processHit(player, otherPlayer, rooms, io) {
         perfectBalanceGain = parrier.balance - before;
       }
 
+      // Shared plant for regular + perfect. isApPostParryLocked survives flurry
+      // re-taps (which clear success pose only).
+      parrier.isApPostParryLocked = true;
+      parrier.apPostParryLockUntil = currentTime + AP_SUCCESS_RECOVERY_MS;
       timeoutManager.clearPlayerSpecific(parrier.id, "parrySuccess");
       setPlayerTimeout(
         parrier.id,
         () => {
           parrier.isRawParrySuccess = false;
           parrier.isPerfectRawParrySuccess = false;
+          parrier.isApPostParryLocked = false;
+          parrier.apPostParryLockUntil = 0;
         },
         AP_SUCCESS_RECOVERY_MS,
         "parrySuccess"
@@ -1273,7 +1401,7 @@ function processHit(player, otherPlayer, rooms, io) {
     otherPlayer.isPerfectRawParrySuccess = false;
 
     otherPlayer.isHit = true;
-    otherPlayer.lastHitType = isSlapAttack ? "slap" : "charged";
+    otherPlayer.lastHitType = isSlapAttack ? "slap" : isLowKick ? "lowKick" : "charged";
     // MASTERY Phase 3: taking a hit breaks the victim's tsuppari rhythm.
     otherPlayer.cadenceChain = 0;
 
@@ -1318,7 +1446,13 @@ function processHit(player, otherPlayer, rooms, io) {
     // no counter multiplier (byte-identical).
     const postureCounterMult =
       MASTERY_P2_POSTURE && isCounterHit ? POSTURE_COUNTER_DRAIN_MULT : 1;
-    if (isSlapAttack) {
+    if (isLowKick) {
+      otherPlayer.stamina = Math.max(0, otherPlayer.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
+      let kickDrain = LOW_KICK_BALANCE_DRAIN;
+      if (victimWasDefending) kickDrain = LOW_KICK_BALANCE_DRAIN_VS_PARRY;
+      else if (isCounterHit) kickDrain = LOW_KICK_BALANCE_DRAIN_COUNTER;
+      otherPlayer.balance = Math.max(0, otherPlayer.balance - kickDrain * postureCounterMult);
+    } else if (isSlapAttack) {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
       // MASTERY Phase 3: an enhanced (cadence) slap breaks posture harder than a
       // normal one — the rhythm player's tsuppari bites. Falls back to the P2
@@ -1438,7 +1572,7 @@ function processHit(player, otherPlayer, rooms, io) {
     let isCinematicKill = false;
     const knockbackAllowed = canApplyKnockback(otherPlayer);
 
-    if (knockbackAllowed || isSlapAttack) {
+    if (knockbackAllowed || isSlapAttack || isLowKick) {
       if (isSlapAttack) {
         const pushDirection = player.facing === 1 ? -1 : 1;
 
@@ -1521,6 +1655,21 @@ function processHit(player, otherPlayer, rooms, io) {
             : pushDirection * SLAP_ONHIT_VICTIM_DRIFT * finalKnockbackMultiplier * cadenceStepMult * followShiftMult * tipDriftMult;
         }
 
+      } else if (isLowKick) {
+        // LOW KICK: small slap-sized shove, NEVER rings out. Posture tool.
+        isCinematicKill = false;
+        otherPlayer.isSlapKnockback = true;
+        otherPlayer.isBurstKnockback = true;
+        otherPlayer.isChargedKnockback = false;
+        otherPlayer.burstKnockbackStartTime = currentTime;
+        otherPlayer.knockbackVelocity.x =
+          knockbackDirection * LOW_KICK_KB_VELOCITY * bashoKbFactor;
+        otherPlayer.knockbackVelocity.y = 0;
+        otherPlayer.movementVelocity = 0;
+        otherPlayer.slapKnockbackCanRingOut = false;
+
+        player.movementVelocity = 0;
+        player.knockbackVelocity = { x: 0, y: 0 };
       } else if (player.isPalmThrust) {
         // PALM THRUST: NOT a charged-style finisher. It delivers a burst
         // knockback with the rope-resistance clamp, so it can only ring a
@@ -1658,7 +1807,7 @@ function processHit(player, otherPlayer, rooms, io) {
         player.knockbackVelocity = { x: 0, y: 0 };
       }
 
-      if (!isSlapAttack) {
+      if (!isSlapAttack && !isLowKick) {
         const minSepDist = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, otherPlayer.sizeMultiplier || 1);
         const currentDist = Math.abs(player.x - otherPlayer.x);
         if (currentDist < minSepDist) {
@@ -1691,10 +1840,11 @@ function processHit(player, otherPlayer, rooms, io) {
           x: otherPlayer.x,
           y: otherPlayer.y,
           facing: otherPlayer.facing,
-          attackType: isSlapAttack ? "slap" : "charged",
+          attackType: isSlapAttack ? "slap" : isLowKick ? "lowKick" : "charged",
           // Palm thrust rides the charged hit path but uses the big burst
           // spark on the client (not the charged sheet).
           isPalmThrust: !!player.isPalmThrust,
+          isLowKick: !!isLowKick,
           // Drives the client charged-hit shake scaling (heavier charge = bigger crunch).
           chargePercentage: isSlapAttack ? 0 : chargePercentage,
           timestamp: Date.now(),
@@ -1748,8 +1898,9 @@ function processHit(player, otherPlayer, rooms, io) {
         // Slaps: snappy, punchy feel
         // Charged: heavy, powerful feel scaling with charge
         // ============================================
-        if (isSlapAttack) {
+        if (isSlapAttack || isLowKick) {
           // One flat, snappy freeze per slap — every slap is an individual hit.
+          // Low kick shares the slap freeze (light confirm, not charged weight).
           // Symmetric (the sim clock pauses for BOTH players), so the +0 frame
           // math is untouched by hitstop.
           triggerHitstopAndEmit(io, currentRoom, HITSTOP_SLAP_MS, "slap");
@@ -1815,7 +1966,13 @@ function processHit(player, otherPlayer, rooms, io) {
     //   parry still answers it.
     // CHARGED: fixed 380ms stun (counter ×1.4). Punish adds nothing — label only.
     let hitStateDuration;
-    if (isSlapAttack) {
+    if (isLowKick) {
+      // Short burst stun — trip is a read/posture tool, not a combo starter.
+      hitStateDuration = BURST_STUN_MS;
+      if (isCounterHit || victimWasDefending) {
+        hitStateDuration += SLAP_COUNTER_HIT_BONUS_MS;
+      }
+    } else if (isSlapAttack) {
       const attackerFreeAt = player.attackCooldownUntil || (currentTime + SLAP_RECOVERY_MS);
       hitStateDuration = Math.max(attackerFreeAt - currentTime, SLAP_MIN_HITSTUN_MS);
       if (isCounterHit) {
@@ -1857,11 +2014,15 @@ function processHit(player, otherPlayer, rooms, io) {
     // Update the last hit time for tracking
     otherPlayer.lastHitTime = currentTime;
 
-    // The palm thrust delivers a burst (isBurstKnockback), so it uses the short
-    // no-DI window (BURST_STUN_MS) instead of the generic 380ms charged stun —
-    // DI opens early so the burst carries a bounded distance.
+    // Palm delivers a burst (isBurstKnockback), so it uses the short no-DI
+    // window (BURST_STUN_MS) instead of the generic 380ms charged stun.
+    // Low kick already chose its stun above (burst + optional counter bonus).
     const isBurstHit = player.isPalmThrust === true;
-    const stunDuration = isBurstHit ? BURST_STUN_MS : hitStateDuration;
+    const stunDuration = isLowKick
+      ? hitStateDuration
+      : isBurstHit
+        ? BURST_STUN_MS
+        : hitStateDuration;
 
     setPlayerTimeout(
       otherPlayer.id,
@@ -1897,7 +2058,7 @@ function processHit(player, otherPlayer, rooms, io) {
     // one would make them minus.
     const victimLockMs = hitStateDuration;
     // Attacker: brief lock for slaps creates commitment to each strike
-    const attackerLockMs = isSlapAttack ? 50 : 200;
+    const attackerLockMs = isSlapAttack || isLowKick ? 50 : 200;
     otherPlayer.inputLockUntil = Math.max(
       otherPlayer.inputLockUntil || 0,
       currentTime + victimLockMs
@@ -2040,17 +2201,21 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
     "parryStaggerReset"
   );
 
-  // Parrier reward. Post-deflect the parrier is left GUARDING (re-tap to parry
-  // again). Perfect refunds balance. Chain increments.
+  // Parrier reward. Same as slap AP: no auto-GUARD on continued hold; require
+  // release before HOLD can block again. Perfect refunds balance. Chain increments.
+  const stillHolding = opponent.isCPU ? !!opponent.keys.s : !!opponent.keys[" "];
   opponent.stamina = Math.max(0, opponent.stamina - AP_STAMINA_COST);
-  opponent.isRawParrying = true;
-  opponent.isGuarding = true;
+  opponent.isGuarding = false;
+  opponent.isRawParrying = false;
+  opponent.apSpaceConsumed = false;
+  if (stillHolding) opponent.apGuardNeedsRelease = true;
   opponent.isRawParrySuccess = !isPerfect;
   opponent.isPerfectRawParrySuccess = isPerfect;
   opponent.apActiveUntil = 0;
   opponent.apChainCount = (opponent.apChainCount || 0) + 1;
   opponent.isApWhiffRecovering = false;
   opponent.apRecoveryUntil = 0;
+  grantAttackParryFlurryCover(opponent, currentTime, AP_STAGGER_FLAP_MS);
 
   let perfectBalanceGain = 0;
   if (isPerfect) {
@@ -2059,12 +2224,16 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
     perfectBalanceGain = opponent.balance - before;
   }
 
+  opponent.isApPostParryLocked = true;
+  opponent.apPostParryLockUntil = currentTime + AP_SUCCESS_RECOVERY_MS;
   timeoutManager.clearPlayerSpecific(opponent.id, "parrySuccess");
   setPlayerTimeout(
     opponent.id,
     () => {
       opponent.isRawParrySuccess = false;
       opponent.isPerfectRawParrySuccess = false;
+      opponent.isApPostParryLocked = false;
+      opponent.apPostParryLockUntil = 0;
     },
     AP_SUCCESS_RECOVERY_MS,
     "parrySuccess"

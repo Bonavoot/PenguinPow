@@ -429,6 +429,8 @@ const FighterSpriteStack = styled.div`
   filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.18));
   opacity: ${(p) => (p.$ready ? 1 : 0.55)};
   transition: opacity 0.22s ease-out;
+  /* Decorative — never steal clicks from the picker dock. */
+  pointer-events: none;
 
   @media (max-width: 780px) {
     width: min(78vw, calc(min(46cqh, 360px) * 0.95));
@@ -803,12 +805,16 @@ const ItemGrid = styled.div`
 
 const ItemSlot = styled.button`
   aspect-ratio: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding: clamp(6px, 0.9cqw, 9px);
   background: ${(p) => (p.$selected ? D.softHover : D.deep)};
   border: 1px solid ${(p) => (p.$selected ? C.gold : D.borderSoft)};
   box-shadow: ${(p) =>
@@ -822,21 +828,52 @@ const ItemSlot = styled.button`
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 
-  img {
-    width: 62%;
-    height: auto;
-    object-fit: contain;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
-  }
-
   &:hover {
     background: ${D.softHover};
     color: ${C.cream};
   }
 `;
 
+/** Fixed icon well — images never dictate tile height. */
+const ItemIcon = styled.div`
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+
+  img {
+    display: block;
+    max-width: 78%;
+    max-height: 78%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+    transform: ${(p) => p.$iconTransform || "none"};
+    transform-origin: center center;
+  }
+`;
+
+const ItemLabel = styled.span`
+  flex: 0 0 auto;
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  height: 1.35em;
+  line-height: 1.35em;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
 const UnequipSlot = styled(ItemSlot)`
   color: rgba(245, 236, 217, 0.35);
+  align-items: center;
+  justify-content: center;
   font-family: ${FONT_DISPLAY};
   font-size: clamp(0.7rem, 1.1cqw, 0.9rem);
 `;
@@ -977,7 +1014,18 @@ function CustomizePage({ onBack, onOpenHatTuner }) {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      // Flush debounced edits so leaving for BASHO / lobby never drops the look.
+      if (hydratedRef.current && customizationRef.current) {
+        const base = saveDocRef.current || makeDefaultSave();
+        writeSave({
+          ...base,
+          customization: normalizeCustomization(customizationRef.current),
+        });
+      }
     };
   }, []);
 
@@ -1225,8 +1273,10 @@ function CustomizePage({ onBack, onOpenHatTuner }) {
                   title={gear.name}
                   aria-label={gear.name}
                 >
-                  <img src={gear.icon} alt="" />
-                  <span>{gear.name}</span>
+                  <ItemIcon $iconTransform={gear.iconTransform}>
+                    <img src={gear.icon} alt="" />
+                  </ItemIcon>
+                  <ItemLabel>{gear.name}</ItemLabel>
                 </ItemSlot>
               );
             })}

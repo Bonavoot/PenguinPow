@@ -134,6 +134,7 @@ function createInitialPlayerState(overrides = {}) {
     attackEndTime: 0,
     isSlapAttack: false,
     isPalmThrust: false,
+    isLowKick: false,
     palmThrustQueued: false,
     palmThrustFxId: 0,
     palmThrustVisualUntil: 0,
@@ -197,10 +198,16 @@ function createInitialPlayerState(overrides = {}) {
     apActiveUntil: 0,          // Sim time the PARRY window closes (→ guard if held, whiff if released cold)
     apFlowUntil: 0,            // DEPRECATED (Deflect Flow removed) — kept zeroed so lingering reads don't throw
     apChainCount: 0,           // Consecutive parries (crescendo VFX/SFX on the client; reset when the stance drops)
+    apFlurryUntil: 0,          // After a landed parry: next re-tap may extend window to this sim deadline
     isApWhiffRecovering: false, // Cold tap into nothing → punishable recovery
     apRecoveryUntil: 0,        // Sim time the whiff recovery ends
-    apCooldownUntil: 0,        // Earliest sim time the next fresh tap may arm
-    apSpaceConsumed: false,    // One parry window per physical press (clears on release; a re-tap re-arms)
+    apCooldownUntil: 0,        // Earliest sim time GUARD may re-enter after a drop (taps ignore this)
+    apSpaceConsumed: false,    // One parry window per physical press (clears on falling Space; a re-tap re-arms)
+    apGuardNeedsRelease: false, // After a landed parry while still holding: must release Space before HOLD→GUARD
+    // Move+offense lock after a landed parry. Survives flurry re-taps (armAttackParry
+    // clears success pose but NOT this) so back-to-back piano taps can't walk/act early.
+    isApPostParryLocked: false,
+    apPostParryLockUntil: 0,
     // Legacy raw-parry fields kept so lingering references don't throw; unused by AP.
     rawParryMinDurationMet: false,
     rawParryCooldownUntil: 0,

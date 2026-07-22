@@ -538,6 +538,10 @@ console.log("\n[5] Eligibility gating and handoff blending");
     !isPredictionEligible({ ...base, knockbackVelocity: { x: 2, y: 0 } }, null, keys, true)
   );
   check(
+    "blocked during slap-parry shove",
+    !isPredictionEligible({ ...base, slapParryKnockbackVelocity: 8 }, null, keys, true)
+  );
+  check(
     "blocked while airborne",
     !isPredictionEligible({ ...base, y: C.GROUND_LEVEL - 50 }, null, keys, true)
   );

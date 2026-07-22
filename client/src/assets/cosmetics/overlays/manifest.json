@@ -315,9 +315,9 @@
     "pumo-idle": {
       "overlay": "overlays/crown-pumo-idle.png",
       "attach": {
-        "x": 491.1,
-        "y": 185.6,
-        "rotationDeg": -1
+        "x": 567.1,
+        "y": 195.6,
+        "rotationDeg": 20
       },
       "canvas": {
         "w": 960,
@@ -328,9 +328,9 @@
     "pumo-tachiai-position": {
       "overlay": "overlays/crown-pumo-tachiai-position.png",
       "attach": {
-        "x": 318.9,
-        "y": 330.6,
-        "rotationDeg": -8
+        "x": 368.9,
+        "y": 320.6,
+        "rotationDeg": 3
       },
       "canvas": {
         "w": 960,
@@ -341,9 +341,9 @@
     "pumo-ready-position": {
       "overlay": "overlays/crown-pumo-ready-position.png",
       "attach": {
-        "x": 433.5,
-        "y": 236,
-        "rotationDeg": 0
+        "x": 468.5,
+        "y": 241,
+        "rotationDeg": 9
       },
       "canvas": {
         "w": 960,
@@ -354,9 +354,9 @@
     "grabbing": {
       "overlay": "overlays/crown-grabbing.png",
       "attach": {
-        "x": 344.1,
-        "y": 211,
-        "rotationDeg": -6
+        "x": 389.1,
+        "y": 216,
+        "rotationDeg": 8
       },
       "canvas": {
         "w": 960,
@@ -367,9 +367,9 @@
     "clinch-planting": {
       "overlay": "overlays/crown-clinch-planting.png",
       "attach": {
-        "x": 354.1,
-        "y": 221,
-        "rotationDeg": -6
+        "x": 424.1,
+        "y": 226,
+        "rotationDeg": 14
       },
       "canvas": {
         "w": 960,
@@ -380,9 +380,9 @@
     "attempting-grab-throw": {
       "overlay": "overlays/crown-attempting-grab-throw.png",
       "attach": {
-        "x": 519.4,
-        "y": 275.6,
-        "rotationDeg": 15
+        "x": 514.4,
+        "y": 280.6,
+        "rotationDeg": 12
       },
       "canvas": {
         "w": 1024,
@@ -393,9 +393,9 @@
     "is-attempting-pull": {
       "overlay": "overlays/crown-is-attempting-pull.png",
       "attach": {
-        "x": 482.9,
+        "x": 477.9,
         "y": 121.2,
-        "rotationDeg": 41
+        "rotationDeg": 42
       },
       "canvas": {
         "w": 600,
@@ -432,9 +432,9 @@
     "slap-attack-1-blur-frame": {
       "overlay": "overlays/crown-slap-attack-1-blur-frame.png",
       "attach": {
-        "x": 466.3,
-        "y": 206.2,
-        "rotationDeg": -2
+        "x": 551.3,
+        "y": 216.2,
+        "rotationDeg": 22
       },
       "canvas": {
         "w": 960,
@@ -445,9 +445,9 @@
     "slap-attack-1-hit-frame": {
       "overlay": "overlays/crown-slap-attack-1-hit-frame.png",
       "attach": {
-        "x": 466.3,
-        "y": 206.2,
-        "rotationDeg": -2
+        "x": 551.3,
+        "y": 216.2,
+        "rotationDeg": 22
       },
       "canvas": {
         "w": 960,
@@ -458,9 +458,9 @@
     "slap-attack-2-blur-frame": {
       "overlay": "overlays/crown-slap-attack-2-blur-frame.png",
       "attach": {
-        "x": 457.3,
-        "y": 206.2,
-        "rotationDeg": -2
+        "x": 556.3,
+        "y": 221.2,
+        "rotationDeg": 24
       },
       "canvas": {
         "w": 960,
@@ -471,9 +471,9 @@
     "slap-attack-2-hit-frame": {
       "overlay": "overlays/crown-slap-attack-2-hit-frame.png",
       "attach": {
-        "x": 342.3,
-        "y": 246.2,
-        "rotationDeg": -13
+        "x": 452.3,
+        "y": 251.2,
+        "rotationDeg": 18
       },
       "canvas": {
         "w": 960,
@@ -484,9 +484,9 @@
     "palm-thrust": {
       "overlay": "overlays/crown-palm-thrust.png",
       "attach": {
-        "x": 451.3,
-        "y": 211.2,
-        "rotationDeg": -2
+        "x": 546.3,
+        "y": 221.2,
+        "rotationDeg": 23
       },
       "canvas": {
         "w": 960,
@@ -497,9 +497,9 @@
     "palm-thrust-startup": {
       "overlay": "overlays/crown-palm-thrust-startup.png",
       "attach": {
-        "x": 461.3,
-        "y": 211.2,
-        "rotationDeg": -2
+        "x": 556.3,
+        "y": 221.2,
+        "rotationDeg": 26
       },
       "canvas": {
         "w": 960,
@@ -510,9 +510,9 @@
     "palm-thrust-smear": {
       "overlay": "overlays/crown-palm-thrust-smear.png",
       "attach": {
-        "x": 451.3,
-        "y": 211.2,
-        "rotationDeg": -2
+        "x": 546.3,
+        "y": 221.2,
+        "rotationDeg": 23
       },
       "canvas": {
         "w": 960,
@@ -523,9 +523,9 @@
     "blocking": {
       "overlay": "overlays/crown-blocking.png",
       "attach": {
-        "x": 519.5,
-        "y": 211.6,
-        "rotationDeg": 0
+        "x": 604.5,
+        "y": 226.6,
+        "rotationDeg": 25.5
       },
       "canvas": {
         "w": 960,
@@ -536,9 +536,9 @@
     "block-parry": {
       "overlay": "overlays/crown-block-parry.png",
       "attach": {
-        "x": 322.8,
-        "y": 432.1,
-        "rotationDeg": -7
+        "x": 462.8,
+        "y": 417.1,
+        "rotationDeg": 23
       },
       "canvas": {
         "w": 960,
@@ -549,9 +549,9 @@
     "raw-parry-success": {
       "overlay": "overlays/crown-raw-parry-success.png",
       "attach": {
-        "x": 519.5,
-        "y": 211.6,
-        "rotationDeg": 0
+        "x": 604.5,
+        "y": 231.6,
+        "rotationDeg": 25.5
       },
       "canvas": {
         "w": 960,
@@ -562,9 +562,9 @@
     "pumo-flap-1": {
       "overlay": "overlays/crown-pumo-flap-1.png",
       "attach": {
-        "x": 478.7,
-        "y": 176.8,
-        "rotationDeg": 2
+        "x": 558.7,
+        "y": 191.8,
+        "rotationDeg": 23
       },
       "canvas": {
         "w": 960,
@@ -575,9 +575,9 @@
     "pumo-flap-2": {
       "overlay": "overlays/crown-pumo-flap-2.png",
       "attach": {
-        "x": 329,
-        "y": 270.4,
-        "rotationDeg": -12
+        "x": 469,
+        "y": 230.4,
+        "rotationDeg": 17
       },
       "canvas": {
         "w": 960,
@@ -588,9 +588,9 @@
     "recovering": {
       "overlay": "overlays/crown-recovering.png",
       "attach": {
-        "x": 438.5,
-        "y": 319.6,
-        "rotationDeg": -1
+        "x": 553.5,
+        "y": 339.6,
+        "rotationDeg": 27
       },
       "canvas": {
         "w": 960,
@@ -614,9 +614,9 @@
     "dodging": {
       "overlay": "overlays/crown-dodging.png",
       "attach": {
-        "x": 478.6,
-        "y": 170.7,
-        "rotationDeg": -1
+        "x": 583.6,
+        "y": 179.7,
+        "rotationDeg": 25
       },
       "canvas": {
         "w": 960,
@@ -629,93 +629,93 @@
     "pumo-idle": {
       "overlay": "overlays/hat-pumo-idle.png",
       "attach": {
-        "x": 492.1,
-        "y": 203.6,
-        "rotationDeg": -1
+        "x": 494.1,
+        "y": 245.6,
+        "rotationDeg": 0
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "pumo-tachiai-position": {
       "overlay": "overlays/hat-pumo-tachiai-position.png",
       "attach": {
-        "x": 352.9,
-        "y": 352.6,
+        "x": 358.8,
+        "y": 412,
         "rotationDeg": 0
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "pumo-ready-position": {
       "overlay": "overlays/hat-pumo-ready-position.png",
       "attach": {
-        "x": 432.5,
-        "y": 263,
+        "x": 437.5,
+        "y": 309,
         "rotationDeg": -1
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "grabbing": {
       "overlay": "overlays/hat-grabbing.png",
       "attach": {
-        "x": 353.1,
-        "y": 233,
-        "rotationDeg": -1
+        "x": 350.1,
+        "y": 283,
+        "rotationDeg": -6
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "clinch-planting": {
       "overlay": "overlays/hat-clinch-planting.png",
       "attach": {
-        "x": 373.1,
-        "y": 233,
-        "rotationDeg": 0
+        "x": 370.1,
+        "y": 293,
+        "rotationDeg": -3
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "attempting-grab-throw": {
       "overlay": "overlays/hat-attempting-grab-throw.png",
       "attach": {
-        "x": 509.4,
-        "y": 292.6,
-        "rotationDeg": 10
+        "x": 454.4,
+        "y": 347.6,
+        "rotationDeg": -2
       },
       "canvas": {
         "w": 1024,
         "h": 1024
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "is-attempting-pull": {
       "overlay": "overlays/hat-is-attempting-pull.png",
       "attach": {
-        "x": 468.9,
-        "y": 127.2,
-        "rotationDeg": 39
+        "x": 433.9,
+        "y": 137.2,
+        "rotationDeg": 22
       },
       "canvas": {
         "w": 600,
         "h": 600
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "slapAttack1": {
       "overlay": "overlays/hat-slapAttack1.png",
@@ -728,7 +728,7 @@
         "w": 1024,
         "h": 1024
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "slapAttack2": {
       "overlay": "overlays/hat-slapAttack2.png",
@@ -741,202 +741,830 @@
         "w": 1024,
         "h": 1024
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "slap-attack-1-blur-frame": {
       "overlay": "overlays/hat-slap-attack-1-blur-frame.png",
       "attach": {
-        "x": 466.3,
-        "y": 227.2,
+        "x": 475.3,
+        "y": 279.2,
         "rotationDeg": -1
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "slap-attack-1-hit-frame": {
       "overlay": "overlays/hat-slap-attack-1-hit-frame.png",
       "attach": {
-        "x": 461.3,
-        "y": 227.2,
+        "x": 475.3,
+        "y": 279.2,
         "rotationDeg": -1
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "slap-attack-2-blur-frame": {
       "overlay": "overlays/hat-slap-attack-2-blur-frame.png",
       "attach": {
-        "x": 453.3,
-        "y": 227.2,
+        "x": 464.3,
+        "y": 278.2,
         "rotationDeg": -1
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "slap-attack-2-hit-frame": {
       "overlay": "overlays/hat-slap-attack-2-hit-frame.png",
       "attach": {
-        "x": 345.3,
-        "y": 267.2,
-        "rotationDeg": -13
+        "x": 373.3,
+        "y": 322.2,
+        "rotationDeg": -7
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "palm-thrust": {
       "overlay": "overlays/hat-palm-thrust.png",
       "attach": {
-        "x": 457.3,
-        "y": 222.2,
+        "x": 467.3,
+        "y": 279.2,
         "rotationDeg": -1
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "palm-thrust-startup": {
       "overlay": "overlays/hat-palm-thrust-startup.png",
       "attach": {
-        "x": 467.3,
-        "y": 222.2,
+        "x": 475.3,
+        "y": 279.2,
         "rotationDeg": -1
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "palm-thrust-smear": {
       "overlay": "overlays/hat-palm-thrust-smear.png",
       "attach": {
-        "x": 461.3,
-        "y": 222.2,
+        "x": 467.3,
+        "y": 279.2,
         "rotationDeg": -1
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "blocking": {
       "overlay": "overlays/hat-blocking.png",
       "attach": {
-        "x": 519.5,
-        "y": 225.6,
-        "rotationDeg": -1
+        "x": 522.5,
+        "y": 275.6,
+        "rotationDeg": -2
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "block-parry": {
       "overlay": "overlays/hat-block-parry.png",
       "attach": {
-        "x": 407.8,
-        "y": 389.1,
+        "x": 359.8,
+        "y": 466.1,
+        "rotationDeg": -2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.44
+    },
+    "raw-parry-success": {
+      "overlay": "overlays/hat-raw-parry-success.png",
+      "attach": {
+        "x": 522.5,
+        "y": 275.6,
+        "rotationDeg": -2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.44
+    },
+    "pumo-flap-1": {
+      "overlay": "overlays/hat-pumo-flap-1.png",
+      "attach": {
+        "x": 475.7,
+        "y": 236.8,
         "rotationDeg": 4
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
-    },
-    "raw-parry-success": {
-      "overlay": "overlays/hat-raw-parry-success.png",
-      "attach": {
-        "x": 519.5,
-        "y": 225.6,
-        "rotationDeg": -1
-      },
-      "canvas": {
-        "w": 960,
-        "h": 960
-      },
-      "widthPct": 0.351
-    },
-    "pumo-flap-1": {
-      "overlay": "overlays/hat-pumo-flap-1.png",
-      "attach": {
-        "x": 475.7,
-        "y": 196.8,
-        "rotationDeg": 2
-      },
-      "canvas": {
-        "w": 960,
-        "h": 960
-      },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "pumo-flap-2": {
       "overlay": "overlays/hat-pumo-flap-2.png",
       "attach": {
-        "x": 364,
-        "y": 247.4,
+        "x": 389,
+        "y": 292.4,
         "rotationDeg": -15
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "recovering": {
       "overlay": "overlays/hat-recovering.png",
       "attach": {
-        "x": 438.5,
-        "y": 342.6,
-        "rotationDeg": -1
+        "x": 448.5,
+        "y": 387.6,
+        "rotationDeg": 0
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "attack": {
       "overlay": "overlays/hat-attack.png",
       "attach": {
-        "x": 159,
-        "y": 377.9,
-        "rotationDeg": -42
+        "x": 204,
+        "y": 397.9,
+        "rotationDeg": -35
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
     },
     "dodging": {
       "overlay": "overlays/hat-dodging.png",
       "attach": {
-        "x": 481.6,
-        "y": 187.7,
+        "x": 489.6,
+        "y": 212.7,
         "rotationDeg": -1
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.351
+      "widthPct": 0.44
+    }
+  },
+  "halo": {
+    "pumo-idle": {
+      "overlay": "overlays/halo-pumo-idle.png",
+      "attach": {
+        "x": 495.1,
+        "y": 158.6,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "pumo-tachiai-position": {
+      "overlay": "overlays/halo-pumo-tachiai-position.png",
+      "attach": {
+        "x": 308.9,
+        "y": 288.6,
+        "rotationDeg": -8
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "pumo-ready-position": {
+      "overlay": "overlays/halo-pumo-ready-position.png",
+      "attach": {
+        "x": 450.5,
+        "y": 194,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "grabbing": {
+      "overlay": "overlays/halo-grabbing.png",
+      "attach": {
+        "x": 369.1,
+        "y": 179,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "clinch-planting": {
+      "overlay": "overlays/halo-clinch-planting.png",
+      "attach": {
+        "x": 389.1,
+        "y": 189,
+        "rotationDeg": 1
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "attempting-grab-throw": {
+      "overlay": "overlays/halo-attempting-grab-throw.png",
+      "attach": {
+        "x": 529.4,
+        "y": 233.6,
+        "rotationDeg": 15
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.4
+    },
+    "is-attempting-pull": {
+      "overlay": "overlays/halo-is-attempting-pull.png",
+      "attach": {
+        "x": 482.9,
+        "y": 79.2,
+        "rotationDeg": 41
+      },
+      "canvas": {
+        "w": 600,
+        "h": 600
+      },
+      "widthPct": 0.4
+    },
+    "slapAttack1": {
+      "overlay": "overlays/halo-slapAttack1.png",
+      "attach": {
+        "x": 603,
+        "y": 204.9,
+        "rotationDeg": 22
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.4
+    },
+    "slapAttack2": {
+      "overlay": "overlays/halo-slapAttack2.png",
+      "attach": {
+        "x": 589.9,
+        "y": 202.9,
+        "rotationDeg": 6
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.4
+    },
+    "slap-attack-1-blur-frame": {
+      "overlay": "overlays/halo-slap-attack-1-blur-frame.png",
+      "attach": {
+        "x": 468.3,
+        "y": 169.2,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "slap-attack-1-hit-frame": {
+      "overlay": "overlays/halo-slap-attack-1-hit-frame.png",
+      "attach": {
+        "x": 468.3,
+        "y": 169.2,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "slap-attack-2-blur-frame": {
+      "overlay": "overlays/halo-slap-attack-2-blur-frame.png",
+      "attach": {
+        "x": 451.3,
+        "y": 169.2,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "slap-attack-2-hit-frame": {
+      "overlay": "overlays/halo-slap-attack-2-hit-frame.png",
+      "attach": {
+        "x": 312.3,
+        "y": 214.2,
+        "rotationDeg": -14
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "palm-thrust": {
+      "overlay": "overlays/halo-palm-thrust.png",
+      "attach": {
+        "x": 468.3,
+        "y": 169.2,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "palm-thrust-startup": {
+      "overlay": "overlays/halo-palm-thrust-startup.png",
+      "attach": {
+        "x": 478.3,
+        "y": 169.2,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "palm-thrust-smear": {
+      "overlay": "overlays/halo-palm-thrust-smear.png",
+      "attach": {
+        "x": 468.3,
+        "y": 169.2,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "blocking": {
+      "overlay": "overlays/halo-blocking.png",
+      "attach": {
+        "x": 529.5,
+        "y": 179.6,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "block-parry": {
+      "overlay": "overlays/halo-block-parry.png",
+      "attach": {
+        "x": 397.8,
+        "y": 355.1,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "raw-parry-success": {
+      "overlay": "overlays/halo-raw-parry-success.png",
+      "attach": {
+        "x": 524.5,
+        "y": 179.6,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "pumo-flap-1": {
+      "overlay": "overlays/halo-pumo-flap-1.png",
+      "attach": {
+        "x": 488.7,
+        "y": 139.8,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "pumo-flap-2": {
+      "overlay": "overlays/halo-pumo-flap-2.png",
+      "attach": {
+        "x": 354,
+        "y": 223.4,
+        "rotationDeg": -19
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "recovering": {
+      "overlay": "overlays/halo-recovering.png",
+      "attach": {
+        "x": 453.5,
+        "y": 287.6,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "attack": {
+      "overlay": "overlays/halo-attack.png",
+      "attach": {
+        "x": 164,
+        "y": 313.9,
+        "rotationDeg": -36
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "dodging": {
+      "overlay": "overlays/halo-dodging.png",
+      "attach": {
+        "x": 499.6,
+        "y": 128.7,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    }
+  },
+  "plunger": {
+    "pumo-idle": {
+      "overlay": "overlays/plunger-pumo-idle.png",
+      "attach": {
+        "x": 597.1,
+        "y": 248.6,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "pumo-tachiai-position": {
+      "overlay": "overlays/plunger-pumo-tachiai-position.png",
+      "attach": {
+        "x": 399.9,
+        "y": 356.6,
+        "rotationDeg": 14
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "pumo-ready-position": {
+      "overlay": "overlays/plunger-pumo-ready-position.png",
+      "attach": {
+        "x": 518.5,
+        "y": 286,
+        "rotationDeg": 30
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "grabbing": {
+      "overlay": "overlays/plunger-grabbing.png",
+      "attach": {
+        "x": 452.1,
+        "y": 270,
+        "rotationDeg": 33
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "clinch-planting": {
+      "overlay": "overlays/plunger-clinch-planting.png",
+      "attach": {
+        "x": 469.1,
+        "y": 278,
+        "rotationDeg": 33
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "attempting-grab-throw": {
+      "overlay": "overlays/plunger-attempting-grab-throw.png",
+      "attach": {
+        "x": 519.4,
+        "y": 328.6,
+        "rotationDeg": 15
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.26
+    },
+    "is-attempting-pull": {
+      "overlay": "overlays/plunger-is-attempting-pull.png",
+      "attach": {
+        "x": 462.9,
+        "y": 141.2,
+        "rotationDeg": 41
+      },
+      "canvas": {
+        "w": 600,
+        "h": 600
+      },
+      "widthPct": 0.26
+    },
+    "slapAttack1": {
+      "overlay": "overlays/plunger-slapAttack1.png",
+      "attach": {
+        "x": 603,
+        "y": 246.9,
+        "rotationDeg": 22
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.26
+    },
+    "slapAttack2": {
+      "overlay": "overlays/plunger-slapAttack2.png",
+      "attach": {
+        "x": 589.9,
+        "y": 244.9,
+        "rotationDeg": 6
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.26
+    },
+    "slap-attack-1-blur-frame": {
+      "overlay": "overlays/plunger-slap-attack-1-blur-frame.png",
+      "attach": {
+        "x": 576.3,
+        "y": 266.2,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "slap-attack-1-hit-frame": {
+      "overlay": "overlays/plunger-slap-attack-1-hit-frame.png",
+      "attach": {
+        "x": 576.3,
+        "y": 266.2,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "slap-attack-2-blur-frame": {
+      "overlay": "overlays/plunger-slap-attack-2-blur-frame.png",
+      "attach": {
+        "x": 568.3,
+        "y": 269.2,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "slap-attack-2-hit-frame": {
+      "overlay": "overlays/plunger-slap-attack-2-hit-frame.png",
+      "attach": {
+        "x": 476.3,
+        "y": 296.2,
+        "rotationDeg": 30
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "palm-thrust": {
+      "overlay": "overlays/plunger-palm-thrust.png",
+      "attach": {
+        "x": 565.3,
+        "y": 270.2,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "palm-thrust-startup": {
+      "overlay": "overlays/plunger-palm-thrust-startup.png",
+      "attach": {
+        "x": 577.3,
+        "y": 269.2,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "palm-thrust-smear": {
+      "overlay": "overlays/plunger-palm-thrust-smear.png",
+      "attach": {
+        "x": 569.3,
+        "y": 270.2,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "blocking": {
+      "overlay": "overlays/plunger-blocking.png",
+      "attach": {
+        "x": 614.5,
+        "y": 267.6,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "block-parry": {
+      "overlay": "overlays/plunger-block-parry.png",
+      "attach": {
+        "x": 474.8,
+        "y": 390.1,
+        "rotationDeg": 19
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "raw-parry-success": {
+      "overlay": "overlays/plunger-raw-parry-success.png",
+      "attach": {
+        "x": 610.5,
+        "y": 269.6,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "pumo-flap-1": {
+      "overlay": "overlays/plunger-pumo-flap-1.png",
+      "attach": {
+        "x": 582.7,
+        "y": 241.8,
+        "rotationDeg": 40
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "pumo-flap-2": {
+      "overlay": "overlays/plunger-pumo-flap-2.png",
+      "attach": {
+        "x": 519.7,
+        "y": 255.8,
+        "rotationDeg": 33
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "recovering": {
+      "overlay": "overlays/plunger-recovering.png",
+      "attach": {
+        "x": 546.5,
+        "y": 373.6,
+        "rotationDeg": 30
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "attack": {
+      "overlay": "overlays/plunger-attack.png",
+      "attach": {
+        "x": 213,
+        "y": 344.9,
+        "rotationDeg": -25
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
+    },
+    "dodging": {
+      "overlay": "overlays/plunger-dodging.png",
+      "attach": {
+        "x": 606.6,
+        "y": 231.7,
+        "rotationDeg": 42
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.26
     }
   }
 }

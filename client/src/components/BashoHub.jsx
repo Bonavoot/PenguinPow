@@ -963,10 +963,15 @@ const OutfitSlot = styled.button`
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
 
-  &:hover {
+  &:hover:not(:disabled) {
     border-color: ${(p) => (p.$active ? C.gold : "rgba(245, 236, 217, 0.4)")};
     background: ${D.softHover};
     transform: translateY(-1px);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.5;
   }
 `;
 
@@ -1665,6 +1670,15 @@ const StartButton = styled.button`
     transform: scale(0.98);
     filter: brightness(0.95);
   }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.45;
+    animation: none;
+    filter: none;
+    transform: none;
+    box-shadow: none;
+  }
 `;
 
 // ============================================
@@ -1782,6 +1796,9 @@ function BashoHub({ onBack, onStartRun }) {
   const saveDocRef = useRef(null);
   const loadedRef = useRef(false);
   const saveTimerRef = useRef(null);
+  const careerRef = useRef(career);
+  careerRef.current = career;
+  const [saveReady, setSaveReady] = useState(false);
 
   const [previewSrc, setPreviewSrc] = useState(pumo);
   const mountedRef = useRef(true);
@@ -1804,6 +1821,14 @@ function BashoHub({ onBack, onStartRun }) {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      // Flush pending career edits so a quick Start / leave doesn't drop them.
+      if (loadedRef.current && saveDocRef.current) {
+        writeSave({ ...saveDocRef.current, career: careerRef.current });
+      }
     };
   }, []);
 
@@ -1832,6 +1857,7 @@ function BashoHub({ onBack, onStartRun }) {
         }
       }
       loadedRef.current = true;
+      setSaveReady(true);
     });
     return () => {
       cancelled = true;
@@ -1893,17 +1919,28 @@ function BashoHub({ onBack, onStartRun }) {
     };
   }, [player1Color, player1BodyColor, equippedHeadGearId, activeOutfitId]);
 
-  const handleStart = useCallback(() => {
+  const handleStart = useCallback(async () => {
+    if (!saveReady || !onStartRun) return;
     playButtonPressSound2();
-    if (!onStartRun) return;
-    const baseSave = { ...(saveDocRef.current || makeDefaultSave()), career };
+    // Flush any pending career debounce before creating the match.
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const disk = await loadSave();
+    const baseSave = {
+      ...disk,
+      career,
+      customization: disk.customization,
+    };
+    saveDocRef.current = baseSave;
     if (resumeRun) {
-      onStartRun({ run: resumeRun, save: baseSave });
+      await onStartRun({ run: resumeRun, save: baseSave });
       return;
     }
     const run = createRun(career);
-    onStartRun({ run, save: { ...baseSave, bashoRun: run } });
-  }, [career, resumeRun, onStartRun]);
+    await onStartRun({ run, save: { ...baseSave, bashoRun: run } });
+  }, [career, resumeRun, onStartRun, saveReady]);
 
   // Editing is LOCKED while a basho is in progress (no mid-tournament respec).
   const runLocked = !!resumeRun;
@@ -1988,7 +2025,7 @@ function BashoHub({ onBack, onStartRun }) {
   };
 
   const handleOutfitSelect = (outfitId) => {
-    if (outfitId === activeOutfitId) return;
+    if (!saveReady || outfitId === activeOutfitId) return;
     playButtonPressSound2();
     const outfit = getOutfitById(customization, outfitId);
     const next = withActiveOutfitId(customization, outfitId);
@@ -2278,8 +2315,9 @@ function BashoHub({ onBack, onStartRun }) {
                     role="option"
                     aria-selected={active}
                     $active={active}
+                    disabled={!saveReady}
                     onClick={() => handleOutfitSelect(outfit.id)}
-                    onMouseEnter={playButtonHoverSound}
+                    onMouseEnter={saveReady ? playButtonHoverSound : undefined}
                     title={outfit.name}
                   >
                     <OutfitSlotSwatches>
@@ -2522,7 +2560,11 @@ function BashoHub({ onBack, onStartRun }) {
                 <em>title defense</em>
               )}
             </StartNote>
-            <StartButton onClick={handleStart} onMouseEnter={playButtonHoverSound}>
+            <StartButton
+              onClick={handleStart}
+              onMouseEnter={saveReady ? playButtonHoverSound : undefined}
+              disabled={!saveReady}
+            >
               {resumeRun ? "Resume Basho" : "Start Basho"}
             </StartButton>
           </StartFooter>

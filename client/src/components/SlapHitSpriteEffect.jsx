@@ -91,6 +91,12 @@ HIT_FX.slapBurst = {
   durationMs: 330,
 };
 
+// Low kick / trip — same slap spark art, but GameFighter passes a lower Y
+// (LOW_KICK_HIT_EFFECT_Y) so the burst reads at the ankles/shins.
+HIT_FX.lowKick = {
+  ...HIT_FX.slap,
+};
+
 // Map hit status → filter key. Shared across sheets (each sheet supplies its own
 // CSS for the key). Power water (isPowered) is intentionally treated as normal.
 const resolveStatusKey = (position) => {

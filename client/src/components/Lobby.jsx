@@ -1078,7 +1078,7 @@ const Lobby = ({
   }, [saveReady, myPlayerIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOutfitSelect = (outfitId) => {
-    if (myPlayerIndex === -1) return;
+    if (!saveReady || myPlayerIndex === -1) return;
     const outfit = getOutfitById(customization, outfitId);
     if (outfitClashesWith(outfit, otherPlayerMawashi, otherPlayerBody)) return;
     playButtonPressSound2();
@@ -1189,6 +1189,7 @@ const Lobby = ({
             isPvP &&
             outfitClashesWith(outfit, otherPlayerMawashi, otherPlayerBody);
           const selected = !ghost && outfit.id === activeOutfitId;
+          const blocked = ghost || taken || !saveReady;
           const mark = OUTFIT_MARKS[index] || String(index + 1);
           return (
             <StripOption
@@ -1197,15 +1198,15 @@ const Lobby = ({
               role={ghost ? undefined : "option"}
               aria-selected={ghost ? undefined : selected}
               $selected={selected}
-              $taken={taken}
-              tabIndex={ghost || taken ? -1 : 0}
-              disabled={ghost || taken}
+              $taken={taken || (!ghost && !saveReady)}
+              tabIndex={blocked ? -1 : 0}
+              disabled={blocked}
               onClick={() => {
-                if (ghost || taken) return;
+                if (blocked) return;
                 handleOutfitSelect(outfit.id);
               }}
               onMouseEnter={
-                ghost || taken ? undefined : playButtonHoverSound
+                blocked ? undefined : playButtonHoverSound
               }
               title={
                 ghost

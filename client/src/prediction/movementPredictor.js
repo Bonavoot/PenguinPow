@@ -12,8 +12,9 @@
 //                 map boundary clamps, edge friction zones, speed power-up.
 //   - NOT predicted (prediction suspends, rendering falls back to the normal
 //     server interpolation): attacks, dodges, sidesteps, grabs, clinch,
-//     knockback, throws, power slides, rope jumps, hitstop — anything where
-//     the server runs special-case physics.
+//     knockback, slap-parry/guard shove (slapParryKnockbackVelocity), throws,
+//     power slides, rope jumps, hitstop — anything where the server runs
+//     special-case physics.
 //
 // The physics constants and step logic below are a transliteration of the
 // strafing block in server-io/index.js (tick()) + getIceFriction() in
@@ -112,6 +113,7 @@ const BLOCKING_FLAGS = [
   "isRawParryStun",
   "isRawParrySuccess",
   "isPerfectRawParrySuccess",
+  "isApPostParryLocked",
   "isApWhiffRecovering",
   "isRecovering",
   "isThrowingSnowball",
@@ -342,6 +344,14 @@ export function isPredictionEligible(self, opponent, keys, gameActive) {
     return false;
   }
 
+  // Perfect/regular parry + guard shove use slapParryKnockbackVelocity (not
+  // isHit / knockbackVelocity). Server also locks A/D via inputLockUntil, which
+  // is not on the wire — without this gate, holding towards strafe-predicts
+  // the sprite inward while the camera follows the real server slide.
+  if (Math.abs(self.slapParryKnockbackVelocity || 0) > 0.01) {
+    return false;
+  }
+
   // Airborne / falling / cinematic Y movement — only predict on the ground.
   if (typeof self.y === "number" && self.y !== C.GROUND_LEVEL) return false;
 
@@ -448,6 +458,22 @@ export class MovementPredictor {
    * deactivating.
    */
   update(nowMs, keys, self, opponent, gameActive, serverRenderedX) {
+    // Post-parry lock: hard-pin locally (includes flurry re-tap gap where
+    // success pose flags are cleared but isApPostParryLocked stays true).
+    if (
+      self &&
+      (self.isApPostParryLocked ||
+        self.isRawParrySuccess ||
+        self.isPerfectRawParrySuccess)
+    ) {
+      this.active = false;
+      this.handoffOffset = 0;
+      this.visualOffset = 0;
+      this.history.length = 0;
+      this.lastUpdateMs = nowMs;
+      return { active: false, offsetX: 0 };
+    }
+
     const eligible = isPredictionEligible(self, opponent, keys, gameActive);
 
     if (!this.active) {

@@ -34,6 +34,7 @@ import slapAttack2Hit from "../assets/slap-attack-2-hit-frame.png";
 import palmThrust from "../assets/palm-thrust.png";
 import palmThrustStartup from "../assets/palm-thrust-startup.png";
 import palmThrustSmear from "../assets/palm-thrust-smear.png";
+import lowKick from "../assets/kick.png";
 import dodging from "../assets/dodging.png";
 import throwing from "../assets/throwing.png";
 import salt from "../assets/salt.png";
@@ -166,6 +167,8 @@ export const SPRITE_HALF_W = 0;
 export const PLAYER_MID_Y = 376;
 /** Game-Y anchor for slap/charged/burst hit rings (HitEffect) + canvas impact sparks. */
 export const HIT_EFFECT_Y = PLAYER_MID_Y - 10;
+/** Low kick / trip spark — same slap sheet, just above the feet (ground = 286). */
+export const LOW_KICK_HIT_EFFECT_Y = 322;
 
 // ============================================
 // RITUAL ANIMATION CONFIGURATION
@@ -278,6 +281,7 @@ const initializeImagePreloading = () => {
   preloadImage(palmThrust);
   preloadImage(palmThrustStartup);
   preloadImage(palmThrustSmear);
+  preloadImage(lowKick);
   preloadImage(snowballThrow);
 
   preloadImage(bow);
@@ -435,6 +439,7 @@ export {
   palmThrust,
   palmThrustStartup,
   palmThrustSmear,
+  lowKick,
   dodging,
   throwing,
   salt,

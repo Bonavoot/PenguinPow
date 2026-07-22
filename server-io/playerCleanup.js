@@ -59,7 +59,12 @@ function cleanupPlayerStates(player) {
   player.isGuarding = false;
   player.apActiveUntil = 0;
   player.apChainCount = 0;
+  player.apFlurryUntil = 0;
   player.isApWhiffRecovering = false;
+  player.apGuardNeedsRelease = false;
+  player.apSpaceConsumed = false;
+  player.isApPostParryLocked = false;
+  player.apPostParryLockUntil = 0;
   player.isRawParryStun = false;
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
@@ -290,6 +295,8 @@ function getCleanedRoomsData(rooms) {
             fighter: p.fighter,
             color: p.color,
             mawashiColor: p.mawashiColor,
+            bodyColor: p.bodyColor ?? null,
+            gearIds: Array.isArray(p.gearIds) ? p.gearIds : [],
             facing: p.facing || 1,
             x: p.x || 0,
             y: p.y || 0,
@@ -328,6 +335,8 @@ function getCleanedRoomsData(rooms) {
         fighter: p.fighter,
         color: p.color,
         mawashiColor: p.mawashiColor,
+        bodyColor: p.bodyColor ?? null,
+        gearIds: Array.isArray(p.gearIds) ? p.gearIds : [],
         facing: p.facing || 1,
         x: p.x || 0,
         y: p.y || 0,
