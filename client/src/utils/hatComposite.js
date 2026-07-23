@@ -14,7 +14,6 @@
 import {
   HAT_OVERLAY_BY_SRC,
   getEquippedHeadGearId,
-  getIdleHatOverlay,
   getHatOverlayForSprite,
   isHeadGearUnderBody,
 } from "../config/cosmetics";
@@ -66,13 +65,88 @@ function canvasToBlobUrl(canvas) {
   });
 }
 
+/**
+ * Main-menu hero only: body recolor treats soft black AA as grey plumage,
+ * so tint leaks into outlines (eyes, seams). Restore outline-like pixels
+ * from the pre-recolor source. Body fill on this art is ~rgb(75,75,76) —
+ * we only put back darker ink + lighter fringe glued to near-black.
+ */
+function isRestorableLinework(src, i, width, height) {
+  const r = src[i];
+  const g = src[i + 1];
+  const b = src[i + 2];
+  const a = src[i + 3];
+  if (a === 0) return false;
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  const sat = mx === 0 ? 0 : ((mx - mn) / mx) * 100;
+
+  // Pure / soft black outline + dark AA (below body fill ~75)
+  if (mx <= 68) return true;
+  // Semi-transparent ink
+  if (a < 245 && mx <= 100) return true;
+  // Lighter grey AA between black linework and white/face (eye rims)
+  if (sat > 20 || mx < 80 || mx > 170) return false;
+  const pidx = i / 4;
+  const px = pidx % width;
+  const py = (pidx / width) | 0;
+  for (const [dx, dy] of [
+    [-1, 0],
+    [1, 0],
+    [0, -1],
+    [0, 1],
+    [-2, 0],
+    [2, 0],
+    [0, -2],
+    [0, 2],
+  ]) {
+    const nx = px + dx;
+    const ny = py + dy;
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+    const j = (ny * width + nx) * 4;
+    if (src[j + 3] < 10) continue;
+    if (Math.max(src[j], src[j + 1], src[j + 2]) <= 40) return true;
+  }
+  return false;
+}
+
+async function restoreLineworkFromSource(sourceSrc, recoloredSrc) {
+  const [srcImg, dstImg] = await Promise.all([
+    loadImage(sourceSrc),
+    loadImage(recoloredSrc),
+  ]);
+  const width = srcImg.naturalWidth || srcImg.width;
+  const height = srcImg.naturalHeight || srcImg.height;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(srcImg, 0, 0);
+  const srcData = ctx.getImageData(0, 0, width, height).data;
+  ctx.clearRect(0, 0, width, height);
+  ctx.drawImage(dstImg, 0, 0, width, height);
+  const out = ctx.getImageData(0, 0, width, height);
+  const dst = out.data;
+  for (let i = 0; i < dst.length; i += 4) {
+    if (!isRestorableLinework(srcData, i, width, height)) continue;
+    dst[i] = srcData[i];
+    dst[i + 1] = srcData[i + 1];
+    dst[i + 2] = srcData[i + 2];
+    dst[i + 3] = srcData[i + 3];
+  }
+  ctx.putImageData(out, 0, 0);
+  const url = await canvasToBlobUrl(canvas);
+  await preDecodeImage(url);
+  return url;
+}
+
 function drawComposite(baseImg, overlayImg, underBody = false) {
   const canvas = document.createElement("canvas");
   canvas.width = baseImg.naturalWidth || baseImg.width;
   canvas.height = baseImg.naturalHeight || baseImg.height;
   const ctx = canvas.getContext("2d");
   if (underBody) {
-    // Plunger etc. — gear behind body so the head occludes the cup.
+    // Gear behind body (head occludes the gear).
     ctx.drawImage(overlayImg, 0, 0, canvas.width, canvas.height);
     ctx.drawImage(baseImg, 0, 0);
   } else {
@@ -232,6 +306,9 @@ export async function warmHatCompositesForFighter({
 /**
  * Recolor idle body (optional) then bake on the idle hat when equipped.
  * Used by Lobby / BashoHub / PreMatch / Customize portraits.
+ *
+ * @param {boolean} [preserveLinework] - Main-menu hero: restore black /
+ *   AA outline pixels after body recolor so tint doesn't leak into eyes.
  */
 export async function buildIdlePortraitSrc({
   baseSrc,
@@ -239,6 +316,7 @@ export async function buildIdlePortraitSrc({
   bodyColor,
   gearIds,
   hatOverlay,
+  preserveLinework = false,
 }) {
   // Topper portraits sit on the bald idle when we have one.
   const bodySrc = resolveBodyForHeadGear(baseSrc, gearIds);
@@ -256,10 +334,16 @@ export async function buildIdlePortraitSrc({
       mawashiColor || SPRITE_BASE_COLOR,
       bodyOpts,
     );
+    if (preserveLinework) {
+      src = await restoreLineworkFromSource(bodySrc, src);
+    }
   }
 
   const gearId = getEquippedHeadGearId(gearIds);
-  const overlay = hatOverlay || (gearId ? getIdleHatOverlay(gearId) : null);
+  // Pose-matched overlay only — never glue the idle hat onto a different
+  // body (e.g. main-menu-pumo) or it sits wrong on the topknot.
+  const overlay =
+    hatOverlay || (gearId ? getHatOverlayForSprite(baseSrc, gearId) : null);
   if (overlay) {
     src = await compositeHatOntoSprite(
       src,

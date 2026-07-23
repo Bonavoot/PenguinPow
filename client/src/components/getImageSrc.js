@@ -22,6 +22,9 @@ import {
   salt,
   recovering,
   rawParrySuccess,
+  rawParrySuccessFrame1,
+  rawParrySuccessFrame2,
+  rawParrySuccessFrame3,
   blocking,
   blockParry,
   crouchStance,
@@ -149,7 +152,10 @@ const getImageSrc = (
   // Distinct from isRawParrying, which is also true during the live parry window.
   isGuarding = false,
   // Guard SUCCESS pose — briefly true after a chip absorb (mirrors isRawParrySuccess).
-  isGuardBlockSuccess = false
+  isGuardBlockSuccess = false,
+  // Attack-parry SUCCESS anim (wall-clock; see GameFighter).
+  // 1 = windup  2/3 = deflect poses (chain alternates 2↔3 after the first land).
+  rawParrySuccessFrame = 1
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -184,9 +190,13 @@ const getImageSrc = (
   if (isGrabSeparating) return rawParrySuccess;
   if (isGrabBreaking) return crouching;
   if (isGrabBreakCountered) return hit;
-  // Attack Parry — IMPACT frame: the moment a parry actually lands (held for
-  // ~the blue burst's duration via AP_SUCCESS_RECOVERY_MS). raw-parry-success.png.
-  if (isRawParrySuccess || isPerfectRawParrySuccess) return rawParrySuccess;
+  // Attack Parry SUCCESS: frame 1 windup (first land only), then deflect
+  // frames 2/3 (chain alternates after the opener).
+  if (isRawParrySuccess || isPerfectRawParrySuccess) {
+    if (rawParrySuccessFrame === 3) return rawParrySuccessFrame3;
+    if (rawParrySuccessFrame === 2) return rawParrySuccessFrame2;
+    return rawParrySuccessFrame1;
+  }
   // Guard SUCCESS — chip absorb lands; hold block-parry.png for the block VFX.
   if (isGuardBlockSuccess) return blockParry;
   if (isRawParryStun) return isPerfectParried;

@@ -75,6 +75,9 @@ import crouchStance from "../assets/crouch-stance.png";
 import salt from "../assets/salt.png";
 import recovering from "../assets/recovering.png";
 import rawParrySuccess from "../assets/raw-parry-success.png";
+import rawParrySuccessFrame1 from "../assets/raw-parry-success-frame-1.png";
+import rawParrySuccessFrame2 from "../assets/raw-parry-success-frame-2.png";
+import rawParrySuccessFrame3 from "../assets/raw-parry-success-frame-3.png";
 import slapAttack1 from "../assets/slapAttack1.png";
 import slapAttack2 from "../assets/slapAttack2.png";
 import palmThrust from "../assets/palm-thrust.png";
@@ -102,7 +105,9 @@ import crouchStrafing from "../assets/crouch-strafing.png";
 const GAME_FIGHTER_STATIC_SPRITES = [
   pumo, attack, throwing, grabbing, clinchPlanting, beltGrabArm, attemptingGrabThrow, isAttemptingPull,
   pumoSideProfile, pumoTachiaiPosition, dodging, crouchStance,
-  recovering, rawParrySuccess, slapAttack1, slapAttack2, palmThrust,
+  recovering, rawParrySuccess, rawParrySuccessFrame1, rawParrySuccessFrame2,
+  rawParrySuccessFrame3,
+  slapAttack1, slapAttack2, palmThrust,
   palmThrustStartup, palmThrustSmear, lowKick,
   crouching, bow, bellyLaying, bellyLayingEyesOpen, cinematicThrowKillLanding,
   flap1, flap2,

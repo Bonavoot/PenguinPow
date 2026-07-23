@@ -531,6 +531,34 @@ const RankText = styled.div`
  *
  * Fill + impact strike + gassed overlay still carry the bar's identity;
  * the frame just stops looking like a placeholder rectangle. */
+const shoveWinPulse = keyframes`
+  0%, 100% { filter: brightness(1) saturate(1); }
+  50% { filter: brightness(1.12) saturate(1.15); }
+`;
+
+const ShoveLeadTag = styled.div`
+  position: absolute;
+  top: 50%;
+  ${(p) => (p.$isRight ? "left: 6px;" : "right: 6px;")}
+  transform: translateY(-50%);
+  z-index: 4;
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(7px, 0.78cqw, 9px);
+  letter-spacing: 0.12em;
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+  color: ${(p) =>
+    p.$lead > 0
+      ? "rgba(255, 236, 170, 0.95)"
+      : p.$lead < 0
+        ? "rgba(255, 170, 150, 0.92)"
+        : "rgba(210, 220, 230, 0.88)"};
+  text-shadow:
+    0 0 6px rgba(0, 0, 0, 0.85),
+    1px 1px 1px rgba(0, 0, 0, 1);
+`;
+
 const BarFrame = styled.div`
   position: relative;
   flex: 1;
@@ -541,7 +569,13 @@ const BarFrame = styled.div`
       ? "rgba(216, 59, 39, 0.95)"
       : p.$danger
         ? "rgba(238, 81, 65, 0.85)"
-        : "rgba(232, 197, 71, 0.38)"};
+        : p.$shoveLead > 0
+          ? "rgba(232, 197, 71, 0.92)"
+          : p.$shoveLead < 0
+            ? "rgba(200, 120, 100, 0.75)"
+            : p.$shoveLead === 0 && p.$shoveActive
+              ? "rgba(170, 190, 210, 0.65)"
+              : "rgba(232, 197, 71, 0.38)"};
   box-shadow:
     0 clamp(2px, 0.18cqw, 4px) clamp(10px, 0.85cqw, 18px) rgba(0, 0, 0, 0.58),
     0 0 0 1px rgba(0, 0, 0, 0.45),
@@ -621,6 +655,9 @@ const BarFrame = styled.div`
     }
     if (p.$danger) {
       return css`animation: ${dangerFramePulse} ${dangerDur} ease-in-out infinite;`;
+    }
+    if (p.$shoveLead > 0 && !p.$matchOver) {
+      return css`animation: ${shoveWinPulse} 0.9s ease-in-out infinite;`;
     }
     return "";
   }}
@@ -1751,6 +1788,7 @@ const UiPlayerInfo = ({
   player1BalanceGain = 0,
   player1HasDeepGrip = false,
   player1PostureBroken = false,
+  player1ShoveLead = null,
   player2Stamina,
   player2ActivePowerUp = null,
   player2SnowballCooldown = false,
@@ -1763,6 +1801,7 @@ const UiPlayerInfo = ({
   player2BalanceGain = 0,
   player2HasDeepGrip = false,
   player2PostureBroken = false,
+  player2ShoveLead = null,
   matchOver = false,
   player1TopMarks = undefined,
   player2TopMarks = undefined,
@@ -2293,6 +2332,10 @@ const UiPlayerInfo = ({
 
   const p1Danger = shouldShowLowStaminaWarning(p1DisplayStamina);
   const p2Danger = shouldShowLowStaminaWarning(p2DisplayStamina);
+  // Push-war HUD: null = not in mutual shove; 0 = EVEN; ±1 = walk lead.
+  const p1ShoveActive = player1ShoveLead === 0 || player1ShoveLead === 1 || player1ShoveLead === -1;
+  const p2ShoveActive = player2ShoveLead === 0 || player2ShoveLead === 1 || player2ShoveLead === -1;
+  const shoveTag = (lead) => (lead > 0 ? "PUSH" : lead < 0 ? "BACK" : "EVEN");
 
   const renderRankPlaque = (label, compact = false) => (
     <RankPlaque $compact={compact}>
@@ -2334,9 +2377,16 @@ const UiPlayerInfo = ({
               $shake={p1Shake}
               $isRight={false}
               $matchOver={matchOver}
+              $shoveLead={p1ShoveActive ? player1ShoveLead : null}
+              $shoveActive={p1ShoveActive}
             >
               <BarTrack $isRight={false}>
                 {isPlayer1Local && <YouLabel $isRight={false}>YOU</YouLabel>}
+                {p1ShoveActive && (
+                  <ShoveLeadTag $isRight={false} $lead={player1ShoveLead}>
+                    {shoveTag(player1ShoveLead)}
+                  </ShoveLeadTag>
+                )}
                 <BarFill
                   $stamina={p1DisplayStamina}
                   $danger={p1Danger}
@@ -2482,9 +2532,16 @@ const UiPlayerInfo = ({
               $shake={p2Shake}
               $isRight={true}
               $matchOver={matchOver}
+              $shoveLead={p2ShoveActive ? player2ShoveLead : null}
+              $shoveActive={p2ShoveActive}
             >
               <BarTrack $isRight={true}>
                 {!isPlayer1Local && <YouLabel $isRight={true}>YOU</YouLabel>}
+                {p2ShoveActive && (
+                  <ShoveLeadTag $isRight={true} $lead={player2ShoveLead}>
+                    {shoveTag(player2ShoveLead)}
+                  </ShoveLeadTag>
+                )}
                 <BarFill
                   $stamina={p2DisplayStamina}
                   $danger={p2Danger}
@@ -2626,6 +2683,8 @@ UiPlayerInfo.propTypes = {
   player2BalanceGain: PropTypes.number,
   player2HasDeepGrip: PropTypes.bool,
   player2PostureBroken: PropTypes.bool,
+  player1ShoveLead: PropTypes.number,
+  player2ShoveLead: PropTypes.number,
   matchOver: PropTypes.bool,
   player1TopMarks: PropTypes.node,
   player2TopMarks: PropTypes.node,

@@ -21,6 +21,7 @@ function cleanupPlayerStates(player) {
   player.isArmClamped = false;
   player.clinchThrowFailStagger = false;
   player.hasDeepGrip = false;
+  player.clinchShoveLead = null;
   player.deepGripPushStart = 0;
   player.clinchPushRampStart = 0;
   player.reactBraceDeadline = 0;

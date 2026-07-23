@@ -16,6 +16,8 @@ import {
   getActiveOutfit,
   applyOutfitToPlayer1Setters,
 } from "../lib/outfits";
+import { getEquippedHeadGearId } from "../config/cosmetics";
+import { buildIdlePortraitSrc } from "../utils/hatComposite";
 import {
   startDay,
   currentOpponent,
@@ -60,11 +62,10 @@ import lobbyBackground from "../assets/lobby-bkg.webp";
 
 import pumo from "../assets/pumo-idle.png";
 /*
- * Hero portrait for the main menu — dignified pre-match pose with the
- * ceremonial kesho-mawashi. Distinct from the in-game pumo-idle.png sprite
- * (which stays imported for preloading + use in lobby/game).
+ * Hero portrait for the main menu — player's active outfit on the
+ * dedicated main-menu-pumo pose (recolored + head-gear when overlays exist).
  */
-import pumoMainMenu from "../assets/pumo-main-menu.png";
+import mainMenuPumo from "../assets/main-menu-pumo.png";
 import pumoLogo from "../assets/pumo-logo.png";
 /*
  * Single locked-in hero scene — the two-penguins-fighting sketch reads as
@@ -83,7 +84,6 @@ import {
   C,
   FONT_BODY,
   FONT_DISPLAY,
-  FONT_KANJI,
   fadeIn,
   fadeUp,
   slideInLeft,
@@ -98,12 +98,18 @@ import {
 
 const kenBurns = keyframes`
   0%   { transform: scale(1.05) translate(0, 0); }
-  100% { transform: scale(1.12) translate(-1.2%, -0.8%); }
+  100% { transform: scale(1.11) translate(-1%, -0.6%); }
 `;
 
+const grainDrift = keyframes`
+  0%   { transform: translate(0, 0); }
+  100% { transform: translate(-1.2%, 0.8%); }
+`;
+
+/* Same idle breathe as Lobby / BashoHub portraits — scale from the feet. */
 const pumoBreathe = keyframes`
   0%, 100% { transform: scaleY(1); }
-  50%      { transform: scaleY(1.018); }
+  50%      { transform: scaleY(1.022); }
 `;
 
 // ============================================
@@ -122,27 +128,108 @@ const MainMenuContainer = styled.div`
   font-family: ${FONT_BODY};
 `;
 
+/*
+ * Scene plate: sharp courtyard + hero pocket; soft only at far edges
+ * so the render feels cinematic without fogging the ground under Pumo.
+ */
+const BackgroundPlate = styled.div`
+  position: absolute;
+  inset: -3%;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  animation: ${kenBurns} 40s ease-in-out infinite alternate;
+  will-change: transform;
+`;
+
 const BackgroundImage = styled.img`
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 50% 55%;
-  z-index: 0;
-  pointer-events: none;
-  transform: scale(1.08);
+  object-position: 50% 52%;
   /*
-   * Obscure plate that still keeps festival color — dim + slight blur so
-   * the arena sits behind the UI instead of fighting it for focus.
+   * Light global soften — the main "AI coverup": kills hyper-sharp
+   * gen artifacts without turning the plate into mud.
    */
-  filter: saturate(1.06) brightness(0.78) contrast(1.08) blur(1.2px);
-  animation: ${kenBurns} 28s ease-in-out infinite alternate;
+  filter: saturate(1.06) brightness(0.88) contrast(1.06) blur(0.7px);
 `;
 
 /*
- * Obscure grade without the old icy-blue mud: neutral sumi dim + a real
- * left rail for type. Snowfall owns frost; we don't double-wash here.
+ * Stronger edge DOF — soft periphery sells depth + hides gen edges;
+ * courtyard / hero pocket stay clearer than the rim.
+ */
+const BackgroundDepth = styled.img`
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 52%;
+  filter: blur(14px) saturate(1.04) brightness(0.86);
+  transform: scale(1.06);
+  opacity: 0.88;
+  -webkit-mask-image: radial-gradient(
+    ellipse 70% 64% at 54% 46%,
+    transparent 0%,
+    transparent 34%,
+    rgba(0, 0, 0, 0.45) 60%,
+    #000 86%
+  );
+  mask-image: radial-gradient(
+    ellipse 70% 64% at 54% 46%,
+    transparent 0%,
+    transparent 34%,
+    rgba(0, 0, 0, 0.45) 60%,
+    #000 86%
+  );
+`;
+
+/* Festival grade — authored film look over the raw plate. */
+const AtmosphereGrade = styled.div`
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  mix-blend-mode: soft-light;
+  opacity: 0.8;
+  background:
+    radial-gradient(
+      ellipse 70% 42% at 52% 14%,
+      rgba(255, 196, 120, 0.5) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 45% 40% at 70% 68%,
+      rgba(255, 236, 200, 0.16) 0%,
+      transparent 65%
+    ),
+    linear-gradient(
+      160deg,
+      rgba(255, 220, 170, 0.22) 0%,
+      transparent 36%,
+      rgba(30, 48, 80, 0.22) 100%
+    );
+`;
+
+/* Sky atmosphere only — no courtyard milk. */
+const AtmosphereHaze = styled.div`
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(160, 190, 220, 0.16) 0%,
+    rgba(160, 190, 220, 0.05) 16%,
+    transparent 34%
+  );
+`;
+
+/*
+ * Menu rail + cinematic frame — enough obscure to hide plate telltales
+ * at the edges without fogging Pumo's feet.
  */
 const CinematicOverlay = styled.div`
   position: absolute;
@@ -150,75 +237,61 @@ const CinematicOverlay = styled.div`
   z-index: 1;
   pointer-events: none;
   background:
-    /* menu rail — dark enough that white Bungee never meets bright snow */
     linear-gradient(
       90deg,
-      rgba(4, 6, 10, 0.62) 0%,
-      rgba(4, 6, 10, 0.36) 18%,
-      rgba(4, 6, 10, 0.12) 34%,
-      transparent 48%
+      rgba(4, 6, 10, 0.66) 0%,
+      rgba(4, 6, 10, 0.38) 16%,
+      rgba(4, 6, 10, 0.12) 30%,
+      transparent 46%
     ),
-    /* soft pool of light around the hero — keeps Pumo readable */
     radial-gradient(
-      ellipse 46% 58% at 72% 48%,
-      rgba(255, 248, 235, 0.07) 0%,
+      ellipse 44% 52% at 70% 60%,
+      rgba(255, 248, 235, 0.06) 0%,
       transparent 62%
     ),
-    /* vignette — obscure edges, open center */
     radial-gradient(
-      ellipse 58% 60% at 56% 42%,
+      ellipse 72% 68% at 52% 42%,
       transparent 0%,
-      rgba(4, 6, 10, 0.22) 52%,
-      rgba(4, 6, 10, 0.62) 100%
+      rgba(4, 6, 10, 0.14) 58%,
+      rgba(4, 6, 10, 0.52) 100%
     ),
-    /* letterbox */
     linear-gradient(
       180deg,
-      rgba(4, 6, 10, 0.5) 0%,
-      rgba(4, 6, 10, 0.12) 20%,
-      rgba(4, 6, 10, 0.04) 48%,
-      rgba(4, 6, 10, 0.28) 76%,
-      rgba(4, 6, 10, 0.72) 100%
+      rgba(4, 6, 10, 0.48) 0%,
+      rgba(4, 6, 10, 0.1) 16%,
+      transparent 42%,
+      rgba(4, 6, 10, 0.1) 80%,
+      rgba(4, 6, 10, 0.36) 100%
     );
 `;
 
+/* Film grain — the other half of the coverup. */
 const GrainOverlay = styled.div`
   position: absolute;
-  inset: 0;
+  inset: -8%;
   z-index: 2;
   pointer-events: none;
-  opacity: 0.08;
-  mix-blend-mode: soft-light;
+  opacity: 0.14;
+  mix-blend-mode: overlay;
+  animation: ${grainDrift} 10s linear infinite;
   background-image:
     repeating-linear-gradient(
       0deg,
-      rgba(60, 40, 20, 0.05) 0,
+      rgba(60, 40, 20, 0.08) 0,
       transparent 1px,
-      transparent 3px
+      transparent 2px
     ),
     repeating-linear-gradient(
       90deg,
-      rgba(60, 40, 20, 0.04) 0,
+      rgba(60, 40, 20, 0.06) 0,
       transparent 1px,
-      transparent 4px
+      transparent 3px
+    ),
+    radial-gradient(
+      circle at 40% 35%,
+      rgba(255, 255, 255, 0.04) 0%,
+      transparent 45%
     );
-`;
-
-/* Giant atmospheric kanji — whisper only; never compete with Pumo. */
-const AtmosphereKanji = styled.div`
-  position: absolute;
-  top: 6%;
-  right: -2%;
-  z-index: 1;
-  font-family: ${FONT_KANJI};
-  font-weight: 900;
-  font-size: clamp(180px, 34cqw, 400px);
-  line-height: 0.72;
-  color: rgba(245, 236, 217, 0.035);
-  pointer-events: none;
-  user-select: none;
-  letter-spacing: -0.04em;
-  transform: rotate(-6deg);
 `;
 
 // ============================================
@@ -275,11 +348,11 @@ const HeroStage = styled.main`
   flex: 1;
   min-height: 0;
   display: grid;
-  /* Menu narrower, portrait wider — character owns the frame. */
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr);
-  gap: clamp(12px, 2cqw, 32px);
+  /* Menu rail + wide portrait lane so Pumo can own right-center. */
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.4fr);
+  gap: clamp(8px, 1.5cqw, 24px);
   padding: clamp(48px, 7cqh, 72px) clamp(28px, 4cqw, 64px)
-    clamp(20px, 3cqh, 40px);
+    clamp(12px, 2.2cqh, 28px);
   align-items: stretch;
 
   @media (max-width: 720px) {
@@ -485,32 +558,54 @@ const RightColumn = styled.aside`
 `;
 
 const PumoHeroWrapper = styled.div`
+  /*
+   * Right-third poster crop — feet bleed the frame so placement feels
+   * intentional; contact shadow sells weight on the plate.
+   */
   position: absolute;
-  right: clamp(-120px, -7cqw, -48px);
-  bottom: clamp(-240px, -30cqh, -160px);
-  height: clamp(540px, 108cqh, 820px);
+  right: clamp(20px, 3.5cqw, 56px);
+  bottom: clamp(-110px, -15cqh, -64px);
+  height: clamp(420px, 86cqh, 680px);
   width: auto;
-  z-index: 2;
+  z-index: 4;
   pointer-events: none;
   user-select: none;
-  will-change: opacity, transform;
   animation: ${fadeUp} 0.8s ease-out 0.22s backwards;
 
-  /* Ground contact shadow — stops the "sticker on the art" look */
+  /* Soft ambient pool under the figure */
+  &::before {
+    content: "";
+    position: absolute;
+    left: 10%;
+    right: 12%;
+    bottom: 12%;
+    height: 12%;
+    background: radial-gradient(
+      ellipse at center,
+      rgba(0, 0, 0, 0.42) 0%,
+      rgba(0, 0, 0, 0.16) 48%,
+      transparent 74%
+    );
+    filter: blur(14px);
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  /* Tight contact shadow at the feet / crop line */
   &::after {
     content: "";
     position: absolute;
-    left: 18%;
-    right: 22%;
+    left: 22%;
+    right: 24%;
     bottom: 14%;
-    height: 7%;
+    height: 5%;
     background: radial-gradient(
       ellipse at center,
-      rgba(0, 0, 0, 0.55) 0%,
+      rgba(0, 0, 0, 0.62) 0%,
       rgba(0, 0, 0, 0.22) 42%,
-      transparent 72%
+      transparent 70%
     );
-    filter: blur(10px);
+    filter: blur(6px);
     z-index: 0;
     pointer-events: none;
   }
@@ -522,12 +617,16 @@ const PumoHero = styled.img`
   display: block;
   height: 100%;
   width: auto;
-  transform-origin: 50% 100%;
-  filter: brightness(1.05) contrast(1.06) saturate(1.08)
-    drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000)
-    drop-shadow(0 28px 40px rgba(0, 0, 0, 0.55));
-  will-change: transform;
-  animation: ${pumoBreathe} 3s ease-in-out infinite;
+  transform-origin: center bottom;
+  /*
+   * Settle into the plate: tiny brightness dip + warm contact rim so he
+   * doesn't scream "sticker" against the graded courtyard.
+   */
+  filter: brightness(0.98) contrast(1.05) saturate(1.04)
+    drop-shadow(0 0 1px rgba(0, 0, 0, 0.92))
+    drop-shadow(0 2px 0 rgba(20, 14, 8, 0.35))
+    drop-shadow(0 18px 28px rgba(0, 0, 0, 0.48));
+  animation: ${pumoBreathe} 2.6s ease-in-out infinite;
 `;
 
 const ConnectionErrorBanner = styled.div`
@@ -860,9 +959,17 @@ const MainMenu = ({
     });
   };
 
+  // Active outfit gear for the main-menu hero (colors live in PlayerColorContext).
+  const heroGearIdsRef = useRef([]);
+  const [heroHeadGearId, setHeroHeadGearId] = useState(null);
+  const [heroSrc, setHeroSrc] = useState(mainMenuPumo);
+  const heroMountedRef = useRef(true);
+
   // Apply saved active outfit to P1 context so VS CPU / Custom / BASHO
   // all start from the wardrobe loadout without visiting Customize first.
+  // Re-run when returning to the main menu so Customize edits show up.
   useEffect(() => {
+    if (currentPage !== "mainMenu") return;
     let cancelled = false;
     loadSave().then((doc) => {
       if (cancelled) return;
@@ -871,11 +978,45 @@ const MainMenu = ({
         setPlayer1Color,
         setPlayer1BodyColor,
       });
+      const gearIds = Array.isArray(outfit?.gearIds) ? outfit.gearIds : [];
+      heroGearIdsRef.current = gearIds;
+      setHeroHeadGearId(getEquippedHeadGearId(gearIds));
     });
     return () => {
       cancelled = true;
     };
-  }, [setPlayer1Color, setPlayer1BodyColor]);
+  }, [currentPage, setPlayer1Color, setPlayer1BodyColor]);
+
+  useEffect(() => {
+    heroMountedRef.current = true;
+    return () => {
+      heroMountedRef.current = false;
+    };
+  }, []);
+
+  // Build the hero from the player's outfit on the main-menu pose.
+  useEffect(() => {
+    let cancelled = false;
+    buildIdlePortraitSrc({
+      baseSrc: mainMenuPumo,
+      mawashiColor: player1Color,
+      bodyColor: player1BodyColor,
+      gearIds: heroGearIdsRef.current,
+      // Large hero makes body-recolor AA leaks obvious — restore ink after.
+      preserveLinework: true,
+    })
+      .then((src) => {
+        if (!cancelled && heroMountedRef.current) setHeroSrc(src);
+      })
+      .catch(() => {
+        if (!cancelled && heroMountedRef.current) {
+          setHeroSrc(mainMenuPumo);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [player1Color, player1BodyColor, heroHeadGearId]);
 
   useEffect(() => {
     preGameImages.forEach((src) => {
@@ -1094,11 +1235,15 @@ const MainMenu = ({
   const renderMainMenu = () => {
     return (
       <MainMenuContainer>
-        <BackgroundImage src={mainMenuBackground} alt="" />
+        <BackgroundPlate aria-hidden>
+          <BackgroundImage src={mainMenuBackground} alt="" />
+          <BackgroundDepth src={mainMenuBackground} alt="" />
+        </BackgroundPlate>
+        <AtmosphereGrade aria-hidden />
+        <AtmosphereHaze aria-hidden />
         <CinematicOverlay />
-        <GrainOverlay />
-        <AtmosphereKanji aria-hidden>相撲</AtmosphereKanji>
-        <Snowfall intensity={12} showFrost zIndex={3} />
+        <GrainOverlay aria-hidden />
+        <Snowfall intensity={13} showFrost zIndex={3} />
 
         <TopSlug>
           <SlugText $accent>
@@ -1179,12 +1324,12 @@ const MainMenu = ({
             </MenuList>
           </LeftColumn>
 
-          <RightColumn>
-            <PumoHeroWrapper>
-              <PumoHero src={pumoMainMenu} alt="Pumo" />
-            </PumoHeroWrapper>
-          </RightColumn>
+          <RightColumn aria-hidden />
         </HeroStage>
+
+        <PumoHeroWrapper>
+          <PumoHero src={heroSrc} alt="Your wrestler" />
+        </PumoHeroWrapper>
 
         {showSettings && <Settings onClose={() => setShowSettings(false)} />}
       </MainMenuContainer>

@@ -2,27 +2,26 @@ import { useEffect, useState, useRef, useMemo, Fragment } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import "./RawParryEffect.css";
-import parrySheet from "../assets/raw-parry-effect.png";
-import {
-  parryFilterFor,
-  PerfectParryExtras,
-} from "./parryVfxShared";
+import grabBreakSheet from "../assets/grab-break-effect.png";
+import { PerfectParryExtras } from "./parryVfxShared";
 
 // ── Raw / snowball parry burst ──────────────────────────────────────────────
-// Same sheet as AP. Regular = steel cyan. Perfect = electric ice-cyan +
-// impact flash / banner. Scale punch is on the VFX, not the camera.
-const PP_GRID = 8;
-const PP_START_FRAME = 8;
-const PP_END_FRAME = 63;
-const PP_DURATION_MS = 460;
-// Perfect sheet linger — spans the hitstop beat + a short post-freeze trail.
-const PP_PERFECT_DURATION_MS = 640;
-const PP_SIZE_CQW_PERFECT = 20.5;
-const PP_SIZE_CQW_REGULAR = 13.5;
+// Same grab-break star sheet as AP. Regular = steel cyan. Perfect = electric
+// ice-cyan + impact flash / banner. Scale punch is on the VFX, not the camera.
+const PP_GRID = 4;
+const PP_START_FRAME = 1;
+const PP_END_FRAME = 15;
+const PP_DURATION_MS = 360;
+const PP_PERFECT_DURATION_MS = 520;
+const PP_SIZE_CQW_PERFECT = 11;
+const PP_SIZE_CQW_REGULAR = 8.5;
 const PP_BASELINE_OFFSET_Y = 0;
 const PP_FRONT_OFFSET_PCT = -4;
-const PP_PERSPECTIVE = "400px";
-const PP_TILT_DEG = 62;
+
+const REGULAR_FILL = "#4ec8ff";
+const REGULAR_GLOW = "rgba(120, 195, 255, 0.65)";
+const PERFECT_FILL = "#7af0ff";
+const PERFECT_GLOW = "rgba(0, 220, 255, 0.9)";
 
 const punchIn = keyframes`
   0%   { transform: translate(-50%, 50%) scale(0.72); }
@@ -51,13 +50,24 @@ const Anchor = styled.div`
 const SpritePlane = styled.div`
   width: 100%;
   height: 100%;
-  transform: perspective(${PP_PERSPECTIVE})
-    rotateY(${(p) => (p.$facing === -1 ? PP_TILT_DEG : -PP_TILT_DEG)}deg);
-  transform-origin: center;
-  background-image: url(${parrySheet});
+  background-color: ${(p) => (p.$isPerfect ? PERFECT_FILL : REGULAR_FILL)};
+  background-image: url(${grabBreakSheet});
   background-repeat: no-repeat;
   background-size: ${PP_GRID * 100}% ${PP_GRID * 100}%;
-  filter: ${(p) => p.$filter};
+  -webkit-mask-image: url(${grabBreakSheet});
+  mask-image: url(${grabBreakSheet});
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: ${PP_GRID * 100}% ${PP_GRID * 100}%;
+  mask-size: ${PP_GRID * 100}% ${PP_GRID * 100}%;
+  filter: ${(p) =>
+    p.$isPerfect
+      ? `drop-shadow(0 0 3px rgba(220, 250, 255, 1))
+         drop-shadow(0 0 10px ${PERFECT_GLOW})
+         drop-shadow(0 0 22px rgba(40, 180, 255, 0.55))`
+      : `drop-shadow(0 0 4px ${REGULAR_GLOW})
+         drop-shadow(0 0 12px ${REGULAR_GLOW})`};
+  will-change: background-position, -webkit-mask-position, mask-position;
 `;
 
 const ppFrameToBackgroundPosition = (frame) => {
@@ -79,6 +89,15 @@ const ParrySpriteBurst = ({ x, y, facing, isPerfect }) => {
     const duration = isPerfect ? PP_PERFECT_DURATION_MS : PP_DURATION_MS;
     const frameDuration = duration / total;
     let lastIdx = -1;
+
+    const applyPos = (frame) => {
+      const pos = ppFrameToBackgroundPosition(frame);
+      if (!elRef.current) return;
+      elRef.current.style.backgroundPosition = pos;
+      elRef.current.style.webkitMaskPosition = pos;
+      elRef.current.style.maskPosition = pos;
+    };
+
     const step = (t) => {
       if (startRef.current === null) startRef.current = t;
       const idx = Math.floor((t - startRef.current) / frameDuration);
@@ -86,19 +105,13 @@ const ParrySpriteBurst = ({ x, y, facing, isPerfect }) => {
         setDone(true);
         return;
       }
-      if (idx !== lastIdx && elRef.current) {
+      if (idx !== lastIdx) {
         lastIdx = idx;
-        elRef.current.style.backgroundPosition = ppFrameToBackgroundPosition(
-          PP_START_FRAME + idx
-        );
+        applyPos(PP_START_FRAME + idx);
       }
       rafRef.current = requestAnimationFrame(step);
     };
-    if (elRef.current) {
-      elRef.current.style.backgroundPosition = ppFrameToBackgroundPosition(
-        PP_START_FRAME
-      );
-    }
+    applyPos(PP_START_FRAME);
     rafRef.current = requestAnimationFrame(step);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -114,11 +127,7 @@ const ParrySpriteBurst = ({ x, y, facing, isPerfect }) => {
       $isPerfect={isPerfect}
       $size={isPerfect ? PP_SIZE_CQW_PERFECT : PP_SIZE_CQW_REGULAR}
     >
-      <SpritePlane
-        ref={elRef}
-        $facing={facing}
-        $filter={parryFilterFor(isPerfect)}
-      />
+      <SpritePlane ref={elRef} $isPerfect={isPerfect} />
     </Anchor>
   );
 };

@@ -172,6 +172,34 @@
           "x": 489.6,
           "y": 212.7,
           "rotationDeg": -1
+        },
+        "raw-parry-success-frame-1": {
+          "label": "Raw parry 1",
+          "file": "raw-parry-success-frame-1.png",
+          "x": 522.5,
+          "y": 275.6,
+          "rotationDeg": -2
+        },
+        "raw-parry-success-frame-2": {
+          "label": "Raw parry 2",
+          "file": "raw-parry-success-frame-2.png",
+          "x": 522.5,
+          "y": 275.6,
+          "rotationDeg": -2
+        },
+        "main-menu-pumo": {
+          "label": "Main menu",
+          "file": "main-menu-pumo.png",
+          "x": 488.1,
+          "y": 281.6,
+          "rotationDeg": 0
+        },
+        "raw-parry-success-frame-3": {
+          "label": "Raw parry 3",
+          "file": "raw-parry-success-frame-3.png",
+          "x": 522.5,
+          "y": 275.6,
+          "rotationDeg": -2
         }
       }
     },
@@ -346,6 +374,34 @@
           "x": 583.6,
           "y": 179.7,
           "rotationDeg": 25
+        },
+        "raw-parry-success-frame-1": {
+          "label": "Raw parry 1",
+          "file": "raw-parry-success-frame-1.png",
+          "x": 604.5,
+          "y": 231.6,
+          "rotationDeg": 25.5
+        },
+        "raw-parry-success-frame-2": {
+          "label": "Raw parry 2",
+          "file": "raw-parry-success-frame-2.png",
+          "x": 604.5,
+          "y": 231.6,
+          "rotationDeg": 25.5
+        },
+        "main-menu-pumo": {
+          "label": "Main menu",
+          "file": "main-menu-pumo.png",
+          "x": 568.1,
+          "y": 231.6,
+          "rotationDeg": 23
+        },
+        "raw-parry-success-frame-3": {
+          "label": "Raw parry 3",
+          "file": "raw-parry-success-frame-3.png",
+          "x": 604.5,
+          "y": 231.6,
+          "rotationDeg": 25.5
         }
       }
     },
@@ -356,7 +412,7 @@
         "pumo-idle": {
           "label": "Idle",
           "file": "pumo-idle.png",
-          "x": 495.1,
+          "x": 497.1,
           "y": 158.6,
           "rotationDeg": 0
         },
@@ -520,46 +576,74 @@
           "x": 499.6,
           "y": 128.7,
           "rotationDeg": 0
+        },
+        "raw-parry-success-frame-1": {
+          "label": "Raw parry 1",
+          "file": "raw-parry-success-frame-1.png",
+          "x": 524.5,
+          "y": 179.6,
+          "rotationDeg": 0
+        },
+        "raw-parry-success-frame-2": {
+          "label": "Raw parry 2",
+          "file": "raw-parry-success-frame-2.png",
+          "x": 524.5,
+          "y": 179.6,
+          "rotationDeg": 0
+        },
+        "main-menu-pumo": {
+          "label": "Main menu",
+          "file": "main-menu-pumo.png",
+          "x": 488.1,
+          "y": 191.6,
+          "rotationDeg": 0
+        },
+        "raw-parry-success-frame-3": {
+          "label": "Raw parry 3",
+          "file": "raw-parry-success-frame-3.png",
+          "x": 524.5,
+          "y": 179.6,
+          "rotationDeg": 0
         }
       }
     },
     "plunger": {
       "label": "Plunger",
-      "widthPct": 0.26,
+      "widthPct": 0.22,
       "poses": {
         "pumo-idle": {
           "label": "Idle",
           "file": "pumo-idle.png",
           "x": 597.1,
-          "y": 248.6,
+          "y": 258.6,
           "rotationDeg": 37
         },
         "pumo-tachiai-position": {
           "label": "Tachiai",
           "file": "pumo-tachiai-position.png",
-          "x": 399.9,
-          "y": 356.6,
-          "rotationDeg": 14
+          "x": 374.9,
+          "y": 381.6,
+          "rotationDeg": 24
         },
         "pumo-ready-position": {
           "label": "Ready",
           "file": "pumo-ready-position.png",
-          "x": 518.5,
-          "y": 286,
+          "x": 476.5,
+          "y": 304,
           "rotationDeg": 30
         },
         "grabbing": {
           "label": "Grabbing",
           "file": "grabbing.png",
-          "x": 452.1,
-          "y": 270,
-          "rotationDeg": 33
+          "x": 417.1,
+          "y": 285,
+          "rotationDeg": 35
         },
         "clinch-planting": {
           "label": "Clinch plant",
           "file": "clinch-planting.png",
-          "x": 469.1,
-          "y": 278,
+          "x": 464.1,
+          "y": 295,
           "rotationDeg": 33
         },
         "attempting-grab-throw": {
@@ -593,43 +677,43 @@
         "slap-attack-1-blur-frame": {
           "label": "Slap 1 blur",
           "file": "slap-attack-1-blur-frame.png",
-          "x": 576.3,
-          "y": 266.2,
+          "x": 573.3,
+          "y": 270.2,
           "rotationDeg": 37
         },
         "slap-attack-1-hit-frame": {
           "label": "Slap 1 hit",
           "file": "slap-attack-1-hit-frame.png",
-          "x": 576.3,
-          "y": 266.2,
+          "x": 573.3,
+          "y": 270.2,
           "rotationDeg": 37
         },
         "slap-attack-2-blur-frame": {
           "label": "Slap 2 blur",
           "file": "slap-attack-2-blur-frame.png",
-          "x": 568.3,
-          "y": 269.2,
+          "x": 567.3,
+          "y": 272.2,
           "rotationDeg": 37
         },
         "slap-attack-2-hit-frame": {
           "label": "Slap 2 hit",
           "file": "slap-attack-2-hit-frame.png",
-          "x": 476.3,
-          "y": 296.2,
-          "rotationDeg": 30
+          "x": 472.3,
+          "y": 316.2,
+          "rotationDeg": 42
         },
         "palm-thrust": {
           "label": "Palm thrust",
           "file": "palm-thrust.png",
-          "x": 565.3,
-          "y": 270.2,
+          "x": 564.3,
+          "y": 273.2,
           "rotationDeg": 37
         },
         "palm-thrust-startup": {
           "label": "Palm startup",
           "file": "palm-thrust-startup.png",
-          "x": 577.3,
-          "y": 269.2,
+          "x": 580.3,
+          "y": 271.2,
           "rotationDeg": 37
         },
         "palm-thrust-smear": {
@@ -642,16 +726,16 @@
         "blocking": {
           "label": "Block",
           "file": "blocking.png",
-          "x": 614.5,
-          "y": 267.6,
+          "x": 615.5,
+          "y": 273.6,
           "rotationDeg": 37
         },
         "block-parry": {
           "label": "Block parry",
           "file": "block-parry.png",
           "x": 474.8,
-          "y": 390.1,
-          "rotationDeg": 19
+          "y": 477.1,
+          "rotationDeg": 27
         },
         "raw-parry-success": {
           "label": "Raw parry",
@@ -663,37 +747,65 @@
         "pumo-flap-1": {
           "label": "Flap 1",
           "file": "pumo-flap-1.png",
-          "x": 582.7,
-          "y": 241.8,
-          "rotationDeg": 40
+          "x": 574.7,
+          "y": 246.8,
+          "rotationDeg": 42
         },
         "pumo-flap-2": {
           "label": "Flap 2",
           "file": "pumo-flap-2.png",
-          "x": 519.7,
-          "y": 255.8,
-          "rotationDeg": 33
+          "x": 476.7,
+          "y": 297.8,
+          "rotationDeg": 27
         },
         "recovering": {
           "label": "Recover / charge",
           "file": "recovering.png",
-          "x": 546.5,
-          "y": 373.6,
-          "rotationDeg": 30
+          "x": 541.5,
+          "y": 386.6,
+          "rotationDeg": 34
         },
         "attack": {
           "label": "Charged attack",
           "file": "attack.png",
-          "x": 213,
-          "y": 344.9,
-          "rotationDeg": -25
+          "x": 197,
+          "y": 368.9,
+          "rotationDeg": -36
         },
         "dodging": {
           "label": "Dodge / flap dive",
           "file": "dodging.png",
-          "x": 606.6,
-          "y": 231.7,
-          "rotationDeg": 42
+          "x": 596.6,
+          "y": 241.7,
+          "rotationDeg": 44
+        },
+        "raw-parry-success-frame-1": {
+          "label": "Raw parry 1",
+          "file": "raw-parry-success-frame-1.png",
+          "x": 611.5,
+          "y": 273.6,
+          "rotationDeg": 37
+        },
+        "raw-parry-success-frame-2": {
+          "label": "Raw parry 2",
+          "file": "raw-parry-success-frame-2.png",
+          "x": 611.5,
+          "y": 273.6,
+          "rotationDeg": 37
+        },
+        "main-menu-pumo": {
+          "label": "Main menu",
+          "file": "main-menu-pumo.png",
+          "x": 591.1,
+          "y": 287.6,
+          "rotationDeg": 39
+        },
+        "raw-parry-success-frame-3": {
+          "label": "Raw parry 3",
+          "file": "raw-parry-success-frame-3.png",
+          "x": 611.5,
+          "y": 273.6,
+          "rotationDeg": 37
         }
       }
     }

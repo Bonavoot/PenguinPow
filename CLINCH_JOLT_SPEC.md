@@ -4,8 +4,8 @@
 
 The **jolt** is a heavy, committal chest-shove during clinch. It's the anti-plant read — the way a pusher cracks through a planting opponent. It completes the clinch triangle:
 
-- **Push beats neutral** (positional gain + balance drain)
-- **Plant beats push** (net +3 balance/sec mid-ring, trades position for recovery)
+- **Push beats neutral** (positional gain + balance/stam drain on the victim)
+- **Plant brakes push** (slows the walk, pays stam upkeep, nets ~0 bal/sec mid-ring — buys time, not a free posture win)
 - **Jolt beats plant** (60px push + 15 balance damage + 800ms regen interrupt)
 - **Push beats jolt** (jolter takes 8 self-damage, 0 lockout on target, 400ms recovery = free throw window)
 
@@ -19,11 +19,11 @@ The **jolt** is a heavy, committal chest-shove during clinch. It's the anti-plan
 Jolt is NOT spam. It's a read. Each jolt is a real commitment — 250ms startup (telegraphed), 400ms recovery (punishable), 1200ms cooldown (one shot per clinch cycle). You use it when you SEE the opponent planting and want to crack them open. Wrong read (they're pushing) = self-damage, no lockout on them, and you're stuck in recovery while they can throw.
 
 ### Plant Regen Context
-Plant regens balance at **15/sec** (buffed from 10). Push drains at 12/sec. This means:
-- **Mid-ring:** Plant is net +3/sec (plant WINS the balance war)
-- **At edge (1.5x drain):** Push drains 18/sec vs 15/sec regen = net -3/sec (push wins at edge)
+Plant is a paid **brake**: regens balance at **12/sec**, costs ~4.5 stam/s under push. Push drains bal at 12/sec. This means:
+- **Mid-ring:** Plant nets ~0 bal/sec (buys time / throw window, not a free posture win)
+- **At edge (1.5x drain):** Push drains 18/sec vs 12/sec regen = net -6/sec (edge still melts the planter)
 
-This makes jolt NECESSARY — without it, a planting opponent can safely regen mid-ring. The pusher needs jolt to accelerate past the safe zone.
+Jolt remains the accelerator — crack a plant to convert the slower walk into a real dump before they throw/break.
 
 ---
 
@@ -96,9 +96,9 @@ const CLINCH_JOLT_LOCKOUT_VS_NEUTRAL = 400;
 const CLINCH_JOLT_LOCKOUT_VS_PUSH = 0;
 ```
 
-### Plant Regen (buffed)
+### Plant Regen (brake identity — nets ~0 vs push mid-ring)
 ```javascript
-const CLINCH_PLANT_BALANCE_REGEN_PER_SEC = 15;
+const CLINCH_PLANT_BALANCE_REGEN_PER_SEC = 12;
 ```
 
 ---

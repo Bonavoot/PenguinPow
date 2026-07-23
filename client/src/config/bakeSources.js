@@ -38,6 +38,7 @@ export const BAKE_SOURCES = [
 
   // --- static pose sprites ---
   { id: "pumo-idle", file: "pumo-idle.png" },
+  { id: "main-menu-pumo", file: "main-menu-pumo.png" },
   { id: "attack", file: "attack.png" },
   { id: "throwing", file: "throwing.png" },
   { id: "grabbing", file: "grabbing.png" },
@@ -51,6 +52,9 @@ export const BAKE_SOURCES = [
   { id: "crouch-stance", file: "crouch-stance.png" },
   { id: "recovering", file: "recovering.png" },
   { id: "raw-parry-success", file: "raw-parry-success.png" },
+  { id: "raw-parry-success-frame-1", file: "raw-parry-success-frame-1.png" },
+  { id: "raw-parry-success-frame-2", file: "raw-parry-success-frame-2.png" },
+  { id: "raw-parry-success-frame-3", file: "raw-parry-success-frame-3.png" },
   { id: "blocking", file: "blocking.png" },
   { id: "block-parry", file: "block-parry.png" },
   { id: "slapAttack1", file: "slapAttack1.png" },
@@ -73,6 +77,7 @@ export const BAKE_SOURCES = [
   // Longer ids than the haired counterparts so spriteIdFromUrl longest-match
   // picks these when the URL is `…/pumo-idle-bald….png`.
   { id: "pumo-idle-bald", file: "bald/pumo-idle-bald.png" },
+  { id: "main-menu-pumo-bald", file: "bald/main-menu-pumo-bald.png" },
   { id: "attack-bald", file: "bald/attack-bald.png" },
   { id: "grabbing-bald", file: "bald/grabbing-bald.png" },
   { id: "clinch-planting-bald", file: "bald/clinch-planting-bald.png" },
@@ -80,7 +85,9 @@ export const BAKE_SOURCES = [
   { id: "pumo-tachiai-position-bald", file: "bald/pumo-tachiai-position-bald.png" },
   { id: "dodging-bald", file: "bald/dodging-bald.png" },
   { id: "recovering-bald", file: "bald/recovering-bald.png" },
-  { id: "raw-parry-success-bald", file: "bald/raw-parry-success-bald.png" },
+  { id: "raw-parry-success-frame-1-bald", file: "bald/raw-parry-success-frame-1-bald.png" },
+  { id: "raw-parry-success-frame-2-bald", file: "bald/raw-parry-success-frame-2-bald.png" },
+  { id: "raw-parry-success-frame-3-bald", file: "bald/raw-parry-success-frame-3-bald.png" },
   { id: "blocking-bald", file: "bald/blocking-bald.png" },
   { id: "block-parry-bald", file: "bald/block-parry-bald.png" },
   { id: "slap-attack-1-blur-frame-bald", file: "bald/slap-attack-1-blur-frame-bald.png" },

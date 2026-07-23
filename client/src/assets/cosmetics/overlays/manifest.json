@@ -233,8 +233,34 @@
     },
     "widthPct": 0.351
   },
-  "raw-parry-success": {
-    "overlay": "overlays/hat-raw-parry-success.png",
+  "raw-parry-success-frame-1": {
+    "overlay": "overlays/hat-raw-parry-success-frame-1.png",
+    "attach": {
+      "x": 599.5,
+      "y": 268.6,
+      "rotationDeg": 17
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "raw-parry-success-frame-2": {
+    "overlay": "overlays/hat-raw-parry-success-frame-2.png",
+    "attach": {
+      "x": 599.5,
+      "y": 268.6,
+      "rotationDeg": 17
+    },
+    "canvas": {
+      "w": 960,
+      "h": 960
+    },
+    "widthPct": 0.351
+  },
+  "raw-parry-success-frame-3": {
+    "overlay": "overlays/hat-raw-parry-success-frame-3.png",
     "attach": {
       "x": 599.5,
       "y": 268.6,
@@ -546,8 +572,34 @@
       },
       "widthPct": 0.24
     },
-    "raw-parry-success": {
-      "overlay": "overlays/crown-raw-parry-success.png",
+    "raw-parry-success-frame-1": {
+      "overlay": "overlays/crown-raw-parry-success-frame-1.png",
+      "attach": {
+        "x": 604.5,
+        "y": 231.6,
+        "rotationDeg": 25.5
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "raw-parry-success-frame-2": {
+      "overlay": "overlays/crown-raw-parry-success-frame-2.png",
+      "attach": {
+        "x": 604.5,
+        "y": 231.6,
+        "rotationDeg": 25.5
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "raw-parry-success-frame-3": {
+      "overlay": "overlays/crown-raw-parry-success-frame-3.png",
       "attach": {
         "x": 604.5,
         "y": 231.6,
@@ -617,6 +669,32 @@
         "x": 583.6,
         "y": 179.7,
         "rotationDeg": 25
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "main-menu-pumo": {
+      "overlay": "overlays/crown-main-menu-pumo.png",
+      "attach": {
+        "x": 568.1,
+        "y": 231.6,
+        "rotationDeg": 23
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
+    },
+    "raw-parry-success": {
+      "overlay": "overlays/crown-raw-parry-success.png",
+      "attach": {
+        "x": 604.5,
+        "y": 231.6,
+        "rotationDeg": 25.5
       },
       "canvas": {
         "w": 960,
@@ -860,8 +938,34 @@
       },
       "widthPct": 0.44
     },
-    "raw-parry-success": {
-      "overlay": "overlays/hat-raw-parry-success.png",
+    "raw-parry-success-frame-1": {
+      "overlay": "overlays/hat-raw-parry-success-frame-1.png",
+      "attach": {
+        "x": 522.5,
+        "y": 275.6,
+        "rotationDeg": -2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.44
+    },
+    "raw-parry-success-frame-2": {
+      "overlay": "overlays/hat-raw-parry-success-frame-2.png",
+      "attach": {
+        "x": 522.5,
+        "y": 275.6,
+        "rotationDeg": -2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.44
+    },
+    "raw-parry-success-frame-3": {
+      "overlay": "overlays/hat-raw-parry-success-frame-3.png",
       "attach": {
         "x": 522.5,
         "y": 275.6,
@@ -937,13 +1041,39 @@
         "h": 960
       },
       "widthPct": 0.44
+    },
+    "main-menu-pumo": {
+      "overlay": "overlays/hat-main-menu-pumo.png",
+      "attach": {
+        "x": 488.1,
+        "y": 281.6,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.44
+    },
+    "raw-parry-success": {
+      "overlay": "overlays/hat-raw-parry-success.png",
+      "attach": {
+        "x": 522.5,
+        "y": 275.6,
+        "rotationDeg": -2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.44
     }
   },
   "halo": {
     "pumo-idle": {
       "overlay": "overlays/halo-pumo-idle.png",
       "attach": {
-        "x": 495.1,
+        "x": 497.1,
         "y": 158.6,
         "rotationDeg": 0
       },
@@ -1174,8 +1304,34 @@
       },
       "widthPct": 0.4
     },
-    "raw-parry-success": {
-      "overlay": "overlays/halo-raw-parry-success.png",
+    "raw-parry-success-frame-1": {
+      "overlay": "overlays/halo-raw-parry-success-frame-1.png",
+      "attach": {
+        "x": 524.5,
+        "y": 179.6,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "raw-parry-success-frame-2": {
+      "overlay": "overlays/halo-raw-parry-success-frame-2.png",
+      "attach": {
+        "x": 524.5,
+        "y": 179.6,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "raw-parry-success-frame-3": {
+      "overlay": "overlays/halo-raw-parry-success-frame-3.png",
       "attach": {
         "x": 524.5,
         "y": 179.6,
@@ -1251,6 +1407,32 @@
         "h": 960
       },
       "widthPct": 0.4
+    },
+    "main-menu-pumo": {
+      "overlay": "overlays/halo-main-menu-pumo.png",
+      "attach": {
+        "x": 488.1,
+        "y": 191.6,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "raw-parry-success": {
+      "overlay": "overlays/halo-raw-parry-success.png",
+      "attach": {
+        "x": 524.5,
+        "y": 179.6,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
     }
   },
   "plunger": {
@@ -1258,66 +1440,66 @@
       "overlay": "overlays/plunger-pumo-idle.png",
       "attach": {
         "x": 597.1,
-        "y": 248.6,
+        "y": 258.6,
         "rotationDeg": 37
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.26
+      "widthPct": 0.22
     },
     "pumo-tachiai-position": {
       "overlay": "overlays/plunger-pumo-tachiai-position.png",
       "attach": {
-        "x": 399.9,
-        "y": 356.6,
-        "rotationDeg": 14
+        "x": 374.9,
+        "y": 381.6,
+        "rotationDeg": 24
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.26
+      "widthPct": 0.22
     },
     "pumo-ready-position": {
       "overlay": "overlays/plunger-pumo-ready-position.png",
       "attach": {
-        "x": 518.5,
-        "y": 286,
+        "x": 476.5,
+        "y": 304,
         "rotationDeg": 30
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.26
+      "widthPct": 0.22
     },
     "grabbing": {
       "overlay": "overlays/plunger-grabbing.png",
       "attach": {
-        "x": 452.1,
-        "y": 270,
-        "rotationDeg": 33
+        "x": 417.1,
+        "y": 285,
+        "rotationDeg": 35
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.26
+      "widthPct": 0.22
     },
     "clinch-planting": {
       "overlay": "overlays/plunger-clinch-planting.png",
       "attach": {
-        "x": 469.1,
-        "y": 278,
+        "x": 464.1,
+        "y": 295,
         "rotationDeg": 33
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.26
+      "widthPct": 0.22
     },
     "attempting-grab-throw": {
       "overlay": "overlays/plunger-attempting-grab-throw.png",
@@ -1330,7 +1512,7 @@
         "w": 1024,
         "h": 1024
       },
-      "widthPct": 0.26
+      "widthPct": 0.22
     },
     "is-attempting-pull": {
       "overlay": "overlays/plunger-is-attempting-pull.png",
@@ -1343,7 +1525,7 @@
         "w": 600,
         "h": 600
       },
-      "widthPct": 0.26
+      "widthPct": 0.22
     },
     "slapAttack1": {
       "overlay": "overlays/plunger-slapAttack1.png",
@@ -1356,7 +1538,7 @@
         "w": 1024,
         "h": 1024
       },
-      "widthPct": 0.26
+      "widthPct": 0.22
     },
     "slapAttack2": {
       "overlay": "overlays/plunger-slapAttack2.png",
@@ -1369,64 +1551,12 @@
         "w": 1024,
         "h": 1024
       },
-      "widthPct": 0.26
+      "widthPct": 0.22
     },
     "slap-attack-1-blur-frame": {
       "overlay": "overlays/plunger-slap-attack-1-blur-frame.png",
       "attach": {
-        "x": 576.3,
-        "y": 266.2,
-        "rotationDeg": 37
-      },
-      "canvas": {
-        "w": 960,
-        "h": 960
-      },
-      "widthPct": 0.26
-    },
-    "slap-attack-1-hit-frame": {
-      "overlay": "overlays/plunger-slap-attack-1-hit-frame.png",
-      "attach": {
-        "x": 576.3,
-        "y": 266.2,
-        "rotationDeg": 37
-      },
-      "canvas": {
-        "w": 960,
-        "h": 960
-      },
-      "widthPct": 0.26
-    },
-    "slap-attack-2-blur-frame": {
-      "overlay": "overlays/plunger-slap-attack-2-blur-frame.png",
-      "attach": {
-        "x": 568.3,
-        "y": 269.2,
-        "rotationDeg": 37
-      },
-      "canvas": {
-        "w": 960,
-        "h": 960
-      },
-      "widthPct": 0.26
-    },
-    "slap-attack-2-hit-frame": {
-      "overlay": "overlays/plunger-slap-attack-2-hit-frame.png",
-      "attach": {
-        "x": 476.3,
-        "y": 296.2,
-        "rotationDeg": 30
-      },
-      "canvas": {
-        "w": 960,
-        "h": 960
-      },
-      "widthPct": 0.26
-    },
-    "palm-thrust": {
-      "overlay": "overlays/plunger-palm-thrust.png",
-      "attach": {
-        "x": 565.3,
+        "x": 573.3,
         "y": 270.2,
         "rotationDeg": 37
       },
@@ -1434,20 +1564,72 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.26
+      "widthPct": 0.22
     },
-    "palm-thrust-startup": {
-      "overlay": "overlays/plunger-palm-thrust-startup.png",
+    "slap-attack-1-hit-frame": {
+      "overlay": "overlays/plunger-slap-attack-1-hit-frame.png",
       "attach": {
-        "x": 577.3,
-        "y": 269.2,
+        "x": 573.3,
+        "y": 270.2,
         "rotationDeg": 37
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.26
+      "widthPct": 0.22
+    },
+    "slap-attack-2-blur-frame": {
+      "overlay": "overlays/plunger-slap-attack-2-blur-frame.png",
+      "attach": {
+        "x": 567.3,
+        "y": 272.2,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.22
+    },
+    "slap-attack-2-hit-frame": {
+      "overlay": "overlays/plunger-slap-attack-2-hit-frame.png",
+      "attach": {
+        "x": 472.3,
+        "y": 316.2,
+        "rotationDeg": 42
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.22
+    },
+    "palm-thrust": {
+      "overlay": "overlays/plunger-palm-thrust.png",
+      "attach": {
+        "x": 564.3,
+        "y": 273.2,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.22
+    },
+    "palm-thrust-startup": {
+      "overlay": "overlays/plunger-palm-thrust-startup.png",
+      "attach": {
+        "x": 580.3,
+        "y": 271.2,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.22
     },
     "palm-thrust-smear": {
       "overlay": "overlays/plunger-palm-thrust-smear.png",
@@ -1460,33 +1642,150 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.26
+      "widthPct": 0.22
     },
     "blocking": {
       "overlay": "overlays/plunger-blocking.png",
       "attach": {
-        "x": 614.5,
-        "y": 267.6,
+        "x": 615.5,
+        "y": 273.6,
         "rotationDeg": 37
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.26
+      "widthPct": 0.22
     },
     "block-parry": {
       "overlay": "overlays/plunger-block-parry.png",
       "attach": {
         "x": 474.8,
-        "y": 390.1,
-        "rotationDeg": 19
+        "y": 477.1,
+        "rotationDeg": 27
       },
       "canvas": {
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.26
+      "widthPct": 0.22
+    },
+    "raw-parry-success-frame-1": {
+      "overlay": "overlays/plunger-raw-parry-success-frame-1.png",
+      "attach": {
+        "x": 611.5,
+        "y": 273.6,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.22
+    },
+    "raw-parry-success-frame-2": {
+      "overlay": "overlays/plunger-raw-parry-success-frame-2.png",
+      "attach": {
+        "x": 611.5,
+        "y": 273.6,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.22
+    },
+    "raw-parry-success-frame-3": {
+      "overlay": "overlays/plunger-raw-parry-success-frame-3.png",
+      "attach": {
+        "x": 611.5,
+        "y": 273.6,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.22
+    },
+    "pumo-flap-1": {
+      "overlay": "overlays/plunger-pumo-flap-1.png",
+      "attach": {
+        "x": 574.7,
+        "y": 246.8,
+        "rotationDeg": 42
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.22
+    },
+    "pumo-flap-2": {
+      "overlay": "overlays/plunger-pumo-flap-2.png",
+      "attach": {
+        "x": 476.7,
+        "y": 297.8,
+        "rotationDeg": 27
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.22
+    },
+    "recovering": {
+      "overlay": "overlays/plunger-recovering.png",
+      "attach": {
+        "x": 541.5,
+        "y": 386.6,
+        "rotationDeg": 34
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.22
+    },
+    "attack": {
+      "overlay": "overlays/plunger-attack.png",
+      "attach": {
+        "x": 197,
+        "y": 368.9,
+        "rotationDeg": -36
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.22
+    },
+    "dodging": {
+      "overlay": "overlays/plunger-dodging.png",
+      "attach": {
+        "x": 596.6,
+        "y": 241.7,
+        "rotationDeg": 44
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.22
+    },
+    "main-menu-pumo": {
+      "overlay": "overlays/plunger-main-menu-pumo.png",
+      "attach": {
+        "x": 591.1,
+        "y": 287.6,
+        "rotationDeg": 39
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.22
     },
     "raw-parry-success": {
       "overlay": "overlays/plunger-raw-parry-success.png",
@@ -1499,72 +1798,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.26
-    },
-    "pumo-flap-1": {
-      "overlay": "overlays/plunger-pumo-flap-1.png",
-      "attach": {
-        "x": 582.7,
-        "y": 241.8,
-        "rotationDeg": 40
-      },
-      "canvas": {
-        "w": 960,
-        "h": 960
-      },
-      "widthPct": 0.26
-    },
-    "pumo-flap-2": {
-      "overlay": "overlays/plunger-pumo-flap-2.png",
-      "attach": {
-        "x": 519.7,
-        "y": 255.8,
-        "rotationDeg": 33
-      },
-      "canvas": {
-        "w": 960,
-        "h": 960
-      },
-      "widthPct": 0.26
-    },
-    "recovering": {
-      "overlay": "overlays/plunger-recovering.png",
-      "attach": {
-        "x": 546.5,
-        "y": 373.6,
-        "rotationDeg": 30
-      },
-      "canvas": {
-        "w": 960,
-        "h": 960
-      },
-      "widthPct": 0.26
-    },
-    "attack": {
-      "overlay": "overlays/plunger-attack.png",
-      "attach": {
-        "x": 213,
-        "y": 344.9,
-        "rotationDeg": -25
-      },
-      "canvas": {
-        "w": 960,
-        "h": 960
-      },
-      "widthPct": 0.26
-    },
-    "dodging": {
-      "overlay": "overlays/plunger-dodging.png",
-      "attach": {
-        "x": 606.6,
-        "y": 231.7,
-        "rotationDeg": 42
-      },
-      "canvas": {
-        "w": 960,
-        "h": 960
-      },
-      "widthPct": 0.26
+      "widthPct": 0.22
     }
   }
 }

@@ -58,6 +58,8 @@ const DELTA_TRACKED_PROPS = [
   'clinchJoltRecovery',
   'isArmClamped', 'clinchThrowFailStagger', 'isCounterGrabbed',
   'hasDeepGrip',
+  // Push-war read for HUD: null = not mutual shove, 0 = EVEN, 1/-1 = walk lead.
+  'clinchShoveLead',
   // MASTERY Phase 2 (posture coupling): the broken-posture "openable" tell.
   // Computed server-side each tick with hysteresis; forced false when the
   // MASTERY_P2_POSTURE flag is off, so with the flag off this is a stable extra
@@ -528,7 +530,7 @@ const RINGOUT_THROW_DURATION_MS = 400; // Match normal throw timing for consiste
 const RAW_PARRY_KNOCKBACK = 0.49; // Knockback velocity for charged attack parries
 const RAW_PARRY_SLAP_KNOCKBACK = 0.5; // Lighter knockback for slap parries
 const PERFECT_PARRY_KNOCKBACK = 0.65; // Slightly stronger than regular parry
-const PERFECT_PARRY_WINDOW = 75; // PERFECT tier window (ms), measured as (hitTime − rawParryStartTime, lag-comp). The inner ~half of the 140ms parry window: a dead-on tap perfect-parries; the outer portion is a regular parry. Also gates the snowball perfect-reflect.
+const PERFECT_PARRY_WINDOW = 40; // PERFECT tier window (ms), measured as (hitTime − rawParryStartTime, lag-comp). Tight inner band of AP_ACTIVE_MS — regular owns the generous read; perfect is the rare dead-on grade. Also gates the snowball perfect-reflect.
 const PERFECT_PARRY_SUCCESS_DURATION = 850; // Compressed parry — fast enough to keep pace, long enough for visual read
 const PERFECT_PARRY_ATTACKER_STUN_DURATION = 700; // Stun — comfortable window for slap/grab follow-up
 const PERFECT_PARRY_ANIMATION_LOCK = 370; // 250ms hitstop + 120ms real post-freeze "cool pose" before parrier can act
@@ -580,11 +582,12 @@ const PERFECT_PARRY_BALANCE_REFUND = 12;
 //     flurry cover (AP_FLURRY_COVER_MS) so the next re-tap can answer an ASAP
 //     follow-up slap — tap-every-slap is intentional. The attacker eats their
 //     move's own recovery (rendered in their ATTACK pose — never hit.png), loses
-//     balance, and is shoved back OUT of range: you REVERSE the ground, not just
-//     stop losing it. Graded by how dead-on the tap was:
-//        – REGULAR: position payout (shove + balance drain), ~neutral frames.
-//        – PERFECT (inner PERFECT_PARRY_WINDOW): bigger shove + balance drain +
-//          balance refund to you + real frame advantage (a guaranteed poke).
+//     balance, and settles a SHORT pocket shove — nullify the slap plan, keep
+//     chest-to-chest so grab / slap-down / your own button stay live. Not a
+//     ring-reset. Graded by how dead-on the tap was:
+//        – REGULAR: small settle + balance drain, ~neutral frames.
+//        – PERFECT (inner PERFECT_PARRY_WINDOW): slightly farther settle + bigger
+//          balance drain + balance refund + real frame advantage (one free button).
 //     If the attacker's balance is already inside the KILL band when parried, it
 //     becomes the lethal slap-down (pull cinematic).
 //   • HOLD → GUARD (the block floor): you survive slaps/palms as chip + a little
@@ -613,7 +616,8 @@ const AP_FLOW_WINDOW_MS = 400;       // DEPRECATED (Deflect Flow removed). Kept 
 // so this mostly plays AFTER the freeze). Same duration for regular and perfect
 // — attacker stagger/advantage is THEIR jail, not an extra plant on the parrier.
 // Flurry re-tap still clears/re-arms via armAttackParry (lock flag survives).
-const AP_SUCCESS_RECOVERY_MS = 155;
+// Long enough that Frame 2 (deflect) stays readable after hitstop ends.
+const AP_SUCCESS_RECOVERY_MS = 200;
 // Cancel / empty-tap recovery: rooted endlag when a live window is released (or
 // expires) into nothing. Tuned ≈ slap recovery — real cost, not longer than a
 // slap cycle. Does NOT set inputLockUntil; a rising Space re-arms through it.
@@ -633,15 +637,19 @@ const AP_PERFECT_BALANCE_DRAIN = 18;  // Perfect parry — a real posture swing
 // Attacker SHOVE on a parry. Delivered via the smooth "slap-parry" slide
 // (slapParryKnockbackVelocity, friction SLAP_PARRY_KB_FRICTION ≈ 0.82) so the
 // attacker slides back in their ATTACK/recovery pose — NOT a hit reaction. Travel
-// ≈ v · 2.89 / (1 − 0.82) ≈ v · 16px. Regular sends them just past slap range
-// (you regain the space); perfect sends them a real beat farther.
-const AP_ATTACKER_KNOCKBACK = 4.4;         // Regular ≈ 70px
-const AP_PERFECT_ATTACKER_KNOCKBACK = 8.0; // Perfect ≈ 128px
-// Regular parry freeze — short "clink" so flurry exchanges can breathe between
-// hits (was 120; stacked freezes made slap+parry strings melt together).
-const AP_HITSTOP_MS = 70;
+// ≈ v · 16px at 64Hz. Tuned to KEEP the pocket (hand-fight / grab range) — parry
+// is a slap nullifier + posture tool, not a ring-reset. Perfect is only a small
+// step farther than regular; the real perfect reward is AP_PERFECT_ADVANTAGE_MS
+// (one guaranteed button), which needs them still in slap reach.
+const AP_ATTACKER_KNOCKBACK = 1.75;        // Regular ≈ 28px — settle, still slapable
+const AP_PERFECT_ATTACKER_KNOCKBACK = 2.25; // Perfect ≈ 36px — clearer tell, still one-slap range
+// Regular parry freeze — long enough that SUCCESS Frame 2 (deflect) is the
+// pose players actually read during the clash with the slap HIT frame.
+// Frame 1 is only a brief windup (~40ms client-side); the rest of this window
+// must belong to Frame 2. Kept short enough that flurry exchanges still breathe.
+const AP_HITSTOP_MS = 110;
 // Perfect parry — longer freeze so the rare read still feels premium vs regular.
-const AP_PERFECT_HITSTOP_MS = 160;
+const AP_PERFECT_HITSTOP_MS = 200;
 const AP_KILL_HITSTOP_MS = 550;      // Heavy finisher freeze on the lethal slap-down — matches the charged CINEMATIC_KILL_HITSTOP_MS so the zoom/darken beat lands identically.
 // PERFECT-only balance refund to the PARRIER: a dead-on read is a net posture
 // GAIN, not just mitigation. Sits below clinch thresholds so it can't trivialize pressure.
@@ -850,28 +858,40 @@ const BALANCE_CHARGED_HIT_DRAIN = 15;           // Balance lost when hit by a ch
 // ============================================
 
 // Clinch push mechanics
-const CLINCH_PUSH_BASE_SPEED = 1.8;             // Base push speed (scaled by balance ratio)
-const CLINCH_PUSH_STAMINA_DRAIN_PER_SEC = 7;    // Stamina cost for pusher per second (matches burst: 1 per 150ms ≈ 6.7/sec)
-const CLINCH_PUSH_OPPONENT_STAMINA_DRAIN_INTERVAL = 250; // -1 stamina per 250ms on pushed neutral opponent (~4/sec)
+// Resource identity: Stamina walks. Balance throws. Plant buys time.
+// Winning pressure taxes the LOSER — pusher self-cost is a light lean only.
+const CLINCH_PUSH_BASE_SPEED = 1.8;             // Base push speed (scaled by force mult)
+const CLINCH_PUSH_STAMINA_DRAIN_PER_SEC = 2;    // Doc rate — light lean (~2/s); see SELF interval
+// Phase B push self-tax: 1 stam per 500ms ≈ 2/s (was GRAB_STAMINA_DRAIN 150ms ≈ 6.7/s).
+// Phase A burst still uses GRAB_STAMINA_DRAIN_INTERVAL — connect carry stays costly.
+const CLINCH_PUSH_SELF_STAMINA_DRAIN_INTERVAL = 500;
+const CLINCH_PUSH_OPPONENT_STAMINA_DRAIN_INTERVAL = 200; // -1 / 200ms on pushed neutral ≈ 5/s (was 4/s)
 const CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC = 12; // Balance drain on opponent being pushed
 const CLINCH_PUSH_BALANCE_DRAIN_SELF_PER_SEC = 4;     // Balance drain on pusher (leaning forward)
 const CLINCH_PUSH_VS_PLANT_SPEED_MULT = 0.3;    // Push speed multiplied by this when opponent plants (70% reduction)
 
-// Clinch plant mechanics — plant recovers balance at the cost of position and small stamina drain
-const CLINCH_PLANT_BALANCE_REGEN_PER_SEC = 15;  // Balance recovery while planting (net +3/sec vs push mid-ring, net -3/sec at edge due to 1.5x drain)
-const CLINCH_PLANT_STAMINA_DRAIN_INTERVAL = 1000; // -1 stamina every 1000ms while planting (~1/sec, small cost)
+// Clinch plant — paid BRAKE: slow the walk + regen bal for a throw/break window.
+// Regen 12 vs push drain 12 = net 0 mid-ring (buys time, not a free posture win).
+// Edge (1.5× drain) still loses bal. Under push, plant stam upkeep is real (~4.5/s).
+const CLINCH_PLANT_BALANCE_REGEN_PER_SEC = 12;
+const CLINCH_PLANT_STAMINA_DRAIN_INTERVAL = 1000; // -1 / 1000ms idle plant ≈ 1/s
+const CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL = 220; // -1 / 220ms under push ≈ 4.5/s (was 2/s)
 
-// NEUTRAL = BREATHING — the only clinch stance that recovers stamina, giving
-// neutral a real identity in the stance economy: push spends stamina for
-// territory, plant drips stamina for balance/throw-safety, jolt spends stamina
-// to crack plants, neutral is where stamina comes back. Only while NOT being
-// pushed — breathing into pressure still nets negative (~4/sec push drain),
-// so resting is only profitable once you've earned the space to do it.
+// NEUTRAL = BREATHING — the only clinch stance that recovers stamina.
+// Only while NOT being pushed — resting must be earned.
 const CLINCH_NEUTRAL_STAMINA_REGEN_PER_SEC = 3;
-const CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL = 500; // -1 stamina every 500ms while planting under push (~2/sec)
 
-// Push vs push mechanics
-const CLINCH_PUSH_VS_PUSH_SPEED_SCALE = 1.0;    // Movement = difference * this (near-stalemate at equal balance)
+// Push vs push — STAMINA decides who walks. Balance is the throw/pull game.
+// Speed: saturating curve on stamina diff. Equal tanks = honest standstill.
+const CLINCH_PUSH_VS_PUSH_SPEED_SCALE = 1.0;
+const CLINCH_PUSH_VS_PUSH_DEADZONE = 8;         // |stam power diff| at/below → standstill
+const CLINCH_PUSH_VS_PUSH_SOFT_MAX_DIFF = 50;   // |diff| that reaches the speed cap
+const CLINCH_PUSH_VS_PUSH_MIN_SPEED = 0.65;     // Just past deadzone ≈ 120 px/s
+const CLINCH_PUSH_VS_PUSH_MAX_SPEED = 1.45;     // Crush cap ≈ 268 px/s
+// Loser of a push war bleeds both meters (scaled by advantage intensity t):
+// balance → throwable; stamina → snowball the walk lead.
+const CLINCH_PUSH_VS_PUSH_LOSER_BAL_DRAIN_PER_SEC = 10;
+const CLINCH_PUSH_VS_PUSH_LOSER_STAM_DRAIN_PER_SEC = 7;
 // Momentum ramp — an UNANSWERED push (opponent standing neutral: not pushing
 // back, not planting) snowballs instead of drifting at constant speed. After
 // the delay, speed climbs linearly to the max multiplier over the rise window.
@@ -879,11 +899,8 @@ const CLINCH_PUSH_VS_PUSH_SPEED_SCALE = 1.0;    // Movement = difference * this 
 const CLINCH_PUSH_RAMP_DELAY_MS = 500;          // Unanswered push time before the ramp starts building
 const CLINCH_PUSH_RAMP_RISE_MS = 1000;          // Time from ramp start to full multiplier
 const CLINCH_PUSH_RAMP_MAX_MULT = 1.6;          // Speed multiplier at full ramp
-// Additive stamina term in push-vs-push power: power = (balance + stamina * this) * fatigueMult.
-// Without it, push power hits a hard floor of 0 at 0 balance and stamina becomes
-// irrelevant — two drained players holding forward froze forever regardless of a
-// lopsided stamina situation. With it, a full-stamina player grinds a 0-balance
-// wall backward at ~15-20% speed: conditioning eventually wins the shoving match.
+// Legacy — push-vs-push no longer mixes balance into shove power. Kept exported
+// so old docs/tools don't break; unused by grabActionSystem.
 const CLINCH_PUSH_STAMINA_WEIGHT = 0.2;
 
 // Clinch gassed push penalty — only gassed players have reduced push power
@@ -900,6 +917,9 @@ const GASSED_RECOVERY_STAMINA_IN_CLINCH = 30;   // vs 55 outside the clinch
 
 // Edge push (at boundary)
 const CLINCH_EDGE_STAMINA_DRAIN_PER_SEC = 29;   // Opponent stamina drain at edge (matches burst: 1 per 35ms ≈ 29/sec)
+// Dual finish at the ropes: empty tank (stamina ≤ 0) OR continuous pin hold.
+// Hold resets if the pin breaks (ease off / space created / movement stops).
+const CLINCH_EDGE_PIN_HOLD_MS = 1500;
 
 // Edge zone — amplified danger near the boundary
 const CLINCH_EDGE_ZONE_THRESHOLD = 60;           // Pixels from boundary to count as "edge zone"
@@ -1771,6 +1791,13 @@ module.exports = {
   CLINCH_NEUTRAL_STAMINA_REGEN_PER_SEC,
   CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL,
   CLINCH_PUSH_VS_PUSH_SPEED_SCALE,
+  CLINCH_PUSH_VS_PUSH_DEADZONE,
+  CLINCH_PUSH_VS_PUSH_SOFT_MAX_DIFF,
+  CLINCH_PUSH_VS_PUSH_MIN_SPEED,
+  CLINCH_PUSH_VS_PUSH_MAX_SPEED,
+  CLINCH_PUSH_VS_PUSH_LOSER_BAL_DRAIN_PER_SEC,
+  CLINCH_PUSH_VS_PUSH_LOSER_STAM_DRAIN_PER_SEC,
+  CLINCH_PUSH_SELF_STAMINA_DRAIN_INTERVAL,
   CLINCH_PUSH_STAMINA_WEIGHT,
   CLINCH_PUSH_RAMP_DELAY_MS,
   CLINCH_PUSH_RAMP_RISE_MS,
@@ -1789,6 +1816,7 @@ module.exports = {
   DEEP_GRIP_PUSH_MULT,
   DEEP_GRIP_PUSH_WIN_MS,
   CLINCH_EDGE_STAMINA_DRAIN_PER_SEC,
+  CLINCH_EDGE_PIN_HOLD_MS,
   CLINCH_EDGE_ZONE_THRESHOLD,
   CLINCH_EDGE_BALANCE_DRAIN_MULT,
   CLINCH_EDGE_THROW_DRAIN_BONUS,

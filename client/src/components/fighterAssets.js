@@ -42,6 +42,9 @@ import saltBasket from "../assets/salt-basket.png";
 import saltBasketEmpty from "../assets/salt-basket-empty.png";
 import recovering from "../assets/recovering.png";
 import rawParrySuccess from "../assets/raw-parry-success.png";
+import rawParrySuccessFrame1 from "../assets/raw-parry-success-frame-1.png";
+import rawParrySuccessFrame2 from "../assets/raw-parry-success-frame-2.png";
+import rawParrySuccessFrame3 from "../assets/raw-parry-success-frame-3.png";
 // Active parry WINDOW stance (space just pressed — can still deflect).
 import blocking from "../assets/blocking.png";
 // True GUARD / block floor (parry window expired while still holding).
@@ -155,7 +158,8 @@ import smokePuffSheet from "../assets/smoke-puff-effect.png";
 import dashSmokeSheet from "../assets/dash-smoke-effect.png";
 import chargedSmokeSheet from "../assets/charged-attack-smoke-effect.png";
 import cinematicThrowLandSmokeSheet from "../assets/cinematicKill-throw-landing-smoke-effect.png";
-import parryEffectSheet from "../assets/raw-parry-effect.png";
+// Attack / snowball parry bursts now share the grab-break star sheet.
+import parryEffectSheet from "../assets/grab-break-effect.png";
 import blockingEffectSheet from "../assets/blocking-effect.png";
 import clampedEffectSheet from "../assets/clamped-effect.png";
 
@@ -290,6 +294,9 @@ const initializeImagePreloading = () => {
   preloadImage(saltBasketEmpty);
   preloadImage(recovering);
   preloadImage(rawParrySuccess);
+  preloadImage(rawParrySuccessFrame1);
+  preloadImage(rawParrySuccessFrame2);
+  preloadImage(rawParrySuccessFrame3);
   preloadImage(blocking);
   preloadImage(blockParry);
   preloadImage(atTheRopes);
@@ -447,6 +454,9 @@ export {
   saltBasketEmpty,
   recovering,
   rawParrySuccess,
+  rawParrySuccessFrame1,
+  rawParrySuccessFrame2,
+  rawParrySuccessFrame3,
   blocking,
   blockParry,
   snowball,

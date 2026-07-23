@@ -315,6 +315,7 @@ function createInitialPlayerState(overrides = {}) {
     grabActionType: null,
     lastGrabPushStaminaDrainTime: 0,
     isAtBoundaryDuringGrab: false,
+    clinchEdgePinStart: 0,
     grabDurationPaused: false,
     grabDurationPausedAt: 0,
     grabPushEndTime: 0,
@@ -336,6 +337,7 @@ function createInitialPlayerState(overrides = {}) {
     isArmClamped: false,
     clinchThrowFailStagger: false,
     hasDeepGrip: false,
+    clinchShoveLead: null,
     // MASTERY Phase 2 (posture coupling): broken-posture "openable" tell,
     // derived from `balance` each tick behind MASTERY_P2_POSTURE (false when
     // the flag is off).

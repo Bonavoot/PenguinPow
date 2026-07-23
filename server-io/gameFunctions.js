@@ -122,6 +122,7 @@ function cleanupGrabStates(player, opponent) {
     p.isArmClamped = false;
     p.clinchThrowFailStagger = false;
     p.hasDeepGrip = false;
+    p.clinchShoveLead = null;
     p.deepGripPushStart = 0;
     p.clinchPushRampStart = 0;
     p.reactBraceDeadline = 0;
@@ -160,6 +161,7 @@ function cleanupGrabStates(player, opponent) {
   player.grabActionType = null;
   player.lastGrabPushStaminaDrainTime = 0;
   player.isAtBoundaryDuringGrab = false;
+  player.clinchEdgePinStart = 0;
   player.grabDurationPaused = false;
   player.grabDurationPausedAt = 0;
   player.grabPushEndTime = 0;
@@ -252,6 +254,7 @@ function cleanupGrabStates(player, opponent) {
   opponent.grabActionType = null;
   opponent.lastGrabPushStaminaDrainTime = 0;
   opponent.isAtBoundaryDuringGrab = false;
+  opponent.clinchEdgePinStart = 0;
   opponent.grabDurationPaused = false;
   opponent.grabDurationPausedAt = 0;
   opponent.grabPushEndTime = 0;

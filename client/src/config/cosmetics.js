@@ -13,6 +13,7 @@ import haloIcon from "../assets/cosmetics/halo.png";
 import plungerIcon from "../assets/cosmetics/plunger.png";
 
 import pumoIdle from "../assets/pumo-idle.png";
+import mainMenuPumo from "../assets/main-menu-pumo.png";
 import pumoTachiai from "../assets/pumo-tachiai-position.png";
 import pumoReady from "../assets/pumo-ready-position.png";
 import grabbing from "../assets/grabbing.png";
@@ -30,7 +31,9 @@ import palmThrustStartup from "../assets/palm-thrust-startup.png";
 import palmThrustSmear from "../assets/palm-thrust-smear.png";
 import blocking from "../assets/blocking.png";
 import blockParry from "../assets/block-parry.png";
-import rawParrySuccess from "../assets/raw-parry-success.png";
+import rawParrySuccessFrame1 from "../assets/raw-parry-success-frame-1.png";
+import rawParrySuccessFrame2 from "../assets/raw-parry-success-frame-2.png";
+import rawParrySuccessFrame3 from "../assets/raw-parry-success-frame-3.png";
 import flap1 from "../assets/pumo-flap-1.png";
 import flap2 from "../assets/pumo-flap-2.png";
 import recovering from "../assets/recovering.png";
@@ -38,6 +41,7 @@ import attack from "../assets/attack.png";
 import dodging from "../assets/dodging.png";
 
 import hatPumoIdle from "../assets/cosmetics/overlays/hat-pumo-idle.png";
+import hatMainMenuPumo from "../assets/cosmetics/overlays/hat-main-menu-pumo.png";
 import hatPumoTachiai from "../assets/cosmetics/overlays/hat-pumo-tachiai-position.png";
 import hatPumoReady from "../assets/cosmetics/overlays/hat-pumo-ready-position.png";
 import hatGrabbing from "../assets/cosmetics/overlays/hat-grabbing.png";
@@ -55,7 +59,9 @@ import hatPalmStartup from "../assets/cosmetics/overlays/hat-palm-thrust-startup
 import hatPalmSmear from "../assets/cosmetics/overlays/hat-palm-thrust-smear.png";
 import hatBlocking from "../assets/cosmetics/overlays/hat-blocking.png";
 import hatBlockParry from "../assets/cosmetics/overlays/hat-block-parry.png";
-import hatRawParrySuccess from "../assets/cosmetics/overlays/hat-raw-parry-success.png";
+import hatRawParrySuccessFrame1 from "../assets/cosmetics/overlays/hat-raw-parry-success-frame-1.png";
+import hatRawParrySuccessFrame2 from "../assets/cosmetics/overlays/hat-raw-parry-success-frame-2.png";
+import hatRawParrySuccessFrame3 from "../assets/cosmetics/overlays/hat-raw-parry-success-frame-3.png";
 import hatFlap1 from "../assets/cosmetics/overlays/hat-pumo-flap-1.png";
 import hatFlap2 from "../assets/cosmetics/overlays/hat-pumo-flap-2.png";
 import hatRecovering from "../assets/cosmetics/overlays/hat-recovering.png";
@@ -63,6 +69,7 @@ import hatAttack from "../assets/cosmetics/overlays/hat-attack.png";
 import hatDodging from "../assets/cosmetics/overlays/hat-dodging.png";
 
 import crownPumoIdle from "../assets/cosmetics/overlays/crown-pumo-idle.png";
+import crownMainMenuPumo from "../assets/cosmetics/overlays/crown-main-menu-pumo.png";
 import crownPumoTachiai from "../assets/cosmetics/overlays/crown-pumo-tachiai-position.png";
 import crownPumoReady from "../assets/cosmetics/overlays/crown-pumo-ready-position.png";
 import crownGrabbing from "../assets/cosmetics/overlays/crown-grabbing.png";
@@ -80,7 +87,9 @@ import crownPalmStartup from "../assets/cosmetics/overlays/crown-palm-thrust-sta
 import crownPalmSmear from "../assets/cosmetics/overlays/crown-palm-thrust-smear.png";
 import crownBlocking from "../assets/cosmetics/overlays/crown-blocking.png";
 import crownBlockParry from "../assets/cosmetics/overlays/crown-block-parry.png";
-import crownRawParrySuccess from "../assets/cosmetics/overlays/crown-raw-parry-success.png";
+import crownRawParrySuccessFrame1 from "../assets/cosmetics/overlays/crown-raw-parry-success-frame-1.png";
+import crownRawParrySuccessFrame2 from "../assets/cosmetics/overlays/crown-raw-parry-success-frame-2.png";
+import crownRawParrySuccessFrame3 from "../assets/cosmetics/overlays/crown-raw-parry-success-frame-3.png";
 import crownFlap1 from "../assets/cosmetics/overlays/crown-pumo-flap-1.png";
 import crownFlap2 from "../assets/cosmetics/overlays/crown-pumo-flap-2.png";
 import crownRecovering from "../assets/cosmetics/overlays/crown-recovering.png";
@@ -88,6 +97,7 @@ import crownAttack from "../assets/cosmetics/overlays/crown-attack.png";
 import crownDodging from "../assets/cosmetics/overlays/crown-dodging.png";
 
 import haloPumoIdle from "../assets/cosmetics/overlays/halo-pumo-idle.png";
+import haloMainMenuPumo from "../assets/cosmetics/overlays/halo-main-menu-pumo.png";
 import haloPumoTachiai from "../assets/cosmetics/overlays/halo-pumo-tachiai-position.png";
 import haloPumoReady from "../assets/cosmetics/overlays/halo-pumo-ready-position.png";
 import haloGrabbing from "../assets/cosmetics/overlays/halo-grabbing.png";
@@ -105,7 +115,9 @@ import haloPalmStartup from "../assets/cosmetics/overlays/halo-palm-thrust-start
 import haloPalmSmear from "../assets/cosmetics/overlays/halo-palm-thrust-smear.png";
 import haloBlocking from "../assets/cosmetics/overlays/halo-blocking.png";
 import haloBlockParry from "../assets/cosmetics/overlays/halo-block-parry.png";
-import haloRawParrySuccess from "../assets/cosmetics/overlays/halo-raw-parry-success.png";
+import haloRawParrySuccessFrame1 from "../assets/cosmetics/overlays/halo-raw-parry-success-frame-1.png";
+import haloRawParrySuccessFrame2 from "../assets/cosmetics/overlays/halo-raw-parry-success-frame-2.png";
+import haloRawParrySuccessFrame3 from "../assets/cosmetics/overlays/halo-raw-parry-success-frame-3.png";
 import haloFlap1 from "../assets/cosmetics/overlays/halo-pumo-flap-1.png";
 import haloFlap2 from "../assets/cosmetics/overlays/halo-pumo-flap-2.png";
 import haloRecovering from "../assets/cosmetics/overlays/halo-recovering.png";
@@ -113,6 +125,7 @@ import haloAttack from "../assets/cosmetics/overlays/halo-attack.png";
 import haloDodging from "../assets/cosmetics/overlays/halo-dodging.png";
 
 import plungerPumoIdle from "../assets/cosmetics/overlays/plunger-pumo-idle.png";
+import plungerMainMenuPumo from "../assets/cosmetics/overlays/plunger-main-menu-pumo.png";
 import plungerPumoTachiai from "../assets/cosmetics/overlays/plunger-pumo-tachiai-position.png";
 import plungerPumoReady from "../assets/cosmetics/overlays/plunger-pumo-ready-position.png";
 import plungerGrabbing from "../assets/cosmetics/overlays/plunger-grabbing.png";
@@ -130,7 +143,9 @@ import plungerPalmStartup from "../assets/cosmetics/overlays/plunger-palm-thrust
 import plungerPalmSmear from "../assets/cosmetics/overlays/plunger-palm-thrust-smear.png";
 import plungerBlocking from "../assets/cosmetics/overlays/plunger-blocking.png";
 import plungerBlockParry from "../assets/cosmetics/overlays/plunger-block-parry.png";
-import plungerRawParrySuccess from "../assets/cosmetics/overlays/plunger-raw-parry-success.png";
+import plungerRawParrySuccessFrame1 from "../assets/cosmetics/overlays/plunger-raw-parry-success-frame-1.png";
+import plungerRawParrySuccessFrame2 from "../assets/cosmetics/overlays/plunger-raw-parry-success-frame-2.png";
+import plungerRawParrySuccessFrame3 from "../assets/cosmetics/overlays/plunger-raw-parry-success-frame-3.png";
 import plungerFlap1 from "../assets/cosmetics/overlays/plunger-pumo-flap-1.png";
 import plungerFlap2 from "../assets/cosmetics/overlays/plunger-pumo-flap-2.png";
 import plungerRecovering from "../assets/cosmetics/overlays/plunger-recovering.png";
@@ -174,8 +189,6 @@ export const GEAR_CATALOG = [
     slot: "head",
     icon: plungerIcon,
     description: "Industrial-strength headgear. Clogged pipes fear him.",
-    /** Draw under the body so the cup looks suctioned onto the head. */
-    underBody: true,
     /** Catalog tile: tip sideways so the tall handle fits the square well. */
     iconTransform: "rotate(48deg) scale(1.05)",
   },
@@ -195,6 +208,7 @@ const HEAD_GEAR_IDS = GEAR_CATALOG.filter((g) => g.slot === "head").map(
 
 const BODY_SRCS = [
   pumoIdle,
+  mainMenuPumo,
   pumoTachiai,
   pumoReady,
   grabbing,
@@ -212,7 +226,9 @@ const BODY_SRCS = [
   palmThrustSmear,
   blocking,
   blockParry,
-  rawParrySuccess,
+  rawParrySuccessFrame1,
+  rawParrySuccessFrame2,
+  rawParrySuccessFrame3,
   flap1,
   flap2,
   recovering,
@@ -222,6 +238,7 @@ const BODY_SRCS = [
 
 const TOP_HAT_BY_STEM = {
   "pumo-idle": hatPumoIdle,
+  "main-menu-pumo": hatMainMenuPumo,
   "pumo-tachiai-position": hatPumoTachiai,
   "pumo-ready-position": hatPumoReady,
   grabbing: hatGrabbing,
@@ -239,7 +256,9 @@ const TOP_HAT_BY_STEM = {
   "palm-thrust-smear": hatPalmSmear,
   blocking: hatBlocking,
   "block-parry": hatBlockParry,
-  "raw-parry-success": hatRawParrySuccess,
+  "raw-parry-success-frame-1": hatRawParrySuccessFrame1,
+  "raw-parry-success-frame-2": hatRawParrySuccessFrame2,
+  "raw-parry-success-frame-3": hatRawParrySuccessFrame3,
   "pumo-flap-1": hatFlap1,
   "pumo-flap-2": hatFlap2,
   recovering: hatRecovering,
@@ -249,6 +268,7 @@ const TOP_HAT_BY_STEM = {
 
 const CROWN_BY_STEM = {
   "pumo-idle": crownPumoIdle,
+  "main-menu-pumo": crownMainMenuPumo,
   "pumo-tachiai-position": crownPumoTachiai,
   "pumo-ready-position": crownPumoReady,
   grabbing: crownGrabbing,
@@ -266,7 +286,9 @@ const CROWN_BY_STEM = {
   "palm-thrust-smear": crownPalmSmear,
   blocking: crownBlocking,
   "block-parry": crownBlockParry,
-  "raw-parry-success": crownRawParrySuccess,
+  "raw-parry-success-frame-1": crownRawParrySuccessFrame1,
+  "raw-parry-success-frame-2": crownRawParrySuccessFrame2,
+  "raw-parry-success-frame-3": crownRawParrySuccessFrame3,
   "pumo-flap-1": crownFlap1,
   "pumo-flap-2": crownFlap2,
   recovering: crownRecovering,
@@ -276,6 +298,7 @@ const CROWN_BY_STEM = {
 
 const HALO_BY_STEM = {
   "pumo-idle": haloPumoIdle,
+  "main-menu-pumo": haloMainMenuPumo,
   "pumo-tachiai-position": haloPumoTachiai,
   "pumo-ready-position": haloPumoReady,
   grabbing: haloGrabbing,
@@ -293,7 +316,9 @@ const HALO_BY_STEM = {
   "palm-thrust-smear": haloPalmSmear,
   blocking: haloBlocking,
   "block-parry": haloBlockParry,
-  "raw-parry-success": haloRawParrySuccess,
+  "raw-parry-success-frame-1": haloRawParrySuccessFrame1,
+  "raw-parry-success-frame-2": haloRawParrySuccessFrame2,
+  "raw-parry-success-frame-3": haloRawParrySuccessFrame3,
   "pumo-flap-1": haloFlap1,
   "pumo-flap-2": haloFlap2,
   recovering: haloRecovering,
@@ -303,6 +328,7 @@ const HALO_BY_STEM = {
 
 const PLUNGER_BY_STEM = {
   "pumo-idle": plungerPumoIdle,
+  "main-menu-pumo": plungerMainMenuPumo,
   "pumo-tachiai-position": plungerPumoTachiai,
   "pumo-ready-position": plungerPumoReady,
   grabbing: plungerGrabbing,
@@ -320,7 +346,9 @@ const PLUNGER_BY_STEM = {
   "palm-thrust-smear": plungerPalmSmear,
   blocking: plungerBlocking,
   "block-parry": plungerBlockParry,
-  "raw-parry-success": plungerRawParrySuccess,
+  "raw-parry-success-frame-1": plungerRawParrySuccessFrame1,
+  "raw-parry-success-frame-2": plungerRawParrySuccessFrame2,
+  "raw-parry-success-frame-3": plungerRawParrySuccessFrame3,
   "pumo-flap-1": plungerFlap1,
   "pumo-flap-2": plungerFlap2,
   recovering: plungerRecovering,

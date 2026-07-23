@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OBSOLETE — do not edit for in-game art.
+
+  Source of truth is now plunger.png (from Clip Studio).
+  Full uncropped CSP export: plunger-source-960.png
+  After replacing plunger.png, update plunger.json size/pivot and run:
+    node scripts/bake-hat-overlays.mjs plunger
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="300" viewBox="0 0 220 300">
+  <text x="20" y="150" font-size="14" fill="#888">See plunger.png</text>
+</svg>

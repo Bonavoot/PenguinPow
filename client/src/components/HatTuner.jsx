@@ -21,6 +21,7 @@ import plungerSrc from "../assets/cosmetics/plunger.png";
 import plungerMeta from "../assets/cosmetics/plunger.json";
 
 import pumoIdle from "../assets/pumo-idle.png";
+import mainMenuPumo from "../assets/main-menu-pumo.png";
 import pumoTachiai from "../assets/pumo-tachiai-position.png";
 import pumoReady from "../assets/pumo-ready-position.png";
 import grabbing from "../assets/grabbing.png";
@@ -38,7 +39,9 @@ import palmThrustStartup from "../assets/palm-thrust-startup.png";
 import palmThrustSmear from "../assets/palm-thrust-smear.png";
 import blocking from "../assets/blocking.png";
 import blockParry from "../assets/block-parry.png";
-import rawParrySuccess from "../assets/raw-parry-success.png";
+import rawParrySuccessFrame1 from "../assets/raw-parry-success-frame-1.png";
+import rawParrySuccessFrame2 from "../assets/raw-parry-success-frame-2.png";
+import rawParrySuccessFrame3 from "../assets/raw-parry-success-frame-3.png";
 import flap1 from "../assets/pumo-flap-1.png";
 import flap2 from "../assets/pumo-flap-2.png";
 import recovering from "../assets/recovering.png";
@@ -89,13 +92,12 @@ const GEAR_ASSETS = {
     src: plungerSrc,
     meta: plungerMeta,
     prefix: "plunger",
-    /** Match in-game: cup behind the head so it looks suctioned on. */
-    underBody: true,
   },
 };
 
 const BODY_BY_STEM = {
   "pumo-idle": bodyForStem("pumo-idle", pumoIdle),
+  "main-menu-pumo": bodyForStem("main-menu-pumo", mainMenuPumo),
   "pumo-tachiai-position": bodyForStem("pumo-tachiai-position", pumoTachiai),
   "pumo-ready-position": bodyForStem("pumo-ready-position", pumoReady),
   grabbing: bodyForStem("grabbing", grabbing),
@@ -128,7 +130,18 @@ const BODY_BY_STEM = {
   "palm-thrust-smear": bodyForStem("palm-thrust-smear", palmThrustSmear),
   blocking: bodyForStem("blocking", blocking),
   "block-parry": bodyForStem("block-parry", blockParry),
-  "raw-parry-success": bodyForStem("raw-parry-success", rawParrySuccess),
+  "raw-parry-success-frame-1": bodyForStem(
+    "raw-parry-success-frame-1",
+    rawParrySuccessFrame1,
+  ),
+  "raw-parry-success-frame-2": bodyForStem(
+    "raw-parry-success-frame-2",
+    rawParrySuccessFrame2,
+  ),
+  "raw-parry-success-frame-3": bodyForStem(
+    "raw-parry-success-frame-3",
+    rawParrySuccessFrame3,
+  ),
   "pumo-flap-1": bodyForStem("pumo-flap-1", flap1),
   "pumo-flap-2": bodyForStem("pumo-flap-2", flap2),
   recovering: bodyForStem("recovering", recovering),
@@ -137,7 +150,7 @@ const BODY_BY_STEM = {
 };
 
 /** Keep pose edits from localStorage, but always take widthPct from the seed file.
- *  Also merge in any new gears that exist in the seed but not yet in storage.
+ *  Also merge in any new gears / poses that exist in the seed but not yet in storage.
  */
 function syncFromSeed(tweaks) {
   if (!tweaks?.gears || !hatTweaksSeed?.gears) return tweaks;
@@ -147,6 +160,14 @@ function syncFromSeed(tweaks) {
       continue;
     }
     if (seedGear.widthPct != null) tweaks.gears[id].widthPct = seedGear.widthPct;
+    // Pull in newly-added pose stems (e.g. raw-parry-success-frame-1/2) without
+    // wiping user-tuned attach points on existing poses.
+    if (seedGear.poses) {
+      const localPoses = tweaks.gears[id].poses || (tweaks.gears[id].poses = {});
+      for (const [stem, seedPose] of Object.entries(seedGear.poses)) {
+        if (!localPoses[stem]) localPoses[stem] = structuredClone(seedPose);
+      }
+    }
   }
   return tweaks;
 }

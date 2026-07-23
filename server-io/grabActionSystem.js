@@ -18,8 +18,14 @@ const {
   CLINCH_NEUTRAL_STAMINA_REGEN_PER_SEC,
   CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL,
   CLINCH_PUSH_OPPONENT_STAMINA_DRAIN_INTERVAL,
-  CLINCH_PUSH_VS_PUSH_SPEED_SCALE,
-  CLINCH_PUSH_STAMINA_WEIGHT,
+  CLINCH_PUSH_VS_PUSH_DEADZONE,
+  CLINCH_PUSH_VS_PUSH_SOFT_MAX_DIFF,
+  CLINCH_PUSH_VS_PUSH_MIN_SPEED,
+  CLINCH_PUSH_VS_PUSH_MAX_SPEED,
+  CLINCH_PUSH_VS_PUSH_LOSER_BAL_DRAIN_PER_SEC,
+  CLINCH_PUSH_VS_PUSH_LOSER_STAM_DRAIN_PER_SEC,
+  CLINCH_PUSH_SELF_STAMINA_DRAIN_INTERVAL,
+  CLINCH_EDGE_PIN_HOLD_MS,
   CLINCH_PUSH_RAMP_DELAY_MS,
   CLINCH_PUSH_RAMP_RISE_MS,
   CLINCH_PUSH_RAMP_MAX_MULT,
@@ -147,6 +153,33 @@ function getPushRampMult(player, now) {
   return 1 + (CLINCH_PUSH_RAMP_MAX_MULT - 1) * t;
 }
 
+// Push-war shove power = stamina tank (× deep grip / gassed). Balance is NOT
+// in this contest — it's the throw meter. Equal stamina ⇒ standstill.
+function getShovePower(player) {
+  const stam = Math.max(0, Math.min(100, player.stamina || 0));
+  const deep = player.hasDeepGrip ? DEEP_GRIP_PUSH_MULT : 1;
+  if (player.isGassed) return stam * CLINCH_GASSED_PUSH_MULT * deep;
+  return stam * deep;
+}
+
+// Push-vs-push speed from shove-power difference. Returns { speed, t } where t
+// is advantage intensity in [0,1] (loser balance pressure). Deadzone → ease-out
+// from MIN_SPEED up to MAX_SPEED. Sign: positive = grabber winning.
+function getPushVsPushSpeed(powerDiff) {
+  const abs = Math.abs(powerDiff);
+  if (abs <= CLINCH_PUSH_VS_PUSH_DEADZONE) {
+    return { speed: 0, t: 0 };
+  }
+  const span = Math.max(1, CLINCH_PUSH_VS_PUSH_SOFT_MAX_DIFF - CLINCH_PUSH_VS_PUSH_DEADZONE);
+  let t = Math.min(1, (abs - CLINCH_PUSH_VS_PUSH_DEADZONE) / span);
+  // Ease-out quadratic: modest leads punch above linear, extremes compress into the cap.
+  t = 1 - (1 - t) * (1 - t);
+  const mag =
+    CLINCH_PUSH_VS_PUSH_MIN_SPEED +
+    (CLINCH_PUSH_VS_PUSH_MAX_SPEED - CLINCH_PUSH_VS_PUSH_MIN_SPEED) * t;
+  return { speed: Math.sign(powerDiff) * mag, t };
+}
+
 // DEEP GRIP — grant the earned-advantage state. Exclusive: taking it strips
 // the opponent's. Emits the callout event so the client can announce it.
 function grantDeepGrip(holder, other, room, io, source) {
@@ -165,6 +198,30 @@ function grantDeepGrip(holder, other, room, io, source) {
 function isInEdgeZone(playerX) {
   return playerX <= MAP_LEFT_BOUNDARY + CLINCH_EDGE_ZONE_THRESHOLD ||
          playerX >= MAP_RIGHT_BOUNDARY - CLINCH_EDGE_ZONE_THRESHOLD;
+}
+
+function clearEdgePinHold(...players) {
+  for (const p of players) {
+    if (p) p.clinchEdgePinStart = 0;
+  }
+}
+
+// Edge pin ring-out: stamina ≤ 0 (resource dump) OR continuous hold ≥ CLINCH_EDGE_PIN_HOLD_MS.
+// Returns true if a ring-out fired. Call only while actively pinning at the boundary.
+function tryEdgePinRingOut(pusher, victim, room, io, rooms, dir, now) {
+  if (victim.stamina <= 0) {
+    clearEdgePinHold(victim);
+    triggerRingOut(pusher, victim, room, io, rooms, dir);
+    return true;
+  }
+  if (!victim.clinchEdgePinStart) {
+    victim.clinchEdgePinStart = now;
+  } else if (now - victim.clinchEdgePinStart >= CLINCH_EDGE_PIN_HOLD_MS) {
+    clearEdgePinHold(victim);
+    triggerRingOut(pusher, victim, room, io, rooms, dir);
+    return true;
+  }
+  return false;
 }
 
 function getClinchAction(player, opponent) {
@@ -208,6 +265,9 @@ function updateGrabActions(player, room, io, delta, rooms) {
   // Clear one-shot flags from previous tick
   player.liftFailedGassed = false;
   opponent.liftFailedGassed = false;
+  // Push-war HUD lead — null when not in a mutual shove; 0 = EVEN standstill.
+  player.clinchShoveLead = null;
+  opponent.clinchShoveLead = null;
 
   const deltaSec = delta / 1000;
   const leftBoundary = MAP_LEFT_BOUNDARY;
@@ -226,6 +286,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
     player.isEdgePushing = false;
     opponent.isBeingEdgePushed = false;
     player.isAtBoundaryDuringGrab = false;
+    clearEdgePinHold(player, opponent);
     player.grabPushStartTime = 0;
     player.clinchAction = "neutral";
     opponent.clinchAction = "neutral";
@@ -305,10 +366,8 @@ function updateGrabActions(player, room, io, delta, rooms) {
       const opponentAtRight = newOpponentX >= rightBoundary;
 
       if ((opponentAtLeft || opponentAtRight) && !room.gameOver) {
-        if (opponent.stamina <= 0) {
-          triggerRingOut(player, opponent, room, io, rooms, opponentAtLeft ? -1 : 1);
-          return;
-        }
+        const pinNow = simNow(room);
+        const pinDir = opponentAtLeft ? -1 : 1;
         // ARM CLAMP ends at boundary contact — a clamped victim pinned at the
         // edge with zero available inputs would be a pure spectator. The carry
         // earned its wall; grant the grip so the pinned fight is playable.
@@ -317,7 +376,10 @@ function updateGrabActions(player, room, io, delta, rooms) {
           opponent.isArmClamped = false;
           opponent.hasGrip = true;
           opponent.clinchAction = "neutral";
-          opponent.gripAcquiredTime = simNow(room);
+          opponent.gripAcquiredTime = pinNow;
+        }
+        if (tryEdgePinRingOut(player, opponent, room, io, rooms, pinDir, pinNow)) {
+          return;
         }
         // Pin at boundary
         player.isAtBoundaryDuringGrab = true;
@@ -331,6 +393,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
         player.isAtBoundaryDuringGrab = false;
         player.isEdgePushing = false;
         opponent.isBeingEdgePushed = false;
+        clearEdgePinHold(opponent);
         newX = Math.max(leftBoundary, Math.min(newX, rightBoundary));
       }
 
@@ -966,14 +1029,16 @@ function updateGrabActions(player, room, io, delta, rooms) {
   }
 
   // --- Balance and stamina effects ---
+  // Identity: pressure taxes the LOSER. Pusher self-stam is a light lean (~2/s).
+  // Plant is a paid brake (stam upkeep under push ≈ 4.5/s, bal regen nets ~0 mid-ring).
 
   // Grabber pushing
   if (grabberAction === "push") {
     player.balance = Math.max(0, player.balance - CLINCH_PUSH_BALANCE_DRAIN_SELF_PER_SEC * deltaSec);
 
-    // Interval-based stamina drain (same mechanism as burst push)
+    // Light lean cost (not the old 6.7/s "punished for winning" tax)
     if (!player.lastGrabStaminaDrainTime) player.lastGrabStaminaDrainTime = now;
-    if (now - player.lastGrabStaminaDrainTime >= GRAB_STAMINA_DRAIN_INTERVAL) {
+    if (now - player.lastGrabStaminaDrainTime >= CLINCH_PUSH_SELF_STAMINA_DRAIN_INTERVAL) {
       player.stamina = Math.max(0, player.stamina - 1);
       player.lastGrabStaminaDrainTime = now;
     }
@@ -981,7 +1046,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
     if (opponentAction !== "push") {
       const edgeMult = isInEdgeZone(opponent.x) ? CLINCH_EDGE_BALANCE_DRAIN_MULT : 1;
       opponent.balance = Math.max(0, opponent.balance - CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC * edgeMult * deltaSec);
-      // Neutral opponents get moderate stamina drain; planters handle their own drain
+      // Neutral: pressure spends THEIR tank. Planters pay via plant upkeep.
       if (opponentAction !== "plant") {
         if (!opponent.lastGrabPushStaminaDrainTime) opponent.lastGrabPushStaminaDrainTime = now;
         if (now - opponent.lastGrabPushStaminaDrainTime >= CLINCH_PUSH_OPPONENT_STAMINA_DRAIN_INTERVAL) {
@@ -992,7 +1057,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
   }
 
-  // Grabber planting — recovers balance, small stamina drain (higher when being pushed)
+  // Grabber planting — brake: regen bal, pay stam (more under push)
   if (grabberAction === "plant") {
     if (!player.clinchJoltPlantInterrupt) {
       player.balance = Math.min(BALANCE_MAX, player.balance + CLINCH_PLANT_BALANCE_REGEN_PER_SEC * deltaSec);
@@ -1012,7 +1077,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
     opponent.balance = Math.max(0, opponent.balance - CLINCH_PUSH_BALANCE_DRAIN_SELF_PER_SEC * deltaSec);
 
     if (!opponent.lastGrabStaminaDrainTime) opponent.lastGrabStaminaDrainTime = now;
-    if (now - opponent.lastGrabStaminaDrainTime >= GRAB_STAMINA_DRAIN_INTERVAL) {
+    if (now - opponent.lastGrabStaminaDrainTime >= CLINCH_PUSH_SELF_STAMINA_DRAIN_INTERVAL) {
       opponent.stamina = Math.max(0, opponent.stamina - 1);
       opponent.lastGrabStaminaDrainTime = now;
     }
@@ -1020,7 +1085,6 @@ function updateGrabActions(player, room, io, delta, rooms) {
     if (grabberAction !== "push") {
       const edgeMult = isInEdgeZone(player.x) ? CLINCH_EDGE_BALANCE_DRAIN_MULT : 1;
       player.balance = Math.max(0, player.balance - CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC * edgeMult * deltaSec);
-      // Neutral opponents get moderate stamina drain; planters handle their own drain
       if (grabberAction !== "plant") {
         if (!player.lastGrabPushStaminaDrainTime) player.lastGrabPushStaminaDrainTime = now;
         if (now - player.lastGrabPushStaminaDrainTime >= CLINCH_PUSH_OPPONENT_STAMINA_DRAIN_INTERVAL) {
@@ -1031,7 +1095,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
   }
 
-  // Opponent planting (only if they have grip) — recovers balance, small stamina drain
+  // Opponent planting — brake: regen bal, pay stam (more under push)
   if (opponentAction === "plant") {
     if (!opponent.clinchJoltPlantInterrupt) {
       opponent.balance = Math.min(BALANCE_MAX, opponent.balance + CLINCH_PLANT_BALANCE_REGEN_PER_SEC * deltaSec);
@@ -1100,16 +1164,35 @@ function updateGrabActions(player, room, io, delta, rooms) {
   let netPushSpeed = 0; // positive = toward opponent's side
 
   if (grabberAction === "push" && opponentAction === "push") {
-    // Push vs push: balance difference (scaled by fatigue) determines who wins.
-    // Stamina contributes an ADDITIVE term (not just the fatigue multiplier) so
-    // power never hard-floors at 0 balance — a fresh player always out-grinds a
-    // drained one instead of freezing against a zero-resource forward-holder.
-    const grabberPower =
-      (player.balance + player.stamina * CLINCH_PUSH_STAMINA_WEIGHT) * getPushForceMult(player);
-    const opponentPower =
-      (opponent.balance + opponent.stamina * CLINCH_PUSH_STAMINA_WEIGHT) * getPushForceMult(opponent);
-    const diff = grabberPower - opponentPower;
-    netPushSpeed = (diff / BALANCE_MAX) * CLINCH_PUSH_BASE_SPEED * CLINCH_PUSH_VS_PUSH_SPEED_SCALE;
+    // Stamina tank decides who walks. Loser bleeds stam (walk snowballs) +
+    // balance (throw window) — scaled by advantage. Winner only pays light lean.
+    const { speed, t } = getPushVsPushSpeed(
+      getShovePower(player) - getShovePower(opponent)
+    );
+    netPushSpeed = speed;
+    if (speed > 0) {
+      player.clinchShoveLead = 1;
+      opponent.clinchShoveLead = -1;
+    } else if (speed < 0) {
+      player.clinchShoveLead = -1;
+      opponent.clinchShoveLead = 1;
+    } else {
+      // Equal tanks — honest standstill. HUD shows EVEN.
+      player.clinchShoveLead = 0;
+      opponent.clinchShoveLead = 0;
+    }
+    if (t > 0) {
+      const loser = speed >= 0 ? opponent : player;
+      const edgeMult = isInEdgeZone(loser.x) ? CLINCH_EDGE_BALANCE_DRAIN_MULT : 1;
+      loser.balance = Math.max(
+        0,
+        loser.balance - CLINCH_PUSH_VS_PUSH_LOSER_BAL_DRAIN_PER_SEC * t * edgeMult * deltaSec
+      );
+      loser.stamina = Math.max(
+        0,
+        loser.stamina - CLINCH_PUSH_VS_PUSH_LOSER_STAM_DRAIN_PER_SEC * t * deltaSec
+      );
+    }
   } else if (grabberAction === "push") {
     let speed = CLINCH_PUSH_BASE_SPEED * getPushForceMult(player);
     if (opponentAction === "plant") {
@@ -1147,18 +1230,18 @@ function updateGrabActions(player, room, io, delta, rooms) {
 
     // Check opponent boundary (being pushed to edge)
     if ((oppAtLeft || oppAtRight) && !room.gameOver && netPushSpeed > 0) {
-      if (opponent.stamina <= 0) {
-        triggerRingOut(player, opponent, room, io, rooms, oppAtLeft ? -1 : 1);
-        return;
-      }
       player.isAtBoundaryDuringGrab = true;
       player.isEdgePushing = true;
       opponent.isBeingEdgePushed = true;
-      // Extra stamina drain at edge (interval-based, same as burst push edge drain)
+      clearEdgePinHold(player); // only the victim accumulates hold time
+      // Extra stamina drain at edge — races the 1.5s positional hold
       if (!opponent.lastGrabPushStaminaDrainTime) opponent.lastGrabPushStaminaDrainTime = now;
       if (now - opponent.lastGrabPushStaminaDrainTime >= GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL) {
         opponent.stamina = Math.max(0, opponent.stamina - 1);
         opponent.lastGrabPushStaminaDrainTime = now;
+      }
+      if (tryEdgePinRingOut(player, opponent, room, io, rooms, oppAtLeft ? -1 : 1, now)) {
+        return;
       }
       newOppX = oppAtLeft ? leftBoundary : rightBoundary;
       newX = player.x < opponent.x
@@ -1167,18 +1250,17 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
     // Check grabber boundary (being pushed back to edge)
     else if ((grabberAtLeft || grabberAtRight) && !room.gameOver && netPushSpeed < 0) {
-      if (player.stamina <= 0) {
-        triggerRingOut(opponent, player, room, io, rooms, grabberAtLeft ? -1 : 1);
-        return;
-      }
       opponent.isAtBoundaryDuringGrab = true;
       opponent.isEdgePushing = true;
       player.isBeingEdgePushed = true;
-      // Extra stamina drain at edge (interval-based, same as burst push edge drain)
+      clearEdgePinHold(opponent);
       if (!player.lastGrabPushStaminaDrainTime) player.lastGrabPushStaminaDrainTime = now;
       if (now - player.lastGrabPushStaminaDrainTime >= GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL) {
         player.stamina = Math.max(0, player.stamina - 1);
         player.lastGrabPushStaminaDrainTime = now;
+      }
+      if (tryEdgePinRingOut(opponent, player, room, io, rooms, grabberAtLeft ? -1 : 1, now)) {
+        return;
       }
       newX = grabberAtLeft ? leftBoundary : rightBoundary;
       newOppX = player.x < opponent.x
@@ -1191,6 +1273,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
       opponent.isAtBoundaryDuringGrab = false;
       opponent.isEdgePushing = false;
       player.isBeingEdgePushed = false;
+      clearEdgePinHold(player, opponent);
     }
 
     newX = Math.max(leftBoundary, Math.min(newX, rightBoundary));
@@ -1199,13 +1282,14 @@ function updateGrabActions(player, room, io, delta, rooms) {
     player.x = newX;
     opponent.x = newOppX;
   } else {
-    // No movement — keep attached
+    // No movement — keep attached; pin hold breaks if shove isn't driving the wall
     player.isAtBoundaryDuringGrab = false;
     player.isEdgePushing = false;
     opponent.isBeingEdgePushed = false;
     opponent.isAtBoundaryDuringGrab = false;
     opponent.isEdgePushing = false;
     player.isBeingEdgePushed = false;
+    clearEdgePinHold(player, opponent);
 
     opponent.x = player.x < opponent.x
       ? player.x + fixedDistance

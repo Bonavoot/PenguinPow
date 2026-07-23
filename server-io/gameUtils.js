@@ -992,6 +992,7 @@ function clearAllActionStates(player) {
   player.grabActionType = null;
   player.lastGrabPushStaminaDrainTime = 0;
   player.isAtBoundaryDuringGrab = false;
+  player.clinchEdgePinStart = 0;
   player.grabDurationPaused = false;
   player.grabDurationPausedAt = 0;
   player.grabPushEndTime = 0;

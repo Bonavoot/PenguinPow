@@ -4,10 +4,9 @@ import PropTypes from "prop-types";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
 
 // ── Shared parry color identity ─────────────────────────────────────────────
-// Hand-drawn sheet is seafoam green + yellow shards. Both tiers recolor via
-// grayscale→sepia→hue-rotate. Perfect is a hotter ELECTRIC ice-cyan — same
-// family as regular steel-cyan, but brighter / slightly bluer so the dead-on
-// read is obvious at a glance without leaning on gold.
+// Burst sheet is now the white grab-break star (mask+fill in Slap/RawParry
+// effects). These CSS-filter helpers remain for any leftover callers; Perfect
+// stays a hotter ELECTRIC ice-cyan vs regular steel-cyan.
 export const REGULAR_PARRY_FILTER =
   "grayscale(1) sepia(1) hue-rotate(185deg) saturate(2.6) brightness(1.18) drop-shadow(0 0 4px rgba(120, 195, 255, 0.55))";
 

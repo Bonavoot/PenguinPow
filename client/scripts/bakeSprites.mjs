@@ -188,8 +188,23 @@ function isNoOpBase(mawashi, body, tint) {
   return tint === "base" && mawashi === SPRITE_BASE_COLOR && !body;
 }
 
-function fileNameForKey(key) {
-  return crypto.createHash("sha1").update(key).digest("hex").slice(0, 20) + ".png";
+// Include source pixel tag so updating a PNG (e.g. frame-3-bald) changes the
+// baked *path*, not only ?v=. Filenames keyed only by color were cache-sticky
+// in Electron/Chromium even after rebake.
+function fileNameForKey(key, sourceTag = "") {
+  return (
+    crypto
+      .createHash("sha1")
+      .update(`${key}|${sourceTag}`)
+      .digest("hex")
+      .slice(0, 20) + ".png"
+  );
+}
+
+/** Short fingerprint of source bytes so rebakes change manifest URLs and bust HTTP caches. */
+function sourceContentTag(absPath) {
+  const buf = fs.readFileSync(absPath);
+  return crypto.createHash("sha1").update(buf).digest("hex").slice(0, 10);
 }
 
 async function main() {
@@ -204,6 +219,7 @@ async function main() {
 
   // Decode each source once; reuse across all combos.
   const decoded = new Map();
+  const sourceTagById = new Map();
   for (const src of BAKE_SOURCES) {
     const abs = path.join(ASSETS_DIR, src.file);
     if (!fs.existsSync(abs)) {
@@ -211,7 +227,17 @@ async function main() {
       continue;
     }
     decoded.set(src.id, await decodePng(abs));
+    sourceTagById.set(src.id, sourceContentTag(abs));
   }
+
+  // Bake-wide cache buster: changes whenever ANY source PNG changes so every
+  // manifest URL invalidates browser/Electron image caches (filenames alone are
+  // keyed by color tuple, not pixel content).
+  const bakeTag = crypto
+    .createHash("sha1")
+    .update([...sourceTagById.entries()].sort().join("|"))
+    .digest("hex")
+    .slice(0, 10);
 
   const manifest = {};
   let count = 0;
@@ -232,10 +258,12 @@ async function main() {
         if (manifest[key]) continue; // already produced (dedup safety)
 
         const out = recolorBitmap(srcPng, combo.mawashi, combo.body, tint);
-        const fileName = fileNameForKey(key);
+        const sourceTag = sourceTagById.get(src.id) || "";
+        const fileName = fileNameForKey(key, sourceTag);
         const absOut = path.join(OUT_DIR, fileName);
         await encodePng(out, absOut, special);
-        manifest[key] = `/baked/${fileName}`;
+        // Path changes when source pixels change; ?v= still busts manifest clients.
+        manifest[key] = `/baked/${fileName}?v=${bakeTag}`;
         count++;
         if (count % 200 === 0) {
           const secs = ((Date.now() - startedAt) / 1000).toFixed(0);
@@ -248,7 +276,12 @@ async function main() {
   fs.writeFileSync(
     MANIFEST_PATH,
     JSON.stringify(
-      { version: BAKE_VERSION, generatedAt: new Date().toISOString(), sprites: manifest },
+      {
+        version: BAKE_VERSION,
+        generatedAt: new Date().toISOString(),
+        bakeTag,
+        sprites: manifest,
+      },
       null,
       0
     )

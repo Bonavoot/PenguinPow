@@ -1,28 +1,32 @@
 import { useEffect, useState, useRef, memo, Fragment } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
-import parrySheet from "../assets/raw-parry-effect.png";
-import {
-  parryFilterFor,
-  PerfectParryExtras,
-} from "./parryVfxShared";
+import grabBreakSheet from "../assets/grab-break-effect.png";
+import { PerfectParryExtras } from "./parryVfxShared";
 
-// ATTACK PARRY (AP) burst — same expanding-ring sheet as snowball/raw parry.
+// ATTACK PARRY (AP) burst — grab-break star sheet, recolored per tier.
 // Regular = steel cyan. Perfect = hotter electric ice-cyan + impact punch
 // layers (flash / banner). Scale punch lives on the VFX wrapper so the camera
 // never zooms.
-const GRID = 8;
-const START_FRAME = 8;
-const END_FRAME = 63;
-const DURATION_MS = 360;
-// Perfect sheet linger — spans the ~280ms hitstop + a short post-freeze trail.
-const PERFECT_DURATION_MS = 580;
-const SIZE_CQW = 13.5;
-const PERFECT_SIZE_CQW = 19.5;
+//
+// Sheet: 4×4 of 512px frames (pure white + alpha). Frame 0 empty; 1–15 play.
+// Recolor via the same mask+fill trick as GrabBreakEffect so hot cores stay
+// white while the body/halo picks up the tier color.
+const GRID = 4;
+const START_FRAME = 1;
+const END_FRAME = 15;
+const DURATION_MS = 320;
+// Perfect sheet linger — spans the hitstop beat + a short post-freeze trail.
+const PERFECT_DURATION_MS = 520;
+const SIZE_CQW = 8.5;
+const PERFECT_SIZE_CQW = 11;
 const CHAIN_SIZE_STEP = 0.5;
 const CHAIN_SIZE_MAX = 3;
-const PERSPECTIVE = "400px";
-const TILT_DEG = 62;
+
+const REGULAR_FILL = "#4ec8ff";
+const REGULAR_GLOW = "rgba(120, 195, 255, 0.65)";
+const PERFECT_FILL = "#7af0ff";
+const PERFECT_GLOW = "rgba(0, 220, 255, 0.9)";
 
 const punchIn = keyframes`
   0%   { transform: translate(-50%, 50%) scale(0.72); }
@@ -49,13 +53,24 @@ const Anchor = styled.div`
 const SpritePlane = styled.div`
   width: 100%;
   height: 100%;
-  transform: perspective(${PERSPECTIVE})
-    rotateY(${(p) => (p.$facing === -1 ? TILT_DEG : -TILT_DEG)}deg);
-  transform-origin: center;
-  background-image: url(${parrySheet});
+  background-color: ${(p) => (p.$isPerfect ? PERFECT_FILL : REGULAR_FILL)};
+  background-image: url(${grabBreakSheet});
   background-repeat: no-repeat;
   background-size: ${GRID * 100}% ${GRID * 100}%;
-  filter: ${(p) => p.$filter};
+  -webkit-mask-image: url(${grabBreakSheet});
+  mask-image: url(${grabBreakSheet});
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: ${GRID * 100}% ${GRID * 100}%;
+  mask-size: ${GRID * 100}% ${GRID * 100}%;
+  filter: ${(p) =>
+    p.$isPerfect
+      ? `drop-shadow(0 0 3px rgba(220, 250, 255, 1))
+         drop-shadow(0 0 10px ${PERFECT_GLOW})
+         drop-shadow(0 0 22px rgba(40, 180, 255, 0.55))`
+      : `drop-shadow(0 0 4px ${REGULAR_GLOW})
+         drop-shadow(0 0 12px ${REGULAR_GLOW})`};
+  will-change: background-position, -webkit-mask-position, mask-position;
 `;
 
 const frameToBackgroundPosition = (frame) => {
@@ -66,7 +81,7 @@ const frameToBackgroundPosition = (frame) => {
   return `${x}% ${y}%`;
 };
 
-const ParryBurst = ({ x, y, facing, variant, size, onDone }) => {
+const ParryBurst = ({ x, y, variant, size, onDone }) => {
   const elRef = useRef(null);
   const rafRef = useRef(null);
   const startRef = useRef(null);
@@ -80,6 +95,14 @@ const ParryBurst = ({ x, y, facing, variant, size, onDone }) => {
     const frameDuration = duration / totalFrames;
     let lastIdx = -1;
 
+    const applyPos = (frame) => {
+      const pos = frameToBackgroundPosition(frame);
+      if (!elRef.current) return;
+      elRef.current.style.backgroundPosition = pos;
+      elRef.current.style.webkitMaskPosition = pos;
+      elRef.current.style.maskPosition = pos;
+    };
+
     const step = (t) => {
       if (startRef.current === null) startRef.current = t;
       const idx = Math.floor((t - startRef.current) / frameDuration);
@@ -87,19 +110,14 @@ const ParryBurst = ({ x, y, facing, variant, size, onDone }) => {
         onDoneRef.current();
         return;
       }
-      if (idx !== lastIdx && elRef.current) {
+      if (idx !== lastIdx) {
         lastIdx = idx;
-        elRef.current.style.backgroundPosition = frameToBackgroundPosition(
-          START_FRAME + idx
-        );
+        applyPos(START_FRAME + idx);
       }
       rafRef.current = requestAnimationFrame(step);
     };
 
-    if (elRef.current) {
-      elRef.current.style.backgroundPosition =
-        frameToBackgroundPosition(START_FRAME);
-    }
+    applyPos(START_FRAME);
     rafRef.current = requestAnimationFrame(step);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -108,11 +126,7 @@ const ParryBurst = ({ x, y, facing, variant, size, onDone }) => {
 
   return (
     <Anchor $x={x} $y={y} $size={size} $isPerfect={isPerfect}>
-      <SpritePlane
-        ref={elRef}
-        $facing={facing}
-        $filter={parryFilterFor(isPerfect)}
-      />
+      <SpritePlane ref={elRef} $isPerfect={isPerfect} />
     </Anchor>
   );
 };
@@ -120,7 +134,6 @@ const ParryBurst = ({ x, y, facing, variant, size, onDone }) => {
 ParryBurst.propTypes = {
   x: PropTypes.number.isRequired,
   y: PropTypes.number.isRequired,
-  facing: PropTypes.number,
   variant: PropTypes.string,
   size: PropTypes.number.isRequired,
   onDone: PropTypes.func.isRequired,
@@ -150,7 +163,6 @@ const SlapParryEffect = ({ position }) => {
         id,
         x: position.x,
         y: position.y,
-        facing: position.facing || 1,
         variant: isPerfect ? "perfect" : "parry",
         size,
         playerNumber: position.playerNumber || 1,
@@ -168,7 +180,6 @@ const SlapParryEffect = ({ position }) => {
           <ParryBurst
             x={b.x}
             y={b.y}
-            facing={b.facing}
             variant={b.variant}
             size={b.size}
             onDone={() => handleDone(b.id)}

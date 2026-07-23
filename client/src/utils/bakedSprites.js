@@ -41,12 +41,17 @@ export const bakedReady = (async () => {
     return;
   }
   try {
-    const res = await fetch("/baked/manifest.json", { cache: "force-cache" });
+    // Revalidate so a rebake (new bakeTag / ?v= on URLs) is picked up without
+    // requiring the user to wipe the entire browser cache. force-cache kept
+    // serving a stale manifest after source PNG updates.
+    const res = await fetch(`/baked/manifest.json?t=${Date.now()}`, {
+      cache: "no-cache",
+    });
     if (res && res.ok) {
       const json = await res.json();
       if (json && json.sprites) {
         MANIFEST = json.sprites;
-        manifestVersion = json.version || null;
+        manifestVersion = json.bakeTag || json.version || null;
       }
     }
   } catch (_) {
