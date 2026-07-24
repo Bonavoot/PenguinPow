@@ -54,7 +54,6 @@ const { createInitialKeys } = require("./playerFactory");
 const {
   GROUND_LEVEL,
   HITBOX_DISTANCE_VALUE,
-  SLAP_HITBOX_DISTANCE_VALUE,
   SLAP_ATTACK_STAMINA_COST,
   CHARGED_ATTACK_STAMINA_COST,
   DODGE_STAMINA_COST,
@@ -583,6 +582,13 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.gripAcquiredTime = 0;
     p.inClinch = false;
     p.clinchAction = null;
+    // Push-war HUD must clear on win — updateGrabActions won't run again
+    // (isGrabbing is cleared above), so a shove-lead of ±1 would otherwise
+    // stick through the result screen and into the next round/bout.
+    p.clinchShoveLead = null;
+    p.hasDeepGrip = false;
+    p.deepGripPushStart = 0;
+    p.clinchPushRampStart = 0;
     p.clinchStalemateStart = 0;
     p.clinchThrowRequest = null;
     p.clinchThrowRequestTime = 0;
@@ -1419,6 +1425,18 @@ function handleReadyPositions(room, player1, player2, io) {
         // Reset mouse1PressTime so pre-game holds don't instantly trigger charging
         player1.mouse1PressTime = 0;
         player2.mouse1PressTime = 0;
+        // Apply movement holds that spanned the ready wait (see socketHandlers
+        // movementKeysBufferedBeforeStart) so the opening strafe isn't dead
+        // until the player releases and re-presses.
+        for (const p of [player1, player2]) {
+          if (p.movementKeysBufferedBeforeStart) {
+            const buf = p.movementKeysBufferedBeforeStart;
+            p.keys = p.keys || {};
+            if (buf.a) p.keys.a = true;
+            if (buf.d) p.keys.d = true;
+            p.movementKeysBufferedBeforeStart = null;
+          }
+        }
         io.in(room.id).emit("game_start", true);
         player1.isReady = false;
         player2.isReady = false;

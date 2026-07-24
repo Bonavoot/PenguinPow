@@ -15,6 +15,12 @@ import {
   SPRITESHEET_CONFIG_BY_NAME,
 } from "../config/animatedSpriteConfig";
 import PlayerShadow from "./PlayerShadow";
+import IceReflection, {
+  ICE_REFLECTION_FOOT_NUDGE_PCT,
+  iceReflectionBottomY,
+  iceReflectionOpacity,
+  iceReflectionShouldShow,
+} from "./IceReflection";
 import ThrowTechEffect from "./ThrowTechEffect";
 import SlapParryEffect from "./SlapParryEffect";
 import BlockingEffect, { BLOCK_SUCCESS_POSE_MS } from "./BlockingEffect";
@@ -61,7 +67,23 @@ import { playBuffer, createCrossfadeLoop } from "../utils/audioEngine";
 import SnowEffect from "./SnowEffect";
 import "./theme.css";
 import { SERVER_BROADCAST_HZ, DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY, isOutsideDohyo } from "../constants";
-import { SHADOW_GROUND_LEVEL } from "./PlayerShadow";
+import { SLAP_ANIM } from "../config/combatTiming";
+import {
+  SHADOW_GROUND_LEVEL,
+  playerShadowBottomY,
+  playerShadowOpacity,
+  playerShadowShouldShow,
+} from "./PlayerShadow";
+
+/** Hit / defense VFX X — prefer server contact seam, fall back to legacy +70. */
+function contactFxX(data) {
+  if (data && typeof data.contactX === "number") return data.contactX;
+  return (data?.x ?? 0) + 70;
+}
+
+function hasContactSeam(data) {
+  return data && typeof data.contactX === "number";
+}
 // Kill-throw: swap to flat landing art this many px above GROUND_LEVEL so the
 // KO pose finishes the descent (avoids a hard cut on the impact frame).
 const KILL_THROW_LANDING_EARLY_PX = 80;
@@ -701,19 +723,13 @@ const GameFighter = ({
     ACTIVE_END: 460,
   };
 
-  // SLAP STRING animation (hits 1 & 2): a client-driven windup → smear → hit →
-  // recovery cycle. Boundaries are cumulative ms from the isSlapAttack rising edge:
-  //   [0,          WINDUP_END) → 0 windup   (ready stance — palm-thrust-startup)
-  //   [WINDUP_END, SMEAR_END)  → 1 smear    (slap-attack-{1,2}-blur-frame)
-  //   [SMEAR_END,  HIT_END)    → 2 hit      (the strike — slap-attack-{1,2}-hit-frame)
-  //   [HIT_END,        ∞)      → 3 recovery (SETTLE BACK to the ready stance)
-  // MUST MATCH SERVER FRAME DATA: SMEAR_END == SLAP_STARTUP_MS (55) so the hit
-  // pose begins only when the hitbox goes live; HIT_END == startup+active (155).
-  // Startup stays a fast jab telegraph (brief ready → smear whip), not a reactable
-  // windup — but hit art must never lead the active frames. Recovery RETURNS to
-  // the ready-stance pose (same as windup) rather than snapping to idle. Clock is
-  // hitstop-aware (computeAnimElapsed). Re-anchored on the isSlapAttack rising
-  // edge AND on slapAnimation change, so a chained slap1→slap2 replays from frame 0.
+  // SLAP animation: client-driven windup → smear → hit → recovery.
+  // Boundaries from config/combatTiming.js (mirrors server SLAP_*_MS):
+  //   [0, WINDUP_END)              → 0 windup
+  //   [WINDUP_END, HIT_POSE_START) → 1 smear
+  //   [HIT_POSE_START, HIT_END)    → 2 hit (starts with active — parry freezes here)
+  //   [HIT_END, ∞)                 → 3 recovery (ready stance)
+  // Clock is hitstop-aware (computeAnimElapsed).
   const slapAnimRef = useRef({
     startedAt: 0,
     anim: 0,
@@ -722,11 +738,7 @@ const GameFighter = ({
     freezeEnd: 0,
     lastHitstopUntil: 0,
   });
-  const SLAP_ANIM = {
-    WINDUP_END: 18, // brief ready stance inside startup
-    SMEAR_END: 55, // == SLAP_STARTUP_MS — hit pose starts with the hitbox
-    HIT_END: 155, // == SLAP_STARTUP_MS + SLAP_ACTIVE_MS — then settle to recovery
-  };
+  // SLAP_ANIM imported from config/combatTiming.js (mirrors server SLAP_*_MS).
 
   // RAW PARRY SUCCESS pose director (client-side, juice — not sim-authoritative).
   //
@@ -871,6 +883,10 @@ const GameFighter = ({
   const grabArmImgDomRef = useRef(null); // grab/clinch arm overlay (static)
   const animContainerDomRef = useRef(null); // AnimatedFighterContainer
   const shadowDomRef = useRef(null); // PlayerShadow root div
+  const reflectionDomRef = useRef(null); // IceReflection root div
+  // Round-result loser: hide ice reflection / show oval even if x is still
+  // mid-slide between MAP (win line) and DOHYO (fall edge).
+  const isRoundLoserRef = useRef(false);
   const youLabelDomRef = useRef(null); // pre-game "You" label
   const gripPromptDomRef = useRef(null); // in-clinch "GRIP!" / "CLAMPED!" prompt
   // Mirror of the latest rendered penguin state for the rAF loop (flags used
@@ -971,9 +987,9 @@ const GameFighter = ({
     ) {
       return true;
     }
-    // Server-confirmed stance. Do NOT treat bare Space as active — after a
-    // landed parry, apGuardNeedsRelease means continued hold ≠ guard/parry,
-    // and treating Space alone as active caused "can't attack" while walking.
+    // Server-confirmed stance. Do NOT treat bare Space as active — only
+    // isRawParrying / isGuarding (treating Space alone caused "can't attack"
+    // while walking after a stance drop).
     if (penguin.isRawParrying || penguin.isGuarding) return true;
     return performance.now() < predictedParryCommitUntilRef.current;
   }, [
@@ -2210,22 +2226,59 @@ const GameFighter = ({
           animEl.style.bottom = bottomPct;
         }
         const shadowEl = shadowDomRef.current;
-        if (shadowEl) {
-          // Mirror PlayerShadow's ground-pinning: during airborne moves the
-          // shadow stays at GROUND_LEVEL; during sidestep it tracks the dip.
-          const forceGround =
-            !p.isSidestepping &&
-            (p.isDodging ||
-              p.isGrabStartup ||
-              p.isThrowing ||
-              p.isBeingThrown ||
-              p.isBeingLifted ||
-              p.isRingOutThrowCutscene ||
-              p.isRopeJumping ||
-              p.isFlapping);
-          const shadowY = forceGround ? SHADOW_GROUND_LEVEL : newPos.y;
-          shadowEl.style.left = plainLeftPct;
-          shadowEl.style.bottom = `${(shadowY / 720) * 100 - 0.2}%`;
+        const reflectionEl = reflectionDomRef.current;
+        if (shadowEl || reflectionEl) {
+          const shadowFlags = {
+            isDodging: p.isDodging,
+            isSidestepping: p.isSidestepping,
+            isGrabStartup: p.isGrabStartup,
+            isThrowing: p.isThrowing,
+            isBeingThrown: p.isBeingThrown,
+            isBeingLifted: p.isBeingLifted,
+            isRingOutThrowCutscene: p.isRingOutThrowCutscene,
+            isRopeJumping: p.isRopeJumping,
+            isFlapping: p.isFlapping,
+          };
+          // Ice reflection is clipped to the blue disc by `.ice-reflection-clip`.
+          // Oval only when fallen off the platform or RoundResult loser.
+          const roundLoser = isRoundLoserRef.current;
+          const shadowY = playerShadowBottomY(newPos.x, newPos.y, shadowFlags);
+          const shadowBottom = `${(shadowY / 720) * 100 - 0.2}%`;
+          const showOval = playerShadowShouldShow(newPos.x, newPos.y, {
+            forceShow: roundLoser,
+          });
+          const showReflect = iceReflectionShouldShow(newPos.x, newPos.y, {
+            forceHide: roundLoser,
+          });
+          // Reflection pins to the ice (sidestep tracks lane dip) and fades
+          // with height so airborne hops don't float a clone under the feet.
+          const reflectY = iceReflectionBottomY(newPos.y, {
+            isSidestepping: p.isSidestepping,
+          });
+          const reflectBottom = `${(reflectY / 720) * 100 + ICE_REFLECTION_FOOT_NUDGE_PCT}%`;
+          if (shadowEl) {
+            shadowEl.style.left = plainLeftPct;
+            shadowEl.style.bottom = shadowBottom;
+            shadowEl.style.opacity = String(
+              playerShadowOpacity(newPos.x, newPos.y, {
+                forceShow: roundLoser,
+              })
+            );
+            shadowEl.style.visibility = showOval ? "visible" : "hidden";
+            shadowEl.style.display = showOval ? "block" : "none";
+          }
+          if (reflectionEl) {
+            reflectionEl.style.left = plainLeftPct;
+            reflectionEl.style.bottom = reflectBottom;
+            reflectionEl.style.opacity = String(
+              iceReflectionOpacity(newPos.x, newPos.y, {
+                isSidestepping: p.isSidestepping,
+                forceHide: roundLoser,
+              })
+            );
+            reflectionEl.style.visibility = showReflect ? "visible" : "hidden";
+            reflectionEl.style.display = showReflect ? "block" : "none";
+          }
         }
         const youEl = youLabelDomRef.current;
         if (youEl) {
@@ -2592,7 +2645,17 @@ const GameFighter = ({
           snap.p1Bal !== Math.round(player1Data.balance ?? 100) ||
           snap.p2Bal !== Math.round(player2Data.balance ?? 100) ||
           snap.p1DG !== !!player1Data.hasDeepGrip ||
-          snap.p2DG !== !!player2Data.hasDeepGrip
+          snap.p2DG !== !!player2Data.hasDeepGrip ||
+          // Push-war HUD tags (PUSH/BACK/EVEN) — gated on inClinch so a
+          // stale lead after a push-kill still dirties when the clinch ends.
+          snap.p1Shove !==
+            (player1Data.inClinch
+              ? (player1Data.clinchShoveLead ?? null)
+              : null) ||
+          snap.p2Shove !==
+            (player2Data.inClinch
+              ? (player2Data.clinchShoveLead ?? null)
+              : null)
         ) {
           snap.p1Stam = player1Data.stamina;
           snap.p2Stam = player2Data.stamina;
@@ -2613,6 +2676,12 @@ const GameFighter = ({
           snap.p2Bal = Math.round(player2Data.balance ?? 100);
           snap.p1DG = !!player1Data.hasDeepGrip;
           snap.p2DG = !!player2Data.hasDeepGrip;
+          snap.p1Shove = player1Data.inClinch
+            ? (player1Data.clinchShoveLead ?? null)
+            : null;
+          snap.p2Shove = player2Data.inClinch
+            ? (player2Data.clinchShoveLead ?? null)
+            : null;
           setAllPlayersData({ player1: player1Data, player2: player2Data });
         }
       }
@@ -3055,11 +3124,15 @@ const GameFighter = ({
         if (index === 0) {
           const isLowKickHit =
             data.isLowKick || data.attackType === "lowKick";
+          const seamX = contactFxX(data);
           setHitEffectPosition({
-            x: data.x + 70,
+            x: seamX,
             // Low kick spark sits at the ankles/shins; everything else at chest.
             y: isLowKickHit ? LOW_KICK_HIT_EFFECT_Y : HIT_EFFECT_Y,
             facing: data.facing || 1,
+            // Absolute server tip seam — skip legacy victim.x+70 % offsets in
+            // SlapHitSpriteEffect (those were shoving sparks behind P1).
+            seamAnchored: hasContactSeam(data),
             timestamp: data.timestamp,
             hitId: data.hitId,
             attackType: data.attackType || "slap",
@@ -3082,7 +3155,7 @@ const GameFighter = ({
         if (index === 0) {
           if (data.showCounterBanner) {
             setCounterHitEffectPosition({
-              x: data.x + 70,
+              x: contactFxX(data),
               y: PLAYER_MID_Y,
               counterId: data.hitId || `counter-hit-${Date.now()}`,
               playerNumber: data.attackerPlayerNumber || 1,
@@ -3269,16 +3342,23 @@ const GameFighter = ({
               : facing === 1
                 ? 1
                 : -1;
-          // Raised deflecting-hand pin (success frame-2). Slightly above the
-          // mid-body hit ring so it sits on the palm, not over the head.
-          // Frame-3 hold (even chain ≥2) has the hand lower — drop the burst.
+          // Raised deflecting-hand pin (success frame-2). Prefer server contact
+          // seam (strike tip); fall back to hand-forward offset from parrier.
+          // Extra outward push so the grab-break burst sits clear of the body
+          // instead of overlapping the parrier's torso/arm.
           const PARRY_HAND_FORWARD_PX = 52;
+          const PARRY_EFFECT_OUTWARD_PX = 28;
           const PARRY_HAND_Y = HIT_EFFECT_Y + 22;
           const PARRY_HAND_Y_FRAME3_DROP_PX = 28;
           const chain = data.chainCount || 1;
           const isFrame3 = chain > 1 && chain % 2 === 0;
+          const parrySeamX =
+            (typeof data.contactX === "number"
+              ? data.contactX
+              : data.parrierX + towardAttacker * PARRY_HAND_FORWARD_PX) +
+            towardAttacker * PARRY_EFFECT_OUTWARD_PX;
           setParryEffectPosition({
-            x: data.parrierX + towardAttacker * PARRY_HAND_FORWARD_PX,
+            x: parrySeamX,
             y: isFrame3
               ? PARRY_HAND_Y - PARRY_HAND_Y_FRAME3_DROP_PX
               : PARRY_HAND_Y,
@@ -3361,13 +3441,16 @@ const GameFighter = ({
         });
       }
       if (index !== 0) return;
-      // parrierX is the sprite CENTER (fighters use translate:-50%).
-      // Place in front along facing: facing 1 → +x (right), facing -1 → -x (left).
+      // Prefer server tip-seam; fall back to a short front offset from parrier.
       const facing = data.facing || 1;
       const FRONT_PX = 16;
-      const blockPan = xToPan(data.parrierX);
+      const blockX =
+        typeof data.contactX === "number"
+          ? data.contactX
+          : data.parrierX + facing * FRONT_PX;
+      const blockPan = xToPan(blockX);
       setBlockingEffectPosition({
-        x: data.parrierX + facing * FRONT_PX,
+        x: blockX,
         y: HIT_EFFECT_Y,
         facing,
         blockId: data.blockId,
@@ -5340,10 +5423,16 @@ const GameFighter = ({
 
     const handleClinchJolt = (data) => {
       const isMutual = data.type === "mutual";
-      const midX = (data.jolterX + data.targetX) / 2;
+      const midX =
+        typeof data.contactX === "number"
+          ? data.contactX
+          : (data.jolterX + data.targetX) / 2;
       const pushDir = data.jolterX < data.targetX ? 1 : -1;
-      // Mutual: dead center (same as clinch tech). Single: shift ~60% from midpoint toward target's chest.
-      const chestOffset = isMutual ? 0 : (data.targetX - midX) * 0.6;
+      // Mutual: dead center (clinch attach seam). Single: nudge toward target chest.
+      const chestOffset =
+        isMutual || typeof data.contactX === "number"
+          ? 0
+          : (data.targetX - midX) * 0.6;
       const effectX = midX + chestOffset;
       setClinchJoltEffectPosition({
         x: effectX,
@@ -5505,9 +5594,12 @@ const GameFighter = ({
       if (typeof data?.x !== "number") return;
       if (data.defenderId !== penguin.id) return;
       const breakFacing = data.facing || 1;
-      // Match charged HIT_FX offsets: baseXPct -5.5, dirXPct -1.0 (% of 1280).
+      // Prefer server tip-seam; fall back to charged HIT_FX offsets.
       const facingOffsetPx = (-5.5 + breakFacing * -1.0) * 12.8;
-      const fxX = data.x + 70 + facingOffsetPx;
+      const fxX =
+        typeof data.contactX === "number"
+          ? data.contactX
+          : data.x + 70 + facingOffsetPx;
       emitParticles("grabArmorBreak", {
         x: fxX,
         y: HIT_EFFECT_Y,
@@ -5690,7 +5782,7 @@ const GameFighter = ({
   if (inSlapPhaseAnim && slapAnimRef.current.startedAt) {
     const elapsed = computeAnimElapsed(slapAnimRef.current, performance.now());
     if (elapsed < SLAP_ANIM.WINDUP_END) slapFrame = 0; // windup (ready stance)
-    else if (elapsed < SLAP_ANIM.SMEAR_END) slapFrame = 1; // smear (stretched whip)
+    else if (elapsed < SLAP_ANIM.HIT_POSE_START) slapFrame = 1; // smear
     else if (elapsed < SLAP_ANIM.HIT_END) slapFrame = 2; // hit (strike, held)
     else slapFrame = 3; // recovery — settle back to the ready stance (not idle)
   }
@@ -6046,6 +6138,11 @@ const GameFighter = ({
     ? killVictimSprite
     : displayPenguin.isPalmThrust
     ? "palm-thrust-anim"
+    // Dash swaps recovering (windup/landing) ↔ dodging mid-move. A pose-keyed
+    // remount restarts dashJump from 0% and eats the hop apex — keep one key
+    // for the whole windup→jump→landing beat (same pattern as palm thrust).
+    : displayPenguin.isDodging || penguin.justLandedFromDodge
+    ? "dash-anim"
     // A slap rapidly swaps its static pose (windup → blur → hit → recovery)
     // within one cycle. Collapse to one stable key so the <img> persists and
     // swaps `src` in place (no remount/ghost between frames), exactly like
@@ -6216,6 +6313,14 @@ const GameFighter = ({
     $lastHitType: penguin.lastHitType,
     $isDead: penguin.isDead,
     $isSlapAttack: displayPenguin.isSlapAttack,
+    // Limb-out poses: raise z so the slap/palm paints over the opponent body
+    // while extended (separate arm layer would be better long-term; this is the
+    // interim rail that stops "arm behind belly" without new art).
+    $isStrikeExtending:
+      !!(
+        (displayPenguin.isSlapAttack && displayPenguin.isAttacking) ||
+        (displayPenguin.isPalmThrust && displayPenguin.isAttacking)
+      ),
     $isThrowing: penguin.isThrowing,
     $isRingOutThrowCutscene: penguin.isRingOutThrowCutscene,
     $isGrabbing: displayPenguin.isGrabbing,
@@ -6315,10 +6420,28 @@ const GameFighter = ({
   // moves — shadow, VFX and HUD stay put; the shadow never flipped under the
   // dohyo even in the old single-layer setup. `forceVisualRender` already
   // forces a render on the boundary flip, so the swap lands at the right frame.
+  // Round-result loser is off the ice for ground FX even while sliding between
+  // the MAP win line and the DOHYO fall edge.
+  const isRoundLoser = !!(
+    gameOver &&
+    winner &&
+    typeof winner === "object" &&
+    winner.id &&
+    penguin?.id &&
+    winner.id !== penguin.id
+  );
+  isRoundLoserRef.current = isRoundLoser;
+
   const isOutsideRingNow = isOutsideDohyo(displayPosition.x, displayPosition.y);
   const fallenSpriteHost =
     isOutsideRingNow && typeof document !== "undefined"
       ? document.querySelector(".fallen-actors")
+      : null;
+  // Shared ice-disc clip (ellipse). Reflections portal here so they can only
+  // paint on the blue ice, regardless of MAP rope X.
+  const iceClipHost =
+    typeof document !== "undefined"
+      ? document.querySelector(".ice-reflection-clip")
       : null;
 
   return (
@@ -6329,8 +6452,17 @@ const GameFighter = ({
       {matchOver && (
         <SnowEffect mode="envelope" winner={winner} playerIndex={index} />
       )}
-      {/* World-space: Gyoji stays in the scene and zooms with camera */}
-      <Gyoji gyojiState={gyojiState} hakkiyoi={hakkiyoi} />
+      {/* World-space gyoji — portalled into #game-ring-props (camera-synced,
+          below side callouts / above nameplates). index===0 only. */}
+      {index === 0 &&
+        (document.getElementById("game-ring-props")
+          ? createPortal(
+              <Gyoji gyojiState={gyojiState} hakkiyoi={hakkiyoi} />,
+              document.getElementById("game-ring-props"),
+            )
+          : (
+              <Gyoji gyojiState={gyojiState} hakkiyoi={hakkiyoi} />
+            ))}
 
       {/* Player-info lower-thirds: portalled into #game-hud-info, which sits
           BELOW the actors layer so airborne penguins paint over the nameplates
@@ -6386,8 +6518,11 @@ const GameFighter = ({
               player1Balance: allPlayersData.player1?.balance ?? 100,
               player1BalanceGain: p1BalanceGain,
               player1HasDeepGrip: !!allPlayersData.player1?.hasDeepGrip,
-              player1ShoveLead:
-                allPlayersData.player1?.clinchShoveLead ?? null,
+              // Only show PUSH/BACK while actually clinched — defends against
+              // a stale clinchShoveLead surviving a push-kill / round freeze.
+              player1ShoveLead: allPlayersData.player1?.inClinch
+                ? (allPlayersData.player1?.clinchShoveLead ?? null)
+                : null,
               // MASTERY Phase 5 (5.2): the posture bar PULSES when broken so the
               // "openable" tell reads on the HUD too. Gated on the phase flag ⇒
               // no pulse with the flag off (server drives isPostureBroken).
@@ -6411,8 +6546,9 @@ const GameFighter = ({
               player2Balance: allPlayersData.player2?.balance ?? 100,
               player2BalanceGain: p2BalanceGain,
               player2HasDeepGrip: !!allPlayersData.player2?.hasDeepGrip,
-              player2ShoveLead:
-                allPlayersData.player2?.clinchShoveLead ?? null,
+              player2ShoveLead: allPlayersData.player2?.inClinch
+                ? (allPlayersData.player2?.clinchShoveLead ?? null)
+                : null,
               player2PostureBroken:
                 masteryP5Live && !!allPlayersData.player2?.isPostureBroken,
             };
@@ -6435,9 +6571,9 @@ const GameFighter = ({
         )}
 
       {/* Screen-space HUD: portalled outside the scene so it never zooms.
-          NOTE: UiPlayerInfo is portalled separately into #game-hud-info (above)
-          so it can sit UNDER the actors layer. Everything below stays in
-          #game-hud (z 210) and remains ABOVE the wrestlers. */}
+          NOTE: UiPlayerInfo → #game-hud-info (under actors). Side combat
+          plaques → #game-hud-callouts (also under actors). Center callouts /
+          KO / match-over below stay in #game-hud (z 210) above wrestlers. */}
       {document.getElementById("game-hud") &&
         createPortal(
           <>
@@ -6540,16 +6676,32 @@ const GameFighter = ({
         )}
       {/* PowerMeter and charge flash removed — hidden charge (TAP-style) */}
 
-      <SaltBasket
-        src={
-          penguin.isThrowingSalt || hasUsedPowerUp
-            ? saltBasketEmpty
-            : saltBasket
-        }
-        alt="Salt Basket"
-        $index={index}
-        $isVisible={true}
-      />
+      {document.getElementById("game-ring-props")
+        ? createPortal(
+            <SaltBasket
+              src={
+                penguin.isThrowingSalt || hasUsedPowerUp
+                  ? saltBasketEmpty
+                  : saltBasket
+              }
+              alt="Salt Basket"
+              $index={index}
+              $isVisible={true}
+            />,
+            document.getElementById("game-ring-props"),
+          )
+        : (
+            <SaltBasket
+              src={
+                penguin.isThrowingSalt || hasUsedPowerUp
+                  ? saltBasketEmpty
+                  : saltBasket
+              }
+              alt="Salt Basket"
+              $index={index}
+              $isVisible={true}
+            />
+          )}
       {/* Ground shadow — like the sprite, it rides down into `.fallen-actors`
           (scene, below the dohyo) while this fighter is outside the ring so it
           sinks behind the platform instead of floating over it. It already
@@ -6558,6 +6710,9 @@ const GameFighter = ({
           Hidden only after throw-kill impact (not the early mid-air pose swap):
           a foot-shadow under the prone sprite reads as floating. */}
       {!(penguin.isClinchKillThrowVictim && !penguin.isBeingThrown) && (() => {
+        const reflectionSrc = isAnimatedSprite
+          ? recoloredSpriteSrc
+          : staticBodySrc;
         const shadowNode = (
           <PlayerShadow
             ref={shadowDomRef}
@@ -6573,12 +6728,35 @@ const GameFighter = ({
             isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
             isRopeJumping={penguin.isRopeJumping}
             isFlapping={penguin.isFlapping}
+            forceShow={isRoundLoser}
             isLocalPlayer={penguin.id === localId}
           />
         );
-        return isOutsideRingNow && fallenSpriteHost
-          ? createPortal(shadowNode, fallenSpriteHost)
-          : shadowNode;
+        const reflectionNode = (
+          <IceReflection
+            ref={reflectionDomRef}
+            x={displayPosition.x}
+            y={displayPosition.y}
+            facing={penguin.facing ?? -1}
+            src={reflectionSrc}
+            isAnimated={isAnimatedSprite}
+            frameCount={spriteConfig?.frameCount || 1}
+            fps={spriteConfig?.fps || 30}
+            loop={spriteConfig?.loop !== false}
+            isSidestepping={penguin.isSidestepping}
+            forceHide={isRoundLoser}
+          />
+        );
+        return (
+          <>
+            {isOutsideRingNow && fallenSpriteHost
+              ? createPortal(shadowNode, fallenSpriteHost)
+              : shadowNode}
+            {iceClipHost
+              ? createPortal(reflectionNode, iceClipHost)
+              : reflectionNode}
+          </>
+        );
       })()}
       {/* <DodgeSmokeEffect
         x={penguin.dodgeStartX || displayPosition.x}

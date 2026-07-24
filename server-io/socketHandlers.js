@@ -259,6 +259,14 @@ function processInputPacket(room, player, data, io, rooms) {
     }
 
     player.mouse1BufferedBeforeStart = data.keys.mouse1 || false;
+    // MOVEMENT HOLD BUFFER: client only emits on key edges, so a forward hold
+    // that spans HAKKIYOI never arrives as a post-start packet. Snapshot A/D
+    // here (without writing live keys — that would let pre-bout strafing
+    // break ready) and apply when the bout opens.
+    player.movementKeysBufferedBeforeStart = {
+      a: !!data.keys.a,
+      d: !!data.keys.d,
+    };
   }
 
   // Block all actions if player is moving to ready position
@@ -458,7 +466,7 @@ function processInputPacket(room, player, data, io, rooms) {
     // re-tap would stay stuck in GUARD.
     if (falling[" "]) {
       player.apSpaceConsumed = false;
-      player.apGuardNeedsRelease = false; // release unlocks HOLD → GUARD
+      player.apGuardNeedsRelease = false;
     }
 
     // Capture true press moment for lag-compensated parry timing. The main loop

@@ -1,48 +1,57 @@
-import styled from "styled-components";
+import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
+import IceReflection from "./IceReflection";
 
-// Phase 2: shadow width scaled proportionally with the gyoji's new 16% (was
-// 17.33%) sprite width, and `left` re-anchored so each shadow keeps the same
-// center coordinate it had pre-shrink. This preserves the hand-tuned shadow
-// offset relative to the gyoji's feet in each stance.
-const SHADOW_RAISE = 1; // % — uniform lift for every gyoji stance
+// Lockstep with `.gyoji` in App.css — same left-edge plant + width.
+const GYOJI_LEFT_PCT = 42.75;
+const GYOJI_WIDTH = "14.5%";
+const GYOJI_FOOT_BOTTOM_PCT = 47.75;
 
-function shadowLeft(gyojiState) {
-  if (gyojiState === "idle") return "43.7%";
-  if (gyojiState === "ready") return "44.65%";
-  if (gyojiState === "player1Win" || gyojiState === "player2Win") return "45.3%";
-  return "45%";
-}
+// Lift under the sandals — too low reads "in front of him" on the ice plane;
+// too high mashes into the kimono as a blob.
+const GYOJI_REFLECTION_RAISE_PCT = 3.6;
 
-const GyojiShadowElement = styled.div`
-  position: absolute;
-  left: ${(props) => shadowLeft(props.$gyojiState)};
-  bottom: ${(props) =>
-    props.$gyojiState === "idle"
-      ? `${45.25 + SHADOW_RAISE}%`
-      : `${46.05 + SHADOW_RAISE}%`};
-  width: ${(props) => (props.$gyojiState === "idle" ? "13%" : "10.25%")};
-  height: ${(props) => (props.$gyojiState === "idle" ? "7.8%" : "6.6%")};
-  /* Cool slate falloff to match the fighters' ice-cooled contact shadows —
-     near-neutral core, cold penumbra so the gyoji belongs to the frozen ring. */
-  background: radial-gradient(
-    ellipse at center,
-    rgba(2, 4, 8, 0.82) 0%,
-    rgba(9, 17, 32, 0.38) ${(props) => (props.$gyojiState === "idle" ? "48%" : "45%")},
-    rgba(14, 24, 42, 0) ${(props) => (props.$gyojiState === "idle" ? "72%" : "66%")}
+// Quieter than fighters (0.28) — supporting cast, not a second focal point.
+const GYOJI_REFLECTION_OPACITY = 0.15;
+// Slightly taller foreshorten than fighters so a front-facing figure still
+// reads as a reflection puddle instead of a flat oval smudge.
+const GYOJI_REFLECTION_SQUASH = 0.4;
+
+/**
+ * Ice reflection under the gyoji — same treatment as fighters, quieter and
+ * planted under the feet. Portaled into `.ice-reflection-clip` so it stays on
+ * the ice and stacks under the sprite.
+ */
+const GyojiShadow = ({ src }) => {
+  if (!src) return null;
+
+  const iceClipHost =
+    typeof document !== "undefined"
+      ? document.querySelector(".ice-reflection-clip")
+      : null;
+
+  const node = (
+    <IceReflection
+      x={640}
+      y={0}
+      facing={1}
+      src={src}
+      width={GYOJI_WIDTH}
+      leftPct={GYOJI_LEFT_PCT}
+      bottomPct={GYOJI_FOOT_BOTTOM_PCT + GYOJI_REFLECTION_RAISE_PCT}
+      anchorLeftEdge
+      opacity={GYOJI_REFLECTION_OPACITY}
+      squash={GYOJI_REFLECTION_SQUASH}
+      zIndex={1}
+    />
   );
-  border-radius: 50%;
-  pointer-events: none;
-  will-change: transform;
-  z-index: 1;
-`;
 
-const GyojiShadow = ({ gyojiState }) => {
-  return <GyojiShadowElement $gyojiState={gyojiState} />;
+  return iceClipHost ? createPortal(node, iceClipHost) : node;
 };
 
 GyojiShadow.propTypes = {
   gyojiState: PropTypes.string.isRequired,
+  src: PropTypes.string,
 };
 
 export default GyojiShadow;

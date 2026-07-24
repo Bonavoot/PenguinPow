@@ -69,6 +69,7 @@ import pumoTachiaiPosition from "../assets/pumo-tachiai-position.png";
 import dodging from "../assets/dodging.png";
 import crouchStance from "../assets/crouch-stance.png";
 import recovering from "../assets/recovering.png";
+import charging from "../assets/charging.png";
 import rawParrySuccess from "../assets/raw-parry-success.png";
 import rawParrySuccessFrame1 from "../assets/raw-parry-success-frame-1.png";
 import rawParrySuccessFrame2 from "../assets/raw-parry-success-frame-2.png";
@@ -242,6 +243,7 @@ const BLUE_STATIC_SPRITES = {
   dodging: dodging,
   crouchStance: crouchStance,
   recovering: recovering,
+  charging: charging,
   rawParrySuccess: rawParrySuccess,
   rawParrySuccessFrame1: rawParrySuccessFrame1,
   rawParrySuccessFrame2: rawParrySuccessFrame2,

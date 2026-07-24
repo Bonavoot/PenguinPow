@@ -3,11 +3,15 @@ import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import "./RawParryEffect.css";
 import grabBreakSheet from "../assets/grab-break-effect.png";
-import { PerfectParryExtras } from "./parryVfxShared";
+import {
+  PerfectParryExtras,
+  RegularParryContactFlash,
+} from "./parryVfxShared";
 
 // ── Raw / snowball parry burst ──────────────────────────────────────────────
-// Same grab-break star sheet as AP. Regular = steel cyan. Perfect = electric
-// ice-cyan + impact flash / banner. Scale punch is on the VFX, not the camera.
+// Same grab-break star sheet as AP. Regular = steel cyan + contact pin + soft
+// underplate. Perfect = electric ice-cyan + impact flash / banner. Scale punch
+// is on the VFX, not the camera.
 const PP_GRID = 4;
 const PP_START_FRAME = 1;
 const PP_END_FRAME = 15;
@@ -18,16 +22,27 @@ const PP_SIZE_CQW_REGULAR = 8.5;
 const PP_BASELINE_OFFSET_Y = 0;
 const PP_FRONT_OFFSET_PCT = -4;
 
-const REGULAR_FILL = "#4ec8ff";
-const REGULAR_GLOW = "rgba(120, 195, 255, 0.65)";
+const PERSPECTIVE = "420px";
+const TILT_Y_DEG = 22;
+const TILT_X_DEG = 10;
+const STRETCH_X = 1.12;
+
+const REGULAR_FILL = "#5ad0ff";
+const REGULAR_GLOW = "rgba(140, 210, 255, 0.75)";
 const PERFECT_FILL = "#7af0ff";
 const PERFECT_GLOW = "rgba(0, 220, 255, 0.9)";
 
-const punchIn = keyframes`
-  0%   { transform: translate(-50%, 50%) scale(0.72); }
-  18%  { transform: translate(-50%, 50%) scale(1.12); }
-  45%  { transform: translate(-50%, 50%) scale(0.98); }
-  100% { transform: translate(-50%, 50%) scale(1); }
+const perfectPunchIn = keyframes`
+  0%   { scale: 0.72; }
+  18%  { scale: 1.12; }
+  45%  { scale: 0.98; }
+  100% { scale: 1; }
+`;
+
+const regularContactPop = keyframes`
+  0%   { scale: 0.86; }
+  40%  { scale: 1.05; }
+  100% { scale: 1; }
 `;
 
 const Anchor = styled.div`
@@ -38,19 +53,28 @@ const Anchor = styled.div`
   bottom: ${(p) => (p.$y / 720) * 100 + PP_BASELINE_OFFSET_Y}%;
   width: ${(p) => p.$size}cqw;
   height: ${(p) => p.$size}cqw;
-  transform: translate(-50%, 50%);
-  transform-origin: center;
-  z-index: 168;
+  z-index: 170;
   pointer-events: none;
-  animation: ${(p) => (p.$isPerfect ? punchIn : "none")} 160ms
-    cubic-bezier(0.16, 0.9, 0.3, 1) both;
-  will-change: ${(p) => (p.$isPerfect ? "transform" : "auto")};
+  transform: translate(-50%, 50%) perspective(${PERSPECTIVE})
+    rotateY(
+      ${(p) => (p.$facing === -1 ? TILT_Y_DEG : -TILT_Y_DEG)}deg
+    )
+    rotateX(${TILT_X_DEG}deg) scaleX(${STRETCH_X});
+  transform-origin: center;
 `;
 
-const SpritePlane = styled.div`
+const PopWrap = styled.div`
+  position: relative;
   width: 100%;
   height: 100%;
-  background-color: ${(p) => (p.$isPerfect ? PERFECT_FILL : REGULAR_FILL)};
+  scale: 1;
+  animation: ${(p) => (p.$isPerfect ? perfectPunchIn : regularContactPop)}
+    ${(p) => (p.$isPerfect ? "160ms" : "130ms")}
+    cubic-bezier(0.16, 0.9, 0.3, 1) both;
+  will-change: scale;
+`;
+
+const sheetMask = `
   background-image: url(${grabBreakSheet});
   background-repeat: no-repeat;
   background-size: ${PP_GRID * 100}% ${PP_GRID * 100}%;
@@ -60,13 +84,37 @@ const SpritePlane = styled.div`
   mask-repeat: no-repeat;
   -webkit-mask-size: ${PP_GRID * 100}% ${PP_GRID * 100}%;
   mask-size: ${PP_GRID * 100}% ${PP_GRID * 100}%;
+`;
+
+const ThickPlate = styled.div`
+  position: absolute;
+  inset: -6%;
+  ${sheetMask}
+  background-color: ${(p) => (p.$isPerfect ? PERFECT_FILL : REGULAR_FILL)};
+  opacity: ${(p) => (p.$isPerfect ? 0.5 : 0.62)};
+  filter: blur(1.6px)
+    drop-shadow(
+      0 0 6px
+        ${(p) => (p.$isPerfect ? PERFECT_GLOW : "rgba(120, 200, 255, 0.55)")}
+    );
+  transform: scale(1.06);
+  pointer-events: none;
+`;
+
+const SpritePlane = styled.div`
+  position: relative;
+  width: 100%;
+  height: 100%;
+  ${sheetMask}
+  background-color: ${(p) => (p.$isPerfect ? PERFECT_FILL : REGULAR_FILL)};
   filter: ${(p) =>
     p.$isPerfect
       ? `drop-shadow(0 0 3px rgba(220, 250, 255, 1))
          drop-shadow(0 0 10px ${PERFECT_GLOW})
          drop-shadow(0 0 22px rgba(40, 180, 255, 0.55))`
-      : `drop-shadow(0 0 4px ${REGULAR_GLOW})
-         drop-shadow(0 0 12px ${REGULAR_GLOW})`};
+      : `drop-shadow(0 0 2px rgba(255, 255, 255, 0.85))
+         drop-shadow(0 0 5px ${REGULAR_GLOW})
+         drop-shadow(0 0 14px ${REGULAR_GLOW})`};
   will-change: background-position, -webkit-mask-position, mask-position;
 `;
 
@@ -78,9 +126,17 @@ const ppFrameToBackgroundPosition = (frame) => {
   return `${x}% ${y}%`;
 };
 
+const applySheetPos = (el, pos) => {
+  if (!el) return;
+  el.style.backgroundPosition = pos;
+  el.style.webkitMaskPosition = pos;
+  el.style.maskPosition = pos;
+};
+
 const ParrySpriteBurst = ({ x, y, facing, isPerfect }) => {
   const [done, setDone] = useState(false);
-  const elRef = useRef(null);
+  const sharpRef = useRef(null);
+  const plateRef = useRef(null);
   const rafRef = useRef(null);
   const startRef = useRef(null);
 
@@ -92,10 +148,8 @@ const ParrySpriteBurst = ({ x, y, facing, isPerfect }) => {
 
     const applyPos = (frame) => {
       const pos = ppFrameToBackgroundPosition(frame);
-      if (!elRef.current) return;
-      elRef.current.style.backgroundPosition = pos;
-      elRef.current.style.webkitMaskPosition = pos;
-      elRef.current.style.maskPosition = pos;
+      applySheetPos(sharpRef.current, pos);
+      applySheetPos(plateRef.current, pos);
     };
 
     const step = (t) => {
@@ -124,10 +178,12 @@ const ParrySpriteBurst = ({ x, y, facing, isPerfect }) => {
       $x={x}
       $y={y}
       $facing={facing}
-      $isPerfect={isPerfect}
       $size={isPerfect ? PP_SIZE_CQW_PERFECT : PP_SIZE_CQW_REGULAR}
     >
-      <SpritePlane ref={elRef} $isPerfect={isPerfect} />
+      <PopWrap $isPerfect={isPerfect}>
+        <ThickPlate ref={plateRef} $isPerfect={isPerfect} />
+        <SpritePlane ref={sharpRef} $isPerfect={isPerfect} />
+      </PopWrap>
     </Anchor>
   );
 };
@@ -214,13 +270,15 @@ const RawParryEffect = ({ position }) => {
               facing={effect.facing}
               isPerfect={effect.isPerfect}
             />
-            {effect.isPerfect && (
+            {effect.isPerfect ? (
               <PerfectParryExtras
                 x={worldX}
                 y={effect.y}
                 playerNumber={effect.playerNumber}
                 showBanner
               />
+            ) : (
+              <RegularParryContactFlash x={worldX} y={effect.y} />
             )}
           </Fragment>
         );

@@ -41,6 +41,7 @@ import salt from "../assets/salt.png";
 import saltBasket from "../assets/salt-basket.png";
 import saltBasketEmpty from "../assets/salt-basket-empty.png";
 import recovering from "../assets/recovering.png";
+import charging from "../assets/charging.png";
 import rawParrySuccess from "../assets/raw-parry-success.png";
 import rawParrySuccessFrame1 from "../assets/raw-parry-success-frame-1.png";
 import rawParrySuccessFrame2 from "../assets/raw-parry-success-frame-2.png";
@@ -139,7 +140,7 @@ const battleMusicTracks = [battleMusic1, battleMusic2];
 // PRELOAD-ONLY IMPORTS (not exported — consumed internally by preloading)
 // ============================================
 import gameMapBackground from "../assets/game-map-1.webp";
-import dohyoOverlay from "../assets/dohyo.webp";
+import dohyoOverlay from "../assets/dohyo-style.webp";
 import gyojiImage from "../assets/gyoji.png";
 import gyojiReady from "../assets/gyoji-ready.png";
 import gyojiPlayer1wins from "../assets/gyoji-player1-wins.png";
@@ -293,6 +294,7 @@ const initializeImagePreloading = () => {
   preloadImage(saltBasket);
   preloadImage(saltBasketEmpty);
   preloadImage(recovering);
+  preloadImage(charging);
   preloadImage(rawParrySuccess);
   preloadImage(rawParrySuccessFrame1);
   preloadImage(rawParrySuccessFrame2);
@@ -453,6 +455,7 @@ export {
   saltBasket,
   saltBasketEmpty,
   recovering,
+  charging,
   rawParrySuccess,
   rawParrySuccessFrame1,
   rawParrySuccessFrame2,

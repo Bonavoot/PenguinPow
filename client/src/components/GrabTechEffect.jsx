@@ -341,13 +341,13 @@ const GrabTechEffect = ({ position }) => {
               </RingWrapper>
               <TechText>TECH!</TechText>
             </EffectContainer>
-            {document.getElementById('game-hud') && createPortal(
+            {document.getElementById("game-hud-callouts") && createPortal(
               <SumoAnnouncementBanner
                 text={"GRAB\nTECH"}
                 type="tech"
                 isLeftSide={true}
               />,
-              document.getElementById('game-hud')
+              document.getElementById("game-hud-callouts")
             )}
           </div>
         );

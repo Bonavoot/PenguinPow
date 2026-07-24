@@ -316,7 +316,7 @@ function armAttackParry(player, simTime, startTime) {
   player.isPerfectRawParrySuccess = false;
   player.isRawParrying = true;
   player.isGuarding = false; // a fresh read window, not the block floor
-  player.apGuardNeedsRelease = false; // intentional tap — may later fall into GUARD
+  player.apGuardNeedsRelease = false;
   player.rawParryStartTime = startTime != null ? startTime : simTime;
   player.apActiveUntil = simTime + AP_ACTIVE_MS;
   // Flurry cover: early re-tap after a landed parry keeps the window alive long
@@ -329,6 +329,9 @@ function armAttackParry(player, simTime, startTime) {
   player.isApWhiffRecovering = false;
   player.apRecoveryUntil = 0;
   player.apSpaceConsumed = true;
+  // Consume the rising-edge latch. While Space is held the client often sends
+  // no further packets, so leaving this true would phantom-re-arm after land.
+  player.spaceJustPressed = false;
   player.rawParryMinDurationMet = false;
   player.movementVelocity = 0;
   player.isStrafing = false;
@@ -382,11 +385,10 @@ function clearAttackParryWindow(player) {
 // Enter GUARD (the block floor) — holding Space with no live parry window. A
 // blocked strike is chip + ground lost + stamina bled (resolved in processHit),
 // never a reward. Does not disturb a live parry window or a success pose.
-// After a landed parry while Space stayed down, apGuardNeedsRelease blocks
-// auto-GUARD until Space is fully released (then HOLD can block again).
+// After a landed parry, a continued hold also lands here (same physical press
+// cannot open a second timed PARRY — release + re-press for that).
 function enterGuard(player) {
   if (player.isApWhiffRecovering) return; // can't guard mid-whiff-punish
-  if (player.apGuardNeedsRelease) return; // post-parry continuous hold ≠ block
   player.isRawParrying = true;
   player.isGuarding = true;
   player.movementVelocity = 0;
@@ -408,7 +410,7 @@ function updateAttackParryState(player, simTime, spaceHeld) {
   // that never saw a falling edge flag.
   if (!spaceHeld) {
     player.apSpaceConsumed = false;
-    player.apGuardNeedsRelease = false; // release unlocks HOLD → GUARD again
+    player.apGuardNeedsRelease = false;
   }
 
   // Cancel/whiff-recovery expiry (independent of stance).
@@ -417,17 +419,21 @@ function updateAttackParryState(player, simTime, spaceHeld) {
     player.apRecoveryUntil = 0;
   }
 
-  if (!player.isRawParrying) return;
-
-  // Landed-parry impact pose is cosmetic (stance already dropped on connect).
-  // Keep this path for any leftover flags; never promote a hold into GUARD here.
+  // Landed-parry impact pose is cosmetic; success sprites win over blocking.png.
+  // Continued hold after a land is GUARD — same press already spent its timed read.
   if (player.isRawParrySuccess || player.isPerfectRawParrySuccess) {
-    if (!spaceHeld) {
+    if (spaceHeld) {
+      player.isRawParrying = true;
+      player.isGuarding = true;
+      player.apSpaceConsumed = true;
+    } else {
       player.isGuarding = false;
       player.isRawParrying = false;
     }
     return;
   }
+
+  if (!player.isRawParrying) return;
 
   // GUARD (holding, no live parry window).
   if (player.isGuarding) {
@@ -468,15 +474,14 @@ function updateAttackParryState(player, simTime, spaceHeld) {
   }
 
   // ── Window just closed with no deflect ──
-  if (spaceHeld && !player.apGuardNeedsRelease) {
+  if (spaceHeld) {
     // Still holding → mistimed tap safely becomes GUARD (grab-vulnerable floor).
     player.isGuarding = true;
     player.apActiveUntil = 0;
   } else {
-    // Space up, or post-parry hold still suppressing GUARD: soft drop.
-    // Do NOT apply cancel-recovery here — flurry piano linger often ends this
-    // way, and a 90ms jail after ~300ms of cover felt like mud. Neutral empty
-    // taps already paid cancel cost on release.
+    // Space up: soft drop. Do NOT apply cancel-recovery here — flurry piano
+    // linger often ends this way, and a 90ms jail after ~300ms of cover felt
+    // like mud. Neutral empty taps already paid cancel cost on release.
     clearAttackParryWindow(player);
   }
 }
@@ -914,6 +919,7 @@ function clearAllActionStates(player) {
   player.isBurstKnockback = false;
   player.burstKnockbackStartTime = 0;
   player.mouse1BufferedBeforeStart = false;
+  player.movementKeysBufferedBeforeStart = null;
   player.chargedAttackHit = false;
   
   // Clear counter hit timing — prevents stale timestamps from causing

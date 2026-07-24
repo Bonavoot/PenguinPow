@@ -1,6 +1,6 @@
 const {
   GRAB_STATES, GROUND_LEVEL,
-  HITBOX_DISTANCE_VALUE, CHARGED_HITBOX_DISTANCE_VALUE, SLAP_HITBOX_DISTANCE_VALUE,
+  HITBOX_DISTANCE_VALUE,
   SIDESTEP_RECOVERY_OVERLAP_THRESHOLD,
   SLAP_PARRY_WINDOW, SLAP_PARRY_NEUTRAL_WINDOW_MS, SLAP_PARRY_HITSTOP_MS,
   SLAP_PARRY_RECOVERY_MS,
@@ -73,7 +73,6 @@ const {
   SLAP_STARTUP_MS,
   CHARGED_STARTUP_MS,
   PALM_THRUST_HIT_RECOVERY_MS,
-  PALM_THRUST_HITBOX_DISTANCE_VALUE,
   PALM_THRUST_KB_VELOCITY,
   PALM_THRUST_ACTIVE_MS,
   LOW_KICK_HIT_RECOVERY_MS,
@@ -86,7 +85,6 @@ const {
   AP_ACTIVE_MS,
   AP_LATE_PARRY_MS,
   AP_FLOW_WINDOW_MS,
-  AP_KILL_THRESHOLD,
   AP_PERFECT_KILL_THRESHOLD,
   AP_BALANCE_DRAIN,
   AP_PERFECT_BALANCE_DRAIN,
@@ -151,6 +149,13 @@ const {
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
 } = require("./combatHelpers");
+
+const {
+  getConnectDistance,
+  getContactSeamX,
+  applyContactCorrection,
+  attackKindFromPlayer,
+} = require("./strikeContact");
 
 // handleWinCondition is used by the lethal AP slap-down. gameFunctions does not
 // require collisionSystem, so this top-level require introduces no cycle.
@@ -377,17 +382,13 @@ function checkCollision(player, otherPlayer, rooms, io) {
     }
   }
 
-  // Calculate hitbox distance based on attack type
-  // Slap: fixed reach (not scaled by body size — it's arm reach, not body width)
-  // Charged: scaled by size multiplier (body-based hitbox)
+  // Art-tip connect distance (strike tip meets victim body). Same formula for
+  // slap / charged / palm; low kick keeps its dedicated reach until tip art exists.
+  const strikeKind = attackKindFromPlayer(player);
   const hitboxDistance =
-    player.attackType === "slap"
-      ? SLAP_HITBOX_DISTANCE_VALUE
-      : player.attackType === "lowKick"
-        ? LOW_KICK_HITBOX_DISTANCE_VALUE
-        : player.isPalmThrust
-          ? PALM_THRUST_HITBOX_DISTANCE_VALUE * (player.sizeMultiplier || 1)
-          : CHARGED_HITBOX_DISTANCE_VALUE * (player.sizeMultiplier || 1);
+    player.attackType === "lowKick"
+      ? LOW_KICK_HITBOX_DISTANCE_VALUE
+      : getConnectDistance(strikeKind, player, otherPlayer);
 
   // For slap attacks, only check horizontal distance and ensure opponent is in front
   if (player.attackType === "slap") {
@@ -426,7 +427,11 @@ function checkCollision(player, otherPlayer, rooms, io) {
         !otherPlayer.isInStartupFrames &&
         (otherPlayer.chargeAttackPower || 0) >= CHARGE_PRIORITY_THRESHOLD
       ) {
-        const chargedHitboxDist = CHARGED_HITBOX_DISTANCE_VALUE * (otherPlayer.sizeMultiplier || 1);
+        const chargedHitboxDist = getConnectDistance(
+          otherPlayer.isPalmThrust ? "palm" : "charged",
+          otherPlayer,
+          player
+        );
         const dxFromCharged = player.x - otherPlayer.x;
         const chargedAtkDir = otherPlayer.facing === 1 ? -1 : 1;
         const inFrontOfCharged = dxFromCharged * chargedAtkDir >= 0;
@@ -581,6 +586,10 @@ function applyTradeHit(victim, attacker, room, io) {
     victim.facing = attacker.x < victim.x ? 1 : -1; // face the attacker
   }
 
+  // Trades apply two reciprocal hits — don't snap positions here (the second
+  // correction would fight the first). Seam VFX uses the geometric tip.
+  const tradeContactX = getContactSeamX(attacker, victim, "slap");
+
   victim.isHit = true;
   victim.isAlreadyHit = true;
   victim.lastHitType = "slap";
@@ -647,6 +656,8 @@ function applyTradeHit(victim, attacker, room, io) {
     cadenceChain: 0,
     momentumHit: false,
     braked: false,
+    contactX: tradeContactX,
+    contactY: victim.y,
   });
 }
 
@@ -789,6 +800,12 @@ function processHit(player, otherPlayer, rooms, io) {
         y: otherPlayer.y,
         facing: otherPlayer.facing,
         breakId: `armor-break-${currentTime}-${otherPlayer.id}`,
+        contactX: getContactSeamX(
+          player,
+          otherPlayer,
+          attackKindFromPlayer(player)
+        ),
+        contactY: otherPlayer.y,
       });
     }
   }
@@ -1096,6 +1113,7 @@ function processHit(player, otherPlayer, rooms, io) {
 
       if (currentRoom) {
         triggerHitstopAndEmit(io, currentRoom, GUARD_HITSTOP_MS, "guard_block");
+        const guardKind = attackKindFromPlayer(attacker);
         io.in(currentRoom.id).emit("guard_block", {
           attackerX: attacker.x,
           parrierX: parrier.x,
@@ -1109,6 +1127,8 @@ function processHit(player, otherPlayer, rooms, io) {
           blockId: `${parrier.id}_guard_${Date.now()}`,
           playerNumber: parryingPlayerNumber,
           parrierId: parrier.id,
+          contactX: getContactSeamX(attacker, parrier, guardKind),
+          contactY: parrier.y,
         });
       }
       return; // guard handled — never fall through to the normal-hit path
@@ -1118,11 +1138,13 @@ function processHit(player, otherPlayer, rooms, io) {
     const parryDuration = currentTime - (parrier.rawParryStartTime || currentTime);
     const isPerfect = parryDuration >= 0 && parryDuration <= PERFECT_PARRY_WINDOW;
 
-    // KILL CHECK — attacker already inside the kill band when parried ⇒ slap-down
-    // KO. A perfect parry finishes a hair higher.
-    const killThreshold = isPerfect ? AP_PERFECT_KILL_THRESHOLD : AP_KILL_THRESHOLD;
+    // KILL CHECK — PERFECT only. Regular parries never finish; balance must also
+    // already be inside the kill band when the perfect lands.
     const isApKill =
-      attacker.balance < killThreshold && currentRoom && !currentRoom.gameOver;
+      isPerfect &&
+      attacker.balance < AP_PERFECT_KILL_THRESHOLD &&
+      currentRoom &&
+      !currentRoom.gameOver;
 
     attacker.cadenceChain = 0;
     if (!attacker.isAtTheRopes && !attacker.atTheRopesFacingDirection) {
@@ -1130,36 +1152,42 @@ function processHit(player, otherPlayer, rooms, io) {
     }
 
     if (isApKill) {
-      // ── LETHAL AP SLAP-DOWN — FREEZE FRAME, then the PULL-KILL slam ─────────
-      // FREEZE (during the hitstop): the victim is held on their SLAP HIT frame
-      // — keep isSlapAttack so the client slap animation freezes mid-hit through
-      // the hitstop — and the parrier holds the raw-parry-success (impact) pose.
-      // We only kill the hitbox + motion here; the pose is NOT cleared yet.
+      // ── LETHAL AP SLAP-DOWN — same pull-kill tween as clinch kill pull ─────
+      // Arm the belly-slide IMMEDIATELY (like flap/clinch kills). Hitstop freezes
+      // the sim clock so the tween doesn't advance until the freeze ends — no
+      // post-hitstop gap where MAP boundary clamps can eat the slide.
       const pullDirection = attacker.x < parrier.x ? 1 : -1;
       const victimFacingBeforeKill = attacker.facing;
+      const nowSim = currentRoom ? simNow(currentRoom) : 0;
 
-      attacker.isAttacking = false; // stop collision processing (pose stays via isSlapAttack)
-      attacker.slapActiveEndTime = 0;
-      attacker.isSlapSliding = false;
+      clearAllActionStates(attacker);
+      attacker.y = GROUND_LEVEL;
+      attacker.slapParryKnockbackVelocity = 0; // never let leftover shove clamp the slide
+      attacker.isClinchKillPullVictim = true;
+      attacker.isBeingPullReversaled = true;
+      attacker.pullReversalPullerId = parrier.id;
+      attacker.isGrabBreakSeparating = true;
+      attacker.grabBreakSepStartTime = nowSim;
+      attacker.grabBreakSepDuration = AP_KILL_SLIDE_DURATION_MS;
+      attacker.grabBreakStartX = attacker.x;
+      attacker.grabBreakTargetX = parrier.x + pullDirection * AP_KILL_SLIDE_DISTANCE;
       attacker.movementVelocity = 0;
       attacker.knockbackVelocity = { x: 0, y: 0 };
       attacker.isStrafing = false;
-      attacker.isHit = false;
-      timeoutManager.clearPlayerSpecific(attacker.id, "slapCycle");
+      attacker.facing = victimFacingBeforeKill;
 
-      // Parrier holds the impact pose through the freeze.
+      // Parrier impact pose through the freeze (handleWinCondition may clear it).
+      // Advance the chain so the freeze holds on the next success frame (F2/F3),
+      // not a hardcoded opener Frame 2.
       parrier.isRawParrying = false;
       parrier.isRawParrySuccess = true;
       parrier.apActiveUntil = 0;
       parrier.isApWhiffRecovering = false;
       parrier.apFlowUntil = 0;
+      parrier.apChainCount = (parrier.apChainCount || 0) + 1;
 
       if (currentRoom) {
-        // Heavy finisher freeze — the moment of impact is held.
         triggerHitstopAndEmit(io, currentRoom, AP_KILL_HITSTOP_MS, "cinematic_kill");
-        // Charged-kill cinematic CAMERA beat (zoom + screen-darken), but noPan so
-        // the camera stays centered (the victim belly-slides, doesn't fly across).
-        // apPullKill tells the client to skip the charged flight VFX.
         io.in(currentRoom.id).emit("cinematic_kill", {
           attackerId: parrier.id,
           victimId: attacker.id,
@@ -1174,7 +1202,6 @@ function processHit(player, otherPlayer, rooms, io) {
           apPullKill: true,
           noPan: true,
         });
-        // Blue AP burst + slap-parry clang at the contact point.
         io.in(currentRoom.id).emit("raw_parry_success", {
           attackerX: attacker.x,
           parrierX: parrier.x,
@@ -1182,39 +1209,29 @@ function processHit(player, otherPlayer, rooms, io) {
           isPerfect,
           isAttackParry: true,
           isKill: true,
+          chainCount: parrier.apChainCount,
           timestamp: Date.now(),
           parryId: `${parrier.id}_apkill_${Date.now()}`,
           playerNumber: parryingPlayerNumber,
           parrierId: parrier.id,
           balanceGain: 0,
+          contactX: getContactSeamX(attacker, parrier, attackKindFromPlayer(attacker)),
+          contactY: parrier.y,
         });
+        handleWinCondition(currentRoom, attacker, parrier, io, "clinchKillPull");
+        // Re-assert after win cleanup — same flags clinch kill pull relies on so
+        // the grab-break tween may cross MAP_* into the dohyo apron / fall-off.
+        attacker.isClinchKillPullVictim = true;
+        attacker.isBeingPullReversaled = true;
+        attacker.pullReversalPullerId = parrier.id;
+        attacker.isGrabBreakSeparating = true;
+        attacker.grabBreakSepStartTime = nowSim;
+        attacker.grabBreakSepDuration = AP_KILL_SLIDE_DURATION_MS;
+        attacker.grabBreakStartX = attacker.x;
+        attacker.grabBreakTargetX = parrier.x + pullDirection * AP_KILL_SLIDE_DISTANCE;
+        attacker.slapParryKnockbackVelocity = 0;
+        attacker.facing = victimFacingBeforeKill;
       }
-
-      // After the freeze: SLAM. The victim is dragged THROUGH the parrier and
-      // belly-slides out the far side, then the round ends. Scheduled on the sim
-      // clock (frozen during the hitstop) so it fires right as the freeze ends.
-      setPlayerTimeout(
-        attacker.id,
-        () => {
-          clearAllActionStates(attacker);
-          attacker.y = GROUND_LEVEL;
-          attacker.isClinchKillPullVictim = true;
-          attacker.isBeingPullReversaled = true; // belly-slide jolt+slide tween
-          attacker.pullReversalPullerId = parrier.id;
-          attacker.isGrabBreakSeparating = true;
-          attacker.grabBreakSepStartTime = simNow(currentRoom);
-          attacker.grabBreakSepDuration = AP_KILL_SLIDE_DURATION_MS;
-          attacker.grabBreakStartX = attacker.x;
-          attacker.grabBreakTargetX = parrier.x + pullDirection * AP_KILL_SLIDE_DISTANCE;
-          attacker.movementVelocity = 0;
-          attacker.knockbackVelocity = { x: 0, y: 0 };
-          attacker.isStrafing = false;
-          attacker.facing = victimFacingBeforeKill; // belly-lay keeps original facing
-          handleWinCondition(currentRoom, attacker, parrier, io, "clinchKillPull");
-        },
-        20, // tiny sim delay → fires ~1 tick after the (sim-frozen) hitstop ends
-        "apKillSlam"
-      );
     } else {
       // ── NON-LETHAL PARRY — FREEZE-FRAME the attacker, then shove + recover ───
       // SFV-style: the attacker is NOT thrown into a hurt animation. Their hitbox
@@ -1292,26 +1309,33 @@ function processHit(player, otherPlayer, rooms, io) {
       }
 
       // ── PARRIER reward. Each parry costs stamina (re-tapping a flurry drains
-      // you). Post-deflect: NEVER auto-enter GUARD from a continued hold — that
-      // made fast release→re-press eat block on the next slap. Drop the stance
-      // floor; success + isApPostParryLocked plant for AP_SUCCESS_RECOVERY_MS
-      // (same for regular/perfect). Rising-edge re-tap still arms immediately
-      // (clears pose, lock flag survives). Perfect refunds balance.
+      // you). One timed window per physical press: if Space is still held after
+      // a land, convert to GUARD (block) — never re-arm a second PARRY from the
+      // same hold. Release + rising edge is required for the next timed read.
+      // Success pose + isApPostParryLocked still plant for AP_SUCCESS_RECOVERY_MS
+      // (same for regular/perfect). Perfect refunds balance.
       const stillHolding = parrier.isCPU ? !!parrier.keys.s : !!parrier.keys[" "];
       parrier.stamina = Math.max(0, parrier.stamina - AP_STAMINA_COST);
-      parrier.isGuarding = false;
-      parrier.isRawParrying = false;
-      parrier.apSpaceConsumed = false; // next rising edge may re-arm immediately
+      parrier.apActiveUntil = 0; // consume the timed window
+      parrier.apGuardNeedsRelease = false;
+      parrier.spaceJustPressed = false; // kill sticky edge (hold sends no new packets)
       if (stillHolding) {
-        parrier.apGuardNeedsRelease = true;
+        // Same press → block floor. Keep apSpaceConsumed so fallback arm cannot
+        // treat the sticky rising-edge latch as a fresh tap.
+        parrier.isRawParrying = true;
+        parrier.isGuarding = true;
+        parrier.apSpaceConsumed = true;
+      } else {
+        parrier.isGuarding = false;
+        parrier.isRawParrying = false;
+        parrier.apSpaceConsumed = false; // next rising edge may re-arm immediately
       }
       parrier.isRawParrySuccess = !isPerfect;
       parrier.isPerfectRawParrySuccess = isPerfect;
-      parrier.apActiveUntil = 0;         // consume the window (re-tap to parry again)
       parrier.apChainCount = (parrier.apChainCount || 0) + 1;
       parrier.isApWhiffRecovering = false;
       parrier.apRecoveryUntil = 0;
-      // Tap-every-slap: next rising-edge re-arm may extend to cover ASAP follow-up.
+      // Tap-every-slap: next rising-edge re-arm (after a real release) may extend.
       grantAttackParryFlurryCover(parrier, currentTime, staggerMs);
 
       let perfectBalanceGain = 0;
@@ -1355,11 +1379,21 @@ function processHit(player, otherPlayer, rooms, io) {
           playerNumber: parryingPlayerNumber,
           parrierId: parrier.id,
           balanceGain: perfectBalanceGain,
+          contactX: getContactSeamX(attacker, parrier, attackKindFromPlayer(attacker)),
+          contactY: parrier.y,
         });
       }
     }
   } else {
     // === ROCK-SOLID HIT PROCESSING ===
+    // Contact rails: snap to tip-meets-body before KB / hitstop so the freeze
+    // frame shows a solid connect (not buried through / floating short).
+    const hitAttackKind = attackKindFromPlayer(player);
+    if (isSlapAttack || player.attackType === "charged" || player.isPalmThrust) {
+      const connectDist = getConnectDistance(hitAttackKind, player, otherPlayer);
+      applyContactCorrection(player, otherPlayer, connectDist);
+    }
+
     // Clear any existing hit state cleanup to prevent conflicts
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "hitStateReset");
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "parryKnockbackReset");
@@ -1807,8 +1841,14 @@ function processHit(player, otherPlayer, rooms, io) {
         player.knockbackVelocity = { x: 0, y: 0 };
       }
 
+      // Charged/palm already snapped to tip-connect above; keep a floor so
+      // post-hit physics can't leave them buried inside each other.
       if (!isSlapAttack && !isLowKick) {
-        const minSepDist = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, otherPlayer.sizeMultiplier || 1);
+        const minSepDist = getConnectDistance(
+          attackKindFromPlayer(player),
+          player,
+          otherPlayer
+        );
         const currentDist = Math.abs(player.x - otherPlayer.x);
         if (currentDist < minSepDist) {
           const deficit = minSepDist - currentDist;
@@ -1836,6 +1876,10 @@ function processHit(player, otherPlayer, rooms, io) {
         // same one render as a normal hit.
         const attackerPlayerNumber =
           currentRoom.players.findIndex((p) => p.id === player.id) + 1;
+        const emitAttackKind = isLowKick
+          ? "slap"
+          : attackKindFromPlayer(player);
+        const contactX = getContactSeamX(player, otherPlayer, emitAttackKind);
         io.in(currentRoom.id).emit("player_hit", {
           x: otherPlayer.x,
           y: otherPlayer.y,
@@ -1890,6 +1934,9 @@ function processHit(player, otherPlayer, rooms, io) {
           // Both false with the flag off ⇒ the client renders today's VFX.
           momentumHit: momentumHitTell,
           braked: MASTERY_P5_ASSISTS && MASTERY_P1_MOMENTUM && victimIntoHit < 0,
+          // Art-tip contact seam for sparks / banners (replaces magic x+70).
+          contactX,
+          contactY: otherPlayer.y,
         });
         
         // ============================================
@@ -2095,8 +2142,8 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
   // GUARD/PARRY vs the flap body-slam: ends the flight and grounds the flapper
   // (their landing recovery is fully punishable). A live PARRY window grades
   // regular vs PERFECT; GUARDING still stuffs the slam (flap is a huge
-  // commitment) but at the regular tier. A parried flap can KILL if the flapper
-  // is inside the kill band.
+  // commitment) but at the regular tier. Flap kill requires a PERFECT parry
+  // with the flapper already inside the kill band.
   const currentTime = simNowForPlayer(opponent);
   const knockbackDirection = flapper.x < opponent.x ? -1 : 1;
   const parryingPlayerNumber = currentRoom
@@ -2109,9 +2156,11 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
   const isPerfect =
     inParryWindow && parryDuration >= 0 && parryDuration <= PERFECT_PARRY_WINDOW;
 
-  const killThreshold = isPerfect ? AP_PERFECT_KILL_THRESHOLD : AP_KILL_THRESHOLD;
   const isApKill =
-    flapper.balance < killThreshold && currentRoom && !currentRoom.gameOver;
+    isPerfect &&
+    flapper.balance < AP_PERFECT_KILL_THRESHOLD &&
+    currentRoom &&
+    !currentRoom.gameOver;
 
   // End the flight and ground the flapper (the parry beats the slam).
   clearAllActionStates(flapper);
@@ -2122,11 +2171,11 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
   }
 
   if (isApKill) {
-    // Lethal slap-down — the pull cinematic, fully (same as the strike AP kill):
-    // the victim is dragged THROUGH the parrier and belly-slides out the far side.
-    const nowSim = simNow(currentRoom);
+    // Lethal slap-down — same pull-kill tween as clinch / strike AP kill.
+    const nowSim = currentRoom ? simNow(currentRoom) : 0;
     const victimFacingBeforeKill = flapper.facing;
     const pullDirection = flapper.x < opponent.x ? 1 : -1;
+    flapper.slapParryKnockbackVelocity = 0;
     flapper.isClinchKillPullVictim = true;
     flapper.isBeingPullReversaled = true;
     flapper.pullReversalPullerId = opponent.id;
@@ -2140,10 +2189,13 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
     flapper.isStrafing = false;
     flapper.facing = victimFacingBeforeKill;
 
+    // Advance the chain so the freeze holds on the next success frame (F2/F3),
+    // not a hardcoded opener Frame 2.
     opponent.isRawParrying = false;
     opponent.isRawParrySuccess = true;
     opponent.apActiveUntil = 0;
     opponent.isApWhiffRecovering = false;
+    opponent.apChainCount = (opponent.apChainCount || 0) + 1;
 
     if (currentRoom) {
       triggerHitstopAndEmit(io, currentRoom, AP_KILL_HITSTOP_MS, "cinematic_kill");
@@ -2168,14 +2220,27 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
         isPerfect,
         isAttackParry: true,
         isKill: true,
+        chainCount: opponent.apChainCount,
         timestamp: Date.now(),
         parryId: `${opponent.id}_apkill_${Date.now()}`,
         playerNumber: parryingPlayerNumber,
         parrierId: opponent.id,
         balanceGain: 0,
+        contactX: (flapper.x + opponent.x) / 2,
+        contactY: opponent.y,
       });
+      handleWinCondition(currentRoom, flapper, opponent, io, "clinchKillPull");
+      flapper.isClinchKillPullVictim = true;
+      flapper.isBeingPullReversaled = true;
+      flapper.pullReversalPullerId = opponent.id;
+      flapper.isGrabBreakSeparating = true;
+      flapper.grabBreakSepStartTime = nowSim;
+      flapper.grabBreakSepDuration = AP_KILL_SLIDE_DURATION_MS;
+      flapper.grabBreakStartX = flapper.x;
+      flapper.grabBreakTargetX = opponent.x + pullDirection * AP_KILL_SLIDE_DISTANCE;
+      flapper.slapParryKnockbackVelocity = 0;
+      flapper.facing = victimFacingBeforeKill;
     }
-    handleWinCondition(currentRoom, flapper, opponent, io, "clinchKillPull");
     return;
   }
 
@@ -2201,17 +2266,24 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
     "parryStaggerReset"
   );
 
-  // Parrier reward. Same as slap AP: no auto-GUARD on continued hold; require
-  // release before HOLD can block again. Perfect refunds balance. Chain increments.
+  // Parrier reward. Same as slap AP: continued hold after a land → GUARD
+  // (one timed window per press). Perfect refunds balance. Chain increments.
   const stillHolding = opponent.isCPU ? !!opponent.keys.s : !!opponent.keys[" "];
   opponent.stamina = Math.max(0, opponent.stamina - AP_STAMINA_COST);
-  opponent.isGuarding = false;
-  opponent.isRawParrying = false;
-  opponent.apSpaceConsumed = false;
-  if (stillHolding) opponent.apGuardNeedsRelease = true;
+  opponent.apActiveUntil = 0;
+  opponent.apGuardNeedsRelease = false;
+  opponent.spaceJustPressed = false;
+  if (stillHolding) {
+    opponent.isRawParrying = true;
+    opponent.isGuarding = true;
+    opponent.apSpaceConsumed = true;
+  } else {
+    opponent.isGuarding = false;
+    opponent.isRawParrying = false;
+    opponent.apSpaceConsumed = false;
+  }
   opponent.isRawParrySuccess = !isPerfect;
   opponent.isPerfectRawParrySuccess = isPerfect;
-  opponent.apActiveUntil = 0;
   opponent.apChainCount = (opponent.apChainCount || 0) + 1;
   opponent.isApWhiffRecovering = false;
   opponent.apRecoveryUntil = 0;
@@ -2256,6 +2328,8 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
       playerNumber: parryingPlayerNumber,
       parrierId: opponent.id,
       balanceGain: perfectBalanceGain,
+      contactX: (flapper.x + opponent.x) / 2,
+      contactY: opponent.y,
     });
   }
 }

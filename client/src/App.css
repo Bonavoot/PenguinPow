@@ -397,14 +397,12 @@ body {
      stadium look blurrier than the people sitting in front of it. */
   --arena-map-filter: brightness(0.9) saturate(0.96) url(#scene-grade) blur(1.35px);
 
-  /* ── Dohyo grade + spotlight are BAKED into dohyo.webp ──
-     The cool/vivid color grade, the icy center light-pool, the warm rope ring
-     and the shaded-surround spotlight falloff are all pre-rendered into the
-     dohyo.webp asset (flattened from the old runtime stack). This removed the
-     per-element SVG color filter that was rasterizing the dohyo at base
-     resolution and softening it — so the platform now renders as a plain, crisp
-     background image. The original ungraded art is kept as dohyo-warm-source.webp
-     in case we ever want to re-bake with different lighting/colors. */
+  /* ── Dohyo grade + spotlight are BAKED into dohyo-style.webp ──
+     Steel-ice disc grade, frosted tawara highlights, cooler snow/dirt
+     integration and platform contact lighting are pre-rendered into the
+     asset (see client/scripts/enhance-dohyo.mjs). This keeps runtime free of
+     per-element SVG color filters that were rasterizing the dohyo soft.
+     Pre-enhance source: dohyo-style-pre-enhance.webp. */
 
   /* ── Camera defaults — JS will drive these later for dynamic pan/zoom ── */
   --cam-scale: 1.305;
@@ -413,15 +411,29 @@ body {
   --cam-rot: 0deg;
 }
 
-/* ── Screen-space cinematic vignette ──────────────────────────────────────
+/* ── LIGHTING CONTRACT (Phase 1 — launch presentation) ────────────────────
+   One light story for the whole arena. Every overlay must obey this, or the
+   stack reads as mud instead of a lit venue.
+
+   KEY (warm):      soft gold-white from above-front / rafters
+   BOUNCE (cool):   ice-blue rising from the dohyo floor
+   EDGE OWNER:      `.arena-lighting` alone owns scene falloff
+   LENS FRAME:      `.game-container::after` is a soft letterbox only —
+                    NOT a second arena vignette
+   CROWD:           depth via per-sprite grade + DoF blur — no crowd vignette
+   GOD RAYS:        quiet atmospheric shafts (not wallpaper); ceremony beats
+                    can still punch via announcements without competing rays
+   GRAIN:           light film tooth only — unifies planes, never muddies
+
+   Do NOT reintroduce stacked edge-darkeners. If corners feel bright, deepen
+   `.arena-lighting`'s third gradient — do not add another vignette layer. */
+
+/* ── Screen-space lens letterbox ──────────────────────────────────────────
    Sits above the camera-transformed background .game-scene (z-index 198, below
    the player-info HUD at 200, the actors layer at 205 and the main HUD at 210).
    Because it lives on .game-container, it does NOT move with cam
-   shake or zoom — the world shakes *inside* a steady frame, which reads as
-   cinematic letterboxing instead of "everything is shaking together".
-   Pointer-events disabled so HUD interaction still works through it. Kept
-   intentionally soft so it stacks safely with the arena-lighting and crowd
-   vignettes without blacking the corners out. */
+   shake or zoom — the world shakes *inside* a steady frame.
+   Soft lens frame ONLY — scene falloff is owned by `.arena-lighting`. */
 .game-container::after {
   content: '';
   position: absolute;
@@ -429,10 +441,10 @@ body {
   pointer-events: none;
   z-index: 198;
   background: radial-gradient(
-    ellipse 94% 84% at 50% 52%,
-    transparent 54%,
-    rgba(0, 0, 0, 0.17) 84%,
-    rgba(0, 0, 0, 0.32) 100%
+    ellipse 96% 90% at 50% 50%,
+    transparent 62%,
+    rgba(0, 0, 0, 0.08) 88%,
+    rgba(0, 0, 0, 0.16) 100%
   );
 }
 
@@ -458,12 +470,30 @@ body {
   transition: filter 0.14s ease-out;
 }
 
+/* ── Ring props (gyoji + salt baskets) ────────────────────────────────────
+   Same camera transform as .game-actors / .game-scene, but BELOW the side
+   callout plaques (202) and ABOVE the nameplate HUD (200). Keeps ring dressing
+   in world space without letting it cover combat banners. */
+.game-ring-props {
+  position: absolute;
+  inset: 0;
+  z-index: 201;
+  pointer-events: none;
+  transform-origin: center center;
+  transform: translate3d(var(--cam-x, 0px), var(--cam-y, 0px), 0)
+    rotate(var(--cam-rot, 0deg))
+    scale(var(--cam-scale, 1));
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
 /* ── Actors layer: the wrestlers (+ their particles/VFX) ──────────────────
    Identical box + identical camera transform as .game-scene (reads the same
    inherited --cam-* props), so the penguins render exactly where they always
    did. The ONLY difference is z-order: this layer sits ABOVE #game-hud-info
-   (the player-info nameplates) so airborne penguins paint over the UI, and
-   BELOW #game-hud (announcements / KO / power-up screens) which stay on top.
+   (nameplates), #game-ring-props (gyoji/salt), and #game-hud-callouts (side
+   combat plaques) so penguins paint over all three, and BELOW #game-hud
+   (center announcements / KO / power-up screens) which stay on top.
    pointer-events:none so it never intercepts clicks meant for the HUD beneath
    it (the wrestlers are keyboard-driven and not interactive). */
 .game-actors {
@@ -478,6 +508,23 @@ body {
   will-change: transform;
   backface-visibility: hidden;
   transition: filter 0.14s ease-out;
+}
+
+/* Ice disc clip — IceReflection portals here so puddles can only paint on
+   the blue ice. clip-path is the MEASURED ice silhouette from
+   dohyo-style.webp, projected through .dohyo-overlay's layout + perspective
+   (not an eyeballed axis-aligned ellipse — that clipped the near edge short).
+   Regenerate after dohyo art / overlay CSS changes:
+     node scripts/measure-ice-clip.mjs --write */
+.ice-reflection-clip {
+  /* Measured ice silhouette — regenerate with:
+     node scripts/measure-ice-clip.mjs --write */
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  clip-path: polygon(74.939% 59.741%, 74.942% 59.831%, 74.944% 59.922%, 74.943% 60.013%, 74.941% 60.104%, 74.937% 60.195%, 74.931% 60.286%, 74.923% 60.377%, 74.913% 60.467%, 74.901% 60.558%, 74.888% 60.649%, 74.872% 60.740%, 74.855% 60.830%, 74.835% 60.921%, 74.814% 61.012%, 74.791% 61.102%, 74.766% 61.192%, 74.739% 61.283%, 74.710% 61.373%, 74.679% 61.463%, 74.647% 61.553%, 74.612% 61.643%, 74.576% 61.733%, 74.538% 61.823%, 74.498% 61.913%, 74.456% 62.002%, 74.412% 62.091%, 74.366% 62.180%, 74.318% 62.270%, 74.269% 62.358%, 74.217% 62.447%, 74.164% 62.536%, 74.109% 62.624%, 74.052% 62.712%, 73.993% 62.800%, 73.933% 62.888%, 73.870% 62.975%, 73.806% 63.063%, 73.740% 63.150%, 73.672% 63.237%, 73.602% 63.323%, 73.530% 63.410%, 73.457% 63.496%, 73.381% 63.582%, 73.304% 63.667%, 73.225% 63.753%, 73.144% 63.838%, 73.062% 63.923%, 72.978% 64.007%, 72.892% 64.091%, 72.804% 64.175%, 72.714% 64.259%, 72.623% 64.342%, 72.529% 64.425%, 72.435% 64.508%, 72.338% 64.590%, 72.240% 64.672%, 72.139% 64.754%, 72.038% 64.835%, 71.934% 64.916%, 71.829% 64.996%, 71.722% 65.076%, 71.613% 65.156%, 71.503% 65.236%, 71.391% 65.315%, 71.277% 65.393%, 71.161% 65.471%, 71.044% 65.549%, 70.926% 65.627%, 70.805% 65.704%, 70.683% 65.780%, 70.560% 65.856%, 70.435% 65.932%, 70.308% 66.007%, 70.179% 66.082%, 70.050% 66.156%, 69.918% 66.230%, 69.785% 66.303%, 69.650% 66.376%, 69.514% 66.449%, 69.376% 66.521%, 69.237% 66.592%, 69.096% 66.663%, 68.954% 66.734%, 68.810% 66.804%, 68.665% 66.873%, 68.518% 66.942%, 68.370% 67.011%, 68.220% 67.078%, 68.069% 67.146%, 67.917% 67.213%, 67.763% 67.279%, 67.607% 67.345%, 67.451% 67.410%, 67.293% 67.474%, 67.133% 67.539%, 66.972% 67.602%, 66.810% 67.665%, 66.647% 67.727%, 66.482% 67.789%, 66.316% 67.850%, 66.148% 67.911%, 65.979% 67.971%, 65.809% 68.030%, 65.638% 68.089%, 65.466% 68.147%, 65.292% 68.205%, 65.117% 68.262%, 64.941% 68.318%, 64.764% 68.374%, 64.585% 68.429%, 64.405% 68.484%, 64.225% 68.538%, 64.043% 68.591%, 63.859% 68.644%, 63.675% 68.696%, 63.490% 68.747%, 63.303% 68.798%, 63.116% 68.848%, 62.927% 68.897%, 62.738% 68.946%, 62.547% 68.994%, 62.356% 69.041%, 62.163% 69.088%, 61.970% 69.134%, 61.775% 69.180%, 61.579% 69.224%, 61.383% 69.268%, 61.186% 69.312%, 60.987% 69.354%, 60.788% 69.397%, 60.588% 69.438%, 60.387% 69.479%, 60.185% 69.519%, 59.982% 69.558%, 59.779% 69.597%, 59.575% 69.635%, 59.369% 69.672%, 59.164% 69.708%, 58.957% 69.744%, 58.749% 69.779%, 58.541% 69.814%, 58.332% 69.848%, 58.123% 69.881%, 57.912% 69.913%, 57.701% 69.945%, 57.489% 69.976%, 57.277% 70.006%, 57.064% 70.036%, 56.850% 70.065%, 56.636% 70.093%, 56.421% 70.120%, 56.205% 70.147%, 55.989% 70.173%, 55.772% 70.199%, 55.555% 70.223%, 55.337% 70.247%, 55.118% 70.270%, 54.899% 70.292%, 54.679% 70.314%, 54.459% 70.335%, 54.239% 70.355%, 54.017% 70.374%, 53.796% 70.392%, 53.574% 70.410%, 53.351% 70.426%, 53.128% 70.442%, 52.905% 70.457%, 52.681% 70.471%, 52.456% 70.484%, 52.232% 70.496%, 52.007% 70.507%, 51.781% 70.517%, 51.555% 70.526%, 51.329% 70.533%, 51.103% 70.540%, 50.877% 70.545%, 50.650% 70.550%, 50.424% 70.553%, 50.197% 70.554%, 49.970% 70.555%, 49.743% 70.555%, 49.516% 70.553%, 49.290% 70.550%, 49.063% 70.546%, 48.836% 70.540%, 48.610% 70.534%, 48.384% 70.526%, 48.158% 70.518%, 47.933% 70.508%, 47.708% 70.497%, 47.483% 70.485%, 47.258% 70.472%, 47.034% 70.458%, 46.811% 70.443%, 46.588% 70.428%, 46.365% 70.411%, 46.142% 70.394%, 45.921% 70.375%, 45.699% 70.356%, 45.478% 70.336%, 45.258% 70.315%, 45.038% 70.294%, 44.819% 70.271%, 44.600% 70.248%, 44.382% 70.224%, 44.165% 70.200%, 43.948% 70.174%, 43.731% 70.148%, 43.515% 70.122%, 43.300% 70.094%, 43.086% 70.066%, 42.872% 70.037%, 42.658% 70.007%, 42.446% 69.977%, 42.234% 69.946%, 42.022% 69.914%, 41.812% 69.882%, 41.602% 69.849%, 41.393% 69.815%, 41.184% 69.780%, 40.977% 69.745%, 40.770% 69.709%, 40.564% 69.673%, 40.358% 69.635%, 40.154% 69.597%, 39.950% 69.559%, 39.747% 69.519%, 39.545% 69.479%, 39.343% 69.439%, 39.143% 69.397%, 38.944% 69.355%, 38.745% 69.312%, 38.547% 69.269%, 38.351% 69.225%, 38.155% 69.180%, 37.960% 69.135%, 37.766% 69.089%, 37.573% 69.042%, 37.381% 68.994%, 37.190% 68.946%, 37.000% 68.898%, 36.811% 68.848%, 36.624% 68.798%, 36.437% 68.747%, 36.251% 68.696%, 36.067% 68.644%, 35.883% 68.591%, 35.701% 68.538%, 35.520% 68.484%, 35.340% 68.430%, 35.161% 68.375%, 34.983% 68.319%, 34.806% 68.262%, 34.631% 68.205%, 34.457% 68.148%, 34.284% 68.090%, 34.112% 68.031%, 33.942% 67.971%, 33.773% 67.911%, 33.605% 67.851%, 33.438% 67.789%, 33.273% 67.728%, 33.109% 67.665%, 32.947% 67.602%, 32.785% 67.539%, 32.625% 67.475%, 32.467% 67.410%, 32.310% 67.345%, 32.154% 67.279%, 32.000% 67.213%, 31.847% 67.146%, 31.695% 67.079%, 31.545% 67.011%, 31.396% 66.942%, 31.249% 66.873%, 31.103% 66.804%, 30.959% 66.734%, 30.816% 66.663%, 30.675% 66.592%, 30.535% 66.521%, 30.397% 66.449%, 30.260% 66.377%, 30.125% 66.304%, 29.991% 66.230%, 29.859% 66.156%, 29.729% 66.082%, 29.600% 66.007%, 29.473% 65.932%, 29.347% 65.856%, 29.223% 65.780%, 29.100% 65.704%, 28.980% 65.627%, 28.860% 65.549%, 28.743% 65.472%, 28.627% 65.393%, 28.513% 65.315%, 28.400% 65.236%, 28.289% 65.156%, 28.180% 65.076%, 28.072% 64.996%, 27.966% 64.916%, 27.862% 64.835%, 27.760% 64.754%, 27.659% 64.672%, 27.560% 64.590%, 27.463% 64.508%, 27.367% 64.425%, 27.274% 64.342%, 27.182% 64.259%, 27.092% 64.175%, 27.003% 64.091%, 26.916% 64.007%, 26.832% 63.923%, 26.748% 63.838%, 26.667% 63.753%, 26.588% 63.667%, 26.510% 63.582%, 26.434% 63.496%, 26.360% 63.410%, 26.288% 63.323%, 26.217% 63.237%, 26.149% 63.150%, 26.082% 63.063%, 26.017% 62.975%, 25.954% 62.888%, 25.892% 62.800%, 25.833% 62.712%, 25.775% 62.624%, 25.720% 62.536%, 25.666% 62.447%, 25.614% 62.358%, 25.564% 62.270%, 25.516% 62.180%, 25.469% 62.091%, 25.425% 62.002%, 25.382% 61.913%, 25.341% 61.823%, 25.302% 61.733%, 25.265% 61.643%, 25.230% 61.553%, 25.197% 61.463%, 25.166% 61.373%, 25.136% 61.283%, 25.109% 61.192%, 25.083% 61.102%, 25.059% 61.012%, 25.037% 60.921%, 25.018% 60.830%, 24.999% 60.740%, 24.983% 60.649%, 24.969% 60.558%, 24.957% 60.467%, 24.946% 60.377%, 24.938% 60.286%, 24.931% 60.195%, 24.926% 60.104%, 24.923% 60.013%, 24.922% 59.922%, 24.923% 59.831%, 24.926% 59.741%, 24.930% 59.650%, 24.937% 59.559%, 24.945% 59.468%, 24.956% 59.378%, 24.968% 59.287%, 24.982% 59.197%, 24.998% 59.106%, 25.016% 59.016%, 25.036% 58.925%, 25.057% 58.835%, 25.081% 58.745%, 25.106% 58.655%, 25.134% 58.565%, 25.163% 58.475%, 25.194% 58.386%, 25.226% 58.296%, 25.261% 58.207%, 25.298% 58.117%, 25.336% 58.028%, 25.376% 57.939%, 25.418% 57.851%, 25.462% 57.762%, 25.508% 57.674%, 25.555% 57.585%, 25.605% 57.497%, 25.656% 57.409%, 25.709% 57.322%, 25.764% 57.234%, 25.820% 57.147%, 25.879% 57.060%, 25.939% 56.973%, 26.001% 56.886%, 26.065% 56.800%, 26.130% 56.714%, 26.198% 56.628%, 26.267% 56.543%, 26.338% 56.457%, 26.410% 56.372%, 26.485% 56.287%, 26.561% 56.203%, 26.638% 56.119%, 26.718% 56.035%, 26.799% 55.951%, 26.882% 55.868%, 26.967% 55.785%, 27.053% 55.702%, 27.142% 55.620%, 27.231% 55.538%, 27.323% 55.456%, 27.416% 55.375%, 27.511% 55.294%, 27.607% 55.213%, 27.705% 55.133%, 27.805% 55.053%, 27.906% 54.973%, 28.009% 54.894%, 28.114% 54.815%, 28.220% 54.737%, 28.328% 54.659%, 28.437% 54.581%, 28.548% 54.504%, 28.661% 54.427%, 28.775% 54.351%, 28.891% 54.275%, 29.008% 54.199%, 29.127% 54.124%, 29.247% 54.049%, 29.369% 53.975%, 29.492% 53.901%, 29.617% 53.828%, 29.743% 53.755%, 29.871% 53.682%, 30.000% 53.610%, 30.131% 53.539%, 30.263% 53.467%, 30.397% 53.397%, 30.532% 53.327%, 30.668% 53.257%, 30.806% 53.188%, 30.945% 53.119%, 31.086% 53.051%, 31.228% 52.983%, 31.371% 52.916%, 31.516% 52.850%, 31.662% 52.784%, 31.809% 52.718%, 31.958% 52.653%, 32.108% 52.588%, 32.259% 52.524%, 32.412% 52.461%, 32.566% 52.398%, 32.721% 52.336%, 32.877% 52.274%, 33.035% 52.212%, 33.194% 52.152%, 33.354% 52.091%, 33.515% 52.032%, 33.678% 51.973%, 33.841% 51.914%, 34.006% 51.856%, 34.172% 51.799%, 34.339% 51.742%, 34.507% 51.686%, 34.677% 51.631%, 34.847% 51.576%, 35.019% 51.521%, 35.192% 51.468%, 35.365% 51.414%, 35.540% 51.362%, 35.716% 51.310%, 35.893% 51.258%, 36.071% 51.208%, 36.250% 51.157%, 36.430% 51.108%, 36.610% 51.059%, 36.792% 51.011%, 36.975% 50.963%, 37.159% 50.916%, 37.344% 50.869%, 37.529% 50.824%, 37.716% 50.778%, 37.903% 50.734%, 38.091% 50.690%, 38.281% 50.647%, 38.471% 50.604%, 38.661% 50.562%, 38.853% 50.521%, 39.046% 50.480%, 39.239% 50.440%, 39.433% 50.400%, 39.628% 50.362%, 39.824% 50.323%, 40.020% 50.286%, 40.217% 50.249%, 40.415% 50.213%, 40.614% 50.177%, 40.813% 50.142%, 41.013% 50.108%, 41.213% 50.074%, 41.415% 50.041%, 41.617% 50.009%, 41.819% 49.977%, 42.023% 49.946%, 42.227% 49.916%, 42.431% 49.886%, 42.636% 49.857%, 42.842% 49.828%, 43.048% 49.801%, 43.255% 49.773%, 43.463% 49.747%, 43.671% 49.721%, 43.879% 49.696%, 44.088% 49.672%, 44.298% 49.648%, 44.508% 49.625%, 44.719% 49.602%, 44.930% 49.581%, 45.141% 49.560%, 45.354% 49.539%, 45.566% 49.520%, 45.779% 49.501%, 45.993% 49.483%, 46.207% 49.466%, 46.421% 49.449%, 46.636% 49.434%, 46.851% 49.419%, 47.067% 49.405%, 47.283% 49.392%, 47.499% 49.380%, 47.716% 49.368%, 47.933% 49.358%, 48.150% 49.349%, 48.368% 49.341%, 48.585% 49.333%, 48.804% 49.327%, 49.022% 49.322%, 49.240% 49.318%, 49.459% 49.315%, 49.677% 49.313%, 49.896% 49.313%, 50.115% 49.313%, 50.333% 49.315%, 50.552% 49.318%, 50.770% 49.321%, 50.989% 49.326%, 51.207% 49.333%, 51.425% 49.340%, 51.642% 49.348%, 51.860% 49.357%, 52.077% 49.367%, 52.294% 49.379%, 52.510% 49.391%, 52.726% 49.404%, 52.942% 49.418%, 53.157% 49.432%, 53.372% 49.448%, 53.587% 49.464%, 53.801% 49.482%, 54.015% 49.500%, 54.228% 49.519%, 54.441% 49.538%, 54.653% 49.558%, 54.865% 49.579%, 55.076% 49.601%, 55.287% 49.624%, 55.497% 49.647%, 55.707% 49.670%, 55.916% 49.695%, 56.125% 49.720%, 56.333% 49.746%, 56.541% 49.772%, 56.748% 49.800%, 56.954% 49.827%, 57.160% 49.856%, 57.366% 49.885%, 57.570% 49.915%, 57.774% 49.945%, 57.978% 49.976%, 58.181% 50.008%, 58.383% 50.040%, 58.585% 50.073%, 58.785% 50.107%, 58.986% 50.141%, 59.185% 50.176%, 59.384% 50.212%, 59.582% 50.248%, 59.780% 50.285%, 59.976% 50.323%, 60.172% 50.361%, 60.367% 50.400%, 60.562% 50.439%, 60.755% 50.479%, 60.948% 50.520%, 61.140% 50.561%, 61.331% 50.604%, 61.521% 50.646%, 61.711% 50.690%, 61.899% 50.733%, 62.087% 50.778%, 62.274% 50.823%, 62.460% 50.869%, 62.645% 50.915%, 62.829% 50.963%, 63.012% 51.010%, 63.194% 51.059%, 63.376% 51.108%, 63.556% 51.157%, 63.735% 51.207%, 63.913% 51.258%, 64.090% 51.309%, 64.267% 51.361%, 64.442% 51.414%, 64.616% 51.467%, 64.789% 51.521%, 64.961% 51.575%, 65.132% 51.630%, 65.302% 51.686%, 65.470% 51.742%, 65.638% 51.799%, 65.804% 51.856%, 65.969% 51.914%, 66.133% 51.973%, 66.296% 52.032%, 66.458% 52.091%, 66.618% 52.151%, 66.778% 52.212%, 66.936% 52.273%, 67.093% 52.335%, 67.248% 52.398%, 67.402% 52.461%, 67.556% 52.524%, 67.707% 52.588%, 67.858% 52.653%, 68.007% 52.718%, 68.155% 52.783%, 68.301% 52.850%, 68.446% 52.916%, 68.590% 52.983%, 68.733% 53.051%, 68.874% 53.119%, 69.013% 53.188%, 69.152% 53.257%, 69.289% 53.327%, 69.424% 53.397%, 69.558% 53.467%, 69.691% 53.538%, 69.822% 53.610%, 69.952% 53.682%, 70.080% 53.755%, 70.207% 53.827%, 70.332% 53.901%, 70.456% 53.975%, 70.578% 54.049%, 70.699% 54.124%, 70.818% 54.199%, 70.936% 54.275%, 71.052% 54.351%, 71.167% 54.427%, 71.280% 54.504%, 71.392% 54.581%, 71.502% 54.659%, 71.610% 54.737%, 71.717% 54.815%, 71.822% 54.894%, 71.925% 54.973%, 72.027% 55.053%, 72.127% 55.133%, 72.226% 55.213%, 72.323% 55.294%, 72.419% 55.375%, 72.512% 55.456%, 72.604% 55.538%, 72.695% 55.620%, 72.783% 55.702%, 72.870% 55.785%, 72.955% 55.868%, 73.039% 55.951%, 73.121% 56.035%, 73.201% 56.119%, 73.279% 56.203%, 73.356% 56.287%, 73.431% 56.372%, 73.504% 56.457%, 73.576% 56.543%, 73.645% 56.628%, 73.713% 56.714%, 73.779% 56.800%, 73.844% 56.886%, 73.906% 56.973%, 73.967% 57.060%, 74.026% 57.147%, 74.083% 57.234%, 74.139% 57.322%, 74.193% 57.409%, 74.244% 57.497%, 74.294% 57.585%, 74.342% 57.674%, 74.389% 57.762%, 74.433% 57.851%, 74.476% 57.939%, 74.517% 58.028%, 74.556% 58.117%, 74.593% 58.207%, 74.628% 58.296%, 74.662% 58.386%, 74.693% 58.475%, 74.723% 58.565%, 74.751% 58.655%, 74.777% 58.745%, 74.801% 58.835%, 74.823% 58.925%, 74.844% 59.016%, 74.862% 59.106%, 74.879% 59.197%, 74.893% 59.287%, 74.906% 59.378%, 74.917% 59.468%, 74.926% 59.559%, 74.933% 59.650%);
+
 }
 
 /* Cinematic-kill framing — the "dark background" cinematic dim.
@@ -604,6 +651,25 @@ body {
   pointer-events: none;
 }
 
+/* ── Side combat callouts (COUNTER HIT / PUNISH / PERFECT / clinch, etc.)
+   Viewport-fixed like the other HUD hosts. Stack:
+     nameplates (200) < ring props (201) < callouts (202) < wrestlers (205)
+   so banners sit over gyoji/salt baskets but under the penguins. Center
+   announcements (HAKKI-YOI / RoundResult) stay in #game-hud at 210. */
+.game-hud-callouts {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 202;
+  opacity: 1;
+  transition: opacity 0.35s ease-out;
+}
+.game-hud-callouts.is-prematch-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* While the prematch screen is up, hide the in-game HUD (nameplates,
    health/balance bars, stamina, power-up chips). We keep the layer
    mounted (so portalled children retain their DOM) but make it
@@ -623,8 +689,8 @@ body {
    layer guarantees zero bleed-through regardless of recolor timing.
    Game logic, physics, and prediction continue to run normally
    because visibility/opacity are render-only — DOM/JS state is
-   unaffected. The dohyo, gyoji, and crowd live OUTSIDE .ui (in
-   .dohyo-overlay, gyoji elements, and CrowdLayer respectively), so
+   unaffected.    The dohyo, gyoji, salt baskets, and crowd live OUTSIDE .ui (in
+   .dohyo-overlay, #game-ring-props, and CrowdLayer respectively), so
    they remain visible behind the prematch cards as intended. */
 .ui {
   transition: opacity 0.35s ease-out;
@@ -651,10 +717,10 @@ body {
 .dohyo-overlay {
   position: absolute;
   inset: 0;
-  background-image: url(./assets/dohyo.webp);
+  background-image: url(./assets/dohyo-style.webp);
   background-repeat: no-repeat;
-  background-size: 88% 82%; /* width height — increase 2nd value to make platform taller */
-  background-position: 50% 8%;
+  background-size: 90% 78%; /* width height — increase 2nd value to make platform taller */
+  background-position: 50% 18%;
   pointer-events: none;
   z-index: 1;
   /* No runtime filter: the color grade + spotlight are baked into dohyo.webp,
@@ -662,7 +728,7 @@ body {
      softening it). Size & perspective below remain fully adjustable. */
   /* ── Perspective tilt — tweak these to flatten / angle the dohyo ── */
   transform-origin: 48% 108%; /* pivot near the top — back stays wide, front narrows */
-  transform: perspective(420px)
+  transform: perspective(380px)
     /* depth — lower = more dramatic, higher = subtler */ rotateX(5deg)
     /* tilt — back stays anchored, front swings away (narrows) */ scaleY(0.86)
     /* vertical squash — < 1 = flatter, 1 = no change */ translateY(9%); /* raise/lower — negative = up, positive = down */
@@ -673,18 +739,20 @@ body {
   position: absolute;
   left: 50%;
   top: 58%;
-  width: 78%;
-  height: 30%;
+  width: 82%;
+  height: 34%;
   transform: translateX(-50%);
+  /* Cool-tinted contact shadow — grounds the platform into the dark arena
+     floor and echoes the ice bounce light instead of a pure black blob. */
   background: radial-gradient(
     ellipse 100% 100% at 50% 40%,
-    rgba(0, 0, 0, 0.35) 0%,
-    rgba(0, 0, 0, 0.15) 40%,
-    transparent 70%
+    rgba(8, 18, 32, 0.48) 0%,
+    rgba(6, 14, 26, 0.22) 42%,
+    transparent 72%
   );
   pointer-events: none;
   z-index: -1;
-  filter: blur(12px);
+  filter: blur(14px);
 }
 
 /* NOTE: A runtime ice-sheen overlay (a screen-blended gloss + drifting glint on
@@ -730,112 +798,91 @@ body {
   z-index: 0;
 }
 
-/* Single consolidated lighting pass — warm spotlight + clean vignette */
-/* Arena spotlight + edge darkening. Phase 1 brightens the ring spot a touch
-   and pulls the falloff in slightly so the playable area sits in light while
-   the surroundings recede. Kept moderate because the screen-space vignette
-   (.game-container::after) and the crowd-internal vignette (CrowdLayer
-   ::after) also contribute to edge darkening; if all three are stacked at
-   their maximum the corners go too dark and the picture loses depth. */
+/* Sole owner of arena edge falloff + key/bounce. See LIGHTING CONTRACT above. */
 .arena-lighting {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 6;
   background:
-    /* Warm key pool — pushed UP to 50% 31% so the hot center sits over the
-       upper ring / rafters instead of washing the centrally-placed gyoji and
-       the wrestlers' heads. Alpha trimmed (0.17 → 0.14) for the same reason:
-       added light on a saturated robe reads as desaturation. This is the
-       "direction" of the scene's lighting without bleaching the characters. */
+    /* WARM KEY — from rafters / above-front. Kept off the gyoji's head and
+       fighter faces so robes/skins don't bleach; direction without wash. */
     radial-gradient(
-      ellipse 52% 44% at 50% 31%,
-      rgba(255, 243, 212, 0.14) 0%,
-      rgba(255, 236, 196, 0.06) 34%,
-      transparent 60%
+      ellipse 54% 42% at 50% 28%,
+      rgba(255, 243, 212, 0.16) 0%,
+      rgba(255, 236, 196, 0.07) 32%,
+      transparent 58%
     ),
-    /* Cool counter-fill rising off the ice — gives the key a sense of
-       direction (warm top / cool bottom) and reinforces the icy theme,
-       instead of one even glow. Lifted (0.12 → 0.16, reach 56% → 60%) so the
-       ring reads as a cold-lit stage the wrestlers stand on — subtle icy
-       uplight that separates their feet/lower body from the dark surround
-       without touching their faces (the warm key above stays off their heads). */
+    /* COOL BOUNCE — ice stage kicking light up into feet / lower bodies.
+       This is what sells "fighters stand ON a lit dohyo" instead of floating
+       on a neon pad. */
     radial-gradient(
-      ellipse 88% 46% at 50% 102%,
-      rgba(44, 84, 138, 0.16) 0%,
-      rgba(40, 78, 128, 0.05) 38%,
-      transparent 60%
+      ellipse 90% 48% at 50% 100%,
+      rgba(56, 110, 168, 0.2) 0%,
+      rgba(44, 84, 138, 0.08) 36%,
+      transparent 62%
     ),
-    /* Edge darkening — pulled in and deepened a step (transparent core
-       34% → 30%, mid 0.22 → 0.27, corner 0.5 → 0.6) so the surround recedes
-       harder and the lit ring pops by contrast. The transparent centre is
-       kept wide enough that the two wrestlers + the gyoji stay fully out of
-       the falloff — the darkening only bites on the crowd/periphery. Stacks
-       with the (softer) screen-space + crowd vignettes; this is the primary
-       arena falloff so it carries the most weight of the three. */
+    /* EDGE FALLOFF — the only scene vignette. Wide clear core so wrestlers
+       + gyoji stay fully lit; bite lands on crowd / periphery. */
     radial-gradient(
-      ellipse 96% 90% at 50% 50%,
-      transparent 30%,
-      rgba(0, 0, 0, 0.27) 66%,
-      rgba(0, 0, 0, 0.6) 100%
+      ellipse 94% 88% at 50% 48%,
+      transparent 34%,
+      rgba(0, 0, 0, 0.22) 68%,
+      rgba(0, 0, 0, 0.52) 100%
     );
 }
 
-/* ── God-rays / volumetric light shafts ───────────────────────────────────
-   Soft warm beams raking down from the rafters onto the ring. Lives INSIDE
-   .game-scene (world-space) so the shafts stay anchored to the venue and
-   parallax with the camera. z-index 7 keeps them above the environment +
-   arena-lighting but below the wrestlers (z 98+), so the beams read as light
-   in the air *behind* the action and never wash the players. `screen` blend =
-   purely additive (lighten only). The radial mask kills the beams before they
-   reach the floor; the blur turns the hard gradient stripes into volumetric
-   shafts. Gentle sway + opacity breathe so the light feels alive, not static. */
+/* ── God-rays — quiet atmospheric shafts (not wallpaper) ──────────────────
+   Soft warm beams from the rafters. World-space (inside .game-scene) so they
+   parallax with the camera. z-index 7: above arena-lighting, below wrestlers.
+   Kept deliberately quiet under the lighting contract — presence, not a
+   permanent special-effect layer fighting HAKKI-YOI / kimarite flashes. */
 .god-rays {
   position: absolute;
   left: 50%;
   top: -10%;
-  width: 72%;
-  height: 64%;
+  width: 68%;
+  height: 58%;
   transform: translateX(-50%);
   transform-origin: 50% 0;
   pointer-events: none;
   z-index: 7;
   mix-blend-mode: screen;
-  opacity: 0.5;
+  opacity: 0.32;
   background: repeating-linear-gradient(
     96deg,
     transparent 0px,
-    transparent 26px,
-    rgba(255, 240, 206, 0.05) 32px,
-    rgba(255, 246, 220, 0.11) 40px,
-    rgba(255, 240, 206, 0.05) 48px,
-    transparent 56px,
-    transparent 88px
+    transparent 30px,
+    rgba(255, 240, 206, 0.035) 36px,
+    rgba(255, 246, 220, 0.075) 44px,
+    rgba(255, 240, 206, 0.035) 52px,
+    transparent 60px,
+    transparent 96px
   );
   -webkit-mask-image: radial-gradient(
     ellipse 58% 72% at 50% 4%,
     #000 0%,
-    rgba(0, 0, 0, 0.55) 40%,
-    transparent 74%
+    rgba(0, 0, 0, 0.5) 38%,
+    transparent 72%
   );
   mask-image: radial-gradient(
     ellipse 58% 72% at 50% 4%,
     #000 0%,
-    rgba(0, 0, 0, 0.55) 40%,
-    transparent 74%
+    rgba(0, 0, 0, 0.5) 38%,
+    transparent 72%
   );
-  filter: blur(7px);
-  animation: godRayDrift 16s ease-in-out infinite alternate;
+  filter: blur(8px);
+  animation: godRayDrift 18s ease-in-out infinite alternate;
 }
 
 @keyframes godRayDrift {
   0% {
-    opacity: 0.28;
-    transform: translateX(-50%) rotate(-1.4deg);
+    opacity: 0.18;
+    transform: translateX(-50%) rotate(-1.1deg);
   }
   100% {
-    opacity: 0.46;
-    transform: translateX(-50%) rotate(1.4deg);
+    opacity: 0.3;
+    transform: translateX(-50%) rotate(1.1deg);
   }
 }
 
@@ -860,7 +907,7 @@ body {
   height: 150%;
   pointer-events: none;
   z-index: 199;
-  opacity: 0.05;
+  opacity: 0.038;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-repeat: repeat;

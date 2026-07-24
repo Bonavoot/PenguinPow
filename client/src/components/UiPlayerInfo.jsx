@@ -19,15 +19,13 @@ import BalanceGauge from "./BalanceGauge";
 /*
  * Pumo Pumo HUD — "Ice Dohyo Broadcast" chrome.
  *
- * Palette stays on canonical menuTheme tokens (ink / cream / gold / ice /
- * vermillion). The look is lacquered sumi plates + gold-leaf hairlines +
- * frost edge catches — enough ceremonial weight for a Steam launch without
- * reintroducing the old chiseled brass rings / corner rivets that read as
- * overbuilt arcade cabinet UI.
+ * Palette: ink / cream / gold / ice / stam / vermillion (menuTheme).
+ * Lacquered sumi plates + gold-leaf hairlines + frost edge catches.
  *
- * Greens (regen) and reds (stamina danger / gassed) stay semantic. The
- * balance gauge keeps vermillion kill-marks and gold throw / Deep Grip
- * marks so stance risk speaks the same color language as the rest of the HUD.
+ * Stamina fill is smooth jade liquid (stam*) — vitality you spend.
+ * Posture is a compact secondary ice meter with throw/kill notches
+ * (ice → gold → vermillion) — composure for grabs. Danger / gassed stay
+ * vermillion.
  */
 
 // ============================================
@@ -426,7 +424,7 @@ const NameBlock = styled.div`
 const FighterName = styled.div`
   font-family: ${FONT_DISPLAY};
   font-size: clamp(11px, 1.55cqw, 19px);
-  color: #f3ede2;
+  color: ${C.cream};
   text-shadow: ${TEXT_SHADOW_DISPLAY};
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -663,7 +661,7 @@ const BarFrame = styled.div`
   }}
 `;
 
-/* Dark inner track — stamina gauge with a cool well tint */
+/* Dark inner track — stamina gauge with a quiet jade well tint */
 const BarTrack = styled.div`
   position: relative;
   width: 100%;
@@ -674,7 +672,7 @@ const BarTrack = styled.div`
   background:
     linear-gradient(
       180deg,
-      rgba(126, 203, 240, 0.06) 0%,
+      rgba(61, 184, 106, 0.06) 0%,
       transparent 45%
     ),
     linear-gradient(
@@ -725,20 +723,12 @@ const StaTickMark = styled.div`
   }
 `;
 
-/* Matcha-moss stamina fill — pigmented green that reads as "regenerative
- * energy" without the candy-bar arcade neon. Previous pass ramped through
- * #14663d → #1c9b52 → #46d46a → #95f07a → #caffae → #f0ffe4 — six
- * stops climbing into near-white highlights, which is what made it look
- * Mountain Dew. The new ramp is FOUR stops, lower-saturation, narrower
- * value range, and the brightest stop is a warm sage instead of neon
- * white-green. Reads as dyed cloth / hand-painted gauge instead of LCD.
+/* Smooth jade stamina fill — liquid energy vs posture's stance plates.
  *
- * Still unmistakably green, still tells the eye "this regenerates", but
- * it sits in the same hand-painted Edo-print world as the menus rather
- * than fighting them with arcade chroma.
+ * Bright enough to read as vitality, without a heavy neon bloom.
+ * Regen overlays still punch via success* flashes on top.
  *
- * Vertical wobble + top highlight + diagonal frost sweep all preserved
- * as before — the change is COLOR, not behaviour. */
+ * Danger: vermillion ramp (unchanged semantics). */
 const BarFill = styled.div.attrs((p) => ({
   style: {
     width: `calc(${p.$stamina}% - 4px)`,
@@ -760,24 +750,20 @@ const BarFill = styled.div.attrs((p) => ({
         ? "linear-gradient(90deg, #8f1515 0%, #c41e1e 35%, #e23a3a 70%, #f07171 100%)"
         : "linear-gradient(90deg, #f07171 0%, #e23a3a 30%, #c41e1e 65%, #8f1515 100%)"
       : p.$isRight
-        ? "linear-gradient(90deg, #1f4f2c 0%, #3a7a42 26%, #6bb85a 58%, #a8d878 82%, #d4efb0 100%)"
-        : "linear-gradient(90deg, #d4efb0 0%, #a8d878 18%, #6bb85a 42%, #3a7a42 74%, #1f4f2c 100%)"};
+        ? `linear-gradient(90deg, ${C.stamMid} 0%, ${C.stam} 45%, ${C.stamBright} 100%)`
+        : `linear-gradient(90deg, ${C.stamBright} 0%, ${C.stam} 55%, ${C.stamMid} 100%)`};
 
-  /* Inner lighting only — outer glows bleed into the track inset. */
   box-shadow: ${(p) =>
     p.$danger
       ? "inset 0 1px 0 rgba(255, 200, 190, 0.28), inset 0 -2px 4px rgba(80, 10, 10, 0.35), inset 0 0 5px rgba(255, 100, 100, 0.18)"
-      : "inset 0 1px 0 rgba(245, 255, 230, 0.32), inset 0 -2px 5px rgba(20, 50, 25, 0.35), inset 0 0 6px rgba(182, 224, 136, 0.18)"};
+      : `inset 0 1px 0 rgba(220, 255, 236, 0.35), inset 0 -1px 3px rgba(10, 60, 30, 0.2), 0 0 5px ${C.stamGlow}`};
 
   animation: ${(p) =>
     p.$danger
       ? css`${flashRedPulse} 0.6s ease-in-out infinite`
       : css`${fillWobble} 2.4s ease-in-out infinite`};
 
-  /* Top highlight — pulled back from the previous near-white cream
-   * stops because on the muted moss base they read as a neon strip.
-   * Cream-faint warm highlight now, just enough to catch the eye on
-   * the upper lip of the bar. */
+  /* Soft mint catch on the upper lip. */
   &::before {
     content: "";
     position: absolute;
@@ -785,17 +771,15 @@ const BarFill = styled.div.attrs((p) => ({
     height: 40%;
     background: linear-gradient(
       180deg,
-      rgba(245, 236, 217, 0.22) 0%,
-      rgba(245, 236, 217, 0.06) 60%,
+      rgba(230, 255, 240, 0.3) 0%,
+      rgba(95, 217, 138, 0.08) 55%,
       transparent 100%
     );
     border-radius: 2px 2px 0 0;
     pointer-events: none;
   }
 
-  /* Cream sweep across the fill (only when not danger). Was a bright
-   * lime-tinted "frost-glass" sweep, now a cream washi sweep that
-   * matches the warm highlight above. */
+  /* Soft energy sweep. */
   &::after {
     content: "";
     position: absolute;
@@ -806,9 +790,9 @@ const BarFill = styled.div.attrs((p) => ({
       103deg,
       transparent 0%,
       transparent 32%,
-      rgba(245, 236, 217, 0.08) 44%,
-      rgba(245, 236, 217, 0.2) 50%,
-      rgba(245, 236, 217, 0.08) 56%,
+      rgba(200, 255, 220, 0.12) 44%,
+      rgba(255, 255, 255, 0.16) 50%,
+      rgba(200, 255, 220, 0.12) 56%,
       transparent 68%,
       transparent 100%
     );
@@ -1350,14 +1334,17 @@ const GaugeStack = styled.div`
   overflow: visible;
 `;
 
-/* Balance strip — canvas-rendered stance gauge (see BalanceGauge.jsx). */
+/* Balance strip — inner half of the gauge stack (toward center).
+ * Outer half is reserved for BASHO boons via BoonAnchor — keep these
+ * widths matched so they never collide. */
 const BalStripWrap = styled.div`
   width: 50%;
   align-self: ${(p) => (p.$isRight ? "flex-start" : "flex-end")};
   margin-top: ${gaugeStripGap};
 `;
 
-/* BASHO boons — overlaid at balance-bar top; out of flow so stamina/balance/power slot stay put. */
+/* BASHO boons — outer half of the gauge stack; out of flow so
+ * stamina / posture / power slot stay put. */
 const BoonAnchor = styled.div`
   position: absolute;
   top: calc(clamp(22px, 4cqh, 40px) + ${gaugeStripGap});

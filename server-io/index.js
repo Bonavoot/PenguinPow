@@ -8,7 +8,7 @@ const e = require("express");
 const {
   GRAB_STATES, TICK_RATE, BROADCAST_EVERY_N_TICKS,
   ALWAYS_SEND_PROPS, DELTA_TRACKED_PROPS, ALL_TRACKED_PROPS,
-  speedFactor, GROUND_LEVEL, HITBOX_DISTANCE_VALUE, CHARGED_HITBOX_DISTANCE_VALUE,
+  speedFactor, GROUND_LEVEL, HITBOX_DISTANCE_VALUE,
   GRAB_RANGE,
   DOHYO_FALL_SPEED, DOHYO_FALL_DEPTH,
   POWER_UP_TYPES, POWER_UP_EFFECTS,
@@ -164,6 +164,11 @@ const {
 const { updateCPUAI, processCPUInputs } = require("./cpuAI");
 // Import collision system
 const { checkCollision, checkFlapBodySlam } = require("./collisionSystem");
+const {
+  getConnectDistance,
+  attackKindFromPlayer,
+  enforceStrikeExtensionSeparation,
+} = require("./strikeContact");
 
 // Import projectile updates (snowballs + pumo army)
 const { updateProjectiles } = require("./projectileUpdates");
@@ -502,6 +507,16 @@ function tick(delta) {
         adjustPlayerPositions(player1, player2, delta);
       }
 
+      // Slap / palm ACTIVE: expand spacing to tip-meets-body so the limb cannot
+      // bury into the opponent sprite at resting pushbox distance. Charged is
+      // handled by the lunge clamp. Safe during game-over (no-op if not attacking).
+      // Pass simTime so slap skips the AP late-parry grace (avoids tip-range
+      // parking + drift → ghost whiff before the hit is allowed to confirm).
+      if (!room.gameOver) {
+        enforceStrikeExtensionSeparation(player1, player2, room.simTime);
+        enforceStrikeExtensionSeparation(player2, player1, room.simTime);
+      }
+
       if (
         !player1.isGrabbing &&
         !player1.isBeingGrabbed &&
@@ -642,6 +657,18 @@ function tick(delta) {
           if (!player2.isChargingAttack) {
             player2.mouse1PressTime = 0;
           }
+          // Same held-strafe buffer apply as handleReadyPositions (this path
+          // can fire first at 2700ms).
+          for (const p of [player1, player2]) {
+            if (p.movementKeysBufferedBeforeStart) {
+              const buf = p.movementKeysBufferedBeforeStart;
+              p.keys = p.keys || {};
+              if (buf.a) p.keys.a = true;
+              if (buf.d) p.keys.d = true;
+              p.movementKeysBufferedBeforeStart = null;
+            }
+            p.canMoveToReady = false;
+          }
           room.hakkiyoiCount = 1;
           room.readyStartTime = null;
           room.teWoTsuiteSent = false;
@@ -733,6 +760,7 @@ function tick(delta) {
       }
       const isGameOverLoser = room.gameOver && player.id === room.loserId;
       if (isGameOverLoser && !player.isHit && !player.isCinematicKillVictim &&
+          !player.isClinchKillPullVictim && !player.isClinchKillThrowVictim &&
           !player.isBeingThrown && !player.isGrabBreakSeparating &&
           Math.abs(player.movementVelocity) < ICE_STOP_THRESHOLD &&
           Math.abs(player.knockbackVelocity.x) < 0.01) {
@@ -893,6 +921,30 @@ function tick(delta) {
                 }
               }
               player.pullReversalPullerId = null;
+            }
+            // Kill-pull finishers: do NOT fall into normal movement (MAP clamps /
+            // slapParryKnockback) or re-arm buffered actions after the slide.
+            if (isKillPullVictim) {
+              player.slapParryKnockbackVelocity = 0;
+              player.movementVelocity = 0;
+              return;
+            }
+            // Side-switch settle: facing was set from pre-pull positions at resolve.
+            // Re-correct now that the victim has landed on their new side (mirrors
+            // throw land). Clear ropes facing locks when still in-bounds so they
+            // don't block the flip.
+            if (player.x > MAP_LEFT_BOUNDARY && player.x < MAP_RIGHT_BOUNDARY) {
+              player.atTheRopesFacingDirection = null;
+            }
+            if (
+              pullerRef &&
+              pullerRef.x > MAP_LEFT_BOUNDARY &&
+              pullerRef.x < MAP_RIGHT_BOUNDARY
+            ) {
+              pullerRef.atTheRopesFacingDirection = null;
+            }
+            if (pullerRef) {
+              correctFacingAfterGrabOrThrow(player, pullerRef);
             }
             // Activate buffered inputs for both players (0 frame advantage)
             activateBufferedInputAfterGrab(player, rooms);
@@ -1055,7 +1107,12 @@ function tick(delta) {
       }
 
       // Handle slap parry knockback (smooth sliding that doesn't interrupt attack state)
-      if (Math.abs(player.slapParryKnockbackVelocity) > 0.01) {
+      // Kill-pull victims must never enter this path — its MAP clamp is the wall
+      // that was eating AP / clinch belly-slides into the dohyo apron.
+      if (
+        !player.isClinchKillPullVictim &&
+        Math.abs(player.slapParryKnockbackVelocity) > 0.01
+      ) {
         const newX = player.x + player.slapParryKnockbackVelocity * delta * speedFactor;
         
         const BOUNDARY_BUFFER = 10;
@@ -3103,6 +3160,7 @@ function tick(delta) {
       ) {
         if (player.spaceJustPressed && canArmAttackParry(player, now)) {
           // Fresh tap → open a PARRY window (fallback for the socket edge path).
+          // armAttackParry clears spaceJustPressed so a held key can't re-fire.
           armAttackParry(player, now, lagCompensatedParryStart(player, now));
           clearChargeState(player, true); // true = cancelled
           if (!player.isAttacking && !player.isChargingAttack) {
@@ -3114,6 +3172,7 @@ function tick(delta) {
           now >= (player.apCooldownUntil || 0)
         ) {
           // Held with no live parry window → GUARD (the block floor).
+          // Also covers post-land hold if collision already left us unarmed.
           enterGuard(player);
           clearChargeState(player, true);
           if (!player.isAttacking && !player.isChargingAttack) {
@@ -3220,22 +3279,15 @@ function tick(delta) {
               ((opponent.isFlapping && opponent.flapPhase === "flight") ||
                 (opponent.isRopeJumping && opponent.ropeJumpPhase === "active"));
             if (opponent && !opponent.isDodging && !opponent.isSidestepping && !oppAirborne) {
-              // Stop the lunge at the NATURAL body-contact separation instead of
-              // burrowing to 30px. Previously the lunge drove to 30px (sprites
-              // overlapping) and the post-hit min-separation push snapped the
-              // victim back out — the "too inside" / unsmooth charged hit. We now
-              // clamp to the pushbox resting distance (same formula as the
-              // post-hit min-sep push, so its deficit is ~0 → no snap), but never
-              // farther than just inside charged connect range so the hit still
-              // lands. Result: the attacker settles at arm's length on contact.
-              const attackerSize = player.sizeMultiplier || 1;
-              const victimSize = opponent.sizeMultiplier || 1;
-              const restingDist = HITBOX_DISTANCE_VALUE * 2 * Math.max(attackerSize, victimSize);
-              const connectDist = CHARGED_HITBOX_DISTANCE_VALUE * attackerSize;
-              // Target the resting distance (zero post-hit snap for same-size
-              // fighters, since restingDist < connectDist there); the cap only
-              // binds when the victim is much larger, guaranteeing the hit lands.
-              const minDistance = Math.min(restingDist, connectDist - 4);
+              // Stop the lunge just inside art-tip connect range so the hit can
+              // register, then processHit snaps to exact tip-meets-body for the
+              // hitstop pose. No more burrowing past visual contact.
+              const connectDist = getConnectDistance(
+                attackKindFromPlayer(player),
+                player,
+                opponent
+              );
+              const minDistance = Math.max(connectDist - 2, 1);
               const playerToLeft = player.x < opponent.x;
               const playerToRight = player.x > opponent.x;
               
@@ -3331,6 +3383,17 @@ function tick(delta) {
           player.mouse1PressTime = now;
         }
         player.mouse1BufferedBeforeStart = false;
+      }
+
+      // INPUT BUFFERING: Apply held A/D that spanned HAKKIYOI. Must run before
+      // the next tick's strafe block reads keys — applying here (end of player
+      // loop) still beats waiting for a client edge that may never come.
+      if (room.gameStart && player.movementKeysBufferedBeforeStart) {
+        const buf = player.movementKeysBufferedBeforeStart;
+        player.keys = player.keys || {};
+        if (buf.a) player.keys.a = true;
+        if (buf.d) player.keys.d = true;
+        player.movementKeysBufferedBeforeStart = null;
       }
 
       // CONTINUOUS MOUSE1 CHECK: Auto-start charging when mouse1 is held and player is idle

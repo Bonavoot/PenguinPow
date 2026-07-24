@@ -160,14 +160,14 @@ const GrabBreakEffect = ({ position }) => {
         return (
           <div key={effect.id}>
             <GrabBreakBurst x={effect.x} y={effect.y} />
-            {document.getElementById("game-hud") &&
+            {document.getElementById("game-hud-callouts") &&
               createPortal(
                 <SumoAnnouncementBanner
                   text={"GRAB\nBREAK"}
                   type="break"
                   isLeftSide={isLeftSide}
                 />,
-                document.getElementById("game-hud")
+                document.getElementById("game-hud-callouts")
               )}
           </div>
         );

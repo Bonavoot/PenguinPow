@@ -21,6 +21,7 @@ import {
   throwing,
   salt,
   recovering,
+  charging,
   rawParrySuccess,
   rawParrySuccessFrame1,
   rawParrySuccessFrame2,
@@ -239,7 +240,9 @@ const getImageSrc = (
     if (palmThrustFrame === 3) return palmThrustStartup;
     return palmThrust;
   }
-  if (isChargingAttack) return recovering;
+  // Distinct asset from recovering so charge hold isn't visually/identity-
+  // conflated with post-attack recovery (same art for now; separate file).
+  if (isChargingAttack) return charging;
   if (isRecovering) return recovering;
   if (isThrowingSnowball) return snowballThrow;
   if (isSpawningPumoArmy) return pumoArmy;

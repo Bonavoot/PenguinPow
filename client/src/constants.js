@@ -5,11 +5,12 @@
 // Used for interpolation: time between state updates from server
 export const SERVER_BROADCAST_HZ = 32;
 
-export const MAP_LEFT_BOUNDARY = 80;
-export const MAP_RIGHT_BOUNDARY = 982;
+// Rope / win line — must match server-io/gameUtils.js (ring-out fires here).
+export const MAP_LEFT_BOUNDARY = 340;
+export const MAP_RIGHT_BOUNDARY = 935;
 
-// Dohyo (ring) boundaries - players fall when outside these
-// Adjust these values to match the visual dohyo boundaries in the image
+// Platform fall-off edge (wider than the rope). Past this, fighters drop
+// behind the dohyo. Must match server-io/gameUtils.js.
 export const DOHYO_LEFT_BOUNDARY = 250;
 export const DOHYO_RIGHT_BOUNDARY = 1030;
 
@@ -20,11 +21,25 @@ const GROUND_LEVEL = 140;
 export const DOHYO_FALL_DEPTH = 37; // Scaled for camera zoom (was 50)
 
 // Check if player is outside the dohyo boundaries (horizontal or vertical)
-// Player is outside if they're past the horizontal boundaries OR if they've fallen below ground level
+// Player is outside if they're past the horizontal boundaries OR if they've fallen below ground level.
+// Inclusive on X to match ring-out land checks (landX <= left || landX >= right).
 export function isOutsideDohyo(x, y) {
   return (
-    x < DOHYO_LEFT_BOUNDARY ||
-    x > DOHYO_RIGHT_BOUNDARY ||
+    x <= DOHYO_LEFT_BOUNDARY ||
+    x >= DOHYO_RIGHT_BOUNDARY ||
     y < (GROUND_LEVEL - DOHYO_FALL_DEPTH)
+  );
+}
+
+/**
+ * Off the ice disc — past the rope/win line (MAP) or fallen off the platform.
+ * Ring-out / RoundResult losers sit past MAP long before they reach DOHYO fall,
+ * so ground FX (ice reflection vs oval) must key off this, not isOutsideDohyo.
+ */
+export function isOffIce(x, y) {
+  return (
+    x <= MAP_LEFT_BOUNDARY ||
+    x >= MAP_RIGHT_BOUNDARY ||
+    y < GROUND_LEVEL - DOHYO_FALL_DEPTH
   );
 }

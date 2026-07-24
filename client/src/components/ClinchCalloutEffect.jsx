@@ -56,7 +56,7 @@ const ClinchCalloutEffect = ({ callout }) => {
     };
   }, []);
 
-  const hudEl = document.getElementById("game-hud");
+  const hudEl = document.getElementById("game-hud-callouts");
   if (!hudEl) return null;
 
   return createPortal(

@@ -2,6 +2,14 @@
  * Shared design tokens for the Pumo Pumo "Aizome Banzuke" menu UI.
  * Used by MainMenu, Rooms, Lobby, Customize, etc. so the
  * palette and spacing stay consistent across all menu surfaces.
+ *
+ * ARENA PRESENTATION (in-match HUD / PreMatch / callouts) also pulls from
+ * these tokens — ink, cream, gold, ice, vermillion, sumi. Side combat
+ * banners and HAKKI-YOI share C.gold with HUD rank plaques. Stamina fill
+ * uses stam* (smooth jade liquid); posture fill uses segmented stance
+ * plates (posture* blue → gold throw → vermillion kill). Neon success*
+ * greens stay for CTAs + regen flash overlays.
+ * Lighting ownership lives in App.css ("LIGHTING CONTRACT").
  */
 
 import { keyframes } from "styled-components";
@@ -185,19 +193,35 @@ export const C = {
   gold: "#e8c547",
   goldDeep: "#b8860b",
 
-  // Pumo ice blue — pulled from the character's mawashi belt.
-  // Canonical secondary across ALL surfaces. On the SNOW palette
-  // these are used for: hover-state borders, the sash divider on
-  // top of cards, the small accent rules on snow panels.
-  ice: "#7ecbf0",
-  iceBright: "#a8e0ff",
-  iceDeep: "#1c4e6e",            // rgb(28, 78, 110)  — dark ice
-  iceMid: "#3682aa",             // rgb(54, 130, 170) — mid ice
-  iceGlow: "rgba(126, 203, 240, 0.45)",
+  // Pumo ice — steel-teal family matching the dohyo disc grade
+  // (pale frozen clay / rink ice, not neon cyan). Canonical secondary
+  // across menu surfaces: hover borders, sash dividers, accent rules.
+  // NOT used for in-match posture fill anymore (see posture*).
+  ice: "#7eb8d0",
+  iceBright: "#a8d0e4",
+  iceDeep: "#1c4a62",            // rgb(28, 74, 98)  — dark ice
+  iceMid: "#3a7a9a",             // rgb(58, 122, 154) — mid ice
+  iceGlow: "rgba(126, 184, 208, 0.45)",
 
-  // Live / accept green — "GO" CTAs (Join, Ready-to-fight, live status).
-  // Tuned to match the existing live-status pulse dot (#4ade80) so the
-  // join button visually rhymes with "live / online" signals.
+  // Posture — cool composure blue for throws / parries. Smooth ice fill
+  // (not jade liquid like stamina). Drops into gold* throw range, then
+  // vermillion kill.
+  posture: "#6fa9c4",            // rgb(111, 169, 196) — composure blue
+  postureBright: "#8fbed4",      // rgb(143, 190, 212) — soft tip
+  postureMid: "#5a93ae",         // rgb(90, 147, 174)  — slight depth
+  postureDeep: "#3a6a82",        // rgb(58, 106, 130)  — empty-well tint
+  postureGlow: "rgba(111, 169, 196, 0.4)",
+
+  // Stamina — vitality green. Smooth liquid fill (vs posture plates).
+  // Tuned bright enough to read as energy, without neon bloom.
+  stam: "#3db86a",               // rgb(61, 184, 106)  — living jade
+  stamBright: "#5fd98a",         // rgb(95, 217, 138)  — tip
+  stamMid: "#2a9a58",            // rgb(42, 154, 88)   — saturated mid
+  stamDeep: "#176b3c",           // rgb(23, 107, 60)   — depth
+  stamGlow: "rgba(61, 184, 106, 0.28)",
+
+  // Live / accept green — "GO" CTAs (Join, Ready-to-fight, live status)
+  // and in-match regen flash overlays.
   success: "#4ade80",
   successBright: "#86efac",
   successDeep: "#16a34a",

@@ -38,7 +38,8 @@ const FlashAnchor = styled.div`
   bottom: ${(p) => (p.$y / 720) * 100}%;
   width: 0;
   height: 0;
-  z-index: 169;
+  /* Above fighters (~99) and level with the star burst (170). */
+  z-index: 171;
   pointer-events: none;
 `;
 
@@ -90,11 +91,52 @@ PerfectParryImpactFlash.propTypes = {
   size: PropTypes.number,
 };
 
+// ── Regular contact pin ─────────────────────────────────────────────────────
+// Tiny white→cyan pin at the clash seam. Gives the thin grab-break filaments a
+// solid "hit point" the eye locks onto without borrowing Perfect's bloom/banner.
+const regularCoreFlash = keyframes`
+  0%   { transform: translate(-50%, 50%) scale(0.2); opacity: 1; }
+  22%  { transform: translate(-50%, 50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, 50%) scale(1.35); opacity: 0; }
+`;
+
+const RegularCore = styled.div`
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: ${(p) => p.$size}cqw;
+  height: ${(p) => p.$size}cqw;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(210, 245, 255, 0.95) 28%,
+    rgba(78, 200, 255, 0.55) 52%,
+    rgba(78, 200, 255, 0) 72%
+  );
+  animation: ${regularCoreFlash} 180ms cubic-bezier(0.2, 0.85, 0.25, 1) forwards;
+  will-change: transform, opacity;
+`;
+
+export const RegularParryContactFlash = ({ x, y, size = 4.2 }) => (
+  <FlashAnchor $x={x} $y={y}>
+    <RegularCore $size={size} />
+  </FlashAnchor>
+);
+
+RegularParryContactFlash.propTypes = {
+  x: PropTypes.number.isRequired,
+  y: PropTypes.number.isRequired,
+  size: PropTypes.number,
+};
+
 // ── PERFECT callout banner ──────────────────────────────────────────────────
 export const PerfectParryBanner = ({ playerNumber = 1 }) => {
   const isLeftSide = playerNumber === 1;
   const hudEl =
-    typeof document !== "undefined" ? document.getElementById("game-hud") : null;
+    typeof document !== "undefined"
+      ? document.getElementById("game-hud-callouts")
+      : null;
   if (!hudEl) return null;
   return createPortal(
     <SumoAnnouncementBanner

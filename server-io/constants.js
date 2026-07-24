@@ -31,7 +31,7 @@ const DELTA_TRACKED_PROPS = [
   'isThrowing', 'isBeingThrown', 'isThrowTeching', 'isBeingPulled', 'isBeingPushed',
   'isThrowingSalt', 'isReady', 'isBowing', 'isAtTheRopes',
   'isThrowingSnowball', 'isSpawningPumoArmy',
-  'isGrabBreaking', 'isGrabBreakCountered',
+  'isGrabBreaking', 'isGrabBreakCountered', 'isGrabBreakSeparating',
   'isAttemptingGrabThrow', 'isInRitualPhase',
   'isGrabPushing', 'isBeingGrabPushed', 'isEdgePushing', 'isBeingEdgePushed',
   'isAttemptingPull', 'isBeingPullReversaled',
@@ -86,8 +86,19 @@ const SCREEN_SHAKE_MIN_INTERVAL = 100; // Minimum ms between screen shakes
 const speedFactor = 0.185; // Scaled for camera zoom (was 0.25)
 const GROUND_LEVEL = 286;
 const HITBOX_DISTANCE_VALUE = 65; // Pushbox half-width (was 68). Light belly-gap trim — 62 was still too tight.
-const CHARGED_HITBOX_DISTANCE_VALUE = 135; // Just past pushbox 130 (+5)
-const SLAP_HITBOX_DISTANCE_VALUE = 138; // Just past pushbox (+8)
+// Legacy charged/palm/slap reach numbers — live hit detection uses
+// strikeContact.getConnectDistance (art tip + victim body half - skin embed).
+// Kept as fallbacks for docs / any non-collision call sites during migration.
+const CHARGED_HITBOX_DISTANCE_VALUE = 135; // superseded by tip-based connect
+const SLAP_HITBOX_DISTANCE_VALUE = 138; // superseded by tip-based connect
+// Art-derived tip extents (sprite px from canvas center, 960 canvas). Used by
+// server-io/strikeContact.js. Display scale: (1280 * 0.123) / 960.
+const STRIKE_TIP_SLAP1_SPRITE_PX = 459;
+const STRIKE_TIP_SLAP2_SPRITE_PX = 478;
+const STRIKE_TIP_CHARGED_SPRITE_PX = 425;
+const STRIKE_TIP_PALM_SPRITE_PX = 438;
+// Near-zero dig — active-window extension separation already holds tip-meets-body.
+const STRIKE_SKIN_EMBED_PX = 1;
 // ── SLAP CLASH ("slap parry") — RARE, GROUND-based GAIN / LOSE / NEUTRAL ────
 // Design intent: the clash is NOT the texture of close-range fighting — it's a
 // rare highlight you hit on a genuinely simultaneous read. The DEFAULT outcome
@@ -588,15 +599,17 @@ const PERFECT_PARRY_BALANCE_REFUND = 12;
 //        – REGULAR: small settle + balance drain, ~neutral frames.
 //        – PERFECT (inner PERFECT_PARRY_WINDOW): slightly farther settle + bigger
 //          balance drain + balance refund + real frame advantage (one free button).
-//     If the attacker's balance is already inside the KILL band when parried, it
-//     becomes the lethal slap-down (pull cinematic).
+//     If the attacker's balance is already inside the KILL band AND the parry
+//     is PERFECT, it becomes the lethal slap-down (pull cinematic). Regular
+//     parries never finish the round.
 //   • HOLD → GUARD (the block floor): you survive slaps/palms as chip + a little
 //     ground lost + stamina bleed — but no reward. Rooted; does NOT stop grabs or
 //     charged (grab is the standard FG answer to a held block). Bleed to 0 →
 //     guard-crush → gassed. A MISTIMED tap while holding just becomes a guard
 //     (no cancel recovery), so you can attempt parries fearlessly into block.
-//     After a LANDED parry, a continued hold does NOT auto-GUARD — release once
-//     then HOLD to block again (keeps release→re-press piano taps clean).
+//     After a LANDED parry, a continued hold becomes GUARD — one timed PARRY per
+//     physical press; holding never grants a second parry. Release + re-press
+//     for the next timed read (flurry = tap-every-slap).
 //   • RELEASE during a live window → CANCEL (window ends). Short rooted recovery
 //     (AP_WHIFF_RECOVERY_MS) so empty taps aren't free, but RE-PRESS may arm a
 //     fresh window immediately (recovery does not lock out parry). This is the
@@ -624,11 +637,12 @@ const AP_SUCCESS_RECOVERY_MS = 200;
 const AP_WHIFF_RECOVERY_MS = 90;
 const AP_COOLDOWN_MS = 40;           // Tiny gap before GUARD may re-enter after a drop. Fresh taps (rising Space) ignore this so release→re-press is an immediate parry window.
 const AP_STAMINA_COST = 3;           // Charged per parry tap — cheap (reward using it), but re-tapping a long flurry still drains you.
-// KILL gate: the parried attacker's balance must be DEEPLY broken (< this) for the
-// lethal slap-down. Set well UNDER the clinch kill threshold (15) and the posture
-// break (35) so a parry kill is a hard-earned finish, not "slap a bit + fish it".
-const AP_KILL_THRESHOLD = 8;
-const AP_PERFECT_KILL_THRESHOLD = 12; // A PERFECT parry can finish a hair higher — the dead-on read is rewarded.
+// KILL gate: PERFECT parry only, and the attacker's balance must be DEEPLY
+// broken (< this). Regular parries never KO. Set well UNDER the clinch kill
+// threshold (15) and the posture break (35) so a parry kill is a hard-earned
+// finish, not "slap a bit + fish it".
+const AP_KILL_THRESHOLD = 8; // legacy (unused) — kills use AP_PERFECT_KILL_THRESHOLD only
+const AP_PERFECT_KILL_THRESHOLD = 12;
 // Balance drained from the parried attacker. The parry is the game's dedicated
 // POSTURE tool — it bites posture HARDER than a raw slap (BALANCE_SLAP_HIT_DRAIN_P2),
 // so it's worth throwing on a high-posture opponent for the damage, not only the kill.
@@ -1488,6 +1502,11 @@ module.exports = {
   HITBOX_DISTANCE_VALUE,
   CHARGED_HITBOX_DISTANCE_VALUE,
   SLAP_HITBOX_DISTANCE_VALUE,
+  STRIKE_TIP_SLAP1_SPRITE_PX,
+  STRIKE_TIP_SLAP2_SPRITE_PX,
+  STRIKE_TIP_CHARGED_SPRITE_PX,
+  STRIKE_TIP_PALM_SPRITE_PX,
+  STRIKE_SKIN_EMBED_PX,
   SLAP_PARRY_WINDOW,
   SLAP_PARRY_NEUTRAL_WINDOW_MS,
   SLAP_PARRY_RECOVERY_MS,

@@ -1,6 +1,6 @@
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
-import { useMemo } from "react";
+import { C, FONT_DISPLAY, FONT_KANJI } from "./menuTheme";
 
 // ============================================
 // SHARED Y-POSITION (both announcements live here — below the HUD)
@@ -73,14 +73,6 @@ const screenFlash = keyframes`
   100% { opacity: 0; }
 `;
 
-// ── Impact line burst ──
-const impactBurst = keyframes`
-  0%   { transform: scaleX(0.18); opacity: 0; }
-  14%  { transform: scaleX(1); opacity: 0.82; }
-  50%  { transform: scaleX(1.04); opacity: 0.42; }
-  100% { transform: scaleX(1.1); opacity: 0; }
-`;
-
 // ── Fade in then out ──
 const fadeIO = keyframes`
   0%   { opacity: 0; }
@@ -90,21 +82,19 @@ const fadeIO = keyframes`
   100% { opacity: 0; }
 `;
 
-// ── Dark vignette behind HAKKIYOI text for contrast ──
+// ── Soft seat behind HAKKIYOI ──
 const vignettePulse = keyframes`
-  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
-  12%  { opacity: 0.85; transform: translate(-50%, -50%) scale(1.05); }
-  20%  { transform: translate(-50%, -50%) scale(0.97); }
-  30%  { transform: translate(-50%, -50%) scale(1); }
-  78%  { opacity: 0.85; transform: translate(-50%, -50%) scale(1); }
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.55); }
+  14%  { opacity: 0.7; transform: translate(-50%, -50%) scale(1.02); }
+  78%  { opacity: 0.7; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
 `;
 
-// ── Subtle brush reveal (TE WO TSUITE) ──
+// ── Hairline / brush reveal ──
 const brushReveal = keyframes`
   0%   { clip-path: inset(0 100% 0 0); opacity: 0; }
-  22%  { clip-path: inset(0 0% 0 0); opacity: 0.7; }
-  70%  { clip-path: inset(0 0% 0 0); opacity: 0.7; }
+  22%  { clip-path: inset(0 0% 0 0); opacity: 0.85; }
+  70%  { clip-path: inset(0 0% 0 0); opacity: 0.85; }
   100% { clip-path: inset(0 0% 0 0); opacity: 0; }
 `;
 
@@ -124,145 +114,76 @@ const ScreenFlash = styled.div`
 
   background: ${(p) =>
     p.$type === "hakkiyoi"
-      ? `radial-gradient(ellipse at 50% 25%, rgba(255,215,0,0.5) 0%, rgba(255,200,50,0.2) 25%, transparent 55%)`
-      : `radial-gradient(ellipse at 50% 25%, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.1) 20%, transparent 45%)`};
+      ? `radial-gradient(ellipse at 50% 28%, rgba(232,197,71,0.28) 0%, rgba(232,197,71,0.1) 32%, transparent 56%)`
+      : `radial-gradient(ellipse at 50% 25%, rgba(245,236,217,0.22) 0%, rgba(245,236,217,0.08) 22%, transparent 45%)`};
 `;
 
 // ============================================
 // HAKKIYOI STYLED COMPONENTS
 // ============================================
 
-/* Dark radial vignette behind the text — keeps the call grounded in the arena */
+/* Quiet ink seat — grounds the call without a muddy brown blot. */
 const DarkVignette = styled.div`
   position: absolute;
   top: ${ANNOUNCE_Y};
   left: 50%;
-  width: clamp(480px, 60cqw, 820px);
-  height: clamp(130px, 20cqh, 230px);
+  width: clamp(420px, 52cqw, 720px);
+  height: clamp(110px, 16cqh, 190px);
   border-radius: 50%;
   pointer-events: none;
   z-index: 1001;
 
-  background:
-    radial-gradient(
-      ellipse at center,
-      rgba(16, 8, 6, 0.76) 0%,
-      rgba(16, 8, 6, 0.54) 30%,
-      rgba(16, 8, 6, 0.18) 56%,
-      transparent 78%
-    ),
-    radial-gradient(
-      ellipse at center,
-      rgba(255, 214, 102, 0.05) 0%,
-      rgba(255, 214, 102, 0.02) 34%,
-      transparent 58%
-    );
-  filter: blur(10px);
+  background: radial-gradient(
+    ellipse at center,
+    rgba(8, 10, 16, 0.55) 0%,
+    rgba(8, 10, 16, 0.28) 42%,
+    transparent 74%
+  );
+  filter: blur(12px);
 
   animation: ${vignettePulse} ${(p) => p.$duration} ease-out forwards;
 
   @media (max-width: 900px) {
-    width: clamp(360px, 54cqw, 620px);
-    height: clamp(95px, 17cqh, 170px);
+    width: clamp(320px, 48cqw, 560px);
+    height: clamp(88px, 14cqh, 150px);
   }
   @media (max-width: 600px) {
-    width: clamp(260px, 50cqw, 420px);
-    height: clamp(72px, 13cqh, 120px);
+    width: clamp(240px, 46cqw, 400px);
+    height: clamp(70px, 12cqh, 110px);
   }
 `;
 
-/* The ceremonial gold haze used to live here as a second blurred
- * radial gradient stacked on top of DarkVignette. Two stacked blurred
- * radials sitting concentric is the canonical "AI-rendered hero shot"
- * fingerprint — it's what every templated fighting-game/3D-render
- * intro that's never been art-directed reaches for. Removed entirely;
- * the HakkiyoiBrush below the text already carries the gold band that
- * this haze was duplicating, and the warm color on the HakkiyoiText
- * is more than enough warmth in the frame without a halo around it.
- * Keeping DarkVignette alone gives the call its grounding without
- * the AI-rendered double-glow signature. */
-
-/* Wrapper holds rotation so the scaleX burst isn't overridden by
- * an inline transform (that bug silently killed the streak animation). */
-const ImpactLineWrap = styled.div`
+/* Thin gold-leaf hairline — ceremony accent, not a fat arcade brush. */
+const HakkiyoiRule = styled.div`
   position: absolute;
-  top: ${ANNOUNCE_Y};
+  top: calc(${ANNOUNCE_Y} + clamp(18px, 2.8cqh, 34px));
   left: 50%;
-  width: clamp(240px, 34cqw, 420px);
-  height: clamp(2px, 0.25cqh, 4px);
-  margin-left: calc(-0.5 * clamp(240px, 34cqw, 420px));
-  margin-top: ${(p) => p.$yOffset || "0px"};
+  transform: translateX(-50%);
+  width: clamp(140px, 22cqw, 280px);
+  height: 1.5px;
   pointer-events: none;
   z-index: 1003;
-  transform: rotate(${(p) => p.$rotation || 0}deg);
-  transform-origin: center center;
-
-  @media (max-width: 900px) {
-    width: clamp(190px, 30cqw, 320px);
-    margin-left: calc(-0.5 * clamp(190px, 30cqw, 320px));
-  }
-  @media (max-width: 600px) {
-    width: clamp(140px, 28cqw, 220px);
-    margin-left: calc(-0.5 * clamp(140px, 28cqw, 220px));
-  }
-`;
-
-const ImpactLine = styled.div`
-  width: 100%;
-  height: 100%;
-  opacity: 0;
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 215, 0, 0.12) 12%,
-    rgba(255, 215, 0, 0.6) 32%,
-    #fff6d8 50%,
-    rgba(255, 215, 0, 0.6) 68%,
-    rgba(255, 215, 0, 0.12) 88%,
+    rgba(232, 197, 71, 0.25) 18%,
+    rgba(232, 197, 71, 0.85) 50%,
+    rgba(232, 197, 71, 0.25) 82%,
     transparent 100%
   );
-  transform-origin: center center;
-  animation: ${impactBurst} 0.45s ease-out forwards;
-  animation-delay: ${(p) => p.$delay || "0.04s"};
-  filter: blur(0.4px);
-`;
-
-/* Broad ceremonial brush under the call — ties it into the stage presentation */
-const HakkiyoiBrush = styled.div`
-  position: absolute;
-  top: calc(${ANNOUNCE_Y} + clamp(22px, 3.5cqh, 44px));
-  left: 50%;
-  transform: translateX(-50%) rotate(-0.5deg);
-  width: clamp(260px, 40cqw, 540px);
-  height: clamp(8px, 1.1cqh, 15px);
-  pointer-events: none;
-  z-index: 1003;
-  border-radius: 60% 25% 45% 50% / 80% 50% 40% 65%;
-  filter: blur(0.8px);
-
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 215, 0, 0.12) 7%,
-    rgba(255, 215, 0, 0.42) 22%,
-    rgba(255, 215, 0, 0.74) 44%,
-    rgba(255, 215, 0, 0.78) 52%,
-    rgba(255, 215, 0, 0.48) 72%,
-    rgba(255, 215, 0, 0.14) 92%,
-    transparent
-  );
-
   animation: ${brushReveal} ${(p) => p.$duration} ease-out forwards;
 
-  @media (max-width: 900px) {
-    width: clamp(210px, 36cqw, 410px);
-  }
   @media (max-width: 600px) {
-    width: clamp(170px, 34cqw, 320px);
+    width: clamp(110px, 28cqw, 200px);
+    top: calc(${ANNOUNCE_Y} + clamp(14px, 2.4cqh, 26px));
   }
 `;
 
-/* Main HAKKIYOI text — solid gold, thick outline, heavy shadows = very readable */
+/*
+ * HAKKI-YOI — gold leaf ceremony, not cream (too quiet) and not the old
+ * arcade recipe (gold + vermillion stroke + hard 3D shelf).
+ * Fill = warm leaf gold. Stroke = thin sumi ink. Seat = soft depth only.
+ */
 const HakkiyoiText = styled.div`
   position: absolute;
   top: ${ANNOUNCE_Y};
@@ -270,117 +191,63 @@ const HakkiyoiText = styled.div`
   z-index: 1004;
   pointer-events: none;
 
-  font-family: "Bungee", "Impact", sans-serif;
-  font-size: clamp(2.2rem, 6.5cqw, 5.8rem);
+  font-family: ${FONT_DISPLAY}, "Impact", sans-serif;
+  font-size: clamp(2.1rem, 6cqw, 5.4rem);
   font-weight: 400;
   line-height: 1;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.11em;
   text-transform: uppercase;
   white-space: nowrap;
 
-  color: #ffd700;
-  -webkit-text-stroke: clamp(1.5px, 0.25cqw, 3px) #3d0e0e;
+  color: #f0d56a;
+  -webkit-text-stroke: clamp(1.2px, 0.17cqw, 2.1px) rgba(18, 12, 6, 0.92);
 
-  /* The gold halo glow that used to live here as the first two
-   * shadows (0 0 8px gold @ 0.6, 0 0 20px gold @ 0.3) is removed.
-   * Two stacked gold blur halos around bright gold text on a dark
-   * vignette is the canonical AI-generated fighting-game intro
-   * fingerprint — every templated render uses this exact recipe.
-   * The hard sumi stencil stroke + the hard offset shadow stack
-   * below it already do the broadcast-callout work; the halo was
-   * pure AI-tell noise on top of it. */
   text-shadow:
-    clamp(3px, 0.24cqw, 6px) clamp(3px, 0.24cqw, 6px) 0 #200404,
-    5px 5px 0 rgba(20, 4, 4, 0.7),
-    7px 7px 0 rgba(20, 4, 4, 0.4),
-    0 2px 8px rgba(0, 0, 0, 0.8);
+    0 1px 0 rgba(255, 244, 200, 0.35),
+    0 2px 0 rgba(120, 78, 12, 0.55),
+    0 3px 10px rgba(0, 0, 0, 0.65),
+    0 0 18px rgba(232, 197, 71, 0.22);
 
-  /* Sharp out-expo decel so the scale snaps to 1.0 without rebounding
-     past it — the "weighted impact" curve. See slamIn keyframes
-     comment for the full motion rationale. */
   animation: ${css`
       ${slamIn}`} ${(p) => p.$duration} cubic-bezier(0.16, 1, 0.3, 1)
     forwards;
 
   @media (max-width: 900px) {
-    font-size: clamp(1.8rem, 5.6cqw, 4.2rem);
-    letter-spacing: 0.08em;
+    font-size: clamp(1.7rem, 5.2cqw, 4rem);
+    letter-spacing: 0.09em;
   }
   @media (max-width: 600px) {
-    font-size: clamp(1.4rem, 5cqw, 3rem);
-    letter-spacing: 0.06em;
+    font-size: clamp(1.35rem, 4.8cqw, 2.8rem);
+    letter-spacing: 0.07em;
   }
 `;
 
-/* Japanese subtitle 八卦良い — below the brush, not overlapping it */
+/* Japanese subtitle — matching leaf gold, quieter than the roman. */
 const HakkiyoiKanji = styled.div`
   position: absolute;
-  top: calc(${ANNOUNCE_Y} + clamp(42px, 6.5cqh, 72px));
+  top: calc(${ANNOUNCE_Y} + clamp(30px, 4.6cqh, 52px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 1004;
   pointer-events: none;
 
-  font-family: "Noto Serif JP", "Yu Mincho", serif;
-  font-size: clamp(0.8rem, 1.7cqw, 1.4rem);
-  color: rgba(244, 220, 138, 0.92);
-  letter-spacing: 0.35em;
+  font-family: ${FONT_KANJI};
+  font-size: clamp(0.72rem, 1.45cqw, 1.15rem);
+  color: rgba(240, 213, 106, 0.88);
+  letter-spacing: 0.4em;
+  text-indent: 0.4em;
   opacity: 0;
   animation: ${fadeIO} ${(p) => p.$duration} ease-out forwards;
-  animation-delay: 0.14s;
+  animation-delay: 0.12s;
 
-  text-shadow:
-    0 0 10px rgba(212, 175, 55, 0.22),
-    1px 1px 2px rgba(0, 0, 0, 0.9);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
 
   @media (max-width: 600px) {
-    font-size: clamp(0.65rem, 1.5cqw, 1rem);
-    letter-spacing: 0.25em;
-    top: calc(${ANNOUNCE_Y} + clamp(34px, 5.5cqh, 58px));
+    font-size: clamp(0.58rem, 1.3cqw, 0.9rem);
+    letter-spacing: 0.28em;
+    text-indent: 0.28em;
+    top: calc(${ANNOUNCE_Y} + clamp(24px, 4cqh, 42px));
   }
-`;
-
-/* Sumi-ink flecks beside the brushstroke.
- *
- * Replaces the previous "5 floating ice crystals that drift up, rotate,
- * and fade out" particle system. That particle system was THE textbook
- * AI-UI fighting-game fingerprint — floating motes that radiate from
- * text on impact. Every AI-generated fighting game intro has them, and
- * they pull the design straight into the "generic templated render"
- * category the rest of this game's UI works hard to stay out of.
- *
- * What we want instead: the brush already exists below the text as a
- * hand-painted gold band. A real hand-painted brushstroke flicks small
- * ink flecks at its endpoints — that's a physical fact of bristle on
- * paper, not a stylization. So we add two anchored gold flecks that
- * APPEAR (clip-reveal in) at the brush endpoints, settle, and fade
- * with the call. They never drift, never rotate, never animate after
- * landing. Hand-made, not particle-system. Two flecks total — anything
- * more starts to look intentional in the wrong way. */
-const InkFleck = styled.div`
-  position: absolute;
-  top: calc(${ANNOUNCE_Y} + clamp(20px, 3.3cqh, 42px));
-  left: 50%;
-  pointer-events: none;
-  z-index: 1003;
-  width: ${(p) => p.$size};
-  height: calc(${(p) => p.$size} * 0.55);
-  /* Irregular blob shape via asymmetric border-radius — the same
-     technique HakkiyoiBrush uses to read as a hand-painted shape
-     rather than a div. Mirrored per side via two corner sets. */
-  border-radius: ${(p) =>
-    p.$side === "left"
-      ? "60% 20% 50% 80% / 70% 30% 60% 40%"
-      : "20% 60% 80% 40% / 30% 70% 40% 60%"};
-  margin-left: ${(p) => p.$offsetX};
-  background: rgba(255, 215, 0, ${(p) => p.$alpha});
-  filter: blur(0.5px);
-
-  /* Brush-reveal in, settle, brush-reveal out — same beat as the
-     HakkiyoiBrush itself so the flecks read as part of the same
-     brushstroke event. */
-  animation: ${brushReveal} ${(p) => p.$duration} ease-out forwards;
-  animation-delay: ${(p) => p.$delay};
 `;
 
 // ============================================
@@ -395,7 +262,7 @@ const TeWoTsuiteText = styled.div`
   z-index: 1004;
   pointer-events: none;
 
-  font-family: "Bungee", "Impact", sans-serif;
+  font-family: ${FONT_DISPLAY}, "Impact", sans-serif;
   font-size: clamp(1.65rem, 5cqw, 4.4rem);
   font-weight: 400;
   line-height: 1;
@@ -403,7 +270,7 @@ const TeWoTsuiteText = styled.div`
   text-transform: uppercase;
   white-space: nowrap;
 
-  color: #ffffff;
+  color: ${C.cream};
   -webkit-text-stroke: clamp(1.5px, 0.2cqw, 2.5px) rgba(10, 10, 10, 0.85);
 
   text-shadow:
@@ -443,9 +310,9 @@ const TeWoBrush = styled.div`
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.1) 15%,
-    rgba(255, 255, 255, 0.2) 50%,
-    rgba(255, 255, 255, 0.1) 85%,
+    rgba(245, 236, 217, 0.1) 15%,
+    rgba(245, 236, 217, 0.22) 50%,
+    rgba(245, 236, 217, 0.1) 85%,
     transparent 100%
   );
 
@@ -470,10 +337,10 @@ const TeWoKanji = styled.div`
   z-index: 1004;
   pointer-events: none;
 
-  font-family: "Noto Serif JP", "Yu Mincho", serif;
+  font-family: ${FONT_KANJI};
   font-size: clamp(0.65rem, 1.3cqw, 1.05rem);
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(245, 236, 217, 0.78);
   letter-spacing: 0.3em;
   opacity: 0;
   animation: ${fadeIO} ${(p) => p.$duration} ease-out forwards;
@@ -495,57 +362,15 @@ const SumoGameAnnouncement = ({ type = "hakkiyoi", duration = null }) => {
   const actualDuration = duration || (type === "hakkiyoi" ? 1.8 : 2);
   const durationStr = `${actualDuration}s`;
 
-  // Impact line angles (HAKKIYOI)
-  const impactLines = useMemo(
-    () => [
-      { rotation: -8, delay: "0.04s", yOffset: "clamp(-4px, -0.45cqh, -7px)" },
-      { rotation: 8, delay: "0.08s", yOffset: "clamp(4px, 0.45cqh, 7px)" },
-      { rotation: 0, delay: "0.12s", yOffset: "clamp(16px, 2.2cqh, 26px)" },
-    ],
-    [],
-  );
-
   // ─── HAKKIYOI ───
   if (type === "hakkiyoi") {
     return (
       <>
         <ScreenFlash $type="hakkiyoi" />
-
         <DarkVignette $duration={durationStr} />
-        {impactLines.map((line, i) => (
-          <ImpactLineWrap
-            key={i}
-            $rotation={line.rotation}
-            $yOffset={line.yOffset}
-          >
-            <ImpactLine $delay={line.delay} />
-          </ImpactLineWrap>
-        ))}
-
         <HakkiyoiText $duration={durationStr}>HAKKI-YOI!</HakkiyoiText>
-        <HakkiyoiBrush $duration={durationStr} />
+        <HakkiyoiRule $duration={durationStr} aria-hidden />
         <HakkiyoiKanji $duration={durationStr}>八卦良い</HakkiyoiKanji>
-
-        {/* Two anchored gold ink flecks at the brush endpoints. See
-            InkFleck comment for why this replaced the ice-crystal
-            particle system. Positions deliberately asymmetric — a
-            real brushstroke doesn't flick evenly. */}
-        <InkFleck
-          $side="left"
-          $size="clamp(7px, 1.05cqw, 13px)"
-          $offsetX="clamp(-180px, -22cqw, -130px)"
-          $alpha={0.55}
-          $duration={durationStr}
-          $delay="0.08s"
-        />
-        <InkFleck
-          $side="right"
-          $size="clamp(5px, 0.85cqw, 10px)"
-          $offsetX="clamp(130px, 22cqw, 180px)"
-          $alpha={0.42}
-          $duration={durationStr}
-          $delay="0.14s"
-        />
       </>
     );
   }

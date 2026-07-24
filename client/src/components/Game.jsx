@@ -33,6 +33,7 @@ import {
   registerLocalKeyState,
   unregisterLocalKeyState,
   setLocalGameActive,
+  getLocalKeyState,
 } from "../prediction/localInput";
 import { getServerOffset, isServerClockSynced } from "../lib/serverClock";
 // import gameMusic from "../sounds/game-music.mp3";
@@ -806,6 +807,22 @@ const Game = ({
       // round opens = eaten opening moves. It now runs on `power_ups_revealed`
       // (below) — the dead window ~5s before the round — so sprites are already
       // hot when the round starts, with no collision with live input.
+
+      // Re-send the current held-key snapshot at HAKKIYOI. Input emits are
+      // edge-only, so a forward hold that started during ready never produces
+      // a post-start packet — the server would stay rooted until release+press.
+      // Server also buffers A/D; this is the client-side belt-and-suspenders.
+      const keys = getLocalKeyState();
+      if (keys && socket?.connected) {
+        const clientSynced = isServerClockSynced();
+        socket.emit("fighter_action", {
+          id: socket.id,
+          keys: { ...keys },
+          events: [],
+          clientSynced,
+          clientOffset: clientSynced ? getServerOffset() : 0,
+        });
+      }
     };
 
     // Re-warm the fighter sprites during the power-up REVEAL (a dead, non-input
@@ -992,12 +1009,24 @@ const Game = ({
             showPreMatchScreen ? " is-prematch-hidden" : ""
           }`}
         ></div>
+        {/* Ring props — gyoji + salt baskets. Camera-synced like .game-actors,
+            but below side callouts so combat banners paint over the dressing. */}
+        <div id="game-ring-props" className="game-ring-props"></div>
+        {/* Side combat callout host — SumoAnnouncementBanner portals here so
+            COUNTER HIT / PUNISH / PERFECT / clinch plaques sit OVER ring props
+            and UNDER the wrestlers. Center announcements still target #game-hud. */}
+        <div
+          id="game-hud-callouts"
+          className={`game-hud-callouts${
+            showPreMatchScreen ? " is-prematch-hidden" : ""
+          }`}
+        ></div>
         {/* Actors layer — the wrestlers + their particles. A SECOND camera layer
             that reuses the inherited --cam-* transform (perfect sync with
-            .game-scene) but sits above the player-info HUD so flight is never
-            covered by the UI. ParticleProvider lives here so VFX track the
-            players; the in-HUD portals (UiPlayerInfo, announcements) still target
-            #game-hud-info / #game-hud by id regardless of tree position. */}
+            .game-scene) but sits above the player-info HUD, ring props, and
+            side callouts so flight is never covered by the UI. ParticleProvider
+            lives here so VFX track the players; HUD portals still target
+            #game-hud-info / #game-hud-callouts / #game-hud by id. */}
         <div className="game-actors">
           <ParticleProvider behindCanvasRef={sceneBehindCanvasRef}>
             <div
@@ -1005,6 +1034,10 @@ const Game = ({
                 showPreMatchScreen ? " is-prematch-hidden" : ""
               }`}
             >
+              {/* Ice-disc clip host — GameFighter portals IceReflection here so
+                  reflections can only exist on the blue elliptical ice. Lives
+                  inside .ui so prematch hide applies and coords stay 1:1. */}
+              <div className="ice-reflection-clip" aria-hidden="true" />
               {currentRoom.players
                 .filter((player) => player.id !== "disconnected_placeholder")
                 .map((player, i) => {

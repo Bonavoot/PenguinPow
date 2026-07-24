@@ -1,7 +1,7 @@
 import PropTypes from "prop-types";
 import React from "react";
 import styled from "styled-components";
-import { FONT_DISPLAY } from "./menuTheme";
+import { C, FONT_DISPLAY } from "./menuTheme";
 
 /*
  * BashoDayHud — bare center numerals for an in-progress honbasho bout.
@@ -19,10 +19,10 @@ const DayStack = styled.div`
 const DayNum = styled.div`
   font-family: ${FONT_DISPLAY};
   font-size: clamp(24px, 4cqw, 56px);
-  color: #f3ede2;
+  color: ${C.cream};
   -webkit-text-stroke: clamp(1.4px, 0.18cqw, 2.75px) rgba(0, 0, 0, 0.9);
   text-shadow:
-    0 0 12px rgba(243, 237, 226, 0.16),
+    0 0 12px rgba(245, 236, 217, 0.14),
     0 3px 10px rgba(0, 0, 0, 0.95);
   line-height: 1;
   user-select: none;
@@ -33,7 +33,7 @@ const DayNum = styled.div`
 const DayLabel = styled.div`
   font-family: ${FONT_DISPLAY};
   font-size: clamp(7px, 0.9cqw, 12px);
-  color: rgba(232, 197, 71, 0.78);
+  color: rgba(232, 197, 71, 0.82);
   text-transform: uppercase;
   letter-spacing: 0.24em;
   text-indent: 0.24em;

@@ -2,22 +2,20 @@ import PropTypes from "prop-types";
 import { useEffect, useRef } from "react";
 import styled, { keyframes, css } from "styled-components";
 import { drawBalanceGauge } from "./balanceGaugeDraw";
-import { C } from "./menuTheme";
+import { C, FONT_DISPLAY, FONT_KANJI } from "./menuTheme";
 
-const GAUGE_HEIGHT = "clamp(16px, 2.2cqh, 22px)";
+/* Compact secondary meter — stamina stays the hero. */
+const GAUGE_HEIGHT = "clamp(14px, 1.9cqh, 18px)";
 
-/* MASTERY Phase 5 (5.2): broken-posture HUD pulse — a vermillion glow that
- * breathes while posture is broken, so the "openable" tell reads on the bar as
- * well as on the fighter. Only applied when the `broken` prop is set (which the
- * HUD gates behind the phase flag), so with the flag off the bar is unchanged. */
+/* MASTERY Phase 5 (5.2): broken-posture HUD pulse. */
 const posturePulse = keyframes`
   0%, 100% {
     filter: drop-shadow(0 0 2px rgba(226, 74, 42, 0.55));
     transform: scale(1);
   }
   50% {
-    filter: drop-shadow(0 0 7px rgba(255, 96, 64, 0.95));
-    transform: scale(1.045);
+    filter: drop-shadow(0 0 6px rgba(255, 96, 64, 0.9));
+    transform: scale(1.03);
   }
 `;
 
@@ -49,20 +47,17 @@ const BalLabel = styled.div`
   display: flex;
   align-items: center;
   height: ${GAUGE_HEIGHT};
-  font-family: "Bungee", cursive;
-  font-size: clamp(7px, 0.82cqw, 10px);
-  color: rgba(245, 236, 217, 0.78);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(7px, 0.78cqw, 9.5px);
+  color: rgba(245, 236, 217, 0.72);
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  /* Cancel trailing letter-spacing so the gap to the bar stays even. */
   margin-inline-end: -0.1em;
   line-height: 1;
-  /* Bungee caps sit optically high in the em-box vs the painted track. */
-  transform: translateY(1px);
+  transform: translateY(0.5px);
   text-shadow:
     0 0 8px rgba(0, 0, 0, 0.75),
-    1px 1px 2px rgba(0, 0, 0, 1),
-    0 0 2px rgba(0, 0, 0, 1);
+    1px 1px 2px rgba(0, 0, 0, 1);
   user-select: none;
   pointer-events: none;
 `;
@@ -76,25 +71,18 @@ const Strip = styled.div`
   flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
 `;
 
-/* Deep Grip chip lands with a small stamp settle so the state change reads
- * as an EARNED event, then sits still (labeled permanently) while active. */
 const gripStamp = keyframes`
   0%   { opacity: 0; transform: translateY(-2px) scale(0.7); }
   60%  { opacity: 1; transform: translateY(0)    scale(1.08); }
   100% { opacity: 1; transform: translateY(0)    scale(1); }
 `;
 
-/* Slow breath so the chip stays alive without strobing. */
 const gripBreath = keyframes`
   0%, 100% { filter: brightness(1);    }
   50%      { filter: brightness(1.16); }
 `;
 
-/* Floating state chip pinned just BELOW the gauge (out of the stamina
- * bar's way), hugging the center-screen edge (there's open space there;
- * the outer edge holds BASHO boons). Two variants:
- *   hold   → gold "DEEP GRIP": you earned it, your throws land at 60.
- *   threat → amber "EXPOSED": opponent holds it, you're throwable at 60. */
+/* Below the gauge, toward center — outer half is reserved for BASHO boons. */
 const DeepGripChip = styled.div`
   position: absolute;
   top: calc(100% + clamp(2px, 0.3cqh, 4px));
@@ -104,7 +92,7 @@ const DeepGripChip = styled.div`
   gap: clamp(2px, 0.3cqw, 4px);
   padding: clamp(1px, 0.2cqh, 3px) clamp(4px, 0.6cqw, 8px);
   border-radius: 2px;
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_DISPLAY};
   font-size: clamp(6.5px, 0.78cqw, 9.5px);
   letter-spacing: 0.12em;
   line-height: 1;
@@ -139,7 +127,7 @@ const DeepGripChip = styled.div`
 `;
 
 const GripKanji = styled.span`
-  font-family: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  font-family: ${FONT_KANJI};
   font-weight: 900;
   font-size: 1.25em;
   line-height: 1;
@@ -156,12 +144,8 @@ function getCanvasDpr() {
  * @param {boolean} [props.isRight]
  * @param {boolean} [props.danger]
  * @param {number} [props.gainKey]
- * @param {boolean} [props.deepGripThreat] — true when the OPPONENT holds
- *   Deep Grip (this player's throw land line rises to 60, gauge shows the
- *   grip gate + "EXPOSED" chip). Hidden otherwise.
- * @param {boolean} [props.deepGripHold] — true when THIS player holds Deep
- *   Grip (shows the offensive "DEEP GRIP" chip). Doesn't change this
- *   player's own throw threshold — it's their advantage over the opponent.
+ * @param {boolean} [props.deepGripThreat]
+ * @param {boolean} [props.deepGripHold]
  */
 const BalanceGauge = ({
   balance = 100,
@@ -228,8 +212,6 @@ const BalanceGauge = ({
       const dt = 0.18;
       st.displayBalance += (st.targetBalance - st.displayBalance) * dt;
 
-      // Deep Grip install eases a bit snappier than balance so the gate
-      // slide feels earned when the grip lands, not sluggish.
       const dgDt = 0.22;
       st.deepGripT += (st.targetDeepGrip - st.deepGripT) * dgDt;
       if (Math.abs(st.targetDeepGrip - st.deepGripT) < 0.004) {
@@ -267,7 +249,6 @@ const BalanceGauge = ({
     };
   }, [isRight, danger]);
 
-  // Hold wins if (somehow) both are set — you're the one with the advantage.
   const gripMode = deepGripHold ? "hold" : deepGripThreat ? "threat" : null;
 
   return (

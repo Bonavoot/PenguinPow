@@ -431,7 +431,7 @@ const CROWD_TYPES = [
   { idle: crowdBoyIdle2, cheering: crowdBoyCheering2, sizeMultiplier: 1, yOffsetRatio: 0, weight: 0 }, // retired: red hat
   { idle: crowdBoyIdle3, cheering: crowdBoyCheering3, sizeMultiplier: 1, yOffsetRatio: 0, weight: 0 }, // retired: yellow hat
   { idle: crowdGirlIdle1, cheering: crowdGirlCheering1, sizeMultiplier: 1, yOffsetRatio: 0, weight: 3 },
-  { idle: crowdGeishaIdle1, cheering: crowdGeishaCheering1, sizeMultiplier: 1, yOffsetRatio: 0, weight: 1 },
+  { idle: crowdGeishaIdle1, cheering: crowdGeishaCheering1, sizeMultiplier: 1, yOffsetRatio: 0, weight: 0.08 },
   { idle: crowdSalarymanIdle1, cheering: crowdSalarymanCheering1, sizeMultiplier: 1, yOffsetRatio: 0, weight: 3 },
   { idle: crowdSalarymanIdle2, cheering: crowdSalarymanCheering2, sizeMultiplier: 1, yOffsetRatio: 0, weight: 3 },
   { idle: crowdOldmanIdle1, cheering: crowdOldmanCheering1, sizeMultiplier: 1, yOffsetRatio: 0, weight: 1.5 },
@@ -459,7 +459,27 @@ const generateCrowdPositions = () => {
 
 const CROWD_STORAGE_KEY = "penguin-pow-crowd-positions";
 const CROWD_VERSION_KEY = "penguin-pow-crowd-version";
-const CURRENT_CROWD_VERSION = 7;
+const CURRENT_CROWD_VERSION = 9;
+
+// Side-profile seats (plus the two ringside oyakata). Art is drawn facing one
+// way; CSS `flip` mirrors it. Keep everyone looking toward the ring center.
+const SIDE_CROWD_TYPE_INDICES = new Set([8, 11, 12, 13, 14, 15, 16, 17]);
+/** Side types whose PNG faces right; all other side types face left. */
+const SIDE_CROWD_NATIVE_RIGHT = new Set([8, 12, 15, 16]);
+
+/** `flip` so a side spectator at `x` looks toward the dohyo (x=50). */
+const sideCrowdFlipTowardRing = (typeIndex, x) => {
+  const nativeRight = SIDE_CROWD_NATIVE_RIGHT.has(typeIndex);
+  const onLeft = x < 50;
+  return nativeRight !== onLeft;
+};
+
+const correctSideCrowdFacing = (positions) =>
+  positions.map((m) => {
+    if (!SIDE_CROWD_TYPE_INDICES.has(m.typeIndex)) return m;
+    const flip = sideCrowdFlipTowardRing(m.typeIndex, m.x);
+    return m.flip === flip ? m : { ...m, flip };
+  });
 
 const loadCrowdPositions = () => {
   const saved = localStorage.getItem(CROWD_STORAGE_KEY);
@@ -540,8 +560,8 @@ const loadCrowdPositions = () => {
       const newSideMembers = [
         { typeIndex: 13, flip: false, x: 15 },
         { typeIndex: 13, flip: true,  x: 20 },
-        { typeIndex: 14, flip: false, x: 27 },
-        { typeIndex: 14, flip: true,  x: 32 },
+        { typeIndex: 15, flip: false, x: 27 },
+        { typeIndex: 15, flip: true,  x: 32 },
         { typeIndex: 15, flip: false, x: 39 },
         { typeIndex: 15, flip: true,  x: 44 },
         { typeIndex: 16, flip: false, x: 51 },
@@ -565,35 +585,100 @@ const loadCrowdPositions = () => {
         });
       });
       localStorage.setItem(CROWD_STORAGE_KEY, JSON.stringify(parsed));
+      localStorage.setItem(CROWD_VERSION_KEY, "7");
+    }
+
+    if (version < 8) {
+      // Migration v7→v8: fixed side-geisha seats (typeIndex 14) always showed
+      // regardless of geisha weight. Remap them to other side types.
+      const sideAlternates = [13, 15, 16, 17, 12];
+      parsed = parsed.map((m) => {
+        if (m.typeIndex !== 14) return m;
+        const alt = sideAlternates[((m.id * 7) >>> 0) % sideAlternates.length];
+        return { ...m, typeIndex: alt };
+      });
+      localStorage.setItem(CROWD_STORAGE_KEY, JSON.stringify(parsed));
+      localStorage.setItem(CROWD_VERSION_KEY, "8");
+    }
+
+    if (version < 9) {
+      // Migration v8→v9: a couple right-side seats had flip=false on
+      // right-facing art, so they looked away from the ring.
+      parsed = correctSideCrowdFacing(parsed);
+      localStorage.setItem(CROWD_STORAGE_KEY, JSON.stringify(parsed));
       localStorage.setItem(CROWD_VERSION_KEY, String(CURRENT_CROWD_VERSION));
     }
 
-    return parsed;
+    return correctSideCrowdFacing(parsed);
   } catch (_) {
     localStorage.setItem(CROWD_VERSION_KEY, String(CURRENT_CROWD_VERSION));
     return generateCrowdPositions();
   }
 };
 
+// Spatial neighborhood for anti-clumping (CSS % coords). Same type is avoided
+// among seats that sit roughly beside / in the adjacent row.
+const CROWD_NEIGHBOR_X = 5.5;
+const CROWD_NEIGHBOR_Y = 6.5;
+
+const FULL_CROWD_WEIGHT = () => CROWD_TYPES.reduce((sum, t) => sum + t.weight, 0);
+
+const rollCrowdTypeFromFullPool = () => {
+  let roll = Math.random() * FULL_CROWD_WEIGHT();
+  for (let i = 0; i < CROWD_TYPES.length; i++) {
+    roll -= CROWD_TYPES[i].weight;
+    if (roll <= 0) return i;
+  }
+  return 0;
+};
+
+// Soft anti-clump: keep base rarity intact. Hard-excluding neighbors was
+// inflating rare types (geisha) whenever common neighbors filled the ring.
+const pickWeightedCrowdType = (excludeTypes) => {
+  const attempts = 10;
+  for (let n = 0; n < attempts; n++) {
+    const pick = rollCrowdTypeFromFullPool();
+    if (!excludeTypes.has(pick) || n === attempts - 1) return pick;
+  }
+  return 0;
+};
+
 // Re-roll typeIndex for regular crowd members (weight > 0) each session.
 // Special characters like oyakata (weight === 0) keep their assigned type.
 // Retired hat variants are always remapped even though their weight is 0.
 // Preserves the visual size/position by swapping type multipliers.
+// Assigns row-wise (bottom→top, left→right) and skips types already used by
+// nearby seats so the same sprite doesn't tile in clumps.
 const randomizeCrowdTypes = (positions) => {
-  const totalWeight = CROWD_TYPES.reduce((sum, t) => sum + t.weight, 0);
+  const resultById = new Map();
+  const assigned = []; // { id, x, y, typeIndex } for neighbor queries
 
-  return positions.map(m => {
+  const assignable = [];
+  positions.forEach((m) => {
     const currentType = CROWD_TYPES[m.typeIndex];
     const isRetired = RETIRED_CROWD_TYPE_INDICES.has(m.typeIndex);
-    if (!isRetired && (!currentType || currentType.weight === 0)) return m;
+    if (!isRetired && (!currentType || currentType.weight === 0)) {
+      resultById.set(m.id, m);
+      return;
+    }
+    assignable.push(m);
+  });
 
-    let roll = Math.random() * totalWeight;
-    let newTypeIndex = 0;
-    for (let i = 0; i < CROWD_TYPES.length; i++) {
-      roll -= CROWD_TYPES[i].weight;
-      if (roll <= 0) { newTypeIndex = i; break; }
+  assignable.sort((a, b) => (a.y - b.y) || (a.x - b.x));
+
+  for (const m of assignable) {
+    const currentType = CROWD_TYPES[m.typeIndex];
+    const exclude = new Set();
+    for (const n of assigned) {
+      if (
+        Math.abs(n.x - m.x) <= CROWD_NEIGHBOR_X &&
+        Math.abs(n.y - m.y) <= CROWD_NEIGHBOR_Y
+      ) {
+        exclude.add(n.typeIndex);
+      }
     }
 
+    const newTypeIndex = pickWeightedCrowdType(exclude);
     const newType = CROWD_TYPES[newTypeIndex];
     const oldMult = m.sizeMultiplier || currentType?.sizeMultiplier || 1;
     const oldYOR = m.yOffsetRatio || currentType?.yOffsetRatio || 0;
@@ -605,7 +690,7 @@ const randomizeCrowdTypes = (positions) => {
     const newSize = rawSize * newMult;
     const newY = rawY + newSize * newYOR;
 
-    return {
+    const next = {
       ...m,
       typeIndex: newTypeIndex,
       size: newSize,
@@ -614,7 +699,11 @@ const randomizeCrowdTypes = (positions) => {
       yOffsetRatio: newYOR,
       flip: Math.random() > 0.5,
     };
-  });
+    resultById.set(m.id, next);
+    assigned.push({ id: m.id, x: next.x, y: next.y, typeIndex: newTypeIndex });
+  }
+
+  return positions.map((m) => resultById.get(m.id) || m);
 };
 
 // Thin the stands for early BASHO ranks. VIP / fixed seats (weight === 0) stay;
@@ -633,7 +722,11 @@ const applyCrowdFill = (positions, fill) => {
 
 const buildCrowd = (bashoRank = null) => {
   const fill = bashoRank ? bashoCrowdFill(bashoRank) : 1;
-  return applyCrowdFill(randomizeCrowdTypes(loadCrowdPositions()), fill);
+  // Re-assert ringward facing after load/randomize — side seats are weight-0
+  // so types stick, but editor / old saves can still store a bad flip.
+  return correctSideCrowdFacing(
+    applyCrowdFill(randomizeCrowdTypes(loadCrowdPositions()), fill)
+  );
 };
 
 const CHEER_DURATION_MS = 3500;

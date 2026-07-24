@@ -470,10 +470,11 @@ export const StyledImage = styled("img")
       // during a grab). $grabArmLayer carries the resolved z (facing decides
       // which of the two arms wins). Still sinks with the body when outside the
       // ring, so fall through to the normal formula (→ 0) in that case.
-      // Slap victim sinks under the attacker so the slap arm reads on top.
-      // Gated on lastHitType==="slap" (set only by processHit slap connects) —
-      // slap parry never sets isHit, so clashes stay equal-layer. Throws that
-      // reuse isHit without clearing lastHitType are excluded via isBeingThrown.
+      // Strike layering:
+      //  • Extending slap/palm attacker rises above the opponent so the limb
+      //    paints on top even before hit-confirm (no separate arm art yet).
+      //  • Strike victim sinks under so the limb stays readable on connect.
+      // Parry never sets isHit — defense stays equal-layer.
       zIndex: props.$grabArmLayer && !isOutsideDohyo(props.$x, props.$y)
         ? props.$grabArmLayer
         : props.$isClinchKillPullVictim
@@ -487,9 +488,14 @@ export const StyledImage = styled("img")
         : props.$isThrowing || props.$isDodging || props.$isGrabbing
         ? 98
         : props.$isHit &&
-          props.$lastHitType === "slap" &&
+          (props.$lastHitType === "slap" ||
+            props.$lastHitType === "charged" ||
+            props.$lastHitType === "flap" ||
+            props.$lastHitType === "lowKick") &&
           !props.$isBeingThrown
         ? 97
+        : props.$isStrikeExtending
+        ? 100
         : 99,
       // Grab-arm overlay: NO filter. getFighterPopFilter emits an all-around
       // dark edge contour + a downward ground shadow; on a layer stacked over
@@ -568,12 +574,6 @@ export const StyledImage = styled("img")
         ? "clinchTeeterHeavy 0.95s ease-in-out infinite"
         : props.$inClinch && props.$balanceWobble
         ? "clinchTeeter 1.5s ease-in-out infinite"
-        // MASTERY Phase 2 (2.1): outside clinch, broken posture uses the same
-        // feet-pinned skew teeter as the clinch balance tell — no colored rim.
-        // Priority matches clinch wobble so the "openable" read stays on
-        // between other verbs (ropes / kill-throw / grab actions still win).
-        : props.$isPostureBroken
-        ? "postureBrokenTeeter 2.1s linear infinite"
         : props.$isHit
         ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
         : props.$isDodging
@@ -603,6 +603,35 @@ export const StyledImage = styled("img")
         ? "attackPunch 0.2s ease-out"
         : props.$isSlapAttack
         ? "slapRush 0.12s ease-in-out infinite"
+        // MASTERY Phase 2: broken-posture teeter is an IDLE tell only.
+        // It used to sit above dodge/charge and stole dashJump + chargeShake
+        // whenever balance was broken — flat dashes and silent charge holds.
+        : props.$isPostureBroken &&
+          !props.$isAttacking &&
+          !props.$isDodging &&
+          !props.$isRopeJumping &&
+          !props.$isThrowing &&
+          !props.$isGrabbing &&
+          !props.$isBeingGrabbed &&
+          !props.$isBeingPulled &&
+          !props.$isBeingPushed &&
+          !props.$isThrowTeching &&
+          !props.$isRecovering &&
+          !props.$isChargingAttack &&
+          !props.$isThrowingSalt &&
+          !props.$isThrowingSnowball &&
+          !props.$isSpawningPumoArmy &&
+          !props.$isBowing &&
+          !props.$isGrabPushing &&
+          !props.$isBeingGrabPushed &&
+          !props.$isAttemptingPull &&
+          !props.$isBeingPullReversaled &&
+          !props.$isGrabSeparating &&
+          !props.$isGrabBellyFlopping &&
+          !props.$isBeingGrabBellyFlopped &&
+          !props.$isGrabFrontalForceOut &&
+          !props.$isBeingGrabFrontalForceOut
+        ? "postureBrokenTeeter 2.1s linear infinite"
         : !props.$isAttacking &&
           !props.$isDodging &&
           !props.$isRopeJumping &&

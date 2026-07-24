@@ -409,6 +409,9 @@ function resetRoomAndPlayers(room, io) {
     player.isDead = false;
     player.stamina = 100;
     player.balance = 100;
+    // Posture tell is derived from balance each tick, but clear it explicitly
+    // so a broken-posture flag can't linger across the walk-up / HAKKIYOI.
+    player.isPostureBroken = false;
     player.isGassed = false;
     player.gassedUntil = 0;
     player.isBowing = false;
@@ -449,6 +452,7 @@ function resetRoomAndPlayers(room, io) {
     player.mouse1ConsumedUntilRelease = false;
     player.mouse1PressTime = 0;
     player.mouse1BufferedBeforeStart = false;
+    player.movementKeysBufferedBeforeStart = null;
     player.mouse1JustPressed = false;
     player.mouse1JustReleased = false;
     player.mouse2JustPressed = false;
@@ -492,6 +496,7 @@ function resetRoomAndPlayers(room, io) {
     player.isArmClamped = false;
     player.clinchThrowFailStagger = false;
     player.hasDeepGrip = false;
+    player.clinchShoveLead = null;
     player.deepGripPushStart = 0;
     player.clinchPushRampStart = 0;
     player.grabCounterAttempted = false;

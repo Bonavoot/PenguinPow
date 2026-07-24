@@ -7,19 +7,58 @@ import { isOutsideDohyo } from "../constants";
 export const SHADOW_GROUND_LEVEL = 286;
 const GROUND_LEVEL = SHADOW_GROUND_LEVEL;
 
-// Soft elliptical ground shadow — cool slate tint for ice, continuous falloff.
-// No hard contact puck: a dense center blob reads as a dark sticker on the
-// dohyo. Peak opacity stays modest; the outer layer is just ambient occlusion.
-// Exported so menu portraits (BashoHub, Lobby, PreMatch) share the same recipe.
+// Soft elliptical ground shadow — cool slate tint, continuous falloff.
+// In gameplay this oval only appears past the dohyo (off-ice). On ice,
+// IceReflection owns the ground read. UI / lobby portraits reuse
+// SHADOW_GRADIENT directly.
 export const SHADOW_GRADIENT =
   "radial-gradient(ellipse 72% 78% at 50% 52%, rgba(6,12,24,0.36) 0%, rgba(8,16,30,0.18) 45%, rgba(10,20,36,0.05) 70%, rgba(10,20,36,0) 88%), " +
   "radial-gradient(ellipse 100% 100% at 50% 52%, rgba(12,22,40,0.14) 0%, rgba(12,22,40,0.05) 52%, rgba(12,22,40,0) 82%)";
+
+/** Treat y above ground+epsilon as airborne for bottom pinning. */
+const AIRBORNE_Y_EPSILON = 4;
+
+/**
+ * Gameplay oval visibility: only when fallen off the platform (or RoundResult
+ * loser). Fighters alive against the ropes keep IceReflection (edge-clipped).
+ */
+export function playerShadowShouldShow(x, y, { forceShow = false } = {}) {
+  if (forceShow) return true;
+  return isOutsideDohyo(x, y);
+}
+
+/** Pin contact to ice while airborne over it; follow y when fallen / sidestep. */
+export function playerShadowBottomY(
+  x,
+  y,
+  { isSidestepping, isDodging, isBeingThrown, isBeingLifted, isRingOutThrowCutscene, isRopeJumping, isFlapping, isGrabStartup, isThrowing } = {}
+) {
+  // Fully off the platform — follow real y (dirt / fall).
+  if (isOutsideDohyo(x, y)) return y;
+  if (isSidestepping) return y;
+  const pinToIce =
+    isDodging ||
+    isGrabStartup ||
+    isThrowing ||
+    isBeingThrown ||
+    isBeingLifted ||
+    isRingOutThrowCutscene ||
+    isRopeJumping ||
+    isFlapping ||
+    y > GROUND_LEVEL + AIRBORNE_Y_EPSILON;
+  return pinToIce ? GROUND_LEVEL : y;
+}
+
+/** Opacity for the gameplay oval (0 when hidden / on ice). */
+export function playerShadowOpacity(x, y, { forceShow = false } = {}) {
+  return playerShadowShouldShow(x, y, { forceShow }) ? 0.55 : 0;
+}
 
 const baseStyle = {
   position: "absolute",
   borderRadius: "50%",
   pointerEvents: "none",
-  willChange: "transform, bottom, left",
+  willChange: "transform, bottom, left, opacity",
   background: SHADOW_GRADIENT,
 };
 
@@ -36,48 +75,48 @@ const PlayerShadow = memo(forwardRef(({
   isRopeJumping,
   isFlapping,
   isBeingLifted,
+  forceShow,
   width,
   height,
   offsetLeft,
   offsetRight,
 }, ref) => {
-  const sidestepping = isSidestepping;
+  const flags = {
+    isDodging,
+    isSidestepping,
+    isGrabStartup,
+    isThrowing,
+    isBeingThrown,
+    isBeingLifted,
+    isRingOutThrowCutscene,
+    isRopeJumping,
+    isFlapping,
+  };
 
-  const forceGround =
-    !sidestepping && (
-      isDodging ||
-      isGrabStartup ||
-      isThrowing ||
-      isBeingThrown ||
-      isBeingLifted ||
-      isRingOutThrowCutscene ||
-      isRopeJumping ||
-      isFlapping
-    );
-
-  // During sidestep, track the player's actual Y (the arc dip).
-  // For other forced-ground states, pin to GROUND_LEVEL.
-  const bottomY = forceGround ? GROUND_LEVEL : y;
+  const outside = isOutsideDohyo(x, y);
+  const show = playerShadowShouldShow(x, y, { forceShow });
+  const bottomY = playerShadowBottomY(x, y, flags);
+  const opacity = playerShadowOpacity(x, y, { forceShow });
 
   const txOffset = facing === -1
     ? offsetLeft || "-50%"
     : offsetRight || "-50%";
 
-  const shadowScale = sidestepping ? 1.07 : 1;
+  const shadowScale = isSidestepping ? 1.07 : 1;
 
   const style = {
     ...baseStyle,
-    // Footprint kept tight to the fighter's base — a wider default spilled the
-    // ellipse out past the sprite (readable as an oversized puck under/around
-    // the feet). Callers can still override per-state.
+    // Off-ice footprint; on ice this node stays hidden (IceReflection).
     width: width || "8.8%",
     height: height || "3.55%",
     left: `${(x / 1280) * 100}%`,
     bottom: `${(bottomY / 720) * 100 - 0.2}%`,
     transform: `translateX(${txOffset}) scale(${shadowScale})`,
     transformOrigin: "center bottom",
-    zIndex: isOutsideDohyo(x, y) ? 0 : 1,
-    opacity: sidestepping ? 0.5 : undefined,
+    zIndex: outside ? 0 : 1,
+    opacity,
+    visibility: show ? "visible" : "hidden",
+    display: show ? "block" : "none",
   };
 
   return <div ref={ref} style={style} />;
@@ -98,6 +137,7 @@ PlayerShadow.propTypes = {
   isRopeJumping: PropTypes.bool,
   isFlapping: PropTypes.bool,
   isBeingLifted: PropTypes.bool,
+  forceShow: PropTypes.bool,
   width: PropTypes.string,
   height: PropTypes.string,
   offsetLeft: PropTypes.string,

@@ -564,6 +564,9 @@ function updateGrabActions(player, room, io, delta, rooms) {
         targetX: opponent.x,
         type: "mutual",
         direction: 0,
+        // Midpoint seam at clinch attach spacing — same contact rail as strikes.
+        contactX: (player.x + opponent.x) / 2,
+        contactY: player.y,
       });
 
       player.clinchStalemateStart = now;
@@ -648,6 +651,8 @@ function updateGrabActions(player, room, io, delta, rooms) {
       targetX: target.x,
       type: "single",
       direction: pushDir,
+      contactX: (jolter.x + target.x) / 2,
+      contactY: jolter.y,
     });
 
     // Stalemate reset
@@ -1571,20 +1576,29 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     target.inputLockUntil = Math.max(target.inputLockUntil || 0, lockUntil);
     actor.inputLockUntil = Math.max(actor.inputLockUntil || 0, lockUntil);
 
-    if (isBoundaryPull) {
-      if (!actor.atTheRopesFacingDirection) {
-        actor.facing = actorTweenTargetX < targetX ? -1 : 1;
-      }
-      if (!target.atTheRopesFacingDirection) {
-        target.facing = targetX < actorTweenTargetX ? -1 : 1;
-      }
-    } else {
-      correctFacingAfterGrabOrThrow(actor, target);
+    // Face using post-pull destinations — the victim switches sides during the
+    // tween, so correcting from current X leaves both facing away after the yank.
+    // (Tween end also re-corrects once positions have fully settled.)
+    const pullFacingAnchorX = isBoundaryPull ? actorTweenTargetX : actor.x;
+    if (!actor.atTheRopesFacingDirection) {
+      actor.facing = pullFacingAnchorX < targetX ? -1 : 1;
+    }
+    if (!target.atTheRopesFacingDirection) {
+      target.facing = targetX < pullFacingAnchorX ? -1 : 1;
     }
 
     if (isKill) {
       target.isClinchKillPullVictim = true;
       handleWinCondition(room, target, actor, io, "clinchKillPull");
+      // Re-assert after win cleanup so MAP boundary exemption stays armed.
+      target.isClinchKillPullVictim = true;
+      target.isBeingPullReversaled = true;
+      target.pullReversalPullerId = actor.id;
+      target.isGrabBreakSeparating = true;
+      target.grabBreakSepStartTime = simNow(room);
+      target.grabBreakSepDuration = effectiveTweenDur;
+      target.grabBreakStartX = target.x;
+      target.grabBreakTargetX = targetX;
       // Belly-laying finisher: the victim is slammed flat where they stand, so
       // keep whatever direction they were already facing (no flip toward the pull).
       target.facing = targetFacingBeforeKill;
@@ -1700,6 +1714,8 @@ function triggerRingOut(pusher, victim, room, io, rooms, direction) {
       grabbedRef.clinchThrowFailStagger = false;
       grabberRef.hasDeepGrip = false;
       grabbedRef.hasDeepGrip = false;
+      grabberRef.clinchShoveLead = null;
+      grabbedRef.clinchShoveLead = null;
       grabberRef.deepGripPushStart = 0;
       grabbedRef.deepGripPushStart = 0;
       grabberRef.clinchPushRampStart = 0;

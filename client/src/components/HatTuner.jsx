@@ -45,6 +45,7 @@ import rawParrySuccessFrame3 from "../assets/raw-parry-success-frame-3.png";
 import flap1 from "../assets/pumo-flap-1.png";
 import flap2 from "../assets/pumo-flap-2.png";
 import recovering from "../assets/recovering.png";
+import charging from "../assets/charging.png";
 import attack from "../assets/attack.png";
 import dodging from "../assets/dodging.png";
 
@@ -145,6 +146,7 @@ const BODY_BY_STEM = {
   "pumo-flap-1": bodyForStem("pumo-flap-1", flap1),
   "pumo-flap-2": bodyForStem("pumo-flap-2", flap2),
   recovering: bodyForStem("recovering", recovering),
+  charging: bodyForStem("charging", charging),
   attack: bodyForStem("attack", attack),
   dodging: bodyForStem("dodging", dodging),
 };

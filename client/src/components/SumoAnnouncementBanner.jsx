@@ -1,111 +1,53 @@
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
-import { C, FONT_KANJI } from "./menuTheme";
+import {
+  C,
+  FONT_BODY,
+  FONT_DISPLAY,
+  FONT_KANJI,
+  TEXT_SHADOW_DISPLAY_SOFT,
+} from "./menuTheme";
 
 /*
- * SumoAnnouncementBanner — fighting-game impact callout.
+ * SumoAnnouncementBanner — dark sumi impact plaque.
  *
- * DESIGN: SF6-style horizontal impact bar.
- *   Thin type-color rules top + bottom, a soft translucent wash between
- *   them, cream headline with a restrained type-color bloom, and a faint
- *   kanji watermark. Color lives in the RULES and the WASH — not in a
- *   neon text stroke or a thick plastic slab. Side-anchored so P1/P2
- *   spatial cue stays intact; center column of the dohyo stays clear.
+ * Edge-plaque language:
+ *   dark lacquer dissolving toward ring center, cream Bungee,
+ *   type-colored hairlines + soft type ambient for differentiation.
+ * Copy sits on the INNER (ring-facing) end of the solid ink; kanji
+ * stamps the OUTER edge. No hanko ticket, no underline, no edge pip.
  *
- * SHAPE:
- *   - Anchored to and bled off the triggering player's frame edge.
- *   - Horizontal bar solid against the frame edge, dissolving toward the
- *     ring center — open end + kanji on the inner side.
- *   - Thin type-color hairlines on top + bottom (the signature SF6
- *     chrome), with a soft bloom so they read as lit, not drawn.
- *   - Large faint kanji print as a watermark (our sumo identity).
- *   - Headline: cream/white Bungee, soft type-color ambient only —
- *     no hard colored stroke (that was the jagged/goofy failure mode).
- *   - Optional subtext preserved.
- *   - Soft type-tinted haze seats the bar on the crowd.
- *   - Lower third (~57cqh), near the tawara.
- *
- * MOTION — fighting-game impact, not informational fade:
- *   Bar slides in from its frame edge with a tiny overshoot (~200ms) →
- *   kanji presses in → headline settles → hold → ~300ms slide-out
- *   back into the frame edge. One-shot beats only.
- *
- * STACK — SF6-style toast queue per side (max 3):
- *   Newest = primary slot (full size). Older bump up with mild scale/
- *   opacity falloff. Exit retreats sideways so it never fights the
- *   upward reflow. Cap overflow is evicted and exits immediately.
- *
- * COLOR / TYPE MAPPING (game canonical action colors):
- *     punish / counterhit / counter / countergrab / counterthrow /
- *     braced / deepgrip / parry / tech / break / perfect / perfectparry /
- *     default — see TYPE_COLORS below.
+ * STACK — toast queue per side (max 2).
  */
 
 // ============================================
-// COLOR THEMES
+// COLOR THEMES — washi pigments, not arcade neon
 // ============================================
 
 const TYPE_COLORS = {
-  punish: { color: "#b975ff", deep: "#5a2299" },
-  /*
-   * counterhit — bumped from the previous muted gold (#ffd54a) to a
-   * brighter pop-yellow (#ffe066). The old shade leaned amber and
-   * read closer to "warm gold" than to "electric counter-hit
-   * yellow"; the bump pushes it firmly into the high-energy SF6 /
-   * arcade-fighter "POW!" yellow zone so the call lands with more
-   * snap. Deep amber under-stripe is unchanged — it still gives the
-   * right grounding contrast on the rule beneath the brighter body.
-   */
-  counterhit: { color: "#ffe066", deep: "#a07020" },
-  counter: { color: "#ff5577", deep: "#a01b3a" },
-  countergrab: { color: "#ff4477", deep: "#5e2bb3" },
-  /*
-   * counterthrow — hot ember orange. The clinch stance-read reward (threw an
-   * opponent mid-push, 20 balance drain vs 10). Sits between counterhit's
-   * yellow and counter's red so the "you read them" family stays warm while
-   * each call stays distinguishable.
-   */
-  counterthrow: { color: "#ff8a3d", deep: "#a04a10" },
-  /*
-   * braced — matcha green. Defensive clinch read (plant blunted a throw to a
-   * 5-drain chip). Green = "your defense worked", distinct from break's
-   * spring green by leaning earthy/warm.
-   */
-  braced: { color: "#a8e063", deep: "#4a7a1e" },
-  /*
-   * deepgrip — burnished gold. The clinch's earned-advantage state (throws
-   * land earlier, stronger push). Warmer and richer than counterhit's
-   * pop-yellow — "you seized something valuable", not "you landed a hit".
-   */
-  deepgrip: { color: "#ffc247", deep: "#8a5510" },
-  parry: { color: "#3ecbff", deep: "#005f80" },
-  tech: { color: "#7ed6ff", deep: "#2266aa" },
-  break: { color: "#3eea88", deep: "#008844" },
-  perfect: { color: "#ffd54a", deep: "#a07020" },
-  /*
-   * perfectparry — hotter electric ice-cyan than the in-arena regular
-   * steel-cyan burst / tech blues. White under-shelf (not yellow) so the
-   * callout stays in the cyan family with the perfect-tier VFX.
-   */
+  punish: { color: "#c4a0e8", deep: "#3d2466" },
+  counterhit: { color: C.gold, deep: C.goldDeep },
+  counter: { color: C.vermillionBright, deep: C.vermillionDeep },
+  countergrab: { color: "#e07098", deep: "#5a2048" },
+  counterthrow: { color: "#e89a5c", deep: "#7a3a14" },
+  braced: { color: "#9cbc6a", deep: "#3a5218" },
+  deepgrip: { color: "#e0b85a", deep: "#6e4a10" },
+  parry: { color: C.iceBright, deep: C.iceDeep },
+  tech: { color: C.ice, deep: C.iceMid },
+  break: { color: C.successBright, deep: C.successDeep },
+  perfect: { color: C.gold, deep: C.goldDeep },
   perfectparry: {
-    color: "#3ef0ff",
-    deep: "#004a66",
-    accent: "#ffffff",
-    textAccent: "#e8fbff",
+    color: "#9ae8f5",
+    deep: C.iceDeep,
+    accent: C.cream,
+    textAccent: "#e8f7fb",
   },
   default: { color: C.cream, deep: C.sumi },
 };
 
 const getTheme = (type) => TYPE_COLORS[type] || TYPE_COLORS.default;
 
-/*
- * Kanji seal per type — a small rotated hanko chip that stamps in beside the
- * roman text after the slam. Same seal vocabulary as the GASSED stamp and the
- * RoundResult kimarite chips, so the callouts join the game's existing
- * sumo-calligraphy language instead of being pure western SFX text.
- * Types without a mapping simply render no seal.
- */
 const TYPE_KANJI = {
   punish: "罰",
   counterhit: "撃",
@@ -125,7 +67,7 @@ const TYPE_KANJI = {
 // SIDE STACK COORDINATION
 // ============================================
 
-const MAX_ANNOUNCEMENT_STACK = 3;
+const MAX_ANNOUNCEMENT_STACK = 2;
 
 const activeAnnouncementStacks = {
   left: [],
@@ -178,7 +120,6 @@ const useAnnouncementStack = (isLeftSide) => {
     const id = idRef.current;
     removeFromStacks(id);
     activeAnnouncementStacks[sideKey].unshift({ id });
-    // Cap: drop oldest beyond max so the column never piles up.
     if (activeAnnouncementStacks[sideKey].length > MAX_ANNOUNCEMENT_STACK) {
       activeAnnouncementStacks[sideKey].length = MAX_ANNOUNCEMENT_STACK;
     }
@@ -187,8 +128,6 @@ const useAnnouncementStack = (isLeftSide) => {
     const updateStackState = () => {
       const snap = getStackSnapshot(id, sideKey);
       setStackState((prev) => ({
-        // Keep last slot on eviction so the banner doesn't jump to primary
-        // while it slides out.
         slotIndex: snap.inStack ? snap.slotIndex : prev.slotIndex,
         evicted: joinedRef.current && !snap.inStack,
       }));
@@ -223,45 +162,37 @@ const slabInFromRight = keyframes`
   100% { opacity: 1; transform: translateX(0) scaleX(1); }
 `;
 
-/* Exit retreats into the frame edge — never up, so it doesn't fight the stack. */
 const slabOutToLeft = keyframes`
   0%   { opacity: 1; transform: translateX(0) scaleX(1); }
-  100% { opacity: 0; transform: translateX(-28px) scaleX(0.94); }
+  100% { opacity: 0; transform: translateX(-24px) scaleX(0.95); }
 `;
 
 const slabOutToRight = keyframes`
   0%   { opacity: 1; transform: translateX(0) scaleX(1); }
-  100% { opacity: 0; transform: translateX(28px) scaleX(0.94); }
+  100% { opacity: 0; transform: translateX(24px) scaleX(0.95); }
 `;
 
-/*
- * Text settle — soft brightness flash into place. No heavy skew/slam;
- * SF6's type arrives clean, not comic-book stamped.
- */
 const textSettle = keyframes`
   0% {
     opacity: 0;
-    transform: scale(1.12);
-    filter: brightness(2.2) saturate(0.4);
+    transform: scale(1.08);
     letter-spacing: 0.14em;
   }
-  45% {
+  55% {
     opacity: 1;
-    transform: scale(0.98);
-    filter: brightness(1.35) saturate(0.85);
+    transform: scale(0.99);
   }
   100% {
     opacity: 1;
     transform: scale(1);
-    filter: brightness(1.05) saturate(1);
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
   }
 `;
 
 const kanjiPress = keyframes`
-  0%   { opacity: 0; transform: scale(1.4) rotate(-8deg); }
-  55%  { opacity: 0.18; transform: scale(0.98) rotate(-7deg); }
-  100% { opacity: 0.14; transform: scale(1) rotate(-7deg); }
+  0%   { opacity: 0; transform: scale(1.35) rotate(-8deg); }
+  55%  { opacity: 0.3; transform: scale(0.98) rotate(-7deg); }
+  100% { opacity: 0.26; transform: scale(1) rotate(-7deg); }
 `;
 
 const ruleDraw = keyframes`
@@ -270,7 +201,7 @@ const ruleDraw = keyframes`
 `;
 
 const subTextRise = keyframes`
-  0%   { opacity: 0; transform: translateY(5px); }
+  0%   { opacity: 0; transform: translateY(4px); }
   100% { opacity: 1; transform: translateY(0); }
 `;
 
@@ -288,33 +219,31 @@ const BannerWrapper = styled.div`
     translateY(var(--announcement-stack-y))
     scale(var(--announcement-stack-scale));
   transform-origin: ${(p) => (p.$isLeftSide ? "left center" : "right center")};
-  /* Slightly longer ease so survivors glide into vacated slots. */
   transition:
     transform 0.22s cubic-bezier(0.22, 0.8, 0.2, 1),
     opacity 0.2s ease-out;
   will-change: transform, opacity;
   --announcement-stack-y: calc(
-    ${(p) => Math.min(p.$stackIndex, 2)} * clamp(-32px, -3.4cqh, -28px)
+    ${(p) => Math.min(p.$stackIndex, 1)} * clamp(-30px, -3.2cqh, -26px)
   );
   --announcement-stack-scale: ${(p) =>
-    Math.max(0.84, 1 - Math.min(p.$stackIndex, 2) * 0.07)};
+    Math.max(0.88, 1 - Math.min(p.$stackIndex, 1) * 0.08)};
   --announcement-stack-opacity: ${(p) =>
-    Math.max(0.72, 1 - Math.min(p.$stackIndex, 2) * 0.13)};
-  z-index: ${(p) => 220 - Math.min(p.$stackIndex, 2)};
+    Math.max(0.78, 1 - Math.min(p.$stackIndex, 1) * 0.16)};
+  z-index: ${(p) => 220 - Math.min(p.$stackIndex, 1)};
 
   @media (max-width: 900px) {
     top: clamp(300px, 54cqh, 380px);
   }
 `;
 
-const EXIT_DURATION_S = 0.3;
+const EXIT_DURATION_S = 0.28;
 
 const BannerMotion = styled.div`
   position: relative;
   ${(p) =>
     p.$evicted
       ? css`
-          /* Cap overflow: drop the enter timeline and retreat now. */
           animation: ${p.$isLeftSide ? slabOutToLeft : slabOutToRight}
             ${EXIT_DURATION_S}s ease-in forwards;
         `
@@ -330,82 +259,78 @@ const BannerMotion = styled.div`
 `;
 
 /*
- * Soft type-tinted haze — seats the bar and gives the SF6 "lit atmosphere"
- * without a hard plate silhouette.
+ * Soft ambient seat under the SOLID outer half only — never a box-shadow.
+ * A rectangular box-shadow reads as a hard grey slab at the dissolve tip
+ * because the transparent gradient end still casts a full rect.
  */
 const Haze = styled.div`
   position: absolute;
   z-index: 0;
   top: 50%;
-  ${(p) => (p.$isLeftSide ? "left: -4%;" : "right: -4%;")}
+  ${(p) => (p.$isLeftSide ? "left: -2%;" : "right: -2%;")}
   transform: translateY(-50%);
-  width: 118%;
-  height: 220%;
+  width: 72%;
+  height: 170%;
   pointer-events: none;
   background: ${(p) => {
-    const { color, deep } = getTheme(p.$type);
+    const { deep } = getTheme(p.$type);
+    const at = p.$isLeftSide ? "18% 50%" : "82% 50%";
     return css`radial-gradient(
-      ellipse at center,
-      color-mix(in srgb, ${deep} 45%, transparent) 0%,
-      color-mix(in srgb, ${color} 12%, transparent) 40%,
-      transparent 72%
+      ellipse 85% 70% at ${at},
+      color-mix(in srgb, ${deep} 18%, rgba(8, 10, 16, 0.55)) 0%,
+      rgba(8, 10, 16, 0.22) 38%,
+      transparent 70%
     )`;
   }};
-  filter: blur(10px);
+  filter: blur(12px);
 `;
 
 /*
- * The bar — SF6 recipe: soft translucent type-wash between two thin
- * type-color rules. Solid flush against the frame edge; dissolves toward
- * the ring center (open end) so it reads as chrome arriving from the side.
+ * Dark sumi plaque — ink dominant, light type tint, type-colored hairlines.
+ * Solid ink holds farther toward ring center so inner-aligned copy stays
+ * readable; dissolve still clears the dohyo. No box-shadow (see Haze).
  */
 const Slab = styled.div`
   position: relative;
   z-index: 1;
   overflow: visible;
-  min-width: clamp(170px, 18cqw, 280px);
-  max-width: 42cqw;
-  padding-block: clamp(7px, 1.1cqh, 12px);
+  min-width: clamp(210px, 22.5cqw, 340px);
+  max-width: 44cqw;
+  padding-block: clamp(10px, 1.35cqh, 15px);
   ${(p) =>
     p.$isLeftSide
       ? css`
-          padding-left: clamp(12px, 1.5cqw, 22px);
-          padding-right: clamp(22px, 2.6cqw, 38px);
-          text-align: left;
+          /* Outer pad clears kanji stamp; copy sits ring-facing. */
+          padding-left: clamp(36px, 3.8cqw, 52px);
+          padding-right: clamp(18px, 2cqw, 28px);
+          text-align: right;
         `
       : css`
-          padding-left: clamp(22px, 2.6cqw, 38px);
-          padding-right: clamp(12px, 1.5cqw, 22px);
-          text-align: right;
+          padding-left: clamp(18px, 2cqw, 28px);
+          padding-right: clamp(36px, 3.8cqw, 52px);
+          text-align: left;
         `}
   background: ${(p) => {
     const { color, deep } = getTheme(p.$type);
-    /* Solid at the frame edge, dissolves toward the ring center. */
     const dir = p.$isLeftSide ? "90deg" : "270deg";
     return css`linear-gradient(
       ${dir},
-      color-mix(in srgb, ${color} 38%, ${deep}) 0%,
-      color-mix(in srgb, ${deep} 55%, rgba(8, 10, 14, 0.72)) 42%,
-      color-mix(in srgb, ${deep} 18%, transparent) 78%,
+      color-mix(in srgb, ${deep} 22%, rgba(16, 20, 28, 0.97)) 0%,
+      color-mix(in srgb, ${color} 7%, rgba(12, 15, 22, 0.95)) 28%,
+      rgba(12, 15, 22, 0.9) 52%,
+      rgba(12, 15, 22, 0.55) 72%,
+      rgba(12, 15, 22, 0.18) 88%,
       transparent 100%
     )`;
   }};
-  box-shadow: ${(p) => {
-    const { color } = getTheme(p.$type);
-    return css`
-      0 0 18px color-mix(in srgb, ${color} 18%, transparent),
-      0 4px 14px rgba(0, 0, 0, 0.28)
-    `;
-  }};
 
-  /* Top + bottom type-color rules — the SF6 signature chrome. */
   &::before,
   &::after {
     content: "";
     position: absolute;
     left: 0;
     right: 0;
-    height: 1.5px;
+    height: 2px;
     pointer-events: none;
     transform-origin: ${(p) => (p.$isLeftSide ? "left center" : "right center")};
     animation: ${ruleDraw} 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) 0.04s both;
@@ -415,13 +340,10 @@ const Slab = styled.div`
       return css`linear-gradient(
         ${dir},
         ${color} 0%,
-        color-mix(in srgb, ${color} 70%, transparent) 55%,
+        color-mix(in srgb, ${color} 70%, transparent) 48%,
+        color-mix(in srgb, ${color} 22%, transparent) 76%,
         transparent 100%
       )`;
-    }};
-    box-shadow: ${(p) => {
-      const { color } = getTheme(p.$type);
-      return css`0 0 8px color-mix(in srgb, ${color} 55%, transparent)`;
     }};
   }
 
@@ -434,29 +356,23 @@ const Slab = styled.div`
   }
 `;
 
-/*
- * Kanji watermark — parked on the open (center-facing) end where the
- * wash dissolves, so it reads as a seal on the fading trail.
- */
 const KanjiPrint = styled.div`
   position: absolute;
   z-index: 1;
   top: 50%;
+  /* Stamp on the solid outer edge — opposite the ring-facing copy. */
   ${(p) =>
     p.$isLeftSide
-      ? css`right: clamp(-6px, -0.3cqw, -2px);`
-      : css`left: clamp(-6px, -0.3cqw, -2px);`}
+      ? css`left: clamp(6px, 0.7cqw, 12px);`
+      : css`right: clamp(6px, 0.7cqw, 12px);`}
   font-family: ${FONT_KANJI};
   font-weight: 900;
-  font-size: clamp(1.6rem, 3.2cqw, 2.5rem);
+  font-size: clamp(1.9rem, 3.8cqw, 2.95rem);
   line-height: 1;
-  color: ${(p) => {
-    const { color } = getTheme(p.$type);
-    return css`color-mix(in srgb, ${color} 35%, #fff)`;
-  }};
+  color: ${(p) => getTheme(p.$type).color};
   opacity: 0;
   pointer-events: none;
-  transform-origin: ${(p) => (p.$isLeftSide ? "right center" : "left center")};
+  transform-origin: ${(p) => (p.$isLeftSide ? "left center" : "right center")};
   animation: ${kanjiPress} 0.34s cubic-bezier(0.3, 1.2, 0.5, 1) forwards;
   will-change: transform, opacity;
   margin-top: -0.52em;
@@ -467,57 +383,55 @@ const Content = styled.div`
   z-index: 3;
   display: flex;
   flex-direction: column;
-  gap: clamp(2px, 0.4cqh, 4px);
+  align-items: ${(p) => (p.$isLeftSide ? "flex-end" : "flex-start")};
+  width: 100%;
+  gap: clamp(3px, 0.4cqh, 5px);
 `;
 
-/*
- * Headline — SF6 recipe: cream/white fill, NO colored stroke, soft
- * type-color ambient bloom only. A hairline dark shadow keeps edges
- * readable on the lit wash without looking outlined.
- */
 const MainText = styled.div`
-  font-family: "Bungee", cursive;
-  font-size: clamp(0.82rem, 1.5cqw, 1.15rem);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(0.95rem, 1.7cqw, 1.32rem);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   line-height: 1;
   white-space: nowrap;
   text-align: inherit;
-  transform: scale(1.12);
-  transform-origin: ${(p) => (p.$isLeftSide ? "left center" : "right center")};
-  color: #f7f2e6;
+  transform-origin: ${(p) => (p.$isLeftSide ? "right center" : "left center")};
+  color: ${C.cream};
   text-shadow: ${(p) => {
-    const theme = getTheme(p.$type);
+    const { color } = getTheme(p.$type);
     return css`
-      0 0 10px color-mix(in srgb, ${theme.color} 35%, transparent),
-      0 0 22px color-mix(in srgb, ${theme.color} 18%, transparent),
-      0 1px 2px rgba(0, 0, 0, 0.65)
+      0 0 12px color-mix(in srgb, ${color} 24%, transparent),
+      ${TEXT_SHADOW_DISPLAY_SOFT}
     `;
   }};
   opacity: 0;
-  animation: ${textSettle} 0.32s cubic-bezier(0.22, 1, 0.36, 1) 0.06s forwards;
-  will-change: transform, opacity, filter;
+  animation: ${textSettle} 0.3s cubic-bezier(0.22, 1, 0.36, 1) 0.05s forwards;
+  will-change: transform, opacity;
 
   @media (max-width: 900px) {
-    font-size: clamp(0.7rem, 2cqw, 0.95rem);
+    font-size: clamp(0.78rem, 2.1cqw, 1.05rem);
   }
 `;
 
 const SubText = styled.div`
-  font-family: "Space Grotesk", sans-serif;
+  font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.42rem, 0.72cqw, 0.58rem);
-  color: ${C.creamWarm};
+  font-size: clamp(0.45rem, 0.75cqw, 0.62rem);
+  color: ${(p) => {
+    const { color } = getTheme(p.$type);
+    return css`color-mix(in srgb, ${color} 35%, ${C.creamMute})`;
+  }};
   text-transform: uppercase;
-  letter-spacing: 0.26em;
+  letter-spacing: 0.24em;
   text-align: inherit;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
   opacity: 0;
-  animation: ${subTextRise} 0.26s ease-out 0.22s forwards;
+  animation: ${subTextRise} 0.24s ease-out 0.2s forwards;
 
   @media (max-width: 900px) {
-    font-size: clamp(0.44rem, 1.4cqw, 0.66rem);
-    letter-spacing: 0.22em;
+    font-size: clamp(0.45rem, 1.35cqw, 0.66rem);
+    letter-spacing: 0.2em;
   }
 `;
 
@@ -550,11 +464,11 @@ const SumoAnnouncementBanner = ({
               {kanji}
             </KanjiPrint>
           )}
-          <Content>
+          <Content $isLeftSide={isLeftSide}>
             <MainText $type={type} $isLeftSide={isLeftSide}>
               {label}
             </MainText>
-            {subText && <SubText>{subText}</SubText>}
+            {subText && <SubText $type={type}>{subText}</SubText>}
           </Content>
         </Slab>
       </BannerMotion>

@@ -147,7 +147,7 @@ const CounterGrabEffect = ({ position }) => {
     <>
       {activeEffects.map((effect) => {
         const isLeftSide = effect.grabberPlayerNumber === 1;
-        const hudEl = document.getElementById("game-hud");
+        const hudEl = document.getElementById("game-hud-callouts");
 
         return (
           <div key={effect.id}>

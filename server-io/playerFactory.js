@@ -174,6 +174,9 @@ function createInitialPlayerState(overrides = {}) {
     chargingFacingDirection: null,
     chargeCancelled: false,
     mouse1BufferedBeforeStart: false,
+    // Held A/D across HAKKIYOI — mirrored from mouse1BufferedBeforeStart so a
+    // forward hold into the bout isn't dropped (client only emits on edges).
+    movementKeysBufferedBeforeStart: null,
     mouse1PressTime: 0,
     // Palm (and other press-to-fire M1 moves) consume the current mouse1 hold so
     // the continuous S+forward charge check can't auto-start mid-hold and leave
@@ -203,7 +206,7 @@ function createInitialPlayerState(overrides = {}) {
     apRecoveryUntil: 0,        // Sim time the whiff recovery ends
     apCooldownUntil: 0,        // Earliest sim time GUARD may re-enter after a drop (taps ignore this)
     apSpaceConsumed: false,    // One parry window per physical press (clears on falling Space; a re-tap re-arms)
-    apGuardNeedsRelease: false, // After a landed parry while still holding: must release Space before HOLD→GUARD
+    apGuardNeedsRelease: false, // Legacy latch (unused): hold-after-land now enters GUARD directly
     // Move+offense lock after a landed parry. Survives flurry re-taps (armAttackParry
     // clears success pose but NOT this) so back-to-back piano taps can't walk/act early.
     isApPostParryLocked: false,

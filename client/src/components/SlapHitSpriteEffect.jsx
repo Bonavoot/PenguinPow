@@ -190,14 +190,19 @@ const HitBurst = ({ effect, onDone }) => {
     };
   }, [effect.id, cfg]);
 
+  // Absolute contact seams are already tip-accurate — legacy baseX/dirX were
+  // calibrated for victim.x+70 and would shove the spark behind the attacker.
+  const baseX = effect.seamAnchored ? 0 : cfg.baseXPct;
+  const dirX = effect.seamAnchored ? 0 : cfg.dirXPct;
+
   return (
     <SpriteContainer
       $x={effect.x}
       $y={effect.y}
       $facing={effect.facing}
       $size={cfg.sizeCqw}
-      $baseX={cfg.baseXPct}
-      $dirX={cfg.dirXPct}
+      $baseX={baseX}
+      $dirX={dirX}
       $offsetY={cfg.offsetYPct || 0}
       style={buildFrameStyle(frame, cfg, effect.statusKey)}
     />
@@ -238,6 +243,7 @@ const SlapHitSpriteEffect = ({ position }) => {
       x: position.x,
       y: position.y,
       facing: position.facing || 1,
+      seamAnchored: !!position.seamAnchored,
       statusKey: resolveStatusKey(position),
     };
     setActiveEffects((prev) => [...prev, effect]);
@@ -246,6 +252,7 @@ const SlapHitSpriteEffect = ({ position }) => {
     position?.x,
     position?.y,
     position?.facing,
+    position?.seamAnchored,
     position?.attackType,
     position?.isPalmThrust,
     position?.isCounterHit,
@@ -276,6 +283,7 @@ SlapHitSpriteEffect.propTypes = {
     x: PropTypes.number,
     y: PropTypes.number,
     facing: PropTypes.number,
+    seamAnchored: PropTypes.bool,
     attackType: PropTypes.string,
     hitId: PropTypes.string,
     timestamp: PropTypes.number,
