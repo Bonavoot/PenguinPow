@@ -1010,8 +1010,16 @@ const Game = ({
           }`}
         ></div>
         {/* Ring props — gyoji + salt baskets. Camera-synced like .game-actors,
-            but below side callouts so combat banners paint over the dressing. */}
-        <div id="game-ring-props" className="game-ring-props"></div>
+            but below side callouts so combat banners paint over the dressing.
+            Hidden during prematch (same as .ui) — these used to live inside
+            .ui and disappeared with it; portalling them out for z-order must
+            not leave the gyoji peeking through the StageDim hole. */}
+        <div
+          id="game-ring-props"
+          className={`game-ring-props${
+            showPreMatchScreen ? " is-prematch-hidden" : ""
+          }`}
+        ></div>
         {/* Side combat callout host — SumoAnnouncementBanner portals here so
             COUNTER HIT / PUNISH / PERFECT / clinch plaques sit OVER ring props
             and UNDER the wrestlers. Center announcements still target #game-hud. */}

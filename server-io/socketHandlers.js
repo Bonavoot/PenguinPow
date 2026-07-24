@@ -2,11 +2,9 @@ const {
   GRAB_STATES, GROUND_LEVEL,
   POWER_UP_TYPES, POWER_UP_EFFECTS,
   HITBOX_DISTANCE_VALUE, DOHYO_FALL_DEPTH,
-  DODGE_DURATION, DODGE_STAMINA_COST,
+  ICE_SLIDE_REVERSE_BUFFER_MS,
   ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST, ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_CENTER_FRACTION,
   FLAP_STARTUP_MS, FLAP_CHARGES, FLAP_IMPULSE, FLAP_FLAP_H_IMPULSE, FLAP_STAMINA_COST, FLAP_CHARGE_COOLDOWN_MS,
-  DODGE_SLIDE_MOMENTUM, DODGE_POWERSLIDE_BOOST,
-  DODGE_STARTUP_MS,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS,
   SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, RAW_PARRY_STAMINA_COST, RAW_PARRY_COOLDOWN_MS,
@@ -37,6 +35,9 @@ const {
   lagCompensatedParryStart,
   canArmAttackParry,
   armAttackParry,
+  clearIceSlideState,
+  tryIceSlideReverse,
+  beginPlayerDodge,
 } = require("./gameUtils");
 
 const {
@@ -603,6 +604,8 @@ function processInputPacket(room, player, data, io, rooms) {
       }
     } else if (
       !player.isFlapping &&
+      !player.isSlideJumping && // No flap liftoff mid slide-jump (air flaps only with flap power-up while flapping)
+      !player.isIceSliding &&
       !shouldBlockAction() &&
       !player.isRawParrying &&
       !player.isRawParryStun &&
@@ -655,6 +658,7 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.grabBreakSpaceConsumed &&
     canArmAttackParry(player, simNowForPlayer(player)) &&
     !player.isSidestepping &&
+    !player.isSlideJumping &&
     !player.isGrabbing &&
     !player.isBeingGrabbed &&
     !player.isGrabStartup && // Block AP during grab startup (lunge windup) — prevents parry/grab state coexistence
@@ -998,18 +1002,35 @@ function processInputPacket(room, player, data, io, rooms) {
       }
     }
   }
-  // Handle dash - allow canceling recovery but block during charged attack execution
-  // Dashing now costs stamina (15% of max) instead of using charges
-  // Use shiftJustPressed to prevent dash from triggering when key is held through other actions
-  // NOTE: Dash cancels charging - clearing charge state when dash starts
+  // ── ICE SLIDE bunny-hop reverse ──
+  // SHIFT repress while sliding: buffer + try reverse. Always eat the edge so
+  // mid-slide repress never becomes a dodge (even if dig isn't ready yet).
   else if (
     player.shiftJustPressed &&
+    player.isIceSliding &&
+    !player.isSlideJumping &&
+    !player.isDodging &&
+    !player.isHit &&
+    !player.isBeingGrabbed &&
+    room.gameStart &&
+    !room.gameOver
+  ) {
+    const nowSim = simNowForPlayer(player);
+    player.iceSlideReverseBufferUntil = nowSim + ICE_SLIDE_REVERSE_BUFFER_MS;
+    tryIceSlideReverse(player, nowSim);
+    player.shiftJustPressed = false;
+  }
+  // Handle dash - allow canceling recovery but block during charged attack execution
+  // Gassed: full dodge + ice-slide kit still available (sidestep/rope/flap stay locked).
+  // Use shiftJustPressed to prevent dash from triggering when key is held through other actions
+  else if (
+    player.shiftJustPressed &&
+    !player.isIceSliding && // Slide owns SHIFT repress (reverse / continue), not a new dodge
     !player.keys.mouse2 && // Don't dash while grabbing
     !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
     !player.isBeingGrabbed && // Block dash when being grabbed
     !isInChargedAttackExecution() && // Block during charged attack execution
-    canPlayerDash(player) &&
-    !player.isGassed
+    canPlayerDash(player)
   ) {
     // Allow dodge to cancel recovery
     if (player.isRecovering) {
@@ -1025,44 +1046,7 @@ function processInputPacket(room, player, data, io, rooms) {
       }
     }
 
-    // Clear parry success state when starting a dodge
-    player.isRawParrySuccess = false;
-    player.isPerfectRawParrySuccess = false;
-
-    // Dodge cancels charging - clear charge state
-    clearChargeState(player, true);
-
-    // MASTERY Phase 1: snapshot the speed carried into the dodge BEFORE it's
-    // zeroed — the dodge landing blends it into landing momentum (index.js,
-    // gated by MASTERY_P1_MOMENTUM). Travel itself stays fixed (104px).
-    player.dodgeEntrySpeed = Math.abs(player.movementVelocity);
-
-    // Clear movement momentum for static dodge distance
-    // Also cancels power slide - dodge is an escape option from slide
-    player.movementVelocity = 0;
-    player.isStrafing = false;
-    player.isPowerSliding = false;
-    player.isBraking = false;
-
-    player.isDodging = true;
-    player.isDodgeStartup = true;
-    player.dodgeStartTime = simNowForPlayer(player);
-    player.dodgeStartupEndTime = simNowForPlayer(player) + DODGE_STARTUP_MS;
-    player.dodgeEndTime = simNowForPlayer(player) + DODGE_DURATION;
-    player.dodgeStartX = player.x;
-    player.currentAction = "dash";
-    player.actionLockUntil = simNowForPlayer(player) + 100;
-    player.justLandedFromDodge = false;
-
-    player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
-
-    if (player.keys.a) {
-      player.dodgeDirection = -1;
-    } else if (player.keys.d) {
-      player.dodgeDirection = 1;
-    } else {
-      player.dodgeDirection = player.facing === -1 ? 1 : -1;
-    }
+    beginPlayerDodge(player, { nowSim: simNowForPlayer(player) });
 
     // Dodge lifecycle (landing, recovery, cooldown) is handled entirely by the tick
     // loop in index.js. Pending charge attacks are executed when recovery ends.
@@ -1077,11 +1061,14 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.isSidestepping &&
     !player.isThrowingSnowball &&
     !player.isRawParrying &&
-    !isInChargedAttackExecution() &&
-    !player.isGassed
+    !isInChargedAttackExecution()
   ) {
+    // Sidestep stays hard-locked while gassed; full dodge can still buffer.
     if (player.keys.s) {
-      player.bufferedAction = { type: "sidestep" };
+      if (!player.isGassed) {
+        player.bufferedAction = { type: "sidestep" };
+        player.bufferExpiryTime = simNowForPlayer(player) + 500;
+      }
     } else {
       const dodgeDirection = player.keys.a
         ? -1
@@ -1094,30 +1081,17 @@ function processInputPacket(room, player, data, io, rooms) {
         type: "dash",
         direction: dodgeDirection,
       };
+      player.bufferExpiryTime = simNowForPlayer(player) + 500;
     }
-    player.bufferExpiryTime = simNowForPlayer(player) + 500;
   }
   // Buffer dash during recovery/cooldown so spamming fires on frame 1 when allowed
   else if (
     player.shiftJustPressed &&
     !player.keys.mouse2 &&
-    !player.isGassed &&
     !player.isDodging &&
     (player.isDodgeRecovery || (player.dodgeCooldownUntil && simNowForPlayer(player) < player.dodgeCooldownUntil))
   ) {
     player.inputBuffer = { type: "dodge", timestamp: simNowForPlayer(player) };
-  }
-  // Emit "No Stamina" feedback when player tries to dodge but doesn't have enough stamina
-  else if (
-    player.shiftJustPressed &&
-    !player.keys.mouse2 &&
-    !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
-    canPlayerDash(player) &&
-    player.isGassed &&
-    (!player.lastStaminaBlockedTime || simNowForPlayer(player) - player.lastStaminaBlockedTime > 500)
-  ) {
-    player.lastStaminaBlockedTime = simNowForPlayer(player);
-    io.to(player.id).emit("stamina_blocked", { playerId: player.id, action: "dash" });
   }
 
   // ── ROPE JUMP: W + forward key near map boundary ──
@@ -1131,6 +1105,9 @@ function processInputPacket(room, player, data, io, rooms) {
     if (
       wantsRopeJump &&
       !player.isRopeJumping &&
+      !player.keys.shift && // SHIFT held = dodge/slide kit owns W; never rope-jump
+      !player.isIceSliding &&
+      !player.isSlideJumping &&
       canPlayerDash(player) &&
       !player.isGassed &&
       !isInChargedAttackExecution() &&
@@ -1167,6 +1144,7 @@ function processInputPacket(room, player, data, io, rooms) {
     else if (
       wantsRopeJump &&
       !player.isRopeJumping &&
+      !player.keys.shift &&
       canPlayerDash(player) &&
       player.isGassed &&
       (!player.lastStaminaBlockedTime || simNowForPlayer(player) - player.lastStaminaBlockedTime > 500)
@@ -1371,7 +1349,7 @@ function processInputPacket(room, player, data, io, rooms) {
     player.isGrabStartup = true;
     player.grabStartupStartTime = simNowForPlayer(player);
     player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
-    player.grabStartupArmorUsed = false; // Fresh slap-armor charge per grab attempt
+    player.grabStartupArmorUsed = false; // Legacy field; slap catch is active-frame only
     player.currentAction = "grab_startup";
     player.actionLockUntil = simNowForPlayer(player) + GRAB_STARTUP_DURATION_MS;
     player.grabState = GRAB_STATES.ATTEMPTING;

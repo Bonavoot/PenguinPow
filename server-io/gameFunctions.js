@@ -17,6 +17,7 @@ const {
   canPlayerSlap,
   canPlayerUseAction,
   canPlayerDash,
+  beginPlayerDodge,
   canPlayerSidestep,
   getSidestepInitData,
   startCharging,
@@ -56,10 +57,6 @@ const {
   HITBOX_DISTANCE_VALUE,
   SLAP_ATTACK_STAMINA_COST,
   CHARGED_ATTACK_STAMINA_COST,
-  DODGE_STAMINA_COST,
-  DODGE_DURATION,
-  DODGE_SLIDE_MOMENTUM,
-  DODGE_POWERSLIDE_BOOST,
   RAW_PARRY_STAMINA_COST, RAW_PARRY_COOLDOWN_MS,
   CHARGE_FULL_POWER_MS,
   SLAP_STARTUP_MS,
@@ -95,8 +92,6 @@ const {
   CHARGE_DURATION_BASE_MS,
   CHARGE_DURATION_SCALE_MS,
   CHARGE_DURATION_EXP,
-  DODGE_STARTUP_MS,
-  DODGE_RECOVERY_MS,
   GRAB_STARTUP_DURATION_MS,
   GRAB_STATES,
   INPUT_BUFFER_WINDOW_MS,
@@ -522,6 +517,32 @@ function handleWinCondition(room, loser, winner, io, winType) {
       p.lastFlapChargeTime = 0;
     }
 
+    // Clear ice slide / slide-jump when game ends
+    if (p.isSlideJumping) {
+      p.y = GROUND_LEVEL;
+    }
+    p.isIceSliding = false;
+    p.iceSlideDir = 0;
+    p.iceSlideStartTime = 0;
+    p.slideJumpBufferUntil = 0;
+    p.isIceSlideReverseHopping = false;
+    p.iceSlideReverseHopStartTime = 0;
+    p.iceSlideReverseHopUntil = 0;
+    p.iceSlideReverseCooldownUntil = 0;
+    p.iceSlideReverseBufferUntil = 0;
+    p.iceSlideBrakeArmStart = 0;
+    p.isSlideJumping = false;
+    p.slideJumpPhase = null;
+    p.slideJumpVelocityY = 0;
+    p.slideJumpVelocityX = 0;
+    p.slideJumpDiveCommitted = false;
+    p.slideJumpFastFalling = false;
+    p.slideJumpDiveLockX = 0;
+    p.slideJumpHitLanded = false;
+    p.slideJumpHitRecoverDuration = 0;
+    p.slideJumpLandingTime = 0;
+    p.slideJumpStartTime = 0;
+
     // Clear parry states to prevent jiggle/flash animations persisting into round result
     p.isRawParrying = false;
     p.isGuarding = false;
@@ -624,6 +645,7 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.pendingSlapCount = 0;
     p.slapAnimationToggle = 0;
     p.currentSlapHitConnected = false;
+    p.slapOpenHitPending = false;
     p.mouse1JustPressed = false;
     p.mouse1JustReleased = false;
 
@@ -815,6 +837,7 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
   player.slapAnimation = player.slapAnimationToggle;
 
   player.currentSlapHitConnected = false;
+  player.slapOpenHitPending = false;
 
   player.stamina = Math.max(0, player.stamina - SLAP_ATTACK_STAMINA_COST);
 
@@ -859,6 +882,7 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
       player.slapFacingDirection = null;
       player.isInStartupFrames = false;
       player.slapActiveEndTime = 0;
+      player.slapOpenHitPending = false;
       player.currentAction = null;
 
       const isPlayerValid = () => (
@@ -1541,7 +1565,10 @@ function adjustPlayerPositions(player1, player2, delta) {
     (player1.isRopeJumping && player1.ropeJumpPhase === "active") ||
     (player2.isRopeJumping && player2.ropeJumpPhase === "active") ||
     (player1.isFlapping && player1.flapPhase === "flight") ||
-    (player2.isFlapping && player2.flapPhase === "flight")
+    (player2.isFlapping && player2.flapPhase === "flight") ||
+    // Same as flap: pushbox would shove the opponent outside slam reach mid-ring.
+    (player1.isSlideJumping && player1.slideJumpPhase === "flight") ||
+    (player2.isSlideJumping && player2.slideJumpPhase === "flight")
   ) {
     return;
   }
@@ -1819,19 +1846,13 @@ function safelyEndChargedAttack(player, rooms) {
 
             // Execute the buffered action
             // CRITICAL: Block buffered dash if player is being grabbed
-            if (action.type === "dash" && !player.isGassed && !player.isBeingGrabbed) {
-              // MASTERY Phase 1: capture carried speed before zeroing (dodge
-              // landing blends it, gated by MASTERY_P1_MOMENTUM).
-              player.dodgeEntrySpeed = Math.abs(player.movementVelocity);
-              player.movementVelocity = 0;
-              player.isStrafing = false;
-
-              player.isDodging = true;
-              player.dodgeStartTime = simNowForPlayer(player);
-              player.dodgeEndTime = simNowForPlayer(player) + DODGE_DURATION;
-              player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
-              player.dodgeDirection = action.direction;
-              player.dodgeStartX = player.x;
+            // Gassed: full dodge still allowed.
+            if (action.type === "dash" && !player.isBeingGrabbed && canPlayerDash(player)) {
+              beginPlayerDodge(player, {
+                direction: action.direction,
+                nowSim: simNowForPlayer(player),
+                skipStartup: true, // legacy endlag buffer path had no startup
+              });
             }
           }
         },
@@ -1897,36 +1918,21 @@ function activateBufferedInputAfterGrab(player, rooms) {
   }
 
   // Priority 0b: Buffered dash (spammed shift while grabbed/thrown)
+  // Gassed: full dodge still buffers — sidestep does not.
   if (
     player.bufferedAction &&
     player.bufferedAction.type === "dash" &&
     player.bufferExpiryTime &&
     simNowForPlayer(player) < player.bufferExpiryTime &&
-    !player.isGassed
+    canPlayerDash(player)
   ) {
     const direction = player.bufferedAction.direction;
     player.bufferedAction = null;
     player.bufferExpiryTime = 0;
-    player.isRawParrySuccess = false;
-    player.isPerfectRawParrySuccess = false;
-    // MASTERY Phase 1: capture carried speed before zeroing (see index.js landing).
-    player.dodgeEntrySpeed = Math.abs(player.movementVelocity);
-    player.movementVelocity = 0;
-    player.isStrafing = false;
-    player.isPowerSliding = false;
-    player.isBraking = false;
-    player.isDodging = true;
-    player.isDodgeStartup = true;
-    player.dodgeStartTime = simNowForPlayer(player);
-    player.dodgeStartupEndTime = simNowForPlayer(player) + DODGE_STARTUP_MS;
-    player.dodgeEndTime = simNowForPlayer(player) + DODGE_DURATION;
-    player.dodgeStartX = player.x;
-    player.dodgeDirection = direction;
-    player.currentAction = "dash";
-    player.actionLockUntil = simNowForPlayer(player) + 100;
-    player.justLandedFromDodge = false;
-    player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
-    clearChargeState(player, true);
+    beginPlayerDodge(player, {
+      direction,
+      nowSim: simNowForPlayer(player),
+    });
     return;
   }
 
@@ -1970,36 +1976,9 @@ function activateBufferedInputAfterGrab(player, rooms) {
     }
   }
 
-  // Priority 2b: Dodge (shift) - evasive option (blocked only when gassed)
-  if (player.keys.shift && !player.keys.mouse2 && !player.isGassed) {
-    player.isRawParrySuccess = false;
-    player.isPerfectRawParrySuccess = false;
-    // MASTERY Phase 1: capture carried speed before zeroing (see index.js landing).
-    player.dodgeEntrySpeed = Math.abs(player.movementVelocity);
-    player.movementVelocity = 0;
-    player.isStrafing = false;
-    player.isPowerSliding = false;
-    player.isBraking = false;
-    player.isDodging = true;
-    player.isDodgeStartup = true;
-    player.dodgeStartTime = simNowForPlayer(player);
-    player.dodgeStartupEndTime = simNowForPlayer(player) + DODGE_STARTUP_MS;
-    player.dodgeEndTime = simNowForPlayer(player) + DODGE_DURATION;
-    player.dodgeStartX = player.x;
-    player.currentAction = "dash";
-    player.actionLockUntil = simNowForPlayer(player) + 100;
-    player.justLandedFromDodge = false;
-    player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
-    clearChargeState(player, true);
-
-    if (player.keys.a) {
-      player.dodgeDirection = -1;
-    } else if (player.keys.d) {
-      player.dodgeDirection = 1;
-    } else {
-      player.dodgeDirection = player.facing === -1 ? 1 : -1;
-    }
-
+  // Priority 2b: Dodge (shift) — full dodge even while gassed
+  if (player.keys.shift && !player.keys.mouse2 && canPlayerDash(player)) {
+    beginPlayerDodge(player, { nowSim: simNowForPlayer(player) });
     return;
   }
 
@@ -2111,35 +2090,8 @@ function executeInputBuffer(player, rooms) {
       break;
     }
     case "dodge": {
-      if (canPlayerDash(player) && !player.isGassed) {
-        player.isRawParrySuccess = false;
-        player.isPerfectRawParrySuccess = false;
-        clearChargeState(player, true);
-        // MASTERY Phase 1: capture carried speed before zeroing (see index.js landing).
-        player.dodgeEntrySpeed = Math.abs(player.movementVelocity);
-        player.movementVelocity = 0;
-        player.isStrafing = false;
-        player.isPowerSliding = false;
-        player.isBraking = false;
-        player.isDodging = true;
-        player.isDodgeStartup = true;
-        player.dodgeStartTime = simNowForPlayer(player);
-        player.dodgeStartupEndTime = simNowForPlayer(player) + DODGE_STARTUP_MS;
-        player.dodgeEndTime = simNowForPlayer(player) + DODGE_DURATION;
-        player.dodgeStartX = player.x;
-        player.currentAction = "dash";
-        player.actionLockUntil = simNowForPlayer(player) + 100;
-        player.justLandedFromDodge = false;
-        player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
-
-        if (player.keys.a) {
-          player.dodgeDirection = -1;
-        } else if (player.keys.d) {
-          player.dodgeDirection = 1;
-        } else {
-          player.dodgeDirection = player.facing === -1 ? 1 : -1;
-        }
-
+      if (canPlayerDash(player)) {
+        beginPlayerDodge(player, { nowSim: simNowForPlayer(player) });
         player.inputBuffer = null;
         return true;
       }
@@ -2253,7 +2205,7 @@ function executeInputBuffer(player, rooms) {
         player.isGrabStartup = true;
         player.grabStartupStartTime = simNowForPlayer(player);
         player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
-        player.grabStartupArmorUsed = false; // Fresh slap-armor charge per grab attempt
+        player.grabStartupArmorUsed = false; // Legacy field; slap catch is active-frame only
         player.currentAction = "grab_startup";
         player.actionLockUntil = simNowForPlayer(player) + GRAB_STARTUP_DURATION_MS;
         player.grabState = GRAB_STATES.ATTEMPTING;

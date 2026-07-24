@@ -36,6 +36,7 @@ import palmThrustStartup from "../assets/palm-thrust-startup.png";
 import palmThrustSmear from "../assets/palm-thrust-smear.png";
 import lowKick from "../assets/kick.png";
 import dodging from "../assets/dodging.png";
+import braking from "../assets/braking.png";
 import throwing from "../assets/throwing.png";
 import salt from "../assets/salt.png";
 import saltBasket from "../assets/salt-basket.png";
@@ -172,6 +173,8 @@ export const SPRITE_HALF_W = 0;
 export const PLAYER_MID_Y = 376;
 /** Game-Y anchor for slap/charged/burst hit rings (HitEffect) + canvas impact sparks. */
 export const HIT_EFFECT_Y = PLAYER_MID_Y - 10;
+/** Belly-slam / flap drop spark — higher on the body than a slap chest hit. */
+export const FLAP_HIT_EFFECT_Y = PLAYER_MID_Y + 36;
 /** Low kick / trip spark — same slap sheet, just above the feet (ground = 286). */
 export const LOW_KICK_HIT_EFFECT_Y = 322;
 
@@ -272,6 +275,7 @@ const initializeImagePreloading = () => {
   preloadImage(bellyLayingEyesOpen);
   preloadImage(cinematicThrowKillLanding);
   preloadImage(dodging);
+  preloadImage(braking);
   preloadImage(crouching);
   preloadImage(crouchStance);
   preloadImage(crouchStrafingApng);
@@ -450,6 +454,7 @@ export {
   palmThrustSmear,
   lowKick,
   dodging,
+  braking,
   throwing,
   salt,
   saltBasket,

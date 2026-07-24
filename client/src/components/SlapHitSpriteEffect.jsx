@@ -91,6 +91,15 @@ HIT_FX.slapBurst = {
   durationMs: 330,
 };
 
+// Flap / slide-jump belly-slam — big burst spark (same weight as slapBurst).
+// GameFighter anchors Y higher on the victim via FLAP_HIT_EFFECT_Y.
+HIT_FX.flap = {
+  ...HIT_FX.slapBurst,
+  sizeCqw: 17.5,
+  durationMs: 340,
+  offsetYPct: 1.2,
+};
+
 // Low kick / trip — same slap spark art, but GameFighter passes a lower Y
 // (LOW_KICK_HIT_EFFECT_Y) so the burst reads at the ankles/shins.
 HIT_FX.lowKick = {

@@ -7,7 +7,7 @@ const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
         ROPE_JUMP_CENTER_FRACTION,
         SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_TOTAL_MS,
         SIDESTEP_STAMINA_COST,
-        DODGE_STARTUP_MS, DODGE_DURATION, DODGE_STAMINA_COST,
+        DODGE_STAMINA_COST,
         GRAB_STARTUP_DURATION_MS, GROUND_LEVEL, DOHYO_FALL_DEPTH,
         SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST,
         RAW_PARRY_STAMINA_COST, POWER_UP_TYPES, SLAP_KILL_RANGE,
@@ -20,7 +20,7 @@ const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
         BALANCE_MAX } = require("./constants");
 const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
         canPlayerSidestep, getSidestepInitData, simNowForPlayer,
-        logVerbInitiation, beginFlapStartup,
+        logVerbInitiation, beginFlapStartup, beginPlayerDodge,
         canArmAttackParry, armAttackParry } = require("./gameUtils");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum, Phase 2: posture, Phase 3: cadence).
@@ -3537,7 +3537,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     cpu.isGrabStartup = true;
     cpu.grabStartupStartTime = simNowForPlayer(cpu);
     cpu.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
-    cpu.grabStartupArmorUsed = false; // Fresh slap-armor charge per grab attempt
+    cpu.grabStartupArmorUsed = false; // Legacy field; slap catch is active-frame only
     cpu.currentAction = "grab_startup";
     cpu.actionLockUntil = currentTime + GRAB_STARTUP_DURATION_MS;
     cpu.grabState = "attempting";
@@ -3594,44 +3594,13 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     }
   }
 
-  // Process dodge
-  if (keyJustPressed("shift") && 
+  // Process dodge — full dodge even while gassed
+  if (keyJustPressed("shift") &&
       !cpu.keys.mouse2 &&
       !cpu.isBeingGrabbed &&
-      canPlayerDash(cpu) &&
-      !cpu.isGassed) {
-    
-    cpu.isRawParrySuccess = false;
-    cpu.isPerfectRawParrySuccess = false;
-    clearChargeState(cpu, true);
-    // MASTERY Phase 1: capture carried speed before zeroing (dodge landing
-    // blends it, gated by MASTERY_P1_MOMENTUM in index.js).
-    cpu.dodgeEntrySpeed = Math.abs(cpu.movementVelocity);
-    cpu.movementVelocity = 0;
-    cpu.isStrafing = false;
-    cpu.isPowerSliding = false;
-    cpu.isBraking = false;
-    
-    cpu.isDodging = true;
-    cpu.isDodgeStartup = true;
-    cpu.dodgeStartTime = currentTime;
-    cpu.dodgeStartupEndTime = currentTime + DODGE_STARTUP_MS;
-    cpu.dodgeEndTime = currentTime + DODGE_DURATION;
-    cpu.dodgeStartX = cpu.x;
-    cpu.currentAction = "dash";
-    cpu.actionLockUntil = currentTime + 100;
-    cpu.justLandedFromDodge = false;
-    
-    cpu.stamina = Math.max(0, cpu.stamina - DODGE_STAMINA_COST);
-    
-    if (cpu.keys.a) {
-      cpu.dodgeDirection = -1;
-    } else if (cpu.keys.d) {
-      cpu.dodgeDirection = 1;
-    } else {
-      cpu.dodgeDirection = cpu.facing === -1 ? 1 : -1;
-    }
-    
+      canPlayerDash(cpu)) {
+    beginPlayerDodge(cpu, { nowSim: currentTime });
+
     if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
     else Object.assign(cpu._prevKeys, cpu.keys);
     return;

@@ -4,7 +4,7 @@
  */
 
 export const SLAP_STARTUP_MS = 55;
-export const SLAP_ACTIVE_MS = 100;
+export const SLAP_ACTIVE_MS = 130;
 export const SLAP_RECOVERY_MS = 75;
 export const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS;
 

@@ -8,6 +8,11 @@ const {
   HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
   CHARGE_FULL_POWER_MS,
   DODGE_RECOVERY_MS,
+  DODGE_STARTUP_MS,
+  DODGE_DURATION,
+  DODGE_STAMINA_COST,
+  DODGE_IFRAME_MS,
+  DODGE_TRAVEL_DISTANCE,
   GROUND_LEVEL,
   SIDESTEP_STARTUP_MS,
   SIDESTEP_RECOVERY_MS,
@@ -29,6 +34,11 @@ const {
   AP_FLURRY_SLACK_MS,
   AP_STAGGER_SLAP_MS,
   SLAP_STARTUP_MS,
+  ICE_SLIDE_BRAKE_ARM_MS,
+  ICE_SLIDE_REVERSE_SPEED_MAX,
+  ICE_SLIDE_REVERSE_BURST,
+  ICE_SLIDE_REVERSE_HOP_MS,
+  ICE_SLIDE_REVERSE_COOLDOWN_MS,
 } = require("./constants");
 
 // Velocity-at-press telemetry sink (MASTERY Phase 0). appendVerbInit is a
@@ -680,6 +690,7 @@ function isPlayerInActiveState(player) {
   return (
     !player.isAttacking &&
     !player.isRopeJumping &&
+    !player.isSlideJumping &&
     !player.isDodging &&
     !player.isDodgeRecovery &&
     !player.isSidestepping &&
@@ -721,6 +732,7 @@ function isPlayerInBasicActiveState(player) {
     !player.isAttacking &&
     !player.isRopeJumping &&
     !player.isFlapping && // Airborne flap — only Space (flight) inputs allowed
+    !player.isSlideJumping &&
     !player.isDodging &&
     !player.isDodgeRecovery &&
     !player.isSidestepping &&
@@ -776,6 +788,67 @@ function canPlayerUseAction(player) {
   );
 }
 
+/**
+ * Dodge startup strike invuln (DODGE_IFRAME_MS from dodgeStartTime).
+ * Strike collision only — grabs always beat dodge.
+ */
+function isInDodgeStrikeIFrames(player, nowSim) {
+  if (!player || !player.isDodging) return false;
+  const start = player.dodgeStartTime || 0;
+  if (!start) return false;
+  const t = (typeof nowSim === "number" ? nowSim : simNowForPlayer(player)) - start;
+  return t >= 0 && t < DODGE_IFRAME_MS;
+}
+
+/**
+ * Start a grounded dodge (full hop + ice-slide kit, including while gassed).
+ * Caller must already pass situational gates (canPlayerDash, not grabbed, etc.).
+ */
+function beginPlayerDodge(player, options = {}) {
+  if (!player) return false;
+  const nowSim = options.nowSim ?? simNowForPlayer(player);
+  let direction = options.direction;
+  if (direction !== 1 && direction !== -1) {
+    if (player.keys?.a && !player.keys?.d) direction = -1;
+    else if (player.keys?.d && !player.keys?.a) direction = 1;
+    else direction = player.facing === -1 ? 1 : -1;
+  }
+
+  if (options.clearCharge !== false) {
+    clearChargeState(player, true);
+  }
+
+  player.isRawParrySuccess = false;
+  player.isPerfectRawParrySuccess = false;
+
+  // MASTERY Phase 1: snapshot entry speed before zeroing (landing blend).
+  player.dodgeEntrySpeed = Math.abs(player.movementVelocity || 0);
+  player.movementVelocity = 0;
+  player.isStrafing = false;
+  player.isPowerSliding = false;
+  player.isBraking = false;
+  clearIceSlideState(player);
+
+  player.isDodging = true;
+  player.isDodgeStartup = !options.skipStartup;
+  player.dodgeStartTime = nowSim;
+  player.dodgeStartupEndTime = nowSim + (options.skipStartup ? 0 : DODGE_STARTUP_MS);
+  player.dodgeEndTime = nowSim + DODGE_DURATION;
+  player.dodgeStartX = player.x;
+  player.dodgeDirection = direction;
+  // Fixed travel — speed buffs only finish this sooner, never extend it.
+  player.dodgeTargetX = Math.max(
+    MAP_LEFT_BOUNDARY,
+    Math.min(MAP_RIGHT_BOUNDARY, player.x + direction * DODGE_TRAVEL_DISTANCE)
+  );
+  player.currentAction = "dash";
+  player.actionLockUntil = nowSim + 100;
+  player.justLandedFromDodge = false;
+
+  player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
+  return true;
+}
+
 // Special function for dash - allows dashing DURING charging (dash will cancel the charge)
 function canPlayerDash(player) {
   // Check action lock timer
@@ -794,6 +867,7 @@ function canPlayerDash(player) {
     !player.isAttacking &&
     !player.isRopeJumping &&
     !player.isFlapping && // Airborne flap — dash (shift) disabled during flight
+    !player.isSlideJumping && // Airborne slide-jump — no dash mid-air
     !player.isDodging &&
     !player.isDodgeRecovery &&
     !player.isSidestepping &&
@@ -866,6 +940,7 @@ function resetPlayerAttackStates(player) {
   player.chargedActiveEndTime = 0;
   player.attackCooldownUntil = 0;
   player.currentSlapHitConnected = false;
+  player.slapOpenHitPending = false;
   player.isBurstKnockback = false;
   player.burstKnockbackStartTime = 0;
 }
@@ -916,6 +991,7 @@ function clearAllActionStates(player) {
   player.cadenceChain = 0;
   player.isSlapSliding = false;
   player.currentSlapHitConnected = false;
+  player.slapOpenHitPending = false;
   player.isBurstKnockback = false;
   player.burstKnockbackStartTime = 0;
   player.mouse1BufferedBeforeStart = false;
@@ -944,6 +1020,7 @@ function clearAllActionStates(player) {
   player.dodgeEndTime = 0;
   player.dodgeDirection = null;
   player.dodgeStartX = 0;
+  player.dodgeTargetX = 0;
   player.dodgeStartupEndTime = 0;
   
   // Clear sidestep states
@@ -1045,6 +1122,8 @@ function clearAllActionStates(player) {
   // ICE PHYSICS: Clear sliding states
   player.isPowerSliding = false;
   player.isBraking = false;
+  clearIceSlideState(player);
+  clearSlideJumpState(player);
   player.strafeStartTime = 0;
   player.wasStrafingLeft = false;
   player.wasStrafingRight = false;
@@ -1126,6 +1205,84 @@ function clearAllActionStates(player) {
   player.lastFlapChargeTime = 0;
 }
 
+function clearSlideJumpState(player) {
+  player.isSlideJumping = false;
+  player.slideJumpPhase = null;
+  player.slideJumpVelocityY = 0;
+  player.slideJumpVelocityX = 0;
+  player.slideJumpDiveCommitted = false;
+  player.slideJumpFastFalling = false;
+  player.slideJumpDiveLockX = 0;
+  player.slideJumpHitLanded = false;
+  player.slideJumpHitRecoverDuration = 0;
+  player.slideJumpLandingTime = 0;
+  player.slideJumpStartTime = 0;
+  player.slideJumpBufferUntil = 0;
+}
+
+function clearIceSlideState(player) {
+  player.isIceSliding = false;
+  player.iceSlideDir = 0;
+  player.iceSlideStartTime = 0;
+  player.slideJumpBufferUntil = 0;
+  player.isIceSlideReverseHopping = false;
+  player.iceSlideReverseHopStartTime = 0;
+  player.iceSlideReverseHopUntil = 0;
+  player.iceSlideReverseBufferUntil = 0;
+  player.iceSlideBrakeArmStart = 0;
+  // Keep reverse cooldown across a brief re-entry so repress can't chain-abuse
+  // by exiting/re-entering slide mid-spam.
+}
+
+/** Fire ice-slide bunny-hop reverse if dig + repress conditions are met. */
+function tryIceSlideReverse(player, nowSim) {
+  if (
+    !player ||
+    !player.isIceSliding ||
+    player.isSlideJumping ||
+    player.isDodging ||
+    player.isHit ||
+    player.isIceSlideReverseHopping
+  ) {
+    return false;
+  }
+  const cooldownReady =
+    !player.iceSlideReverseCooldownUntil ||
+    nowSim >= player.iceSlideReverseCooldownUntil;
+  if (!cooldownReady) return false;
+
+  const slideDir =
+    player.iceSlideDir || (player.movementVelocity >= 0 ? 1 : -1);
+  const holdingLeft = player.keys.a && !player.keys.d;
+  const holdingRight = player.keys.d && !player.keys.a;
+  const holdingAgainst =
+    (slideDir > 0 && holdingLeft) || (slideDir < 0 && holdingRight);
+  if (!holdingAgainst) return false;
+
+  const speed = Math.abs(player.movementVelocity || 0);
+  const brakeArmed =
+    player.iceSlideBrakeArmStart &&
+    nowSim - player.iceSlideBrakeArmStart >= ICE_SLIDE_BRAKE_ARM_MS;
+  // Opposite dig is the skill tax. Speed is a soft alternate gate for a quick dig.
+  if (!brakeArmed && speed > ICE_SLIDE_REVERSE_SPEED_MAX) return false;
+
+  const newDir = holdingLeft ? -1 : 1;
+  player.iceSlideDir = newDir;
+  player.movementVelocity = newDir * ICE_SLIDE_REVERSE_BURST;
+  player.isBraking = false;
+  player.isStrafing = false;
+  player.facing = newDir > 0 ? -1 : 1;
+  player.isIceSlideReverseHopping = true;
+  player.iceSlideReverseHopStartTime = nowSim;
+  player.iceSlideReverseHopUntil = nowSim + ICE_SLIDE_REVERSE_HOP_MS;
+  player.iceSlideReverseCooldownUntil = nowSim + ICE_SLIDE_REVERSE_COOLDOWN_MS;
+  player.iceSlideReverseBufferUntil = 0;
+  player.iceSlideBrakeArmStart = 0;
+  // Fresh slide clock so the post-reverse jump isn't starved by brake time.
+  player.iceSlideStartTime = nowSim;
+  return true;
+}
+
 function clearHitFall(player) {
   player.isHitFalling = false;
   player.hitFallStartTime = 0;
@@ -1184,6 +1341,7 @@ function canPlayerSlap(player, { ignoreCooldown = false } = {}) {
     !player.isRopeJumping &&
     !player.isFlapping &&
     !player.flapPhase &&
+    !player.isSlideJumping &&
     !player.canMoveToReady &&
     !player.isRecovering &&
     !isOnCooldown &&
@@ -1228,6 +1386,7 @@ function cancelPendingSlapWork(player) {
   player.isEnhancedSlap = false;
   player.cadenceChain = 0;
   player.currentSlapHitConnected = false;
+  player.slapOpenHitPending = false;
   player.currentLowKickHitConnected = false;
   player.isSlapSliding = false;
   player.slapFacingDirection = null;
@@ -1534,6 +1693,8 @@ module.exports = {
   canPlayerCharge,
   canPlayerUseAction,
   canPlayerDash,
+  beginPlayerDodge,
+  isInDodgeStrikeIFrames,
   canPlayerSidestep,
   resetPlayerAttackStates,
   clearAllActionStates,
@@ -1561,4 +1722,7 @@ module.exports = {
   getSidestepInitData,
   clearHitFall,
   clearSidestepHitReturn,
+  clearSlideJumpState,
+  clearIceSlideState,
+  tryIceSlideReverse,
 };

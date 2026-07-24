@@ -44,6 +44,7 @@ const DELTA_TRACKED_PROPS = [
   'activePowerUp', 'powerUpMultiplier',
   'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown', 'snowballThrowsRemaining', 'pumoArmySpawnsRemaining',
   'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing', 'effectiveMoveSpeedMult',
+  'isIceSliding', 'isIceSlideReverseHopping', 'isSlideJumping', 'slideJumpDiveCommitted', 'slideJumpFastFalling', 'slideJumpPhase',
   'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
   'isFlapping', 'flapPhase', 'flapCharges', 'flapWingBeatTime', 'flapFastFalling', 'flapBeatHDir',
   'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery',
@@ -93,7 +94,9 @@ const CHARGED_HITBOX_DISTANCE_VALUE = 135; // superseded by tip-based connect
 const SLAP_HITBOX_DISTANCE_VALUE = 138; // superseded by tip-based connect
 // Art-derived tip extents (sprite px from canvas center, 960 canvas). Used by
 // server-io/strikeContact.js. Display scale: (1280 * 0.123) / 960.
-const STRIKE_TIP_SLAP1_SPRITE_PX = 459;
+// Slap1/slap2 share the longer measured tip — anim alternation is cosmetic only.
+// Asymmetric reach made slap1 retals ghost-whiff after a slap2 tip park.
+const STRIKE_TIP_SLAP1_SPRITE_PX = 478;
 const STRIKE_TIP_SLAP2_SPRITE_PX = 478;
 const STRIKE_TIP_CHARGED_SPRITE_PX = 425;
 const STRIKE_TIP_PALM_SPRITE_PX = 438;
@@ -140,6 +143,9 @@ const SLAP_PARRY_KB_FRICTION = 0.82; // Strong friction — quick settle after t
 const SLAP_PARRY_TIP_SEPARATION = 165;
 
 const GRAB_RANGE = 146; // Command grab range — same +16 past pushbox overhang as before
+// Slap-catch uses full grab range. (A tighter pocket made tip-range slap
+// spacing un-grabbable while slap could still stuff — feel was too weak.)
+const GRAB_SLAP_CATCH_RANGE = GRAB_RANGE;
 
 // ============================================
 // FRAME DATA SYSTEM — Formal startup/active/recovery for every move
@@ -150,9 +156,10 @@ const SLAP_STARTUP_MS = 55;       // Wind-up before hitbox. Kept SHORT so slaps
                                   // read as FAST jabs (not slow taps). Client
                                   // SLAP_ANIM.SMEAR_END must equal this so hit art
                                   // never leads the active frames (see GameFighter).
-const SLAP_ACTIVE_MS = 100;       // Hitbox live window
-const SLAP_RECOVERY_MS = 75;      // Can't act, no hitbox. Full cycle = 230ms — the
-                                  // press-to-press rhythm of repeated slaps.
+const SLAP_ACTIVE_MS = 130;       // Hitbox live window — extra chase time after a
+                                  // connect so the follow-up slide can re-tag
+                                  // before soft-whiffing off a knife-edge gap.
+const SLAP_RECOVERY_MS = 75;      // Can't act, no hitbox. Full cycle = startup+active+recovery.
 const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS;
 
 // ── SLAP REWORK: individual presses, no string/combo ────────────────────────
@@ -160,10 +167,8 @@ const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS;
 // actionable at the same instant (+0 by construction: the victim's hitstun is
 // set to the attacker's remaining cycle at the moment of connect — see
 // processHit). The reward for landing a slap is GROUND, not frames: both
-// players slide toward the victim's rope, with the victim drifting slightly
-// farther so repeated hits self-space out of slap reach after 2-3 connects.
-// The slap1/slap2 animations still alternate, but purely cosmetically — both
-// have identical properties.
+// players slide toward the victim's rope together (attacker slightly faster so
+// mash pressure stays glued). Slap1/slap2 alternate cosmetically only.
 
 // === WHIFF COOLDOWN (subtle, per press) ===
 // The old "2 whiffs → committed 300ms pause + stamina surcharge" was built to
@@ -209,12 +214,13 @@ const SLAP_KILL_RANGE = 25;
 const SLAP_ROPE_RESIST_BUFFER = 12;
 
 // ── ON-HIT GROUND TRANSFER (the slap's entire reward) ───────────────────────
-// On connect BOTH players slide toward the victim's rope. The victim drifts
-// slightly FASTER than the attacker advances, so back-to-back slaps self-space:
-// after 2-3 connects the victim exits slap reach and the attacker must walk or
-// commit to something else to continue. Positional gain, zero frame gain.
-const SLAP_ONHIT_ATTACKER_PUSH = 1.0;   // Attacker's forward slide on connect (matches whiff slide)
-const SLAP_ONHIT_VICTIM_DRIFT = 1.15;   // Victim's drift — the self-spacing dial (> attacker push)
+// On connect BOTH slide toward the victim's rope, but the attacker carries a
+// touch more so the next slap stays in range (chase/glue). Equal speeds still
+// soft-whiffed once victimKb / counters / coast desync opened a knife-edge gap
+// during the follow-up's startup. Real big-spacing tools stay intentional:
+// counters (SLAP_COUNTER_KB_MULT), palm, charged, grab.
+const SLAP_ONHIT_ATTACKER_PUSH = 1.35;  // Chase slide — glue mash pressure after connect
+const SLAP_ONHIT_VICTIM_DRIFT = 1.0;    // Pair transfer; attacker closes relative gap
 
 // ── SLAP COUNTER HIT ─────────────────────────────────────────────────────────
 // A counter hit (clipping the opponent's startup) is the ONLY way a slap grants
@@ -283,20 +289,28 @@ const LOW_KICK_BALANCE_DRAIN = 12;      // Above slap (~7), under palm (20)
 const LOW_KICK_BALANCE_DRAIN_VS_PARRY = 16; // Bonus for beating Space
 const LOW_KICK_BALANCE_DRAIN_COUNTER = 16;
 
-const GRAB_STARTUP_MS = 165;      // Readable telegraph. Trimmed 180→165 to let
-                                  // grabs win the timing race vs slaps a bit
-                                  // more often, compensating for the removal of
-                                  // the default 1-hit grab-startup armor (a slap
-                                  // that beats the grab now stuffs it cleanly).
-                                  // Tuning knob — nudge down further if grabs
-                                  // still feel too easy to poke out of.
-const GRAB_ACTIVE_MS = 100;       // Grab connect window
+const GRAB_STARTUP_MS = 145;      // Readable telegraph. Early startup is
+                                  // stuffable; throw-catch begins late in
+                                  // startup (see GRAB_THROW_CATCH_START_MS).
+const GRAB_ACTIVE_MS = 110;       // Grab connect / slap-catch window
+// When throw-catch vs slap begins (ms after grab press). Must be ≤ slap
+// recovery (75ms) so a grab pressed on slap recovery can reach catch before
+// the next mashed slap stuffs you — otherwise PB slap mash makes grab
+// mathematically impossible (startup 145 > recovery 75). Early window
+// stays hittable so meaty/react slaps still beat raw grab attempts.
+const GRAB_THROW_CATCH_START_MS = 70;
 
 const DODGE_STARTUP_MS = 50;      // Readable windup/anticipation before the hop (was 20)
 const DODGE_ACTIVE_MS = 210;      // Actual dash movement — lengthened for readability (was 175); speed lowered to keep the same travel distance
 const DODGE_RECOVERY_MS = 0;      // No recovery — cooldown prevents chain-dash (was 90)
 const DODGE_TOTAL_MS = DODGE_STARTUP_MS + DODGE_ACTIVE_MS + DODGE_RECOVERY_MS; // 260ms
 const DODGE_COOLDOWN_MS = 100;    // Forced idle gap after recovery before next dash (prevents chain-dash blur)
+// Strike-only startup invuln from dodge press. Covers most of the 50ms windup so
+// a committed dodge slips a meaty; cuts off before/as active travel begins so
+// late panic into live hitboxes is still hittable. Grabs ignore this entirely.
+const DODGE_IFRAME_MS = 40;
+// Gassed: full dodge + ice-slide kit stays available (weak "panic hop" felt worse
+// than none). Sidestep / rope jump / flap remain hard-locked while gassed.
 
 // ============================================
 // Sidestep — Henka-style positional escape around the dohyo
@@ -426,6 +440,40 @@ const SLIDE_STRAFE_TIME_REQUIRED = 100; // Must be strafing for 100ms before pow
 const DODGE_SLIDE_MOMENTUM = 1.1;       // Momentum when landing from dodge
 const DODGE_POWERSLIDE_BOOST = 1.95;    // Boost if holding C on dodge landing
 
+// ============================================
+// ICE SLIDE (SHIFT held through dodge land) → SLIDE JUMP (W) → BUTT SLAM (S)
+// ============================================
+// Entered when SHIFT is still held as a dodge ends. Tiny grounded flash before
+// W is live; jump range scales with slide time + exit speed. Steering bleeds
+// speed (and thus jump range). S in the air reuses the flap body-slam dive.
+const ICE_SLIDE_FRICTION = 0.996;           // Very low friction while SHIFT held in slide dir
+const ICE_SLIDE_COAST_FRICTION = 0.965;     // SHIFT released but still sliding — keep state for repress reverse
+const ICE_SLIDE_STEER_FRICTION = 0.88;      // Bleed when A/D steers / fights the slide
+const ICE_SLIDE_OPPOSE_FRICTION = 0.82;     // Harder bleed when holding opposite of slide dir
+const ICE_SLIDE_EXIT_SPEED = 0.28;          // Drop out of slide below this |velocity| (SHIFT released only)
+const ICE_SLIDE_MAX_SPEED = 2.4;           // Soft cap while ice-sliding
+const ICE_SLIDE_MAINTAIN = 0.02;           // Tiny sustain toward slide dir while SHIFT held
+// Brake → SHIFT repress bunny-hop reverse (recovering → braking art)
+// Skill tax is opposite-dir dig + SHIFT repress — NOT ejecting the slide into a dodge.
+const ICE_SLIDE_REVERSE_SPEED_MAX = 1.55;   // Soft dig gate; brake-arm also qualifies above this
+const ICE_SLIDE_BRAKE_ARM_MS = 45;          // Hold opposite this long → reverse legal even if still quick
+const ICE_SLIDE_REVERSE_BUFFER_MS = 150;    // SHIFT repress buffer while opposite dig catches up
+const ICE_SLIDE_REVERSE_BURST = 2.15;       // Instant velocity in the new direction
+const ICE_SLIDE_REVERSE_HOP_MS = 85;        // Tiny hop window (recovering pose)
+const ICE_SLIDE_REVERSE_HOP_HEIGHT = 16;    // Peak Y above ground during the hop
+const ICE_SLIDE_REVERSE_COOLDOWN_MS = 160;  // Anti ping-pong; still snappy
+const SLIDE_JUMP_MIN_MS = 100;             // Grounded "slide flash" before W jump is live
+const SLIDE_JUMP_BUFFER_MS = 120;          // W pressed during flash → fire when min elapses
+const SLIDE_JUMP_LIFTOFF_IMPULSE = 13.2;   // Electric pop — clears a standing body (~peak 160px)
+const SLIDE_JUMP_GRAVITY = 0.52;           // Snappier than flap float; still hangs enough to read
+const SLIDE_JUMP_H_BASE = 4.4;             // Min horizontal carry (px/tick) — past opponent by default
+const SLIDE_JUMP_H_BONUS = 2.2;            // Extra H from long slide (added at full scale)
+const SLIDE_JUMP_H_SPEED_SCALE = 0.55;     // Extra H from |movementVelocity| at takeoff
+const SLIDE_JUMP_SCALE_MS = 450;           // Slide duration after min to reach full H bonus
+const SLIDE_JUMP_AIR_STEER = 1.2;          // Weak air nudge (also bleeds H slightly)
+const SLIDE_JUMP_AIR_STEER_BLEED = 0.97;   // Per-tick H decay when air-steering
+const SLIDE_JUMP_LANDING_RECOVERY_MS = 90; // Barely punishable — strict slap-timing window
+
 // Edge awareness
 const DOHYO_EDGE_PANIC_ZONE = 89;       // Scaled for camera zoom (was 120)
 // PHASE 2 — position gate for the read-gated charged cinematic kill. A NEUTRAL
@@ -455,7 +503,11 @@ const MIN_MOVEMENT_THRESHOLD = ICE_STOP_THRESHOLD;
 // Dash Physics - grounded dash with dash slap
 // ============================================
 const DODGE_DURATION = DODGE_STARTUP_MS + DODGE_ACTIVE_MS; // 260ms total before recovery phase
-const DODGE_BASE_SPEED = 2.67; // Grounded dash speed — lowered from 3.2 alongside the longer ACTIVE window so travel stays ~118px but reads slower/weightier (still ~1.4x the sidestep's speed, clearly faster than strafing)
+const DODGE_BASE_SPEED = 2.67; // Baseline px-rate unit — travel distance is FIXED (see DODGE_TRAVEL_DISTANCE)
+// Fixed hop distance at rate 1: BASE_SPEED * speedFactor * ACTIVE_MS ≈ 104px.
+// Speed buffs must NOT extend this — they only finish the hop sooner (capped).
+const DODGE_TRAVEL_DISTANCE = DODGE_BASE_SPEED * speedFactor * DODGE_ACTIVE_MS;
+const DODGE_SPEED_MULT_CAP = 1.5; // Max Happy Feet / draft rate on dodge — duration shrink only
 const DODGE_CANCEL_ACTION_LOCK = 80; // Brief lock after S-cancel to prevent instant pivoting
 
 // ============================================
@@ -467,7 +519,7 @@ const GRAB_WALK_SPEED_MULTIPLIER = 0.8; // Slightly slower than normal strafing
 const GRAB_WALK_ACCEL_MULTIPLIER = 0.7; // Slightly lower acceleration than normal strafing
 
 // Grab startup tuning — lunge forward during startup for better grab range
-const GRAB_STARTUP_DURATION_MS = GRAB_STARTUP_MS; // Uses frame data constant (180ms)
+const GRAB_STARTUP_DURATION_MS = GRAB_STARTUP_MS; // Uses frame data constant
 const GRAB_STARTUP_HOP_HEIGHT = 0; // No hop — grab is a grounded technique
 const GRAB_LUNGE_DISTANCE = 75; // Pixels of forward movement during grab startup (buffed from 55 — grabs more threatening)
 const SLAP_ATTACK_STARTUP_MS = SLAP_STARTUP_MS; // Uses frame data constant (55ms — all slaps share this startup)
@@ -623,7 +675,13 @@ const AP_ACTIVE_MS = 180;            // PARRY WINDOW: a tap deflects if the stri
 // (defender not in Space stance) are deferred, while live PARRY / GUARD still
 // resolve immediately. Gives a slightly-late tap time to arm during early active
 // without making the jab fully reactable on startup. Slap-only.
+//
+// Open hits that were already in range during this window set slapOpenHitPending
+// and confirm once grace ends (see collisionSystem) — otherwise ice drift across
+// the deferred ticks can push past tip connect and ghost-whiff a point-blank
+// slap. Slack is a few ticks of coast, not sidestep distance.
 const AP_LATE_PARRY_MS = 45;
+const SLAP_GRACE_CONFIRM_SLACK_PX = 28;
 const AP_FLOW_WINDOW_MS = 400;       // DEPRECATED (Deflect Flow removed). Kept only so existing imports resolve; unreferenced by the new state machine.
 // IMPACT-pose + post-parry move/offense lock (sim-clock; frozen during hitstop,
 // so this mostly plays AFTER the freeze). Same duration for regular and perfect
@@ -1365,8 +1423,7 @@ const CADENCE_WINDOW_MS = 85;          // gap ≤ this (cycleEnd − buffered pr
                                        // Widened 60→85 so a human can land the rhythm without
                                        // frame-perfect input (still well short of the full cycle,
                                        // so mashing/early-buffered presses stay normal).
-const SLAP_TOTAL_MS_ENHANCED = 205;    // SAFE 215 — enhanced cycle (today 230); startup/active
-                                       // are untouched, only the recovery tail shortens (still +0)
+const SLAP_TOTAL_MS_ENHANCED = 235;    // Normal cycle −25ms recovery tail (startup/active untouched)
 const BALANCE_SLAP_HIT_DRAIN_ENHANCED = 10; // was 16 — scaled down with the base slap drain (P2 base now 7); a cadence slap still bites a bit harder than a plain one
 const CADENCE_STEP_IN_MULT = 1.15;     // SAFE 1.1 — enhanced on-hit pair shift (step-in) scale
 // CPU cadence competence by difficulty tier — the fraction of follow-up slaps a
@@ -1408,7 +1465,9 @@ const PERFECT_PARRY_BALANCE_REFUND_MAX = 20; // base PERFECT_PARRY_BALANCE_REFUN
 // attacker↔victim at connect.
 const SLAP_TIP_DISTANCE = 120;      // d > this ⇒ tip; d ≤ this ⇒ deep (baseline)
 const SLAP_TIP_POSTURE_MULT = 1.3;  // SAFE 1.2 — tip slap posture drain scale
-const SLAP_TIP_DRIFT_MULT = 1.1;    // SAFE 1.05 — tip slap victim drift scale
+// Tip reward is posture only. Extra tip drift re-opened the soft-whiff problem
+// (slightly out of range, still close enough to get slapped back).
+const SLAP_TIP_DRIFT_MULT = 1.0;
 
 // 4.3 Clash margin scaling. The decisive (non-neutral) slap-clash outcome stops
 // being a fixed WINNER/LOSER pair and scales with the timing MARGIN between the
@@ -1436,19 +1495,15 @@ const CHARGE_DURATION_EXP = 1.6;
 
 // 4.5 Risk dials (the compounding layer — most sensitive, tune last).
 // FOLLOW-THROUGH: on a slap connect the attacker's HELD direction is a
-// player-chosen bet. Holding TOWARD the victim commits — a bigger pair-shift
-// (more ground) but +FOLLOW_THROUGH_TOWARD_RECOVERY_MS of recovery, making the
-// hand slightly MINUS (the victim can answer). Holding AWAY fades — a smaller
-// shift but −FOLLOW_THROUGH_AWAY_RECOVERY_MS recovery, slightly PLUS with less
-// ground. A NEUTRAL hand keeps today's +0 default (shift ×1, no recovery
-// change) so a flat slap is byte-identical. Recovery is adjusted on the
-// ATTACKER's cycle only (the victim's hitstun is derived from the base cycle),
-// which is the ONE deliberate, explicit frame dial the invariants carve out for
-// Phase 4 (invariant #1 exception) — never a momentum-driven frame change.
+// player-chosen bet on GROUND. Holding TOWARD commits — bigger pair-shift.
+// Holding AWAY fades — smaller shift. NEUTRAL keeps shift ×1. Recovery offsets
+// still move the attacker's cycle, but victim hitstun is synced to the same
+// offset so the exchange stays +0 (holding in while mashing must NOT free the
+// victim early to walk out of the next slap — that felt like a soft whiff bug).
 const FOLLOW_THROUGH_TOWARD_SHIFT = 1.35;      // SAFE 1.25
 const FOLLOW_THROUGH_AWAY_SHIFT = 0.8;         // SAFE 0.9
-const FOLLOW_THROUGH_TOWARD_RECOVERY_MS = 25;  // attacker recovery LENGTHENED (slightly minus)
-const FOLLOW_THROUGH_AWAY_RECOVERY_MS = 10;    // attacker recovery SHORTENED (slightly plus)
+const FOLLOW_THROUGH_TOWARD_RECOVERY_MS = 25;  // both players' clocks lengthen together
+const FOLLOW_THROUGH_AWAY_RECOVERY_MS = 10;    // both players' clocks shorten together
 // CPU follow-through usage by archetype (rollout / cross-phase CPU table). A
 // pusher biases follow-through (commit), a counter biases fade; IMPOSSIBLE
 // presses the edge (deterministic follow-through) on a broken-posture victim
@@ -1517,6 +1572,8 @@ module.exports = {
   SLAP_PARRY_KB_FRICTION,
   SLAP_PARRY_TIP_SEPARATION,
   GRAB_RANGE,
+  GRAB_SLAP_CATCH_RANGE,
+  GRAB_THROW_CATCH_START_MS,
   DOHYO_FALL_SPEED,
   DOHYO_FALL_DEPTH,
   DOHYO_FALL_HORIZONTAL_RETENTION,
@@ -1548,6 +1605,31 @@ module.exports = {
   SLIDE_STRAFE_TIME_REQUIRED,
   DODGE_SLIDE_MOMENTUM,
   DODGE_POWERSLIDE_BOOST,
+  ICE_SLIDE_FRICTION,
+  ICE_SLIDE_COAST_FRICTION,
+  ICE_SLIDE_STEER_FRICTION,
+  ICE_SLIDE_OPPOSE_FRICTION,
+  ICE_SLIDE_EXIT_SPEED,
+  ICE_SLIDE_MAX_SPEED,
+  ICE_SLIDE_MAINTAIN,
+  ICE_SLIDE_REVERSE_SPEED_MAX,
+  ICE_SLIDE_BRAKE_ARM_MS,
+  ICE_SLIDE_REVERSE_BUFFER_MS,
+  ICE_SLIDE_REVERSE_BURST,
+  ICE_SLIDE_REVERSE_HOP_MS,
+  ICE_SLIDE_REVERSE_HOP_HEIGHT,
+  ICE_SLIDE_REVERSE_COOLDOWN_MS,
+  SLIDE_JUMP_MIN_MS,
+  SLIDE_JUMP_BUFFER_MS,
+  SLIDE_JUMP_LIFTOFF_IMPULSE,
+  SLIDE_JUMP_GRAVITY,
+  SLIDE_JUMP_H_BASE,
+  SLIDE_JUMP_H_BONUS,
+  SLIDE_JUMP_H_SPEED_SCALE,
+  SLIDE_JUMP_SCALE_MS,
+  SLIDE_JUMP_AIR_STEER,
+  SLIDE_JUMP_AIR_STEER_BLEED,
+  SLIDE_JUMP_LANDING_RECOVERY_MS,
   DOHYO_EDGE_PANIC_ZONE,
   CHARGED_KILL_EDGE_ZONE,
   ICE_EDGE_BRAKE_BONUS,
@@ -1606,6 +1688,7 @@ module.exports = {
   DODGE_RECOVERY_MS,
   DODGE_TOTAL_MS,
   DODGE_COOLDOWN_MS,
+  DODGE_IFRAME_MS,
 
   // Sidestep
   SIDESTEP_STARTUP_MS,
@@ -1622,6 +1705,8 @@ module.exports = {
   // Dodge physics
   DODGE_DURATION,
   DODGE_BASE_SPEED,
+  DODGE_TRAVEL_DISTANCE,
+  DODGE_SPEED_MULT_CAP,
   DODGE_CANCEL_ACTION_LOCK,
 
   // Grab mechanics
@@ -1689,6 +1774,7 @@ module.exports = {
   // Guard & Parry (AP)
   AP_ACTIVE_MS,
   AP_LATE_PARRY_MS,
+  SLAP_GRACE_CONFIRM_SLACK_PX,
   AP_FLOW_WINDOW_MS,
   AP_SUCCESS_RECOVERY_MS,
   AP_WHIFF_RECOVERY_MS,

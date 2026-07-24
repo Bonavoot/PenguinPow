@@ -369,7 +369,7 @@ const VsLetters = styled.div`
   text-shadow: ${TEXT_SHADOW_DISPLAY_HEAVY};
 `;
 
-/* Solid plate so mode + loading stay readable over the gyoji. */
+/* Solid plate so mode + loading stay readable over the live arena. */
 const VsMetaPlate = styled.div`
   position: relative;
   z-index: 2;

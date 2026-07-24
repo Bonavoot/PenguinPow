@@ -441,6 +441,7 @@ function resetRoomAndPlayers(room, io) {
     player.pendingPalmThrust = false;
     player.slapAnimationToggle = 0;
     player.currentSlapHitConnected = false;
+    player.slapOpenHitPending = false;
     player.isBurstKnockback = false;
     player.burstKnockbackStartTime = 0;
     player.isChargingAttack = false;

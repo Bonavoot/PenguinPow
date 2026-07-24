@@ -84,6 +84,7 @@ const {
   FLAP_BODYSLAM_KB_VELOCITY,
   AP_ACTIVE_MS,
   AP_LATE_PARRY_MS,
+  SLAP_GRACE_CONFIRM_SLACK_PX,
   AP_FLOW_WINDOW_MS,
   AP_PERFECT_KILL_THRESHOLD,
   AP_BALANCE_DRAIN,
@@ -138,6 +139,7 @@ const {
   schedulePalmThrustVisualEnd,
   alignedEntryVelocity,
   grantAttackParryFlurryCover,
+  isInDodgeStrikeIFrames,
 } = require("./gameUtils");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum; Phase 2: posture;
@@ -145,13 +147,15 @@ const {
 const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P3_CADENCE, MASTERY_P4_ANALOG, MASTERY_P5_ASSISTS } = require("./masteryFlags");
 
 const {
-  grabSlipsSlap,
+  grabCatchesSlap,
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
 } = require("./combatHelpers");
 
 const {
   getConnectDistance,
+  getHitParkDistance,
+  isWithinConnectRange,
   getContactSeamX,
   applyContactCorrection,
   attackKindFromPlayer,
@@ -280,6 +284,11 @@ function checkCollision(player, otherPlayer, rooms, io) {
     return;
   }
 
+  // Slide-jump: full immunity while airborne (same role as flap/rope jump).
+  if (otherPlayer.isSlideJumping && otherPlayer.slideJumpPhase === "flight") {
+    return;
+  }
+
   // Check for startup frames on all attacks - disable collision during startup
   // Use isInStartupFrames flag for accurate timing (set by executeSlapAttack/executeChargedAttack)
   if (player.isAttacking && player.isInStartupFrames) {
@@ -311,15 +320,14 @@ function checkCollision(player, otherPlayer, rooms, io) {
     return;
   }
 
-  // Dodge no longer grants i-frames against ANY attack type.
-  // Previously dodge i-framed charged attacks during its active phase, but that
-  // made charged whiff against a well-timed dodge with no counterplay. Charged
-  // now hits dodge as a normal hit (no counter-hit, no punish — see counter-hit
-  // suppression below). Slap was never i-framed by dodge to begin with.
+  // Dodge: short STARTUP strike i-frames only (DODGE_IFRAME_MS from press).
+  // Active travel stays hittable — full active invuln vs charged was removed
+  // because it made charged a free whiff. Grabs ignore this (always catch dodge).
+  // Hits outside the window are clean normal hits (no counter-hit / punish).
   // Sim clock — slapParryImmunityUntil is a sim-clock deadline (pauses with hitstop)
   const now = simNowForPlayer(player);
-  const otherInDodgeIFrames = false;
-  const playerInDodgeIFrames = false;
+  const otherInDodgeIFrames = isInDodgeStrikeIFrames(otherPlayer, now);
+  const playerInDodgeIFrames = isInDodgeStrikeIFrames(player, now);
 
   // Sidestep grants i-frames vs ALL strikes during the ACTIVE phase, AND
   // during RECOVERY while still LITERALLY clipping the opponent's body
@@ -396,7 +404,26 @@ function checkCollision(player, otherPlayer, rooms, io) {
     const attackDir = player.facing === 1 ? -1 : 1;
     const opponentInFront = deltaX * attackDir >= 0;
     const horizontalDistance = Math.abs(deltaX);
-    if (opponentInFront && horizontalDistance < hitboxDistance) {
+    // Open hits deferred during AP_LATE_PARRY_MS may drift a few px past tip
+    // connect before they are allowed to land. If the slap was already in
+    // range during that grace (slapOpenHitPending), confirm once past grace
+    // within a small slack — fixes point-blank ghost whiffs without letting
+    // a full sidestep still eat the hit.
+    const slapAge = player.attackStartTime ? now - player.attackStartTime : 0;
+    const pastOpenHitGrace = slapAge >= SLAP_STARTUP_MS + AP_LATE_PARRY_MS;
+    // Tip-meets-body inclusive (+ snap epsilon) — exact parks after contact
+    // correction must still confirm on the retal, not ghost-whiff.
+    const inRange =
+      opponentInFront && isWithinConnectRange(horizontalDistance, hitboxDistance);
+    const confirmDeferredOpenHit =
+      player.slapOpenHitPending &&
+      pastOpenHitGrace &&
+      opponentInFront &&
+      isWithinConnectRange(
+        horizontalDistance,
+        hitboxDistance + SLAP_GRACE_CONFIRM_SLACK_PX
+      );
+    if (inRange || confirmDeferredOpenHit) {
       if (otherPlayer.isAttacking && otherPlayer.attackType === "slap") {
         // ── SLAP vs SLAP: earlier-connect wins; same-tick tie TRADES ──────────
         // The old clash ("slap parry") is gone. Resolution is now purely by who
@@ -435,24 +462,23 @@ function checkCollision(player, otherPlayer, rooms, io) {
         const dxFromCharged = player.x - otherPlayer.x;
         const chargedAtkDir = otherPlayer.facing === 1 ? -1 : 1;
         const inFrontOfCharged = dxFromCharged * chargedAtkDir >= 0;
-        if (inFrontOfCharged && Math.abs(dxFromCharged) < chargedHitboxDist) {
+        if (
+          inFrontOfCharged &&
+          isWithinConnectRange(Math.abs(dxFromCharged), chargedHitboxDist)
+        ) {
           return; // Charged attack has priority — that branch will process the hit
         }
       }
 
-      // GRAB SLIPS SLAP: if the defender is in grab startup and this slap's
-      // hitbox came out AFTER their grab began, the grab evades it — the slap
-      // whiffs and the grab startup survives to connect. This is the anti-spam
-      // read (see grabSlipsSlap): a committed grab beats mashed slaps, but a
-      // slap already active before the grab started still connects below.
-      if (otherPlayer.isGrabStartup && grabSlipsSlap(otherPlayer, player)) {
-        return; // Grab slips it — don't process slap hit, grab will connect
+      // COMMAND GRAB CATCH: late-startup + active throw-catch beats slap in
+      // range. Suppress the slap this tick so grab connect clinches same tick
+      // (takes the active frame). Early grab startup is still stuffed by slap.
+      if (grabCatchesSlap(otherPlayer, player, now)) {
+        return; // Throw catch — grab connect will clinch this tick
       }
 
-      // Slap was already active before the grab began → it stuffs the grab and
-      // connects cleanly (processHit). There is NO free damage-absorb armor;
-      // the ONLY thing that absorbs here is the Thick Blubber loadout/power-up,
-      // resolved grabs-only inside processHit.
+      // Slap stuffs early grab startup (before throw-catch frames).
+      // Thick Blubber is the only absorb, resolved grabs-only inside processHit.
       if (eitherHasSlapParryImmunity) return;
       processHit(player, otherPlayer, rooms, io);
     }
@@ -461,14 +487,14 @@ function checkCollision(player, otherPlayer, rooms, io) {
 
   // ── LOW KICK / TRIP ───────────────────────────────────────────────────────
   // Rooted poke: beats parry/guard (falls through processHit — not in the
-  // slap/palm parry gate) and grab startup (no grabSlipsSlap). Loses to live
-  // slap / palm / charged hitboxes on trade.
+  // slap/palm parry gate) and grab startup/active (no throw-catch vs low kick).
+  // Loses to live slap / palm / charged hitboxes on trade.
   if (player.attackType === "lowKick") {
     const deltaX = otherPlayer.x - player.x;
     const attackDir = player.facing === 1 ? -1 : 1;
     const opponentInFront = deltaX * attackDir >= 0;
     const horizontalDistance = Math.abs(deltaX);
-    if (opponentInFront && horizontalDistance < hitboxDistance) {
+    if (opponentInFront && isWithinConnectRange(horizontalDistance, hitboxDistance)) {
       if (
         otherPlayer.isAttacking &&
         !otherPlayer.isInStartupFrames &&
@@ -512,7 +538,10 @@ function checkCollision(player, otherPlayer, rooms, io) {
   const chargedOpponentInFront = chargedDeltaX * chargedAttackDir >= 0;
   const chargedHorizontalDistance = Math.abs(chargedDeltaX);
 
-  if (chargedOpponentInFront && chargedHorizontalDistance < hitboxDistance) {
+  if (
+    chargedOpponentInFront &&
+    isWithinConnectRange(chargedHorizontalDistance, hitboxDistance)
+  ) {
     // PALM THRUST vs a grab: there is no default grab-startup armor, so a palm
     // that reaches a grabber stuffs the grab like any other strike (resolved in
     // processHit, where only the grabs-only Thick Blubber can absorb it). We
@@ -853,12 +882,11 @@ function processHit(player, otherPlayer, rooms, io) {
   const counterHitFromSidestepStartup = otherPlayer.isSidestepStartup === true;
   const counterHitFromFlapStartup =
     otherPlayer.isFlapping && otherPlayer.flapPhase === "startup";
-  // Dodge is a pure movement ability, not an attack — hits against any phase
-  // of a dodge land as a clean normal hit (no counter-hit, no punish). Other
-  // movement-ish actions (sidestep, rope jump, flap liftoff) ARE still
-  // counter-hittable on startup because they're committed defensive reads with
-  // bigger payoffs; dodge is a quick reposition with no defensive payoff to
-  // "earn" a counter.
+  // Dodge is a pure movement ability, not an attack — strikes that connect
+  // outside its short startup i-frame window land as clean normal hits (no
+  // counter-hit, no punish). Other movement-ish actions (sidestep, rope jump,
+  // flap liftoff) ARE still counter-hittable on startup because they're
+  // committed defensive reads with bigger payoffs.
   const counterHitRaw = counterHitFromAttacking || counterHitFromIntent || counterHitFromGrabAttempt
     || counterHitFromRopeJumpStartup || counterHitFromSidestepStartup || counterHitFromFlapStartup;
 
@@ -1023,7 +1051,9 @@ function processHit(player, otherPlayer, rooms, io) {
   // ── Early-active slap grace (AP_LATE_PARRY_MS) ─────────────────────────────
   // First N ms of slap ACTIVE: live PARRY/GUARD still resolve immediately, but
   // open hits are deferred so a slightly-late tap can arm and catch. Palm /
-  // charged are unchanged. After the grace, open hits land as usual.
+  // charged are unchanged. Stamp slapOpenHitPending so checkCollision can
+  // still confirm after grace if ice drift nudged the pair slightly past tip
+  // connect (point-blank ghost whiff).
   if (
     isSlapAttack &&
     player.attackStartTime &&
@@ -1034,6 +1064,7 @@ function processHit(player, otherPlayer, rooms, io) {
       slapAge >= SLAP_STARTUP_MS &&
       slapAge < SLAP_STARTUP_MS + AP_LATE_PARRY_MS
     ) {
+      player.slapOpenHitPending = true;
       return;
     }
   }
@@ -1386,12 +1417,22 @@ function processHit(player, otherPlayer, rooms, io) {
     }
   } else {
     // === ROCK-SOLID HIT PROCESSING ===
-    // Contact rails: snap to tip-meets-body before KB / hitstop so the freeze
-    // frame shows a solid connect (not buried through / floating short).
+    // MASTERY Phase 4 (4.2 tip/deep spacing): measure BEFORE contact correction.
+    // Correction parks every connect at tip-meets-body (> SLAP_TIP_DISTANCE),
+    // which falsely marked deep/point-blank hits as tip and inflated drift.
+    const preHitDistance = Math.abs(player.x - otherPlayer.x);
+    const isTipSlap =
+      MASTERY_P4_ANALOG &&
+      isSlapAttack &&
+      preHitDistance > SLAP_TIP_DISTANCE;
+
+    // Contact rails: snap before KB / hitstop so the freeze frame reads solid.
+    // Slaps park slightly inside tip (getHitParkDistance) so mash pressure keeps
+    // a margin; charged/palm still park at full tip-meets-body.
     const hitAttackKind = attackKindFromPlayer(player);
     if (isSlapAttack || player.attackType === "charged" || player.isPalmThrust) {
-      const connectDist = getConnectDistance(hitAttackKind, player, otherPlayer);
-      applyContactCorrection(player, otherPlayer, connectDist);
+      const parkDist = getHitParkDistance(hitAttackKind, player, otherPlayer);
+      applyContactCorrection(player, otherPlayer, parkDist);
     }
 
     // Clear any existing hit state cleanup to prevent conflicts
@@ -1445,20 +1486,10 @@ function processHit(player, otherPlayer, rooms, io) {
     // Increment hit counter for reliable hit sound triggering
     otherPlayer.hitCounter = (otherPlayer.hitCounter || 0) + 1;
 
-    // MASTERY Phase 4 (4.2 tip/deep spacing) + (4.5 follow-through). Resolved
-    // ONCE here (positions are still at the connect moment) so the posture-drain
-    // block, the on-hit ground transfer, and the recovery adjustment all read
-    // the same values. All collapse to today's behavior with the flag off:
-    //   isTipSlap = false, followThroughDir = 0.
-    // 4.2: a slap that connects at the TIP of its range (attacker↔victim
-    //   distance > SLAP_TIP_DISTANCE) rewards the spacing — deeper posture
-    //   damage + a touch more drift; a point-blank (deep) slap is baseline.
+    // MASTERY Phase 4 (4.5 follow-through). Tip/deep (4.2) resolved above from
+    // pre-correction spacing so posture/drift rewards match actual connect depth.
     // 4.5: the attacker's held direction at connect (or CPU archetype intent)
     //   dials the pair-shift and their own recovery (see resolveSlapFollowThrough).
-    const isTipSlap =
-      MASTERY_P4_ANALOG &&
-      isSlapAttack &&
-      Math.abs(player.x - otherPlayer.x) > SLAP_TIP_DISTANCE;
     let followThroughDir = 0;
     if (MASTERY_P4_ANALOG && isSlapAttack) {
       const ftPushDir = player.facing === 1 ? -1 : 1;
@@ -1651,6 +1682,7 @@ function processHit(player, otherPlayer, rooms, io) {
         player.isSlapSliding = true;
         player.lastSlapHitLandedTime = currentTime;
         player.currentSlapHitConnected = true;
+        player.slapOpenHitPending = false;
 
         if (knockbackAllowed) {
           otherPlayer.isSlapKnockback = true;
@@ -1672,9 +1704,8 @@ function processHit(player, otherPlayer, rooms, io) {
           otherPlayer.slapKnockbackCanRingOut =
             distanceToBoundaryInKbDir <= slapKillBand(player, otherPlayer);
 
-          // GROUND TRANSFER: both players slide toward the victim's rope, but
-          // the victim drifts slightly FASTER (SLAP_ONHIT_VICTIM_DRIFT >
-          // attacker push), so back-to-back slaps self-space out of range.
+          // GROUND TRANSFER: both slide toward the victim's rope; attacker push
+          // is a touch higher so mash pressure chases/glues instead of soft-whiffing.
           // finalKnockbackMultiplier carries counter (×1.25) / POWER / BASHO
           // scaling into the drift — extra shove on an earned read.
           // MASTERY Phase 1: the drift also inherits the attacker's entry
@@ -2034,15 +2065,11 @@ function processHit(player, otherPlayer, rooms, io) {
       }
     }
 
-    // MASTERY Phase 4 (4.5): follow-through recovery dial. The victim's hitstun
-    // above is derived from the BASE cycle, so shifting the ATTACKER's cycle
-    // here makes the exchange deliberately ±0 instead of +0 (invariant #1's
-    // explicit Phase-4 frame exception): holding TOWARD lengthens the attacker's
-    // recovery (slightly minus — the victim can answer), holding AWAY shortens it
-    // (slightly plus, but they gained less ground). We push BOTH the cooldown
-    // gate and the pending "slapCycle" timeout (which clears isAttacking / fires
-    // the buffered follow-up) by the same offset so actionability matches.
-    // followThroughDir === 0 (neutral / flag off) ⇒ no shift, the +0 default.
+    // MASTERY Phase 4 (4.5): follow-through recovery dial. Shift the attacker's
+    // cycle AND the victim's hitstun by the same offset so the exchange stays
+    // +0. Toward/away still change GROUND (pair-shift mult above); they must
+    // not free the victim early while the attacker is still recovering — that
+    // let mash-forward soft-whiff the next slap. followThroughDir === 0 ⇒ no-op.
     if (isSlapAttack && followThroughDir !== 0) {
       const recoveryOffset =
         followThroughDir > 0
@@ -2052,6 +2079,7 @@ function processHit(player, otherPlayer, rooms, io) {
       // advanceNamed pulls a deadline EARLIER by its arg, so negate the offset:
       // +offset (toward) → later cycle end; −offset (away) → earlier.
       timeoutManager.advanceNamed(player.id, "slapCycle", -recoveryOffset);
+      hitStateDuration = Math.max(SLAP_MIN_HITSTUN_MS, hitStateDuration + recoveryOffset);
     }
 
     // No hitstop extension needed: the stun timer below runs on the sim clock,
@@ -2335,19 +2363,27 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
 }
 
 function checkFlapBodySlam(flapper, opponent, rooms, io) {
-  // Must be a descending flapper that hasn't already connected this flight.
-  if (
-    !flapper ||
-    !opponent ||
-    !flapper.isFlapping ||
-    flapper.flapPhase !== "flight" ||
-    flapper.flapVelocityY > 0 || // only while falling (≤ 0 = descending/apex)
-    flapper.flapHitLanded
-  ) {
+  // Descending dive from flap flight OR slide-jump that hasn't connected yet.
+  const isFlapDive =
+    flapper &&
+    flapper.isFlapping &&
+    flapper.flapPhase === "flight" &&
+    flapper.flapVelocityY <= 0 &&
+    !flapper.flapHitLanded;
+  const isSlideJumpDive =
+    flapper &&
+    flapper.isSlideJumping &&
+    flapper.slideJumpPhase === "flight" &&
+    flapper.slideJumpDiveCommitted &&
+    flapper.slideJumpVelocityY <= 0 &&
+    !flapper.slideJumpHitLanded;
+
+  if (!isFlapDive && !isSlideJumpDive) {
     return;
   }
 
   // Contact band: low enough that the body is dropping onto the opponent.
+  // Slide-jump dive uses the SAME band/width as flap — one shared slam feel.
   if (flapper.y - GROUND_LEVEL > FLAP_BODYSLAM_CONTACT_HEIGHT) return;
 
   // Opponent must be a grounded, hittable target. Airborne/immune/dead/locked
@@ -2362,6 +2398,7 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
     opponent.isGrabbing ||
     (opponent.isRopeJumping && opponent.ropeJumpPhase === "active") ||
     (opponent.isFlapping && opponent.flapPhase === "flight") ||
+    (opponent.isSlideJumping && opponent.slideJumpPhase === "flight") ||
     (opponent.isSidestepping && !opponent.isSidestepStartup) ||
     !canApplyKnockback(opponent)
   ) {
@@ -2389,9 +2426,14 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   // Connecting latches this flight (no double-hit), burns all remaining air
   // charges, and schedules synced recovery once the flapper naturally touches
   // down. Flight physics keep running — no self pushback / scripted descent.
-  flapper.flapHitLanded = true;
-  flapper.flapCharges = 0;
-  flapper.flapHitRecoverDuration = BURST_STUN_MS;
+  if (isFlapDive) {
+    flapper.flapHitLanded = true;
+    flapper.flapCharges = 0;
+    flapper.flapHitRecoverDuration = BURST_STUN_MS;
+  } else {
+    flapper.slideJumpHitLanded = true;
+    flapper.slideJumpHitRecoverDuration = BURST_STUN_MS;
+  }
 
   // Knockback away from the flapper (burst model — no DI).
   const knockbackDirection = opponent.x >= flapper.x ? 1 : -1;

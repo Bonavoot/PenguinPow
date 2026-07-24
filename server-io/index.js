@@ -19,6 +19,13 @@ const {
   SLIDE_SPEED_BOOST, SLIDE_MAX_SPEED, SLIDE_FRICTION, SLIDE_MIN_VELOCITY,
   SLIDE_MAINTAIN_VELOCITY, SLIDE_BRAKE_FRICTION, SLIDE_STRAFE_TIME_REQUIRED,
   DODGE_SLIDE_MOMENTUM, DODGE_POWERSLIDE_BOOST,
+  ICE_SLIDE_FRICTION, ICE_SLIDE_COAST_FRICTION, ICE_SLIDE_STEER_FRICTION, ICE_SLIDE_OPPOSE_FRICTION,
+  ICE_SLIDE_EXIT_SPEED, ICE_SLIDE_MAX_SPEED, ICE_SLIDE_MAINTAIN,
+  ICE_SLIDE_REVERSE_HOP_MS, ICE_SLIDE_REVERSE_HOP_HEIGHT,
+  SLIDE_JUMP_MIN_MS, SLIDE_JUMP_BUFFER_MS, SLIDE_JUMP_LIFTOFF_IMPULSE,
+  SLIDE_JUMP_GRAVITY, SLIDE_JUMP_H_BASE, SLIDE_JUMP_H_BONUS, SLIDE_JUMP_H_SPEED_SCALE,
+  SLIDE_JUMP_SCALE_MS, SLIDE_JUMP_AIR_STEER, SLIDE_JUMP_AIR_STEER_BLEED,
+  SLIDE_JUMP_LANDING_RECOVERY_MS,
   DODGE_LANDING_BASE, K_DODGE_INHERIT, DODGE_LANDING_MIN, DODGE_LANDING_MAX,
   DOHYO_EDGE_PANIC_ZONE, ICE_EDGE_BRAKE_BONUS, ICE_EDGE_SLIDE_PENALTY,
   MOVEMENT_DECELERATION,
@@ -26,13 +33,15 @@ const {
   CHARGED_RECOIL_FRICTION,
   MIN_MOVEMENT_THRESHOLD,
   DODGE_DURATION, DODGE_BASE_SPEED,
+  DODGE_TRAVEL_DISTANCE, DODGE_SPEED_MULT_CAP,
   DODGE_CANCEL_ACTION_LOCK,
   DODGE_STARTUP_MS, DODGE_RECOVERY_MS, DODGE_COOLDOWN_MS,
   SLAP_STARTUP_MS, SLAP_ACTIVE_MS,
   CHARGED_STARTUP_MS, CHARGED_ACTIVE_MS,
   GRAB_WALK_SPEED_MULTIPLIER, GRAB_WALK_ACCEL_MULTIPLIER,
   CHARGE_FULL_POWER_MS,
-  GRAB_STARTUP_DURATION_MS, GRAB_ACTIVE_MS, GRAB_STARTUP_HOP_HEIGHT, GRAB_LUNGE_DISTANCE, SLAP_ATTACK_STARTUP_MS,
+  GRAB_STARTUP_DURATION_MS, GRAB_ACTIVE_MS, GRAB_THROW_CATCH_START_MS,
+  GRAB_STARTUP_HOP_HEIGHT, GRAB_LUNGE_DISTANCE, SLAP_ATTACK_STARTUP_MS,
   GRAB_WHIFF_RECOVERY_MS, GRAB_CATCH_MIN_BURST_SPEED,
   GRAB_BREAK_STAMINA_COST, GRAB_BREAK_FORCED_DISTANCE,
   GRAB_BREAK_TWEEN_DURATION, GRAB_BREAK_RESIDUAL_VEL,
@@ -115,6 +124,9 @@ const {
   emitThrottledScreenShake,
   clearHitFall,
   clearSidestepHitReturn,
+  clearIceSlideState,
+  tryIceSlideReverse,
+  clearSlideJumpState,
   cancelPendingSlapWork,
   stampMomentumWindow,
 } = require("./gameUtils");
@@ -157,7 +169,7 @@ const {
 const {
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
-  grabSlipsSlap,
+  grabCatchesSlap,
 } = require("./combatHelpers");
 
 // Import CPU AI
@@ -542,7 +554,7 @@ function tick(delta) {
             // The pull-kill victim keeps its preserved facing (excluded below) so it
             // doesn't flip as it slides through/past the thrower. The thrower itself
             // is NOT excluded — its facing still responds naturally.
-            if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection && !player1.isClinchKillPullVictim && !player1.isFlapping && player1.x < player2.x) {
+            if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection && !player1.isClinchKillPullVictim && !player1.isFlapping && !player1.isSlideJumping && player1.x < player2.x) {
               player1.facing = -1;
             } else if (
               !player1.slapFacingDirection &&
@@ -550,12 +562,13 @@ function tick(delta) {
               !player1.atTheRopesFacingDirection &&
               !player1.isClinchKillPullVictim &&
               !player1.isFlapping &&
+              !player1.isSlideJumping &&
               player1.x >= player2.x
             ) {
               player1.facing = 1;
             }
 
-            if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection && !player2.isClinchKillPullVictim && !player2.isFlapping && player1.x < player2.x) {
+            if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection && !player2.isClinchKillPullVictim && !player2.isFlapping && !player2.isSlideJumping && player1.x < player2.x) {
               player2.facing = 1;
             } else if (
               !player2.slapFacingDirection &&
@@ -563,6 +576,7 @@ function tick(delta) {
               !player2.atTheRopesFacingDirection &&
               !player2.isClinchKillPullVictim &&
               !player2.isFlapping &&
+              !player2.isSlideJumping &&
               player1.x >= player2.x
             ) {
               player2.facing = -1;
@@ -596,12 +610,12 @@ function tick(delta) {
         checkCollision(player2, player1, rooms, io);
       }
 
-      // Flap body-slam: a descending flapper that drops onto the grounded
-      // opponent. Polled every tick (it isn't a regular `isAttacking` strike).
-      if (player1.isFlapping) {
+      // Body-slam: descending flap OR slide-jump dive onto a grounded opponent.
+      // Polled every tick (it isn't a regular `isAttacking` strike).
+      if (player1.isFlapping || player1.isSlideJumping) {
         checkFlapBodySlam(player1, player2, rooms, io);
       }
-      if (player2.isFlapping) {
+      if (player2.isFlapping || player2.isSlideJumping) {
         checkFlapBodySlam(player2, player1, rooms, io);
       }
 
@@ -1168,14 +1182,13 @@ function tick(delta) {
           player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
         }
 
-        if (elapsed >= startupMs) {
-          // Startup complete — ACTIVE WINDOW. The range/connect check repeats
-          // every tick for GRAB_ACTIVE_MS (like active frames in a fighting
-          // game) instead of a single instant check. A grab that arrives one
-          // tick after a dash-through no longer whiffs by a frame; the whiff
-          // only commits once the window expires with no connect. Getting hit
-          // cancels the window (clearAllActionStates drops isGrabStartup).
-          const withinActiveWindow = elapsed < startupMs + GRAB_ACTIVE_MS;
+        // THROW-CATCH / CONNECT WINDOW: begins late in startup
+        // (GRAB_THROW_CATCH_START_MS) through active end — not only after full
+        // startup. Early startup stays stuffable; once catch frames are live,
+        // connect can happen the same tick (including through a slap) so we
+        // never suppress a slap without clinching.
+        if (elapsed >= GRAB_THROW_CATCH_START_MS) {
+          const withinConnectWindow = elapsed < startupMs + GRAB_ACTIVE_MS;
           const opponent = room.players.find((p) => p.id !== player.id);
 
           // Grab tracks sidestep ONLY when the sidestepper is in a vulnerable,
@@ -1218,7 +1231,7 @@ function tick(delta) {
             Math.abs(player.x - opponent.x) < sidestepGrabTrackRange;
           const normalGrabInRange = opponent && !opponentSidestepping && isOpponentCloseEnoughForGrab(player, opponent) && isOpponentInFrontOfGrabber(player, opponent);
 
-          if (opponent && !(opponent.isRopeJumping && opponent.ropeJumpPhase === "active") && !(opponent.isFlapping && opponent.flapPhase === "flight") && (normalGrabInRange || sidestepTrackInRange)) {
+          if (opponent && !(opponent.isRopeJumping && opponent.ropeJumpPhase === "active") && !(opponent.isFlapping && opponent.flapPhase === "flight") && !(opponent.isSlideJumping && opponent.slideJumpPhase === "flight") && (normalGrabInRange || sidestepTrackInRange)) {
             // === TECH CHECK: opponent also in grab startup → both tech ===
             // Whiffing players CANNOT tech — they are fully vulnerable.
             // Also check if opponent's startup has already expired AND their grab
@@ -1245,20 +1258,12 @@ function tick(delta) {
               !player.isBeingGrabbed &&
               !player.throwTechCooldown &&
               !opponentGrabImmune;
-            // GRAB SLIPS SLAP: the grab reached its active window because it
-            // slipped the opponent's slap during startup (see grabSlipsSlap in
-            // collisionSystem). Mirror that rule here so a still-slapping
-            // opponent doesn't block the connect: if the grab began before the
-            // slap went active, the grab connects through it.
-            const grabWinsVsSlap =
-              opponent.isAttacking &&
-              opponent.attackType === "slap" &&
-              grabSlipsSlap(player, opponent);
-            // NOTE: a palm thrust that hits a grab startup is absorbed by the
-            // grab-startup armor and ends its own attack (see collisionSystem),
-            // so by the time the grab connects the palm-thruster is already
-            // !isAttacking — it's caught via the standard neutral path below, no
-            // palm-specific exception needed.
+            // COMMAND GRAB CATCH: late-startup + active throw-catch vs slap
+            // (see grabCatchesSlap). Early startup is hittable; catch connects
+            // same tick so slap never ghosts inside the body.
+            const grabWinsVsSlap = grabCatchesSlap(player, opponent, now);
+            // Charged / palm / low kick still block connect while attacking —
+            // only slap is catchable on throw-catch frames.
             const canConnect =
               opponentGrabbableNeutral &&
               (!opponent.isAttacking || grabWinsVsSlap);
@@ -1385,23 +1390,22 @@ function tick(delta) {
               } else {
                 player.grabFacingDirection = player.facing;
               }
-            } else if (withinActiveWindow) {
-              // Opponent in range but currently ungrabbable (attacking, immune,
-              // etc.) — grab stays active and retests next tick.
+            } else if (withinConnectWindow) {
+              // In range but ungrabbable (charged/palm, immune, etc.) — retest.
               return;
             } else {
-              // Active window expired with opponent still ungrabbable — whiff
+              // Connect window expired still ungrabbable — whiff
               executeGrabWhiff(player);
             }
-          } else if (withinActiveWindow) {
-            // Out of range — grab stays active; opponent may move into range.
+          } else if (withinConnectWindow) {
+            // Out of range — keep lunging/waiting; opponent may enter range.
             return;
           } else {
-            // Active window expired out of range — whiff
+            // Connect window expired out of range — whiff
             executeGrabWhiff(player);
           }
         } else {
-          // During startup — just wait (no hop, no movement)
+          // Early startup (before throw-catch) — lunge only, fully hittable
           return;
         }
       }
@@ -1872,21 +1876,31 @@ function tick(delta) {
           }
           // No movement during startup — player is committed but stationary
         }
-        // ACTIVE PHASE: actual dash movement
+        // ACTIVE PHASE: fixed-distance hop. Speed buffs raise rate (capped) so
+        // the hop finishes sooner — they never extend travel past dodgeTargetX.
         else {
-          let currentDodgeSpeed = speedFactor * DODGE_BASE_SPEED;
-
+          let dodgeRate = 1;
           if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
-            currentDodgeSpeed *= Math.min(player.powerUpMultiplier * 0.85, 1.5);
+            dodgeRate *= Math.min(player.powerUpMultiplier * 0.85, DODGE_SPEED_MULT_CAP);
           }
-          // BASHO draft: stacked Happy Feet speeds up the dash too (same 0.85
-          // dampening + 1.5 cap as the power-up). Only when speed was drafted —
-          // speedMult is exactly 1 otherwise, so the dash is never slowed.
+          // BASHO draft: Happy Feet speeds the hop up (same dampening), never
+          // lengthens it. speedMult ≤ 1 leaves rate alone (dodge isn't slowed).
           if ((player.bashoDraft?.speedMult ?? 1) > 1) {
-            currentDodgeSpeed *= Math.min(player.bashoDraft.speedMult * 0.85, 1.5);
+            dodgeRate *= Math.min(player.bashoDraft.speedMult * 0.85, DODGE_SPEED_MULT_CAP);
           }
+          dodgeRate = Math.min(dodgeRate, DODGE_SPEED_MULT_CAP);
 
-          let newX = player.x + player.dodgeDirection * delta * currentDodgeSpeed;
+          const currentDodgeSpeed = speedFactor * DODGE_BASE_SPEED * dodgeRate;
+          const dir = player.dodgeDirection || 1;
+          const targetX =
+            typeof player.dodgeTargetX === "number"
+              ? player.dodgeTargetX
+              : player.x + dir * DODGE_TRAVEL_DISTANCE;
+
+          let newX = player.x + dir * delta * currentDodgeSpeed;
+          // Never overshoot the fixed hop end.
+          if (dir > 0) newX = Math.min(newX, targetX);
+          else newX = Math.max(newX, targetX);
           newX = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
 
           // Pushbox: stop at opponent's body instead of phasing through.
@@ -1903,14 +1917,15 @@ function tick(delta) {
           const dodgeOppAirborne =
             dodgeOpponent &&
             ((dodgeOpponent.isFlapping && dodgeOpponent.flapPhase === "flight") ||
-              (dodgeOpponent.isRopeJumping && dodgeOpponent.ropeJumpPhase === "active"));
+              (dodgeOpponent.isRopeJumping && dodgeOpponent.ropeJumpPhase === "active") ||
+              (dodgeOpponent.isSlideJumping && dodgeOpponent.slideJumpPhase === "flight"));
           if (dodgeOpponent && !dodgeOpponent.isDead && !dodgeOppAirborne) {
             const bodyWidth = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeOpponent.sizeMultiplier || 1);
             const wouldOverlap = Math.abs(newX - dodgeOpponent.x) < bodyWidth;
             if (wouldOverlap) {
-              if (player.dodgeDirection > 0 && dodgeOpponent.x > player.x) {
+              if (dir > 0 && dodgeOpponent.x > player.x) {
                 newX = Math.min(newX, dodgeOpponent.x - bodyWidth);
-              } else if (player.dodgeDirection < 0 && dodgeOpponent.x < player.x) {
+              } else if (dir < 0 && dodgeOpponent.x < player.x) {
                 newX = Math.max(newX, dodgeOpponent.x + bodyWidth);
               }
               newX = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
@@ -1919,6 +1934,11 @@ function tick(delta) {
 
           player.y = GROUND_LEVEL;
           player.x = newX;
+
+          // Arrived at fixed end early → land now (don't idle in dodge state).
+          if ((dir > 0 && player.x >= targetX - 0.01) || (dir < 0 && player.x <= targetX + 0.01)) {
+            player.dodgeEndTime = Math.min(player.dodgeEndTime || now, now);
+          }
         }
 
         // Dodge active phase expired → transition to RECOVERY PHASE
@@ -1959,6 +1979,20 @@ function tick(delta) {
             player.movementVelocity -= 0.2;
           } else if (player.keys.d && !player.keys.a) {
             player.movementVelocity += 0.2;
+          }
+
+          // SHIFT held through dodge land → committed ice slide (braking pose).
+          // Tap-release SHIFT keeps today's soft ice coast.
+          // Gassed: same full kit — no watered-down panic hop.
+          if (player.keys.shift && landingDirection !== 0) {
+            player.isIceSliding = true;
+            player.iceSlideDir = landingDirection > 0 ? 1 : -1;
+            player.iceSlideStartTime = now;
+            player.slideJumpBufferUntil = 0;
+            player.isBraking = false;
+            player.isStrafing = false;
+          } else {
+            clearIceSlideState(player);
           }
 
           // MASTERY Phase 1: stamp the dodge's landing momentum into the carry
@@ -2108,7 +2142,8 @@ function tick(delta) {
             // (flapper in flight or rope-jumper in its airborne active arc).
             const sidestepOppAirborne =
               (sidestepOpponent.isFlapping && sidestepOpponent.flapPhase === "flight") ||
-              (sidestepOpponent.isRopeJumping && sidestepOpponent.ropeJumpPhase === "active");
+              (sidestepOpponent.isRopeJumping && sidestepOpponent.ropeJumpPhase === "active") ||
+              (sidestepOpponent.isSlideJumping && sidestepOpponent.slideJumpPhase === "flight");
             if (currentDist < pushboxWidth && passedOpponent && !sidestepOppAirborne) {
               const idealX = sidestepOpponent.x + player.sidestepDirection * LANDING_SEP;
               player.sidestepRecoveryTargetX = Math.max(MAP_LEFT_BOUNDARY,
@@ -2222,6 +2257,281 @@ function tick(delta) {
             if (player.ropeJumpBufferedAttackRelease) {
               player.ropeJumpBufferedAttackRelease = 0;
               executeSlapAttack(player, rooms);
+            }
+          }
+        }
+      }
+
+      // ── ICE SLIDE (SHIFT-held post-dodge) + SLIDE JUMP (W) ──
+      if (player.isIceSliding && !player.isDodging && !player.isSlideJumping) {
+        // Interrupt: hit / grab / attack / etc. already clear via clearAllActionStates.
+        // Also bail if another exclusive grounded action started.
+        if (
+          player.isHit ||
+          player.isAttacking ||
+          player.isGrabbing ||
+          player.isBeingGrabbed ||
+          player.isRawParrying ||
+          player.isFlapping ||
+          player.isRopeJumping ||
+          player.isSidestepping
+        ) {
+          clearIceSlideState(player);
+        } else if (
+          // Stay planted while SHIFT is held — slow/zero speed is for reverse dig,
+          // not slide eject (eject → SHIFT repress becomes a dodge).
+          !player.keys.shift &&
+          Math.abs(player.movementVelocity) < ICE_SLIDE_EXIT_SPEED &&
+          !player.isIceSlideReverseHopping &&
+          !(
+            player.iceSlideReverseBufferUntil &&
+            now <= player.iceSlideReverseBufferUntil
+          )
+        ) {
+          clearIceSlideState(player);
+        } else {
+          const slideDir = player.iceSlideDir || (player.movementVelocity >= 0 ? 1 : -1);
+          const holdingLeft = player.keys.a && !player.keys.d;
+          const holdingRight = player.keys.d && !player.keys.a;
+          const holdingWithSlide =
+            (slideDir > 0 && holdingRight) || (slideDir < 0 && holdingLeft);
+          const holdingAgainstSlide =
+            (slideDir > 0 && holdingLeft) || (slideDir < 0 && holdingRight);
+          const inReverseHop =
+            player.isIceSlideReverseHopping &&
+            player.iceSlideReverseHopUntil &&
+            now < player.iceSlideReverseHopUntil;
+
+          // Arm reverse dig while holding opposite of slide dir.
+          if (holdingAgainstSlide && !inReverseHop) {
+            if (!player.iceSlideBrakeArmStart) {
+              player.iceSlideBrakeArmStart = now;
+            }
+          } else if (!holdingAgainstSlide) {
+            player.iceSlideBrakeArmStart = 0;
+          }
+
+          // Consume SHIFT repress buffer once dig qualifies (order-tolerant input).
+          if (
+            !inReverseHop &&
+            player.iceSlideReverseBufferUntil &&
+            now <= player.iceSlideReverseBufferUntil
+          ) {
+            tryIceSlideReverse(player, now);
+          } else if (
+            player.iceSlideReverseBufferUntil &&
+            now > player.iceSlideReverseBufferUntil
+          ) {
+            player.iceSlideReverseBufferUntil = 0;
+          }
+
+          const hopLive =
+            player.isIceSlideReverseHopping &&
+            player.iceSlideReverseHopUntil &&
+            now < player.iceSlideReverseHopUntil;
+
+          if (hopLive) {
+            // Bunny-hop reverse: keep burst velocity, ride a tiny arc.
+            player.isBraking = false;
+            const hopT = Math.min(
+              1,
+              (now - (player.iceSlideReverseHopStartTime || now)) /
+                ICE_SLIDE_REVERSE_HOP_MS
+            );
+            player.y =
+              GROUND_LEVEL + ICE_SLIDE_REVERSE_HOP_HEIGHT * 4 * hopT * (1 - hopT);
+          } else {
+            if (player.isIceSlideReverseHopping) {
+              player.isIceSlideReverseHopping = false;
+              player.iceSlideReverseHopUntil = 0;
+              player.y = GROUND_LEVEL;
+            }
+
+            if (holdingAgainstSlide) {
+              player.movementVelocity *= ICE_SLIDE_OPPOSE_FRICTION;
+              player.isBraking = true;
+            } else if (player.keys.shift && holdingWithSlide) {
+              // Sustain skate in the slide direction while SHIFT held.
+              player.movementVelocity *= ICE_SLIDE_FRICTION;
+              player.movementVelocity += slideDir * ICE_SLIDE_MAINTAIN;
+              player.isBraking = false;
+            } else if (player.keys.shift) {
+              // SHIFT held / planted — keep slide ownership even near zero speed.
+              player.movementVelocity *= ICE_SLIDE_FRICTION;
+              if (Math.abs(player.movementVelocity) > ICE_SLIDE_EXIT_SPEED) {
+                player.movementVelocity += slideDir * ICE_SLIDE_MAINTAIN;
+              }
+              player.isBraking = false;
+            } else {
+              // SHIFT released: coast until speed floor ends the slide.
+              player.movementVelocity *= ICE_SLIDE_COAST_FRICTION;
+              player.isBraking = holdingAgainstSlide;
+            }
+
+            player.y = GROUND_LEVEL;
+          }
+
+          // Soft cap
+          if (player.movementVelocity > ICE_SLIDE_MAX_SPEED) {
+            player.movementVelocity = ICE_SLIDE_MAX_SPEED;
+          } else if (player.movementVelocity < -ICE_SLIDE_MAX_SPEED) {
+            player.movementVelocity = -ICE_SLIDE_MAX_SPEED;
+          }
+
+          player.isStrafing = false;
+
+          const slideSpeedFactor = speedFactor * getEffectiveMoveSpeedMult(player);
+          let slideX = player.x + delta * slideSpeedFactor * player.movementVelocity;
+          slideX = Math.max(MAP_LEFT_BOUNDARY, Math.min(slideX, MAP_RIGHT_BOUNDARY));
+          if (slideX === MAP_LEFT_BOUNDARY || slideX === MAP_RIGHT_BOUNDARY) {
+            player.movementVelocity *= 0.5;
+          }
+          player.x = slideX;
+
+          // W jump: live after min flash; buffer early presses.
+          const slideAge = now - (player.iceSlideStartTime || now);
+          const jumpReady = slideAge >= SLIDE_JUMP_MIN_MS;
+          if (player.wJustPressed) {
+            if (jumpReady) {
+              player.slideJumpBufferUntil = now; // consume immediately below
+            } else {
+              player.slideJumpBufferUntil = now + SLIDE_JUMP_BUFFER_MS;
+            }
+          }
+          const bufferLive =
+            player.slideJumpBufferUntil && now <= player.slideJumpBufferUntil;
+          if ((jumpReady && bufferLive) || (jumpReady && player.wJustPressed)) {
+            // Launch slide-jump
+            const durationBonus = Math.min(
+              1,
+              Math.max(0, (slideAge - SLIDE_JUMP_MIN_MS) / SLIDE_JUMP_SCALE_MS)
+            );
+            const takeoffSpeed = Math.abs(player.movementVelocity);
+            const hSpeed =
+              SLIDE_JUMP_H_BASE +
+              durationBonus * SLIDE_JUMP_H_BONUS +
+              takeoffSpeed * SLIDE_JUMP_H_SPEED_SCALE;
+            const jumpDir =
+              player.iceSlideDir || (player.movementVelocity >= 0 ? 1 : -1);
+
+            player.isSlideJumping = true;
+            player.slideJumpPhase = "flight";
+            player.slideJumpStartTime = now;
+            player.slideJumpVelocityY = SLIDE_JUMP_LIFTOFF_IMPULSE;
+            player.slideJumpVelocityX = jumpDir * hSpeed;
+            player.facing = jumpDir > 0 ? -1 : 1;
+            player.slideJumpDiveCommitted = false;
+            player.slideJumpDiveLockX = 0;
+            player.slideJumpHitLanded = false;
+            player.slideJumpHitRecoverDuration = 0;
+            player.slideJumpLandingTime = 0;
+            player.slideJumpBufferUntil = 0;
+            player.movementVelocity = 0;
+            player.isStrafing = false;
+            player.isBraking = false;
+            player.currentAction = "slideJump";
+            player.actionLockUntil = 0;
+            clearIceSlideState(player);
+            // Consume the edge so rope-jump / other W readers don't also fire.
+            player.wJustPressed = false;
+          }
+        }
+      }
+
+      // ── SLIDE JUMP flight / landing ──
+      if (player.isSlideJumping) {
+        const sjOpponent = room.players.find((p) => p.id !== player.id);
+
+        if (player.slideJumpPhase === "flight") {
+          player.isStrafing = false;
+
+          // S belly-flop — mirrors flap dive commit exactly:
+          // pin X to the commit spot, kill horizontal, heavy plummet. Landing
+          // stays where you pressed S (same "drop on their head" read as flap).
+          if (!player.slideJumpDiveCommitted && player.keys.s) {
+            player.slideJumpDiveCommitted = true;
+            player.slideJumpDiveLockX = player.x;
+            player.slideJumpVelocityX = 0;
+            if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
+            if (player.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
+              player.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
+            }
+          }
+
+          // Mirror flapFastFalling: latched every tick for client VFX/sprites.
+          player.slideJumpFastFalling = player.slideJumpDiveCommitted;
+          const isDiveLocked = player.slideJumpDiveCommitted;
+
+          const gravity = isDiveLocked ? FLAP_FASTFALL_GRAVITY : SLIDE_JUMP_GRAVITY;
+          player.slideJumpVelocityY -= gravity;
+          if (isDiveLocked) {
+            if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
+            if (player.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
+              player.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
+            }
+          }
+          player.y += player.slideJumpVelocityY;
+
+          if (isDiveLocked) {
+            // Locked plummet — land exactly below the S-commit point (flap parity).
+            player.slideJumpVelocityX = 0;
+            player.x = player.slideJumpDiveLockX;
+          } else {
+            player.x += player.slideJumpVelocityX;
+            // Weak air steer — bleeds horizontal range (disabled once diving).
+            if (player.keys.d && !player.keys.a) {
+              player.x += SLIDE_JUMP_AIR_STEER;
+              player.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
+              player.facing = -1;
+            } else if (player.keys.a && !player.keys.d) {
+              player.x -= SLIDE_JUMP_AIR_STEER;
+              player.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
+              player.facing = 1;
+            }
+          }
+          player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
+
+          // Post-integrate slam check — same shared checkFlapBodySlam as flap
+          // (identical contact band / width / KB / hitstop). Catches the dive
+          // on the tick we enter the band; early-tick poll can race past it.
+          if (isDiveLocked && !player.slideJumpHitLanded && sjOpponent) {
+            checkFlapBodySlam(player, sjOpponent, rooms, io);
+          }
+
+          if (player.y <= GROUND_LEVEL && player.slideJumpVelocityY <= 0) {
+            player.y = GROUND_LEVEL;
+            player.slideJumpVelocityY = 0;
+            player.slideJumpVelocityX = 0;
+            // Stay parked on the dive-lock X through touchdown.
+            if (isDiveLocked) {
+              player.x = player.slideJumpDiveLockX;
+            }
+            player.slideJumpPhase = "landing";
+            player.slideJumpLandingTime = now;
+            const recovery = player.slideJumpHitLanded
+              ? player.slideJumpHitRecoverDuration
+              : SLIDE_JUMP_LANDING_RECOVERY_MS;
+            player.actionLockUntil = now + recovery;
+            // Match flap: server rope_landing; client adds belly-flop land VFX.
+            emitThrottledScreenShake(room, io, { type: "rope_landing" });
+          }
+        } else if (player.slideJumpPhase === "landing") {
+          // Mirror flap landing: clear the live dive VFX flag, but keep
+          // slideJumpDiveCommitted latched so the land-smoke path can still
+          // read that this touchdown was a belly-flop (cleared on exit).
+          player.slideJumpFastFalling = false;
+          const recovery = player.slideJumpHitLanded
+            ? player.slideJumpHitRecoverDuration
+            : SLIDE_JUMP_LANDING_RECOVERY_MS;
+
+          if (now >= player.slideJumpLandingTime + recovery) {
+            player.y = GROUND_LEVEL;
+            cancelPendingSlapWork(player);
+            clearSlideJumpState(player);
+            player.currentAction = null;
+            player.actionLockUntil = 0;
+            if (sjOpponent) {
+              player.facing = player.x < sjOpponent.x ? -1 : 1;
             }
           }
         }
@@ -2489,6 +2799,7 @@ function tick(delta) {
           !opponent.isGrabbingMovement &&
           !(opponent.isRopeJumping && opponent.ropeJumpPhase === "active") &&
           !(opponent.isFlapping && opponent.flapPhase === "flight") &&
+          !(opponent.isSlideJumping && opponent.slideJumpPhase === "flight") &&
           isOpponentCloseEnoughForGrab(player, opponent) &&
           isOpponentInFrontOfGrabber(player, opponent) &&
           !opponent.isBeingThrown &&
@@ -2659,6 +2970,8 @@ function tick(delta) {
         !apPostLock &&
         !player.isThrowLanded && // Block all movement for throw landed players
         !player.isRawParrying && // Block movement during held/active parry stance
+        !player.isIceSliding && // Ice-slide owns its own X integration
+        !player.isSlideJumping && // Slide-jump owns its own X/Y integration
         !player.isGrabbingMovement && // Block normal movement during grab movement
         !player.isWhiffingGrab && // Block movement during grab whiff recovery
         !player.isGrabWhiffRecovery && // Block movement during grab whiff recovery (new)
@@ -2726,6 +3039,8 @@ function tick(delta) {
           !player.isSidestepping &&
           !player.isRopeJumping &&
           !player.isFlapping &&
+          !player.isIceSliding &&
+          !player.isSlideJumping &&
           !player.isThrowing &&
           !player.isGrabbing &&
           !player.isGrabbingMovement &&
@@ -2808,6 +3123,8 @@ function tick(delta) {
           !player.isSidestepping &&
           !player.isRopeJumping &&
           !player.isFlapping &&
+          !player.isIceSliding &&
+          !player.isSlideJumping &&
           !player.isThrowing &&
           !player.isGrabbing &&
           !player.isGrabbingMovement &&
@@ -3090,10 +3407,16 @@ function tick(delta) {
           }
         }
 
-        // Gravity-snap to ground for stray elevated states. Flap owns its own Y
-        // integration (it can be above GROUND_LEVEL mid-flight), so exclude it
-        // here — otherwise this would yank the flapper straight back down.
-        if (player.y > GROUND_LEVEL && !player.isRopeJumping && !player.isFlapping && !player.isHitFalling) {
+        // Gravity-snap to ground for stray elevated states. Flap / slide-jump /
+        // ice-slide reverse hop own their own Y — exclude them here.
+        if (
+          player.y > GROUND_LEVEL &&
+          !player.isRopeJumping &&
+          !player.isFlapping &&
+          !player.isSlideJumping &&
+          !player.isIceSlideReverseHopping &&
+          !player.isHitFalling
+        ) {
           player.y -= delta * speedFactor + 10;
           player.y = Math.max(player.y, GROUND_LEVEL);
         }
@@ -3137,6 +3460,7 @@ function tick(delta) {
         player.activePowerUp !== POWER_UP_TYPES.FLAP && // Flap replaces AP on Space
         !player.loadout?.flapReplacesParry && // BASHO Flap loadout also replaces parry (absent → falsy for non-BASHO)
         !player.isFlapping &&
+        !player.isSlideJumping && // Airborne slide-jump — no parry mid-air
         !player.isGrabBreaking && // Block while grab break is active
         !player.isGrabBreakCountered && // Block while countered by grab break
         !player.isGrabBreakSeparating && // Block during grab break separation
@@ -3277,7 +3601,8 @@ function tick(delta) {
             const oppAirborne =
               opponent &&
               ((opponent.isFlapping && opponent.flapPhase === "flight") ||
-                (opponent.isRopeJumping && opponent.ropeJumpPhase === "active"));
+                (opponent.isRopeJumping && opponent.ropeJumpPhase === "active") ||
+                (opponent.isSlideJumping && opponent.slideJumpPhase === "flight"));
             if (opponent && !opponent.isDodging && !opponent.isSidestepping && !oppAirborne) {
               // Stop the lunge just inside art-tip connect range so the hit can
               // register, then processHit snaps to exact tip-meets-body for the

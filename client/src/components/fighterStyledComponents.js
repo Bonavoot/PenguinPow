@@ -483,7 +483,7 @@ export const StyledImage = styled("img")
         ? 0
         : props.$isCinematicKillAttacker
         ? 100
-        : props.$isRopeJumping
+        : props.$isRopeJumping || props.$isSlideJumping
         ? 101
         : props.$isThrowing || props.$isDodging || props.$isGrabbing
         ? 98
@@ -576,6 +576,8 @@ export const StyledImage = styled("img")
         ? "clinchTeeter 1.5s ease-in-out infinite"
         : props.$isHit
         ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
+        : props.$isSlideJumping
+        ? "slideJumpPop 0.22s cubic-bezier(0.15, 0.85, 0.25, 1) forwards"
         : props.$isDodging
         ? "dashJump 0.26s linear forwards"
         : props.$justLandedFromDodge &&
@@ -889,6 +891,22 @@ export const StyledImage = styled("img")
          an impact squash that catches the landing before the ice slide.
      All squash is VERTICAL only (scaleY, origin center bottom) so scaleX stays
      locked to facing and the character never stretches horizontally. */
+  @keyframes slideJumpPop {
+    0% {
+      transform: scaleX(var(--facing, 1)) scaleY(0.82) translateY(6%);
+      transform-origin: center bottom;
+    }
+    35% {
+      transform: scaleX(calc(var(--facing, 1) * 0.92)) scaleY(1.14)
+        translateY(-4%);
+      transform-origin: center bottom;
+    }
+    100% {
+      transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
+      transform-origin: center bottom;
+    }
+  }
+
   @keyframes dashJump {
     /* One continuous animation over the whole dodge (startup + active), driven
        by the single predicted isDodging flag so it never restarts mid-air.

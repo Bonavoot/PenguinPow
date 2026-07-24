@@ -151,6 +151,7 @@ import {
   SPRITE_HALF_W,
   PLAYER_MID_Y,
   HIT_EFFECT_Y,
+  FLAP_HIT_EFFECT_Y,
   LOW_KICK_HIT_EFFECT_Y,
   CLAP_SOUND_OFFSET,
   ritualSpritesheetsPlayer1,
@@ -2842,6 +2843,12 @@ const GameFighter = ({
           prev.flapCharges !== newState.flapCharges ||
           prev.flapFastFalling !== newState.flapFastFalling ||
           prev.flapBeatHDir !== newState.flapBeatHDir ||
+          prev.isIceSliding !== newState.isIceSliding ||
+          prev.isIceSlideReverseHopping !== newState.isIceSlideReverseHopping ||
+          prev.isSlideJumping !== newState.isSlideJumping ||
+          prev.slideJumpPhase !== newState.slideJumpPhase ||
+          prev.slideJumpDiveCommitted !== newState.slideJumpDiveCommitted ||
+          prev.slideJumpFastFalling !== newState.slideJumpFastFalling ||
           prev.isSidestepping !== newState.isSidestepping ||
           prev.isSidestepStartup !== newState.isSidestepStartup ||
           prev.isSidestepRecovery !== newState.isSidestepRecovery ||
@@ -3052,6 +3059,9 @@ const GameFighter = ({
             const chargeScale =
               0.8 + Math.min((data.chargePercentage || 0) / 100, 1) * 0.45;
             addShake("charged_hit", { scale: chargeScale, dirX: shakeDir });
+          } else if (data.attackType === "flap") {
+            // Belly-slam (flap / slide-jump dive) — heavier plant than a slap poke.
+            addShake("throw_landing", { dirX: shakeDir, scale: 1.15 });
           } else {
             // MASTERY Phase 5 (5.2): a momentum hit (dash-in / carried speed)
             // punches the camera harder than a flat-footed slap. Server-gated ⇒
@@ -3124,11 +3134,16 @@ const GameFighter = ({
         if (index === 0) {
           const isLowKickHit =
             data.isLowKick || data.attackType === "lowKick";
+          const isFlapSlamHit = data.attackType === "flap";
           const seamX = contactFxX(data);
           setHitEffectPosition({
             x: seamX,
-            // Low kick spark sits at the ankles/shins; everything else at chest.
-            y: isLowKickHit ? LOW_KICK_HIT_EFFECT_Y : HIT_EFFECT_Y,
+            // Low kick → ankles; belly-slam → high on the body; else chest.
+            y: isLowKickHit
+              ? LOW_KICK_HIT_EFFECT_Y
+              : isFlapSlamHit
+              ? FLAP_HIT_EFFECT_Y
+              : HIT_EFFECT_Y,
             facing: data.facing || 1,
             // Absolute server tip seam — skip legacy victim.x+70 % offsets in
             // SlapHitSpriteEffect (those were shoving sparks behind P1).
@@ -4532,6 +4547,47 @@ const GameFighter = ({
     prevFlapPhase.current = penguin.flapPhase;
   }, [penguin.flapPhase, penguin.x, penguin.y, penguin.facing, penguin.flapBeatHDir, penguin.isFlapping, isLocalPlayer, emitParticles]);
 
+  // Slide-jump land smoke — reuse the flap belly-flop land burst when the dive
+  // was committed (same flapFastFallLand preset + throw_landing shake).
+  const prevSlideJumpPhase = useRef(null);
+  useEffect(() => {
+    const x = interpolatedPositionRef.current.x || penguin.x;
+    if (
+      prevSlideJumpPhase.current !== "landing" &&
+      penguin.slideJumpPhase === "landing"
+    ) {
+      // Same belly-flop land burst flap uses (edited landing smoke + ice shards).
+      if (
+        flapFastFallAtLandRef.current ||
+        penguin.slideJumpDiveCommitted ||
+        penguin.slideJumpFastFalling
+      ) {
+        emitParticles("flapFastFallLand", {
+          x,
+          y: SHADOW_GROUND_LEVEL,
+        });
+        addShake("throw_landing");
+      } else {
+        emitParticles("throwLand", {
+          x,
+          y: SHADOW_GROUND_LEVEL,
+        });
+      }
+      flapFastFallAtLandRef.current = false;
+    }
+    if (!penguin.isSlideJumping) {
+      flapFastFallAtLandRef.current = false;
+    }
+    prevSlideJumpPhase.current = penguin.slideJumpPhase;
+  }, [
+    penguin.slideJumpPhase,
+    penguin.isSlideJumping,
+    penguin.slideJumpDiveCommitted,
+    penguin.slideJumpFastFalling,
+    penguin.x,
+    emitParticles,
+  ]);
+
   useEffect(() => {
     if (penguin.isFlapping && penguin.flapPhase === "flight") {
       const charges = penguin.flapCharges ?? 0;
@@ -4586,25 +4642,34 @@ const GameFighter = ({
     prevFlapBeatSound.current = penguin.flapWingBeatTime || 0;
   }, [penguin.flapWingBeatTime, penguin.isFlapping, penguin.x]);
 
-  // Flap fast-fall trail — vertical dive streaks while S is held mid-flight.
-  // Interval runs for the whole flight phase; emissions gate on server
-  // flapFastFalling OR local S (same pattern as the dodge-pose swap).
+  // Fast-fall / belly-flop trail — vertical dive streaks while S is held
+  // mid-flight (flap power-up OR slide-jump dive). Interval runs for the whole
+  // flight phase; emissions gate on server dive flag OR local S.
   const flapFastFallIntervalRef = useRef(null);
   useEffect(() => {
-    const inFlight =
+    const inFlapFlight =
       penguin.isFlapping && penguin.flapPhase === "flight";
+    const inSlideJumpFlight =
+      penguin.isSlideJumping && penguin.slideJumpPhase === "flight";
+    const inFlight = inFlapFlight || inSlideJumpFlight;
 
     if (inFlight) {
       const EMIT_INTERVAL = 45;
       flapFastFallIntervalRef.current = setInterval(() => {
         const p = penguinRef.current;
-        if (!p?.isFlapping || p.flapPhase !== "flight") {
+        const stillFlap = p?.isFlapping && p.flapPhase === "flight";
+        const stillSlide =
+          p?.isSlideJumping && p.slideJumpPhase === "flight";
+        if (!stillFlap && !stillSlide) {
           clearInterval(flapFastFallIntervalRef.current);
           flapFastFallIntervalRef.current = null;
           return;
         }
+        // Same gates flap uses: server fast-fall flag OR local S while airborne.
         const diving =
           p.flapFastFalling ||
+          p.slideJumpFastFalling ||
+          p.slideJumpDiveCommitted ||
           (isLocalPlayer && !!getLocalKeyState()?.s);
 
         flapFastFallAtLandRef.current = diving;
@@ -4623,6 +4688,7 @@ const GameFighter = ({
         if (!diving) return;
 
         const pos = interpolatedPositionRef.current;
+        // flapFastFallTrail = speed lines + edited smoke-puff wisps (same as flap).
         emitParticles("flapFastFallTrail", {
           x: pos?.x ?? p.x,
           y: pos?.y ?? p.y,
@@ -4646,6 +4712,10 @@ const GameFighter = ({
     penguin.isFlapping,
     penguin.flapPhase,
     penguin.flapFastFalling,
+    penguin.isSlideJumping,
+    penguin.slideJumpPhase,
+    penguin.slideJumpDiveCommitted,
+    penguin.slideJumpFastFalling,
     isLocalPlayer,
     emitParticles,
   ]);
@@ -4675,15 +4745,18 @@ const GameFighter = ({
       const px = pos?.x ?? penguin.x;
       let py = pos?.y ?? penguin.y;
       if (typeof px !== "number" || typeof py !== "number") return null;
-      if (penguinRef.current?.isFlapping) py = SHADOW_GROUND_LEVEL;
+      if (penguinRef.current?.isFlapping || penguinRef.current?.isSlideJumping) {
+        py = SHADOW_GROUND_LEVEL;
+      }
       return { x: px, y: 720 - py };
     };
 
     const fire = () => {
       const pos = interpolatedPositionRef.current;
-      const py = penguinRef.current?.isFlapping
-        ? SHADOW_GROUND_LEVEL
-        : pos?.y ?? penguin.y;
+      const py =
+        penguinRef.current?.isFlapping || penguinRef.current?.isSlideJumping
+          ? SHADOW_GROUND_LEVEL
+          : pos?.y ?? penguin.y;
       emitParticles("localPlayerHalo", {
         x: pos?.x ?? penguin.x,
         y: py,
@@ -5728,6 +5801,16 @@ const GameFighter = ({
       ? 2
       : 1;
 
+  // Slide-jump: flap wing art while airborne; dodge pose on S butt-slam dive.
+  const slideJumpUseDodgePose =
+    !!penguin.isSlideJumping &&
+    penguin.slideJumpPhase === "flight" &&
+    (!!penguin.slideJumpDiveCommitted ||
+      !!penguin.slideJumpFastFalling ||
+      (isLocalPlayer && !!getLocalKeyState()?.s));
+  // Slide-jump air pose: flap1 only (no wing-beat toggle).
+  const slideJumpFlapFrame = 1;
+
   // OPEN-PALM THRUST frame. Anchor a local clock when a thrust begins, then
   // advance startup → smear → active → recovery off elapsed ms. We anchor on
   // each new palmThrustFxId (a per-executed-thrust server counter) as well as
@@ -5929,7 +6012,13 @@ const GameFighter = ({
     // True block floor only — not the live parry window (see getImageSrc).
     !!penguin.isGuarding,
     guardBlockSuccess,
-    rawParrySuccessFrame
+    rawParrySuccessFrame,
+    !!penguin.isIceSliding,
+    !!penguin.isIceSlideReverseHopping,
+    !!penguin.isSlideJumping,
+    penguin.slideJumpPhase,
+    slideJumpUseDodgePose,
+    slideJumpFlapFrame
   );
 
   // Dash frames: the dodge now has real anticipation + landing poses.
@@ -6143,6 +6232,10 @@ const GameFighter = ({
     // for the whole windup→jump→landing beat (same pattern as palm thrust).
     : displayPenguin.isDodging || penguin.justLandedFromDodge
     ? "dash-anim"
+    : penguin.isIceSliding
+    ? "ice-slide-anim"
+    : penguin.isSlideJumping
+    ? "slide-jump-anim"
     // A slap rapidly swaps its static pose (windup → blur → hit → recovery)
     // within one cycle. Collapse to one stable key so the <img> persists and
     // swaps `src` in place (no remount/ghost between frames), exactly like
@@ -6301,7 +6394,10 @@ const GameFighter = ({
     $isAttacking: displayPenguin.isAttacking,
     $isDodging: displayPenguin.isDodging,
     $isStrafing: penguin.isStrafing,
-    $isBraking: displayPenguin.isBraking && !penguin.isRawParryStun,
+    $isBraking:
+      (displayPenguin.isBraking || penguin.isIceSliding) &&
+      !penguin.isRawParryStun,
+    $isSlideJumping: !!penguin.isSlideJumping && penguin.slideJumpPhase === "flight",
     $isPowerSliding: displayPenguin.isPowerSliding,
     $isRawParrying: displayPenguin.isRawParrying,
     $isGuarding: !!penguin.isGuarding,

@@ -91,6 +91,8 @@ const BLOCKING_FLAGS = [
   "isHitFalling",
   "isRopeJumping",
   "isFlapping",
+  "isIceSliding",
+  "isSlideJumping",
   "isThrowing",
   "isBeingThrown",
   "isThrowTeching",

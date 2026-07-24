@@ -1,9 +1,9 @@
 /**
- * Enhance dohyo-style.webp — ICE ONLY.
+ * Enhance dohyo-style.webp — ICE ONLY (lighter blue).
  *
- * Does NOT touch snow, dirt, sides, or shikirisen. Prior snow erode/fill
- * passes destroyed the cel-shaded deck; this rebake restores those from
- * the pre-enhance backup and only regrades the ice disc + light rope frost.
+ * Restores dirt / snow / rope / sides from dohyo-style-pre-enhance.webp.
+ * Lightens the ice disc toward a brighter cool blue while preserving the
+ * source's existing streaks, rim, and value detail (no new gloss/grain).
  *
  * Usage: node scripts/enhance-dohyo.mjs
  */
@@ -20,10 +20,6 @@ const OUT = path.join(ASSETS, "dohyo-style.webp");
 
 const clamp = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);
 const mix = (a, b, t) => a + (b - a) * t;
-const smoothstep = (e0, e1, x) => {
-  const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
-  return t * t * (3 - 2 * t);
-};
 
 function rgbToHsl(r, g, b) {
   r /= 255;
@@ -77,14 +73,14 @@ function isIcePixel(r, g, b, a) {
   if (a < 16) return false;
   const [h, s, l] = rgbToHsl(r, g, b);
   return (
-    b > r + 40 &&
-    b > 155 &&
-    g > 130 &&
+    b > r + 35 &&
+    b > 140 &&
+    g > 120 &&
     h > 185 &&
-    h < 225 &&
-    s > 0.28 &&
-    l > 0.35 &&
-    l < 0.88
+    h < 230 &&
+    s > 0.22 &&
+    l > 0.32 &&
+    l < 0.9
   );
 }
 
@@ -92,17 +88,71 @@ function isRopePixel(r, g, b, a) {
   if (a < 16) return false;
   const [h, s, l] = rgbToHsl(r, g, b);
   return (
-    r > 150 &&
-    g > 110 &&
-    b < 190 &&
-    r > b + 25 &&
-    g > b + 10 &&
-    h > 15 &&
-    h < 55 &&
-    s > 0.18 &&
-    l > 0.35 &&
-    l < 0.9
+    r > 145 &&
+    g > 105 &&
+    b < 200 &&
+    r > b + 20 &&
+    g > b + 5 &&
+    h > 12 &&
+    h < 58 &&
+    s > 0.14 &&
+    l > 0.32 &&
+    l < 0.92
   );
+}
+
+/** Flood-fill ice from center; rope + geometric cap keep fill inside the disc. */
+function buildIceMask(data, w, h, c, cx, cy, rx, ry) {
+  const ice = new Uint8Array(w * h);
+  const rope = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * c;
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const a = data[i + 3];
+      if (isRopePixel(r, g, b, a)) rope[y * w + x] = 1;
+      else if (isIcePixel(r, g, b, a)) ice[y * w + x] = 1;
+    }
+  }
+
+  const mask = new Uint8Array(w * h);
+  const qx = new Int32Array(w * h);
+  const qy = new Int32Array(w * h);
+  let head = 0;
+  let tail = 0;
+  const sx = Math.floor(cx);
+  const sy = Math.floor(cy);
+  if (ice[sy * w + sx] && !rope[sy * w + sx]) {
+    mask[sy * w + sx] = 1;
+    qx[tail] = sx;
+    qy[tail] = sy;
+    tail++;
+  }
+  while (head < tail) {
+    const x = qx[head];
+    const y = qy[head];
+    head++;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const px = x + dx;
+        const py = y + dy;
+        if (px < 0 || py < 0 || px >= w || py >= h) continue;
+        const idx = py * w + px;
+        if (mask[idx] || !ice[idx] || rope[idx]) continue;
+        const enx = (px - cx) / (rx * 1.12);
+        const eny = (py - cy) / (ry * 1.02);
+        if (enx * enx + eny * eny > 0.96) continue;
+        mask[idx] = 1;
+        qx[tail] = px;
+        qy[tail] = py;
+        tail++;
+      }
+    }
+  }
+  return mask;
 }
 
 async function main() {
@@ -111,96 +161,61 @@ async function main() {
     console.log("Backed up current asset →", path.basename(BACKUP));
   }
 
-  const inputPath = BACKUP;
-  const { data, info } = await sharp(inputPath)
+  // Always start from pre-enhance so dirt/snow are the originals.
+  const { data, info } = await sharp(BACKUP)
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
   const { width: w, height: h, channels: c } = info;
-  console.log(`Processing ${w}×${h} from ${path.basename(inputPath)} (ice-only)`);
+  console.log(`Processing ${w}×${h} — ice lighten only, dirt/snow restored`);
 
   const cx = w * 0.5;
   const cy = h * 0.44;
   const rx = w * 0.28;
   const ry = h * 0.28;
+  const iceMask = buildIceMask(data, w, h, c, cx, cy, rx, ry);
 
   const out = Buffer.from(data);
   let iceCount = 0;
-  let ropeCount = 0;
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = (y * w + x) * c;
       const a = data[i + 3];
       if (a < 16) continue;
+      if (!iceMask[y * w + x]) continue;
 
       const r0 = data[i];
       const g0 = data[i + 1];
       const b0 = data[i + 2];
+      if (!isIcePixel(r0, g0, b0, a)) continue;
 
-      const nx = (x - cx) / (rx * 1.15);
-      const ny = (y - cy) / (ry * 1.05);
-      const discR2 = nx * nx + ny * ny;
-      const insideDisc = discR2 < 1.05;
-      const ed = Math.sqrt(discR2);
+      iceCount++;
+      const [hh, ss, ll] = rgbToHsl(r0, g0, b0);
 
-      if (insideDisc && isIcePixel(r0, g0, b0, a)) {
-        iceCount++;
-        const [hh, ss, ll] = rgbToHsl(r0, g0, b0);
-        const targetH = mix(198, 206, smoothstep(0.2, 0.95, ed));
-        const targetS = mix(0.28, 0.38, smoothstep(0.0, 0.85, ed));
-        const edgeDark = mix(1.0, 0.9, smoothstep(0.55, 1.05, ed));
-        const centerLift = mix(1.05, 1.0, smoothstep(0.0, 0.4, ed));
-        const targetL = ll * 0.98 * edgeDark * centerLift;
+      // Lighter cool blue — lift value, ease sat a touch so it stays soft
+      // sky-ice rather than chalk. Hue stays in the source family.
+      // Relative L lift preserves streaks / rim / painted detail.
+      const targetH = mix(hh, 202, 0.35);
+      const targetS = mix(ss, Math.min(ss, 0.58), 0.35);
+      const targetL = clamp(ll * 1.12 + 0.04);
 
-        let [nr, ng, nb] = hslToRgb(
-          mix(hh, targetH, 0.8),
-          mix(ss, targetS, 0.72),
-          clamp(targetL * 255) / 255
-        );
+      let [nr, ng, nb] = hslToRgb(targetH, targetS, targetL);
 
-        const streak =
-          Math.exp(-Math.pow((nx * 0.9 + ny * 0.5 + 0.12) * 2.6, 2)) *
-          Math.exp(-Math.pow(ed * 0.95, 2)) *
-          0.3;
-        const pool =
-          Math.exp(
-            -Math.pow((nx + 0.06) * 1.9, 2) - Math.pow((ny + 0.22) * 2.2, 2)
-          ) * 0.16;
-        const gloss = streak + pool;
-
-        nr = mix(nr, 242, gloss);
-        ng = mix(ng, 248, gloss);
-        nb = mix(nb, 252, gloss);
-
-        if (r0 > 220 && g0 > 230 && b0 > 235) {
-          nr = mix(nr, r0, 0.7);
-          ng = mix(ng, g0, 0.7);
-          nb = mix(nb, b0, 0.7);
-        }
-
-        out[i] = clamp(Math.round(nr));
-        out[i + 1] = clamp(Math.round(ng));
-        out[i + 2] = clamp(Math.round(nb));
-        continue;
+      // Keep near-white paint (shikirisen bleed / existing highlights).
+      if (r0 > 220 && g0 > 230 && b0 > 235) {
+        nr = mix(nr, r0, 0.9);
+        ng = mix(ng, g0, 0.9);
+        nb = mix(nb, b0, 0.9);
       }
 
-      if (discR2 < 1.3 && isRopePixel(r0, g0, b0, a)) {
-        ropeCount++;
-        const [, , ll] = rgbToHsl(r0, g0, b0);
-        const highlight = smoothstep(0.62, 0.88, ll);
-        if (highlight > 0.05) {
-          const amt = highlight * 0.18;
-          out[i] = clamp(Math.round(mix(r0, 216, amt)));
-          out[i + 1] = clamp(Math.round(mix(g0, 224, amt)));
-          out[i + 2] = clamp(Math.round(mix(b0, 230, amt * 1.1)));
-        }
-      }
-      // snow / dirt / sides / shikirisen: untouched source pixels
+      out[i] = clamp(Math.round(nr));
+      out[i + 1] = clamp(Math.round(ng));
+      out[i + 2] = clamp(Math.round(nb));
     }
   }
 
-  console.log({ iceCount, ropeCount });
+  console.log({ iceCount });
 
   await sharp(out, { raw: { width: w, height: h, channels: 4 } })
     .webp({ quality: 95, alphaQuality: 100, effort: 6 })
@@ -211,10 +226,9 @@ async function main() {
     return [out[i], out[i + 1], out[i + 2]];
   };
   console.log("samples", {
-    iceCenter: sample(2400, 1400),
-    snow: sample(600, 1000),
-    snow2: sample(1100, 2200),
-    shiki: sample(2229, 1365),
+    iceCenter: sample(Math.floor(w * 0.5), Math.floor(h * 0.44)),
+    dirt: sample(Math.floor(w * 0.12), Math.floor(h * 0.55)),
+    snow: sample(Math.floor(w * 0.22), Math.floor(h * 0.35)),
   });
   console.log("Wrote", OUT);
 }

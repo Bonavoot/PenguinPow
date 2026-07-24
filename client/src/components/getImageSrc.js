@@ -18,6 +18,7 @@ import {
   palmThrustSmear,
   lowKick,
   dodging,
+  braking,
   throwing,
   salt,
   recovering,
@@ -156,7 +157,14 @@ const getImageSrc = (
   isGuardBlockSuccess = false,
   // Attack-parry SUCCESS anim (wall-clock; see GameFighter).
   // 1 = windup  2/3 = deflect poses (chain alternates 2↔3 after the first land).
-  rawParrySuccessFrame = 1
+  rawParrySuccessFrame = 1,
+  // Ice slide (SHIFT-held post-dodge) + slide-jump — must stay trailing
+  isIceSliding = false,
+  isIceSlideReverseHopping = false,
+  isSlideJumping = false,
+  slideJumpPhase = null,
+  slideJumpUseDodgePose = false,
+  slideJumpFlapFrame = 1
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -206,6 +214,17 @@ const getImageSrc = (
   if (isRopeJumping) {
     if (ropeJumpPhase === "startup" || ropeJumpPhase === "landing") return recovering;
     return dodging;
+  }
+  // Slide-jump: flap wing art in the air (no real flaps); dodge pose on butt-slam dive.
+  if (isSlideJumping) {
+    if (slideJumpPhase === "landing") return recovering;
+    if (slideJumpUseDodgePose) return dodging;
+    return slideJumpFlapFrame === 2 ? flap2 : flap1;
+  }
+  // Ice slide — braking pose; bunny-hop reverse flashes recovering → braking.
+  if (isIceSliding) {
+    if (isIceSlideReverseHopping) return recovering;
+    return braking;
   }
   // Flap: grounded startup uses the rope-jump-style recovery pose; in the air
   // we toggle between the two flap frames (the wing-beat) — flapFrame is the

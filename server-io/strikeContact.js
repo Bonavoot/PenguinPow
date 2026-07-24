@@ -32,11 +32,12 @@ const STRIKE_TIP_SPRITE_PX = {
 };
 
 // Snap when outside this band around connect distance (avoids micro-jitter).
+// Hit confirm uses the same epsilon so "close enough we wouldn't snap" still
+// lands — tip-meets-body must never ghost-whiff from float/coast jitter.
 const CONTACT_SNAP_EPSILON = 1.5;
 
-// Park extension sep inside connect reach. Needs real margin: slap1's tip is
-// shorter than slap2, and ice drift across a few ticks can eat a 2px window
-// and turn a point-blank slap into a ghost whiff.
+// Park extension sep inside connect reach. Needs real margin: ice drift across
+// a few ticks can eat a 2px window and turn a point-blank slap into a ghost whiff.
 const EXTENSION_HIT_SLACK_PX = 8;
 
 // Spark sits past the palm tip toward the opponent (world px). Slap/palm need
@@ -86,6 +87,19 @@ function getConnectDistance(attackKind, attacker, victim) {
   );
 }
 
+/**
+ * Tip-meets-body (and the contact-snap deadband) confirms. Use this for strike
+ * hit checks — never a strict `< connectDist`, which ghost-whiffs exact parks
+ * and the ±epsilon band contact correction refuses to pull in.
+ */
+function isWithinConnectRange(distance, connectDist) {
+  return (
+    typeof distance === "number" &&
+    typeof connectDist === "number" &&
+    distance <= connectDist + CONTACT_SNAP_EPSILON
+  );
+}
+
 /** World attack direction for a facing value (1 = face left / -X). */
 function getAttackDir(attacker) {
   return attacker.facing === 1 ? -1 : 1;
@@ -111,18 +125,31 @@ function getContactSeamX(attacker, victim, attackKind) {
 }
 
 /**
- * Snap the pair to connectDist along the hit axis by moving the victim.
+ * Freeze-frame park distance. Hits still CONFIRM at full connectDist; slap parks
+ * a few px inside tip so the on-hit pair slide doesn't leave mash pressure on a
+ * knife-edge (equal drift + exact tip park = one tick of desync → soft whiff).
+ */
+function getHitParkDistance(attackKind, attacker, victim) {
+  const connect = getConnectDistance(attackKind, attacker, victim);
+  if (attackKind === "slap") {
+    return Math.max(connect - EXTENSION_HIT_SLACK_PX, 1);
+  }
+  return connect;
+}
+
+/**
+ * Snap the pair to parkDist along the hit axis by moving the victim.
  * Buried overlaps push out; tip-range air gaps pull in — hitstop then freezes
  * a readable contact pose.
  */
-function applyContactCorrection(attacker, victim, connectDist) {
-  if (!attacker || !victim || !(connectDist > 0)) return false;
+function applyContactCorrection(attacker, victim, parkDist) {
+  if (!attacker || !victim || !(parkDist > 0)) return false;
   const dx = victim.x - attacker.x;
   const current = Math.abs(dx);
-  if (Math.abs(current - connectDist) <= CONTACT_SNAP_EPSILON) return false;
+  if (Math.abs(current - parkDist) <= CONTACT_SNAP_EPSILON) return false;
   // If perfectly overlapped, push victim away along attacker facing.
   const pushSign = dx === 0 ? -getAttackDir(attacker) : dx >= 0 ? 1 : -1;
-  victim.x = attacker.x + pushSign * connectDist;
+  victim.x = attacker.x + pushSign * parkDist;
   return true;
 }
 
@@ -141,15 +168,16 @@ function enforceStrikeExtensionSeparation(attacker, opponent, nowSim) {
   if (kind !== "slap" && kind !== "palm") return false;
 
   // Same pass-through exemptions as the pushbox — never horizontally pin a
-  // flapping / rope-jumping / dodging / sidestepping / thrown fighter. Without
-  // this, a grounded slap ACTIVE turned the tip-sep into an invisible wall the
-  // flapper could not fly past.
+  // flapping / slide-jumping / rope-jumping / dodging / sidestepping / thrown
+  // fighter. Without this, a grounded slap ACTIVE turned the tip-sep into an
+  // invisible wall the airborne fighter could not fly past.
   if (
     opponent.isDodging ||
     opponent.isSidestepping ||
     opponent.isBeingThrown ||
     opponent.isThrowing ||
     (opponent.isFlapping && opponent.flapPhase === "flight") ||
+    (opponent.isSlideJumping && opponent.slideJumpPhase === "flight") ||
     (opponent.isRopeJumping && opponent.ropeJumpPhase === "active")
   ) {
     return false;
@@ -158,9 +186,10 @@ function enforceStrikeExtensionSeparation(attacker, opponent, nowSim) {
   // Slap open hits are deferred for AP_LATE_PARRY_MS at the start of ACTIVE.
   // If we push to tip-range during that window, ice drift can carry the pair
   // past connectDist before the hit is allowed to confirm — intermittent
-  // point-blank whiffs (worse on slap1's shorter tip). Hold pushbox spacing
-  // until the hit can actually land; on-hit contact correction still snaps
-  // the freeze frame clean.
+  // point-blank whiffs. Hold pushbox spacing until the hit can actually land;
+  // collisionSystem latches slapOpenHitPending so a deferred in-range touch
+  // still confirms after grace (with slack). On-hit contact correction still
+  // snaps the freeze frame clean.
   if (
     kind === "slap" &&
     attacker.attackStartTime &&
@@ -203,9 +232,13 @@ module.exports = {
   SPRITE_PX_TO_WORLD,
   STRIKE_TIP_SPRITE_PX,
   SPARK_PAST_TIP_PX,
+  CONTACT_SNAP_EPSILON,
+  EXTENSION_HIT_SLACK_PX,
   getVictimBodyHalf,
   getStrikeTipWorld,
   getConnectDistance,
+  getHitParkDistance,
+  isWithinConnectRange,
   getContactSeamX,
   applyContactCorrection,
   enforceStrikeExtensionSeparation,

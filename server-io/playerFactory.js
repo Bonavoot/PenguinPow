@@ -88,6 +88,27 @@ function createInitialPlayerState(overrides = {}) {
     strafeStartTime: 0,
     isBraking: false,
     isPowerSliding: false,
+    isIceSliding: false,
+    iceSlideDir: 0, // +1 right / -1 left — primary slide direction from dodge land
+    iceSlideStartTime: 0,
+    isIceSlideReverseHopping: false, // recovering pose during bunny-hop reverse
+    iceSlideReverseHopStartTime: 0,
+    iceSlideReverseHopUntil: 0,
+    iceSlideReverseCooldownUntil: 0,
+    iceSlideReverseBufferUntil: 0, // SHIFT repress buffer awaiting opposite dig
+    iceSlideBrakeArmStart: 0, // when opposite dig began (0 = not digging)
+    isSlideJumping: false,
+    slideJumpPhase: null, // "flight" | "landing"
+    slideJumpVelocityY: 0,
+    slideJumpVelocityX: 0,
+    slideJumpDiveCommitted: false,
+    slideJumpFastFalling: false, // mirrors flapFastFalling — dive latched for VFX
+    slideJumpDiveLockX: 0,
+    slideJumpHitLanded: false,
+    slideJumpHitRecoverDuration: 0,
+    slideJumpLandingTime: 0,
+    slideJumpStartTime: 0,
+    slideJumpBufferUntil: 0, // W pressed during min flash — consume when jump becomes legal
     isCrouchStance: false,
     isCrouchStrafing: false,
     // MASTERY Phase 1: momentum carry window — a dodge landing / active power
@@ -102,6 +123,8 @@ function createInitialPlayerState(overrides = {}) {
     // out at dodge start; blended into landing momentum (gated by MASTERY_P1_MOMENTUM).
     dodgeEntrySpeed: 0,
     dodgeDirection: null,
+    dodgeStartX: 0,
+    dodgeTargetX: 0, // Fixed-distance hop end X (speed buffs don't extend this)
     dodgeEndTime: 0,
     isDodgeStartup: false,
     isDodgeRecovery: false,
@@ -158,6 +181,7 @@ function createInitialPlayerState(overrides = {}) {
     pendingPalmThrust: false,  // back+mouse1 pressed mid-slap → thrust fires at cycle end (instead of another slap)
     slapAnimationToggle: 0,    // Cosmetic slap1 ↔ slap2 alternation
     currentSlapHitConnected: false,
+    slapOpenHitPending: false, // set during AP late-parry grace when already in range
     // MASTERY Phase 3 (tsuppari cadence): an enhanced slap is a buffered follow-up
     // pressed LATE & precise (gap ≤ CADENCE_WINDOW_MS). isEnhancedSlap latches for
     // the current slap so processHit can read it at connect; cadenceChain counts

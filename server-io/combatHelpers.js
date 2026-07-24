@@ -1,6 +1,9 @@
 const {
   GRAB_RANGE,
-  SLAP_ATTACK_STARTUP_MS,
+  GRAB_SLAP_CATCH_RANGE,
+  GRAB_STARTUP_DURATION_MS,
+  GRAB_ACTIVE_MS,
+  GRAB_THROW_CATCH_START_MS,
 } = require("./constants");
 
 function isOpponentCloseEnoughForGrab(player, opponent) {
@@ -21,35 +24,54 @@ function isOpponentInFrontOfGrabber(player, opponent) {
   return relativePos >= -BEHIND_TOLERANCE;
 }
 
-// GRAB "SLIPS" SLAP — the anti-slap-spam read.
+// COMMAND-GRAB THROW CATCH (SF-style, tuned for slap frame data)
 //
-// Problem this solves: slap startup (55ms) is ~3x faster than grab startup
-// (165ms), so a "first-to-active" rule (the old grabBeatsSlap) meant a grab
-// could only win if it was committed ~110ms BEFORE the slap even began — which
-// is structurally impossible against continuous slap pressure (there is always
-// a slap going active inside your 165ms startup). Grabs therefore lost to any
-// slap spam and felt unusable.
+// Problem with "active-only catch": grab startup (145ms) > slap recovery (75ms),
+// so under point-blank slap mash there is NO safe press that reaches active
+// without getting stuffed. Pure active-only priority is structurally too weak.
 //
-// New rule: a grab that is ALREADY in startup when a slap's hitbox comes out
-// "slips" (evades) that slap — the slap whiffs, the grab startup survives and
-// connects. This is evasion, not the old free damage-absorb armor, so it never
-// eats a hit it shouldn't.
-//
-// Counterplay is preserved (it is NOT "grab always beats slap"):
-//   • A slap that was ALREADY ACTIVE before the grab began still connects —
-//     you can't grab your way out of a slap that is already landing. That is
-//     the `grabStartupStartTime <= slapActiveTime` guard below.
-//   • Reading the (readable, 165ms) grab and simply NOT slapping punishes the
-//     grab's long whiff recovery.
-//   • Charged and palm still break grab startup outright (separate branches).
-//
-// Returns true when the grab slips (beats) this slap.
-function grabSlipsSlap(grabber, slapper) {
-  if (!grabber.grabStartupStartTime || !slapper.attackStartTime) return false;
-  const slapActiveTime = slapper.attackStartTime + SLAP_ATTACK_STARTUP_MS;
-  // Grab began at or before the slap's hitbox came out → the slap is slipped.
-  // Grab began AFTER the slap was already active → the slap connects (stuffs).
-  return grabber.grabStartupStartTime <= slapActiveTime;
+// Model:
+//   • Early startup (0 → GRAB_THROW_CATCH_START_MS): fully hittable. Meaty /
+//     react slaps stuff the grab. No ghost whiffs during the telegraph.
+//   • Late startup + active: throw-catch. If in grab range, clinch the same
+//     tick — grab takes the slap's active frame instead of the slap resolving.
+//   • Charged / palm / low kick still stuff grab (separate collision branches).
+function getGrabThrowCatchElapsed(grabber, now) {
+  if (!grabber?.isGrabStartup || !grabber.grabStartupStartTime) return null;
+  const startupMs = grabber.grabStartupDuration || GRAB_STARTUP_DURATION_MS;
+  const elapsed = now - grabber.grabStartupStartTime;
+  if (elapsed < 0 || elapsed >= startupMs + GRAB_ACTIVE_MS) return null;
+  return elapsed;
+}
+
+function isGrabInActiveWindow(grabber, now) {
+  const elapsed = getGrabThrowCatchElapsed(grabber, now);
+  if (elapsed == null) return false;
+  const startupMs = grabber.grabStartupDuration || GRAB_STARTUP_DURATION_MS;
+  return elapsed >= startupMs;
+}
+
+function isGrabInThrowCatchWindow(grabber, now) {
+  const elapsed = getGrabThrowCatchElapsed(grabber, now);
+  if (elapsed == null) return false;
+  return elapsed >= GRAB_THROW_CATCH_START_MS;
+}
+
+function isOpponentInGrabSlapCatchRange(grabber, opponent) {
+  const catchRange = GRAB_SLAP_CATCH_RANGE * (grabber.sizeMultiplier || 1);
+  return Math.abs(grabber.x - opponent.x) < catchRange;
+}
+
+// True when grab throw-catch frames should beat this slap.
+// Caller supplies `now` on the sim clock (e.g. simNowForPlayer(grabber)).
+function grabCatchesSlap(grabber, slapper, now) {
+  if (!isGrabInThrowCatchWindow(grabber, now)) return false;
+  if (!slapper?.isAttacking || slapper.attackType !== "slap") return false;
+  if (slapper.isBeingThrown || slapper.isBeingGrabbed) return false;
+  if (grabber.isBeingGrabbed || grabber.throwTechCooldown) return false;
+  if (slapper.grabImmune && now < slapper.grabImmuneEndTime) return false;
+  if (!isOpponentInFrontOfGrabber(grabber, slapper)) return false;
+  return isOpponentInGrabSlapCatchRange(grabber, slapper);
 }
 
 // NOTE: The legacy throw-tech system (checkForThrowTech / checkForGrabPriority /
@@ -60,5 +82,8 @@ function grabSlipsSlap(grabber, slapper) {
 module.exports = {
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
-  grabSlipsSlap,
+  isGrabInActiveWindow,
+  isGrabInThrowCatchWindow,
+  isOpponentInGrabSlapCatchRange,
+  grabCatchesSlap,
 };
