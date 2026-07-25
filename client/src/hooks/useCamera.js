@@ -135,12 +135,22 @@ function getCameraTargetForPositions(p1x, p2x) {
 
 const READY_CAMERA = getCameraTargetForPositions(PLAYER1_READY_X, PLAYER2_READY_X);
 
-// Pre-match broadcast wide shot — full pull-back so the dohyo + crowd read
-// behind the banzuke program overlay (widest zoom, centered on the ring).
+// Pre-match broadcast wide shot — a hair wider than in-fight MIN_SCALE, with
+// y pinned to the edge-clamp ceiling (50*(scale-1)) so the dead bottom apron
+// stays tucked under the frame. Wider shots can't hide that apron without
+// flashing non-map; keep y at the clamp ceiling for whatever scale we use.
 const PREMATCH_CAMERA = {
-  scale: MIN_SCALE,
+  scale: 1.15,
   x: 0,
-  y: Y_OFFSET,
+  y: 7.5, // 50 * (scale - 1)
+};
+
+/** Camera framings for the Dohyo editor preview (matches live useCamera). */
+export const EDITOR_CAMERA_PRESETS = {
+  ready: READY_CAMERA, // hakkiyoi / ready stance — default match framing
+  prematch: PREMATCH_CAMERA,
+  fightWide: { scale: MIN_SCALE, x: 0, y: Y_OFFSET }, // players far apart
+  flat: { scale: 1, x: 0, y: 0 }, // no camera (full map)
 };
 
 export default function useCamera(containerRef, socket, showPreMatchScreen = false) {

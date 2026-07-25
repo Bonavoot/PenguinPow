@@ -1,16 +1,9 @@
 /**
- * Measure the blue ice disc in dohyo-style.webp and emit the CSS
- * `.ice-reflection-clip` clip-path that matches it in actor/camera space.
+ * Measure the blue ice disc and emit the CSS `.ice-reflection-clip` clip-path
+ * that matches it in actor/camera space.
  *
- * Pipeline:
- *  1. Classify ice pixels (same rules as enhance-dohyo.mjs)
- *  2. Fit an axis-aligned ellipse in IMAGE space (ray-cast + least squares)
- *  3. Densely sample that mathematical ellipse (not raw ice rays — those
- *     leave gaps where the classifier misses edge pixels and the convex
- *     hull then chords across, which read as a "squared" left side)
- *  4. Project each sample through .dohyo-overlay background placement +
- *     full transform (translateY → scaleY → rotateX under perspective)
- *  5. Emit clip-path: polygon(...) in angular order
+ * In-game the dohyo is a flat full-bleed bake (dohyo-display.webp) — ice pixels
+ * map 1:1 into 1280×720 actor space.
  *
  * Usage: node scripts/measure-ice-clip.mjs
  *        node scripts/measure-ice-clip.mjs --write
@@ -21,26 +14,14 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SRC = path.join(__dirname, "../src/assets/dohyo-style.webp");
+const DISPLAY = path.join(__dirname, "../src/assets/dohyo-display.webp");
+const STYLE = path.join(__dirname, "../src/assets/dohyo-style.webp");
 const CSS_PATH = path.join(__dirname, "../src/App.css");
 const WRITE = process.argv.includes("--write");
 
-// Must match .dohyo-overlay in App.css
 const CW = 1280;
 const CH = 720;
-const BG_SIZE_W = 0.9;
-const BG_SIZE_H = 0.78;
-const BG_POS_X = 0.5;
-const BG_POS_Y = 0.18;
-const ORIGIN_X = 0.48;
-const ORIGIN_Y = 1.08;
-const SCALE_Y = 0.86;
-const TRANSLATE_Y = 0.09;
-const PERSPECTIVE = 380;
-const ROTATE_X_DEG = 5;
-/** Outward pad in design-px so reflection blur isn't shaved at the lip. */
 const EDGE_PAD_PX = 2;
-/** Dense ellipse samples — more = smoother projected polygon. */
 const SAMPLES = 720;
 
 function rgbToHsl(r, g, b) {
@@ -71,19 +52,19 @@ function rgbToHsl(r, g, b) {
   return [h, s, l];
 }
 
-/** Same classifier as enhance-dohyo.mjs */
 function isIcePixel(r, g, b, a) {
   if (a < 16) return false;
   const [h, s, l] = rgbToHsl(r, g, b);
   return (
-    b > r + 40 &&
-    b > 155 &&
-    g > 130 &&
-    h > 185 &&
-    h < 225 &&
-    s > 0.28 &&
-    l > 0.35 &&
-    l < 0.88
+    b > r + 25 &&
+    b > 140 &&
+    g > 110 &&
+    h > 175 &&
+    h < 235 &&
+    s > 0.12 &&
+    l > 0.38 &&
+    l < 0.95 &&
+    !(r > 210 && g > 210 && b > 210)
   );
 }
 
@@ -103,6 +84,13 @@ function padFromCentroid(pts, padPx) {
     const len = Math.hypot(dx, dy) || 1;
     return { x: p.x + (dx / len) * padPx, y: p.y + (dy / len) * padPx };
   });
+}
+
+const SRC = fs.existsSync(DISPLAY) ? DISPLAY : STYLE;
+if (!fs.existsSync(DISPLAY)) {
+  console.warn(
+    "dohyo-display.webp missing — measuring style asset (run bake-dohyo-display.mjs)",
+  );
 }
 
 const { data, info } = await sharp(SRC)
@@ -134,7 +122,6 @@ if (!n) {
 const cx = sumX / n;
 const cy = sumY / n;
 
-// Ray-cast to fit ellipse radii only (LS ignores short/gappy rays via LS)
 const radii = [];
 for (let a = 0; a < 360; a++) {
   const rad = (a * Math.PI) / 180;
@@ -174,42 +161,16 @@ const v = (Scc * Ss - Scs * Sc) / det;
 const rxImg = 1 / Math.sqrt(u);
 const ryImg = 1 / Math.sqrt(v);
 
-const bgW = BG_SIZE_W * CW;
-const bgH = BG_SIZE_H * CH;
-const offX = (CW - bgW) * BG_POS_X;
-const offY = (CH - bgH) * BG_POS_Y;
-const ox = ORIGIN_X * CW;
-const oy = ORIGIN_Y * CH;
-const tY = TRANSLATE_Y * CH;
-const cos = Math.cos((ROTATE_X_DEG * Math.PI) / 180);
-const sin = Math.sin((ROTATE_X_DEG * Math.PI) / 180);
-
-/**
- * CSS: transform: perspective() rotateX() scaleY() translateY()
- * Points experience transforms right-to-left around transform-origin.
- */
-function projectToActor(ix, iy) {
-  let x = offX + (ix / W) * bgW;
-  let y = offY + (iy / H) * bgH;
-  let lx = x - ox;
-  let ly = y - oy;
-  ly += tY;
-  ly *= SCALE_Y;
-  const y2 = ly * cos;
-  const z2 = ly * sin;
-  const persp = PERSPECTIVE / (PERSPECTIVE - z2);
-  lx *= persp;
-  ly = y2 * persp;
-  return { x: lx + ox, y: ly + oy };
+function toActor(ix, iy) {
+  return { x: (ix / W) * CW, y: (iy / H) * CH };
 }
 
-// Dense mathematical ellipse in image space → project (keeps both sides rounded)
 const projected = [];
 for (let i = 0; i < SAMPLES; i++) {
   const th = (i / SAMPLES) * Math.PI * 2;
   const ix = cx + rxImg * Math.cos(th);
   const iy = cy + ryImg * Math.sin(th);
-  projected.push(projectToActor(ix, iy));
+  projected.push(toActor(ix, iy));
 }
 
 const ring = padFromCentroid(projected, EDGE_PAD_PX);
@@ -217,7 +178,7 @@ const ring = padFromCentroid(projected, EDGE_PAD_PX);
 const poly = ring
   .map(
     (p) =>
-      `${((p.x / CW) * 100).toFixed(3)}% ${((p.y / CH) * 100).toFixed(3)}%`
+      `${((p.x / CW) * 100).toFixed(3)}% ${((p.y / CH) * 100).toFixed(3)}%`,
   )
   .join(", ");
 
@@ -228,7 +189,6 @@ const maxX = Math.max(...ring.map((p) => p.x));
 const minY = Math.min(...ring.map((p) => p.y));
 const maxY = Math.max(...ring.map((p) => p.y));
 
-// Chord-length sanity: longest step should be tiny with dense sampling
 let longest = 0;
 for (let i = 0; i < ring.length; i++) {
   const a = ring[i];
@@ -236,19 +196,17 @@ for (let i = 0; i < ring.length; i++) {
   longest = Math.max(longest, Math.hypot(b.x - a.x, b.y - a.y));
 }
 
+console.log(`Source: ${path.basename(SRC)} (${W}×${H}) — flat bake path`);
 console.log(`Ice pixels: ${n}`);
 console.log(
-  `Image ellipse: cx=${((cx / W) * 100).toFixed(2)}% cy=${((cy / H) * 100).toFixed(2)}% rx=${((rxImg / W) * 100).toFixed(2)}% ry=${((ryImg / H) * 100).toFixed(2)}%`
+  `Image ellipse: cx=${((cx / W) * 100).toFixed(2)}% cy=${((cy / H) * 100).toFixed(2)}% rx=${((rxImg / W) * 100).toFixed(2)}% ry=${((ryImg / H) * 100).toFixed(2)}%`,
 );
 console.log(
-  `Projected AABB: x ${((minX / CW) * 100).toFixed(2)}%–${((maxX / CW) * 100).toFixed(2)}%  y ${((minY / CH) * 100).toFixed(2)}%–${((maxY / CH) * 100).toFixed(2)}%`
+  `Actor AABB: x ${((minX / CW) * 100).toFixed(2)}%–${((maxX / CW) * 100).toFixed(2)}%  y ${((minY / CH) * 100).toFixed(2)}%–${((maxY / CH) * 100).toFixed(2)}%`,
 );
 console.log(
-  `Samples: ${SAMPLES}, longest step: ${((longest / CW) * 100).toFixed(3)}% of width`
+  `Samples: ${SAMPLES}, longest step: ${((longest / CW) * 100).toFixed(3)}% of width`,
 );
-console.log("");
-console.log("clip-path:");
-console.log(`  ${clipPath.slice(0, 120)}… (${ring.length} verts)`);
 
 if (WRITE) {
   let css = fs.readFileSync(CSS_PATH, "utf8");
@@ -258,8 +216,8 @@ if (WRITE) {
     process.exit(1);
   }
   const nextBody = `
-  /* Measured ice silhouette — regenerate with:
-     node scripts/measure-ice-clip.mjs --write */
+  /* Measured ice silhouette from dohyo-display.webp (flat bake) — regenerate:
+     npm run bake:dohyo   or   node scripts/measure-ice-clip.mjs --write */
   position: absolute;
   inset: 0;
   pointer-events: none;

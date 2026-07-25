@@ -49,6 +49,7 @@ export const BAKE_SOURCES = [
   { id: "pumo-ready-position", file: "pumo-ready-position.png" },
   { id: "pumo-tachiai-position", file: "pumo-tachiai-position.png" },
   { id: "dodging", file: "dodging.png" },
+  { id: "braking", file: "braking.png" },
   { id: "crouch-stance", file: "crouch-stance.png" },
   { id: "recovering", file: "recovering.png" },
   { id: "charging", file: "charging.png" },

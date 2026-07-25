@@ -27,6 +27,7 @@ const {
   beginFlapStartup,
   alignedEntryVelocity,
   takeInheritedVelocity,
+  beginGrabStartup,
 } = require("./gameUtils");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum inheritance, Phase 3: cadence,
@@ -92,7 +93,6 @@ const {
   CHARGE_DURATION_BASE_MS,
   CHARGE_DURATION_SCALE_MS,
   CHARGE_DURATION_EXP,
-  GRAB_STARTUP_DURATION_MS,
   GRAB_STATES,
   INPUT_BUFFER_WINDOW_MS,
   POWER_UP_TYPES,
@@ -2199,27 +2199,8 @@ function executeInputBuffer(player, rooms) {
           !player.isRawParrying && !player.isGrabbingMovement &&
           !player.isWhiffingGrab && !player.isGrabWhiffRecovery &&
           !player.isGrabTeching && !player.isGrabStartup) {
-        player.isRawParrySuccess = false;
-        player.isPerfectRawParrySuccess = false;
-        clearChargeState(player, true);
-        player.isGrabStartup = true;
-        player.grabStartupStartTime = simNowForPlayer(player);
-        player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
-        player.grabStartupArmorUsed = false; // Legacy field; slap catch is active-frame only
-        player.currentAction = "grab_startup";
-        player.actionLockUntil = simNowForPlayer(player) + GRAB_STARTUP_DURATION_MS;
-        player.grabState = GRAB_STATES.ATTEMPTING;
-        player.grabAttemptType = "grab";
-        logVerbInitiation(
-          rooms.find((r) => r.players.some((p) => p.id === player.id)),
-          player,
-          "grab",
-          player.movementVelocity
-        );
-        player.grabApproachSpeed = Math.abs(player.movementVelocity);
-        player.movementVelocity = 0;
-        player.isStrafing = false;
-        player.isPowerSliding = false;
+        const grabRoom = rooms.find((r) => r.players.some((p) => p.id === player.id));
+        beginGrabStartup(player, grabRoom);
         player.inputBuffer = null;
         return true;
       }

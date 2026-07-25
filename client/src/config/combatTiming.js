@@ -11,6 +11,9 @@ export const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS
 /** Early-active slap grace — open hits deferred so late AP can arm. */
 export const AP_LATE_PARRY_MS = 45;
 
+/** Empty-tap AP whiff jail — MUST match server-io/constants.js. */
+export const AP_WHIFF_RECOVERY_MS = 300;
+
 /**
  * Slap pose director boundaries (cumulative ms from isSlapAttack rising edge).
  * Hit pose starts with the active window (SMEAR_END) so parry hitstop freezes

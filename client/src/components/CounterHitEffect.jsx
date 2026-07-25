@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef, memo } from "react";
 import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
-import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
+import SumoAnnouncementBanner, {
+  ANNOUNCEMENT_DURATION_MS,
+} from "./SumoAnnouncementBanner";
 
 /**
  * CounterHitEffect - Shows the "COUNTER HIT" side banner when a player's
@@ -14,7 +16,7 @@ const CounterHitEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedHitsRef = useRef(new Set());
   const effectIdCounter = useRef(0);
-  const EFFECT_DURATION = 1500; // Duration for the banner
+  const EFFECT_DURATION = ANNOUNCEMENT_DURATION_MS;
 
   useEffect(() => {
     if (!position || !position.counterId) return;

@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, memo } from "react";
 import { createPortal } from "react-dom";
 import styled from "styled-components";
 import PropTypes from "prop-types";
-import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
+import SumoHypeStamp, { HYPE_DURATION_MS } from "./SumoHypeStamp";
 import grabBreakSheet from "../assets/grab-break-effect.png";
 
 // ── Sprite sheet layout (grab break burst) ───────────────────────────────────
@@ -15,9 +15,8 @@ const END_FRAME = 15;
 const DURATION_MS = 300; // 15 frames → ~20ms/frame (~50fps): snappy, display-synced
 const SIZE_CQW = 14; // grab break is a notable event — a bit larger than a hit
 
-// Keep the whole effect (mainly the banner) alive this long; the sprite plays
-// once inside this window then disappears.
-const EFFECT_DURATION = 1600;
+// Keep mounted for the hype stamp window; the sprite plays out earlier.
+const EFFECT_DURATION = HYPE_DURATION_MS;
 
 const EFFECT_CENTER_OFFSET_X = 0;
 const EFFECT_BASELINE_OFFSET_Y = -3; // nudge the burst down a touch toward the players
@@ -162,9 +161,9 @@ const GrabBreakEffect = ({ position }) => {
             <GrabBreakBurst x={effect.x} y={effect.y} />
             {document.getElementById("game-hud-callouts") &&
               createPortal(
-                <SumoAnnouncementBanner
-                  text={"GRAB\nBREAK"}
+                <SumoHypeStamp
                   type="break"
+                  text={"GRAB\nBREAK"}
                   isLeftSide={isLeftSide}
                 />,
                 document.getElementById("game-hud-callouts")

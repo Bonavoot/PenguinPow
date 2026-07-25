@@ -39,11 +39,15 @@ const {
   ICE_SLIDE_REVERSE_BURST,
   ICE_SLIDE_REVERSE_HOP_MS,
   ICE_SLIDE_REVERSE_COOLDOWN_MS,
+  GRAB_STATES,
+  GRAB_STARTUP_DURATION_MS,
 } = require("./constants");
 
 // Velocity-at-press telemetry sink (MASTERY Phase 0). appendVerbInit is a
 // no-op unless AUDIT_LOG is enabled, so this require adds no hot-path cost.
 const { appendVerbInit, AUDIT_ENABLED } = require("./inputAuditLog");
+
+const { MASTERY_P1_MOMENTUM } = require("./masteryFlags");
 
 // ============================================
 // EFFECTIVE MOVEMENT SPEED (single source of truth)
@@ -283,22 +287,21 @@ function lagCompensatedParryStart(player, simNowMs) {
 
 // ── GUARD & PARRY arming ────────────────────────────────────────────────────
 // True when a FRESH tap (rising space edge) may open / re-stamp a PARRY window.
-// Only gate: this physical press hasn't already armed one (apSpaceConsumed
-// clears on the falling Space edge — one window per press). Intentionally NOT
-// gated on:
-//   • apActiveUntil — a re-press RE-STAMPS timing (flurry re-time / Sekiro loop)
-//   • isApWhiffRecovering — cancel recovery roots movement/offense, but a
-//     rising Space may cut it short by arming a new window
+// Gates:
+//   • apSpaceConsumed — one window per physical press (clears on Space-up)
+//   • isApWhiffRecovering — empty-tap jail is punishable; cannot re-arm through it
+// Intentionally NOT gated on:
+//   • apActiveUntil — a re-press RE-STAMPS timing (flurry re-time after a LAND)
 //   • apCooldownUntil — that gap only delays re-entering GUARD after a drop
 //   • isRawParrying / isGuarding — re-tap while guarding re-arms a read
 // Callers layer their own action-state gates (grabbing, hit, etc.) on top.
 function canArmAttackParry(player, _simTime) {
-  return !player.apSpaceConsumed;
+  return !player.apSpaceConsumed && !player.isApWhiffRecovering;
 }
 
-// End a live parry window on release (or orphan expiry): short rooted recovery
-// so empty taps cost something, without inputLockUntil jail. Re-press may arm
-// immediately (canArm ignores whiff; armAttackParry clears it).
+// End a live parry window on release (or empty expiry): rooted whiff recovery
+// so empty taps are punishable. Success path never calls this — a land clears
+// the window without entering isApWhiffRecovering.
 function cancelAttackParryWindow(player, simTime) {
   player.isRawParrying = false;
   player.isGuarding = false;
@@ -468,9 +471,9 @@ function updateAttackParryState(player, simTime, spaceHeld) {
 
   // Still inside the window.
   // Space up → drop the window so move+offense unlock together (no "moonwalk
-  // in blocking.png"). Post-parry flurry cover: soft clear (no 90ms whiff jail)
+  // in blocking.png"). Post-parry flurry cover: soft clear (no whiff jail)
   // so piano re-taps stay snappy; the NEXT rising edge still gets apFlurryUntil
-  // extension via armAttackParry. Neutral empty taps pay cancel recovery.
+  // extension via armAttackParry. Neutral empty taps pay full whiff recovery.
   if (simTime < activeUntil) {
     if (!spaceHeld) {
       const flurryUntil = player.apFlurryUntil || 0;
@@ -486,13 +489,14 @@ function updateAttackParryState(player, simTime, spaceHeld) {
   // ── Window just closed with no deflect ──
   if (spaceHeld) {
     // Still holding → mistimed tap safely becomes GUARD (grab-vulnerable floor).
+    // Not a whiff — holding into block is the safe floor, not punish recovery.
     player.isGuarding = true;
     player.apActiveUntil = 0;
   } else {
-    // Space up: soft drop. Do NOT apply cancel-recovery here — flurry piano
-    // linger often ends this way, and a 90ms jail after ~300ms of cover felt
-    // like mud. Neutral empty taps already paid cancel cost on release.
-    clearAttackParryWindow(player);
+    // Space already up and nothing connected → empty whiff jail.
+    // (Release mid-window already paid via cancelAttackParryWindow above;
+    // this covers holding the window to expiry then letting go / soft expiry.)
+    cancelAttackParryWindow(player, simTime);
   }
 }
 
@@ -1234,6 +1238,64 @@ function clearIceSlideState(player) {
   // by exiting/re-entering slide mid-spam.
 }
 
+/**
+ * Shared grab-attempt entry (human / buffer / CPU).
+ * Clears ice slide (slap clears it via isAttacking — grab previously left it
+ * live, so slide physics + braking art "ate" the attempt). Approach speed still
+ * inherits slide/dodge momentum for the post-connect burst push; the attempt
+ * lunge itself stays a fixed distance so grab range doesn't scale with speed.
+ */
+function beginGrabStartup(player, room) {
+  if (!player) return;
+
+  const now = simNowForPlayer(player);
+  const entryVel = player.movementVelocity || 0;
+
+  // Slap clears ice slide the instant isAttacking latches; grab must do the
+  // same explicitly — isGrabStartup was never on the ice-slide interrupt list.
+  clearIceSlideState(player);
+
+  clearChargeState(player, true);
+
+  player.isRawParrySuccess = false;
+  player.isPerfectRawParrySuccess = false;
+
+  // Refresh Thick Blubber absorb at the START of every grab attempt.
+  player.hitAbsorptionUsed = false;
+  player.lastGrabAttemptTime = now;
+
+  player.isGrabStartup = true;
+  player.grabStartupStartTime = now;
+  player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
+  player.grabStartupArmorUsed = false;
+  player.currentAction = "grab_startup";
+  player.actionLockUntil = now + GRAB_STARTUP_DURATION_MS;
+  player.grabState = GRAB_STATES.ATTEMPTING;
+  player.grabAttemptType = "grab";
+
+  logVerbInitiation(room, player, "grab", entryVel);
+
+  // Face the opponent so the lunge commits toward them (mirrors slap).
+  if (room && Array.isArray(room.players)) {
+    const opponent = room.players.find((p) => p.id !== player.id);
+    if (opponent && player.atTheRopesFacingDirection == null) {
+      player.facing = player.x < opponent.x ? -1 : 1;
+    }
+  }
+
+  // Inherit slide/dodge speed for clinch burst only — not for attempt range.
+  let approachVel = entryVel;
+  if (MASTERY_P1_MOMENTUM) {
+    approachVel = takeInheritedVelocity(player, entryVel, now);
+  }
+  player.grabApproachSpeed = Math.abs(approachVel);
+
+  player.movementVelocity = 0;
+  player.isStrafing = false;
+  player.isBraking = false;
+  player.isPowerSliding = false;
+}
+
 /** Fire ice-slide bunny-hop reverse if dig + repress conditions are met. */
 function tryIceSlideReverse(player, nowSim) {
   if (
@@ -1725,4 +1787,5 @@ module.exports = {
   clearSlideJumpState,
   clearIceSlideState,
   tryIceSlideReverse,
+  beginGrabStartup,
 };

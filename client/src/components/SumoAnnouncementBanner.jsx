@@ -10,16 +10,28 @@ import {
 } from "./menuTheme";
 
 /*
- * SumoAnnouncementBanner — dark sumi impact plaque.
+ * SumoAnnouncementBanner — side INFO rail plaque.
+ *
+ * Lane: combat-read callouts you wouldn't fully know without the game
+ * saying so — COUNTER HIT, PUNISH, COUNTER THROW, clinch reads, tech.
+ * Hype moments (PERFECT / GRAB BREAK / COUNTER GRAB) use SumoHypeStamp
+ * on a separate band above this rail.
  *
  * Edge-plaque language:
  *   dark lacquer dissolving toward ring center, cream Bungee,
  *   type-colored hairlines + soft type ambient for differentiation.
  * Copy sits on the INNER (ring-facing) end of the solid ink; kanji
- * stamps the OUTER edge. No hanko ticket, no underline, no edge pip.
+ * stamps the OUTER edge.
  *
- * STACK — toast queue per side (max 2).
+ * RAIL: ONE plaque per side. A new callout replaces the prior — old
+ * snaps out, new owns the rail. Same-type repeats restrike in place.
+ *
+ * IMPORTANT: parents must keep this mounted for at least
+ * ANNOUNCEMENT_DURATION_MS so the shared slide-away exit can finish.
  */
+
+export const ANNOUNCEMENT_DURATION_S = 1.5;
+export const ANNOUNCEMENT_DURATION_MS = 1500;
 
 // ============================================
 // COLOR THEMES — washi pigments, not arcade neon
@@ -64,45 +76,24 @@ const TYPE_KANJI = {
 };
 
 // ============================================
-// SIDE STACK COORDINATION
+// SIDE RAIL — one plaque, replace on conflict
 // ============================================
 
-const MAX_ANNOUNCEMENT_STACK = 2;
-
-const activeAnnouncementStacks = {
-  left: [],
-  right: [],
+const activeAnnouncementRails = {
+  left: null,
+  right: null,
 };
 
-const stackListeners = new Set();
+const railListeners = new Set();
 let announcementIdSeed = 0;
 
 const getSideKey = (isLeftSide) => (isLeftSide ? "left" : "right");
 
-const notifyStackListeners = () => {
-  stackListeners.forEach((listener) => listener());
+const notifyRailListeners = () => {
+  railListeners.forEach((listener) => listener());
 };
 
-const getStackSnapshot = (id, sideKey) => {
-  const sideStack = activeAnnouncementStacks[sideKey];
-  const slotIndex = sideStack.findIndex((entry) => entry.id === id);
-
-  return {
-    slotIndex: slotIndex === -1 ? 0 : slotIndex,
-    inStack: slotIndex !== -1,
-  };
-};
-
-const removeFromStacks = (id) => {
-  activeAnnouncementStacks.left = activeAnnouncementStacks.left.filter(
-    (entry) => entry.id !== id,
-  );
-  activeAnnouncementStacks.right = activeAnnouncementStacks.right.filter(
-    (entry) => entry.id !== id,
-  );
-};
-
-const useAnnouncementStack = (isLeftSide) => {
+const useAnnouncementRail = (isLeftSide, type) => {
   const idRef = useRef(null);
   if (idRef.current === null) {
     announcementIdSeed += 1;
@@ -111,39 +102,55 @@ const useAnnouncementStack = (isLeftSide) => {
 
   const sideKey = getSideKey(isLeftSide);
   const joinedRef = useRef(false);
-  const [stackState, setStackState] = useState({
-    slotIndex: 0,
+
+  // Resolve handoff mode synchronously for correct first paint.
+  const handoffRef = useRef(null);
+  if (handoffRef.current === null) {
+    const current = activeAnnouncementRails[sideKey];
+    if (current && current.type === type) {
+      handoffRef.current = "restrike";
+    } else if (current) {
+      handoffRef.current = "replace";
+    } else {
+      handoffRef.current = "fresh";
+    }
+  }
+
+  const [railState, setRailState] = useState({
     evicted: false,
+    replacedBySameType: false,
+    handoff: handoffRef.current,
   });
 
   useEffect(() => {
     const id = idRef.current;
-    removeFromStacks(id);
-    activeAnnouncementStacks[sideKey].unshift({ id });
-    if (activeAnnouncementStacks[sideKey].length > MAX_ANNOUNCEMENT_STACK) {
-      activeAnnouncementStacks[sideKey].length = MAX_ANNOUNCEMENT_STACK;
-    }
+    activeAnnouncementRails[sideKey] = { id, type };
     joinedRef.current = true;
 
-    const updateStackState = () => {
-      const snap = getStackSnapshot(id, sideKey);
-      setStackState((prev) => ({
-        slotIndex: snap.inStack ? snap.slotIndex : prev.slotIndex,
-        evicted: joinedRef.current && !snap.inStack,
-      }));
+    const updateRailState = () => {
+      const current = activeAnnouncementRails[sideKey];
+      const stillOwner = current && current.id === id;
+      setRailState({
+        handoff: handoffRef.current,
+        evicted: joinedRef.current && !stillOwner,
+        replacedBySameType:
+          joinedRef.current && !stillOwner && current?.type === type,
+      });
     };
 
-    stackListeners.add(updateStackState);
-    notifyStackListeners();
+    railListeners.add(updateRailState);
+    notifyRailListeners();
 
     return () => {
-      stackListeners.delete(updateStackState);
-      removeFromStacks(id);
-      notifyStackListeners();
+      railListeners.delete(updateRailState);
+      if (activeAnnouncementRails[sideKey]?.id === id) {
+        activeAnnouncementRails[sideKey] = null;
+      }
+      notifyRailListeners();
     };
-  }, [sideKey]);
+  }, [sideKey, type]);
 
-  return stackState;
+  return railState;
 };
 
 // ============================================
@@ -151,25 +158,55 @@ const useAnnouncementStack = (isLeftSide) => {
 // ============================================
 
 const slabInFromLeft = keyframes`
-  0%   { opacity: 0; transform: translateX(-40px) scaleX(0.92); }
-  70%  { opacity: 1; transform: translateX(3px) scaleX(1.01); }
+  0%   { opacity: 0; transform: translateX(-44px) scaleX(0.9); }
+  65%  { opacity: 1; transform: translateX(4px) scaleX(1.015); }
   100% { opacity: 1; transform: translateX(0) scaleX(1); }
 `;
 
 const slabInFromRight = keyframes`
-  0%   { opacity: 0; transform: translateX(40px) scaleX(0.92); }
-  70%  { opacity: 1; transform: translateX(-3px) scaleX(1.01); }
+  0%   { opacity: 0; transform: translateX(44px) scaleX(0.9); }
+  65%  { opacity: 1; transform: translateX(-4px) scaleX(1.015); }
   100% { opacity: 1; transform: translateX(0) scaleX(1); }
 `;
 
 const slabOutToLeft = keyframes`
   0%   { opacity: 1; transform: translateX(0) scaleX(1); }
-  100% { opacity: 0; transform: translateX(-24px) scaleX(0.95); }
+  100% { opacity: 0; transform: translateX(-28px) scaleX(0.94); }
 `;
 
 const slabOutToRight = keyframes`
   0%   { opacity: 1; transform: translateX(0) scaleX(1); }
-  100% { opacity: 0; transform: translateX(24px) scaleX(0.95); }
+  100% { opacity: 0; transform: translateX(28px) scaleX(0.94); }
+`;
+
+/* Replaced by a different callout — snap up/out so the rail clears cleanly. */
+const slabReplaceOutLeft = keyframes`
+  0%   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: translate3d(-8px, -18px, 0) scale(0.88); filter: blur(2px); }
+`;
+
+const slabReplaceOutRight = keyframes`
+  0%   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: translate3d(8px, -18px, 0) scale(0.88); filter: blur(2px); }
+`;
+
+/* Same-type restrike — old plaque dissolves in place under the punch. */
+const slabRestrikeOut = keyframes`
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.96); }
+`;
+
+/* Same-type restrike — punch the rail instead of a twin. */
+const slabRestrikeLeft = keyframes`
+  0%   { opacity: 0.75; transform: translateX(-8px) scale(0.96); }
+  40%  { opacity: 1; transform: translateX(3px) scale(1.03); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+`;
+
+const slabRestrikeRight = keyframes`
+  0%   { opacity: 0.75; transform: translateX(8px) scale(0.96); }
+  40%  { opacity: 1; transform: translateX(-3px) scale(1.03); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
 `;
 
 const textSettle = keyframes`
@@ -211,51 +248,63 @@ const subTextRise = keyframes`
 
 const BannerWrapper = styled.div`
   position: absolute;
-  top: clamp(348px, 57cqh, 430px);
+  top: clamp(360px, 58cqh, 440px);
   ${(p) => (p.$isLeftSide ? "left: 0;" : "right: 0;")}
   pointer-events: none;
-  opacity: var(--announcement-stack-opacity);
-  transform:
-    translateY(var(--announcement-stack-y))
-    scale(var(--announcement-stack-scale));
-  transform-origin: ${(p) => (p.$isLeftSide ? "left center" : "right center")};
-  transition:
-    transform 0.22s cubic-bezier(0.22, 0.8, 0.2, 1),
-    opacity 0.2s ease-out;
-  will-change: transform, opacity;
-  --announcement-stack-y: calc(
-    ${(p) => Math.min(p.$stackIndex, 1)} * clamp(-30px, -3.2cqh, -26px)
-  );
-  --announcement-stack-scale: ${(p) =>
-    Math.max(0.88, 1 - Math.min(p.$stackIndex, 1) * 0.08)};
-  --announcement-stack-opacity: ${(p) =>
-    Math.max(0.78, 1 - Math.min(p.$stackIndex, 1) * 0.16)};
-  z-index: ${(p) => 220 - Math.min(p.$stackIndex, 1)};
+  z-index: 220;
 
   @media (max-width: 900px) {
-    top: clamp(300px, 54cqh, 380px);
+    top: clamp(310px, 55cqh, 390px);
   }
 `;
 
 const EXIT_DURATION_S = 0.28;
+const REPLACE_EXIT_DURATION_S = 0.18;
+const RESTRIKE_IN_DURATION_S = 0.18;
+const REPLACE_ENTER_DELAY_S = 0.07;
 
 const BannerMotion = styled.div`
   position: relative;
-  ${(p) =>
-    p.$evicted
-      ? css`
-          animation: ${p.$isLeftSide ? slabOutToLeft : slabOutToRight}
-            ${EXIT_DURATION_S}s ease-in forwards;
-        `
-      : css`
-          animation:
-            ${p.$isLeftSide ? slabInFromLeft : slabInFromRight}
-              0.22s cubic-bezier(0.2, 0.7, 0.2, 1) both,
-            ${p.$isLeftSide ? slabOutToLeft : slabOutToRight}
-              ${EXIT_DURATION_S}s ease-in forwards;
-          animation-delay: 0s,
-            ${Math.max(0.4, (p.$duration || 1.2) - EXIT_DURATION_S)}s;
-        `}
+  transform-origin: ${(p) => (p.$isLeftSide ? "left center" : "right center")};
+  ${(p) => {
+    if (p.$evicted) {
+      if (p.$replacedBySameType) {
+        return css`
+          animation: ${slabRestrikeOut} 0.12s ease-in forwards;
+        `;
+      }
+      return css`
+        animation: ${p.$isLeftSide ? slabReplaceOutLeft : slabReplaceOutRight}
+          ${REPLACE_EXIT_DURATION_S}s cubic-bezier(0.4, 0, 1, 1) forwards;
+      `;
+    }
+
+    const isRestrike = p.$handoff === "restrike";
+    const isReplace = p.$handoff === "replace";
+    const enterAnim = isRestrike
+      ? p.$isLeftSide
+        ? slabRestrikeLeft
+        : slabRestrikeRight
+      : p.$isLeftSide
+        ? slabInFromLeft
+        : slabInFromRight;
+    const enterDuration = isRestrike ? RESTRIKE_IN_DURATION_S : 0.24;
+    const enterEase = isRestrike
+      ? "cubic-bezier(0.22, 0.9, 0.2, 1)"
+      : "cubic-bezier(0.2, 0.72, 0.2, 1)";
+    const enterDelay = isReplace ? REPLACE_ENTER_DELAY_S : 0;
+    const exitAnim = p.$isLeftSide ? slabOutToLeft : slabOutToRight;
+    const hold =
+      Math.max(0.4, (p.$duration || ANNOUNCEMENT_DURATION_S) - EXIT_DURATION_S) +
+      enterDelay;
+
+    return css`
+      animation:
+        ${enterAnim} ${enterDuration}s ${enterEase} both,
+        ${exitAnim} ${EXIT_DURATION_S}s ease-in forwards;
+      animation-delay: ${enterDelay}s, ${hold}s;
+    `;
+  }}
 `;
 
 /*
@@ -294,8 +343,8 @@ const Slab = styled.div`
   position: relative;
   z-index: 1;
   overflow: visible;
-  min-width: clamp(210px, 22.5cqw, 340px);
-  max-width: 44cqw;
+  min-width: clamp(190px, 20cqw, 300px);
+  max-width: 38cqw;
   padding-block: clamp(10px, 1.35cqh, 15px);
   ${(p) =>
     p.$isLeftSide
@@ -443,19 +492,24 @@ const SumoAnnouncementBanner = ({
   text,
   type = "default",
   isLeftSide = true,
-  duration = 1.5,
+  duration = ANNOUNCEMENT_DURATION_S,
   subText = null,
 }) => {
-  const { slotIndex, evicted } = useAnnouncementStack(isLeftSide);
+  const { evicted, replacedBySameType, handoff } = useAnnouncementRail(
+    isLeftSide,
+    type,
+  );
   const kanji = TYPE_KANJI[type];
   const label = typeof text === "string" ? text.replace(/\s*\n\s*/g, " ") : text;
 
   return (
-    <BannerWrapper $isLeftSide={isLeftSide} $stackIndex={slotIndex}>
+    <BannerWrapper $isLeftSide={isLeftSide}>
       <BannerMotion
         $isLeftSide={isLeftSide}
         $duration={duration}
         $evicted={evicted}
+        $replacedBySameType={replacedBySameType}
+        $handoff={handoff}
       >
         <Haze $isLeftSide={isLeftSide} $type={type} aria-hidden />
         <Slab $isLeftSide={isLeftSide} $type={type}>

@@ -5,6 +5,7 @@ import MobileControls from "./MobileControls";
 import PowerUpSelection from "./PowerUpSelection";
 import PowerUpReveal from "./PowerUpReveal";
 import CrowdLayer from "./CrowdLayer";
+import RoofTassleLayer from "./RoofTassleLayer";
 import SnowEffect from "./SnowEffect";
 import PreMatchScreen from "./PreMatchScreen";
 import gamepadHandler from "../utils/gamepadHandler";
@@ -36,6 +37,11 @@ import {
   getLocalKeyState,
 } from "../prediction/localInput";
 import { getServerOffset, isServerClockSynced } from "../lib/serverClock";
+import {
+  applyDohyoOverlayVars,
+  loadDohyoOverlay,
+  DOHYO_CHANGED_EVENT,
+} from "./dohyoOverlayData";
 // import gameMusic from "../sounds/game-music.mp3";
 import PropTypes from "prop-types";
 
@@ -158,6 +164,16 @@ const Game = ({
   const perfectParryFlashTimeoutRef = useRef(null);
 
   useCamera(containerRef, socket, showPreMatchScreen);
+
+  // Dohyo plate knobs (CSS vars) — baked defaults or editor draft in localStorage.
+  // Live z-order unchanged; only --dohyo-* appearance updates.
+  useEffect(() => {
+    const apply = () =>
+      applyDohyoOverlayVars(document.documentElement, loadDohyoOverlay());
+    apply();
+    window.addEventListener(DOHYO_CHANGED_EVENT, apply);
+    return () => window.removeEventListener(DOHYO_CHANGED_EVENT, apply);
+  }, []);
 
   const loadGyojiOutfit = useCallback(async (outfit) => {
     await preloadGyojiOutfit(outfit);
@@ -969,9 +985,11 @@ const Game = ({
             className="scene-particles-behind"
             aria-hidden="true"
           />
-          {/* Grade + spotlight lighting are baked into dohyo.webp, so this is a
-              plain crisp background layer (no runtime filter / blend layers). */}
+          {/* Flat 2× bake (dohyo-display.webp). After knob changes: npm run bake:dohyo */}
           <div className="dohyo-overlay"></div>
+          {/* Sumo roof fusas hanging over the four dohyo corners.
+              Dev: press ~ (Shift+`) to place / resize. */}
+          <RoofTassleLayer />
           {/* Ring-out occluder target. Players normally live in `.game-actors`
               (above the UI) so flight paints over the nameplates. But that layer
               sits above the dohyo too, so a player who falls OFF the ring would
@@ -1020,8 +1038,8 @@ const Game = ({
             showPreMatchScreen ? " is-prematch-hidden" : ""
           }`}
         ></div>
-        {/* Side combat callout host — SumoAnnouncementBanner portals here so
-            COUNTER HIT / PUNISH / PERFECT / clinch plaques sit OVER ring props
+        {/* Side combat callout host — info plaques + hype stamps portal here so
+            COUNTER HIT / PUNISH / PERFECT / clinch callouts sit OVER ring props
             and UNDER the wrestlers. Center announcements still target #game-hud. */}
         <div
           id="game-hud-callouts"

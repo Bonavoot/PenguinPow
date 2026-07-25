@@ -459,7 +459,7 @@ const generateCrowdPositions = () => {
 
 const CROWD_STORAGE_KEY = "penguin-pow-crowd-positions";
 const CROWD_VERSION_KEY = "penguin-pow-crowd-version";
-const CURRENT_CROWD_VERSION = 9;
+const CURRENT_CROWD_VERSION = 10;
 
 // Side-profile seats (plus the two ringside oyakata). Art is drawn facing one
 // way; CSS `flip` mirrors it. Keep everyone looking toward the ring center.
@@ -605,6 +605,18 @@ const loadCrowdPositions = () => {
       // Migration v8→v9: a couple right-side seats had flip=false on
       // right-facing art, so they looked away from the ring.
       parsed = correctSideCrowdFacing(parsed);
+      localStorage.setItem(CROWD_STORAGE_KEY, JSON.stringify(parsed));
+      localStorage.setItem(CROWD_VERSION_KEY, "9");
+    }
+
+    if (version < 10) {
+      // Migration v9→v10: opening the crowd editor during a BASHO match used
+      // to auto-save the fill-thinned seat list over the full house. If the
+      // stored set is far smaller than the baked layout, restore defaults.
+      const defaults = generateCrowdPositions();
+      if (parsed.length < defaults.length * 0.7) {
+        parsed = defaults.map((m) => ({ ...m }));
+      }
       localStorage.setItem(CROWD_STORAGE_KEY, JSON.stringify(parsed));
       localStorage.setItem(CROWD_VERSION_KEY, String(CURRENT_CROWD_VERSION));
     }
@@ -1003,7 +1015,9 @@ const CrowdLayer = ({ crowdEvent = null, bashoRank = null }) => {
       )}
       {editorMode && (
         <CrowdEditor
-          positions={crowdPositions}
+          // Always edit the FULL unfiltered layout — never the BASHO-thinned
+          // runtime seats (saving those permanently emptied the stands).
+          positions={loadCrowdPositions()}
           crowdTypes={CROWD_TYPES}
           onClose={handleEditorClose}
         />

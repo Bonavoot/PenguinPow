@@ -9,7 +9,6 @@ import {
   C,
   FONT_BODY,
   FONT_DISPLAY,
-  FONT_KANJI,
   broadcastSlideDown,
   TEXT_SHADOW_DISPLAY,
   TEXT_SHADOW_DISPLAY_HEAVY,
@@ -241,32 +240,20 @@ const FighterSide = styled.div`
     0.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.06s both;
 `;
 
-/* Massive atmospheric kanji — flat ink watermark, no blend tricks. */
-const GiantKanji = styled.div`
-  position: absolute;
-  top: 8%;
-  ${(p) => (p.$side === "left" ? "left: -6%;" : "right: -6%;")}
-  font-family: ${FONT_KANJI};
-  font-weight: 900;
-  font-size: clamp(140px, 26cqw, 300px);
-  line-height: 0.7;
-  color: rgba(245, 236, 217, 0.045);
-  pointer-events: none;
-  user-select: none;
-  z-index: 1;
-`;
-
 const FighterWrap = styled.div`
   position: absolute;
   top: 6%;
   /* Raised off the identity strip so feet sit on the dohyo surface */
-  bottom: clamp(18px, 3.5cqh, 36px);
+  bottom: clamp(36px, 6.5cqh, 56px);
   /* Equal inward pull toward the ring center */
   ${(p) =>
     p.$side === "left"
       ? "left: 28%; right: -4%;"
       : "right: 28%; left: -4%;"}
-  ${(p) => (p.$side === "left" ? "transform: translateX(-10px);" : "")}
+  ${(p) =>
+    p.$side === "left"
+      ? "transform: translateX(2px);"
+      : "transform: translateX(-6px);"}
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -343,19 +330,6 @@ const VsRule = styled.div`
   height: 2px;
   background: ${C.vermillion};
   flex-shrink: 0;
-`;
-
-const VsKanji = styled.div`
-  position: relative;
-  z-index: 2;
-  font-family: ${FONT_KANJI};
-  font-weight: 900;
-  font-size: clamp(14px, 1.8cqw, 22px);
-  color: ${C.cream};
-  letter-spacing: 0.28em;
-  line-height: 1;
-  margin-right: -0.28em;
-  text-shadow: ${TEXT_SHADOW_DISPLAY};
 `;
 
 const VsLetters = styled.div`
@@ -837,9 +811,6 @@ const PreMatchScreen = ({
 
       <FighterStage>
         <FighterSide $side="left">
-          <GiantKanji $side="left" aria-hidden>
-            東
-          </GiantKanji>
           <FighterWrap $side="left">
             <FloorShadow $side="left" />
             <FighterImg
@@ -857,7 +828,6 @@ const PreMatchScreen = ({
             aria-live="polite"
             aria-label={isLoading ? "Loading match" : "Match ready"}
           >
-            <VsKanji>取組</VsKanji>
             <VsRule aria-hidden />
             <VsLetters>VS</VsLetters>
             <VsRule aria-hidden />
@@ -875,9 +845,6 @@ const PreMatchScreen = ({
         </VsColumn>
 
         <FighterSide $side="right">
-          <GiantKanji $side="right" aria-hidden>
-            西
-          </GiantKanji>
           <FighterWrap $side="right">
             <FloorShadow $side="right" />
             <FighterImg

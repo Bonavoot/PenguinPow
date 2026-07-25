@@ -1174,7 +1174,7 @@ function tick(delta) {
         const elapsed = room.simTime - player.grabStartupStartTime;
         const startupMs = player.grabStartupDuration || GRAB_STARTUP_DURATION_MS;
 
-        // Apply forward lunge movement each tick during startup
+        // Apply forward lunge movement each tick during startup (fixed range).
         if (elapsed < startupMs && GRAB_LUNGE_DISTANCE > 0) {
           const lungePerTick = GRAB_LUNGE_DISTANCE / (startupMs / delta);
           const lungeDir = -player.facing; // facing 1=left, -1=right
@@ -2270,6 +2270,7 @@ function tick(delta) {
           player.isHit ||
           player.isAttacking ||
           player.isGrabbing ||
+          player.isGrabStartup ||
           player.isBeingGrabbed ||
           player.isRawParrying ||
           player.isFlapping ||
@@ -3505,9 +3506,9 @@ function tick(delta) {
         }
       }
 
-      // During a HELD AP stance OR cancel recovery, hold animation priority
-      // (clear movement/dodge/crouch). Cancel recovery is short rooted endlag;
-      // a rising Space may cut it short. (SM already ran before movement.)
+      // During a HELD AP stance OR whiff recovery, hold animation priority
+      // (clear movement/dodge/crouch). Whiff recovery is rooted endlag and
+      // cannot be cut short by re-press. (SM already ran before movement.)
       const rootApStance =
         player.isApWhiffRecovering ||
         player.isApPostParryLocked ||

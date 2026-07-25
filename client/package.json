@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "bake": "node --no-warnings --loader ./scripts/extResolve.mjs scripts/bakeSprites.mjs",
+    "enhance:dohyo": "node scripts/enhance-dohyo.mjs",
+    "bake:dohyo-display": "node scripts/bake-dohyo-display.mjs",
+    "bake:dohyo": "npm run enhance:dohyo && npm run bake:dohyo-display && node scripts/measure-ice-clip.mjs --write",
     "build": "npm run bake && vite build",
     "lint": "eslint src --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"

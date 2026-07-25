@@ -662,10 +662,10 @@ const PERFECT_PARRY_BALANCE_REFUND = 12;
 //     After a LANDED parry, a continued hold becomes GUARD — one timed PARRY per
 //     physical press; holding never grants a second parry. Release + re-press
 //     for the next timed read (flurry = tap-every-slap).
-//   • RELEASE during a live window → CANCEL (window ends). Short rooted recovery
-//     (AP_WHIFF_RECOVERY_MS) so empty taps aren't free, but RE-PRESS may arm a
-//     fresh window immediately (recovery does not lock out parry). This is the
-//     premium FG re-time loop — not a 260ms jail for letting go.
+//   • RELEASE / empty expiry during a live window → WHIFF. Rooted recovery
+//     (AP_WHIFF_RECOVERY_MS) so empty taps are punishable. Re-press may NOT
+//     cut the jail short — only a LANDED parry skips this (success path never
+//     enters whiff). Holding through the window into GUARD is NOT a whiff.
 //
 // RPS: parry/guard both LOSE to GRAB (counter-grab is the anti-defense read) and
 // to CHARGED (blows through). Every parry costs stamina; turtling gasses you.
@@ -690,9 +690,11 @@ const AP_FLOW_WINDOW_MS = 400;       // DEPRECATED (Deflect Flow removed). Kept 
 // Long enough that Frame 2 (deflect) stays readable after hitstop ends.
 const AP_SUCCESS_RECOVERY_MS = 200;
 // Cancel / empty-tap recovery: rooted endlag when a live window is released (or
-// expires) into nothing. Tuned ≈ slap recovery — real cost, not longer than a
-// slap cycle. Does NOT set inputLockUntil; a rising Space re-arms through it.
-const AP_WHIFF_RECOVERY_MS = 90;
+// expires) into nothing with no deflect. Long enough to read the client whiff
+// pose (success-f1 hold) and eat a slap punish. LANDED parries never enter
+// this — success uses AP_SUCCESS_RECOVERY_MS plant instead.
+// Re-arm is blocked for the full duration (canArmAttackParry).
+const AP_WHIFF_RECOVERY_MS = 300;
 const AP_COOLDOWN_MS = 40;           // Tiny gap before GUARD may re-enter after a drop. Fresh taps (rising Space) ignore this so release→re-press is an immediate parry window.
 const AP_STAMINA_COST = 3;           // Charged per parry tap — cheap (reward using it), but re-tapping a long flurry still drains you.
 // KILL gate: PERFECT parry only, and the attacker's balance must be DEEPLY

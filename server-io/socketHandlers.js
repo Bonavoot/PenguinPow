@@ -10,7 +10,6 @@ const {
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, RAW_PARRY_STAMINA_COST, RAW_PARRY_COOLDOWN_MS,
   RAW_PARRY_REARM_STAMINA_COST, RAW_PARRY_REARM_INTERVAL_MS,
   CHARGE_FULL_POWER_MS,
-  GRAB_STARTUP_DURATION_MS,
   LOW_KICK_ENABLED,
 } = require("./constants");
 
@@ -38,6 +37,7 @@ const {
   clearIceSlideState,
   tryIceSlideReverse,
   beginPlayerDodge,
+  beginGrabStartup,
 } = require("./gameUtils");
 
 const {
@@ -1328,47 +1328,9 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.isGrabTeching &&
     !player.isGrabStartup
   ) {
-    player.lastGrabAttemptTime = simNowForPlayer(player);
-
-    // Clear parry success state when starting a grab
-    player.isRawParrySuccess = false;
-    player.isPerfectRawParrySuccess = false;
-
-    // Clear charging attack state when starting grab
-    clearChargeState(player, true); // true = cancelled by grab
-
-    // Refresh the Thick Blubber absorb at the START of every grab attempt —
-    // one absorb per grab, unlimited grabs. Reset unconditionally: it's a no-op
-    // for players without blubber (hasHitAbsorption still gates on the power-up
-    // / loadout flag), and it lets BOTH the power-up and the BASHO grappling
-    // loadout ("thick_blubber") refresh per grab.
-    player.hitAbsorptionUsed = false;
-
-    // Begin startup with forward lunge — tick loop applies lunge movement,
-    // then does range check at the end → connect / whiff / tech
-    player.isGrabStartup = true;
-    player.grabStartupStartTime = simNowForPlayer(player);
-    player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
-    player.grabStartupArmorUsed = false; // Legacy field; slap catch is active-frame only
-    player.currentAction = "grab_startup";
-    player.actionLockUntil = simNowForPlayer(player) + GRAB_STARTUP_DURATION_MS;
-    player.grabState = GRAB_STATES.ATTEMPTING;
-    player.grabAttemptType = "grab";
-
-    // MASTERY Phase 0 telemetry — signed entry velocity at grab press, before
-    // the momentum below is captured/zeroed.
-    logVerbInitiation(room, player, "grab", player.movementVelocity);
-
-    // Capture approach speed BEFORE clearing momentum (for momentum-transferred push)
-    player.grabApproachSpeed = Math.abs(player.movementVelocity);
-
-    // Clear any existing movement momentum
-    player.movementVelocity = 0;
-    player.isStrafing = false;
-    // Cancel power slide when grabbing
-    player.isPowerSliding = false;
-
-    // No movement timeout needed — startup tick block handles connect/whiff/tech instantly
+    // Begin startup with forward lunge — clears ice slide + inherits slide
+    // momentum (see beginGrabStartup). Tick loop applies lunge → connect/whiff/tech.
+    beginGrabStartup(player, room);
   }
 }
 

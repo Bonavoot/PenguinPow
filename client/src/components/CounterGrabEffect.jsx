@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, memo } from "react";
 import { createPortal } from "react-dom";
 import styled from "styled-components";
 import PropTypes from "prop-types";
-import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
+import SumoHypeStamp, { HYPE_DURATION_MS } from "./SumoHypeStamp";
 import clampedSheet from "../assets/clamped-effect.png";
 
 // ── Counter-grab "LOCKED / CLAMPED" burst (sprite sheet) ─────────────────────
@@ -91,9 +91,8 @@ const CounterGrabEffect = ({ position }) => {
   const processedCountersRef = useRef(new Set());
   const effectIdCounter = useRef(0);
   const pendingTimeouts = useRef([]);
-  // Kept longer than the sprite so the COUNTER GRAB banner (portal) can play out
-  // its own animation; the sprite unmounts itself after its short burst.
-  const EFFECT_DURATION = 1600;
+  // Kept for the hype stamp window (sprite unmounts itself after its burst).
+  const EFFECT_DURATION = HYPE_DURATION_MS;
 
   useEffect(() => {
     if (!position || !position.counterId) return;
@@ -154,9 +153,9 @@ const CounterGrabEffect = ({ position }) => {
             <ClampSpriteBurst x={effect.x} y={effect.y} />
             {hudEl &&
               createPortal(
-                <SumoAnnouncementBanner
-                  text={"COUNTER\nGRAB"}
+                <SumoHypeStamp
                   type="countergrab"
+                  text={"COUNTER\nGRAB"}
                   isLeftSide={isLeftSide}
                 />,
                 hudEl

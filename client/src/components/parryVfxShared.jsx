@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
-import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
+import SumoHypeStamp from "./SumoHypeStamp";
 
 // ── Shared parry color identity ─────────────────────────────────────────────
 // Burst sheet is now the white grab-break star (mask+fill in Slap/RawParry
@@ -130,7 +130,9 @@ RegularParryContactFlash.propTypes = {
   size: PropTypes.number,
 };
 
-// ── PERFECT callout banner ──────────────────────────────────────────────────
+// ── PERFECT hype stamp ──────────────────────────────────────────────────────
+// Parents MUST keep this mounted for HYPE_DURATION_MS. The parry sprite
+// burst is much shorter; stamp lifetime is owned by Raw/SlapParryEffect.
 export const PerfectParryBanner = ({ playerNumber = 1 }) => {
   const isLeftSide = playerNumber === 1;
   const hudEl =
@@ -139,11 +141,7 @@ export const PerfectParryBanner = ({ playerNumber = 1 }) => {
       : null;
   if (!hudEl) return null;
   return createPortal(
-    <SumoAnnouncementBanner
-      text="PERFECT"
-      type="perfectparry"
-      isLeftSide={isLeftSide}
-    />,
+    <SumoHypeStamp type="perfect" isLeftSide={isLeftSide} />,
     hudEl
   );
 };
@@ -152,17 +150,14 @@ PerfectParryBanner.propTypes = {
   playerNumber: PropTypes.number,
 };
 
-// Bundled perfect-tier extras that sit UNDER / WITH the sprite burst.
-export const PerfectParryExtras = ({ x, y, playerNumber = 1, showBanner = true }) => (
-  <>
-    <PerfectParryImpactFlash x={x} y={y} size={11} />
-    {showBanner && <PerfectParryBanner playerNumber={playerNumber} />}
-  </>
+// Perfect-tier contact extras that sit UNDER / WITH the sprite burst.
+// Banner is intentionally NOT bundled here — host it on the shared
+// announcement timer so it can slide away like COUNTER HIT.
+export const PerfectParryExtras = ({ x, y }) => (
+  <PerfectParryImpactFlash x={x} y={y} size={11} />
 );
 
 PerfectParryExtras.propTypes = {
   x: PropTypes.number.isRequired,
   y: PropTypes.number.isRequired,
-  playerNumber: PropTypes.number,
-  showBanner: PropTypes.bool,
 };

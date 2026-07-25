@@ -8,7 +8,7 @@ const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
         SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_TOTAL_MS,
         SIDESTEP_STAMINA_COST,
         DODGE_STAMINA_COST,
-        GRAB_STARTUP_DURATION_MS, GROUND_LEVEL, DOHYO_FALL_DEPTH,
+        GROUND_LEVEL, DOHYO_FALL_DEPTH,
         SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST,
         RAW_PARRY_STAMINA_COST, POWER_UP_TYPES, SLAP_KILL_RANGE,
         PALM_THRUST_STAMINA_COST,
@@ -21,6 +21,7 @@ const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
 const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
         canPlayerSidestep, getSidestepInitData, simNowForPlayer,
         logVerbInitiation, beginFlapStartup, beginPlayerDodge,
+        beginGrabStartup,
         canArmAttackParry, armAttackParry } = require("./gameUtils");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum, Phase 2: posture, Phase 3: cadence).
@@ -3526,28 +3527,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       !shouldBlockAction() &&
       canPlayerUseAction(cpu)) {
     
-    cpu.isRawParrySuccess = false;
-    cpu.isPerfectRawParrySuccess = false;
-    clearChargeState(cpu, true);
-
-    // Refresh Thick Blubber absorb per grab attempt (grabs-only; no-op without blubber).
-    cpu.hitAbsorptionUsed = false;
-    
-    cpu.lastGrabAttemptTime = currentTime;
-    cpu.isGrabStartup = true;
-    cpu.grabStartupStartTime = simNowForPlayer(cpu);
-    cpu.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
-    cpu.grabStartupArmorUsed = false; // Legacy field; slap catch is active-frame only
-    cpu.currentAction = "grab_startup";
-    cpu.actionLockUntil = currentTime + GRAB_STARTUP_DURATION_MS;
-    cpu.grabState = "attempting";
-    cpu.grabAttemptType = "grab";
-    // MASTERY Phase 0 telemetry — signed entry velocity at grab press.
-    logVerbInitiation(room, cpu, "grab", cpu.movementVelocity);
-    cpu.grabApproachSpeed = Math.abs(cpu.movementVelocity);
-    cpu.movementVelocity = 0;
-    cpu.isStrafing = false;
-    cpu.isPowerSliding = false;
+    beginGrabStartup(cpu, room);
     
     if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
     else Object.assign(cpu._prevKeys, cpu.keys);

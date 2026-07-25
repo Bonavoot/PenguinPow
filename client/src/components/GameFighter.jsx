@@ -60,6 +60,7 @@ import { getBashoActiveDraft, toBashoHudActive } from "../config/powerUpConfig";
 import MatchOver from "./MatchOver";
 import RoundResult from "./RoundResult";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
+import SumoHypeStamp from "./SumoHypeStamp";
 import HitEffect from "./HitEffect";
 import RawParryEffect from "./RawParryEffect";
 import { getGlobalVolume } from "./Settings";
@@ -67,7 +68,10 @@ import { playBuffer, createCrossfadeLoop } from "../utils/audioEngine";
 import SnowEffect from "./SnowEffect";
 import "./theme.css";
 import { SERVER_BROADCAST_HZ, DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY, isOutsideDohyo } from "../constants";
-import { SLAP_ANIM } from "../config/combatTiming";
+import {
+  SLAP_ANIM,
+  AP_WHIFF_RECOVERY_MS,
+} from "../config/combatTiming";
 import {
   SHADOW_GROUND_LEVEL,
   playerShadowBottomY,
@@ -751,29 +755,31 @@ const GameFighter = ({
   // raw_parry_success / rising edge), and keep painting it even after the
   // server clears the flags for the next read.
   //
-  // Chain poses (server apChainCount via raw_parry_success.chainCount):
-  //   1st land  → Frame 1 windup → Frame 2 deflect
-  //   2nd land  → Frame 3 (no windup)
-  //   3rd land  → Frame 2
-  //   4th land  → Frame 3  …alternating. No Frame 1 mid-chain (would read as
-  //   resetting into a block). Chain resets server-side when the stance drops
-  //   (release / block / hit) — no extra client timer.
+  // Every land: blocking → success-f1 (quick) → success-f2 (hold). No frame 3.
   const rawParrySuccessVisualRef = useRef({
     startedAt: 0,
     until: 0,
     parryId: null,
     lastServerSuccess: false,
     chainCount: 1,
-    // Hold pose for follow-up lands (2 or 3). Opener uses windup→2 instead.
-    holdFrame: 2,
   });
   const rawParrySuccessFrameRef = useRef(1);
   const RAW_PARRY_SUCCESS_ANIM = {
-    FRAME1_MS: 40,
-    // Same readable deflect length for regular AND perfect. Longer hitstop on
-    // perfect only EXTENDS past this floor — it never shortens it.
+    BLOCK_MS: 16, // blocking.png — ~1 frame
+    FRAME1_MS: 40, // success-f1 — quick
+    // F2 hold floor after block+f1. Longer hitstop on perfect only EXTENDS
+    // past this — it never shortens it.
     MIN_HOLD_MS: 180,
     POST_HITSTOP_HOLD_MS: 80,
+  };
+  const successLeadMs = () =>
+    RAW_PARRY_SUCCESS_ANIM.BLOCK_MS + RAW_PARRY_SUCCESS_ANIM.FRAME1_MS;
+  // 0 = blocking, 1 = success-f1, 2 = success-f2
+  const resolveRawParrySuccessFrame = (_v, wallElapsed) => {
+    const { BLOCK_MS, FRAME1_MS } = RAW_PARRY_SUCCESS_ANIM;
+    if (wallElapsed < BLOCK_MS) return 0;
+    if (wallElapsed < BLOCK_MS + FRAME1_MS) return 1;
+    return 2;
   };
   const beginRawParrySuccessVisual = useCallback((now, parryId, chainCount = 1) => {
     const v = rawParrySuccessVisualRef.current;
@@ -783,19 +789,37 @@ const GameFighter = ({
     if (!parryId && now < v.until) return;
 
     const chain = Math.max(1, chainCount | 0);
+
+    // Socket arriving after a rising-edge start for the same beat: adopt the
+    // id / chain / hold length, but do NOT restart the swing.
+    if (
+      parryId &&
+      typeof v.parryId === "string" &&
+      v.parryId.startsWith("edge_") &&
+      now < v.until
+    ) {
+      v.parryId = parryId;
+      v.chainCount = chain;
+      const hitstopUntil = getDisplayHitstopUntil();
+      const minUntil =
+        v.startedAt + successLeadMs() + RAW_PARRY_SUCCESS_ANIM.MIN_HOLD_MS;
+      const hitstopBasedUntil =
+        Math.max(hitstopUntil > now ? hitstopUntil : now, now) +
+        RAW_PARRY_SUCCESS_ANIM.POST_HITSTOP_HOLD_MS;
+      v.until = Math.max(v.until, minUntil, hitstopBasedUntil);
+      return;
+    }
+
     v.startedAt = now;
     v.parryId = parryId || `edge_${now}`;
     v.chainCount = chain;
-    // chain 1 → opener (F1→F2). chain even → F3, odd (>1) → F2.
-    v.holdFrame = chain === 1 ? 2 : chain % 2 === 0 ? 3 : 2;
     const hitstopUntil = getDisplayHitstopUntil();
-    const windupMs = chain === 1 ? RAW_PARRY_SUCCESS_ANIM.FRAME1_MS : 0;
-    const minUntil = now + windupMs + RAW_PARRY_SUCCESS_ANIM.MIN_HOLD_MS;
+    const minUntil = now + successLeadMs() + RAW_PARRY_SUCCESS_ANIM.MIN_HOLD_MS;
     const hitstopBasedUntil =
       Math.max(hitstopUntil > now ? hitstopUntil : now, now) +
       RAW_PARRY_SUCCESS_ANIM.POST_HITSTOP_HOLD_MS;
     v.until = Math.max(minUntil, hitstopBasedUntil);
-    rawParrySuccessFrameRef.current = 0;
+    rawParrySuccessFrameRef.current = -1;
   }, []);
 
   // Dash phase clock. Anchored locally on the rising edge of the (predicted)
@@ -819,6 +843,7 @@ const GameFighter = ({
     isBraking: false, // ICE PHYSICS: True when actively braking (digging in)
     isPowerSliding: false, // ICE PHYSICS: True when power sliding (C key held)
     isRawParrying: false,
+    isApWhiffRecovering: false,
     isReady: false,
     isHit: false,
     isDead: false,
@@ -967,16 +992,19 @@ const GameFighter = ({
 
   // Client-side mirror of server parry commitment — suppress OFFENSIVE
   // predictions the server will reject. Server AP:
-  //   • Neutral: live window while held; release cancels (+~90 recovery)
+  //   • Neutral: live window while held; release → whiff jail (AP_WHIFF_RECOVERY_MS)
   //   • Post-parry flurry: re-tap may extend window; release soft-clears
   //     (no linger). predictedFlurryUntilRef only lengthens the NEXT re-arm.
   const AP_ACTIVE_MS_CLIENT = 180;
-  const AP_CANCEL_RECOVERY_MS_CLIENT = 90;
+  const AP_CANCEL_RECOVERY_MS_CLIENT = AP_WHIFF_RECOVERY_MS;
   // Match server grantAttackParryFlurryCover (regular slap ≈ 345; perfect ≈ 565)
   const AP_FLURRY_COVER_REGULAR_MS_CLIENT = 345;
   const AP_FLURRY_COVER_PERFECT_MS_CLIENT = 565;
   const predictedParryCommitUntilRef = useRef(0);
   const predictedFlurryUntilRef = useRef(0);
+  // Local Space-up whiff pose — snaps to success-f1 before server isApWhiffRecovering.
+  // Gated: live read only (not guard), not during flurry soft-clear.
+  const apWhiffPredictRef = useRef({ until: 0, sawServerWhiff: false });
   const isLocalParryActive = useCallback(() => {
     if (!isLocalPlayer) return false;
     // Post-parry lock (survives flurry re-tap that clears success pose).
@@ -992,7 +1020,9 @@ const GameFighter = ({
     // isRawParrying / isGuarding (treating Space alone caused "can't attack"
     // while walking after a stance drop).
     if (penguin.isRawParrying || penguin.isGuarding) return true;
-    return performance.now() < predictedParryCommitUntilRef.current;
+    const nowT = performance.now();
+    if (nowT < apWhiffPredictRef.current.until) return true;
+    return nowT < predictedParryCommitUntilRef.current;
   }, [
     isLocalPlayer,
     penguin.isApPostParryLocked,
@@ -1283,13 +1313,26 @@ const GameFighter = ({
             predictionChanged = true;
           }
           break;
-        case "parry_release":
-          // Server soft-clears the armed window on release (no linger). Short
-          // offense suppress only — do NOT hold commit until flurry end or you
-          // can walk while unable to attack for hundreds of ms.
+        case "parry_release": {
+          // Offense suppress for whiff jail length. Do NOT hold commit until
+          // flurry end or you can walk unable to attack for hundreds of ms.
           if (gameStarted) {
             predictedParryCommitUntilRef.current =
               now + AP_CANCEL_RECOVERY_MS_CLIENT;
+          }
+          // Snap whiff pose (success-f1) on Space-up from a LIVE read — not
+          // from hold-guard, not during post-land flurry soft-clear.
+          const inLiveRead =
+            isLocalPlayer &&
+            !penguin.isGuarding &&
+            !penguin.isRawParrySuccess &&
+            !penguin.isPerfectRawParrySuccess &&
+            (penguin.isRawParrying || predictedState.current.isRawParrying);
+          const inFlurryCover = now < predictedFlurryUntilRef.current;
+          if (gameStarted && inLiveRead && !inFlurryCover) {
+            apWhiffPredictRef.current.until = now + AP_WHIFF_RECOVERY_MS;
+            apWhiffPredictRef.current.sawServerWhiff = false;
+            forceVisualRender();
           }
           if (penguin.isRawParrying || predictedState.current.isRawParrying) {
             predictedState.current = {
@@ -1300,6 +1343,7 @@ const GameFighter = ({
             predictionChanged = true;
           }
           break;
+        }
         case "grab":
           if (canPredictAction(gameStarted) && !penguin.isChargingAttack && !isLocalParryActive()) {
             predictedState.current = {
@@ -1436,8 +1480,12 @@ const GameFighter = ({
       canPredictAction,
       canPredictDash,
       isLocalParryActive,
+      forceVisualRender,
       penguin.isChargingAttack,
       penguin.isRawParrying,
+      penguin.isGuarding,
+      penguin.isRawParrySuccess,
+      penguin.isPerfectRawParrySuccess,
       penguin.facing,
       penguin.isAttacking,
       penguin.isDodging,
@@ -2046,9 +2094,9 @@ const GameFighter = ({
         // turn into a burst of catch-up simulation ticks afterwards.
         movementPredictorRef.current?.notePause(timestamp);
 
-        // RAW PARRY SUCCESS: movement is frozen, but Frame 1 → Frame 2 must
-        // still advance (and the local visual hold must keep ticking) so the
-        // DEFLECT pose is readable every time — including through flurry clears.
+        // RAW PARRY SUCCESS: movement is frozen, but block → f1 → f2 must still
+        // advance (and the local visual hold must keep ticking) so the
+        // DEFLECT is readable every time — including through flurry clears.
         const vSuccess = rawParrySuccessVisualRef.current;
         if (vSuccess.until > timestamp) {
           // Hitstop packet can arrive AFTER we stamped `until`; extend to match.
@@ -2060,13 +2108,7 @@ const GameFighter = ({
             );
           }
           const wallElapsed = timestamp - vSuccess.startedAt;
-          let frame = vSuccess.holdFrame || 2;
-          if (
-            vSuccess.chainCount === 1 &&
-            wallElapsed < RAW_PARRY_SUCCESS_ANIM.FRAME1_MS
-          ) {
-            frame = 1;
-          }
+          const frame = resolveRawParrySuccessFrame(vSuccess, wallElapsed);
           if (frame !== rawParrySuccessFrameRef.current) {
             rawParrySuccessFrameRef.current = frame;
             forceVisualRender();
@@ -2357,8 +2399,10 @@ const GameFighter = ({
         // Slap string animation is mid-sequence: force frames until it settles
         // on the terminal recovery pose (flag cleared once frame 3 is committed).
         rendered.slapAnim ||
-        // Raw parry SUCCESS still on Frame 1 windup — force until deflect (2).
+        // Raw parry SUCCESS mid block→f1→f2 — force frame advances.
         rendered.rawParrySuccessAnim ||
+        // Local AP whiff predict still holding success-f1 — force clear at until.
+        rendered.apWhiffPredict ||
         // Dash is mid-sequence: force frames so the windup→jump→landing pose
         // and arc advance on their own clock even while briefly stationary
         // (startup) or when no server packet arrives.
@@ -2774,6 +2818,7 @@ const GameFighter = ({
           prev.isBeingThrown !== newState.isBeingThrown ||
           prev.isRawParrying !== newState.isRawParrying ||
           prev.isGuarding !== newState.isGuarding ||
+          prev.isApWhiffRecovering !== newState.isApWhiffRecovering ||
           prev.isChargingAttack !== newState.isChargingAttack ||
           prev.isBraking !== newState.isBraking ||
           prev.isPowerSliding !== newState.isPowerSliding ||
@@ -3314,6 +3359,9 @@ const GameFighter = ({
             ? AP_FLURRY_COVER_PERFECT_MS_CLIENT
             : AP_FLURRY_COVER_REGULAR_MS_CLIENT);
         predictedParryCommitUntilRef.current = 0;
+        // Land overrides any Space-up whiff pose predict.
+        apWhiffPredictRef.current.until = 0;
+        apWhiffPredictRef.current.sawServerWhiff = false;
         if (predictedState.current.isRawParrying) {
           predictedState.current.isRawParrying = false;
         }
@@ -3364,9 +3412,8 @@ const GameFighter = ({
           const PARRY_HAND_FORWARD_PX = 52;
           const PARRY_EFFECT_OUTWARD_PX = 28;
           const PARRY_HAND_Y = HIT_EFFECT_Y + 22;
-          const PARRY_HAND_Y_FRAME3_DROP_PX = 28;
           const chain = data.chainCount || 1;
-          const isFrame3 = chain > 1 && chain % 2 === 0;
+          // Contact pin on F2 deflect hand (success anim: block → f1 → f2).
           const parrySeamX =
             (typeof data.contactX === "number"
               ? data.contactX
@@ -3374,9 +3421,7 @@ const GameFighter = ({
             towardAttacker * PARRY_EFFECT_OUTWARD_PX;
           setParryEffectPosition({
             x: parrySeamX,
-            y: isFrame3
-              ? PARRY_HAND_Y - PARRY_HAND_Y_FRAME3_DROP_PX
-              : PARRY_HAND_Y,
+            y: PARRY_HAND_Y,
             facing,
             parryId: data.parryId,
             variant: isPerfect ? "perfect" : "parry",
@@ -5869,7 +5914,6 @@ const GameFighter = ({
     else if (elapsed < SLAP_ANIM.HIT_END) slapFrame = 2; // hit (strike, held)
     else slapFrame = 3; // recovery — settle back to the ready stance (not idle)
   }
-
   // Raw parry SUCCESS pose director — see rawParrySuccessVisualRef.
   const nowSuccessMs = performance.now();
   const successVisual = rawParrySuccessVisualRef.current;
@@ -5893,18 +5937,29 @@ const GameFighter = ({
   }
   const inRawParrySuccessAnim =
     serverRawParrySuccess || nowSuccessMs < successVisual.until;
-  let rawParrySuccessFrame = successVisual.holdFrame || 2;
+  let rawParrySuccessFrame = 2;
   if (inRawParrySuccessAnim && successVisual.startedAt) {
-    const wallElapsed = nowSuccessMs - successVisual.startedAt;
-    if (
-      successVisual.chainCount === 1 &&
-      wallElapsed < RAW_PARRY_SUCCESS_ANIM.FRAME1_MS
-    ) {
-      rawParrySuccessFrame = 1;
-    } else {
-      rawParrySuccessFrame = successVisual.holdFrame || 2;
-    }
+    rawParrySuccessFrame = resolveRawParrySuccessFrame(
+      successVisual,
+      nowSuccessMs - successVisual.startedAt
+    );
   }
+
+  // AP whiff pose: server flag OR local Space-up predict (cleared on land /
+  // when server whiff ends so we don't overhold past authority).
+  const whiffPredict = apWhiffPredictRef.current;
+  if (serverRawParrySuccess || inRawParrySuccessAnim) {
+    whiffPredict.until = 0;
+    whiffPredict.sawServerWhiff = false;
+  }
+  const serverApWhiff = !!penguin.isApWhiffRecovering;
+  if (serverApWhiff) whiffPredict.sawServerWhiff = true;
+  else if (whiffPredict.sawServerWhiff) {
+    whiffPredict.until = 0;
+    whiffPredict.sawServerWhiff = false;
+  }
+  const showApWhiff =
+    serverApWhiff || nowSuccessMs < whiffPredict.until;
 
   // Anchor the dash clock on the rising edge of the predicted dodge (same
   // render-anchored pattern as the palm-thrust/flap clocks). Driving the phase
@@ -6013,6 +6068,7 @@ const GameFighter = ({
     !!penguin.isGuarding,
     guardBlockSuccess,
     rawParrySuccessFrame,
+    showApWhiff,
     !!penguin.isIceSliding,
     !!penguin.isIceSlideReverseHopping,
     !!penguin.isSlideJumping,
@@ -6125,12 +6181,15 @@ const GameFighter = ({
   // static hold, so no further forcing is needed — the isSlapAttack drop (→ idle)
   // or the next slap's slapAnimation change triggers the re-render on its own.
   renderedHitVisualsRef.current.slapAnim = inSlapPhaseAnim && slapFrame < 3;
-  // RAW PARRY SUCCESS: keep ticking through the local visual hold so Frame 1→2
-  // advances and the pose clears when `until` expires (even if server flags
-  // already dropped for a flurry re-tap). Mid-hitstop swaps also use the freeze
-  // branch above.
+  // RAW PARRY SUCCESS: keep ticking through the local visual hold so
+  // block→f1→f2 advances and the pose clears when `until` expires (even if
+  // server flags already dropped for a flurry re-tap). Mid-hitstop swaps also
+  // use the freeze branch above.
   renderedHitVisualsRef.current.rawParrySuccessAnim =
     nowSuccessMs < successVisual.until;
+  // Local Space-up whiff predict (before/without server flag) — tick until expiry.
+  renderedHitVisualsRef.current.apWhiffPredict =
+    !serverApWhiff && nowSuccessMs < whiffPredict.until;
   // True when this render showed merged (unconfirmed) predictions — the rAF
   // watcher uses it to force the cleanup render once the prediction window
   // (PREDICTION_TIMEOUT_MS) lapses without server confirmation.
@@ -6728,26 +6787,29 @@ const GameFighter = ({
         >
           <RoundResult isVictory={true} winType="slap" />
           <RoundResult isVictory={false} winType="slap" />
-          {/* PERF: pre-inject every SumoAnnouncementBanner type/side variant so the
-              first real COUNTER HIT / PUNISH / PERFECT PARRY callout doesn't pay
-              styled-components CSS injection + first-paint cost mid-combat. Each
-              $type renders a different color/rule treatment (a distinct generated
-              class), so we warm them all, both sides. Unmounts after 2 frames. */}
+          {/* PERF: pre-inject info-rail + hype-stamp variants so the first
+              real callout doesn't pay styled-components CSS injection mid-
+              combat. Unmounts after 2 frames. */}
           {[
             "parry",
-            "perfect",
-            "perfectparry",
             "counter",
             "counterhit",
             "punish",
-            "countergrab",
-            "break",
+            "counterthrow",
+            "braced",
+            "deepgrip",
             "tech",
             "default",
           ].map((t) => (
             <span key={`warm-${t}`}>
               <SumoAnnouncementBanner text="WARM" type={t} isLeftSide={true} />
               <SumoAnnouncementBanner text="WARM" type={t} isLeftSide={false} />
+            </span>
+          ))}
+          {["perfect", "break", "countergrab"].map((t) => (
+            <span key={`warm-hype-${t}`}>
+              <SumoHypeStamp type={t} isLeftSide={true} />
+              <SumoHypeStamp type={t} isLeftSide={false} />
             </span>
           ))}
           {/* PERF: warm the round-start HAKKIYOI / TE WO TSUITE announcements

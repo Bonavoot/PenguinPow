@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, memo, Fragment } from "react";
+import { createPortal } from "react-dom";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import grabBreakSheet from "../assets/grab-break-effect.png";
@@ -6,6 +7,7 @@ import {
   PerfectParryExtras,
   RegularParryContactFlash,
 } from "./parryVfxShared";
+import SumoHypeStamp, { HYPE_DURATION_MS } from "./SumoHypeStamp";
 
 // ATTACK PARRY (AP) burst — grab-break star sheet, recolored per tier.
 // Regular = steel cyan + contact pin + soft underplate (line weight). Perfect =
@@ -206,8 +208,10 @@ ParryBurst.propTypes = {
 
 const SlapParryEffect = ({ position }) => {
   const [bursts, setBursts] = useState([]);
+  const [banners, setBanners] = useState([]);
   const idRef = useRef(0);
   const lastPosRef = useRef(null);
+  const pendingTimeouts = useRef([]);
 
   useEffect(() => {
     if (!position) return;
@@ -216,6 +220,7 @@ const SlapParryEffect = ({ position }) => {
     const id = ++idRef.current;
     const variant = position.variant || "parry";
     const isPerfect = variant === "perfect" || !!position.isPerfect;
+    const playerNumber = position.playerNumber || 1;
     const chainGrow = Math.min(
       (Math.max(position.chain || 1, 1) - 1) * CHAIN_SIZE_STEP,
       CHAIN_SIZE_MAX
@@ -230,13 +235,35 @@ const SlapParryEffect = ({ position }) => {
         facing: position.facing || 1,
         variant: isPerfect ? "perfect" : "parry",
         size,
-        playerNumber: position.playerNumber || 1,
+        playerNumber,
       },
     ]);
+
+    // Hype stamp outlives the sprite burst so it can finish its exit.
+    if (isPerfect) {
+      setBanners((prev) => [...prev, { id, playerNumber }]);
+      const tid = setTimeout(() => {
+        setBanners((prev) => prev.filter((b) => b.id !== id));
+      }, HYPE_DURATION_MS);
+      pendingTimeouts.current.push(tid);
+    }
   }, [position]);
+
+  useEffect(() => {
+    return () => {
+      pendingTimeouts.current.forEach(clearTimeout);
+      pendingTimeouts.current = [];
+      setBanners([]);
+    };
+  }, []);
 
   const handleDone = (id) =>
     setBursts((prev) => prev.filter((b) => b.id !== id));
+
+  const hudEl =
+    typeof document !== "undefined"
+      ? document.getElementById("game-hud-callouts")
+      : null;
 
   return (
     <>
@@ -251,17 +278,25 @@ const SlapParryEffect = ({ position }) => {
             onDone={() => handleDone(b.id)}
           />
           {b.variant === "perfect" ? (
-            <PerfectParryExtras
-              x={b.x}
-              y={b.y}
-              playerNumber={b.playerNumber}
-              showBanner
-            />
+            <PerfectParryExtras x={b.x} y={b.y} />
           ) : (
             <RegularParryContactFlash x={b.x} y={b.y} />
           )}
         </Fragment>
       ))}
+      {banners.map((banner) =>
+        hudEl ? (
+          <Fragment key={banner.id}>
+            {createPortal(
+              <SumoHypeStamp
+                type="perfect"
+                isLeftSide={banner.playerNumber === 1}
+              />,
+              hudEl
+            )}
+          </Fragment>
+        ) : null
+      )}
     </>
   );
 };

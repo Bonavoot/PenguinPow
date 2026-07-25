@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useMemo, Fragment } from "react";
+import { createPortal } from "react-dom";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import "./RawParryEffect.css";
@@ -7,6 +8,7 @@ import {
   PerfectParryExtras,
   RegularParryContactFlash,
 } from "./parryVfxShared";
+import SumoHypeStamp, { HYPE_DURATION_MS } from "./SumoHypeStamp";
 
 // ── Raw / snowball parry burst ──────────────────────────────────────────────
 // Same grab-break star sheet as AP. Regular = steel cyan + contact pin + soft
@@ -197,9 +199,11 @@ ParrySpriteBurst.propTypes = {
 
 const RawParryEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
+  const [banners, setBanners] = useState([]);
   const processedParriesRef = useRef(new Set());
   const effectIdCounter = useRef(0);
   const pendingTimeouts = useRef([]);
+  // Sprite burst lifetime — shorter than the PERFECT side banner.
   const EFFECT_DURATION = 920;
 
   const parryIdentifier = useMemo(() => {
@@ -215,19 +219,30 @@ const RawParryEffect = ({ position }) => {
 
     const effectId = ++effectIdCounter.current;
     const currentTime = Date.now();
+    const isPerfect = position.isPerfect || false;
+    const playerNumber = position.playerNumber || 1;
 
     const newEffect = {
       id: effectId,
       x: position.x,
       y: position.y,
       facing: position.facing || 1,
-      isPerfect: position.isPerfect || false,
-      playerNumber: position.playerNumber || 1,
+      isPerfect,
+      playerNumber,
       startTime: currentTime,
       parryId: parryIdentifier,
     };
 
     setActiveEffects((prev) => [...prev, newEffect]);
+
+    // Hype stamp outlives the short sprite burst so it can finish its exit.
+    if (isPerfect) {
+      setBanners((prev) => [...prev, { id: effectId, playerNumber }]);
+      const bannerTid = setTimeout(() => {
+        setBanners((prev) => prev.filter((b) => b.id !== effectId));
+      }, HYPE_DURATION_MS);
+      pendingTimeouts.current.push(bannerTid);
+    }
 
     const tid = setTimeout(() => {
       setActiveEffects((prev) =>
@@ -250,8 +265,14 @@ const RawParryEffect = ({ position }) => {
       pendingTimeouts.current.forEach(clearTimeout);
       pendingTimeouts.current = [];
       setActiveEffects([]);
+      setBanners([]);
     };
   }, []);
+
+  const hudEl =
+    typeof document !== "undefined"
+      ? document.getElementById("game-hud-callouts")
+      : null;
 
   return (
     <>
@@ -271,18 +292,26 @@ const RawParryEffect = ({ position }) => {
               isPerfect={effect.isPerfect}
             />
             {effect.isPerfect ? (
-              <PerfectParryExtras
-                x={worldX}
-                y={effect.y}
-                playerNumber={effect.playerNumber}
-                showBanner
-              />
+              <PerfectParryExtras x={worldX} y={effect.y} />
             ) : (
               <RegularParryContactFlash x={worldX} y={effect.y} />
             )}
           </Fragment>
         );
       })}
+      {banners.map((banner) =>
+        hudEl ? (
+          <Fragment key={banner.id}>
+            {createPortal(
+              <SumoHypeStamp
+                type="perfect"
+                isLeftSide={banner.playerNumber === 1}
+              />,
+              hudEl
+            )}
+          </Fragment>
+        ) : null
+      )}
     </>
   );
 };

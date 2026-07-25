@@ -432,7 +432,9 @@ export const StyledImage = styled("img")
         props.$isBeingThrown && !props.$showClinchKillThrowLanding,
         undefined, // slapFrame
         props.$isGuarding,
-        props.$isGuardBlockSuccess
+        props.$isGuardBlockSuccess,
+        undefined, // rawParrySuccessFrame
+        undefined // isApWhiffRecovering
       ),
     style: {
       position: "absolute",

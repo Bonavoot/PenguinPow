@@ -26,7 +26,6 @@ import {
   rawParrySuccess,
   rawParrySuccessFrame1,
   rawParrySuccessFrame2,
-  rawParrySuccessFrame3,
   blocking,
   blockParry,
   crouchStance,
@@ -156,8 +155,12 @@ const getImageSrc = (
   // Guard SUCCESS pose — briefly true after a chip absorb (mirrors isRawParrySuccess).
   isGuardBlockSuccess = false,
   // Attack-parry SUCCESS anim (wall-clock; see GameFighter).
-  // 1 = windup  2/3 = deflect poses (chain alternates 2↔3 after the first land).
-  rawParrySuccessFrame = 1,
+  // 0 = blocking startup  1 = success-f1 (quick)  2 = success-f2 (hold).
+  rawParrySuccessFrame = 2,
+  // Empty-tap AP whiff jail — hold success-f1 for the whole recovery.
+  // Success lands never set this (they use the success anim above).
+  // Live window + guard floor stay on blocking.png (must not flip to f1 on hold).
+  isApWhiffRecovering = false,
   // Ice slide (SHIFT-held post-dodge) + slide-jump — must stay trailing
   isIceSliding = false,
   isIceSlideReverseHopping = false,
@@ -199,15 +202,17 @@ const getImageSrc = (
   if (isGrabSeparating) return rawParrySuccess;
   if (isGrabBreaking) return crouching;
   if (isGrabBreakCountered) return hit;
-  // Attack Parry SUCCESS: frame 1 windup (first land only), then deflect
-  // frames 2/3 (chain alternates after the opener).
+  // Attack Parry SUCCESS: blocking → f1 (quick) → f2 (hold). No frame 3.
   if (isRawParrySuccess || isPerfectRawParrySuccess) {
-    if (rawParrySuccessFrame === 3) return rawParrySuccessFrame3;
-    if (rawParrySuccessFrame === 2) return rawParrySuccessFrame2;
-    return rawParrySuccessFrame1;
+    if (rawParrySuccessFrame === 0) return blocking;
+    if (rawParrySuccessFrame === 1) return rawParrySuccessFrame1;
+    return rawParrySuccessFrame2;
   }
   // Guard SUCCESS — chip absorb lands; hold block-parry.png for the block VFX.
   if (isGuardBlockSuccess) return blockParry;
+  // Empty-tap AP whiff only — success-f1 for the jail. Live window + hold-guard
+  // stay on blocking below so holding Space never leaves the block pose.
+  if (isApWhiffRecovering) return rawParrySuccessFrame1;
   if (isRawParryStun) return isPerfectParried;
   if (isHit) return hit;
   if (isAtTheRopes) return atTheRopes;
@@ -220,6 +225,14 @@ const getImageSrc = (
     if (slideJumpPhase === "landing") return recovering;
     if (slideJumpUseDodgePose) return dodging;
     return slideJumpFlapFrame === 2 ? flap2 : flap1;
+  }
+  // Grab attempt outranks ice slide — otherwise slide→grab keeps the braking
+  // pose and reads as the slide eating the attempt.
+  if (attemptingGrabMovement) {
+    return grabAttemptType === "throw" ? throwing : grabAttempt;
+  }
+  if (grabState === "attempting") {
+    return grabAttemptType === "throw" ? throwing : grabAttempt;
   }
   // Ice slide — braking pose; bunny-hop reverse flashes recovering → braking.
   if (isIceSliding) {
@@ -285,12 +298,6 @@ const getImageSrc = (
   if (isAttacking && !isSlapAttack) return attack;
   if (isCrouchStrafing) return crouchStrafingApng;
   if (isCrouchStance) return crouchStance;
-  if (attemptingGrabMovement) {
-    return grabAttemptType === "throw" ? throwing : grabAttempt;
-  }
-  if (grabState === "attempting") {
-    return grabAttemptType === "throw" ? throwing : grabAttempt;
-  }
   // if (isSlapAttack) {
   //   if (slapAnimation === 1) return slapAttack1;
   //   return slapAttack2;
@@ -321,7 +328,7 @@ const getImageSrc = (
   }
   // Parry / guard ATTEMPTING stance (space held, no absorb this frame).
   // Same blocking.png for the live parry window AND the guard floor — success
-  // poses are handled above (raw-parry-success / block-parry).
+  // / whiff poses are handled above.
   if (isGuarding || isRawParrying) return blocking;
   if (isReady) {
     return readyIntroComplete ? pumoTachiaiPosition : pumoSideProfile;

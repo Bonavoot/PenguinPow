@@ -1,9 +1,10 @@
 /**
- * Enhance dohyo-style.webp — ICE ONLY (lighter blue).
+ * Enhance dohyo-style.webp — glossy ice grade (from sharp master).
  *
- * Restores dirt / snow / rope / sides from dohyo-style-pre-enhance.webp.
- * Lightens the ice disc toward a brighter cool blue while preserving the
- * source's existing streaks, rim, and value detail (no new gloss/grain).
+ * Always starts from dohyo-style-original-backup.webp, refreshes
+ * dohyo-style-pre-enhance.webp, regrades the ice disc toward a richer
+ * glossy blue (soft speculars + depth — no cracks/drawn detail), and
+ * writes a near-lossless dohyo-style.webp.
  *
  * Usage: node scripts/enhance-dohyo.mjs
  */
@@ -14,8 +15,8 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(__dirname, "../src/assets");
-const SRC = path.join(ASSETS, "dohyo-style.webp");
-const BACKUP = path.join(ASSETS, "dohyo-style-pre-enhance.webp");
+const MASTER = path.join(ASSETS, "dohyo-style-original-backup.webp");
+const PRE_ENHANCE = path.join(ASSETS, "dohyo-style-pre-enhance.webp");
 const OUT = path.join(ASSETS, "dohyo-style.webp");
 
 const clamp = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);
@@ -156,18 +157,21 @@ function buildIceMask(data, w, h, c, cx, cy, rx, ry) {
 }
 
 async function main() {
-  if (!fs.existsSync(BACKUP)) {
-    fs.copyFileSync(SRC, BACKUP);
-    console.log("Backed up current asset →", path.basename(BACKUP));
+  if (!fs.existsSync(MASTER)) {
+    throw new Error(`Missing sharp master: ${path.basename(MASTER)}`);
   }
 
-  // Always start from pre-enhance so dirt/snow are the originals.
-  const { data, info } = await sharp(BACKUP)
+  // Refresh the working pre-enhance base from the sharp master so we never
+  // re-encode on top of an already-crushed webp.
+  fs.copyFileSync(MASTER, PRE_ENHANCE);
+  console.log("Refreshed pre-enhance from", path.basename(MASTER));
+
+  const { data, info } = await sharp(PRE_ENHANCE)
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
   const { width: w, height: h, channels: c } = info;
-  console.log(`Processing ${w}×${h} — ice lighten only, dirt/snow restored`);
+  console.log(`Processing ${w}×${h} — glossy ice grade (no sharpen)`);
 
   const cx = w * 0.5;
   const cy = h * 0.44;
@@ -175,8 +179,34 @@ async function main() {
   const ry = h * 0.28;
   const iceMask = buildIceMask(data, w, h, c, cx, cy, rx, ry);
 
+  // Soft specular lobes in normalized ice-ellipse space (nx, ny ∈ ~[-1,1]).
+  // Large, blurry — reads as wet glass, not drawn strokes.
+  const sheens = [
+    { x: -0.28, y: -0.32, rx: 0.55, ry: 0.14, rot: -0.4, peak: 0.55 },
+    { x: 0.22, y: -0.08, rx: 0.38, ry: 0.1, rot: 0.55, peak: 0.32 },
+    { x: -0.05, y: 0.18, rx: 0.42, ry: 0.09, rot: -0.15, peak: 0.22 },
+  ];
+
+  function sheenAt(nx, ny) {
+    let s = 0;
+    for (let i = 0; i < sheens.length; i++) {
+      const sh = sheens[i];
+      const cos = Math.cos(sh.rot);
+      const sin = Math.sin(sh.rot);
+      const dx = nx - sh.x;
+      const dy = ny - sh.y;
+      const lx = dx * cos + dy * sin;
+      const ly = -dx * sin + dy * cos;
+      const d = (lx * lx) / (sh.rx * sh.rx) + (ly * ly) / (sh.ry * sh.ry);
+      if (d < 1) s += sh.peak * Math.pow(1 - d, 2.4);
+    }
+    return Math.min(1, s);
+  }
+
   const out = Buffer.from(data);
   let iceCount = 0;
+  const GLARE = [245, 252, 255];
+  const DEEP = [72, 148, 210];
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -190,47 +220,78 @@ async function main() {
       const b0 = data[i + 2];
       if (!isIcePixel(r0, g0, b0, a)) continue;
 
+      // Protect shikiri-sen (bright white marks)
+      if (r0 > 220 && g0 > 230 && b0 > 235) continue;
+
       iceCount++;
       const [hh, ss, ll] = rgbToHsl(r0, g0, b0);
 
-      // Lighter cool blue — lift value, ease sat a touch so it stays soft
-      // sky-ice rather than chalk. Hue stays in the source family.
-      // Relative L lift preserves streaks / rim / painted detail.
-      const targetH = mix(hh, 202, 0.35);
-      const targetS = mix(ss, Math.min(ss, 0.58), 0.35);
-      const targetL = clamp(ll * 1.12 + 0.04);
+      // Richer, cooler ice — less pale chalk, more saturated glacier blue.
+      // Keep relative source L so painted streaks still read.
+      const targetH = mix(hh, 206, 0.55);
+      const targetS = mix(ss, 0.62, 0.55);
+      const targetL = clamp(ll * 0.92 + 0.02);
 
       let [nr, ng, nb] = hslToRgb(targetH, targetS, targetL);
 
-      // Keep near-white paint (shikirisen bleed / existing highlights).
-      if (r0 > 220 && g0 > 230 && b0 > 235) {
-        nr = mix(nr, r0, 0.9);
-        ng = mix(ng, g0, 0.9);
-        nb = mix(nb, b0, 0.9);
+      const nx = (x - cx) / (rx * 1.05);
+      const ny = (y - cy) / (ry * 1.05);
+      const rad = Math.sqrt(nx * nx + ny * ny);
+
+      // Soft center cold pool + rim contact under tawara
+      const pool = Math.exp(-rad * rad * 1.6);
+      nr = Math.round(mix(nr, GLARE[0], pool * 0.1));
+      ng = Math.round(mix(ng, GLARE[1], pool * 0.12));
+      nb = Math.round(mix(nb, GLARE[2], pool * 0.14));
+      if (rad > 0.72) {
+        const rim = Math.min(1, (rad - 0.72) / 0.28);
+        nr = Math.round(mix(nr, DEEP[0], rim * 0.28));
+        ng = Math.round(mix(ng, DEEP[1], rim * 0.22));
+        nb = Math.round(mix(nb, DEEP[2], rim * 0.12));
       }
 
-      out[i] = clamp(Math.round(nr));
-      out[i + 1] = clamp(Math.round(ng));
-      out[i + 2] = clamp(Math.round(nb));
+      // Glossy speculars
+      const gloss = sheenAt(nx, ny);
+      if (gloss > 0.002) {
+        nr = Math.round(mix(nr, GLARE[0], gloss));
+        ng = Math.round(mix(ng, GLARE[1], gloss * 0.98));
+        nb = Math.round(mix(nb, GLARE[2], gloss));
+        // Tiny cool bloom around the peak
+        const bloom = gloss * 0.35;
+        nr = Math.round(mix(nr, 180, bloom * 0.15));
+        ng = Math.round(mix(ng, 220, bloom * 0.25));
+        nb = Math.round(mix(nb, 255, bloom * 0.35));
+      }
+
+      out[i] = clamp(nr);
+      out[i + 1] = clamp(ng);
+      out[i + 2] = clamp(nb);
     }
   }
 
   console.log({ iceCount });
 
   await sharp(out, { raw: { width: w, height: h, channels: 4 } })
-    .webp({ quality: 95, alphaQuality: 100, effort: 6 })
+    .webp({
+      quality: 100,
+      alphaQuality: 100,
+      effort: 6,
+      smartSubsample: false,
+      nearLossless: true,
+    })
     .toFile(OUT);
 
   const sample = (x, y) => {
     const i = (y * w + x) * 4;
     return [out[i], out[i + 1], out[i + 2]];
   };
+  const st = fs.statSync(OUT);
   console.log("samples", {
     iceCenter: sample(Math.floor(w * 0.5), Math.floor(h * 0.44)),
     dirt: sample(Math.floor(w * 0.12), Math.floor(h * 0.55)),
     snow: sample(Math.floor(w * 0.22), Math.floor(h * 0.35)),
   });
-  console.log("Wrote", OUT);
+  console.log(`Wrote ${OUT} (${(st.size / 1e6).toFixed(2)} MB)`);
 }
 
 main().catch((e) => {
