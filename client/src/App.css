@@ -705,10 +705,10 @@ body {
 .game-map {
   position: absolute;
   inset: 0;
-  background-image: url(./assets/game-map-1.webp);
+  background-image: url(./assets/game-map-444.png);
   background-repeat: no-repeat;
   background-size: cover;
-  background-position: center -5%;
+  background-position: center -12%;
   filter: var(--arena-map-filter);
   z-index: -1;
   isolation: isolate;

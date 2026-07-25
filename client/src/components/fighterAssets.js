@@ -139,7 +139,7 @@ const battleMusicTracks = [battleMusic, battleMusic];
 // ============================================
 // PRELOAD-ONLY IMPORTS (not exported — consumed internally by preloading)
 // ============================================
-import gameMapBackground from "../assets/game-map-1.webp";
+import gameMapBackground from "../assets/game-map-444.png";
 import dohyoOverlay from "../assets/dohyo-style.webp";
 import gyojiImage from "../assets/gyoji.png";
 import gyojiReady from "../assets/gyoji-ready.png";

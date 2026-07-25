@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
-import gameMapBg from "../assets/game-map-1.webp";
+import gameMapBg from "../assets/game-map-444.png";
 import tassleWhite from "../assets/roof-tassle.png";
 import tassleGreen from "../assets/roof-tassle-green.png";
 import tassleRed from "../assets/roof-tassle-red.png";
@@ -291,7 +291,7 @@ const RoofTassleEditor = ({ positions, onClose }) => {
             inset: 0,
             backgroundImage: `url(${gameMapBg})`,
             backgroundSize: "cover",
-            backgroundPosition: "center -5%",
+            backgroundPosition: "center -12%",
             backgroundRepeat: "no-repeat",
             pointerEvents: "none",
           }}

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
-import gameMapBg from "../assets/game-map-1.webp";
+import gameMapBg from "../assets/game-map-444.png";
 import {
   TASSLE_STORAGE_KEY,
   TASSLE_COLORS,
@@ -1056,7 +1056,7 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
           inset: 0,
           backgroundImage: `url(${gameMapBg})`,
           backgroundSize: "cover",
-          backgroundPosition: "center -5%",
+          backgroundPosition: "center -12%",
           backgroundRepeat: "no-repeat",
           filter: isDohyoTab ? "var(--arena-map-filter)" : undefined,
           pointerEvents: "none",

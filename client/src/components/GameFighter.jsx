@@ -4249,6 +4249,92 @@ const GameFighter = ({
     lastDodgeLandParticleState.current = penguin.justLandedFromDodge;
   }, [penguin.justLandedFromDodge]);
 
+  // Ice-slide foot FX — glowy frost / blade sparks under the braking-pose feet
+  // while SHIFT-held ice sliding. Start burst on commit; trail every ~36ms.
+  // Speed/dir come from interpolated X delta (movementVelocity is often omitted
+  // from React commits when only position changes).
+  const isIceSlidingRef = useRef(false);
+  const iceSlideDirRef = useRef(1);
+  const iceSlideLastXRef = useRef(null);
+  const prevIceSlidingForParticles = useRef(false);
+
+  useEffect(() => {
+    isIceSlidingRef.current =
+      !!penguin.isIceSliding &&
+      !penguin.isDodging &&
+      !penguin.isSlideJumping;
+  }, [penguin.isIceSliding, penguin.isDodging, penguin.isSlideJumping]);
+
+  useEffect(() => {
+    const active =
+      !!penguin.isIceSliding &&
+      !penguin.isDodging &&
+      !penguin.isSlideJumping;
+
+    if (active && !prevIceSlidingForParticles.current) {
+      const pos = interpolatedPositionRef.current;
+      const startX = pos?.x ?? penguin.x;
+      iceSlideLastXRef.current = startX;
+      // Dodge land commits the slide — reuse that travel dir when fresh.
+      const commitDir =
+        typeof penguin.dodgeDirection === "number" && penguin.dodgeDirection !== 0
+          ? Math.sign(penguin.dodgeDirection)
+          : iceSlideDirRef.current || 1;
+      iceSlideDirRef.current = commitDir;
+      emitParticles("iceSlideStart", {
+        x: startX,
+        y: pos?.y ?? penguin.y,
+        direction: commitDir,
+        facing: penguin.facing || 1,
+      });
+    }
+    prevIceSlidingForParticles.current = active;
+    if (!active) {
+      iceSlideLastXRef.current = null;
+      return undefined;
+    }
+
+    const EMIT_INTERVAL = 36;
+    // ~px traveled per emit at a strong slide; used to normalize intensity.
+    const MAX_DELTA_FOR_FULL_SPEED = 14;
+    const fireTrail = () => {
+      if (!isIceSlidingRef.current) return;
+
+      const p = penguinRef.current;
+      const curX = interpolatedPositionRef.current.x || p.x;
+      const curY = interpolatedPositionRef.current.y || p.y;
+      const lastX = iceSlideLastXRef.current;
+      iceSlideLastXRef.current = curX;
+      const dx = lastX == null ? 0 : curX - lastX;
+      if (Math.abs(dx) > 0.4) {
+        iceSlideDirRef.current = Math.sign(dx);
+      }
+      const speed = Math.min(
+        Math.abs(dx) / MAX_DELTA_FOR_FULL_SPEED,
+        1.5
+      );
+
+      emitParticles("iceSlideTrail", {
+        x: curX,
+        y: curY,
+        direction: iceSlideDirRef.current || 1,
+        facing: p.facing || 1,
+        speed: Math.max(speed, 0.35),
+        braking: !!p.isBraking || !!predictedState.current?.isBraking,
+      });
+    };
+
+    fireTrail();
+    const id = setInterval(fireTrail, EMIT_INTERVAL);
+
+    return () => clearInterval(id);
+  }, [
+    penguin.isIceSliding,
+    penguin.isDodging,
+    penguin.isSlideJumping,
+    emitParticles,
+  ]);
+
   // Grab push dust trail — continuous emission under the GRABBED player while being pushed.
   // Uses a ref so the interval callback always sees the latest pushed state,
   // stopping immediately when ANY grab action interrupts the push.
@@ -4617,11 +4703,27 @@ const GameFighter = ({
     prevFlapPhase.current = penguin.flapPhase;
   }, [penguin.flapPhase, penguin.x, penguin.y, penguin.facing, penguin.flapBeatHDir, penguin.isFlapping, isLocalPlayer, emitParticles]);
 
-  // Slide-jump land smoke — reuse the flap belly-flop land burst when the dive
-  // was committed (same flapFastFallLand preset + throw_landing shake).
+  // Slide-jump liftoff + land. Same tilted-up plume as a directional flap
+  // (flapLiftoff untouched). Nudge spawn forward along travel — slide-jump
+  // carry leaves a feet-anchored burst reading too far behind the body.
   const prevSlideJumpPhase = useRef(null);
   useEffect(() => {
     const x = interpolatedPositionRef.current.x || penguin.x;
+    const y = interpolatedPositionRef.current.y || penguin.y;
+
+    if (
+      prevSlideJumpPhase.current !== "flight" &&
+      penguin.slideJumpPhase === "flight"
+    ) {
+      const travelDir = iceSlideDirRef.current || 1;
+      emitParticles("liftoffSmoke", {
+        x: x + travelDir * 40,
+        y,
+        tilted: true,
+        dir: travelDir,
+      });
+    }
+
     if (
       prevSlideJumpPhase.current !== "landing" &&
       penguin.slideJumpPhase === "landing"
@@ -4654,7 +4756,9 @@ const GameFighter = ({
     penguin.isSlideJumping,
     penguin.slideJumpDiveCommitted,
     penguin.slideJumpFastFalling,
+    penguin.facing,
     penguin.x,
+    penguin.y,
     emitParticles,
   ]);
 
