@@ -169,6 +169,7 @@ function createCrossfadeLoop(
   const activeSources = [];
   const pendingTimers = [];
   let nextTimer = null;
+  let stopHoldTimer = null;
   let stopped = false;
   let isFirstPlay = true;
 
@@ -242,26 +243,43 @@ function createCrossfadeLoop(
   begin();
 
   return {
-    stop() {
-      stopped = true;
-      pendingTimers.forEach(clearTimeout);
-      pendingTimers.length = 0;
-      if (nextTimer) clearTimeout(nextTimer);
-      const now = ctx.currentTime;
-      try {
-        instanceMaster.gain.cancelScheduledValues(now);
-        instanceMaster.gain.setValueAtTime(instanceMaster.gain.value, now);
-        instanceMaster.gain.linearRampToValueAtTime(0, now + 0.5);
-      } catch (e) {}
-      const stopTimer = setTimeout(() => {
-        for (const entry of activeSources) {
-          try { entry.source.stop(); } catch (e) {}
-          try { entry.source.disconnect(); entry.gainNode.disconnect(); } catch (e) {}
-        }
-        activeSources.length = 0;
-        try { instanceMaster.disconnect(); } catch (e) {}
-      }, 550);
-      pendingTimers.push(stopTimer);
+    // hold: keep playing at full volume before fade (seconds)
+    // fadeOut: gain ramp to silence (seconds)
+    stop({ fadeOut = 0.5, hold = 0 } = {}) {
+      if (stopHoldTimer) {
+        clearTimeout(stopHoldTimer);
+        stopHoldTimer = null;
+      }
+
+      const beginFade = () => {
+        stopHoldTimer = null;
+        stopped = true;
+        pendingTimers.forEach(clearTimeout);
+        pendingTimers.length = 0;
+        if (nextTimer) clearTimeout(nextTimer);
+        const duration = Math.max(0.05, fadeOut);
+        const now = ctx.currentTime;
+        try {
+          instanceMaster.gain.cancelScheduledValues(now);
+          instanceMaster.gain.setValueAtTime(instanceMaster.gain.value, now);
+          instanceMaster.gain.linearRampToValueAtTime(0, now + duration);
+        } catch (e) {}
+        const stopTimer = setTimeout(() => {
+          for (const entry of activeSources) {
+            try { entry.source.stop(); } catch (e) {}
+            try { entry.source.disconnect(); entry.gainNode.disconnect(); } catch (e) {}
+          }
+          activeSources.length = 0;
+          try { instanceMaster.disconnect(); } catch (e) {}
+        }, duration * 1000 + 50);
+        pendingTimers.push(stopTimer);
+      };
+
+      if (hold > 0 && !stopped) {
+        stopHoldTimer = setTimeout(beginFade, hold * 1000);
+      } else {
+        beginFade();
+      }
     },
   };
 }

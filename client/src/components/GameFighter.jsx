@@ -108,6 +108,9 @@ const EESHI_LOOP_CROSSFADE = 1.5;
 const BATTLE_LOOP_CROSSFADE = 2.0;
 const EESHI_ENTRY_FADE = 0.9;
 const BATTLE_ENTRY_FADE = 0;
+// After round end: keep BGM going briefly, then a longer fade (not a hard cut).
+const BATTLE_EXIT_HOLD = 1.5;
+const BATTLE_EXIT_FADE = 2.8;
 const BATTLE_MUSIC_ALT_ROUND = 3;
 
 // Assets, sounds, preloading, constants, ritual config, playSound helper
@@ -2542,6 +2545,8 @@ const GameFighter = ({
   const HIT_FLASH_MS = 67; // ~4 frames @60fps
   const HIT_TINT_MS = 167; // ~10 frames @60fps
   const battleMusicRef = useRef(null);
+  // Loop currently in exit hold/fade (ref cleared so a new track can start).
+  const battleMusicStoppingRef = useRef(null);
   const eeshiMusicRef = useRef(null);
   // Set when match_over fires (2-round win); suppresses eeshi through MatchOver/rematch UI.
   const matchEndingRef = useRef(false);
@@ -2565,15 +2570,35 @@ const GameFighter = ({
     loop.stop();
   }, [ownsMatchMusic]);
 
-  const stopBattleMusic = useCallback(() => {
-    if (!ownsMatchMusic || !battleMusicRef.current) return;
+  const stopBattleMusic = useCallback((immediate = false) => {
+    if (!ownsMatchMusic) return;
+
+    // Kill an in-progress exit hold/fade (disconnect / unmount).
+    if (immediate && battleMusicStoppingRef.current) {
+      const fading = battleMusicStoppingRef.current;
+      battleMusicStoppingRef.current = null;
+      fading.stop({ fadeOut: 0.3, hold: 0 });
+    }
+
+    if (!battleMusicRef.current) return;
     const loop = battleMusicRef.current;
     battleMusicRef.current = null;
-    loop.stop();
+    if (immediate) {
+      loop.stop({ fadeOut: 0.3, hold: 0 });
+      return;
+    }
+    battleMusicStoppingRef.current = loop;
+    loop.stop({ fadeOut: BATTLE_EXIT_FADE, hold: BATTLE_EXIT_HOLD });
   }, [ownsMatchMusic]);
 
   const startBattleMusic = useCallback(() => {
     if (!ownsMatchMusic || battleMusicRef.current) return;
+    // Drop any leftover exit tail so the new round starts clean.
+    if (battleMusicStoppingRef.current) {
+      const fading = battleMusicStoppingRef.current;
+      battleMusicStoppingRef.current = null;
+      fading.stop({ fadeOut: 0.35, hold: 0 });
+    }
     battleMusicRoundRef.current += 1;
     const roundNumber = battleMusicRoundRef.current;
     const track =
@@ -2596,7 +2621,7 @@ const GameFighter = ({
     }
 
     stopEeshi();
-    stopBattleMusic();
+    stopBattleMusic(true);
 
     if (countdownRef.current) {
       clearInterval(countdownRef.current);
@@ -2636,7 +2661,7 @@ const GameFighter = ({
   useEffect(() => {
     if (opponentDisconnected && ownsMatchMusic) {
       stopEeshi();
-      stopBattleMusic();
+      stopBattleMusic(true);
     }
   }, [opponentDisconnected, ownsMatchMusic, stopEeshi, stopBattleMusic]);
 
@@ -4057,7 +4082,7 @@ const GameFighter = ({
 
     return () => {
       stopEeshi();
-      stopBattleMusic();
+      stopBattleMusic(true);
     };
   }, [opponentDisconnected, ownsMatchMusic, startEeshi, stopEeshi, stopBattleMusic]);
 
@@ -5759,7 +5784,7 @@ const GameFighter = ({
     if (!ownsMatchMusic) return;
     return () => {
       stopEeshi();
-      stopBattleMusic();
+      stopBattleMusic(true);
     };
   }, [ownsMatchMusic, stopEeshi, stopBattleMusic]);
 
