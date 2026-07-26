@@ -28,7 +28,7 @@ import {
   TEXT_SHADOW_DISPLAY,
   TEXT_SHADOW_DISPLAY_HEAVY,
 } from "./menuTheme";
-import { loadSave, writeSave, makeDefaultSave } from "../lib/saveStore";
+import { loadSave, patchSave } from "../lib/saveStore";
 import {
   makeDefaultCustomization,
   normalizeCustomization,
@@ -300,6 +300,8 @@ const Stage = styled.main`
   padding: clamp(48px, 6.5cqh, 60px) clamp(18px, 3cqw, 48px)
     clamp(96px, 15cqh, 128px);
   overflow: hidden;
+  /* Keep interactive strips above any sibling overlays in this container. */
+  isolation: isolate;
 `;
 
 /* Soft ground plane under the bout — sells contact with the room floor. */
@@ -343,6 +345,8 @@ const FighterPortrait = styled.div`
   flex: 0 1 auto;
   min-height: 0;
   z-index: 4;
+  /* Decorative — never steal clicks from the outfit / skill strip above. */
+  pointer-events: none;
 `;
 
 const FloorShadow = styled.div`
@@ -394,6 +398,7 @@ const PreviewImage = styled.img`
   width: auto;
   object-fit: contain;
   filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000);
+  pointer-events: none;
 `;
 
 const WaitingState = styled.div`
@@ -460,7 +465,7 @@ const Dot = styled.span`
  */
 const IdentityStack = styled.div`
   position: relative;
-  z-index: 5;
+  z-index: 10;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -469,6 +474,7 @@ const IdentityStack = styled.div`
   max-width: 92%;
   margin-top: auto;
   flex-shrink: 0;
+  pointer-events: auto;
   animation: ${fadeUp} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.22s both;
 `;
 
@@ -602,6 +608,8 @@ const VsMode = styled.div`
 // ============================================
 
 const ControlStrip = styled.div`
+  position: relative;
+  z-index: 12;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -644,20 +652,23 @@ const StripOptions = styled.div`
   display: flex;
   align-items: stretch;
   gap: 3px;
-  width: clamp(200px, 24cqw, 280px);
-  height: clamp(28px, 3.4cqh, 34px);
+  width: clamp(216px, 26cqw, 300px);
+  height: clamp(34px, 4.2cqh, 42px);
 `;
 
 const StripOption = styled.button`
   position: relative;
+  z-index: 1;
   flex: 1 1 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-width: 0;
+  min-height: 100%;
   padding: 0 clamp(2px, 0.4cqw, 5px);
   overflow: hidden;
   white-space: nowrap;
+  touch-action: manipulation;
   background: ${(p) =>
     p.$selected
       ? `linear-gradient(180deg, ${C.vermillionBright} 0%, ${C.vermillion} 55%, ${C.vermillionDeep} 100%)`
@@ -680,7 +691,7 @@ const StripOption = styled.button`
   cursor: ${(p) => (p.$taken ? "not-allowed" : "pointer")};
   opacity: ${(p) => (p.$taken ? 0.38 : 1)};
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.44rem, 0.66cqw, 0.54rem);
+  font-size: clamp(0.5rem, 0.74cqw, 0.62rem);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   line-height: 1;
@@ -699,9 +710,10 @@ const StripOption = styled.button`
     height: 2px;
     background: ${(p) => (p.$selected ? C.gold : "rgba(245, 236, 217, 0.12)")};
     opacity: ${(p) => (p.$selected ? 1 : 0.7)};
+    pointer-events: none;
   }
 
-  &:hover {
+  &:hover:not(:disabled) {
     ${(p) =>
       !p.$selected &&
       !p.$taken &&
@@ -713,8 +725,13 @@ const StripOption = styled.button`
       `}
   }
 
-  &:active {
+  &:active:not(:disabled) {
     transform: ${(p) => (p.$taken ? "none" : "translateY(0) scale(0.98)")};
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.55;
   }
 `;
 
@@ -992,15 +1009,12 @@ const Lobby = ({
     const normalized = normalizeCustomization(nextCustomization);
     setCustomization(normalized);
     setActiveOutfitId(normalized.activeOutfitId);
-    const base = saveDocRef.current || makeDefaultSave();
-    const written = await writeSave({
-      ...base,
-      customization: normalized,
-    });
+    const written = await patchSave({ customization: normalized });
     saveDocRef.current = written;
   }, []);
 
   const [saveReady, setSaveReady] = useState(false);
+  const pendingOutfitIdRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1069,19 +1083,42 @@ const Lobby = ({
   ]);
 
   // Push wardrobe colors/gear once save + seat are both ready (avoids wiping
-  // gearIds with the default empty outfit before loadSave finishes).
+  // gearIds with the default empty outfit before loadSave finishes). Also
+  // apply any outfit click that landed before the lobby seat arrived.
   useEffect(() => {
     if (!saveReady || myPlayerIndex === -1) return;
-    const outfit = getOutfitById(customization, activeOutfitId);
+    const pendingId = pendingOutfitIdRef.current;
+    pendingOutfitIdRef.current = null;
+    const outfitId = pendingId || activeOutfitId;
+    const outfit = getOutfitById(customization, outfitId);
     if (!outfit) return;
+    if (pendingId && pendingId !== activeOutfitId) {
+      if (outfitClashesWith(outfit, otherPlayerMawashi, otherPlayerBody)) {
+        emitOutfitColors(getOutfitById(customization, activeOutfitId));
+        return;
+      }
+      const next = withActiveOutfitId(customization, pendingId);
+      persistActiveOutfit(next);
+    }
     emitOutfitColors(outfit);
   }, [saveReady, myPlayerIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOutfitSelect = (outfitId) => {
-    if (!saveReady || myPlayerIndex === -1) return;
+    if (!saveReady) return;
     const outfit = getOutfitById(customization, outfitId);
-    if (outfitClashesWith(outfit, otherPlayerMawashi, otherPlayerBody)) return;
+    if (
+      isPvP &&
+      outfitClashesWith(outfit, otherPlayerMawashi, otherPlayerBody)
+    ) {
+      return;
+    }
     playButtonPressSound2();
+    // Seat can lag a tick behind the strip becoming visible — queue it.
+    if (myPlayerIndex === -1) {
+      pendingOutfitIdRef.current = outfitId;
+      setActiveOutfitId(outfitId);
+      return;
+    }
     const next = withActiveOutfitId(customization, outfitId);
     persistActiveOutfit(next);
     emitOutfitColors(outfit);
@@ -1198,10 +1235,12 @@ const Lobby = ({
               role={ghost ? undefined : "option"}
               aria-selected={ghost ? undefined : selected}
               $selected={selected}
-              $taken={taken || (!ghost && !saveReady)}
+              $taken={taken}
               tabIndex={blocked ? -1 : 0}
               disabled={blocked}
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 if (blocked) return;
                 handleOutfitSelect(outfit.id);
               }}
@@ -1211,9 +1250,11 @@ const Lobby = ({
               title={
                 ghost
                   ? undefined
-                  : taken
-                    ? `${outfit.name} — taken`
-                    : outfit.name
+                  : !saveReady
+                    ? "Loading outfits…"
+                    : taken
+                      ? `${outfit.name} — taken`
+                      : outfit.name
               }
             >
               {mark}
@@ -1346,7 +1387,8 @@ const Lobby = ({
       <FrostScrim />
       <CinematicOverlay />
       <GrainOverlay />
-      <Snowfall intensity={12} showFrost={false} zIndex={3} />
+      {/* Keep snow under Stage so outfit/skill strips never lose hit-testing. */}
+      <Snowfall intensity={12} showFrost={false} zIndex={1} />
 
       <LeaveButton
         onClick={handleLeaveDohyo}

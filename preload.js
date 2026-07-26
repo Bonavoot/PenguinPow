@@ -29,5 +29,11 @@ contextBridge.exposeInMainWorld("electron", {
   save: {
     get: () => ipcRenderer.invoke('load-save'),
     write: (data) => ipcRenderer.invoke('write-save', data)
+  },
+  // Locally-spawned game server for solo modes (VS CPU / BASHO). Resolves to
+  // the port number once the server accepts connections, or null if it could
+  // not be started (renderer falls back to the remote server).
+  localServer: {
+    getPort: () => ipcRenderer.invoke('get-local-server-port')
   }
 });

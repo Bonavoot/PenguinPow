@@ -36,7 +36,7 @@ import palmThrustStartup from "../assets/palm-thrust-startup.png";
 import palmThrustSmear from "../assets/palm-thrust-smear.png";
 import lowKick from "../assets/kick.png";
 import dodging from "../assets/dodging.png";
-import braking from "../assets/braking.png";
+import sliding from "../assets/sliding.png";
 import throwing from "../assets/throwing.png";
 import salt from "../assets/salt.png";
 import saltBasket from "../assets/salt-basket.png";
@@ -274,7 +274,7 @@ const initializeImagePreloading = () => {
   preloadImage(bellyLayingEyesOpen);
   preloadImage(cinematicThrowKillLanding);
   preloadImage(dodging);
-  preloadImage(braking);
+  preloadImage(sliding);
   preloadImage(crouching);
   preloadImage(crouchStance);
   preloadImage(crouchStrafingApng);
@@ -453,7 +453,7 @@ export {
   palmThrustSmear,
   lowKick,
   dodging,
-  braking,
+  sliding,
   throwing,
   salt,
   saltBasket,

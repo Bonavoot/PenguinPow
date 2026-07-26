@@ -448,6 +448,12 @@ export const StyledImage = styled("img")
       "--charge-shake": props.$isChargingAttack
         ? `${Math.min(1 + (props.$chargeAttackPower || 0) / 100 * 5, 6)}px`
         : "0px",
+      // PROCEDURAL ANIMATION: per-hit reaction amplitude (set from the
+      // player_hit payload — attack type / counter / punish / momentum).
+      // The hitSquash-family keyframes multiply every deviation from the
+      // identity pose by this, so a counter charged slam visibly deforms
+      // the victim far more than a poke. 1 = the legacy fixed squash.
+      "--impact-amp": props.$impactAmp ?? 1,
       transform:
         props.$isAtTheRopes && props.$fighter === "player 1"
           ? props.$facing === 1
@@ -576,8 +582,17 @@ export const StyledImage = styled("img")
         ? "clinchTeeterHeavy 0.95s ease-in-out infinite"
         : props.$inClinch && props.$balanceWobble
         ? "clinchTeeter 1.5s ease-in-out infinite"
+        // Hit reaction: amp-scaled contact squash, then (if the stun/slide
+        // outlasts it) a decaying feet-pinned stagger so a launched victim
+        // keeps REACTING through the knockback slide instead of going rigid
+        // at 0.28s while still moving.
         : props.$isHit
-        ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
+        ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1), hitStaggerSettle 0.55s cubic-bezier(0.33, 1, 0.68, 1) 0.28s"
+        // Attacker contact recoil: their own body jolts back a beat when a
+        // strike CONNECTS (impact resistance — the target has mass). Sits
+        // above slapRush/attackPunch so it briefly interrupts the swing loop.
+        : props.$attackerRecoil
+        ? "attackerContactRecoil 0.18s cubic-bezier(0.25, 0.9, 0.4, 1)"
         : props.$isSlideJumping
         ? "slideJumpPop 0.22s cubic-bezier(0.15, 0.85, 0.25, 1) forwards"
         : props.$isDodging
@@ -593,14 +608,6 @@ export const StyledImage = styled("img")
           !props.$isGrabbing &&
           !props.$isDead
         ? "powerSlide 0.15s ease-in-out infinite"
-        : props.$isBraking &&
-          !props.$isBeingGrabbed &&
-          !props.$isBeingThrown &&
-          !props.$isThrowing &&
-          !props.$isGrabbing &&
-          !props.$isRecovering &&
-          !props.$isDead
-        ? "iceBrake 0.2s ease-in-out infinite"
         : props.$isChargingAttack && !props.$isReady
         ? "chargeShake 0.08s linear infinite"
         : props.$isAttacking && !props.$isSlapAttack
@@ -695,12 +702,35 @@ export const StyledImage = styled("img")
     75% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95)); }
     100% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)); }
   }
+  /* Every deviation from the identity pose scales with --impact-amp (see the
+     attrs var above) — same shape at amp 1, ~2x deformation on a max hit. */
   @keyframes hitSquash {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
-    6% { transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.75) translateX(calc(var(--facing, 1) * -3%)) rotate(calc(var(--facing, 1) * 2deg)); }
-    18% { transform: scaleX(calc(var(--facing, 1) * 0.88)) scaleY(1.12) translateX(calc(var(--facing, 1) * -5%)) rotate(calc(var(--facing, 1) * -4deg)); }
-    35% { transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.92) translateX(calc(var(--facing, 1) * -2%)) rotate(calc(var(--facing, 1) * 1.5deg)); }
-    55% { transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.04) translateX(calc(var(--facing, 1) * -0.5%)) rotate(calc(var(--facing, 1) * -0.5deg)); }
+    6% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.25 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.25 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -3% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * 2deg * var(--impact-amp, 1))); }
+    18% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.12 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.12 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -5% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * -4deg * var(--impact-amp, 1))); }
+    35% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.08 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.08 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -2% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * 1.5deg * var(--impact-amp, 1))); }
+    55% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.04 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.04 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -0.5% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * -0.5deg * var(--impact-amp, 1))); }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
+  }
+  /* Chained after hitSquash (0.28s delay in the animation shorthand): a
+     decaying feet-pinned rock away from the hit while the victim is still
+     stunned/sliding. Slap stuns clear before it starts (isHit drops → the
+     whole animation is removed), so in practice this reads only on charged /
+     flap / burst launches — exactly where the post-squash rigidity showed. */
+  @keyframes hitStaggerSettle {
+    0% { transform: scaleX(var(--facing, 1)) rotate(0deg) translateX(0); }
+    24% { transform: scaleX(var(--facing, 1)) rotate(calc(var(--facing, 1) * -2.2deg * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -0.8% * var(--impact-amp, 1))); }
+    52% { transform: scaleX(var(--facing, 1)) rotate(calc(var(--facing, 1) * 1.2deg * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * 0.3% * var(--impact-amp, 1))); }
+    78% { transform: scaleX(var(--facing, 1)) rotate(calc(var(--facing, 1) * -0.5deg * var(--impact-amp, 1))) translateX(0); }
+    100% { transform: scaleX(var(--facing, 1)) rotate(0deg) translateX(0); }
+  }
+  /* Attacker-side contact recoil — a short backward jolt + settle when their
+     strike lands. Fixed amplitude (the ATTACKER's mass doesn't change with
+     hit strength; the victim's --impact-amp carries the grading). */
+  @keyframes attackerContactRecoil {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
+    30% { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.96) translateX(calc(var(--facing, 1) * -1.5%)) rotate(calc(var(--facing, 1) * -1.5deg)); }
+    65% { transform: scaleX(calc(var(--facing, 1) * 0.99)) scaleY(1.008) translateX(calc(var(--facing, 1) * -0.35%)) rotate(calc(var(--facing, 1) * 0.35deg)); }
     100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
   }
   @keyframes attackPunch {
@@ -716,10 +746,6 @@ export const StyledImage = styled("img")
   @keyframes breathe {
     0%, 100% { transform: scaleX(var(--facing, 1)) scaleY(1); }
     50% { transform: scaleX(var(--facing, 1)) scaleY(1.03); }
-  }
-  @keyframes iceBrake {
-    0%, 100% { transform: scaleX(var(--facing, 1)) scaleY(0.96) rotate(calc(var(--facing, 1) * 3deg)); }
-    50% { transform: scaleX(var(--facing, 1)) scaleY(0.94) rotate(calc(var(--facing, 1) * 5deg)); }
   }
   @keyframes powerSlide {
     0%, 100% { transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.92); transform-origin: center bottom; }
@@ -1029,6 +1055,9 @@ export const AnimatedFighterContainer = styled.div
         bottom: `${(props.$y / 720) * 100}%`,
         translate: "-50%",
         "--facing": props.$facing === 1 ? "1" : "-1",
+        // Per-hit reaction amplitude — same contract as StyledImage's var
+        // (hitSquashContainer / burstHitSquash keyframes scale with it).
+        "--impact-amp": props.$impactAmp ?? 1,
         transform: `scaleX(${finalScaleX}) scaleY(${sidestepScale})`,
         overflow: "hidden",
         zIndex: isOutsideDohyo(props.$x, props.$y)
@@ -1043,10 +1072,13 @@ export const AnimatedFighterContainer = styled.div
         pointerEvents: "none",
         clipPath: "inset(0 0.5% 0 0.5%)",
         transformOrigin: "center bottom",
+        // Hit reactions chain a decaying stagger after the contact squash so
+        // long-stun launches keep reacting through the knockback slide (see
+        // hitStaggerSettle in StyledImage — the keyframes are shared globals).
         animation: props.$isBurstKnockback
-          ? "burstHitSquash 0.35s cubic-bezier(0.22, 0.6, 0.35, 1)"
+          ? "burstHitSquash 0.35s cubic-bezier(0.22, 0.6, 0.35, 1), hitStaggerSettle 0.6s cubic-bezier(0.33, 1, 0.68, 1) 0.35s"
           : props.$isHit
-          ? "hitSquashContainer 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
+          ? "hitSquashContainer 0.28s cubic-bezier(0.22, 0.6, 0.35, 1), hitStaggerSettle 0.55s cubic-bezier(0.33, 1, 0.68, 1) 0.28s"
           // MASTERY Phase 2 (2.1): feet-pinned openable teeter on spritesheet
           // path too (hit squash still outranks — impact feedback wins).
           : props.$isPostureBroken
@@ -1066,21 +1098,25 @@ export const AnimatedFighterContainer = styled.div
     70% { transform: scaleX(var(--facing, 1)) skewX(0.35deg) translateX(0.2px); }
     73% { transform: scaleX(var(--facing, 1)) skewX(0deg) translateX(0); }
   }
+  /* Amp-scaled like StyledImage's hitSquash — every deviation from identity
+     multiplies by --impact-amp so hit strength is visible in the deformation. */
   @keyframes hitSquashContainer {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
-    6% { transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.75) translateX(calc(var(--facing, 1) * -3%)) rotate(calc(var(--facing, 1) * 2deg)); }
-    18% { transform: scaleX(calc(var(--facing, 1) * 0.88)) scaleY(1.12) translateX(calc(var(--facing, 1) * -5%)) rotate(calc(var(--facing, 1) * -4deg)); }
-    35% { transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.92) translateX(calc(var(--facing, 1) * -2%)) rotate(calc(var(--facing, 1) * 1.5deg)); }
-    55% { transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.04) translateX(calc(var(--facing, 1) * -0.5%)) rotate(calc(var(--facing, 1) * -0.5deg)); }
+    6% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.25 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.25 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -3% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * 2deg * var(--impact-amp, 1))); }
+    18% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.12 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.12 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -5% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * -4deg * var(--impact-amp, 1))); }
+    35% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.08 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.08 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -2% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * 1.5deg * var(--impact-amp, 1))); }
+    55% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.04 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.04 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -0.5% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * -0.5deg * var(--impact-amp, 1))); }
     100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
   }
 
+  /* Burst keyframes start bigger than hitSquash; the amp for burst hits is
+     kept near 1 in GameFighter's grading so max deformation stays sane. */
   @keyframes burstHitSquash {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
-    5% { transform: scaleX(calc(var(--facing, 1) * 1.35)) scaleY(0.65) translateX(calc(var(--facing, 1) * -4%)) rotate(calc(var(--facing, 1) * 3deg)); }
-    15% { transform: scaleX(calc(var(--facing, 1) * 0.82)) scaleY(1.18) translateX(calc(var(--facing, 1) * -7%)) rotate(calc(var(--facing, 1) * -5deg)); }
-    30% { transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.88) translateX(calc(var(--facing, 1) * -3%)) rotate(calc(var(--facing, 1) * 2deg)); }
-    50% { transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.06) translateX(calc(var(--facing, 1) * -1%)) rotate(calc(var(--facing, 1) * -1deg)); }
+    5% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.35 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.35 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -4% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * 3deg * var(--impact-amp, 1))); }
+    15% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.18 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.18 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -7% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * -5deg * var(--impact-amp, 1))); }
+    30% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.12 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.12 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -3% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * 2deg * var(--impact-amp, 1))); }
+    50% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.06 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.06 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -1% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * -1deg * var(--impact-amp, 1))); }
     100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
   }
 `;

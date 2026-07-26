@@ -226,8 +226,8 @@ const FighterStage = styled.div`
   /* Clear the identity block so sprites aren't chopped by names */
   bottom: clamp(118px, 19cqh, 160px);
   display: grid;
-  /* Narrower center corridor — fighters sit closer over the dohyo */
-  grid-template-columns: 1fr minmax(64px, 10cqw) 1fr;
+  /* Center corridor — fighters face off over the dohyo */
+  grid-template-columns: 1fr minmax(52px, 8cqw) 1fr;
   z-index: 20;
   pointer-events: none;
 `;
@@ -242,14 +242,14 @@ const FighterSide = styled.div`
 
 const FighterWrap = styled.div`
   position: absolute;
-  top: 6%;
-  /* Raised off the identity strip so feet sit on the dohyo surface */
-  bottom: clamp(36px, 6.5cqh, 56px);
-  /* Equal inward pull toward the ring center */
+  top: 8%;
+  /* Raised so feet land on the blue dohyo, not the tawara rim */
+  bottom: clamp(48px, 8cqh, 70px);
+  /* Inward pull toward the ring center */
   ${(p) =>
     p.$side === "left"
-      ? "left: 28%; right: -4%;"
-      : "right: 28%; left: -4%;"}
+      ? "left: 34%; right: -8%;"
+      : "right: 34%; left: -8%;"}
   ${(p) =>
     p.$side === "left"
       ? "transform: translateX(2px);"
@@ -272,8 +272,8 @@ const FloorShadow = styled.div`
   left: 50%;
   bottom: 0;
   transform: translateX(-50%);
-  width: clamp(160px, 23cqw, 270px);
-  height: clamp(36px, 5.2cqw, 60px);
+  width: clamp(148px, 21cqw, 250px);
+  height: clamp(34px, 4.8cqw, 56px);
   border-radius: 50%;
   background: ${SHADOW_GRADIENT};
   z-index: 3;
@@ -285,8 +285,8 @@ const FighterImg = styled.img`
   z-index: 4;
   --facing: ${(p) => (p.$flip ? 1 : -1)};
   width: auto;
-  height: 80%;
-  max-width: min(100%, 33cqw);
+  height: 78%;
+  max-width: min(100%, 32cqw);
   object-fit: contain;
   object-position: center bottom;
   transform-origin: center bottom;
@@ -306,10 +306,11 @@ const VsColumn = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* Pin from the stage floor so VS sits at mid-torso, not eye level */
+  justify-content: flex-end;
   z-index: 25;
-  padding-top: 32%;
-  padding-bottom: 0;
+  padding-top: 0;
+  padding-bottom: clamp(100px, 26cqh, 180px);
   /* Subtle left bias — less than the left fighter nudge */
   transform: translateX(-0.15cqw);
 `;
@@ -320,13 +321,13 @@ const VsMark = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: clamp(4px, 0.6cqh, 8px);
+  gap: clamp(3px, 0.45cqh, 6px);
   will-change: transform, opacity;
   animation: ${vsStampIn} 0.58s cubic-bezier(0.34, 1.5, 0.64, 1) 0.18s both;
 `;
 
 const VsRule = styled.div`
-  width: clamp(36px, 5cqw, 56px);
+  width: clamp(28px, 3.8cqw, 44px);
   height: 2px;
   background: ${C.vermillion};
   flex-shrink: 0;
@@ -336,7 +337,7 @@ const VsLetters = styled.div`
   position: relative;
   z-index: 2;
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(44px, 7cqw, 88px);
+  font-size: clamp(36px, 5.8cqw, 72px);
   color: #ffffff;
   letter-spacing: 0.04em;
   line-height: 0.82;
@@ -350,9 +351,9 @@ const VsMetaPlate = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   margin-top: 2px;
-  padding: clamp(5px, 0.7cqh, 8px) clamp(12px, 1.6cqw, 18px);
+  padding: clamp(4px, 0.55cqh, 6px) clamp(10px, 1.3cqw, 14px);
   background: ${C.sumi};
   border: 1px solid rgba(245, 236, 217, 0.22);
 `;
@@ -360,7 +361,7 @@ const VsMetaPlate = styled.div`
 const VsMode = styled.div`
   font-family: ${FONT_BODY};
   font-weight: 700;
-  font-size: clamp(0.52rem, 0.9cqw, 0.7rem);
+  font-size: clamp(0.45rem, 0.75cqw, 0.6rem);
   color: ${C.cream};
   letter-spacing: 0.28em;
   text-transform: uppercase;

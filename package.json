@@ -46,7 +46,10 @@
       "node_modules/steamworks.js/dist/**/*",
       "steam_appid.txt",
       "steam_input_config.vdf",
-      "assets/**/*"
+      "assets/**/*",
+      "server-io/**/*",
+      "!server-io/match-logs/**",
+      "!server-io/scripts/**"
     ],
     "extraResources": [
       {

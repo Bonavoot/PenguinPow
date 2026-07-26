@@ -1241,7 +1241,7 @@ function clearIceSlideState(player) {
 /**
  * Shared grab-attempt entry (human / buffer / CPU).
  * Clears ice slide (slap clears it via isAttacking — grab previously left it
- * live, so slide physics + braking art "ate" the attempt). Approach speed still
+ * live, so slide physics + sliding art "ate" the attempt). Approach speed still
  * inherits slide/dodge momentum for the post-connect burst push; the attempt
  * lunge itself stays a fixed distance so grab range doesn't scale with speed.
  */

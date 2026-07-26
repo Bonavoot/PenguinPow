@@ -40,7 +40,7 @@ import {
   withHeadGear,
 } from "../config/cosmetics";
 import { buildIdlePortraitSrc } from "../utils/hatComposite";
-import { loadSave, writeSave, makeDefaultSave } from "../lib/saveStore";
+import { loadSave, patchSave } from "../lib/saveStore";
 import {
   normalizeCustomization,
   getOutfitById,
@@ -625,21 +625,30 @@ const OutfitSlotBar = styled.div`
 `;
 
 const OutfitSlot = styled.button`
+  position: relative;
+  z-index: 1;
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 5px;
   min-width: 0;
+  min-height: clamp(40px, 5cqh, 48px);
   padding: clamp(6px, 0.8cqh, 8px);
   background: ${(p) => (p.$active ? D.softHover : D.soft)};
   border: 1px solid ${(p) => (p.$active ? C.gold : D.borderSoft)};
   cursor: pointer;
+  touch-action: manipulation;
   transition: border-color 0.15s ease, background 0.15s ease;
 
-  &:hover {
+  &:hover:not(:disabled) {
     border-color: ${(p) => (p.$active ? C.gold : "rgba(245, 236, 217, 0.35)")};
     background: ${D.softHover};
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.55;
   }
 `;
 
@@ -986,11 +995,8 @@ function CustomizePage({ onBack, onOpenHatTuner }) {
     customizationRef.current = normalized;
     setCustomization(normalized);
     setSaveState("saving");
-    const base = saveDocRef.current || makeDefaultSave();
-    const written = await writeSave({
-      ...base,
-      customization: normalized,
-    });
+    // Patch only customization so a flush can't wipe bashoRun / career.
+    const written = await patchSave({ customization: normalized });
     if (!mountedRef.current) return;
     saveDocRef.current = written;
     setSaveState("saved");
@@ -1010,6 +1016,22 @@ function CustomizePage({ onBack, onOpenHatTuner }) {
     [persistCustomization],
   );
 
+  const flushCustomization = useCallback(async () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (!hydratedRef.current || !customizationRef.current) return;
+    const normalized = normalizeCustomization(customizationRef.current);
+    setSaveState("saving");
+    const written = await patchSave({ customization: normalized });
+    if (!mountedRef.current) return;
+    saveDocRef.current = written;
+    customizationRef.current = normalized;
+    setCustomization(normalized);
+    setSaveState("saved");
+  }, []);
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -1018,11 +1040,9 @@ function CustomizePage({ onBack, onOpenHatTuner }) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
-      // Flush debounced edits so leaving for BASHO / lobby never drops the look.
+      // Fire-and-forget safety net; Back awaits flushCustomization first.
       if (hydratedRef.current && customizationRef.current) {
-        const base = saveDocRef.current || makeDefaultSave();
-        writeSave({
-          ...base,
+        patchSave({
           customization: normalizeCustomization(customizationRef.current),
         });
       }
@@ -1119,6 +1139,7 @@ function CustomizePage({ onBack, onOpenHatTuner }) {
   };
 
   const handleOutfitSelect = (outfitId) => {
+    if (!hydratedRef.current) return;
     if (outfitId === selectedOutfitIdRef.current) return;
     playButtonPressSound2();
     selectedOutfitIdRef.current = outfitId;
@@ -1128,6 +1149,12 @@ function CustomizePage({ onBack, onOpenHatTuner }) {
       { setPlayer1Color, setPlayer1BodyColor },
     );
     schedulePersist(withActiveOutfitId(customizationRef.current, outfitId));
+  };
+
+  const handleBack = async () => {
+    playButtonPressSound2();
+    await flushCustomization();
+    onBack();
   };
 
   const handleReset = () => {
@@ -1308,10 +1335,7 @@ function CustomizePage({ onBack, onOpenHatTuner }) {
 
       <BackButton
         type="button"
-        onClick={() => {
-          playButtonPressSound2();
-          onBack();
-        }}
+        onClick={handleBack}
         onMouseEnter={playButtonHoverSound}
       >
         <span className="arrow">←</span>
@@ -1362,8 +1386,11 @@ function CustomizePage({ onBack, onOpenHatTuner }) {
                   role="option"
                   aria-selected={active}
                   $active={active}
+                  disabled={saveState === "loading"}
                   onClick={() => handleOutfitSelect(outfit.id)}
-                  onMouseEnter={playButtonHoverSound}
+                  onMouseEnter={
+                    saveState === "loading" ? undefined : playButtonHoverSound
+                  }
                   title={outfit.name}
                 >
                   <OutfitSlotSwatches>

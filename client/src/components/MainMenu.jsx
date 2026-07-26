@@ -11,7 +11,7 @@ import BashoHub from "./BashoHub";
 import DayCard from "./DayCard";
 import BashoResults from "./BashoResults";
 import { usePlayerColors } from "../context/PlayerColorContext";
-import { writeSave, makeDefaultSave, loadSave } from "../lib/saveStore";
+import { patchSave, makeDefaultSave, loadSave } from "../lib/saveStore";
 import {
   getActiveOutfit,
   applyOutfitToPlayer1Setters,
@@ -44,6 +44,7 @@ import {
 } from "../config/powerUpConfig";
 import styled, { keyframes } from "styled-components";
 import { SocketContext } from "../SocketContext";
+import { selectGameServer } from "../lib/serverConnection";
 
 /*
  * Difficulty for a specific bout: the HIGHER of the intra-basho ramp
@@ -619,13 +620,12 @@ const PumoHero = styled.img`
   width: auto;
   transform-origin: center bottom;
   /*
-   * Settle into the plate: tiny brightness dip + warm contact rim so he
-   * doesn't scream "sticker" against the graded courtyard.
+   * Settle into the plate without a fake black stroke — the PNG linework
+   * already carries the silhouette; extra 0-blur drop-shadows were
+   * doubling the outline weight at hero scale.
    */
-  filter: brightness(0.98) contrast(1.05) saturate(1.04)
-    drop-shadow(0 0 1px rgba(0, 0, 0, 0.92))
-    drop-shadow(0 2px 0 rgba(20, 14, 8, 0.35))
-    drop-shadow(0 18px 28px rgba(0, 0, 0, 0.48));
+  filter: brightness(0.98) contrast(1.02) saturate(1.04)
+    drop-shadow(0 14px 24px rgba(0, 0, 0, 0.42));
   animation: ${pumoBreathe} 2.6s ease-in-out infinite;
 `;
 
@@ -727,7 +727,7 @@ const MainMenu = ({
       bashoRun: { ...run, active: false },
     };
     bashoSaveRef.current = newSave;
-    writeSave(newSave);
+    patchSave({ career: newCareer, bashoRun: { ...run, active: false } });
     isBashoMatchRef.current = false;
     setIsBashoMatch(false);
     setIsCPUMatch(false);
@@ -767,7 +767,9 @@ const MainMenu = ({
     setBashoBoutToken((t) => t + 1);
     const save = { ...(bashoSaveRef.current || makeDefaultSave()), bashoRun: run2 };
     bashoSaveRef.current = save;
-    writeSave(save);
+    patchSave({ bashoRun: run2 }).then((doc) => {
+      bashoSaveRef.current = doc;
+    });
     // The server held the bout-end pose and is awaiting our cue to reset the
     // shared room. Fire it on the next frame — after the (instantly opaque) DAY
     // card has painted — so the position reset happens fully behind the cover.
@@ -824,7 +826,9 @@ const MainMenu = ({
         bashoRun: run2,
       };
       bashoSaveRef.current = save;
-      writeSave(save);
+      patchSave({ bashoRun: run2 }).then((doc) => {
+        bashoSaveRef.current = doc;
+      });
       socket.emit("basho_set_draft", {
         roomId: bashoRoomIdRef.current,
         draftedPowerUps: drafted,
@@ -861,21 +865,16 @@ const MainMenu = ({
   const startBashoRun = async ({ run, save }) => {
     // Prefer disk for cosmetics (Customize flushes on leave); keep career/run
     // from the hub payload so a mid-edit loadout still applies.
-    const disk = await loadSave();
-    const mergedSave = {
-      ...disk,
-      ...(save || {}),
-      customization: disk.customization,
-      career: save?.career || disk.career,
-    };
-    bashoSaveRef.current = mergedSave;
+    // patchSave merges onto latest disk so a late Customize flush can't wipe
+    // the new bashoRun (and a full writeSave can't wipe a newer outfit).
     const runWithRanks = ensureOpponentRanks(run);
     startDay(runWithRanks);
-    bashoSaveRef.current = {
-      ...bashoSaveRef.current,
+    const career = save?.career;
+    const written = await patchSave({
+      ...(career ? { career } : {}),
       bashoRun: runWithRanks,
-    };
-    await writeSave(bashoSaveRef.current);
+    });
+    bashoSaveRef.current = written;
     bashoRunRef.current = runWithRanks;
     boutResolvedRef.current = false;
     setBashoRun({ ...runWithRanks });
@@ -911,15 +910,15 @@ const MainMenu = ({
     // out any option the player doesn't actually own (e.g. a legacy save that
     // had a now-gated option toggled on) so the §6 unlock economy is the
     // authority on what applies.
-    const career = bashoSaveRef.current?.career || {};
-    const rawLoadout = career.loadout || {};
+    const careerSave = bashoSaveRef.current?.career || {};
+    const rawLoadout = careerSave.loadout || {};
     const loadout = Object.fromEntries(
       Object.entries(rawLoadout).map(([cat, ids]) => [
         cat,
         (ids || []).filter((id) => {
           const opt = LOADOUT_OPTION_BY_ID[id];
           if (!opt) return false;
-          return !opt.unlock || isUnlocked(career, opt.unlock);
+          return !opt.unlock || isUnlocked(careerSave, opt.unlock);
         }),
       ]),
     );
@@ -930,6 +929,11 @@ const MainMenu = ({
       setPlayer1Color,
       setPlayer1BodyColor,
     });
+    // Solo mode: route the game socket to the locally-spawned server so the
+    // whole run plays at localhost latency (falls back to remote if the local
+    // server isn't available). Must resolve BEFORE the emit so the room is
+    // created on the right server.
+    await selectGameServer("local");
     socket.emit("create_basho_match", {
       socketId: socket.id,
       player: {
@@ -1202,6 +1206,9 @@ const MainMenu = ({
       setPlayer1Color,
       setPlayer1BodyColor,
     });
+    // Solo mode: route the game socket to the locally-spawned server
+    // (falls back to remote if the local server isn't available).
+    await selectGameServer("local");
     socket.emit("create_cpu_match", {
       socketId: socket.id,
       mawashiColor: outfit.mawashiColor,

@@ -63,7 +63,7 @@ import {
 import { BODY_COLORS, BELT_ALL } from "../config/customizeColors";
 import {
   loadSave,
-  writeSave,
+  patchSave,
   resetSave,
   makeDefaultSave,
 } from "../lib/saveStore";
@@ -752,6 +752,7 @@ const PortraitImage = styled.img`
   animation: ${breathe} 2.4s ease-in-out infinite;
   filter: drop-shadow(0 0 1.5px #000)
     drop-shadow(0 8px 14px rgba(40, 28, 14, 0.2));
+  pointer-events: none;
 `;
 
 const Block = styled.div`
@@ -950,17 +951,21 @@ const OutfitSlotBar = styled.div`
 `;
 
 const OutfitSlot = styled.button`
+  position: relative;
+  z-index: 1;
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 3px;
   min-width: 0;
-  padding: clamp(4px, 0.55cqh, 6px);
+  min-height: clamp(36px, 4.5cqh, 44px);
+  padding: clamp(6px, 0.7cqh, 8px);
   background: ${(p) => (p.$active ? D.softHover : D.soft)};
   border: 1px solid ${(p) => (p.$active ? C.gold : D.borderSoft)};
   border-radius: 0;
   cursor: pointer;
+  touch-action: manipulation;
   transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
 
   &:hover:not(:disabled) {
@@ -1826,8 +1831,8 @@ function BashoHub({ onBack, onStartRun }) {
         saveTimerRef.current = null;
       }
       // Flush pending career edits so a quick Start / leave doesn't drop them.
-      if (loadedRef.current && saveDocRef.current) {
-        writeSave({ ...saveDocRef.current, career: careerRef.current });
+      if (loadedRef.current) {
+        patchSave({ career: careerRef.current });
       }
     };
   }, []);
@@ -1848,9 +1853,9 @@ function BashoHub({ onBack, onStartRun }) {
       if (doc.bashoRun?.active) {
         const migrated = ensureOpponentRanks(doc.bashoRun);
         if (migrated !== doc.bashoRun) {
-          const updated = { ...doc, bashoRun: migrated };
-          saveDocRef.current = updated;
-          writeSave(updated);
+          patchSave({ bashoRun: migrated }).then((updated) => {
+            saveDocRef.current = updated;
+          });
           setResumeRun(migrated);
         } else {
           setResumeRun(doc.bashoRun);
@@ -1868,8 +1873,7 @@ function BashoHub({ onBack, onStartRun }) {
     if (!loadedRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
-      const doc = { ...(saveDocRef.current || makeDefaultSave()), career };
-      const written = await writeSave(doc);
+      const written = await patchSave({ career });
       saveDocRef.current = written;
     }, 400);
     return () => {
@@ -1927,19 +1931,16 @@ function BashoHub({ onBack, onStartRun }) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    const disk = await loadSave();
-    const baseSave = {
-      ...disk,
-      career,
-      customization: disk.customization,
-    };
-    saveDocRef.current = baseSave;
+    // Patch career onto disk first so a Customize outfit write can't be
+    // clobbered by a stale in-memory saveDoc snapshot.
+    const flushed = await patchSave({ career });
+    saveDocRef.current = flushed;
     if (resumeRun) {
-      await onStartRun({ run: resumeRun, save: baseSave });
+      await onStartRun({ run: resumeRun, save: flushed });
       return;
     }
     const run = createRun(career);
-    await onStartRun({ run, save: { ...baseSave, bashoRun: run } });
+    await onStartRun({ run, save: { ...flushed, bashoRun: run } });
   }, [career, resumeRun, onStartRun, saveReady]);
 
   // Editing is LOCKED while a basho is in progress (no mid-tournament respec).
@@ -2035,12 +2036,9 @@ function BashoHub({ onBack, onStartRun }) {
       setPlayer1Color,
       setPlayer1BodyColor,
     });
-    const doc = {
-      ...(saveDocRef.current || makeDefaultSave()),
-      customization: next,
-    };
-    saveDocRef.current = doc;
-    writeSave(doc);
+    patchSave({ customization: next }).then((doc) => {
+      saveDocRef.current = doc;
+    });
   };
 
   // ---- Debug actions (in-memory only) ----

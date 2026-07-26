@@ -153,11 +153,24 @@ export function isElectronSave() {
   );
 }
 
-/**
- * Load + migrate the save. Always resolves to a valid, fully-populated
- * document — never throws, never returns null.
+/*
+ * Serialize all load/write/patch work through one chain so a Customize
+ * flush can't overwrite a bashoRun that startBashoRun just wrote (and
+ * vice versa). Callers that used to spread a stale saveDocRef into
+ * writeSave() were losing concurrent career / run / outfit updates.
  */
-export async function loadSave() {
+let saveQueue = Promise.resolve();
+
+function enqueueSave(task) {
+  const run = saveQueue.then(task, task);
+  saveQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+async function readRawSave() {
   let raw = null;
   try {
     if (isElectronSave()) {
@@ -170,24 +183,12 @@ export async function loadSave() {
     console.warn("[saveStore] load failed; using defaults:", err);
     raw = null;
   }
-
-  if (!raw) return makeDefaultSave();
-
-  try {
-    return migrate(raw);
-  } catch (err) {
-    console.warn("[saveStore] migrate failed; using defaults:", err);
-    return makeDefaultSave();
-  }
+  return raw;
 }
 
-/**
- * Persist the save. Stamps schemaVersion + updatedAt and returns the
- * written document (so callers can keep their in-memory copy in sync).
- */
-export async function writeSave(save) {
+function normalizeSaveDoc(save) {
   const base = makeDefaultSave();
-  const doc = {
+  return {
     ...base,
     ...save,
     schemaVersion: SCHEMA_VERSION,
@@ -196,6 +197,9 @@ export async function writeSave(save) {
       save?.customization ?? base.customization,
     ),
   };
+}
+
+async function persistRawSave(doc) {
   try {
     if (isElectronSave() && typeof window.electron.save.write === "function") {
       await window.electron.save.write(doc);
@@ -206,6 +210,57 @@ export async function writeSave(save) {
     console.warn("[saveStore] write failed:", err);
   }
   return doc;
+}
+
+/**
+ * Load + migrate the save. Always resolves to a valid, fully-populated
+ * document — never throws, never returns null.
+ */
+export async function loadSave() {
+  return enqueueSave(async () => {
+    const raw = await readRawSave();
+    if (!raw) return makeDefaultSave();
+    try {
+      return migrate(raw);
+    } catch (err) {
+      console.warn("[saveStore] migrate failed; using defaults:", err);
+      return makeDefaultSave();
+    }
+  });
+}
+
+/**
+ * Persist the save. Stamps schemaVersion + updatedAt and returns the
+ * written document (so callers can keep their in-memory copy in sync).
+ *
+ * Prefer patchSave() when only updating one slice (customization /
+ * career / bashoRun) so concurrent editors can't clobber each other.
+ */
+export async function writeSave(save) {
+  return enqueueSave(async () => persistRawSave(normalizeSaveDoc(save)));
+}
+
+/**
+ * Merge a partial update onto the latest disk save, then persist.
+ * Safe for Customize outfit flushes racing BASHO start / career edits.
+ */
+export async function patchSave(partial = {}) {
+  return enqueueSave(async () => {
+    const raw = await readRawSave();
+    let current;
+    try {
+      current = raw ? migrate(raw) : makeDefaultSave();
+    } catch (err) {
+      console.warn("[saveStore] migrate failed; using defaults:", err);
+      current = makeDefaultSave();
+    }
+    return persistRawSave(
+      normalizeSaveDoc({
+        ...current,
+        ...partial,
+      }),
+    );
+  });
 }
 
 /**

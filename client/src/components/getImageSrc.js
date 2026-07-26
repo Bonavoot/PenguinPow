@@ -18,7 +18,7 @@ import {
   palmThrustSmear,
   lowKick,
   dodging,
-  braking,
+  sliding,
   throwing,
   salt,
   recovering,
@@ -226,7 +226,7 @@ const getImageSrc = (
     if (slideJumpUseDodgePose) return dodging;
     return slideJumpFlapFrame === 2 ? flap2 : flap1;
   }
-  // Grab attempt outranks ice slide — otherwise slide→grab keeps the braking
+  // Grab attempt outranks ice slide — otherwise slide→grab keeps the sliding
   // pose and reads as the slide eating the attempt.
   if (attemptingGrabMovement) {
     return grabAttemptType === "throw" ? throwing : grabAttempt;
@@ -234,10 +234,10 @@ const getImageSrc = (
   if (grabState === "attempting") {
     return grabAttemptType === "throw" ? throwing : grabAttempt;
   }
-  // Ice slide — braking pose; bunny-hop reverse flashes recovering → braking.
+  // Ice slide — sliding pose; bunny-hop reverse flashes recovering → sliding.
   if (isIceSliding) {
     if (isIceSlideReverseHopping) return recovering;
-    return braking;
+    return sliding;
   }
   // Flap: grounded startup uses the rope-jump-style recovery pose; in the air
   // we toggle between the two flap frames (the wing-beat) — flapFrame is the

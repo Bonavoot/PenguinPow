@@ -313,6 +313,14 @@ let staminaRegenCounter = 0;
 let broadcastTickCounter = 0;
 const delta = 1000 / TICK_RATE;
 
+// Embedded/local solo server (spawned by the Electron main process with
+// LOCAL_TIGHT_BROADCAST=1): broadcast every sim tick instead of every 2nd.
+// Bandwidth is free on loopback, and the halved broadcast quantization
+// (~15.6ms vs ~31ms) tightens button→pixels/audio latency in single-player.
+// Remote deployments keep the 32Hz default.
+const EFFECTIVE_BROADCAST_EVERY_N_TICKS =
+  process.env.LOCAL_TIGHT_BROADCAST === "1" ? 1 : BROADCAST_EVERY_N_TICKS;
+
 // Self-correcting game loop that doesn't drift under load.
 // setInterval can bunch ticks or skip them when the event loop is busy;
 // this accumulator-based approach catches up smoothly.
@@ -1981,7 +1989,7 @@ function tick(delta) {
             player.movementVelocity += 0.2;
           }
 
-          // SHIFT held through dodge land → committed ice slide (braking pose).
+          // SHIFT held through dodge land → committed ice slide (sliding pose).
           // Tap-release SHIFT keeps today's soft ice coast.
           // Gassed: same full kit — no watered-down panic hop.
           if (player.keys.shift && landingDirection !== 0) {
@@ -3792,14 +3800,37 @@ function tick(delta) {
 
     // PERFORMANCE: Only broadcast every N ticks to reduce network load
     // Game logic runs at 64Hz, broadcasts at 32Hz — client interpolation smooths to 60fps
-    const shouldBroadcast = broadcastTickCounter % BROADCAST_EVERY_N_TICKS === 0 || room.forceBroadcast;
+    const shouldBroadcast = broadcastTickCounter % EFFECTIVE_BROADCAST_EVERY_N_TICKS === 0 || room.forceBroadcast;
     if (room.forceBroadcast) room.forceBroadcast = false;
     if (shouldBroadcast) {
       // Initialize previousPlayerStates if it doesn't exist (for rooms created before optimization)
       if (!room.previousPlayerStates) {
         room.previousPlayerStates = [null, null];
       }
-      
+
+      // CLIENT PREDICTION GATES: sample the sim-clock action locks as
+      // remaining-ms countdowns. actionLockUntil blocks ALL actions
+      // (shouldBlockAction); attackCooldownUntil blocks strikes only
+      // (canPlayerSlap) — dodges/grabs stay legal during it, so the two are
+      // shipped separately. The client counts each down from packet arrival
+      // and refuses to predict (pose + swing sound) while one is live —
+      // without this, presses the server is guaranteed to reject still
+      // whoosh on the client. Capped for sanity against runaway deadlines.
+      const simNowForLocks = room.simTime;
+      for (let _li = 0; _li < room.players.length && _li < 2; _li++) {
+        const lockPlayer = room.players[_li];
+        const globalLock = lockPlayer.actionLockUntil || 0;
+        const attackLock = lockPlayer.attackCooldownUntil || 0;
+        lockPlayer.actionLockRemainingMs =
+          globalLock > simNowForLocks
+            ? Math.min(Math.ceil(globalLock - simNowForLocks), 2000)
+            : 0;
+        lockPlayer.attackCooldownRemainingMs =
+          attackLock > simNowForLocks
+            ? Math.min(Math.ceil(attackLock - simNowForLocks), 2000)
+            : 0;
+      }
+
       // PERFORMANCE: Use delta updates - only send changed properties
       // This significantly reduces network bandwidth and client-side processing
       const player1Delta = computePlayerDelta(room.players[0], room.previousPlayerStates[0]);

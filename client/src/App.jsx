@@ -1,25 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useCallback, useState, useRef } from "react";
-import { io } from "socket.io-client";
 import { SocketContext } from "./SocketContext";
 import StartupScreen from "./components/StartupScreen";
 import gamepadHandler from "./utils/gamepadHandler";
 import { PlayerColorProvider } from "./context/PlayerColorContext";
 import { startServerClock, stopServerClock } from "./lib/serverClock";
+import { gameSocket as socket, selectGameServer } from "./lib/serverConnection";
 import "./App.css";
 import "./components/SteamDeck.css";
 
 import MainMenu from "./components/MainMenu";
-
-const SOCKET_URL = import.meta.env.PROD
-  ? "https://secure-beach-15962-3c882c6fcbf9.herokuapp.com/"
-  : "http://localhost:3001";
-
-const socket = io(SOCKET_URL, {
-  reconnection: true,
-  reconnectionAttempts: 5,
-  reconnectionDelay: 1000,
-  transports: ["websocket", "polling"],
-});
 
 function App() {
   const [rooms, setRooms] = useState([]);
@@ -48,6 +37,16 @@ function App() {
   const handleContinueFromStartup = () => {
     setShowStartupScreen(false);
   };
+
+  // Solo modes (VS CPU / BASHO) route the game socket to the locally-spawned
+  // server (see MainMenu handlers). Whenever the player is back at the main
+  // menu or browsing online rooms, route back to the remote server so PvP
+  // matchmaking works. No-op when already on the right server.
+  useEffect(() => {
+    if (currentPage === "mainMenu" || currentPage === "rooms") {
+      selectGameServer("remote");
+    }
+  }, [currentPage]);
 
   const getRooms = useCallback(() => {
     socket.emit("get_rooms");
@@ -81,9 +80,10 @@ function App() {
     socket.on("connect", () => {
       setLocalId(socket.id);
       setConnectionError(false);
-      console.log("Connected to server:", SOCKET_URL);
+      console.log("Connected to game server");
       // Establish server-clock offset so visual hitstop can end in sync
       // across clients with asymmetric ping. Safe to call repeatedly.
+      // (Server switches re-handshake via resyncServerClock in the facade.)
       startServerClock(socket);
     });
 

@@ -975,6 +975,83 @@ const GameFighter = ({
   // the entire point of client-side prediction.
   const [predictionVersion, setPredictionVersion] = useState(0);
 
+  // PREDICTED ACTION AUDIO: swing/whoosh sounds are SCHEDULED on the press
+  // frame to land at the attack's ACTIVE window (press + startup), instead of
+  // firing instantly. The whoosh is the limb cutting air — playing it at the
+  // press made every windup sound premature (worst on charged: 150ms early)
+  // and made interrupted attacks (slap eaten by a grab mid-startup) whoosh
+  // with no visible swing. Scheduled sounds are cancellable: if the attack
+  // dies during startup, the timer is cleared and the sound never plays.
+  //
+  // Each stamp records the SCHEDULED play moment and gates the corresponding
+  // server-driven sound effect below so the confirmation broadcast doesn't
+  // double-play the sample. Window budget: it must suppress a confirm arriving
+  // up to a worst tolerable RTT after the scheduled moment, but must NOT
+  // suppress the next legitimate same-sound repeat — the tightest being a
+  // server-buffered follow-up slap, whose rising edge lands ~SLAP_TOTAL_MS
+  // (260) − SLAP_STARTUP (55) = ~205ms after the previous stamp. 200 < 205.
+  const PREDICTED_SOUND_SUPPRESS_MS = 200;
+  const predictedSwingSoundAtRef = useRef({ attack: 0, slap: 0, dodge: 0 });
+
+  // Client mirror of the server's attack startup durations (server-io/
+  // constants.js: SLAP_STARTUP_MS etc.) — how long after execution start the
+  // hitbox (and the visible swing) actually comes out.
+  const SWING_STARTUP_MS = { slap: 55, palm: 90, lowKick: 95, charged: 150 };
+
+  // Pending scheduled swing sounds (timer ids). Cancelled wholesale when this
+  // fighter's attack is interrupted during startup (hit / grabbed / thrown /
+  // parry-stunned) — see the cancellation effect below.
+  const pendingSwingSoundsRef = useRef(new Set());
+  const scheduleSwingSound = useCallback((delayMs, playFn) => {
+    if (delayMs <= 0) {
+      playFn();
+      return;
+    }
+    const id = setTimeout(() => {
+      pendingSwingSoundsRef.current.delete(id);
+      playFn();
+    }, delayMs);
+    pendingSwingSoundsRef.current.add(id);
+  }, []);
+  const cancelPendingSwingSounds = useCallback(() => {
+    for (const id of pendingSwingSoundsRef.current) clearTimeout(id);
+    pendingSwingSoundsRef.current.clear();
+  }, []);
+
+  // Swing-sound interruption: if this fighter's attack dies during startup
+  // (grabbed, hit, thrown, or parry-stunned before the swing came out), kill
+  // any scheduled whoosh. This is the fix for "slap eaten by a grab still
+  // whooshes" — the interrupt broadcast beats the 55ms slap timer on the
+  // local server, so the sound simply never happens.
+  useEffect(() => {
+    if (
+      penguin.isHit ||
+      penguin.isBeingGrabbed ||
+      penguin.isBeingThrown ||
+      penguin.isRawParryStun
+    ) {
+      cancelPendingSwingSounds();
+    }
+  }, [
+    penguin.isHit,
+    penguin.isBeingGrabbed,
+    penguin.isBeingThrown,
+    penguin.isRawParryStun,
+    cancelPendingSwingSounds,
+  ]);
+  // Unmount: never let a scheduled swing outlive the fighter.
+  useEffect(() => () => cancelPendingSwingSounds(), [cancelPendingSwingSounds]);
+
+  // SERVER ACTION LOCKS (prediction gates): the server serializes actions
+  // with sim-clock deadlines (actionLockUntil = blocks everything;
+  // attackCooldownUntil = blocks strikes only). They arrive as remaining-ms
+  // countdowns in the state broadcast (see server-io/index.js) and are
+  // converted to local performance.now() deadlines on packet arrival.
+  // Predictions must respect them — otherwise a press the server is
+  // guaranteed to reject still flashes a pose and plays a whiff sound.
+  const serverActionLockUntilRef = useRef(0);
+  const serverAttackCooldownUntilRef = useRef(0);
+
   // Prediction timeout - clear predictions if server doesn't confirm within this time
   // Shorter timeout to prevent predictions from staying visible too long
   const PREDICTION_TIMEOUT_MS = 150; // 150ms max prediction window (about 2-3 server ticks)
@@ -1046,6 +1123,26 @@ const GameFighter = ({
       // CRITICAL: No actions allowed before game starts (hakkiyoi)
       if (!gameStarted) return false;
 
+      // Server-side global action lock (actionLockUntil, not otherwise on the
+      // wire) — the server WILL reject this press, so don't flash/sound it.
+      if (performance.now() < serverActionLockUntilRef.current) return false;
+
+      // A fresh, unconfirmed prediction is already "the current action" —
+      // don't stack another prediction (and its swing sound) on top while
+      // waiting for the server to confirm. Without this, mashing inside the
+      // round-trip window predicts (and whooshes) once per press while the
+      // server only executes one.
+      const pred = predictedState.current;
+      if (
+        performance.now() - pred.timestamp < PREDICTION_TIMEOUT_MS &&
+        (pred.isAttacking ||
+          pred.isDodging ||
+          pred.isGrabbing ||
+          pred.isChargingAttack)
+      ) {
+        return false;
+      }
+
       // Check all blocking states that prevent ANY action
       return (
         // Core action states
@@ -1102,6 +1199,21 @@ const GameFighter = ({
   const canPredictDash = useCallback(
     (gameStarted) => {
       if (!gameStarted) return false;
+
+      // Server-side global action lock — see canPredictAction. The strike
+      // cooldown (attackCooldownUntil) deliberately NOT checked here: dodging
+      // during slap cooldown is legal server-side.
+      if (performance.now() < serverActionLockUntilRef.current) return false;
+
+      // Fresh unconfirmed prediction gate — isChargingAttack deliberately
+      // excluded: dash is allowed to cancel a charge.
+      const pred = predictedState.current;
+      if (
+        performance.now() - pred.timestamp < PREDICTION_TIMEOUT_MS &&
+        (pred.isAttacking || pred.isDodging || pred.isGrabbing)
+      ) {
+        return false;
+      }
 
       return (
         !penguin.isAttacking &&
@@ -1160,8 +1272,15 @@ const GameFighter = ({
       switch (action.type) {
         case "slap":
           // Only predict if we can perform actions AND not already charging AND
-          // not parrying (held, committed, or server-confirmed) — see isLocalParryActive
-          if (canPredictAction(gameStarted) && !penguin.isChargingAttack && !isLocalParryActive()) {
+          // not parrying (held, committed, or server-confirmed) — see isLocalParryActive.
+          // Also respects the server's strike cooldown (attackCooldownUntil) so a
+          // press the server will reject/buffer doesn't whoosh early.
+          if (
+            canPredictAction(gameStarted) &&
+            performance.now() >= serverAttackCooldownUntilRef.current &&
+            !penguin.isChargingAttack &&
+            !isLocalParryActive()
+          ) {
             predictedState.current = {
               ...predictedState.current,
               isSlapAttack: true,
@@ -1177,6 +1296,23 @@ const GameFighter = ({
               timestamp: now,
             };
             predictionChanged = true;
+            // Predicted swing audio — scheduled to land at the ACTIVE window
+            // (press + startup), when the hand actually cuts air. Cancellable:
+            // an interrupt during startup clears it (no phantom whoosh).
+            {
+              const panX = penguin.x;
+              scheduleSwingSound(SWING_STARTUP_MS.slap, () =>
+                playSound(
+                  pickRandomSound(slapWhiffSounds),
+                  0.02,
+                  null,
+                  1.0,
+                  xToPan(panX)
+                )
+              );
+            }
+            predictedSwingSoundAtRef.current.slap =
+              now + SWING_STARTUP_MS.slap;
           }
           break;
         case "palm_thrust":
@@ -1187,7 +1323,12 @@ const GameFighter = ({
           // frame. Predicting a slap here was the "stuck after palm thrust" bug:
           // the server never confirms isSlapAttack for a thrust, so the predicted
           // isAttacking/isSlapAttack never cleared and kept strafing locked.
-          if (canPredictAction(gameStarted) && !penguin.isChargingAttack && !isLocalParryActive()) {
+          if (
+            canPredictAction(gameStarted) &&
+            performance.now() >= serverAttackCooldownUntilRef.current &&
+            !penguin.isChargingAttack &&
+            !isLocalParryActive()
+          ) {
             predictedState.current = {
               ...predictedState.current,
               isPalmThrust: true,
@@ -1202,11 +1343,26 @@ const GameFighter = ({
               timestamp: now,
             };
             predictionChanged = true;
+            // Predicted swing audio — scheduled at the active window (90ms
+            // startup); cancellable if the thrust dies in windup.
+            {
+              const panX = penguin.x;
+              scheduleSwingSound(SWING_STARTUP_MS.palm, () =>
+                playSound(palmThrustWhiffSound, 0.05, null, 1.0, xToPan(panX))
+              );
+            }
+            predictedSwingSoundAtRef.current.attack =
+              now + SWING_STARTUP_MS.palm;
           }
           break;
         case "low_kick":
           // Rooted trip (S + mouse1). Same prediction model as palm thrust.
-          if (canPredictAction(gameStarted) && !penguin.isChargingAttack && !isLocalParryActive()) {
+          if (
+            canPredictAction(gameStarted) &&
+            performance.now() >= serverAttackCooldownUntilRef.current &&
+            !penguin.isChargingAttack &&
+            !isLocalParryActive()
+          ) {
             predictedState.current = {
               ...predictedState.current,
               isLowKick: true,
@@ -1220,6 +1376,13 @@ const GameFighter = ({
               timestamp: now,
             };
             predictionChanged = true;
+            // Predicted swing audio — scheduled at the active window (95ms
+            // startup); cancellable if the kick dies in windup.
+            scheduleSwingSound(SWING_STARTUP_MS.lowKick, () =>
+              playSound(attackSound, 0.05)
+            );
+            predictedSwingSoundAtRef.current.attack =
+              now + SWING_STARTUP_MS.lowKick;
           }
           break;
         case "charge_start":
@@ -1267,6 +1430,19 @@ const GameFighter = ({
               timestamp: now,
             };
             predictionChanged = true;
+            // Predicted swing audio for the released charged attack —
+            // scheduled at the LUNGE (release + 150ms startup), not the
+            // release itself. Playing it at release was the clearest
+            // "premature sound" case: a full windup telegraph passed between
+            // the whoosh and the visible swing. Skipped while dodging — the
+            // server holds the attack as pending until the dodge ends.
+            if (!isDodging) {
+              scheduleSwingSound(SWING_STARTUP_MS.charged, () =>
+                playSound(attackSound, 0.05)
+              );
+              predictedSwingSoundAtRef.current.attack =
+                now + SWING_STARTUP_MS.charged;
+            }
           }
           break;
         case "dash":
@@ -1287,6 +1463,17 @@ const GameFighter = ({
               timestamp: now,
             };
             predictionChanged = true;
+            // Predicted dash audio + launch dust — same frame as the press.
+            // The server-edge effect below is gated so it won't re-fire these
+            // when the confirmation broadcast arrives.
+            playSound(dodgeSound, 0.02);
+            emitParticles("dashStart", {
+              x: penguin.x,
+              y: penguin.y,
+              direction: action.direction || penguin.facing || 1,
+              facing: penguin.facing ?? 1,
+            });
+            predictedSwingSoundAtRef.current.dodge = now;
           }
           break;
         case "parry_start":
@@ -1484,6 +1671,10 @@ const GameFighter = ({
       canPredictDash,
       isLocalParryActive,
       forceVisualRender,
+      emitParticles,
+      scheduleSwingSound,
+      penguin.x,
+      penguin.y,
       penguin.isChargingAttack,
       penguin.isRawParrying,
       penguin.isGuarding,
@@ -2271,6 +2462,52 @@ const GameFighter = ({
           animEl.style.left = leftPct;
           animEl.style.bottom = bottomPct;
         }
+
+        // PROCEDURAL ANIMATION — knockback afterimages. Heavy launches
+        // (charged, palm burst, belly-slam — kb |x| ≥ 1.8; slap drift never
+        // qualifies) leave brief ghost echoes of the sprite along the flight
+        // path: the motion smear the art has no frames for. DOM clones (not
+        // canvas) so each ghost keeps the exact recolored, mid-squash pose —
+        // computed transforms are copied per node BEFORE killing animations,
+        // freezing the deformation instead of snapping to frame 0. Throttled
+        // at 55ms with a 240ms lifetime ⇒ ≤ ~5 live ghosts worst case.
+        const kbSpeed = Math.abs(
+          currentState.current?.knockbackVelocity?.x || 0
+        );
+        if (
+          (p.isHit || p.isBurstKnockback) &&
+          kbSpeed >= 1.8 &&
+          !p.isBeingThrown &&
+          !p.inClinch &&
+          !p.isBeingGrabbed &&
+          timestamp - lastGhostAtRef.current >= 55
+        ) {
+          lastGhostAtRef.current = timestamp;
+          const srcEl = animContainerDomRef.current || fighterImgDomRef.current;
+          if (srcEl && srcEl.parentElement) {
+            const ghost = srcEl.cloneNode(true);
+            const srcNodes = [srcEl, ...srcEl.querySelectorAll("*")];
+            const ghostNodes = [ghost, ...ghost.querySelectorAll("*")];
+            for (let i = 0; i < srcNodes.length; i++) {
+              const computed = getComputedStyle(srcNodes[i]);
+              if (computed.transform !== "none") {
+                ghostNodes[i].style.transform = computed.transform;
+              }
+              ghostNodes[i].style.animation = "none";
+            }
+            ghost.style.opacity = "0.28";
+            ghost.style.zIndex = "96";
+            ghost.style.transition = "opacity 0.19s ease-out";
+            ghost.style.pointerEvents = "none";
+            // Plain DOM sibling — React never learns about it, so it can't
+            // disturb reconciliation; removed on a timer.
+            srcEl.parentElement.appendChild(ghost);
+            requestAnimationFrame(() => {
+              ghost.style.opacity = "0";
+            });
+            setTimeout(() => ghost.remove(), 240);
+          }
+        }
         const shadowEl = shadowDomRef.current;
         const reflectionEl = reflectionDomRef.current;
         if (shadowEl || reflectionEl) {
@@ -2789,6 +3026,17 @@ const GameFighter = ({
         );
       }
 
+      // SERVER ACTION LOCKS: convert the remaining-ms countdowns into local
+      // deadlines so the prediction gates can count them down between packets.
+      if (typeof playerData.actionLockRemainingMs === "number") {
+        serverActionLockUntilRef.current =
+          currentTime + playerData.actionLockRemainingMs;
+      }
+      if (typeof playerData.attackCooldownRemainingMs === "number") {
+        serverAttackCooldownUntilRef.current =
+          currentTime + playerData.attackCooldownRemainingMs;
+      }
+
       // Track actual intervals between server updates for adaptive interpolation
       previousUpdateTime.current = lastUpdateTime.current;
       lastUpdateTime.current = currentTime;
@@ -2914,6 +3162,7 @@ const GameFighter = ({
           prev.flapFastFalling !== newState.flapFastFalling ||
           prev.flapBeatHDir !== newState.flapBeatHDir ||
           prev.isIceSliding !== newState.isIceSliding ||
+          prev.iceSlideDir !== newState.iceSlideDir ||
           prev.isIceSlideReverseHopping !== newState.isIceSlideReverseHopping ||
           prev.isSlideJumping !== newState.isSlideJumping ||
           prev.slideJumpPhase !== newState.slideJumpPhase ||
@@ -3119,6 +3368,26 @@ const GameFighter = ({
           }, dur);
         }
 
+        // PROCEDURAL ANIMATION — attacker contact recoil. On connect, the
+        // attacker's body jolts back for ~0.18s (attackerContactRecoil
+        // keyframes) before resuming the swing loop. Cinematic kills keep
+        // their scripted attacker pose. The 200ms auto-clear ends before the
+        // fastest slap re-chain, so consecutive hits each restart the jolt.
+        if (
+          data.attackerId &&
+          data.attackerId === player.id &&
+          !data.cinematicKill
+        ) {
+          setAttackerRecoil(true);
+          if (attackerRecoilTimeoutRef.current) {
+            clearTimeout(attackerRecoilTimeoutRef.current);
+          }
+          attackerRecoilTimeoutRef.current = setTimeout(() => {
+            setAttackerRecoil(false);
+            attackerRecoilTimeoutRef.current = null;
+          }, 200);
+        }
+
         // Screen shake — explicit per-hit tiers. Charged attacks get a heavy
         // crunch profile with zoom + roll; slap pokes stay snappy with no zoom.
         // Fired once per client (index===0). Cinematic kills run their own
@@ -3308,6 +3577,30 @@ const GameFighter = ({
           if (data.braked) {
             emitParticles("slapSkidDust", { x: data.x, y: data.y, dir: -skidDir });
           }
+        }
+
+        // PROCEDURAL ANIMATION — grade THIS victim's squash amplitude from
+        // the hit's actual weight. Feeds --impact-amp (see fighterStyled
+        // Components): 1 = the legacy fixed squash, ~1.75 = max crumple.
+        // Palm-thrust bursts stay near 1 — burstHitSquash keyframes already
+        // start much bigger, so their base shape carries the weight.
+        if (data.victimId && data.victimId === player.id) {
+          let amp = 1;
+          if (data.attackType === "charged") {
+            amp = 1.2 + Math.min((data.chargePercentage || 0) / 100, 1) * 0.25;
+          } else if (data.attackType === "flap") {
+            amp = 1.35;
+          } else if (data.isLowKick || data.attackType === "lowKick") {
+            amp = 0.9;
+          }
+          if (data.isCounterHit) amp += 0.2;
+          else if (data.isPunish) amp += 0.15;
+          if (data.isArmorBreak) amp += 0.15;
+          if (data.momentumHit) amp += 0.12;
+          // Braked knockback = the victim dug in — displacement is the tell
+          // that shrinks, so the body deformation shrinks with it.
+          if (data.braked) amp -= 0.2;
+          setImpactAmp(Math.max(0.7, Math.min(amp, 1.75)));
         }
 
         // Arm the victim hitstop judder on THIS fighter's instance (cinematic
@@ -4022,6 +4315,10 @@ const GameFighter = ({
         clearTimeout(attackerConfirmTimeoutRef.current);
         attackerConfirmTimeoutRef.current = null;
       }
+      if (attackerRecoilTimeoutRef.current) {
+        clearTimeout(attackerRecoilTimeoutRef.current);
+        attackerRecoilTimeoutRef.current = null;
+      }
       if (knockbackTrailIntervalsRef.current.length > 0) {
         knockbackTrailIntervalsRef.current.forEach((id) => clearInterval(id));
         knockbackTrailIntervalsRef.current = [];
@@ -4092,29 +4389,76 @@ const GameFighter = ({
   useEffect(() => {
     // Trigger swing sound for non-slap attacks. Palm thrust gets its own
     // dedicated whiff sound; charged / low kick keep the generic attack sound.
+    // For the LOCAL player this sound normally already played at prediction
+    // time (applyPrediction) — the gate suppresses the server-confirmation
+    // replay. It still fires here when prediction was gated (e.g. the press
+    // was server-buffered during recovery) or expired before the confirm.
     if (
       penguin.isAttacking &&
       !penguin.isSlapAttack &&
       !lastAttackState.current
     ) {
-      if (penguin.isPalmThrust) {
-        playSound(palmThrustWhiffSound, 0.05, null, 1.0, xToPan(penguin.x));
-      } else {
-        playSound(attackSound, 0.05);
+      const sincePredicted =
+        performance.now() - predictedSwingSoundAtRef.current.attack;
+      if (sincePredicted >= PREDICTED_SOUND_SUPPRESS_MS) {
+        // Align the whoosh with the ACTIVE swing, not the windup start.
+        // Charged / palm / low kick all set actionLockUntil = startup end on
+        // the server, and its remaining ms rides the broadcast — so this is
+        // "startup time this client hasn't seen yet". Scheduled → cancellable
+        // if the windup is interrupted before the swing comes out.
+        const startupCap = penguin.isPalmThrust
+          ? SWING_STARTUP_MS.palm
+          : penguin.isLowKick
+          ? SWING_STARTUP_MS.lowKick
+          : SWING_STARTUP_MS.charged;
+        const delay = Math.max(
+          0,
+          Math.min(penguin.actionLockRemainingMs || 0, startupCap)
+        );
+        const isPalm = penguin.isPalmThrust;
+        const panX = penguin.x;
+        scheduleSwingSound(delay, () => {
+          if (isPalm) {
+            playSound(palmThrustWhiffSound, 0.05, null, 1.0, xToPan(panX));
+          } else {
+            playSound(attackSound, 0.05);
+          }
+        });
       }
     }
     // Update the last attack state
     lastAttackState.current = penguin.isAttacking && !penguin.isSlapAttack;
   }, [penguin.isAttacking, penguin.isSlapAttack, penguin.isPalmThrust, penguin.isLowKick]);
 
-  // Separate effect for slap attack sounds based on slapAnimation changes
+  // Separate effect for slap attack sounds based on slapAnimation changes.
+  // Gated against the predicted-audio path: the local player's slap whoosh
+  // already played on the press frame in applyPrediction, so skip the replay
+  // when the server confirmation lands. Buffered/pending slaps (prediction
+  // gated during an active slap) still sound from here.
   useEffect(() => {
     if (
       penguin.isSlapAttack &&
       penguin.isAttacking &&
       !isInFlapMechanic(penguin)
     ) {
-      playSound(pickRandomSound(slapWhiffSounds), 0.02, null, 1.0, xToPan(penguin.x));
+      const sincePredicted =
+        performance.now() - predictedSwingSoundAtRef.current.slap;
+      if (sincePredicted >= PREDICTED_SOUND_SUPPRESS_MS) {
+        // Slap sets no actionLock, so there's no exact startup-remaining hint
+        // in the broadcast. 40ms ≈ 55ms startup minus typical local transit —
+        // close enough to put the whoosh on the swing, and scheduling keeps
+        // it cancellable when the slap dies in windup (grab/hit eats it).
+        const panX = penguin.x;
+        scheduleSwingSound(40, () =>
+          playSound(
+            pickRandomSound(slapWhiffSounds),
+            0.02,
+            null,
+            1.0,
+            xToPan(panX)
+          )
+        );
+      }
     }
   }, [penguin.slapAnimation, penguin.isSlapAttack, penguin.isAttacking, penguin.isFlapping, penguin.flapPhase]);
 
@@ -4178,13 +4522,19 @@ const GameFighter = ({
 
   useEffect(() => {
     if (penguin.isDodging && !lastDodgeState.current) {
-      playSound(dodgeSound, 0.02);
-      emitParticles("dashStart", {
-        x: penguin.dodgeStartX ?? penguin.x,
-        y: penguin.y,
-        direction: penguin.dodgeDirection ?? penguin.facing ?? 1,
-        facing: penguin.facing ?? 1,
-      });
+      // Skip when the predicted dash already played sound + dust on the
+      // press frame (applyPrediction) — this is just the server confirming.
+      const sincePredicted =
+        performance.now() - predictedSwingSoundAtRef.current.dodge;
+      if (sincePredicted >= PREDICTED_SOUND_SUPPRESS_MS) {
+        playSound(dodgeSound, 0.02);
+        emitParticles("dashStart", {
+          x: penguin.dodgeStartX ?? penguin.x,
+          y: penguin.y,
+          direction: penguin.dodgeDirection ?? penguin.facing ?? 1,
+          facing: penguin.facing ?? 1,
+        });
+      }
     }
     lastDodgeState.current = penguin.isDodging;
   }, [
@@ -4249,21 +4599,43 @@ const GameFighter = ({
     lastDodgeLandParticleState.current = penguin.justLandedFromDodge;
   }, [penguin.justLandedFromDodge]);
 
-  // Ice-slide foot FX — glowy frost / blade sparks under the braking-pose feet
-  // while SHIFT-held ice sliding. Start burst on commit; trail every ~36ms.
-  // Speed/dir come from interpolated X delta (movementVelocity is often omitted
-  // from React commits when only position changes).
+  // Ice-slide foot FX — glowy frost / blade sparks under the sliding-pose feet
+  // while SHIFT-held ice sliding. Travel dir must come from server iceSlideDir
+  // (dodgeDirection is cleared on the land tick that arms the slide). X-delta
+  // only fills speed + brief prediction gaps.
   const isIceSlidingRef = useRef(false);
   const iceSlideDirRef = useRef(1);
+  const lastDodgeDirRef = useRef(1);
   const iceSlideLastXRef = useRef(null);
   const prevIceSlidingForParticles = useRef(false);
+
+  useEffect(() => {
+    if (
+      penguin.isDodging &&
+      typeof penguin.dodgeDirection === "number" &&
+      penguin.dodgeDirection !== 0
+    ) {
+      lastDodgeDirRef.current = Math.sign(penguin.dodgeDirection);
+    }
+  }, [penguin.isDodging, penguin.dodgeDirection]);
 
   useEffect(() => {
     isIceSlidingRef.current =
       !!penguin.isIceSliding &&
       !penguin.isDodging &&
       !penguin.isSlideJumping;
-  }, [penguin.isIceSliding, penguin.isDodging, penguin.isSlideJumping]);
+    if (
+      typeof penguin.iceSlideDir === "number" &&
+      penguin.iceSlideDir !== 0
+    ) {
+      iceSlideDirRef.current = Math.sign(penguin.iceSlideDir);
+    }
+  }, [
+    penguin.isIceSliding,
+    penguin.isDodging,
+    penguin.isSlideJumping,
+    penguin.iceSlideDir,
+  ]);
 
   useEffect(() => {
     const active =
@@ -4275,11 +4647,10 @@ const GameFighter = ({
       const pos = interpolatedPositionRef.current;
       const startX = pos?.x ?? penguin.x;
       iceSlideLastXRef.current = startX;
-      // Dodge land commits the slide — reuse that travel dir when fresh.
       const commitDir =
-        typeof penguin.dodgeDirection === "number" && penguin.dodgeDirection !== 0
-          ? Math.sign(penguin.dodgeDirection)
-          : iceSlideDirRef.current || 1;
+        typeof penguin.iceSlideDir === "number" && penguin.iceSlideDir !== 0
+          ? Math.sign(penguin.iceSlideDir)
+          : lastDodgeDirRef.current || iceSlideDirRef.current || 1;
       iceSlideDirRef.current = commitDir;
       emitParticles("iceSlideStart", {
         x: startX,
@@ -4306,7 +4677,13 @@ const GameFighter = ({
       const lastX = iceSlideLastXRef.current;
       iceSlideLastXRef.current = curX;
       const dx = lastX == null ? 0 : curX - lastX;
-      if (Math.abs(dx) > 0.4) {
+      // Prefer server slide dir; only let X-delta override once we're clearly moving.
+      if (
+        typeof p.iceSlideDir === "number" &&
+        p.iceSlideDir !== 0
+      ) {
+        iceSlideDirRef.current = Math.sign(p.iceSlideDir);
+      } else if (Math.abs(dx) > 0.4) {
         iceSlideDirRef.current = Math.sign(dx);
       }
       const speed = Math.min(
@@ -4332,6 +4709,7 @@ const GameFighter = ({
     penguin.isIceSliding,
     penguin.isDodging,
     penguin.isSlideJumping,
+    penguin.iceSlideDir,
     emitParticles,
   ]);
 
@@ -4704,8 +5082,8 @@ const GameFighter = ({
   }, [penguin.flapPhase, penguin.x, penguin.y, penguin.facing, penguin.flapBeatHDir, penguin.isFlapping, isLocalPlayer, emitParticles]);
 
   // Slide-jump liftoff + land. Same tilted-up plume as a directional flap
-  // (flapLiftoff untouched). Nudge spawn forward along travel — slide-jump
-  // carry leaves a feet-anchored burst reading too far behind the body.
+  // (flapLiftoff untouched). Forward nudge for slide carry; extra lift so the
+  // plume sits on sliding.png's crouch (pads sit above the img bottom gutter).
   const prevSlideJumpPhase = useRef(null);
   useEffect(() => {
     const x = interpolatedPositionRef.current.x || penguin.x;
@@ -4717,10 +5095,11 @@ const GameFighter = ({
     ) {
       const travelDir = iceSlideDirRef.current || 1;
       emitParticles("liftoffSmoke", {
-        x: x + travelDir * 40,
+        x: x + travelDir * 28,
         y,
         tilted: true,
         dir: travelDir,
+        lift: 16,
       });
     }
 
@@ -5525,6 +5904,21 @@ const GameFighter = ({
   // "both statues, then both glide" symmetry — the victim's body VIBRATES from
   // the hit while the attacker holds firm.
   const hitJudderRef = useRef({ armedUntil: 0, amp: 0, frame: 0 });
+
+  // PROCEDURAL ANIMATION — per-hit reaction grading + attacker recoil.
+  // impactAmp feeds the --impact-amp CSS var (fighterStyledComponents): the
+  // hitSquash-family keyframes multiply their deformation by it, so a counter
+  // charged slam visibly crumples the victim while a poke barely dents them.
+  // Before this, every hit played the exact same fixed squash — one of the
+  // big "hits feel like stickers" tells. attackerRecoil briefly swaps the
+  // ATTACKER's animation to a backward contact jolt when their strike lands
+  // (impact resistance — the target has mass).
+  const [impactAmp, setImpactAmp] = useState(1);
+  const [attackerRecoil, setAttackerRecoil] = useState(false);
+  const attackerRecoilTimeoutRef = useRef(null);
+  // Afterimage ghost throttle (rAF-loop spawner) — see the knockback ghost
+  // block in the interpolation loop.
+  const lastGhostAtRef = useRef(0);
 
   // Tracks the cinematic-kill smoke-trail rAF so it can be cancelled on unmount
   // / round change (the trail is a distance-based rAF loop, not a setInterval).
@@ -6582,9 +6976,7 @@ const GameFighter = ({
     $isAttacking: displayPenguin.isAttacking,
     $isDodging: displayPenguin.isDodging,
     $isStrafing: penguin.isStrafing,
-    $isBraking:
-      (displayPenguin.isBraking || penguin.isIceSliding) &&
-      !penguin.isRawParryStun,
+    $isBraking: displayPenguin.isBraking && !penguin.isRawParryStun,
     $isSlideJumping: !!penguin.isSlideJumping && penguin.slideJumpPhase === "flight",
     $isPowerSliding: displayPenguin.isPowerSliding,
     $isRawParrying: displayPenguin.isRawParrying,
@@ -6595,6 +6987,10 @@ const GameFighter = ({
     $readyIntroComplete: readyIntroComplete,
     $isHit: penguin.isHit,
     $lastHitType: penguin.lastHitType,
+    // Procedural impact grading + attacker contact recoil (see the
+    // player_hit handler and fighterStyledComponents keyframes).
+    $impactAmp: impactAmp,
+    $attackerRecoil: attackerRecoil,
     $isDead: penguin.isDead,
     $isSlapAttack: displayPenguin.isSlapAttack,
     // Limb-out poses: raise z so the slap/palm paints over the opponent body
@@ -7090,6 +7486,7 @@ const GameFighter = ({
           $isAtTheRopes={penguin.isAtTheRopes}
           $isHit={penguin.isHit}
           $isBurstKnockback={penguin.isBurstKnockback}
+          $impactAmp={impactAmp}
           $isRawParryStun={penguin.isRawParryStun}
           $isCinematicKillAttacker={isCinematicKillAttacker}
           $attackerConfirmTier={attackerConfirmTier}

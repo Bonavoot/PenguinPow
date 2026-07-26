@@ -1,7 +1,8 @@
-const { app, BrowserWindow, ipcMain, screen } = require("electron");
+const { app, BrowserWindow, ipcMain, screen, utilityProcess } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const net = require("net");
 
 app.commandLine.appendSwitch('no-sandbox');
 
@@ -98,6 +99,115 @@ function writeBashoSave(save) {
     debugLog(`Error writing basho save: ${error.message}`);
     return false;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// LOCAL GAME SERVER (solo modes)
+// Spawns server-io/index.js as a utility process on a free loopback port
+// so VS CPU and BASHO play at localhost latency instead of a round trip
+// to the remote server. The renderer asks for the port over IPC
+// ('get-local-server-port') and falls back to the remote server when this
+// resolves null, so a failed spawn can never make the game worse.
+//
+// PACKAGING NOTE: the packaged build must ship the server-io folder
+// (INCLUDING its node_modules) next to main.js or under resources/ —
+// add it to the same copy step that ships client/dist.
+// ─────────────────────────────────────────────────────────────────────
+let localServerProcess = null;
+let localServerPortPromise = null;
+
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.unref();
+    probe.on("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const port = probe.address().port;
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
+function waitForServerReady(port, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const tryOnce = () => {
+      const sock = net.connect({ port, host: "127.0.0.1" });
+      sock.once("connect", () => {
+        sock.destroy();
+        resolve(true);
+      });
+      sock.once("error", () => {
+        sock.destroy();
+        if (Date.now() > deadline) resolve(false);
+        else setTimeout(tryOnce, 250);
+      });
+    };
+    tryOnce();
+  });
+}
+
+function resolveLocalServerEntry() {
+  const candidates = [
+    path.join(__dirname, "server-io", "index.js"),
+    process.resourcesPath
+      ? path.join(process.resourcesPath, "server-io", "index.js")
+      : null,
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function startLocalServer() {
+  if (localServerPortPromise) return localServerPortPromise;
+  localServerPortPromise = (async () => {
+    try {
+      const entry = resolveLocalServerEntry();
+      if (!entry) {
+        debugLog("[localServer] server-io/index.js not found — solo modes will use the remote server");
+        return null;
+      }
+      const port = await getFreePort();
+      debugLog(`[localServer] starting ${entry} on port ${port}`);
+      localServerProcess = utilityProcess.fork(entry, [], {
+        env: {
+          ...process.env,
+          PORT: String(port),
+          // Loopback bandwidth is free: broadcast every sim tick (64Hz)
+          // instead of every 2nd, halving broadcast quantization.
+          LOCAL_TIGHT_BROADCAST: "1",
+        },
+        serviceName: "penguinpow-local-server",
+        stdio: "pipe",
+      });
+      localServerProcess.stdout?.on("data", (d) =>
+        debugLog(`[localServer] ${String(d).trim()}`)
+      );
+      localServerProcess.stderr?.on("data", (d) =>
+        debugLog(`[localServer:err] ${String(d).trim()}`)
+      );
+      localServerProcess.on("exit", (code) => {
+        debugLog(`[localServer] exited with code ${code}`);
+        localServerProcess = null;
+      });
+      const ready = await waitForServerReady(port, 10000);
+      if (!ready) {
+        debugLog("[localServer] did not become ready in time — falling back to remote");
+        try {
+          if (localServerProcess) localServerProcess.kill();
+        } catch (_) {}
+        return null;
+      }
+      debugLog(`[localServer] ready on port ${port}`);
+      return port;
+    } catch (error) {
+      debugLog(`[localServer] failed to start: ${error.message}`);
+      return null;
+    }
+  })();
+  return localServerPortPromise;
 }
 
 let mainWindow;
@@ -206,6 +316,12 @@ ipcMain.handle('get-settings', () => {
   return loadSettings();
 });
 
+// Port of the locally-spawned solo-mode game server (null = unavailable,
+// renderer falls back to the remote server).
+ipcMain.handle('get-local-server-port', () => {
+  return startLocalServer();
+});
+
 // BASHO save file IPC — renderer handles schema/migrations.
 ipcMain.handle('load-save', () => {
   return loadBashoSave();
@@ -277,10 +393,19 @@ ipcMain.handle('get-screen-info', () => {
 app.whenReady().then(() => {
   debugLog('app ready');
   createWindow();
+  // Warm the local solo-mode server so the first VS CPU / BASHO click
+  // doesn't pay the spawn + listen delay.
+  startLocalServer();
 
   app.on("activate", function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on("will-quit", function () {
+  try {
+    if (localServerProcess) localServerProcess.kill();
+  } catch (_) {}
 });
 
 app.on("window-all-closed", function () {

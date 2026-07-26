@@ -22,6 +22,12 @@ const DELTA_TRACKED_PROPS = [
   'isAttacking', 'isSlapAttack', 'isPalmThrust', 'palmThrustFxId', 'isLowKick', 'slapAnimation', 'attackType',
   'isChargingAttack', 'chargeAttackPower', 'chargeStartTime',
   'isBurstKnockback',
+  // Client prediction gates: actionLockUntil / attackCooldownUntil live on the
+  // pausable sim clock (frozen during hitstop) so absolute times can't be
+  // converted client-side. Shipped as remaining-ms countdowns sampled at
+  // broadcast time (computed in index.js just before computePlayerDelta) so
+  // the client can suppress action predictions the server would reject.
+  'actionLockRemainingMs', 'attackCooldownRemainingMs',
   'isGrabbing', 'isBeingGrabbed', 'grabbedOpponent', 'grabState', 'grabAttemptType',
   'isGrabbingMovement', 'isWhiffingGrab', 'isGrabWhiffRecovery', 'isGrabTeching', 'grabTechRole', 'isGrabStartup',
   'isHit', 'lastHitType', 'isDead', 'isRecovering', 'isDodging', 'isDodgeStartup', 'isDodgeRecovery', 'dodgeDirection', 'justLandedFromDodge',
@@ -44,7 +50,9 @@ const DELTA_TRACKED_PROPS = [
   'activePowerUp', 'powerUpMultiplier',
   'snowballs', 'pumoArmy', 'snowballCooldown', 'pumoArmyCooldown', 'snowballThrowsRemaining', 'pumoArmySpawnsRemaining',
   'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing', 'effectiveMoveSpeedMult',
-  'isIceSliding', 'isIceSlideReverseHopping', 'isSlideJumping', 'slideJumpDiveCommitted', 'slideJumpFastFalling', 'slideJumpPhase',
+  // iceSlideDir: +1 right / -1 left — client foot FX wake (dodgeDirection is
+  // cleared on the same land tick that arms isIceSliding).
+  'isIceSliding', 'iceSlideDir', 'isIceSlideReverseHopping', 'isSlideJumping', 'slideJumpDiveCommitted', 'slideJumpFastFalling', 'slideJumpPhase',
   'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
   'isFlapping', 'flapPhase', 'flapCharges', 'flapWingBeatTime', 'flapFastFalling', 'flapBeatHDir',
   'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery',
@@ -453,7 +461,7 @@ const ICE_SLIDE_OPPOSE_FRICTION = 0.82;     // Harder bleed when holding opposit
 const ICE_SLIDE_EXIT_SPEED = 0.28;          // Drop out of slide below this |velocity| (SHIFT released only)
 const ICE_SLIDE_MAX_SPEED = 2.4;           // Soft cap while ice-sliding
 const ICE_SLIDE_MAINTAIN = 0.02;           // Tiny sustain toward slide dir while SHIFT held
-// Brake → SHIFT repress bunny-hop reverse (recovering → braking art)
+// Brake → SHIFT repress bunny-hop reverse (recovering → sliding art)
 // Skill tax is opposite-dir dig + SHIFT repress — NOT ejecting the slide into a dodge.
 const ICE_SLIDE_REVERSE_SPEED_MAX = 1.55;   // Soft dig gate; brake-arm also qualifies above this
 const ICE_SLIDE_BRAKE_ARM_MS = 45;          // Hold opposite this long → reverse legal even if still quick

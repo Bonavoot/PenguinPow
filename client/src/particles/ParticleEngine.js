@@ -266,7 +266,7 @@ function spawnLiftoffSmoke(
   engine,
   footX,
   footY,
-  { tilted = false, flip = false, scale = 1, alpha = 1, maxLife = 0.55 } = {}
+  { tilted = false, flip = false, scale = 1, alpha = 1, maxLife = 0.55, yLift = LIFTOFF_SMOKE_Y_LIFT } = {}
 ) {
   const sheet = tilted ? tiltedUpSmokeImg : straightUpSmokeImg;
   if (!sheet || !sheet.complete || !sheet.naturalWidth) return false;
@@ -275,7 +275,7 @@ function spawnLiftoffSmoke(
   const startFrame = tilted ? 0 : 2;
   engine.spawn({
     x: footX,
-    y: footY - drawSize * LIFTOFF_SMOKE_Y_LIFT,
+    y: footY - drawSize * yLift,
     vx: 0,
     vy: 0,
     gravity: 0,
@@ -1825,6 +1825,27 @@ function pickHitRingSmoke(textures) {
   return pick([textures.hitRingSmoke1, textures.hitRingSmoke2, textures.hitRingSmoke3]);
 }
 
+// sliding.png foot pads (unflipped local X). World = x + facing * local.
+// Measured from yellow sole centroids on the 960² asset at fighter width 12.3%.
+const SLIDE_FOOT_LEFT = -50;
+const SLIDE_FOOT_RIGHT = 39;
+// Just clear the transparent pad under the soles (~6px game).
+const SLIDE_FOOT_Y_LIFT = 6;
+
+// Ice-slide mist is FACING-mirrored (not travel-dir). P1's good look faces
+// right (facing=-1) with the blue wake off the art-left pad trailing toward
+// their back (world-left). Opposite facing must mirror that sprite-relative
+// read — wakeDir = facing does that ( -1 → trail left, +1 → trail right ).
+function slideArtFeet(x, facing) {
+  const face = facing === -1 ? -1 : 1;
+  return {
+    face,
+    wakeDir: face,
+    artLeftX: x + face * SLIDE_FOOT_LEFT,
+    artRightX: x + face * SLIDE_FOOT_RIGHT,
+  };
+}
+
 // ─── HIT VFX OVERHAUL (Phase A) — cel-burst impact emitter ───────────
 // One parameterized emitter used by EVERY hit (replaces the deleted
 // radial `emitImpactSparks` + `hitSpark*` presets). Draws "displaced
@@ -2427,32 +2448,28 @@ const PRESETS = {
   },
 
   // ── ICE SLIDE (SHIFT-held post-dodge) ────────────────────────────────────
-  // Premium skate-blade FX pinned to the braking-pose feet. Travel dir drives
-  // trail bias; facing places the wide dig/plant foot contacts. Speed (0..1+)
-  // and braking intensify the dig spray without turning into a smoke cloud.
+  // Premium skate-blade FX pinned to sliding.png. Blue mist is facing-mirrored
+  // to match P1's good look (face right → wake off art-left pad toward back);
+  // opposite facing uses the same sprite-relative layout via wakeDir = facing.
 
   // One-shot commitment burst when the slide locks in after dodge land.
   iceSlideStart(engine, { x, y, direction, facing }) {
-    const dir = direction || 1;
-    const face = facing || 1;
-    const footY = GAME_H - y;
-    // Braking stance: dig foot on the lean side, plant foot opposite.
-    const digX = x + face * -34;
-    const plantX = x + face * 30;
+    const footY = GAME_H - y - SLIDE_FOOT_Y_LIFT;
+    const { wakeDir, artLeftX, artRightX } = slideArtFeet(x, facing);
 
-    // Soft frost bloom under both feet — low, wide, hugs the ice.
-    for (const fx of [digX, plantX]) {
+    // Soft frost bloom — bias toward the wake side (P1-good layout).
+    for (const fx of [artLeftX, artRightX]) {
       const size = rand(22, 30);
       engine.spawn({
-        x: fx + rand(-3, 3),
+        x: fx + wakeDir * rand(0, 8) + rand(-3, 3),
         y: footY - size * 0.35,
-        vx: -dir * rand(18, 40) + rand(-8, 8),
+        vx: wakeDir * rand(18, 40) + rand(-8, 8),
         vy: rand(-6, 2),
         gravity: 12,
         drag: 0.92,
         size,
         sizeEnd: size * rand(0.4, 0.55),
-        alpha: rand(0.55, 0.75),
+        alpha: rand(0.6, 0.8),
         alphaEnd: 0,
         ease: "outCubic",
         easeAlpha: "inCubic",
@@ -2485,14 +2502,14 @@ const PRESETS = {
 
     // Hot blade sparks + ice chips kicked sideways off both feet.
     for (let i = 0; i < 8; i++) {
-      const fx = i % 2 === 0 ? digX : plantX;
+      const fx = i % 2 === 0 ? artLeftX : artRightX;
       const side = i % 2 === 0 ? -1 : 1;
       const spd = rand(90, 200);
       const lift = rand(0.2, 0.75);
       engine.spawn({
         x: fx + rand(-4, 4),
         y: footY - rand(2, 8),
-        vx: side * Math.cos(lift) * spd + -dir * rand(20, 60),
+        vx: side * Math.cos(lift) * spd + wakeDir * rand(20, 60),
         vy: -Math.abs(Math.sin(lift)) * spd * 0.55 - rand(10, 35),
         gravity: 520,
         drag: 0.94,
@@ -2514,12 +2531,12 @@ const PRESETS = {
     }
 
     for (let i = 0; i < 5; i++) {
-      const fx = i % 2 === 0 ? digX : plantX;
+      const fx = i % 2 === 0 ? artLeftX : artRightX;
       const side = Math.random() < 0.5 ? -1 : 1;
       engine.spawn({
         x: fx + rand(-3, 3),
         y: footY - rand(1, 5),
-        vx: side * rand(50, 130) + -dir * rand(10, 40),
+        vx: side * rand(50, 130) + wakeDir * rand(10, 40),
         vy: rand(-55, -12),
         gravity: 380,
         drag: 0.95,
@@ -2540,55 +2557,52 @@ const PRESETS = {
     }
   },
 
-  // Continuous emission (~36ms) while ice-sliding. Dual-foot blade grind:
-  // rear foot leaves the wake; dig foot (braking pose lean side) plows when braking.
+  // Continuous emission (~36ms) while ice-sliding. Dual-foot blade grind;
+  // blue mist is facing-mirrored (see slideArtFeet), not travel-dir based.
   iceSlideTrail(engine, { x, y, direction, facing, speed = 0.7, braking = false }) {
-    const dir = direction || 1;
-    const face = facing || 1;
-    const footY = GAME_H - y;
+    const footY = GAME_H - y - SLIDE_FOOT_Y_LIFT;
     const s = Math.min(Math.max(speed, 0.25), 1.5);
     const brake = braking ? 1.55 : 1;
-    // Wake / lead contacts along travel — keeps trails behind the body.
-    const rearX = x - dir * 30;
-    const frontX = x + dir * 22;
-    // Dig foot from the braking-pose lean (sprite lean side = face * -X).
-    const digX = x + face * -34;
+    const { wakeDir, artLeftX, artRightX } = slideArtFeet(x, facing);
+    const feet = [artLeftX, artRightX];
+    const digX = artRightX;
 
-    // Soft frost mist in the wake — grounded, never a fog wall.
-    const mistN = Math.round((1 + s) * (braking ? 1.4 : 1));
-    for (let i = 0; i < mistN; i++) {
-      const size = rand(12, 20) * (0.85 + s * 0.25);
-      engine.spawn({
-        x: rearX + -dir * rand(2, 14) + rand(-3, 3),
-        y: footY - size * 0.38 + rand(-1, 2),
-        vx: -dir * rand(12, 36) * s + rand(-6, 6),
-        vy: rand(-4, 2),
-        gravity: 8,
-        drag: 0.93,
-        size,
-        sizeEnd: size * rand(0.35, 0.55),
-        alpha: rand(0.38, 0.58) * (0.7 + s * 0.3),
-        alphaEnd: 0,
-        ease: "outCubic",
-        easeAlpha: "outQuad",
-        rotationSpeed: rand(-0.5, 0.5),
-        maxLife: rand(0.18, 0.28),
-        texture: Math.random() < 0.55
-          ? pickBluePuff(engine.textures)
-          : pickSmallPuff(engine.textures),
-      });
+    // Soft frost mist from BOTH pads — facing-mirrored wake direction.
+    // One puff per foot per tick (was piled on a single pad before).
+    const mistN = Math.max(1, Math.round((0.7 + s * 0.6) * (braking ? 1.3 : 1)));
+    for (const footX of feet) {
+      for (let i = 0; i < mistN; i++) {
+        const size = rand(12, 20) * (0.85 + s * 0.25);
+        engine.spawn({
+          x: footX + wakeDir * rand(4, 18) + rand(-2, 2),
+          y: footY - size * 0.38 + rand(-1, 2),
+          vx: wakeDir * rand(22, 48) * (0.7 + s * 0.35) + rand(-4, 4),
+          vy: rand(-3, 2),
+          gravity: 7,
+          drag: 0.95,
+          size,
+          sizeEnd: size * rand(0.4, 0.6),
+          alpha: rand(0.45, 0.7) * (0.75 + s * 0.25),
+          alphaEnd: 0,
+          ease: "outCubic",
+          easeAlpha: "inQuad",
+          rotationSpeed: rand(-0.4, 0.4),
+          maxLife: rand(0.26, 0.4),
+          texture: pickBluePuff(engine.textures),
+        });
+      }
     }
 
     // Blade sparks — bright ice-cyan glints arcing off both feet.
     const sparkN = Math.round(2 + s * 2 * brake);
     for (let i = 0; i < sparkN; i++) {
-      const fx = i % 2 === 0 ? rearX : frontX;
+      const fx = i % 2 === 0 ? artLeftX : artRightX;
       const spd = rand(50, 140) * (0.7 + s * 0.4);
       const angle = rand(-0.25, 0.55);
       engine.spawn({
-        x: fx + -dir * rand(0, 8) + rand(-3, 3),
+        x: fx + wakeDir * rand(0, 8) + rand(-3, 3),
         y: footY - rand(3, 10),
-        vx: -dir * Math.cos(angle) * spd + rand(-18, 18),
+        vx: wakeDir * Math.cos(angle) * spd + rand(-18, 18),
         vy: -Math.abs(Math.sin(angle)) * spd * 0.45 + rand(-28, -4),
         gravity: 580,
         drag: 0.93,
@@ -2611,11 +2625,11 @@ const PRESETS = {
 
     // Twinkling frost pinpoints — the "sparkly ice" read.
     if (Math.random() < 0.55 + s * 0.25) {
-      const fx = Math.random() < 0.65 ? rearX : frontX;
+      const fx = pick(feet);
       engine.spawn({
         x: fx + rand(-6, 6),
         y: footY - rand(4, 14),
-        vx: -dir * rand(10, 40) + rand(-12, 12),
+        vx: wakeDir * rand(10, 40) + rand(-12, 12),
         vy: rand(-35, -8),
         gravity: 120,
         drag: 0.94,
@@ -2636,45 +2650,26 @@ const PRESETS = {
       });
     }
 
-    // Frost scuff streaks left on the ice behind the rear blade.
-    engine.spawn({
-      x: rearX + -dir * rand(2, 12),
-      y: footY - rand(1, 3),
-      vx: -dir * rand(4, 14),
-      vy: 0,
-      gravity: 0,
-      drag: 0.98,
-      size: rand(2.5, 4.5),
-      sizeEnd: rand(1.5, 2.5),
-      alpha: rand(0.45, 0.7) * (0.75 + s * 0.25),
-      alphaEnd: 0,
-      rotation: 0,
-      rotationSpeed: 0,
-      ease: "linear",
-      easeAlpha: "inQuad",
-      maxLife: rand(0.28, 0.45),
-      texture: pick([engine.textures.groundStreak, engine.textures.groundStreakThin]),
-      stretchX: rand(3.2, 6.5) * (0.85 + s * 0.25),
-    });
-    if (Math.random() < 0.4 + s * 0.25) {
+    // Frost scuff streaks from both pads.
+    for (const footX of feet) {
       engine.spawn({
-        x: frontX + -dir * rand(0, 6),
+        x: footX + wakeDir * rand(2, 12),
         y: footY - rand(1, 3),
-        vx: -dir * rand(3, 10),
+        vx: wakeDir * rand(4, 14),
         vy: 0,
         gravity: 0,
         drag: 0.98,
-        size: rand(2, 3.5),
-        sizeEnd: rand(1.2, 2),
-        alpha: rand(0.35, 0.55),
+        size: rand(2.5, 4.5),
+        sizeEnd: rand(1.5, 2.5),
+        alpha: rand(0.45, 0.7) * (0.75 + s * 0.25),
         alphaEnd: 0,
         rotation: 0,
         rotationSpeed: 0,
         ease: "linear",
         easeAlpha: "inQuad",
-        maxLife: rand(0.2, 0.32),
-        texture: engine.textures.groundStreakThin,
-        stretchX: rand(2.2, 4),
+        maxLife: rand(0.28, 0.45),
+        texture: pick([engine.textures.groundStreak, engine.textures.groundStreakThin]),
+        stretchX: rand(3.2, 6.5) * (0.85 + s * 0.25),
       });
     }
 
@@ -2683,12 +2678,12 @@ const PRESETS = {
     if (Math.random() < chipChance) {
       const chipN = braking ? 3 : 1 + (Math.random() < s * 0.5 ? 1 : 0);
       for (let i = 0; i < chipN; i++) {
-        const fx = braking && i === 0 ? digX : pick([rearX, frontX]);
+        const fx = braking && i === 0 ? digX : pick(feet);
         const side = Math.random() < 0.5 ? -1 : 1;
         engine.spawn({
           x: fx + rand(-3, 3),
           y: footY - rand(1, 5),
-          vx: side * rand(40, 110) * brake + -dir * rand(15, 50) * s,
+          vx: side * rand(40, 110) * brake + wakeDir * rand(15, 50) * s,
           vy: rand(-50, -8) * (braking ? 1.2 : 1),
           gravity: 360,
           drag: 0.94,
@@ -2709,20 +2704,21 @@ const PRESETS = {
       }
     }
 
-    // Dig plow — when braking, the dig foot sprays a denser forward/side burst.
+    // Dig plow — when braking, spray toward the look side (opposite wake).
     if (braking) {
+      const lookDir = -wakeDir;
       for (let i = 0; i < 2; i++) {
         const size = rand(14, 22);
         engine.spawn({
-          x: digX + dir * rand(2, 10) + rand(-3, 3),
+          x: digX + lookDir * rand(2, 10) + rand(-3, 3),
           y: footY - size * 0.32,
-          vx: dir * rand(8, 28) + rand(-14, 14),
+          vx: lookDir * rand(8, 28) + rand(-14, 14),
           vy: rand(-8, 2),
           gravity: 14,
           drag: 0.91,
           size,
           sizeEnd: size * rand(0.35, 0.5),
-          alpha: rand(0.5, 0.7),
+          alpha: rand(0.55, 0.75),
           alphaEnd: 0,
           ease: "outCubic",
           easeAlpha: "inCubic",
@@ -2736,7 +2732,7 @@ const PRESETS = {
         engine.spawn({
           x: digX + rand(-4, 4),
           y: footY - rand(2, 8),
-          vx: -dir * rand(20, 70) + rand(-20, 20),
+          vx: wakeDir * rand(20, 70) + rand(-20, 20),
           vy: rand(-45, -10),
           gravity: 500,
           drag: 0.93,
@@ -5001,14 +4997,17 @@ const PRESETS = {
 
   // Generic liftoff plume — used by the rope jump (angled sheet, mirrored by
   // facing). `tilted` defaults true; pass dir = facing (±1) to flip.
-  liftoffSmoke(engine, { x, y, tilted = true, dir = 1, scale = 1, maxLife = 0.55 }) {
+  // `lift` = extra canvas-px above the grounded foot anchor (higher = up).
+  // `yLift` = plume-center fraction of draw size (see LIFTOFF_SMOKE_Y_LIFT).
+  liftoffSmoke(engine, { x, y, tilted = true, dir = 1, scale = 1, maxLife = 0.55, lift = 12, yLift }) {
     const footX = x;
-    const footY = GAME_H - y - 12;
+    const footY = GAME_H - y - lift;
     spawnLiftoffSmoke(engine, footX, footY, {
       tilted,
       flip: dir < 0,
       scale,
       maxLife,
+      yLift,
     });
   },
 

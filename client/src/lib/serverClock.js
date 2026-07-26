@@ -124,6 +124,19 @@ export function startServerClock(socket) {
   }, RESYNC_INTERVAL_MS);
 }
 
+// Re-handshake against whatever server the active socket now routes to.
+// Called when the connection facade switches between the remote and local
+// game servers: each server process has its own monotonic clock origin, so
+// the previous offset is meaningless on the new server. `synced` drops to
+// false immediately so parry lag-compensation stops converting timestamps
+// with a stale offset until fresh samples land.
+export function resyncServerClock() {
+  if (!activeSocket) return;
+  synced = false;
+  displayHitstopUntilMs = 0;
+  runHandshake(activeSocket, INITIAL_SAMPLES);
+}
+
 export function stopServerClock() {
   if (activeSocket) {
     activeSocket.off("hitstop", handleHitstopEvent);
