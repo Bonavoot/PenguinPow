@@ -118,8 +118,12 @@ const {
   lagCompensatedParryStart,
   canArmAttackParry,
   armAttackParry,
+  wantsMatadorChord,
+  canArmMatador,
+  armMatador,
   enterGuard,
   updateAttackParryState,
+  updateMatadorState,
   isAttackParryPostLocked,
   emitThrottledScreenShake,
   clearHitFall,
@@ -144,6 +148,7 @@ const {
   safelyEndChargedAttack,
   activateBufferedInputAfterGrab,
   executeInputBuffer,
+  resolveMatadorPull,
 } = require("./gameFunctions");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum inheritance; Phase 2: posture).
@@ -1277,6 +1282,13 @@ function tick(delta) {
               (!opponent.isAttacking || grabWinsVsSlap);
 
             if (canConnect) {
+              // MATADOR: grab would have connected into a live grab-parry →
+              // instant pull (no clinch). Checked before any clinch setup.
+              if (opponent.isMatadorParrying) {
+                resolveMatadorPull(opponent, player, room, io);
+                return;
+              }
+
               // SUCCESSFUL GRAB — same connect logic as before
               player.isGrabStartup = false;
               player.y = GROUND_LEVEL;
@@ -1298,21 +1310,25 @@ function tick(delta) {
                 player.grabApproachSpeed = Math.max(player.grabApproachSpeed || 0, GRAB_CATCH_MIN_BURST_SPEED);
               }
 
-              // One-sided clinch: grabber has grip, opponent does NOT
+              // Mutual clinch on connect — both have grip automatically.
+              // No grip-up required; short Phase A burst is the first-grab reward.
               player.hasGrip = true;
               player.inClinch = true;
               player.clinchAction = "push";
-              opponent.hasGrip = false;
+              player.gripAcquiredTime = now;
+              // Don't count the grab-attempt M2 as belt hold — body arms until
+              // they release and re-press (or weren't holding through connect).
+              player.clinchBeltRequiresM2Release = true;
+              opponent.hasGrip = true;
               opponent.inClinch = true;
               opponent.clinchAction = "neutral";
+              opponent.gripAcquiredTime = now;
+              opponent.clinchBeltRequiresM2Release = false;
 
               // MASTERY Phase 2 (2.3): yotsu conversion. Catching a
               // broken-posture victim grants the grabber DEEP GRIP on connect
-              // and floors the Phase A burst so the carry visibly bites — the
-              // striking setup that broke posture pays off in the clinch. The
-              // victim still gets their normal grip-up fight (not skipped); the
-              // reward is the deep-grip head start (+10 throw threshold, ×1.1
-              // push) they'd otherwise need 1s of unanswered push to earn.
+              // and floors the Phase A burst so the shove visibly bites — the
+              // striking setup that broke posture pays off in the clinch.
               // Flag off / posture intact ⇒ no change.
               if (MASTERY_P2_POSTURE && opponent.isPostureBroken) {
                 player.grabApproachSpeed = Math.max(
@@ -1340,10 +1356,10 @@ function tick(delta) {
               player.isAttemptingGrabThrow = false;
 
               // COUNTER GRAB: grab landed while the opponent was raw-parrying.
-              // ARM CLAMP: the punished parrier cannot grip up during the Phase A
-              // burst carry (grip granted automatically when the clamp releases —
-              // burst decay, boundary contact, or after the grabber's free throw).
-              // Also seeds a balance debuff so the punish scales with prior damage.
+              // ARM CLAMP: the punished parrier cannot act during the Phase A
+              // burst carry (clamp clears on burst end, boundary contact, or
+              // after the grabber's free throw). Seeds a balance debuff so the
+              // punish scales with prior damage.
               const wasOpponentRawParrying = opponent.isRawParrying;
               opponent.isCounterGrabbed = wasOpponentRawParrying;
 
@@ -2818,6 +2834,12 @@ function tick(delta) {
           !player.throwTechCooldown &&
           !(opponent.grabImmune && now < opponent.grabImmuneEndTime)
         ) {
+          // MATADOR: grab-movement connect into live grab-parry → instant pull.
+          if (opponent.isMatadorParrying) {
+            resolveMatadorPull(opponent, player, room, io);
+            return;
+          }
+
           // Successful grab - stop all movement and initiate grab
           // NOTE: grabApproachSpeed was already captured at grab startup (E press)
 
@@ -2842,13 +2864,17 @@ function tick(delta) {
             player.grabApproachSpeed = Math.max(player.grabApproachSpeed || 0, GRAB_CATCH_MIN_BURST_SPEED);
           }
 
-          // One-sided clinch: grabber has grip, opponent does NOT
+          // Mutual clinch on connect — both have grip automatically.
           player.hasGrip = true;
           player.inClinch = true;
           player.clinchAction = "push";
-          opponent.hasGrip = false;
+          player.gripAcquiredTime = now;
+          player.clinchBeltRequiresM2Release = true;
+          opponent.hasGrip = true;
           opponent.inClinch = true;
           opponent.clinchAction = "neutral";
+          opponent.gripAcquiredTime = now;
+          opponent.clinchBeltRequiresM2Release = false;
 
           // MASTERY Phase 2 (2.3): yotsu conversion (grab-movement connect
           // path — mirrors the grab-startup connect above). A broken-posture
@@ -2883,10 +2909,8 @@ function tick(delta) {
           
           // COUNTER GRAB: grab landed while the opponent was raw-parrying (grabbing
           // during recovery does NOT count — normal grab only).
-          // ARM CLAMP: the punished parrier cannot grip up during the Phase A burst
-          // carry (grip granted automatically when the clamp releases — burst decay,
-          // boundary contact, or after the grabber's free throw). Also seeds a
-          // balance debuff so the punish scales with prior damage.
+          // ARM CLAMP: the punished parrier cannot act during the Phase A burst
+          // carry (clamp clears on burst end, boundary, or after free throw).
           const wasOpponentRawParrying = opponent.isRawParrying;
           opponent.isCounterGrabbed = wasOpponentRawParrying;
 
@@ -2952,10 +2976,11 @@ function tick(delta) {
         }
       }
 
-      // AP SM before movement: Space-up must drop isRawParrying this tick so we
+      // AP / MATADOR SM before movement: Space-up must drop stance this tick so we
       // never walk a frame in blocking stance (old flurry-linger moonwalk).
       const apHeldEarly = player.isCPU ? !!player.keys.s : !!player.keys[" "];
       updateAttackParryState(player, now, apHeldEarly);
+      updateMatadorState(player, now, apHeldEarly);
       if (!player.keys[" "]) {
         player.grabBreakSpaceConsumed = false;
       }
@@ -2979,6 +3004,9 @@ function tick(delta) {
         !apPostLock &&
         !player.isThrowLanded && // Block all movement for throw landed players
         !player.isRawParrying && // Block movement during held/active parry stance
+        !player.isMatadorParrying &&
+        !player.isMatadorWhiffRecovering &&
+        !player.isMatadorSuccess &&
         !player.isIceSliding && // Ice-slide owns its own X integration
         !player.isSlideJumping && // Slide-jump owns its own X/Y integration
         !player.isGrabbingMovement && // Block normal movement during grab movement
@@ -3491,21 +3519,32 @@ function tick(delta) {
         !player.isRawParryStun &&
         !player.isAtTheRopes
       ) {
-        if (player.spaceJustPressed && canArmAttackParry(player, now)) {
-          // Fresh tap → open a PARRY window (fallback for the socket edge path).
-          // armAttackParry clears spaceJustPressed so a held key can't re-fire.
-          armAttackParry(player, now, lagCompensatedParryStart(player, now));
-          clearChargeState(player, true); // true = cancelled
-          if (!player.isAttacking && !player.isChargingAttack) {
-            player.isReady = false;
+        if (player.spaceJustPressed) {
+          // Fresh tap → MATADOR (BACK+SPACE) or AP (SPACE). Fallback for the
+          // socket edge path. Arm clears spaceJustPressed so a held key can't re-fire.
+          if (wantsMatadorChord(player) && canArmMatador(player, now)) {
+            armMatador(player, now, lagCompensatedParryStart(player, now));
+            clearChargeState(player, true);
+            if (!player.isAttacking && !player.isChargingAttack) {
+              player.isReady = false;
+            }
+          } else if (canArmAttackParry(player, now)) {
+            armAttackParry(player, now, lagCompensatedParryStart(player, now));
+            clearChargeState(player, true); // true = cancelled
+            if (!player.isAttacking && !player.isChargingAttack) {
+              player.isReady = false;
+            }
           }
         } else if (
           !player.isRawParrying &&
           !player.isApWhiffRecovering &&
+          !player.isMatadorParrying &&
+          !player.isMatadorWhiffRecovering &&
           now >= (player.apCooldownUntil || 0)
         ) {
           // Held with no live parry window → GUARD (the block floor).
           // Also covers post-land hold if collision already left us unarmed.
+          // MATADOR never enters GUARD — tap-only.
           enterGuard(player);
           clearChargeState(player, true);
           if (!player.isAttacking && !player.isChargingAttack) {
@@ -3514,13 +3553,16 @@ function tick(delta) {
         }
       }
 
-      // During a HELD AP stance OR whiff recovery, hold animation priority
+      // During a HELD AP / MATADOR stance OR whiff recovery, hold animation priority
       // (clear movement/dodge/crouch). Whiff recovery is rooted endlag and
       // cannot be cut short by re-press. (SM already ran before movement.)
       const rootApStance =
         player.isApWhiffRecovering ||
         player.isApPostParryLocked ||
-        player.isRawParrying;
+        player.isRawParrying ||
+        player.isMatadorParrying ||
+        player.isMatadorWhiffRecovering ||
+        player.isMatadorSuccess;
       if (rootApStance) {
         player.isStrafing = false;
         player.movementVelocity = 0;

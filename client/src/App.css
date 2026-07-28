@@ -395,7 +395,9 @@ body {
      radius on-screen is ~2–2.6× this value. Keep this near the upper-deck
      crowd soft end (~1.3px in CrowdLayer) — higher than that made the painted
      stadium look blurrier than the people sitting in front of it. */
-  --arena-map-filter: brightness(0.9) saturate(0.96) url(#scene-grade) blur(1.35px);
+  /* Mid under-key: settle bright seats without voiding stadium perspective.
+     Dohyo-display stays a separate unfiltered overlay. */
+  --arena-map-filter: brightness(0.86) saturate(0.95) url(#scene-grade) blur(1.35px);
 
   /* ── Dohyo: style.webp (editor live) + display.webp (2× flat in-game bake) ──
      npm run bake:dohyo after knob/art changes. Runtime stays filter-free. */
@@ -801,29 +803,26 @@ body {
   pointer-events: none;
   z-index: 6;
   background:
-    /* WARM KEY — from rafters / above-front. Kept off the gyoji's head and
-       fighter faces so robes/skins don't bleach; direction without wash. */
+    /* WARM KEY — quieter than stock; direction without bleaching the stands. */
     radial-gradient(
-      ellipse 54% 42% at 50% 28%,
-      rgba(255, 243, 212, 0.16) 0%,
-      rgba(255, 236, 196, 0.07) 32%,
-      transparent 58%
+      ellipse 52% 40% at 50% 28%,
+      rgba(255, 243, 212, 0.12) 0%,
+      rgba(255, 236, 196, 0.05) 32%,
+      transparent 56%
     ),
-    /* COOL BOUNCE — ice stage kicking light up into feet / lower bodies.
-       This is what sells "fighters stand ON a lit dohyo" instead of floating
-       on a neon pad. */
+    /* COOL BOUNCE — ice stage kick into feet / lower bodies. */
     radial-gradient(
       ellipse 90% 48% at 50% 100%,
       rgba(56, 110, 168, 0.2) 0%,
       rgba(44, 84, 138, 0.08) 36%,
       transparent 62%
     ),
-    /* EDGE FALLOFF — the only scene vignette. Wide clear core so wrestlers
-       + gyoji stay fully lit; bite lands on crowd / periphery. */
+    /* EDGE FALLOFF — mid house settle. Stronger than stock, softer than the
+       hard bite that flattened the bowl into a cardboard wall. */
     radial-gradient(
-      ellipse 94% 88% at 50% 48%,
+      ellipse 92% 86% at 50% 48%,
       transparent 34%,
-      rgba(0, 0, 0, 0.22) 68%,
+      rgba(0, 0, 0, 0.26) 70%,
       rgba(0, 0, 0, 0.52) 100%
     );
 }
@@ -837,47 +836,48 @@ body {
   position: absolute;
   left: 50%;
   top: -10%;
-  width: 68%;
-  height: 58%;
+  width: 64%;
+  height: 54%;
   transform: translateX(-50%);
   transform-origin: 50% 0;
   pointer-events: none;
   z-index: 7;
   mix-blend-mode: screen;
-  opacity: 0.32;
+  /* Mid intensity — present atmosphere, not the bright wash over the stands. */
+  opacity: 0.18;
   background: repeating-linear-gradient(
     96deg,
     transparent 0px,
-    transparent 30px,
-    rgba(255, 240, 206, 0.035) 36px,
-    rgba(255, 246, 220, 0.075) 44px,
-    rgba(255, 240, 206, 0.035) 52px,
-    transparent 60px,
-    transparent 96px
+    transparent 32px,
+    rgba(255, 240, 206, 0.024) 38px,
+    rgba(255, 246, 220, 0.05) 46px,
+    rgba(255, 240, 206, 0.024) 54px,
+    transparent 62px,
+    transparent 102px
   );
   -webkit-mask-image: radial-gradient(
-    ellipse 58% 72% at 50% 4%,
+    ellipse 54% 70% at 50% 4%,
     #000 0%,
-    rgba(0, 0, 0, 0.5) 38%,
-    transparent 72%
+    rgba(0, 0, 0, 0.45) 36%,
+    transparent 70%
   );
   mask-image: radial-gradient(
-    ellipse 58% 72% at 50% 4%,
+    ellipse 54% 70% at 50% 4%,
     #000 0%,
-    rgba(0, 0, 0, 0.5) 38%,
-    transparent 72%
+    rgba(0, 0, 0, 0.45) 36%,
+    transparent 70%
   );
-  filter: blur(8px);
+  filter: blur(9px);
   animation: godRayDrift 18s ease-in-out infinite alternate;
 }
 
 @keyframes godRayDrift {
   0% {
-    opacity: 0.18;
+    opacity: 0.11;
     transform: translateX(-50%) rotate(-1.1deg);
   }
   100% {
-    opacity: 0.3;
+    opacity: 0.2;
     transform: translateX(-50%) rotate(1.1deg);
   }
 }

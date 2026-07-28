@@ -381,13 +381,12 @@ export async function recolorImage(
   const bodyColorRange = options.bodyColorRange || null;
   const bodyColorHex = options.bodyColorHex || null;
   // Cache key uses the resolved (possibly @2x) URL so lookups are consistent
-  const cacheKey = `${hiResSrc}_${sourceColorRange.minHue}-${
-    sourceColorRange.maxHue
-  }_${targetColorHex}${bodyColorHex ? "_body_" + bodyColorHex : ""}${
-    hitTintRed ? "_hit" : ""
-  }${chargeTintWhite ? "_charge" : ""}${blubberTintPurple ? "_blubber" : ""}${
-    armorTintPink ? "_armor" : ""
-  }`;
+  const cacheKey = buildRecolorCacheKey(
+    imageSrc,
+    sourceColorRange,
+    targetColorHex,
+    options
+  );
 
   // Check LRU cache first
   const cached = getFromCache(cacheKey);
@@ -935,31 +934,39 @@ export function clearDecodedImageCache() {
  * @param {Object} options - Optional: { hitTintRed: true }, { chargeTintWhite: true }, { blubberTintPurple: true }, { armorTintPink: true }
  * @returns {string|null} - Cached recolored image data URL, or null if not cached
  */
+function buildRecolorCacheKey(imageSrc, sourceColorRange, targetColorHex, options = {}) {
+  const hiResSrc = resolveHiRes(imageSrc);
+  const hitTintRed = !!options.hitTintRed;
+  const chargeTintWhite = !!options.chargeTintWhite;
+  const blubberTintPurple = !!options.blubberTintPurple;
+  const armorTintPink = !!options.armorTintPink;
+  const bodyColorHex = options.bodyColorHex || null;
+  // Bump when body-recolor rules change so stale IndexedDB entries (e.g. yellow
+  // topknot from a bad dark-fringe experiment) cannot stick around.
+  const RECOLOR_ALGO = "v4";
+  return `${hiResSrc}_${sourceColorRange.minHue}-${
+    sourceColorRange.maxHue
+  }_${targetColorHex}${bodyColorHex ? "_body_" + bodyColorHex : ""}${
+    hitTintRed ? "_hit" : ""
+  }${chargeTintWhite ? "_charge" : ""}${blubberTintPurple ? "_blubber" : ""}${
+    armorTintPink ? "_armor" : ""
+  }_${RECOLOR_ALGO}`;
+}
+
 export function getCachedRecoloredImage(
   imageSrc,
   sourceColorRange,
   targetColorHex,
   options = {}
 ) {
-  const hitTintRed = !!options.hitTintRed;
-  const chargeTintWhite = !!options.chargeTintWhite;
-  const blubberTintPurple = !!options.blubberTintPurple;
-  const armorTintPink = !!options.armorTintPink;
-  const bodyColorHex = options.bodyColorHex || null;
   // Match recolorImage()'s key construction exactly — both sides MUST use
   // resolveHiRes() so callers passing a 1x URL still hit entries inserted
   // under a @2x URL (and vice versa). Asymmetry here means systematic
   // cache misses → raw blue sprite for any path that happens to query the
   // 1x URL while preload populated the cache with the @2x key.
-  const hiResSrc = resolveHiRes(imageSrc);
-  const cacheKey = `${hiResSrc}_${sourceColorRange.minHue}-${
-    sourceColorRange.maxHue
-  }_${targetColorHex}${bodyColorHex ? "_body_" + bodyColorHex : ""}${
-    hitTintRed ? "_hit" : ""
-  }${chargeTintWhite ? "_charge" : ""}${blubberTintPurple ? "_blubber" : ""}${
-    armorTintPink ? "_armor" : ""
-  }`;
-  return getFromCache(cacheKey);
+  return getFromCache(
+    buildRecolorCacheKey(imageSrc, sourceColorRange, targetColorHex, options)
+  );
 }
 
 /**
@@ -981,18 +988,18 @@ export function getCacheStats() {
  * Predefined color options for player customization
  */
 export const COLOR_PRESETS = {
-  graphite: "#525252",
-  cobalt: "#3B5EB0",
-  orchid: "#A85DBF",
-  emerald: "#2E9E5A",
-  teal: "#1A7A8A",
-  tangerine: "#E8913A",
-  coral: "#E87070",
-  gold: "#D4A520",
-  caramel: "#A07348",
-  pewter: "#6E8495",
-  powder: "#88C4D8",
-  scarlet: "#D94848",
+  ink: "#4F4F4F",
+  ivory: "#F0E4C4",
+  crimson: "#DA1B44",
+  amber: "#E98520",
+  gold: "#E6BD37",
+  jade: "#15AC7D",
+  magenta: "#E52E8A",
+  violet: "#A22EE5",
+  cyan: "#1BBADA",
+  wine: "#9E1A3F",
+  // Alias kept for older call sites that still ask for scarlet
+  scarlet: "#DA1B44",
 
   // Special (mawashi-only patterns)
   rainbow: RAINBOW_COLOR,

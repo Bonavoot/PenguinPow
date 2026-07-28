@@ -42,6 +42,8 @@ export const SHAKE_PROFILES = {
   throw_landing:   { trauma: 0.55, punch: 0.0, rot: 0.20 },
   edge_pin:        { trauma: 0.58, punch: 0.0, rot: 0.20 },
   clinch_jolt:     { trauma: 0.58, punch: 0.0, rot: 0.28 },
+  // MATADOR success yank — snappy lateral read, under slap_parry / perfect.
+  matador:         { trauma: 0.56, punch: 0.0, rot: 0.22 },
   grab_clash:      { trauma: 0.62, punch: 0.0, rot: 0.30 },
 
   // ── Heavy "this mattered" moments ──

@@ -378,21 +378,23 @@ const Game = ({
       // Block inputs during power-up selection or when throwing snowball
       if (isPowerUpSelectionActive || cp?.isThrowingSnowball) return;
 
-      // When being grabbed, only allow directional counter-inputs (A, D, S for grab break system)
-      // Allow mouse1 through when in clinch with grip (clinch jolt)
+      // When being grabbed, allow full clinch kit: directions (push/plant),
+      // W + M2 (throw/pull/lift), M1 (jolt), Space (grab break). Block open-game
+      // actions (dash/shift/power-ups). Do NOT gate on hasGrip — grip is
+      // automatic on connect and may lag a packet behind isBeingGrabbed.
+      // ARM CLAMP is enforced server-side.
       if (cp?.isBeingGrabbed) {
-        const inClinchWithGrip = cp?.inClinch && cp?.hasGrip;
         const grabCounterOnly = {
-          w: false,
+          w: gamepadKeyState.w || false,
           a: gamepadKeyState.a || false,
           s: gamepadKeyState.s || false,
           d: gamepadKeyState.d || false,
-          " ": false,
+          " ": gamepadKeyState[" "] || false,
           shift: false,
           e: false,
           f: false,
-          mouse1: inClinchWithGrip ? (gamepadKeyState.mouse1 || false) : false,
-          mouse2: false,
+          mouse1: gamepadKeyState.mouse1 || false,
+          mouse2: gamepadKeyState.mouse2 || false,
         };
         // No events array for grab-counter packets — this is a constrained
         // bypass and the server only reads `keys`. Skipping events here is
@@ -401,8 +403,13 @@ const Game = ({
         return;
       }
 
-      // CLIENT-SIDE PREDICTION for gamepad inputs
-      if (gamepadKeyState.mouse1 && !keyState.mouse1) {
+      // CLIENT-SIDE PREDICTION for gamepad inputs (open game only — clinch M1 is jolt)
+      if (
+        gamepadKeyState.mouse1 &&
+        !keyState.mouse1 &&
+        !cp?.isBeingGrabbed &&
+        !cp?.inClinch
+      ) {
         // Mirror the server's mouse1 branch (charged / low kick / palm / slap).
         if (cp?.facing != null) {
           const forwardKey = cp.facing === -1 ? 'd' : 'a';
@@ -418,7 +425,14 @@ const Game = ({
           applyPrediction("slap");
         }
       }
-      if (gamepadKeyState.mouse2 && !keyState.mouse2) {
+      if (
+        gamepadKeyState.mouse2 &&
+        !keyState.mouse2 &&
+        !cp?.isBeingGrabbed &&
+        !cp?.inClinch &&
+        !cp?.isGrabbing &&
+        !cp?.isGrabStartup
+      ) {
         applyPrediction("grab");
       }
       if (gamepadKeyState.shift && !keyState.shift) {
@@ -429,10 +443,21 @@ const Game = ({
         // Flap replaces raw parry on Space — don't locally predict a parry
         // (and its blue flame) for flap players; flight is server-authoritative.
         if (cp?.activePowerUp !== "flap") {
-          applyPrediction("parry_start");
+          if (cp?.facing != null) {
+            const forwardKey = cp.facing === -1 ? "d" : "a";
+            const backKey = cp.facing === -1 ? "a" : "d";
+            if (gamepadKeyState[backKey] && !gamepadKeyState[forwardKey]) {
+              applyPrediction("matador_start");
+            } else {
+              applyPrediction("parry_start");
+            }
+          } else {
+            applyPrediction("parry_start");
+          }
         }
       }
       if (!gamepadKeyState[" "] && keyState[" "]) {
+        applyPrediction("matador_release");
         applyPrediction("parry_release");
       }
       // ICE PHYSICS: Power slide predictions for gamepad
@@ -465,8 +490,9 @@ const Game = ({
       // Block inputs when current player is throwing snowball
       if (cp?.isThrowingSnowball) return;
 
-      // When being grabbed, allow A/D/S (push/plant) and W (throw backward during clinch)
-      const allowedGrabKeys = ["a", "d", "s", "w"];
+      // When being grabbed, allow clinch keys: A/D/S (push/plant), W (throw
+      // chord), Space (grab break). Other keys stay blocked.
+      const allowedGrabKeys = ["a", "d", "s", "w", " "];
       if (
         cp?.isBeingGrabbed &&
         !allowedGrabKeys.includes(e.key.toLowerCase())
@@ -490,12 +516,21 @@ const Game = ({
             const direction = keyState.a ? -1 : keyState.d ? 1 : null;
             applyPrediction("dash", direction);
           }
-          // Raw parry (spacebar) — skip for flap players (Space takes flight,
-          // which is server-authoritative; predicting a parry would flash the
-          // blue flame mid-flight).
+          // Space: BACK+SPACE → MATADOR, else ATTACK PARRY. Skip for flap
+          // players (Space takes flight — server-authoritative).
           else if (key === " ") {
             if (cp?.activePowerUp !== "flap") {
-              applyPrediction("parry_start");
+              if (cp?.facing != null) {
+                const forwardKey = cp.facing === -1 ? "d" : "a";
+                const backKey = cp.facing === -1 ? "a" : "d";
+                if (keyState[backKey] && !keyState[forwardKey]) {
+                  applyPrediction("matador_start");
+                } else {
+                  applyPrediction("parry_start");
+                }
+              } else {
+                applyPrediction("parry_start");
+              }
             }
           }
         }
@@ -531,6 +566,7 @@ const Game = ({
         // CLIENT-SIDE PREDICTION: Apply predicted state for releases
         if (!inputsBlocked) {
           if (key === " ") {
+            applyPrediction("matador_release");
             applyPrediction("parry_release");
           }
         }
@@ -547,32 +583,35 @@ const Game = ({
       // Block inputs when current player is throwing snowball
       if (cp?.isThrowingSnowball) return;
 
-      // Block Mouse1 (attack) when being grabbed, but allow Mouse2 (grip-up / clinch throws)
-      // Allow Mouse1 through when in clinch with grip (clinch jolt)
-      if (cp?.isBeingGrabbed && e.button === 0 && !(cp?.inClinch && cp?.hasGrip)) return;
-
+      // Being grabbed / in clinch: Mouse1 is clinch jolt (server-gated) — never
+      // an open-game strike. Still accept the key so the jolt request goes out.
+      // Mouse2 is always allowed (belt hold / throw chords).
       if (e.button === 0) {
         e.preventDefault();
         const wasPressed = keyState.mouse1;
         keyState.mouse1 = true;
         if (!wasPressed) pushEvent("mouse1", "down");
-        // Mirror the server's mouse1 branch (see server-io/socketHandlers.js):
-        //   S + forward  → charged attack
-        //   back only    → rooted palm thrust
-        //   otherwise    → slap
-        // (Low kick / S+mouse1 is gated off via LOW_KICK_ENABLED on the server.)
-        if (cp?.facing != null) {
-          const forwardKey = cp.facing === -1 ? 'd' : 'a';
-          const backKey = cp.facing === -1 ? 'a' : 'd';
-          if (keyState.s && keyState[forwardKey]) {
-            applyPrediction("charge_start");
-          } else if (keyState[backKey] && !keyState[forwardKey]) {
-            applyPrediction("palm_thrust");
+        // Skip strike prediction in clinch — M1 is jolt there, and predicting
+        // a slap/charge against the clinch pose causes flicker.
+        if (!cp?.isBeingGrabbed && !cp?.inClinch) {
+          // Mirror the server's mouse1 branch (see server-io/socketHandlers.js):
+          //   S + forward  → charged attack
+          //   back only    → rooted palm thrust
+          //   otherwise    → slap
+          // (Low kick / S+mouse1 is gated off via LOW_KICK_ENABLED on the server.)
+          if (cp?.facing != null) {
+            const forwardKey = cp.facing === -1 ? 'd' : 'a';
+            const backKey = cp.facing === -1 ? 'a' : 'd';
+            if (keyState.s && keyState[forwardKey]) {
+              applyPrediction("charge_start");
+            } else if (keyState[backKey] && !keyState[forwardKey]) {
+              applyPrediction("palm_thrust");
+            } else {
+              applyPrediction("slap");
+            }
           } else {
             applyPrediction("slap");
           }
-        } else {
-          applyPrediction("slap");
         }
         scheduleEmit();
       } else if (e.button === 2) {
@@ -581,7 +620,16 @@ const Game = ({
         keyState.mouse2 = true;
         if (!wasPressed) pushEvent("mouse2", "down");
 
-        if (!wasPressed && !cp?.isBeingGrabbed) {
+        // Don't predict an open-game grab while already clinching / grabbing —
+        // M2 is belt-hold / throw chord there. canPredictAction also rejects
+        // this, but skip the call so we don't even attempt a grab pose flash.
+        if (
+          !wasPressed &&
+          !cp?.isBeingGrabbed &&
+          !cp?.inClinch &&
+          !cp?.isGrabbing &&
+          !cp?.isGrabStartup
+        ) {
           applyPrediction("grab");
         }
 

@@ -17,7 +17,7 @@ const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
         FLAP_IMPULSE, FLAP_FLAP_H_IMPULSE, FLAP_CHARGE_COOLDOWN_MS, FLAP_STAMINA_COST,
         SLAP_TOTAL_MS, CADENCE_WINDOW_MS,
         CPU_CADENCE_EASY, CPU_CADENCE_NORMAL, CPU_CADENCE_HARD, CPU_CADENCE_IMPOSSIBLE,
-        BALANCE_MAX } = require("./constants");
+        BALANCE_MAX, GRAB_BREAK_REACTION_LOCK_MS } = require("./constants");
 const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
         canPlayerSidestep, getSidestepInitData, simNowForPlayer,
         logVerbInitiation, beginFlapStartup, beginPlayerDodge,
@@ -33,10 +33,11 @@ const MAP_RIGHT_BOUNDARY = 940;
 const MAP_CENTER = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
 const MAP_WIDTH = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
 
-// ── PARRY LAB (TEMP) ─────────────────────────────────────────────────────────
-// When true, Easy VS CPU is a slap-only dummy with infinite posture so you can
-// isolate Attack Parry feel. Flip to false to restore normal Easy behavior.
-const EASY_SLAP_PARRY_DUMMY = true;
+// ── TRAINING LAB (TEMP) ──────────────────────────────────────────────────────
+// When true, Easy VS CPU is a grab-only dummy with infinite posture so you can
+// isolate MATADOR feel. Flip to false to restore normal Easy behavior.
+// (Was slap-only for Attack Parry lab — same pattern, grab verb instead.)
+const EASY_GRAB_MATADOR_DUMMY = true;
 
 // AI Configuration - Tuned for expert sumo gameplay
 const AI_CONFIG = {
@@ -358,39 +359,120 @@ const DIFFICULTY_PROFILES = {
 
 // Cache resolved profiles so we don't rebuild the object every tick.
 const _diffCache = {};
-function isEasySlapParryDummy() {
-  return EASY_SLAP_PARRY_DUMMY && DIFF_KEY === "EASY";
+function isEasyGrabMatadorDummy() {
+  return EASY_GRAB_MATADOR_DUMMY && DIFF_KEY === "EASY";
 }
 
-// Slap-only + infinite posture training dummy (Easy only, gated by flag above).
-function runEasySlapParryDummy(cpu, human, aiState, currentTime, distance) {
+function topUpEasyGrabDummy(cpu) {
   cpu.balance = BALANCE_MAX;
-  if (typeof cpu.stamina === "number" && cpu.stamina < 90) cpu.stamina = 90;
+  cpu.stamina = 100;
+  cpu.isGassed = false;
+}
 
-  // Never defend / grab / charge — offense is slap strings only.
+// Kill Phase A / manual push immediately — lab dummy must never shove the player.
+function cancelEasyGrabDummyPush(cpu, human) {
+  cpu.isGrabPushing = false;
+  cpu.isGrabWalking = false;
+  cpu.isEdgePushing = false;
+  cpu.isAtBoundaryDuringGrab = false;
+  cpu.grabPushStartTime = 0;
+  cpu.grabApproachSpeed = 0;
+  cpu.clinchAction = "neutral";
+  if (human) {
+    human.isBeingGrabPushed = false;
+    human.isBeingEdgePushed = false;
+  }
+}
+
+// If a grab connects, dump the clinch ASAP (no throw/pull/lift/push).
+function runEasyGrabDummyClinchEscape(cpu, human, aiState, currentTime) {
+  topUpEasyGrabDummy(cpu);
+  resetAllKeys(cpu);
+  cancelEasyGrabDummyPush(cpu, human);
+
+  // No clinch verbs — clear any pending throw/pull/lift intent.
+  cpu.clinchThrowRequest = null;
+  cpu.clinchJoltRequest = false;
+  aiState.clinchThrowPending = null;
+  aiState.clinchThrowExecuteTime = 0;
+  aiState.clinchPushPlantDecision = null;
+
+  // Reaction lock (~230ms) must expire before break is accepted.
+  const gripAt = cpu.gripAcquiredTime || 0;
+  if (gripAt && currentTime - gripAt < GRAB_BREAK_REACTION_LOCK_MS) {
+    aiState.lastActionType = "grab_dummy_wait_break_lock";
+    return;
+  }
+
+  if (
+    cpu.hasGrip &&
+    human &&
+    human.hasGrip &&
+    !cpu.clinchBreakRequest &&
+    !cpu.isGrabBreaking &&
+    !cpu.isGrabBreakCountered &&
+    !cpu.isGrabBreakSeparating
+  ) {
+    cpu.clinchBreakRequest = true;
+    cpu.clinchBreakRequestTime = currentTime;
+    aiState.lastActionType = "grab_dummy_break";
+  }
+}
+
+// Grab-only + infinite resources training dummy (Easy only, gated by flag above).
+// Walks in and spam-grabs so you can lab MATADOR. No slap / parry / dodge / charge.
+// On connect: never push / never clinch actions — grab-break ASAP.
+function runEasyGrabMatadorDummy(cpu, human, aiState, currentTime, distance) {
+  topUpEasyGrabDummy(cpu);
+
+  // Never defend / slap / charge — offense is open-game grabs only.
   cpu.palmThrustQueued = false;
   aiState.pendingParry = false;
   aiState.parryReleaseTime = 0;
   aiState.reactionTarget = null;
+  aiState.commitAction = null;
+  aiState.commitCount = 0;
 
-  // Keep a permanent slap-burst commitment so follow-ups keep coming.
-  if (aiState.commitAction !== "slap_burst" || aiState.commitCount < 2) {
-    startCommitment(aiState, "slap_burst", 99, currentTime);
-  } else {
-    // Refresh the deadline so the burst never times out mid-test.
-    aiState.commitUntil = currentTime + 30000;
-  }
-
-  if (handleCommitment(cpu, human, aiState, currentTime, distance)) {
+  // Grab connected → dump clinch immediately (no push / throw / pull / lift).
+  if (
+    cpu.inClinch ||
+    cpu.isGrabbing ||
+    cpu.isBeingGrabbed ||
+    (human && human.inClinch)
+  ) {
+    runEasyGrabDummyClinchEscape(cpu, human, aiState, currentTime);
     return;
   }
 
-  // Out of slap range — walk in. No other verbs.
+  // Already lunging — let the grab attempt play out.
+  if (cpu.isGrabStartup || cpu.isGrabbingMovement) {
+    aiState.lastActionType = "grab_dummy_lunge";
+    return;
+  }
+
   resetAllKeys(cpu);
+
+  // In range + can grab → Mouse2 rising edge (processed later as beginGrabStartup).
+  // Intentionally ignores "good opportunity" / raw-parry skips — the whole point
+  // is to keep throwing grabs at the player for MATADOR reads.
+  if (
+    canGrab(cpu) &&
+    isOpponentGrabbable(human) &&
+    isFacingOpponent(cpu, human) &&
+    isAtGrabRange(cpu, human)
+  ) {
+    cpu.keys.mouse2 = true;
+    aiState.mouse2ReleaseTime = currentTime + 50;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "grab_dummy_grab";
+    return;
+  }
+
+  // Out of grab range — walk in. No other verbs.
   const dir = getDirectionToOpponent(cpu, human);
   if (dir === 1) cpu.keys.d = true;
   else if (dir === -1) cpu.keys.a = true;
-  aiState.lastActionType = "slap_dummy_approach";
+  aiState.lastActionType = "grab_dummy_approach";
 }
 
 function resolveDifficulty(difficulty) {
@@ -1277,9 +1359,9 @@ function updateCPUAI(cpu, human, room, currentTime) {
       ? room.cpuDifficulty
       : "HARD";
   }
-  // Parry lab: keep Easy dummy posture topped every tick (even on early returns).
-  if (isEasySlapParryDummy()) {
-    cpu.balance = BALANCE_MAX;
+  // Matador lab: keep Easy dummy resources topped every tick (even on early returns).
+  if (isEasyGrabMatadorDummy()) {
+    topUpEasyGrabDummy(cpu);
   }
   // Resolve this CPU's personality archetype (BASHO rival roster). Non-BASHO
   // CPUs have no archetype → `balanced` → legacy behavior.
@@ -1362,9 +1444,10 @@ function updateCPUAI(cpu, human, room, currentTime) {
   // Handle pending key releases
   handlePendingKeyReleases(cpu, aiState, currentTime);
 
-  // Parry lab: Easy = slap-only dummy (no grab/parry/dodge/charge).
-  if (isEasySlapParryDummy()) {
-    runEasySlapParryDummy(cpu, human, aiState, currentTime, distance);
+  // Matador lab: Easy = grab-only dummy (no slap/parry/dodge/charge).
+  // Clinch connect → instant grab-break path inside the dummy (never push/throw).
+  if (isEasyGrabMatadorDummy()) {
+    runEasyGrabMatadorDummy(cpu, human, aiState, currentTime, distance);
     return;
   }
 
@@ -1694,10 +1777,15 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
     return;
   }
 
-  // During burst push as grabber: let the auto-push ride (good for positioning).
+  // During burst push as grabber: let the short auto-shove ride.
   // ARM CLAMP exception: victim can't tech — allow throw/pull/lift conversion
   // mid-burst (mirrors human input; cancels Phase A the same way).
   if (cpu.isGrabPushing && !opponent.isArmClamped) {
+    return;
+  }
+
+  // ARM CLAMP: locked out of clinch actions for the punish burst (mirrors human).
+  if (cpu.isArmClamped) {
     return;
   }
 
@@ -1711,30 +1799,8 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   const cpuNearestEdge = Math.min(cpuDistLeft, cpuDistRight);
   const oppNearestEdge = Math.min(oppDistLeft, oppDistRight);
 
-  // --- GRIP UP (human-like delay before gripping) ---
-  // Higher tiers grip up faster (gripUpMult < 1) so they reach mutual grip and
-  // can plant/break BEFORE the opponent can throw them out of a fresh grab.
-  if (!cpu.hasGrip && cpu.inClinch) {
-    if (!aiState.clinchGripUpTime) {
-      // CS.gripUpMult: grappler grips up fast (0.7), counter a touch slower (1.1).
-      aiState.clinchGripUpTime = currentTime + randomInRange(
-        AI_CONFIG.CLINCH_GRIP_UP_DELAY_MIN * DIFF.gripUpMult * CS.gripUpMult,
-        AI_CONFIG.CLINCH_GRIP_UP_DELAY_MAX * DIFF.gripUpMult * CS.gripUpMult
-      );
-    }
-    // ARM CLAMP (counter-grab): the CPU can't grip up while clamped — the grip
-    // is granted automatically when the clamp releases (grabActionSystem).
-    // Mirrors the human gate in socketHandlers.
-    if (currentTime >= aiState.clinchGripUpTime && !cpu.isArmClamped) {
-      cpu.hasGrip = true;
-      cpu.clinchAction = "neutral";
-      cpu.gripAcquiredTime = currentTime;
-      aiState.clinchGripUpTime = 0;
-    }
-    return;
-  }
-
   // --- THROW / PULL / LIFT DECISION ---
+  // Grip is automatic on clinch connect — no grip-up delay.
   const opponentBalance = opponent.balance;
   const cpuBalance = cpu.balance;
   const cpuStamina = cpu.stamina;
@@ -1776,7 +1842,8 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
     !cpu.clinchThrowFailStagger &&
     !cpu.isResistingThrow && !cpu.isResistingPull && !cpu.isBeingLifted &&
     !cpu.clinchBreakRequest && !cpu.isGrabBreaking && !cpu.isGrabBreakCountered &&
-    !cpu.isGrabBreakSeparating
+    !cpu.isGrabBreakSeparating &&
+    (!cpu.gripAcquiredTime || currentTime - cpu.gripAcquiredTime >= GRAB_BREAK_REACTION_LOCK_MS)
   ) {
     if (currentTime - (aiState.lastClinchBreakCheck || 0) > 450) {
       aiState.lastClinchBreakCheck = currentTime;

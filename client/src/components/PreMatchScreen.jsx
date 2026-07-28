@@ -616,7 +616,7 @@ const SPECIAL_REPRESENTATIVE_COLORS = {
   vaporwave: "#DA70D6",
   camo: "#556B2F",
   galaxy: "#6A0DAD",
-  gold: "#D4A520",
+  gold: "#E6BD37",
 };
 
 const resolveAccentColor = (color) => {
@@ -689,7 +689,7 @@ const PreMatchScreen = ({
   player1Name = "Player 1",
   player2Name = "Player 2",
   player1Color = SPRITE_BASE_COLOR,
-  player2Color = "#D94848",
+  player2Color = "#DA1B44",
   player1BodyColor = null,
   player2BodyColor = null,
   player1GearIds = null,

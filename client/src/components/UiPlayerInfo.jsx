@@ -1296,7 +1296,7 @@ const YouLabel = styled.div`
   /* Cancel trailing tracking so the glyph cluster doesn't look right-heavy. */
   margin-inline-end: -0.16em;
   line-height: 1;
-  -webkit-text-stroke: clamp(0.5px, 0.06cqw, 0.9px) rgba(0, 0, 0, 0.9);
+  -webkit-text-stroke: clamp(0.15px, 0.02cqw, 0.3px) rgba(0, 0, 0, 0.8);
   text-shadow:
     1px 0 0 #000,
     -1px 0 0 #000,

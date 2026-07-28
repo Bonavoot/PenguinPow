@@ -88,6 +88,8 @@ import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
 import teWoTsuiteSound from "../sounds/tewotsuite.ogg";
 import bellSound from "../sounds/bell-sound.mp3";
 import battleMusic from "../sounds/battle-music-sound.wav";
+import battleMusic2 from "../sounds/battle-music-sound-2.wav";
+import battleMusic3 from "../sounds/battle-music-sound-3.wav";
 import eeshiMusic from "../sounds/eeshi.ogg";
 import slapParrySound from "../sounds/slap-parry-sound.mp3";
 import saltSound from "../sounds/salt-sound.mp3";
@@ -134,7 +136,7 @@ import rawParry03 from "../sounds/raw-parry-03.ogg";
 import chargeAttackLaunchSound from "../sounds/charge-attack-launch-sound.ogg";
 import gunLaunchSound from "../sounds/gun-launch.ogg";
 
-const battleMusicTracks = [battleMusic, battleMusic];
+const battleMusicTracks = [battleMusic, battleMusic2, battleMusic3];
 
 // ============================================
 // PRELOAD-ONLY IMPORTS (not exported — consumed internally by preloading)

@@ -497,6 +497,8 @@ export function processImageData(
       isColorInHslRange(pixelHsl.h, pixelHsl.s, pixelHsl.l, bodyColorRange)
     ) {
       // --- Body (grey plumage) — skip thin lines (outlines, eyes, hair details) ---
+      // Do NOT widen this to dark greys (L < 25): topknot fill is ~#2A2A2A and
+      // would recolor with the body (yellow/cream hair).
       const pidx = i / 4;
       const px = pidx % width;
       const py = (pidx / width) | 0;

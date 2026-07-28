@@ -12,14 +12,16 @@ import { SPRITE_BASE_COLOR } from "../utils/SpriteRecolorizer";
 
 export const BELT_SOLIDS = [
   { name: "Default", hex: SPRITE_BASE_COLOR },
-  { name: "Graphite", hex: "#525252" },
-  { name: "Scarlet", hex: "#D94848" },
-  { name: "Coral", hex: "#E87070" },
-  { name: "Tangerine", hex: "#E8913A" },
-  { name: "Gold", hex: "#D4A520" },
-  { name: "Emerald", hex: "#2E9E5A" },
-  { name: "Cobalt", hex: "#3B5EB0" },
-  { name: "Orchid", hex: "#A85DBF" },
+  { name: "Ink", hex: "#4F4F4F" },
+  { name: "Ivory", hex: "#F0E4C4" },
+  { name: "Crimson", hex: "#DA1B44" },
+  { name: "Amber", hex: "#E98520" },
+  { name: "Gold", hex: "#E6BD37" },
+  { name: "Jade", hex: "#15AC7D" },
+  { name: "Magenta", hex: "#E52E8A" },
+  { name: "Violet", hex: "#A22EE5" },
+  { name: "Cyan", hex: "#1BBADA" },
+  { name: "Wine", hex: "#9E1A3F" },
 ];
 
 export const BELT_PATTERNS = [
@@ -65,7 +67,7 @@ export const BODY_COLORS = [
     hex: null,
     gradient: "linear-gradient(135deg, #888 0%, #aaa 50%, #888 100%)",
   },
-  { name: "Black", hex: "#4d4d4d" },
+  { name: "Black", hex: "#4A4A4A" },
   { name: "Blue", hex: "#2656A8" },
   { name: "Purple", hex: "#9932CC" },
   { name: "Green", hex: "#32CD32" },
@@ -75,6 +77,8 @@ export const BODY_COLORS = [
   { name: "Yellow", hex: "#F5C422" },
   { name: "Brown", hex: "#8B5E3C" },
   { name: "Silver", hex: "#A8A8A8" },
+  { name: "White", hex: "#F2F2F2" },
+  { name: "Cream", hex: "#C6B495" },
   { name: "Light Blue", hex: "#6ABED0" },
   { name: "Red", hex: "#CC3333" },
 ];

@@ -66,6 +66,13 @@ function cleanupPlayerStates(player) {
   player.apSpaceConsumed = false;
   player.isApPostParryLocked = false;
   player.apPostParryLockUntil = 0;
+  player.isMatadorParrying = false;
+  player.isMatadorSuccess = false;
+  player.matadorStartTime = 0;
+  player.matadorActiveUntil = 0;
+  player.matadorSuccessUntil = 0;
+  player.isMatadorWhiffRecovering = false;
+  player.matadorRecoveryUntil = 0;
   player.isRawParryStun = false;
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
@@ -317,6 +324,8 @@ function getCleanedRoomsData(rooms) {
             balance: 100,
             hasGrip: false,
             gripAcquiredTime: 0,
+            isClinchBeltHolding: false,
+            clinchBeltRequiresM2Release: false,
             inClinch: false,
             clinchAction: null,
             isClinchPushing: false,

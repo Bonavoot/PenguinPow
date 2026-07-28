@@ -701,6 +701,19 @@
         "h": 960
       },
       "widthPct": 0.24
+    },
+    "sliding": {
+      "overlay": "overlays/crown-sliding.png",
+      "attach": {
+        "x": 631.7,
+        "y": 322.9,
+        "rotationDeg": 32
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.24
     }
   },
   "top_hat": {
@@ -1061,6 +1074,19 @@
         "x": 522.5,
         "y": 275.6,
         "rotationDeg": -2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.44
+    },
+    "sliding": {
+      "overlay": "overlays/hat-sliding.png",
+      "attach": {
+        "x": 529.7,
+        "y": 369.9,
+        "rotationDeg": 0
       },
       "canvas": {
         "w": 960,
@@ -1433,6 +1459,19 @@
         "h": 960
       },
       "widthPct": 0.4
+    },
+    "sliding": {
+      "overlay": "overlays/halo-sliding.png",
+      "attach": {
+        "x": 540.7,
+        "y": 270.9,
+        "rotationDeg": 0
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
     }
   },
   "plunger": {
@@ -1792,6 +1831,19 @@
       "attach": {
         "x": 610.5,
         "y": 269.6,
+        "rotationDeg": 37
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.22
+    },
+    "sliding": {
+      "overlay": "overlays/plunger-sliding.png",
+      "attach": {
+        "x": 618.7,
+        "y": 364.9,
         "rotationDeg": 37
       },
       "canvas": {

@@ -132,13 +132,31 @@ export function ParticleProvider({ children, behindCanvasRef }) {
     engineRef.current?.clearRawParryBlueHoldParticles();
   }, []);
 
+  const clearMatadorGoldHold = useCallback(() => {
+    engineRef.current?.clearMatadorGoldHoldParticles();
+  }, []);
+
   const clearPalmThrust = useCallback((owner) => {
     engineRef.current?.clearPalmThrustParticles(owner);
   }, []);
 
   const value = useMemo(
-    () => ({ emit, setFrozen, setAccent, clearRawParryBlueHold, clearPalmThrust }),
-    [emit, setFrozen, setAccent, clearRawParryBlueHold, clearPalmThrust]
+    () => ({
+      emit,
+      setFrozen,
+      setAccent,
+      clearRawParryBlueHold,
+      clearMatadorGoldHold,
+      clearPalmThrust,
+    }),
+    [
+      emit,
+      setFrozen,
+      setAccent,
+      clearRawParryBlueHold,
+      clearMatadorGoldHold,
+      clearPalmThrust,
+    ]
   );
 
   return (
@@ -191,6 +209,7 @@ const noopCtx = {
   setFrozen: () => {},
   setAccent: () => {},
   clearRawParryBlueHold: () => {},
+  clearMatadorGoldHold: () => {},
   clearPalmThrust: () => {},
 };
 

@@ -132,6 +132,8 @@ const BLOCKING_FLAGS = [
   "isBeingEdgePushed",
   "inClinch",
   "hasGrip",
+  "isClinchBeltHolding",
+  "clinchBeltRequiresM2Release",
   "isBeingLifted",
   "isClinchThrowing",
   "isClinchClashing",

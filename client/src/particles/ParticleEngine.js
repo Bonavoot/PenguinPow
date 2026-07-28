@@ -566,9 +566,9 @@ function createBluePuff(size, seed) {
   return c;
 }
 
-// Perfect raw parry — same blob recipe as blue parry smoke, biased to shiny
-// yellow metal (lemon / chartreuse gold) rather than orange flame.
-function createGoldPuff(size, seed) {
+// MATADOR plume — same blob recipe as AP blue, luminous tangerine/orange.
+// Loud like the blue plumes, but clear of CLAMP magenta and AP ice-blue.
+function createMatadorPuff(size, seed) {
   const c = document.createElement("canvas");
   c.width = size;
   c.height = size;
@@ -588,12 +588,11 @@ function createGoldPuff(size, seed) {
     const br = size * (0.18 + srand() * 0.18);
 
     const grad = ctx.createRadialGradient(bx, by, 0, bx, by, br);
-    grad.addColorStop(0, "rgba(255,255,250,0.98)");
-    grad.addColorStop(0.28, "rgba(255,252,200,0.96)");
-    grad.addColorStop(0.48, "rgba(255,240,120,0.92)");
-    grad.addColorStop(0.68, "rgba(245,215,60,0.78)");
-    grad.addColorStop(0.88, "rgba(215,175,35,0.45)");
-    grad.addColorStop(1, "rgba(190,160,40,0)");
+    grad.addColorStop(0, "rgba(255,230,160,0.98)");
+    grad.addColorStop(0.35, "rgba(255,150,40,0.95)");
+    grad.addColorStop(0.62, "rgba(255,90,20,0.78)");
+    grad.addColorStop(0.85, "rgba(200,50,0,0.4)");
+    grad.addColorStop(1, "rgba(120,30,0,0)");
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(bx, by, br, 0, Math.PI * 2);
@@ -1672,10 +1671,12 @@ function generateTextures(s) {
     circleBlue: createChunk(r(24), 80, 160, 255, 0.9),
     chunkBlue: createChunk(r(12), 100, 180, 255, 0.85),
 
-    goldPuff1: createGoldPuff(r(96), 3141),
-    goldPuff2: createGoldPuff(r(96), 5926),
-    goldPuff3: createGoldPuff(r(96), 7182),
-    goldPuff4: createGoldPuff(r(112), 8453),
+    matadorPuff1: createMatadorPuff(r(96), 3141),
+    matadorPuff2: createMatadorPuff(r(96), 5926),
+    matadorPuff3: createMatadorPuff(r(96), 7182),
+    matadorPuff4: createMatadorPuff(r(112), 8453),
+    circleMatador: createChunk(r(24), 255, 160, 50, 0.95),
+    chunkMatador: createChunk(r(12), 255, 120, 30, 0.92),
     circleGold: createChunk(r(24), 255, 248, 150, 0.95),
     chunkGold: createChunk(r(12), 255, 238, 110, 0.92),
 
@@ -1809,8 +1810,8 @@ function pickSmallPuff(textures) {
 function pickBluePuff(textures) {
   return pick([textures.bluePuff1, textures.bluePuff2, textures.bluePuff3, textures.bluePuff4]);
 }
-function pickGoldPuff(textures) {
-  return pick([textures.goldPuff1, textures.goldPuff2, textures.goldPuff3, textures.goldPuff4]);
+function pickMatadorPuff(textures) {
+  return pick([textures.matadorPuff1, textures.matadorPuff2, textures.matadorPuff3, textures.matadorPuff4]);
 }
 
 const HIT_CORE_TEXTURES = {
@@ -4488,6 +4489,206 @@ const PRESETS = {
     }
   },
 
+  // MATADOR activation — same plume recipe as regular AP, orange tint.
+  matadorActivation(engine, { x, y, facing }) {
+    const dir = facing || 1;
+    const bodyX = x + dir * 10;
+    const footY = GAME_H - y - 12;
+    const midY = GAME_H - y - 65;
+
+    // Rising smoke from left and right sides — 5 per side
+    for (let i = 0; i < 10; i++) {
+      const side = i < 5 ? -1 : 1;
+      const spawnX = bodyX + side * rand(30, 58);
+      const spawnY = rand(midY + 15, footY);
+      const size = rand(18, 32);
+      engine.spawn({
+        x: spawnX,
+        y: spawnY,
+        vx: side * rand(15, 45) + rand(-8, 8),
+        vy: rand(-160, -70),
+        gravity: rand(-20, -8),
+        drag: 0.95,
+        size,
+        sizeEnd: size * rand(0.5, 0.8),
+        alpha: rand(0.55, 0.75),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-1, 1),
+        maxLife: rand(0.4, 0.6),
+        texture: pickMatadorPuff(engine.textures),
+        blendMode: "lighter",
+        matadorGoldHold: true,
+      });
+    }
+
+    // Shoulder/head smoke — spawns at the top of the character, spread wide
+    const headY = GAME_H - y - 105;
+    for (let i = 0; i < 5; i++) {
+      const spawnX = bodyX + rand(-60, 60);
+      const spawnY = rand(headY - 5, headY + 15);
+      const size = rand(18, 30);
+      engine.spawn({
+        x: spawnX,
+        y: spawnY,
+        vx: rand(-18, 18),
+        vy: rand(-140, -50),
+        gravity: rand(-20, -8),
+        drag: 0.95,
+        size,
+        sizeEnd: size * rand(0.5, 0.8),
+        alpha: rand(0.5, 0.7),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-1, 1),
+        maxLife: rand(0.45, 0.65),
+        texture: pickMatadorPuff(engine.textures),
+        blendMode: "lighter",
+        matadorGoldHold: true,
+      });
+    }
+
+    // Orange sparks rising from body area
+    for (let i = 0; i < 6; i++) {
+      const side = i < 3 ? -1 : 1;
+      engine.spawn({
+        x: bodyX + side * rand(20, 50),
+        y: rand(midY, footY),
+        vx: side * rand(20, 60),
+        vy: rand(-200, -80),
+        gravity: -15,
+        drag: 0.95,
+        size: rand(3, 5),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.8, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-4, 4),
+        maxLife: rand(0.2, 0.35),
+        texture: pick([engine.textures.circleMatador, engine.textures.circle]),
+        blendMode: "lighter",
+        matadorGoldHold: true,
+      });
+    }
+
+    // Ground dust at feet
+    for (let i = 0; i < 3; i++) {
+      const side = i === 0 ? -1 : i === 1 ? 1 : (Math.random() > 0.5 ? 1 : -1);
+      const size = rand(18, 28);
+      engine.spawn({
+        x: bodyX + side * rand(8, 35),
+        y: footY,
+        vx: side * rand(40, 80),
+        vy: rand(-10, -3),
+        gravity: 15,
+        drag: 0.9,
+        size,
+        sizeEnd: size * rand(0.3, 0.5),
+        alpha: rand(0.5, 0.7),
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "inQuad",
+        rotationSpeed: rand(-1, 1),
+        maxLife: rand(0.2, 0.3),
+        texture: pickMatadorPuff(engine.textures),
+        matadorGoldHold: true,
+      });
+    }
+  },
+
+  // Parry stance — rising orange smoke from both sides of the character.
+  // MATADOR stance — same ongoing motes as regular AP, orange tint.
+  matadorStance(engine, { x, y, facing, intensity = 0.5 }) {
+    const dir = facing || 1;
+    const bodyX = x + dir * 10;
+    const footY = GAME_H - y - 12;
+    const midY = GAME_H - y - 65;
+
+    // Rising smoke — explicitly from left AND right sides
+    const perSide = intensity > 0.7 ? 3 : 2;
+    for (let s = -1; s <= 1; s += 2) {
+      for (let i = 0; i < perSide; i++) {
+        const spawnX = bodyX + s * rand(28, 55);
+        const spawnY = rand(midY + 10, footY);
+        const size = rand(14, 24) * intensity + 6;
+        engine.spawn({
+          x: spawnX,
+          y: spawnY,
+          vx: s * rand(5, 22) + rand(-6, 6),
+          vy: rand(-110, -45),
+          gravity: rand(-15, -5),
+          drag: 0.96,
+          size,
+          sizeEnd: size * rand(0.5, 0.8),
+          alpha: rand(0.4, 0.6) * intensity,
+          alphaEnd: 0,
+          ease: "outCubic",
+          easeAlpha: "outQuad",
+          rotationSpeed: rand(-0.8, 0.8),
+          maxLife: rand(0.5, 0.8),
+          texture: pickMatadorPuff(engine.textures),
+          blendMode: "lighter",
+          matadorGoldHold: true,
+        });
+      }
+    }
+
+    // Shoulder/head smoke — spawns at the top, spread wide to the sides
+    const headY = GAME_H - y - 105;
+    const topCount = intensity > 0.7 ? 4 : 3;
+    for (let i = 0; i < topCount; i++) {
+      const spawnX = bodyX + rand(-60, 60);
+      const spawnY = rand(headY - 5, headY + 20);
+      const size = rand(16, 26) * intensity + 6;
+      engine.spawn({
+        x: spawnX,
+        y: spawnY,
+        vx: rand(-25, 25),
+        vy: rand(-90, -35),
+        gravity: rand(-15, -6),
+        drag: 0.96,
+        size,
+        sizeEnd: size * rand(0.5, 0.8),
+        alpha: rand(0.35, 0.55) * intensity,
+        alphaEnd: 0,
+        ease: "outCubic",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-0.8, 0.8),
+        maxLife: rand(0.5, 0.8),
+        texture: pickMatadorPuff(engine.textures),
+        blendMode: "lighter",
+        matadorGoldHold: true,
+      });
+    }
+
+    // Occasional rising spark from either side
+    if (Math.random() < 0.5 * intensity) {
+      const s = Math.random() > 0.5 ? 1 : -1;
+      engine.spawn({
+        x: bodyX + s * rand(25, 50),
+        y: rand(midY, footY),
+        vx: s * rand(10, 30),
+        vy: rand(-90, -40),
+        gravity: -10,
+        drag: 0.96,
+        size: rand(2, 4),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.6, 0.85) * intensity,
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: rand(-2, 2),
+        maxLife: rand(0.25, 0.4),
+        texture: pick([engine.textures.circleMatador, engine.textures.chunkMatador]),
+        blendMode: "lighter",
+        matadorGoldHold: true,
+      });
+    }
+  },
+
   // Perfect parry — tight electric-cyan spark ejecta at the body (not a gold
   // flame cloud). Short-lived additive shards + a few bright motes so the
   // clash reads as a steel spark, under the cinematic-kill particle budget.
@@ -5333,6 +5534,8 @@ class Particle {
     this.lastFollowY = 0;
     /** Cleared instantly when a perfect raw parry fires so gold burst isn't mixed with hold-VFX blues. */
     this.rawParryBlueHold = false;
+    /** MATADOR amber hold plume — cleared when the window ends / success fires. */
+    this.matadorGoldHold = false;
     // Optional animated sprite sheet. When `sheet` is set, the renderer steps
     // through frames [sheetStart..sheetEnd] of the grid over the particle's life
     // instead of drawing a static `texture`.
@@ -5425,6 +5628,13 @@ export class ParticleEngine {
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
       if (p.active && p.rawParryBlueHold) p.active = false;
+    }
+  }
+
+  clearMatadorGoldHoldParticles() {
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+      if (p.active && p.matadorGoldHold) p.active = false;
     }
   }
 
@@ -5523,6 +5733,7 @@ export class ParticleEngine {
       p.lastFollowY = 0;
     }
     p.rawParryBlueHold = cfg.rawParryBlueHold ?? false;
+    p.matadorGoldHold = cfg.matadorGoldHold ?? false;
     p.palmThrustFx = cfg.palmThrustFx ?? false;
     p.palmThrustOwner = cfg.palmThrustOwner ?? null;
     p.sheet = cfg.sheet ?? null;

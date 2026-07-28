@@ -19,14 +19,15 @@ const { deriveBashoDraft, normalizeBashoDraftList } = require("./bashoDraft");
 const { deriveStatMods } = require("./bashoStatMods");
 
 const LOBBY_COLORS = [
-  "#4169E1", "#525252", "#3B5EB0", "#A85DBF", "#2E9E5A", "#1A7A8A", "#E8913A",
-  "#E87070", "#D4A520", "#A07348", "#6E8495", "#88C4D8", "#D94848",
+  "#4169E1", "#4F4F4F", "#F0E4C4", "#DA1B44", "#E98520", "#E6BD37",
+  "#15AC7D", "#E52E8A", "#A22EE5", "#1BBADA", "#9E1A3F",
   "rainbow", "fire", "vaporwave", "camo", "galaxy", "gold",
 ];
 
 const LOBBY_BODY_COLORS = [
-  null, "#4d4d4d", "#2656A8", "#9932CC", "#32CD32", "#17A8A0", "#E27020",
-  "#FFB6C1", "#F5C422", "#8B5E3C", "#A8A8A8", "#6ABED0", "#CC3333",
+  null, "#4A4A4A", "#2656A8", "#9932CC", "#32CD32", "#17A8A0", "#E27020",
+  "#FFB6C1", "#F5C422", "#8B5E3C", "#A8A8A8", "#F2F2F2", "#C6B495",
+  "#6ABED0", "#CC3333",
 ];
 
 function createCPUPlayer(uniqueId, overrides = {}) {
@@ -348,6 +349,13 @@ function resetRoomAndPlayers(room, io) {
     player.apSpaceConsumed = false;
     player.isApPostParryLocked = false;
     player.apPostParryLockUntil = 0;
+    player.isMatadorParrying = false;
+    player.isMatadorSuccess = false;
+    player.matadorStartTime = 0;
+    player.matadorActiveUntil = 0;
+    player.matadorSuccessUntil = 0;
+    player.isMatadorWhiffRecovering = false;
+    player.matadorRecoveryUntil = 0;
     player.rawParryStartTime = 0;
     player.rawParryMinDurationMet = false;
     player.isRawParryStun = false;

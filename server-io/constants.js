@@ -34,6 +34,8 @@ const DELTA_TRACKED_PROPS = [
   'isRawParrying', 'isGuarding', 'isRawParryStun', 'isRawParrySuccess', 'isPerfectRawParrySuccess',
   'isApPostParryLocked',
   'isApWhiffRecovering',
+  // MATADOR (BACK+SPACE grab-parry): separate from AP so grabs don't CLAMP it.
+  'isMatadorParrying', 'isMatadorSuccess', 'isMatadorWhiffRecovering',
   'isThrowing', 'isBeingThrown', 'isThrowTeching', 'isBeingPulled', 'isBeingPushed',
   'isThrowingSalt', 'isReady', 'isBowing', 'isAtTheRopes',
   'isThrowingSnowball', 'isSpawningPumoArmy',
@@ -59,6 +61,11 @@ const DELTA_TRACKED_PROPS = [
   'isSlapParryRecovering',
   'isHitFalling', 'isSidestepHitReturn',
   'inClinch', 'hasGrip', 'clinchAction',
+  // Holding M2 (or mid throw/lift) → arms on belt; otherwise body-hold pose.
+  'isClinchBeltHolding',
+  // True until M2 is released after grab connect — blocks belt pose on the
+  // same hold that started the grab (body hold is the connect default).
+  'clinchBeltRequiresM2Release',
   'isBeingLifted', 'isClinchThrowing', 'isClinchClashing',
   'isClinchLifting', 'isClinchPushing', 'isClinchPlanting',
   'isResistingThrow', 'isResistingPull',
@@ -239,6 +246,14 @@ const SLAP_COUNTER_HIT_BONUS_MS = 35;   // Flat hitstun bonus — the earned tem
 const SLAP_COUNTER_KB_MULT = 1.25;      // Victim drift multiplier on counter (extra ground)
 // Safety floor for the dynamically computed hitstun (see processHit).
 const SLAP_MIN_HITSTUN_MS = 60;
+
+// ── GORED (MATADOR punish) ───────────────────────────────────────────────────
+// Hitting someone during a live / whiffed MATADOR is a special RPS punish —
+// the grab-line counterpart to CLAMPED. Harder shove than a counter hit, and
+// forces ring-out eligibility (the wrong hard-read must hurt).
+const GORED_KB_MULT = 1.9;             // vs SLAP_COUNTER_KB_MULT 1.25
+const GORED_HITSTUN_BONUS_MS = 70;     // vs SLAP_COUNTER_HIT_BONUS_MS 35
+const GORED_CHARGED_KB_MULT = 1.55;    // charged/palm into matador also pays
 
 const CHARGED_STARTUP_MS = 150;   // Clear windup (unchanged)
 const CHARGED_ACTIVE_MS = 120;    // Hitbox live window
@@ -555,6 +570,11 @@ const GRAB_BREAK_RESIDUAL_VEL = 0; // No residual sliding — players stop clean
 const GRAB_BREAK_INPUT_LOCK_MS = 350; // Breaker is locked during knockback tween — vulnerable window
 const GRAB_BREAK_ACTION_LOCK_MS = 350; // Action lock matches input lock
 const GRAB_BREAK_GRAB_IMMUNITY_MS = 400; // Re-grab protection on the breaker after the tween ends
+// Floor before Space can request a clinch break after mutual grip on connect.
+// Filters late open-game parry presses that would otherwise become instant breaks
+// (parry is meant to lose to grab). Fast intentional reactions still clear this;
+// a press during the lock is discarded — must re-press after it opens.
+const GRAB_BREAK_REACTION_LOCK_MS = 230;
 // Grab stamina drain: 10 stamina over full 1.5s duration
 // Drain 1 stamina every 150ms (1500ms / 10 = 150ms per stamina point)
 const GRAB_STAMINA_DRAIN_INTERVAL = 150;
@@ -564,15 +584,20 @@ const GRAB_STAMINA_DRAIN_INTERVAL = 150;
 // Push starts IMMEDIATELY on grab connect (burst-with-decay).
 // Grabber can interrupt push with pull (backward) or throw (W) during push.
 // ============================================
-const GRAB_PUSH_BURST_BASE = 2.5;          // Base burst speed when push starts
-const GRAB_PUSH_MOMENTUM_TRANSFER = 0.6;   // Multiplier on approach speed added to burst (power slide grab = devastating)
+// Short first-grab reward shove. Both players already have grip on connect —
+// burst is uncancellable by a "grip-up" (removed); only duration/decay end it
+// (or a throw/pull/lift / break from either side).
+// Standing (zero approach) duration is tuned to ≈ GRAB_BREAK_REACTION_LOCK_MS
+// (230ms): ln(BASE/MIN_VEL)/DECAY ≈ 0.23s so break opens as the weak shove dies.
+const GRAB_PUSH_BURST_BASE = 1.2;          // Slight snap vs 1.0; same ~230ms standing window
+const GRAB_PUSH_MOMENTUM_TRANSFER = 0.5;   // Approach → burst (dash/slide grabs bite)
 // PHASE 3.2 — "caught the henka": a grab that connects on a victim still in
 // sidestep-recovery or rope-jump landing floors the Phase A approach speed to
 // this, so a *read-timed* grab bursts them back cornerward hard even from a
 // standing (zero-approach) catch. Reads should pay out in position.
-const GRAB_CATCH_MIN_BURST_SPEED = 1.5;
-const GRAB_PUSH_DECAY_RATE = 1.6;          // Exponential decay rate (was 2.2 — slower decay for sustained yorikiri push)
-const GRAB_PUSH_MIN_VELOCITY = 0.15;       // Push ends when speed decays below this
+const GRAB_CATCH_MIN_BURST_SPEED = 1.15;
+const GRAB_PUSH_DECAY_RATE = 4.0;          // Fast decay — blink shove, not a carry
+const GRAB_PUSH_MIN_VELOCITY = 0.48;       // Keep BASE/MIN ≈ 2.5 → ~230ms standing end
 const GRAB_PUSH_BACKWARD_GRACE = 150;       // ms before backward input triggers pull during push (prevents accidental pull)
 const GRAB_PUSH_STAMINA_DRAIN_INTERVAL = 70; // Drain 1 stamina per 70ms mid-ring (~14/sec)
 const GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL = 35; // Drain 1 stamina per 35ms at edge (~29/sec)
@@ -704,6 +729,18 @@ const AP_SUCCESS_RECOVERY_MS = 200;
 // Re-arm is blocked for the full duration (canArmAttackParry).
 const AP_WHIFF_RECOVERY_MS = 300;
 const AP_COOLDOWN_MS = 40;           // Tiny gap before GUARD may re-enter after a drop. Fresh taps (rising Space) ignore this so release→re-press is an immediate parry window.
+
+// ── MATADOR (BACK + SPACE) ───────────────────────────────────────────────────
+// Grab-line timed parry. Same arm/whiff feel as an AP TAP (no hold→guard path).
+// Beats grabs only → instant pull (land-threshold bypassed). Wrong into a
+// strike = GORED. Separate flags from isRawParrying so grabs don't CLAMP it.
+const MATADOR_ACTIVE_MS = AP_ACTIVE_MS;                 // 180 — same live window as AP
+const MATADOR_WHIFF_RECOVERY_MS = AP_WHIFF_RECOVERY_MS; // 300 — same empty-tap jail
+const MATADOR_HITSTOP_MS = 110;                         // Snappy steal freeze (AP regular territory)
+const MATADOR_SUCCESS_LOCK_MS = AP_SUCCESS_RECOVERY_MS;  // Brief plant on the matador after pull starts
+// Non-kill yank distance — ~20% shorter than a clinch pull (CLINCH_PULL_DISTANCE 280).
+// Kill still uses CLINCH_KILL_PULL_DISTANCE for the finisher read.
+const MATADOR_PULL_DISTANCE = 224;
 const AP_STAMINA_COST = 3;           // Charged per parry tap — cheap (reward using it), but re-tapping a long flurry still drains you.
 // KILL gate: PERFECT parry only, and the attacker's balance must be DEEPLY
 // broken (< this). Regular parries never KO. Set well UNDER the clinch kill
@@ -1019,8 +1056,12 @@ const CLINCH_SEPARATION_DISTANCE = 50;           // Distance to push apart on st
 const CLINCH_SEPARATION_TWEEN_DURATION = 300;    // Tween duration for separation
 const CLINCH_SEPARATION_INPUT_LOCK_MS = 350;     // Input lock after stalemate separation
 
-// Clinch grab attachment
-const CLINCH_ATTACHED_DISTANCE = Math.round(75 * 0.96); // ~72px base distance between players in clinch
+// Clinch grab attachment — tight when on the belt (M2), looser on body holds
+// so full-length flippers have room instead of spearing through each other.
+const CLINCH_ATTACHED_DISTANCE = Math.round(75 * 0.96); // ~72px — both on belt
+const CLINCH_MIXED_HOLD_DISTANCE = Math.round(88 * 0.96); // ~85px — one on belt, one body
+const CLINCH_BODY_HOLD_DISTANCE = Math.round(108 * 0.96); // ~104px — both body-holding
+const CLINCH_ATTACH_LERP_PER_SEC = 14; // Snap-in speed when someone presses/releases M2
 
 // Clinch throw system (Mouse2 + W during clinch)
 const CLINCH_THROW_ANIMATION_MS = 450;           // Committed throw animation length
@@ -1045,15 +1086,17 @@ const CLINCH_PULL_FAIL_SELF_BALANCE_DRAIN = 6;   // Pull is safer — less self-
 const CLINCH_THROW_FAIL_STAGGER_MS = 300;        // Attacker forced neutral, no clinch actions
 
 // Counter-grab ARM CLAMP — grabbing a raw-parrying opponent clamps their arms:
-// they cannot grip up during the Phase A burst carry, and the grabber's mid-burst
-// throw stays untechable. When the clamp ends (burst leaves the lively band,
-// max burst duration, or boundary contact), the victim is granted their grip
-// automatically — punished once, positionally, then the clinch is a fair fight.
-// Arm-clamp ends Phase A earlier than a normal grab so the victim isn't stuck
-// in the exponential crawl with zero inputs.
+// they cannot act (throw/jolt/break/plant) during the Phase A burst carry, so
+// the grabber's mid-burst throw stays untechable. When the clamp ends (burst
+// leaves the lively band, max burst duration, or boundary contact), the victim
+// is free to fight — punished once, positionally, then a fair clinch.
+// Clamp uses its OWN shove power (mult + slower decay). A normal connect is a
+// short ~230ms nudge; clamp is the scary parry-punish carry across the dohyo.
 const COUNTER_GRAB_BALANCE_DEBUFF = 10;          // Balance hit on counter-grab connect
-const ARM_CLAMP_BURST_END_VELOCITY = 0.55;       // End burst while still shoving (vs GRAB_PUSH_MIN_VELOCITY 0.15)
-const ARM_CLAMP_MAX_BURST_MS = 1000;             // Hard cap — ~1s carry; cuts the old ~1.8s crawl, not the shove
+const ARM_CLAMP_BURST_MULT = 2.1;                // × initial burst vs regular connect
+const ARM_CLAMP_BURST_DECAY_RATE = 1.9;           // Slower than regular 4.0 — real carry
+const ARM_CLAMP_BURST_END_VELOCITY = 0.55;        // End while still shoving (not a crawl)
+const ARM_CLAMP_MAX_BURST_MS = 950;              // Hard cap on clamp carry
 
 // DEEP GRIP — the clinch's earned-advantage layer. Won by out-wrestling the
 // opponent inside the clinch (jolting a planter, or winning the push for a
@@ -1351,7 +1394,7 @@ const DODGE_LANDING_MAX = 1.7; // SAFE cap 1.5
 // 1.5 Grab burst momentum transfer retune (grabActionSystem push burst).
 // Replaces GRAB_PUSH_MOMENTUM_TRANSFER (0.6) while the flag is on — the grab is
 // the template inheritance mechanic; keep its feel, just make it bite harder.
-const GRAB_PUSH_MOMENTUM_TRANSFER_MASTERY = 0.75; // SAFE 0.65
+const GRAB_PUSH_MOMENTUM_TRANSFER_MASTERY = 0.65; // Dash/slide inheritance when mastery on
 
 // 1.6 Palm matador (optional, same flag). The palm stays ROOTED (no slide
 // inheritance), but a read on a CHARGING opponent uses their own closing speed
@@ -1667,6 +1710,9 @@ module.exports = {
   SLAP_ONHIT_VICTIM_DRIFT,
   SLAP_COUNTER_HIT_BONUS_MS,
   SLAP_COUNTER_KB_MULT,
+  GORED_KB_MULT,
+  GORED_HITSTUN_BONUS_MS,
+  GORED_CHARGED_KB_MULT,
   SLAP_MIN_HITSTUN_MS,
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MS,
@@ -1736,6 +1782,7 @@ module.exports = {
   GRAB_BREAK_INPUT_LOCK_MS,
   GRAB_BREAK_ACTION_LOCK_MS,
   GRAB_BREAK_GRAB_IMMUNITY_MS,
+  GRAB_BREAK_REACTION_LOCK_MS,
   GRAB_STAMINA_DRAIN_INTERVAL,
 
   // Grab action system
@@ -1789,6 +1836,11 @@ module.exports = {
   AP_SUCCESS_RECOVERY_MS,
   AP_WHIFF_RECOVERY_MS,
   AP_COOLDOWN_MS,
+  MATADOR_ACTIVE_MS,
+  MATADOR_WHIFF_RECOVERY_MS,
+  MATADOR_HITSTOP_MS,
+  MATADOR_SUCCESS_LOCK_MS,
+  MATADOR_PULL_DISTANCE,
   AP_STAMINA_COST,
   AP_KILL_THRESHOLD,
   AP_PERFECT_KILL_THRESHOLD,
@@ -1925,6 +1977,8 @@ module.exports = {
   GASSED_RECOVERY_STAMINA_IN_CLINCH,
   CLINCH_THROW_FAIL_STAGGER_MS,
   COUNTER_GRAB_BALANCE_DEBUFF,
+  ARM_CLAMP_BURST_MULT,
+  ARM_CLAMP_BURST_DECAY_RATE,
   ARM_CLAMP_BURST_END_VELOCITY,
   ARM_CLAMP_MAX_BURST_MS,
   DEEP_GRIP_THROW_THRESHOLD_BONUS,
@@ -1943,6 +1997,9 @@ module.exports = {
   CLINCH_SEPARATION_TWEEN_DURATION,
   CLINCH_SEPARATION_INPUT_LOCK_MS,
   CLINCH_ATTACHED_DISTANCE,
+  CLINCH_MIXED_HOLD_DISTANCE,
+  CLINCH_BODY_HOLD_DISTANCE,
+  CLINCH_ATTACH_LERP_PER_SEC,
 
   // Clinch throw/pull/lift
   CLINCH_THROW_ANIMATION_MS,

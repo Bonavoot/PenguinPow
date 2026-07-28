@@ -24,6 +24,11 @@ const {
   lagCompensatedParryStart,
   canArmAttackParry,
   armAttackParry,
+  canArmMatador,
+  armMatador,
+  clearMatadorWindow,
+  clearAllActionStates,
+  triggerHitstopAndEmit,
   beginFlapStartup,
   alignedEntryVelocity,
   takeInheritedVelocity,
@@ -98,6 +103,17 @@ const {
   POWER_UP_TYPES,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS,
   SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
+  CLINCH_THROW_KILL_THRESHOLD,
+  CLINCH_PULL_TWEEN_DURATION,
+  CLINCH_PULL_INPUT_LOCK_MS,
+  CLINCH_KILL_PULL_DISTANCE,
+  CLINCH_KILL_PULL_TWEEN_DURATION,
+  CLINCH_KILL_PULL_INPUT_LOCK_MS,
+  CLINCH_PULL_SWAP_TWEEN_DURATION,
+  CLINCH_THROW_MIN_SEPARATION,
+  PULL_BOUNDARY_MARGIN,
+  MATADOR_HITSTOP_MS,
+  MATADOR_PULL_DISTANCE,
 } = require("./constants");
 
 // Hit 3 charge functions removed — charged attack is now a standalone move (S + FORWARD + MOUSE1)
@@ -173,6 +189,9 @@ function cleanupGrabStates(player, opponent) {
   // Clinch system cleanup
   player.hasGrip = false;
   player.gripAcquiredTime = 0;
+  player.isClinchBeltHolding = false;
+  player.clinchBeltRequiresM2Release = false;
+  player.clinchAttachDistance = 0;
   player.inClinch = false;
   player.clinchAction = null;
   player.clinchOpponent = null;
@@ -266,6 +285,9 @@ function cleanupGrabStates(player, opponent) {
   // Clinch system cleanup
   opponent.hasGrip = false;
   opponent.gripAcquiredTime = 0;
+  opponent.isClinchBeltHolding = false;
+  opponent.clinchBeltRequiresM2Release = false;
+  opponent.clinchAttachDistance = 0;
   opponent.inClinch = false;
   opponent.clinchAction = null;
   opponent.clinchOpponent = null;
@@ -564,6 +586,13 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.apGuardNeedsRelease = false;
     p.isApPostParryLocked = false;
     p.apPostParryLockUntil = 0;
+    p.isMatadorParrying = false;
+    p.isMatadorSuccess = false;
+    p.matadorStartTime = 0;
+    p.matadorActiveUntil = 0;
+    p.matadorSuccessUntil = 0;
+    p.isMatadorWhiffRecovering = false;
+    p.matadorRecoveryUntil = 0;
 
     // Clear ALL grab states to prevent grabs persisting into next round
     p.isGrabbing = false;
@@ -601,6 +630,9 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.grabAttemptType = null;
     p.hasGrip = false;
     p.gripAcquiredTime = 0;
+    p.isClinchBeltHolding = false;
+    p.clinchBeltRequiresM2Release = false;
+    p.clinchAttachDistance = 0;
     p.inClinch = false;
     p.clinchAction = null;
     // Push-war HUD must clear on win — updateGrabActions won't run again
@@ -2049,6 +2081,22 @@ function executeInputBuffer(player, rooms) {
   const buffer = player.inputBuffer;
 
   switch (buffer.type) {
+    case "matador": {
+      const nowSim = simNowForPlayer(player);
+      if (!player.isRawParryStun &&
+          !player.isAttacking && !player.isDodging &&
+          !player.isRecovering && !player.isGrabbing &&
+          !player.isGrabStartup &&
+          !player.isGrabbingMovement && !player.isWhiffingGrab &&
+          !player.isThrowing && !player.grabBreakSpaceConsumed &&
+          canArmMatador(player, nowSim)) {
+        armMatador(player, nowSim, lagCompensatedParryStart(player, nowSim));
+        clearChargeState(player, true);
+        player.inputBuffer = null;
+        return true;
+      }
+      break;
+    }
     case "rawParry": {
       const nowSim = simNowForPlayer(player);
       if (!player.isRawParryStun &&
@@ -2211,6 +2259,169 @@ function executeInputBuffer(player, rooms) {
   return false;
 }
 
+/**
+ * MATADOR success — grab would have connected on a live matador window.
+ * Instant pull (no clinch): yank the grabber through the matador to the far
+ * side. Land threshold bypassed; kill if grabber balance < CLINCH_THROW_KILL_THRESHOLD.
+ *
+ * @param {object} matador - defender who armed BACK+SPACE
+ * @param {object} grabber - attacker whose grab connected into the matador
+ */
+function resolveMatadorPull(matador, grabber, room, io) {
+  if (!matador || !grabber || !room) return;
+
+  const nowSim = simNow(room);
+  const grabberFacingBeforeKill = grabber.facing;
+  const pullDirection = grabber.x < matador.x ? 1 : -1;
+  const isKill =
+    grabber.balance < CLINCH_THROW_KILL_THRESHOLD && !room.gameOver;
+  const pullDist = isKill ? CLINCH_KILL_PULL_DISTANCE : MATADOR_PULL_DISTANCE;
+  const pullTweenDur = isKill
+    ? CLINCH_KILL_PULL_TWEEN_DURATION
+    : CLINCH_PULL_TWEEN_DURATION;
+  const pullLockMs = isKill
+    ? CLINCH_KILL_PULL_INPUT_LOCK_MS
+    : CLINCH_PULL_INPUT_LOCK_MS;
+
+  let targetX = matador.x + pullDirection * pullDist;
+
+  // Same boundary-swap safety as clinch pull (non-kill only).
+  const leftBound = MAP_LEFT_BOUNDARY + PULL_BOUNDARY_MARGIN;
+  const rightBound = MAP_RIGHT_BOUNDARY - PULL_BOUNDARY_MARGIN;
+  const clampedTargetX = Math.max(leftBound, Math.min(targetX, rightBound));
+  const distPastActor =
+    pullDirection === -1
+      ? matador.x - clampedTargetX
+      : clampedTargetX - matador.x;
+  const isBoundaryPull = !isKill && distPastActor < CLINCH_THROW_MIN_SEPARATION;
+
+  let actorTweenTargetX = null;
+  let effectiveTweenDur = pullTweenDur;
+  let effectiveLockMs = pullLockMs;
+
+  if (isBoundaryPull) {
+    const actorOriginalX = matador.x;
+    const targetOriginalX = grabber.x;
+    targetX = Math.max(leftBound, Math.min(actorOriginalX, rightBound));
+    actorTweenTargetX = targetOriginalX;
+    effectiveTweenDur = CLINCH_PULL_SWAP_TWEEN_DURATION;
+    effectiveLockMs = CLINCH_PULL_SWAP_TWEEN_DURATION;
+  }
+
+  // Tear down grab attempt / any stray clinch without entering Phase A.
+  grabber.isGrabStartup = false;
+  grabber.isGrabbingMovement = false;
+  grabber.isWhiffingGrab = false;
+  grabber.isGrabWhiffRecovery = false;
+  grabber.grabMovementVelocity = 0;
+  clearAllActionStates(grabber);
+  clearAllActionStates(matador);
+  clearMatadorWindow(matador);
+
+  grabber.y = GROUND_LEVEL;
+  matador.y = GROUND_LEVEL;
+
+  grabber.isBeingPullReversaled = true;
+  grabber.pullReversalPullerId = matador.id;
+  grabber.isGrabBreakSeparating = true;
+  grabber.grabBreakSepStartTime = nowSim;
+  grabber.grabBreakSepDuration = effectiveTweenDur;
+  grabber.grabBreakStartX = grabber.x;
+  grabber.grabBreakTargetX = targetX;
+
+  if (isBoundaryPull) {
+    grabber.isBoundaryPullSwap = true;
+    matador.isBoundaryPullSwap = true;
+    matador.isGrabBreakSeparating = true;
+    matador.grabBreakSepStartTime = nowSim;
+    matador.grabBreakSepDuration = effectiveTweenDur;
+    matador.grabBreakStartX = matador.x;
+    matador.grabBreakTargetX = actorTweenTargetX;
+  }
+
+  grabber.movementVelocity = 0;
+  matador.movementVelocity = 0;
+  grabber.isStrafing = false;
+  matador.isStrafing = false;
+  grabber.knockbackVelocity = { x: 0, y: 0 };
+
+  const lockUntil = nowSim + effectiveLockMs;
+  grabber.inputLockUntil = Math.max(grabber.inputLockUntil || 0, lockUntil);
+  matador.inputLockUntil = Math.max(matador.inputLockUntil || 0, lockUntil);
+
+  // Matador success: pull pose for the yank (not AP success frames).
+  // Hold through the pull tween so the sidestep/yank reads as a pull.
+  matador.isMatadorSuccess = true;
+  matador.isAttemptingPull = true;
+  matador.matadorSuccessUntil = nowSim + effectiveTweenDur;
+  matador.isMatadorParrying = false;
+
+  // Do NOT snap facing to post-pull destinations here — keep current facing and
+  // let the natural mid-tween facing system flip when the victim actually
+  // crosses sides (tween end also re-corrects via correctFacingAfterGrabOrThrow).
+  if (isKill) {
+    grabber.facing = grabberFacingBeforeKill;
+  }
+
+  const matadorPlayerNumber = room.players.indexOf(matador) === 0 ? 1 : 2;
+  const centerX = (matador.x + grabber.x) / 2;
+  const centerY = (matador.y + grabber.y) / 2;
+
+  triggerHitstopAndEmit(io, room, MATADOR_HITSTOP_MS, "matador");
+  io.in(room.id).emit("matador_success", {
+    type: "matador_success",
+    matadorId: matador.id,
+    grabberId: grabber.id,
+    matadorX: matador.x,
+    grabberX: grabber.x,
+    x: centerX,
+    y: centerY,
+    matadorPlayerNumber,
+    isKill,
+    hitstopMs: MATADOR_HITSTOP_MS,
+    matadorId_token: `matador-${nowSim}-${matador.id}`,
+  });
+
+  if (isKill) {
+    grabber.isClinchKillPullVictim = true;
+    handleWinCondition(room, grabber, matador, io, "clinchKillPull");
+    grabber.isClinchKillPullVictim = true;
+    grabber.isBeingPullReversaled = true;
+    grabber.pullReversalPullerId = matador.id;
+    grabber.isGrabBreakSeparating = true;
+    grabber.grabBreakSepStartTime = nowSim;
+    grabber.grabBreakSepDuration = effectiveTweenDur;
+    grabber.grabBreakStartX = grabber.x;
+    grabber.grabBreakTargetX = targetX;
+    // Kill victim keeps pre-kill facing (belly-slide), already stamped above.
+
+    io.in(room.id).emit("cinematic_kill", {
+      attackerId: matador.id,
+      victimId: grabber.id,
+      victimX: grabber.x,
+      victimY: grabber.y,
+      attackerX: matador.x,
+      attackerY: matador.y,
+      knockbackDirection: pullDirection,
+      hitstopMs: 0,
+      impactX: centerX,
+      impactY: grabber.y,
+      matadorKill: true,
+      noPan: true,
+    });
+  }
+
+  matador.grabCooldown = true;
+  setPlayerTimeout(
+    matador.id,
+    () => {
+      matador.grabCooldown = false;
+    },
+    300,
+    "matadorPullCooldown"
+  );
+}
+
 module.exports = {
   cleanupGrabStates,
   handleWinCondition,
@@ -2226,4 +2437,5 @@ module.exports = {
   safelyEndChargedAttack,
   activateBufferedInputAfterGrab,
   executeInputBuffer,
+  resolveMatadorPull,
 };

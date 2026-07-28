@@ -969,7 +969,7 @@ const Lobby = ({
   const isPlayer1 = myPlayerIndex === 0;
 
   const serverPlayer1Color = players[0]?.mawashiColor || SPRITE_BASE_COLOR;
-  const serverPlayer2Color = players[1]?.mawashiColor || "#D94848";
+  const serverPlayer2Color = players[1]?.mawashiColor || "#DA1B44";
   const serverPlayer1BodyColor = players[0]?.bodyColor || null;
   const serverPlayer2BodyColor = players[1]?.bodyColor || null;
 

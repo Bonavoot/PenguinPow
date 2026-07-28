@@ -288,6 +288,9 @@ const getImageSrc = (
   if (isResistingPull) return hit;
   if (isClinchPlanting) return clinchPlanting;
   if (isClinchPushing) return grabbing;
+  // Grip is automatic on clinch connect — grabbed fighters use the armless
+  // grabbing body + flipper overlay (body-hold / belt-hold via arm rotate).
+  // beingGrabbed remains only as a rare fallback if grip is somehow missing.
   if (isBeingGrabbed) {
     if (hasGrip) return grabbing;
     return beingGrabbed;

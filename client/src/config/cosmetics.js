@@ -40,6 +40,7 @@ import recovering from "../assets/recovering.png";
 import charging from "../assets/charging.png";
 import attack from "../assets/attack.png";
 import dodging from "../assets/dodging.png";
+import sliding from "../assets/sliding.png";
 
 import hatPumoIdle from "../assets/cosmetics/overlays/hat-pumo-idle.png";
 import hatMainMenuPumo from "../assets/cosmetics/overlays/hat-main-menu-pumo.png";
@@ -69,6 +70,7 @@ import hatRecovering from "../assets/cosmetics/overlays/hat-recovering.png";
 import hatCharging from "../assets/cosmetics/overlays/hat-charging.png";
 import hatAttack from "../assets/cosmetics/overlays/hat-attack.png";
 import hatDodging from "../assets/cosmetics/overlays/hat-dodging.png";
+import hatSliding from "../assets/cosmetics/overlays/hat-sliding.png";
 
 import crownPumoIdle from "../assets/cosmetics/overlays/crown-pumo-idle.png";
 import crownMainMenuPumo from "../assets/cosmetics/overlays/crown-main-menu-pumo.png";
@@ -98,6 +100,7 @@ import crownRecovering from "../assets/cosmetics/overlays/crown-recovering.png";
 import crownCharging from "../assets/cosmetics/overlays/crown-charging.png";
 import crownAttack from "../assets/cosmetics/overlays/crown-attack.png";
 import crownDodging from "../assets/cosmetics/overlays/crown-dodging.png";
+import crownSliding from "../assets/cosmetics/overlays/crown-sliding.png";
 
 import haloPumoIdle from "../assets/cosmetics/overlays/halo-pumo-idle.png";
 import haloMainMenuPumo from "../assets/cosmetics/overlays/halo-main-menu-pumo.png";
@@ -127,6 +130,7 @@ import haloRecovering from "../assets/cosmetics/overlays/halo-recovering.png";
 import haloCharging from "../assets/cosmetics/overlays/halo-charging.png";
 import haloAttack from "../assets/cosmetics/overlays/halo-attack.png";
 import haloDodging from "../assets/cosmetics/overlays/halo-dodging.png";
+import haloSliding from "../assets/cosmetics/overlays/halo-sliding.png";
 
 import plungerPumoIdle from "../assets/cosmetics/overlays/plunger-pumo-idle.png";
 import plungerMainMenuPumo from "../assets/cosmetics/overlays/plunger-main-menu-pumo.png";
@@ -156,6 +160,7 @@ import plungerRecovering from "../assets/cosmetics/overlays/plunger-recovering.p
 import plungerCharging from "../assets/cosmetics/overlays/plunger-charging.png";
 import plungerAttack from "../assets/cosmetics/overlays/plunger-attack.png";
 import plungerDodging from "../assets/cosmetics/overlays/plunger-dodging.png";
+import plungerSliding from "../assets/cosmetics/overlays/plunger-sliding.png";
 
 export const GEAR_TOP_HAT = "top_hat";
 export const GEAR_CROWN = "crown";
@@ -240,6 +245,7 @@ const BODY_SRCS = [
   charging,
   attack,
   dodging,
+  sliding,
 ];
 
 const TOP_HAT_BY_STEM = {
@@ -271,6 +277,7 @@ const TOP_HAT_BY_STEM = {
   charging: hatCharging,
   attack: hatAttack,
   dodging: hatDodging,
+  sliding: hatSliding,
 };
 
 const CROWN_BY_STEM = {
@@ -302,6 +309,7 @@ const CROWN_BY_STEM = {
   charging: crownCharging,
   attack: crownAttack,
   dodging: crownDodging,
+  sliding: crownSliding,
 };
 
 const HALO_BY_STEM = {
@@ -333,6 +341,7 @@ const HALO_BY_STEM = {
   charging: haloCharging,
   attack: haloAttack,
   dodging: haloDodging,
+  sliding: haloSliding,
 };
 
 const PLUNGER_BY_STEM = {
@@ -364,6 +373,7 @@ const PLUNGER_BY_STEM = {
   charging: plungerCharging,
   attack: plungerAttack,
   dodging: plungerDodging,
+  sliding: plungerSliding,
 };
 
 const OVERLAYS_BY_GEAR = {

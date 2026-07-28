@@ -61,12 +61,17 @@ function executeGrabTech(player1, player2, room, io) {
   triggerHitstopAndEmit(io, room, HITSTOP_GRAB_MS, "grab_tech");
 
   // Immediately enter mutual clinch (both get grips, no burst push)
+  const clinchNow = simNow(room);
   player1.isGrabbing = true;
-  player1.grabStartTime = simNow(room);
+  player1.grabStartTime = clinchNow;
   player1.grabbedOpponent = player2.id;
   player1.hasGrip = true;
   player1.inClinch = true;
   player1.clinchAction = "neutral";
+  player1.gripAcquiredTime = clinchNow;
+  // Both may still be holding the M2 that started the grab attempt — require
+  // a release before belt arms (same as normal connect).
+  player1.clinchBeltRequiresM2Release = true;
   player1.isGrabPushing = false;
   player1.grabPushStartTime = 0;
 
@@ -74,6 +79,8 @@ function executeGrabTech(player1, player2, room, io) {
   player2.hasGrip = true;
   player2.inClinch = true;
   player2.clinchAction = "neutral";
+  player2.gripAcquiredTime = clinchNow;
+  player2.clinchBeltRequiresM2Release = true;
 
   const dist = CLINCH_ATTACHED_DISTANCE * (player2.sizeMultiplier || 1);
   if (player1.x < player2.x) {

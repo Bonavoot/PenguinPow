@@ -245,6 +245,17 @@ function createInitialPlayerState(overrides = {}) {
     isRawParrySuccess: false,
     isPerfectRawParrySuccess: false,
 
+    // === MATADOR (BACK+SPACE grab-parry) ===
+    // Timed tap-only read on the grab line. Separate from AP so grabs don't
+    // CLAMP a matador attempt (matador beats grabs → instant pull).
+    isMatadorParrying: false,
+    isMatadorSuccess: false,
+    matadorStartTime: 0,
+    matadorActiveUntil: 0,
+    isMatadorWhiffRecovering: false,
+    matadorRecoveryUntil: 0,
+    matadorSuccessUntil: 0,
+
     // === Ropes / rope jump ===
     isAtTheRopes: false,
     atTheRopesStartTime: 0,
@@ -381,6 +392,9 @@ function createInitialPlayerState(overrides = {}) {
     // === Clinch ===
     hasGrip: false,
     gripAcquiredTime: 0,
+    isClinchBeltHolding: false,
+    clinchBeltRequiresM2Release: false,
+    clinchAttachDistance: 0,
     inClinch: false,
     clinchAction: null,
     clinchOpponent: null,
@@ -498,7 +512,7 @@ const PLAYER_1_SPAWN = {
 const PLAYER_2_SPAWN = {
   fighter: "player 2",
   color: "salmon",
-  mawashiColor: "#D94848",
+  mawashiColor: "#DA1B44",
   facing: -1,
   x: 845,
 };

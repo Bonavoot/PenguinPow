@@ -29,8 +29,8 @@ export function makeOutfit(id, name, overrides = {}) {
 export function makeDefaultOutfits() {
   return [
     makeOutfit("outfit_1", "Outfit 1"),
-    makeOutfit("outfit_2", "Outfit 2", { mawashiColor: "#D94848" }),
-    makeOutfit("outfit_3", "Outfit 3", { mawashiColor: "#2E9E5A" }),
+    makeOutfit("outfit_2", "Outfit 2", { mawashiColor: "#DA1B44" }),
+    makeOutfit("outfit_3", "Outfit 3", { mawashiColor: "#15AC7D" }),
   ];
 }
 

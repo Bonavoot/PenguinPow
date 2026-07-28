@@ -86,6 +86,7 @@ export const BAKE_SOURCES = [
   { id: "pumo-ready-position-bald", file: "bald/pumo-ready-position-bald.png" },
   { id: "pumo-tachiai-position-bald", file: "bald/pumo-tachiai-position-bald.png" },
   { id: "dodging-bald", file: "bald/dodging-bald.png" },
+  { id: "sliding-bald", file: "bald/sliding-bald.png" },
   { id: "recovering-bald", file: "bald/recovering-bald.png" },
   { id: "charging-bald", file: "bald/charging-bald.png" },
   { id: "raw-parry-success-frame-1-bald", file: "bald/raw-parry-success-frame-1-bald.png" },

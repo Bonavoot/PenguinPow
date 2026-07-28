@@ -132,7 +132,29 @@ export const getFighterPopFilter = (props) => {
   // downward shadow for grounding/weight. Zero color cast — clean cut-out read.
   const edge = "drop-shadow(0 0 clamp(0.5px, 0.06cqw, 1.5px) rgba(8, 5, 3, 0.6))";
   const ground = "drop-shadow(0 2px clamp(1px, 0.12cqw, 3px) rgba(0, 0, 0, 0.45))";
-  const base = `${edge} ${ground}`;
+
+  // When the separate grab-arm overlay is stacked on the armless body, ANY
+  // body drop-shadow (edge, ground, cool rim) rasterizes under the arm and
+  // bleeds through the flipper's AA fringe — reads as a dark "shadow seam"
+  // around the shoulder join (worst on light/white bodies). Kill dark
+  // cut-out shadows on the body in those poses; the oval PlayerShadow still
+  // grounds them. Status-color rims can still layer on with an empty base.
+  const grabArmComposited =
+    !props.$grabArmLayer &&
+    (props.$inClinch ||
+      props.$isGrabbing ||
+      props.$isClinchPlanting ||
+      props.$isClinchLifting ||
+      props.$isBeingLifted ||
+      props.$isAttemptingGrabThrow ||
+      props.$isAttemptingPull ||
+      props.$isGrabBellyFlopping ||
+      props.$isBeingGrabBellyFlopped ||
+      props.$isGrabFrontalForceOut ||
+      props.$isBeingGrabFrontalForceOut ||
+      (props.$isBeingGrabbed && props.$hasGrip));
+
+  const base = grabArmComposited ? "" : `${edge} ${ground}`;
 
   // Kill-throw victim: skip the soft ground drop-shadow. On a spinning / prone
   // body it reads as a second translucent penguin (the "ghost frame" in the
@@ -158,6 +180,7 @@ export const getFighterPopFilter = (props) => {
   if (props.$isPerfectRawParrySuccess) {
     return `${base} drop-shadow(0 0 4px rgba(0, 230, 255, 0.95)) drop-shadow(0 0 1px rgba(200, 250, 255, 1))`;
   }
+  // MATADOR: no body rim — sold by ash cape particles + pull pose, not glow.
   if (props.$isRawParrying) {
     return `${base} drop-shadow(0 0 6px rgba(0,130,255,0.9))`;
   }
@@ -199,6 +222,10 @@ export const getFighterPopFilter = (props) => {
       :                       "drop-shadow(0 0 6px rgba(255, 245, 220, 0.62))";
     return `${base} ${glow}`;
   }
+  // With arm overlay: no dark drop-shadow under the join (see grabArmComposited).
+  if (grabArmComposited) {
+    return "none";
+  }
   // Neutral state: a WHISPER of cool steel-blue right on the silhouette edge,
   // layered over the dark cut-out contour. Kept extremely tight + low-alpha —
   // at any larger radius/opacity it reads as a cheesy glowing halo (the exact
@@ -209,14 +236,16 @@ export const getFighterPopFilter = (props) => {
   return `${base} ${coolRim}`;
 };
 
-// Grab-arm overlay planting nudge → a translate string appended AFTER scaleX so
-// X lives in the sprite's local (pre-flip) space (symmetric "back" per facing)
-// and Y is screen-down. Returns "" when no nudge is set (grabbing pose / body).
+// Grab-arm overlay back/down nudge → appended AFTER scaleX so X is local
+// (symmetric "back" per facing) and Y is screen-down. Values come from rAF
+// (--grab-arm-nudge-*) with prop fallbacks for the first paint.
 const grabArmNudge = (props) => {
   const x = props.$grabArmNudgeXPct || 0;
   const y = props.$grabArmNudgeYPct || 0;
-  if (!x && !y) return "";
-  return ` translateX(${x}%) translateY(${y}%)`;
+  return (
+    ` translateX(var(--grab-arm-nudge-x, ${x}%))` +
+    ` translateY(var(--grab-arm-nudge-y, ${y}%))`
+  );
 };
 
 // Lifter arm: (1) translate up by lift Δy so the HAND stays on the belt,
@@ -236,10 +265,34 @@ const grabArmLiftMotion = (props) => {
   return t;
 };
 
-const grabArmExtra = (props) =>
-  props.$grabArmBeltTrackActive
-    ? grabArmLiftMotion(props)
-    : grabArmNudge(props);
+// Body-hold pose: rest sheet is belt-aligned; rotate around the shoulder so
+// the flipper tip swings UP toward the torso (+deg). Placeholder — same
+// conjugate pattern as the lift hand-pivot. Shoulder ≈ (56%, 42%) on sheet.
+// Degree is a CSS var so the rAF loop can snap belt↔body on local M2 without
+// waiting for a React re-render / server delta.
+const GRAB_ARM_SHOULDER_DX_PCT = 6; // 56 - 50
+const GRAB_ARM_SHOULDER_DY_PCT = -58; // 42 - 100
+const grabArmBodyHoldMotion = (props) => {
+  const dx = GRAB_ARM_SHOULDER_DX_PCT;
+  const dy = GRAB_ARM_SHOULDER_DY_PCT;
+  // Per-frame vars (rAF): deg / y stagger the over·under holds; len shortens
+  // reach from the shoulder WITHOUT thinning (scaleX after rotate — body holds
+  // sit near-horizontal so X ≈ length, Y ≈ thickness stays 1).
+  return (
+    ` translate(${dx}%, ${dy}%)` +
+    ` rotate(var(--grab-arm-body-hold-deg, 0deg))` +
+    ` scale(var(--grab-arm-body-hold-len, 1), 1)` +
+    ` translate(${-dx}%, ${-dy}%)` +
+    ` translateY(var(--grab-arm-body-hold-y, 0%))` +
+    grabArmNudge(props)
+  );
+};
+
+const grabArmExtra = (props) => {
+  if (props.$grabArmBeltTrackActive) return grabArmLiftMotion(props);
+  if (props.$grabArmBodyHoldActive) return grabArmBodyHoldMotion(props);
+  return grabArmNudge(props);
+};
 
 // Clinch-lift leans — different tool per role:
 // Lifter (grounded): skewX ONLY. On a single sprite that includes the feet,
@@ -267,6 +320,8 @@ export const StyledImage = styled("img")
         "isDodging",
         "isStrafing",
         "isRawParrying",
+        "isMatadorParrying",
+        "isMatadorSuccess",
         "isGuarding",
         "isGuardBlockSuccess",
         "isGrabBreaking",
@@ -356,7 +411,7 @@ export const StyledImage = styled("img")
         props.$isAttacking,
         props.$isDodging,
         props.$isStrafing,
-        props.$isRawParrying,
+        props.$isRawParrying || props.$isMatadorParrying,
         props.$isGrabBreaking,
         props.$isReady,
         props.$readyIntroComplete ?? true,
@@ -392,7 +447,8 @@ export const StyledImage = styled("img")
         props.$ritualAnimationSrc,
         props.$isGrabPushing,
         props.$isBeingGrabPushed,
-        props.$isAttemptingPull,
+        // MATADOR success = pull yank pose (not AP success frames).
+        props.$isAttemptingPull || props.$isMatadorSuccess,
         props.$isBeingPullReversaled,
         props.$isGrabSeparating,
         props.$isGrabBellyFlopping,
@@ -434,7 +490,7 @@ export const StyledImage = styled("img")
         props.$isGuarding,
         props.$isGuardBlockSuccess,
         undefined, // rawParrySuccessFrame
-        undefined // isApWhiffRecovering
+        undefined // isApWhiffRecovering (GameFighter animated path owns this)
       ),
     style: {
       position: "absolute",
@@ -505,16 +561,21 @@ export const StyledImage = styled("img")
         : props.$isStrikeExtending
         ? 100
         : 99,
-      // Grab-arm overlay: NO filter. getFighterPopFilter emits an all-around
-      // dark edge contour + a downward ground shadow; on a layer stacked over
-      // the body those cast onto the body and trace a dark seam around the arm.
-      // The body already renders the whole penguin's outline + ground shadow, so
-      // the arm (an interior piece) must stay filter-less for a seamless blend.
+      // Grab-arm overlay: NO pop filter (see css` filter: none !important `
+      // below). Inline "none" alone can lose to style merges / animation
+      // leftovers; the arm must not carry the body's edge+ground drop-shadow.
       filter: props.$grabArmLayer ? "none" : getFighterPopFilter(props),
       // Kill-throw spin only while airborne (pre-landing pose). On true impact
       // (!isBeingThrown) play a heavy ground-plant squash — dead weight into the
       // ice with a short jiggle settle, no bounce arc.
-      animation: props.$isClinchKillThrowVictim
+      // Grab-arm overlay: NEVER inherit body clinch animations. Keyframes like
+      // grabPushStrain / clinchTeeter replace `transform` entirely and wipe the
+      // shoulder-pivot body-hold rotate — after the first shove/teeter the arm
+      // stuck at the asset's native belt pose. Body keeps the anim; arm stays
+      // pose-driven (body-hold / belt / lift track) via the static transform.
+      animation: props.$grabArmLayer
+        ? "none"
+        : props.$isClinchKillThrowVictim
         ? props.$showClinchKillThrowLanding
           ? props.$isBeingThrown
             ? "none"
@@ -543,7 +604,7 @@ export const StyledImage = styled("img")
         ? "none"
         : props.$isGrabSeparating
         ? "grabSeparatePush 0.3s ease-out"
-        : props.$isAttemptingPull
+        : props.$isAttemptingPull || props.$isMatadorSuccess
         ? "attemptingPullTug 0.6s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
         : props.$isGrabPushing
         ? "grabPushStrain 0.3s ease-in-out infinite"
@@ -690,6 +751,16 @@ export const StyledImage = styled("img")
       transition: "none",
     },
   }))`
+  /* Arm overlay: no body pop-filter (edge/ground drop-shadow). Join seam at
+     the shoulder is an art issue on belt-grab-arm-only.png — don't fake it
+     with masks (reads as a halo). */
+  ${(props) =>
+    props.$grabArmLayer
+      ? `
+    filter: none !important;
+    -webkit-filter: none !important;
+  `
+      : ""}
   @keyframes parryActivationFlash {
     0% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 12px rgba(100,200,255,1)); }
     35% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 8px rgba(0,150,255,0.95)); }
@@ -1126,7 +1197,8 @@ export const AnimatedFighterImage = styled.img
     shouldForwardProp: (prop) =>
       ![
         "frameCount", "fps", "loop", "isLocalPlayer", "isAtTheRopes",
-        "isGrabBreaking", "isRawParrying", "isPerfectRawParrySuccess", "isHit", "isChargingAttack",
+        "isGrabBreaking", "isRawParrying", "isMatadorParrying", "isMatadorSuccess",
+        "isPerfectRawParrySuccess", "isHit", "isChargingAttack",
         "animationKey", "noFilter", "overlayLayer",
       ].includes(prop),
   })

@@ -114,10 +114,12 @@ const CrowdContainer = styled.div`
     content: '';
     position: absolute;
     inset: 0;
+    /* Mid ringside bounce — keeps the bowl volumetric without relighting the
+       whole house. */
     background: linear-gradient(
       0deg,
-      rgba(255, 232, 200, 0.14) 0%,
-      rgba(255, 240, 215, 0.05) 22%,
+      rgba(255, 232, 200, 0.1) 0%,
+      rgba(255, 240, 215, 0.035) 22%,
       transparent 48%
     );
     pointer-events: none;
@@ -128,23 +130,15 @@ const CrowdContainer = styled.div`
     content: '';
     position: absolute;
     inset: 0;
-    /* Crowd-internal vignette — softened. This is one of THREE stacked
-       vignettes (screen-space .game-container::after + .arena-lighting edge +
-       this one); together they were over-darkening the periphery into a void
-       and flattening depth. Pulled back so the crowd recedes without dying —
-       the cinematic frame darkening is owned by the screen-space vignette. */
+    /* Mid crowd settle — darker than stock, softer than the flat house-dark
+       pass that crushed stadium depth. Depth still lives mainly in the Y
+       brightness ramp + DoF; this only quiets corners. */
     background:
-      /* Depth here is DARKNESS, not fog. A translucent cool veil over the upper
-         deck was tried and removed: layered on top of the DoF blur it read as a
-         literal "foggy bright mess" (a milky wash over the blurred back rows)
-         rather than atmospheric recession. The crowd is pushed back purely by
-         the front→back brightness falloff (computeCrowdLightingFilter) plus this
-         corner/edge vignette — both darken, neither hazes. */
       radial-gradient(
         ellipse 84% 74% at 50% 56%,
-        rgba(0, 0, 0, 0) 30%,
-        rgba(6, 9, 20, 0.18) 72%,
-        rgba(4, 6, 16, 0.36) 100%
+        rgba(0, 0, 0, 0) 28%,
+        rgba(6, 9, 20, 0.22) 72%,
+        rgba(4, 6, 16, 0.42) 100%
       );
     pointer-events: none;
     z-index: 9999;
@@ -375,32 +369,18 @@ const rowDepthT = (y) => {
 const computeCrowdLightingFilter = (y, { foreground = false } = {}) => {
   const t = rowDepthT(y);
   const ringside = 1 - t;
-  // Brightness gradient — back rows sit dimmer than ringside. Lifted out of the
-  // old 0.61 floor: the sprites are ALSO baked at brightness(0.76), so the old
-  // runtime floor compounded to ~0.46 and read as a muddy void. This keeps the
-  // crowd reading as people in moody light, not a brown smear.
-  // Wider front→back brightness falloff for real depth (chiaroscuro): ringside
-  // stays punchy while the back/upper rows sink into moody shadow. Floor sits
-  // just above the "muddy void" the notes warn about (baked 0.76 × 0.64 ≈ 0.49),
-  // and the DoF blur + cool haze on those same far rows keep them reading as
-  // "distant", not "underexposed".
-  const brightness = 0.64 + ringside * 0.35;       // 0.64 (far) → 0.99 (near)
-  // Saturation gradient. Ringside pops, back-row clothing stays a touch calmer.
-  // Kept VIBRANT on purpose — the background is colorful by design and a low
-  // floor here produces the hated "faded bright" (washed pastel) look. NEVER
-  // drop below ~0.9 net or skin tones go grey.
-  const saturate = 0.96 + ringside * 0.2;           // 0.96 → 1.16
-  // The crowd sprites were baked at contrast(0.95) — i.e. DE-contrasted, which
-  // is exactly what produced the "faded" look. Add the punch back at runtime so
-  // net contrast lands slightly above neutral (≈0.95 × 1.14 ≈ 1.08) and faces
-  // regain definition. Kept FLAT across depth (no far-row taper): lowering
-  // contrast on bright colors reads as washed-out "faded bright", which we
-  // explicitly want to avoid. Depth/recession comes from DoF blur + vignette,
-  // not from crushing the tone curve flat.
+  // Mid grade between stock (0.64→0.99) and the heavy house-dark (0.52→0.82).
+  // Wide front→back ramp keeps the bowl feeling 3D; overall under-key so the
+  // crowd doesn't compete with the dohyo.
+  const brightness = 0.58 + ringside * 0.34;       // 0.58 (far) → 0.92 (near)
+  // Keep clothing color alive — dim ≠ desaturated.
+  const saturate = 0.94 + ringside * 0.2;            // 0.94 → 1.14
+  // Punch back baked contrast(0.95). Flat across depth — recession is
+  // brightness + DoF, not a crushed tone curve.
   const contrast = 1.14;
   // Slight ringside warmth (TV stage-light tint).
-  const sepia = ringside * 0.045;
-  const hueRotate = ringside * -5.5;
+  const sepia = ringside * 0.04;
+  const hueRotate = ringside * -5;
 
   const parts = [
     `brightness(${brightness.toFixed(3)})`,
@@ -411,10 +391,8 @@ const computeCrowdLightingFilter = (y, { foreground = false } = {}) => {
     parts.push(`sepia(${sepia.toFixed(3)})`, `hue-rotate(${hueRotate.toFixed(1)}deg)`);
   }
   let s = parts.join(" ");
-  // Foreground (closest-to-camera) crowd: a touch dimmer so the side-aisle
-  // figures don't compete with the fighters. Kept light enough that they
-  // still read as "people watching", not silhouettes.
-  if (foreground) s = `${s} brightness(0.85)`;
+  // Foreground aisle figures: secondary to fighters, still readable.
+  if (foreground) s = `${s} brightness(0.82)`;
   return s;
 };
 

@@ -54,6 +54,9 @@ const {
   PALM_MATADOR_KB_CAP,
   SLAP_COUNTER_HIT_BONUS_MS,
   SLAP_COUNTER_KB_MULT,
+  GORED_KB_MULT,
+  GORED_HITSTUN_BONUS_MS,
+  GORED_CHARGED_KB_MULT,
   SLAP_MIN_HITSTUN_MS,
   SLAP_RECOVERY_MS,
   CHARGED_KILL_REACH_MIN,
@@ -891,24 +894,35 @@ function processHit(player, otherPlayer, rooms, io) {
     || counterHitFromRopeJumpStartup || counterHitFromSidestepStartup || counterHitFromFlapStartup;
 
   // ============================================
+  // GORED DETECTION (MATADOR punish)
+  // Hitting someone during a live / whiffed MATADOR is a special RPS punish —
+  // the grab-line counterpart to CLAMPED. Overrides normal counter/punish labels.
+  // ============================================
+  const isGored =
+    !!otherPlayer.isMatadorParrying || !!otherPlayer.isMatadorWhiffRecovering;
+
+  // ============================================
   // PUNISH DETECTION
   // Punish = hitting opponent during RECOVERY frames of their move.
   // NOTE: Dodge has no punishable recovery (DODGE_RECOVERY_MS = 0); spam is gated
   // by the post-dodge cooldown instead, so isDodgeRecovery is intentionally excluded.
   // ============================================
-  const isPunish = otherPlayer.isRecovering
+  const isPunish = !isGored && (
+    otherPlayer.isRecovering
     || otherPlayer.isWhiffingGrab
     || otherPlayer.isGrabWhiffRecovery
     || otherPlayer.isApWhiffRecovering // a whiffed Attack Parry is punishable
     || (otherPlayer.isRopeJumping && otherPlayer.ropeJumpPhase === "landing")
-    || otherPlayer.isSidestepRecovery;
+    || otherPlayer.isSidestepRecovery
+  );
 
   // Counter hit and punish are conceptually mutually exclusive: counter = startup
   // read, punish = recovery exposure. If the victim is in a recovery phase (e.g.
   // sidestep recovery), it's a punish — even if they had a recent attack-intent
   // press (e.g. buffering an attack out of recovery), which would otherwise
   // incorrectly stack a counter-hit bonus on top of the punish bonus.
-  const isCounterHit = counterHitRaw && !isPunish;
+  // GORED supersedes both.
+  const isCounterHit = !isGored && counterHitRaw && !isPunish;
 
   // Store the charge power before resetting states
   const chargePercentage = player.chargeAttackPower;
@@ -1596,6 +1610,13 @@ function processHit(player, otherPlayer, rooms, io) {
       finalKnockbackMultiplier *= isSlapAttack ? SLAP_COUNTER_KB_MULT : 1.25;
     }
 
+    // GORED: MATADOR wrong-read punish — harder shove than counter hit.
+    if (isGored) {
+      finalKnockbackMultiplier *= isSlapAttack
+        ? GORED_KB_MULT
+        : GORED_CHARGED_KB_MULT;
+    }
+
     // Armor-break punch: charged shattering grab armor isn't tagged as a
     // counter hit (separate VFX), but it should still hit harder than a
     // neutral charged confirm — the grabber committed hard and ate the read.
@@ -1606,6 +1627,7 @@ function processHit(player, otherPlayer, rooms, io) {
     // PUNISH IS A LABEL, GAME-WIDE: no knockback bonus, no stun bonus, no
     // ring-out bypass. The free hit itself is the whole prize — the banner
     // just tells both players what happened.
+    // GORED is the exception: it forces ring-out eligibility below.
 
     if (player.activePowerUp === POWER_UP_TYPES.POWER) {
       if (isSlapAttack) {
@@ -1702,11 +1724,12 @@ function processHit(player, otherPlayer, rooms, io) {
           // carried momentum + the victim's broken posture (flag off ⇒
           // SLAP_KILL_RANGE, unchanged).
           otherPlayer.slapKnockbackCanRingOut =
+            isGored ||
             distanceToBoundaryInKbDir <= slapKillBand(player, otherPlayer);
 
           // GROUND TRANSFER: both slide toward the victim's rope; attacker push
           // is a touch higher so mash pressure chases/glues instead of soft-whiffing.
-          // finalKnockbackMultiplier carries counter (×1.25) / POWER / BASHO
+          // finalKnockbackMultiplier carries counter (×1.25) / GORED / POWER / BASHO
           // scaling into the drift — extra shove on an earned read.
           // MASTERY Phase 1: the drift also inherits the attacker's entry
           // (slapMomentumMult, 1.2) AND the victim's into/brace momentum
@@ -1722,13 +1745,17 @@ function processHit(player, otherPlayer, rooms, io) {
 
       } else if (isLowKick) {
         // LOW KICK: small slap-sized shove, NEVER rings out. Posture tool.
+        // GORED still amplifies the shove (MATADOR wrong-read), but no ring-out.
         isCinematicKill = false;
         otherPlayer.isSlapKnockback = true;
         otherPlayer.isBurstKnockback = true;
         otherPlayer.isChargedKnockback = false;
         otherPlayer.burstKnockbackStartTime = currentTime;
         otherPlayer.knockbackVelocity.x =
-          knockbackDirection * LOW_KICK_KB_VELOCITY * bashoKbFactor;
+          knockbackDirection *
+          LOW_KICK_KB_VELOCITY *
+          bashoKbFactor *
+          (isGored ? GORED_KB_MULT : 1);
         otherPlayer.knockbackVelocity.y = 0;
         otherPlayer.movementVelocity = 0;
         otherPlayer.slapKnockbackCanRingOut = false;
@@ -1778,7 +1805,9 @@ function processHit(player, otherPlayer, rooms, io) {
             : otherPlayer.x - MAP_LEFT_BOUNDARY;
         // MASTERY Phase 2 (2.4): the palm (rooted → no momentum term) still gets
         // the broken-posture band extension. Flag off ⇒ SLAP_KILL_RANGE.
+        // GORED forces ring-out eligibility (MATADOR wrong-read punish).
         otherPlayer.slapKnockbackCanRingOut =
+          isGored ||
           distanceToBoundaryInKbDir <= slapKillBand(player, otherPlayer);
 
         // Palm holds its ground — no backward recoil on a connected hit.
@@ -1821,8 +1850,9 @@ function processHit(player, otherPlayer, rooms, io) {
 
         // Marker + gate for the index.js rope clamp: a charged hit that is NOT a
         // cinematic kill slams the victim TO the rope, not through it.
+        // GORED (MATADOR punish) bypasses the clamp — wrong hard-read must hurt.
         otherPlayer.isChargedKnockback = true;
-        otherPlayer.chargedKnockbackCanRingOut = isCinematicKill;
+        otherPlayer.chargedKnockbackCanRingOut = isCinematicKill || isGored;
 
         if (isCinematicKill) {
           otherPlayer.isCinematicKillVictim = true;
@@ -1928,10 +1958,12 @@ function processHit(player, otherPlayer, rooms, io) {
           // styling only — no mechanical bonus behind it).
           isCounterHit: isCounterHit,
           isPunish: isPunish,
-          // Attacker side: client triggers the COUNTER HIT / PUNISH side
+          isGored: isGored,
+          // Attacker side: client triggers the COUNTER HIT / PUNISH / GORED side
           // banner off these (folded in from the old separate events).
           showCounterBanner: isCounterHit,
           showPunishBanner: isPunish,
+          showGoredBanner: isGored,
           attackerPlayerNumber,
           cinematicKill: isCinematicKill || false,
           knockbackDirection: knockbackDirection,
@@ -2053,13 +2085,17 @@ function processHit(player, otherPlayer, rooms, io) {
     } else if (isSlapAttack) {
       const attackerFreeAt = player.attackCooldownUntil || (currentTime + SLAP_RECOVERY_MS);
       hitStateDuration = Math.max(attackerFreeAt - currentTime, SLAP_MIN_HITSTUN_MS);
-      if (isCounterHit) {
+      if (isGored) {
+        hitStateDuration += GORED_HITSTUN_BONUS_MS;
+      } else if (isCounterHit) {
         hitStateDuration += SLAP_COUNTER_HIT_BONUS_MS;
       }
     } else {
       hitStateDuration = 380;
       if (isCinematicKill) {
         hitStateDuration = 3000;
+      } else if (isGored) {
+        hitStateDuration = Math.round(hitStateDuration * 1.55);
       } else if (isCounterHit) {
         hitStateDuration = Math.round(hitStateDuration * 1.4);
       }

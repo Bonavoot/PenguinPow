@@ -30,6 +30,9 @@ const {
   AP_ACTIVE_MS,
   AP_WHIFF_RECOVERY_MS,
   AP_COOLDOWN_MS,
+  MATADOR_ACTIVE_MS,
+  MATADOR_WHIFF_RECOVERY_MS,
+  MATADOR_SUCCESS_LOCK_MS,
   AP_FLURRY_STAGGER_BEGIN_MS,
   AP_FLURRY_SLACK_MS,
   AP_STAGGER_SLAP_MS,
@@ -296,7 +299,107 @@ function lagCompensatedParryStart(player, simNowMs) {
 //   • isRawParrying / isGuarding — re-tap while guarding re-arms a read
 // Callers layer their own action-state gates (grabbing, hit, etc.) on top.
 function canArmAttackParry(player, _simTime) {
-  return !player.apSpaceConsumed && !player.isApWhiffRecovering;
+  return (
+    !player.apSpaceConsumed &&
+    !player.isApWhiffRecovering &&
+    !player.isMatadorParrying &&
+    !player.isMatadorWhiffRecovering
+  );
+}
+
+// Facing-relative BACK chord (same as palm thrust): away held, not forward.
+function wantsMatadorChord(player) {
+  if (!player || !player.keys) return false;
+  const forwardKey = player.facing === -1 ? "d" : "a";
+  const backKey = player.facing === -1 ? "a" : "d";
+  return !!(player.keys[backKey] && !player.keys[forwardKey]);
+}
+
+function canArmMatador(player, _simTime) {
+  return (
+    !player.apSpaceConsumed &&
+    !player.isApWhiffRecovering &&
+    !player.isMatadorWhiffRecovering &&
+    !player.isMatadorParrying
+  );
+}
+
+function cancelMatadorWindow(player, simTime) {
+  player.isMatadorParrying = false;
+  player.isMatadorSuccess = false;
+  player.matadorStartTime = 0;
+  player.matadorActiveUntil = 0;
+  player.matadorSuccessUntil = 0;
+  player.isMatadorWhiffRecovering = true;
+  player.matadorRecoveryUntil = simTime + MATADOR_WHIFF_RECOVERY_MS;
+  // Share Space latch with AP — one physical press, one commitment.
+  player.apSpaceConsumed = false;
+  player.spaceJustPressed = false;
+  player.movementVelocity = 0;
+  player.isStrafing = false;
+}
+
+function clearMatadorWindow(player) {
+  player.isMatadorParrying = false;
+  player.isMatadorSuccess = false;
+  player.matadorStartTime = 0;
+  player.matadorActiveUntil = 0;
+  player.matadorSuccessUntil = 0;
+  player.isMatadorWhiffRecovering = false;
+  player.matadorRecoveryUntil = 0;
+}
+
+// Open a MATADOR window (BACK+SPACE tap). Tap-only — never becomes GUARD.
+function armMatador(player, simTime, startTime) {
+  // Cancel any live AP so the two stances can't coexist on one Space press.
+  player.isRawParrying = false;
+  player.isGuarding = false;
+  player.rawParryStartTime = 0;
+  player.apActiveUntil = 0;
+  player.isRawParrySuccess = false;
+  player.isPerfectRawParrySuccess = false;
+
+  player.isMatadorParrying = true;
+  player.isMatadorSuccess = false;
+  player.matadorStartTime = startTime != null ? startTime : simTime;
+  player.matadorActiveUntil = simTime + MATADOR_ACTIVE_MS;
+  player.matadorSuccessUntil = 0;
+  player.isMatadorWhiffRecovering = false;
+  player.matadorRecoveryUntil = 0;
+  player.apSpaceConsumed = true;
+  player.spaceJustPressed = false;
+  player.movementVelocity = 0;
+  player.isStrafing = false;
+  player.isPowerSliding = false;
+  player.isCrouchStance = false;
+  player.isCrouchStrafing = false;
+  player.pendingSlapCount = 0;
+}
+
+// Per-tick MATADOR SM. Tap-only: release OR window expiry → whiff jail.
+// No hold→guard path (unlike AP).
+function updateMatadorState(player, simTime, spaceHeld) {
+  if (player.isMatadorWhiffRecovering && simTime >= (player.matadorRecoveryUntil || 0)) {
+    player.isMatadorWhiffRecovering = false;
+    player.matadorRecoveryUntil = 0;
+  }
+
+  if (player.isMatadorSuccess) {
+    if (simTime >= (player.matadorSuccessUntil || 0)) {
+      player.isMatadorSuccess = false;
+      player.matadorSuccessUntil = 0;
+      // Drop the pull pose with the success window.
+      if (player.isAttemptingPull) player.isAttemptingPull = false;
+    }
+    return;
+  }
+
+  if (!player.isMatadorParrying) return;
+
+  const activeUntil = player.matadorActiveUntil || 0;
+  if (activeUntil <= 0 || simTime >= activeUntil || !spaceHeld) {
+    cancelMatadorWindow(player, simTime);
+  }
 }
 
 // End a live parry window on release (or empty expiry): rooted whiff recovery
@@ -752,6 +855,9 @@ function isPlayerInBasicActiveState(player) {
     !player.isRawParrySuccess &&
     !player.isPerfectRawParrySuccess &&
     !player.isApWhiffRecovering && // AP whiffed → committed, punishable recovery
+    !player.isMatadorParrying &&
+    !player.isMatadorSuccess &&
+    !player.isMatadorWhiffRecovering &&
     !player.isThrowingSnowball &&
     !player.isAtTheRopes &&
     // Grab-related intermediate states
@@ -887,6 +993,9 @@ function canPlayerDash(player) {
     !player.isRawParrySuccess &&
     !player.isPerfectRawParrySuccess &&
     !player.isApWhiffRecovering && // AP whiffed → committed, punishable recovery
+    !player.isMatadorParrying &&
+    !player.isMatadorSuccess &&
+    !player.isMatadorWhiffRecovering &&
     !player.isThrowingSnowball &&
     !player.isAtTheRopes &&
     // Grab-related intermediate states
@@ -1113,6 +1222,15 @@ function clearAllActionStates(player) {
   player.apSpaceConsumed = false;
   player.isApPostParryLocked = false;
   player.apPostParryLockUntil = 0;
+
+  // MATADOR — hit / lose-control tears down the grab-line read too.
+  player.isMatadorParrying = false;
+  player.isMatadorSuccess = false;
+  player.matadorStartTime = 0;
+  player.matadorActiveUntil = 0;
+  player.matadorSuccessUntil = 0;
+  player.isMatadorWhiffRecovering = false;
+  player.matadorRecoveryUntil = 0;
   
   // Clear movement states
   player.isStrafing = false;
@@ -1744,6 +1862,12 @@ module.exports = {
   clearAttackParryWindow,
   enterGuard,
   updateAttackParryState,
+  wantsMatadorChord,
+  canArmMatador,
+  armMatador,
+  cancelMatadorWindow,
+  clearMatadorWindow,
+  updateMatadorState,
   // Classes and instances
   TimeoutManager,
   timeoutManager,

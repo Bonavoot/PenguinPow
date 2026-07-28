@@ -11,6 +11,7 @@ const {
   RAW_PARRY_REARM_STAMINA_COST, RAW_PARRY_REARM_INTERVAL_MS,
   CHARGE_FULL_POWER_MS,
   LOW_KICK_ENABLED,
+  GRAB_BREAK_REACTION_LOCK_MS,
 } = require("./constants");
 
 const {
@@ -34,6 +35,9 @@ const {
   lagCompensatedParryStart,
   canArmAttackParry,
   armAttackParry,
+  wantsMatadorChord,
+  canArmMatador,
+  armMatador,
   clearIceSlideState,
   tryIceSlideReverse,
   beginPlayerDodge,
@@ -357,7 +361,14 @@ function processInputPacket(room, player, data, io, rooms) {
               player.inputBuffer = { type: "flap", timestamp: simNowForPlayer(player) };
             }
           } else {
-            player.inputBuffer = { type: "rawParry", timestamp: simNowForPlayer(player) };
+            const fwdK = player.facing === -1 ? "d" : "a";
+            const backK = player.facing === -1 ? "a" : "d";
+            const wantsMatador =
+              !!data.keys[backK] && !data.keys[fwdK];
+            player.inputBuffer = {
+              type: wantsMatador ? "matador" : "rawParry",
+              timestamp: simNowForPlayer(player),
+            };
           }
         } else if (rising.shift && data.keys.s && !data.keys.mouse2) {
           player.inputBuffer = { type: "sidestep", timestamp: simNowForPlayer(player) };
@@ -527,7 +538,10 @@ function processInputPacket(room, player, data, io, rooms) {
             player.inputBuffer = { type: "flap", timestamp: simNowForPlayer(player) };
           }
         } else {
-          player.inputBuffer = { type: "rawParry", timestamp: simNowForPlayer(player) };
+          player.inputBuffer = {
+            type: wantsMatadorChord(player) ? "matador" : "rawParry",
+            timestamp: simNowForPlayer(player),
+          };
         }
       } else if (player.shiftJustPressed && data.keys.s && !data.keys.mouse2) {
         player.inputBuffer = { type: "sidestep", timestamp: simNowForPlayer(player) };
@@ -608,6 +622,8 @@ function processInputPacket(room, player, data, io, rooms) {
       !player.isIceSliding &&
       !shouldBlockAction() &&
       !player.isRawParrying &&
+      !player.isMatadorParrying &&
+      !player.isMatadorWhiffRecovering &&
       !player.isRawParryStun &&
       !player.grabBreakSpaceConsumed &&
       !player.isSidestepping &&
@@ -643,12 +659,10 @@ function processInputPacket(room, player, data, io, rooms) {
     }
   }
 
-  // SPACE PRESS (rising edge): open / RE-STAMP a PARRY window immediately.
-  // A fresh TAP is a timed read; HOLDING settles into GUARD once the window
-  // expires. Release during a live window CANCELS (SM, after collision). A
-  // re-press re-stamps rawParryStartTime even if a prior window was still
-  // live — the flurry re-time loop. canArm gates only on apSpaceConsumed
-  // (cleared on falling Space above). PRIMARY human path; lag-compensated.
+  // SPACE PRESS (rising edge):
+  //   BACK+SPACE → MATADOR (grab-line tap parry; never becomes GUARD)
+  //   SPACE alone → ATTACK PARRY (tap read → hold settles into GUARD)
+  // PRIMARY human path; lag-compensated. Shared apSpaceConsumed latch.
   if (
     player.spaceJustPressed &&
     player.activePowerUp !== POWER_UP_TYPES.FLAP &&
@@ -656,12 +670,11 @@ function processInputPacket(room, player, data, io, rooms) {
     !shouldBlockAction() &&
     !player.isRawParryStun &&
     !player.grabBreakSpaceConsumed &&
-    canArmAttackParry(player, simNowForPlayer(player)) &&
     !player.isSidestepping &&
     !player.isSlideJumping &&
     !player.isGrabbing &&
     !player.isBeingGrabbed &&
-    !player.isGrabStartup && // Block AP during grab startup (lunge windup) — prevents parry/grab state coexistence
+    !player.isGrabStartup && // Block during grab startup — no parry/grab coexistence
     !player.isGrabbingMovement &&
     !player.isWhiffingGrab &&
     !player.isGrabClashing &&
@@ -674,8 +687,13 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.canMoveToReady
   ) {
     const nowSim = simNowForPlayer(player);
-    armAttackParry(player, nowSim, lagCompensatedParryStart(player, nowSim));
-    clearChargeState(player, true);
+    if (wantsMatadorChord(player) && canArmMatador(player, nowSim)) {
+      armMatador(player, nowSim, lagCompensatedParryStart(player, nowSim));
+      clearChargeState(player, true);
+    } else if (canArmAttackParry(player, nowSim)) {
+      armAttackParry(player, nowSim, lagCompensatedParryStart(player, nowSim));
+      clearChargeState(player, true);
+    }
   }
 
   // MOUSE1 PRESS: S+FORWARD+MOUSE1 = charged, S+MOUSE1 = low kick,
@@ -803,6 +821,8 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.isHit &&
     !player.isRawParryStun &&
     !player.isRawParrying &&
+    !player.isMatadorParrying &&
+    !player.isMatadorWhiffRecovering &&
     !player.canMoveToReady
   ) {
     // Clear charge attack state if player was charging
@@ -1061,6 +1081,8 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.isSidestepping &&
     !player.isThrowingSnowball &&
     !player.isRawParrying &&
+    !player.isMatadorParrying &&
+    !player.isMatadorWhiffRecovering &&
     !isInChargedAttackExecution()
   ) {
     // Sidestep stays hard-locked while gassed; full dodge can still buffer.
@@ -1199,27 +1221,11 @@ function processInputPacket(room, player, data, io, rooms) {
     player.mouse1ConsumedUntilRelease = false;
   }
 
-  // === GRIP-UP: Opponent presses Mouse2 while being grabbed without grip → gets grip ===
-  // isBeingGrabbed stays true (keeps position-lock and action blocking intact).
-  // hasGrip is used CLIENT-SIDE to switch from being-grabbed to belt-grip animation.
-  // The Mouse2 press that acquires grip is consumed — throw can't ride the same press.
-  // ARM CLAMP (counter-grab): the punished parrier cannot grip up manually —
-  // grip is granted automatically when the clamp releases (grabActionSystem).
-  if (
-    player.mouse2JustPressed &&
-    player.isBeingGrabbed &&
-    !player.hasGrip &&
-    !player.isArmClamped &&
-    player.inClinch
-  ) {
-    player.hasGrip = true;
-    player.clinchAction = "neutral";
-    player.gripAcquiredTime = simNowForPlayer(player);
-  }
-
   // === CLINCH JOLT: Mouse1 while in clinch with grip ===
+  // ARM CLAMP: clamped victims cannot jolt during the punish burst.
   if (
     player.mouse1JustPressed && player.hasGrip && player.inClinch &&
+    !player.isArmClamped &&
     !player.isClinchJolting && !player.clinchJoltRecovery && !player.clinchJoltCooldown &&
     !player.clinchThrowActive && !player.isClinchClashing &&
     !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted &&
@@ -1230,12 +1236,15 @@ function processInputPacket(room, player, data, io, rooms) {
     player.clinchJoltRequestTime = simNowForPlayer(player);
   }
 
-  // === CLINCH BREAK: Spacebar while in mutual clinch (both must have grip) ===
-  // Defensive escape from the clinch — costs heavy stamina, halves balance,
-  // soft-gated (under-budget breakers self-gas). Phase A grabs (one-sided grip)
-  // can't be broken — opponent must have gripped up first.
+  // === CLINCH BREAK: Spacebar while in mutual clinch (both have grip on connect) ===
+  // Defensive escape — costs heavy stamina, halves balance, soft-gated
+  // (under-budget breakers self-gas). Does NOT require holding M2.
+  // ARM CLAMP: clamped victims cannot break during the punish burst.
+  // Reaction lock: Space during the first ~human-reaction window after grip
+  // connect is ignored (no latch) so late open-game parries don't become breaks.
   if (
     player.spaceJustPressed && player.hasGrip && player.inClinch &&
+    !player.isArmClamped &&
     !player.isGassed &&
     !player.clinchThrowActive && !player.isClinchClashing &&
     !player.isClinchJolting && !player.isClinchJoltClashing && !player.clinchJoltRecovery &&
@@ -1244,10 +1253,14 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.clinchBreakRequest && !player.isGrabBreaking && !player.isGrabBreakCountered &&
     !player.isGrabBreakSeparating
   ) {
-    const otherPlayer = room.players.find((p) => p.id !== player.id);
-    if (otherPlayer && otherPlayer.hasGrip) {
-      player.clinchBreakRequest = true;
-      player.clinchBreakRequestTime = simNowForPlayer(player);
+    const breakNow = simNowForPlayer(player);
+    const gripAt = player.gripAcquiredTime || 0;
+    if (!gripAt || breakNow - gripAt >= GRAB_BREAK_REACTION_LOCK_MS) {
+      const otherPlayer = room.players.find((p) => p.id !== player.id);
+      if (otherPlayer && otherPlayer.hasGrip) {
+        player.clinchBreakRequest = true;
+        player.clinchBreakRequestTime = breakNow;
+      }
     }
   }
 
@@ -1261,11 +1274,13 @@ function processInputPacket(room, player, data, io, rooms) {
   //   1) Mouse2 just pressed + direction(s) already held
   //   2) Mouse2 already held + relevant key just pressed
   //   3) Mouse2 just pressed, direction arrives within 200ms buffer
-  // Grip must have been acquired on a previous tick — can't throw on the same press that got you the grip.
-  const gripTooRecent = player.gripAcquiredTime && (simNowForPlayer(player) - player.gripAcquiredTime < 50);
+  // Holding M2 also drives the belt-arm pose (isClinchBeltHolding).
+  // The M2 that started the grab must be released first — same gate as belt pose.
+  // ARM CLAMP: clamped victims cannot throw during the punish burst.
   if (
     player.keys.mouse2 && player.hasGrip && player.inClinch &&
-    !gripTooRecent &&
+    !player.clinchBeltRequiresM2Release &&
+    !player.isArmClamped &&
     !player.clinchThrowActive && !player.clinchThrowCooldown && !player.isClinchClashing &&
     !player.clinchThrowRequest && !player.clinchThrowFailStagger &&
     !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted
@@ -1321,6 +1336,8 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.isBeingPushed &&
     !player.grabbedOpponent &&
     !player.isRawParrying &&
+    !player.isMatadorParrying &&
+    !player.isMatadorWhiffRecovering &&
     !player.isJumping &&
     !player.isGrabbingMovement &&
     !player.isWhiffingGrab &&
@@ -1818,7 +1835,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
               );
               const chosen = availableColors.length > 0
                 ? availableColors[Math.floor(Math.random() * availableColors.length)]
-                : "#D94848";
+                : "#DA1B44";
               cpuPlayer.mawashiColor = chosen;
 
               const humanBodyHex = (humanPlayer.bodyColor || "").toString().toLowerCase();

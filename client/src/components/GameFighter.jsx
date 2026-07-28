@@ -32,6 +32,7 @@ import GrabTechEffect from "./GrabTechEffect";
 import ClinchJoltEffect from "./ClinchJoltEffect";
 import CounterGrabEffect from "./CounterGrabEffect";
 import PunishBannerEffect from "./PunishBannerEffect";
+import GoredBannerEffect from "./GoredBannerEffect";
 import CounterHitEffect from "./CounterHitEffect";
 import EdgeDangerEffect from "./EdgeDangerEffect";
 import GripPromptEffect from "./GripPromptEffect";
@@ -111,7 +112,6 @@ const BATTLE_ENTRY_FADE = 0;
 // After round end: keep BGM going briefly, then a longer fade (not a hard cut).
 const BATTLE_EXIT_HOLD = 1.5;
 const BATTLE_EXIT_FADE = 2.8;
-const BATTLE_MUSIC_ALT_ROUND = 3;
 
 // Assets, sounds, preloading, constants, ritual config, playSound helper
 import {
@@ -428,7 +428,13 @@ const GameFighter = ({
   bashoOpponentName = null, // BASHO-only: CPU rival name for the HUD nameplate
 }) => {
   const { socket } = useContext(SocketContext);
-  const { emit: emitParticles, clearRawParryBlueHold, clearPalmThrust, setFrozen } = useParticles();
+  const {
+    emit: emitParticles,
+    clearRawParryBlueHold,
+    clearMatadorGoldHold,
+    clearPalmThrust,
+    setFrozen,
+  } = useParticles();
 
   // ============================================
   // SPRITE RECOLORING STATE
@@ -847,6 +853,9 @@ const GameFighter = ({
     isPowerSliding: false, // ICE PHYSICS: True when power sliding (C key held)
     isRawParrying: false,
     isApWhiffRecovering: false,
+    isMatadorParrying: false,
+    isMatadorSuccess: false,
+    isMatadorWhiffRecovering: false,
     isReady: false,
     isHit: false,
     isDead: false,
@@ -910,6 +919,10 @@ const GameFighter = ({
   // all flag-dependent styling still flows through React renders).
   const fighterImgDomRef = useRef(null); // StyledImage (static sprite)
   const grabArmImgDomRef = useRef(null); // grab/clinch arm overlay (static)
+  // After grab connect, ignore the same M2 hold that started the grab until
+  // a release is seen (mirrors server clinchBeltRequiresM2Release).
+  const clinchBeltNeedsM2ReleaseRef = useRef(false);
+  const wasInClinchRef = useRef(false);
   const animContainerDomRef = useRef(null); // AnimatedFighterContainer
   const shadowDomRef = useRef(null); // PlayerShadow root div
   const reflectionDomRef = useRef(null); // IceReflection root div
@@ -917,7 +930,7 @@ const GameFighter = ({
   // mid-slide between MAP (win line) and DOHYO (fall edge).
   const isRoundLoserRef = useRef(false);
   const youLabelDomRef = useRef(null); // pre-game "You" label
-  const gripPromptDomRef = useRef(null); // in-clinch "GRIP!" / "CLAMPED!" prompt
+  const gripPromptDomRef = useRef(null); // in-clinch "CLAMPED!" prompt
   // Mirror of the latest rendered penguin state for the rAF loop (flags used
   // in position formulas: at-the-ropes nudge, shadow ground-pinning).
   const penguinRef = useRef(penguin);
@@ -960,6 +973,7 @@ const GameFighter = ({
     dodgeDirection: null,
     isChargingAttack: false,
     isRawParrying: false,
+    isMatadorParrying: false,
     isGrabbing: false,
     // ICE PHYSICS: Movement predictions for responsive feel
     isPowerSliding: false,
@@ -1092,7 +1106,10 @@ const GameFighter = ({
       penguin.isApPostParryLocked ||
       penguin.isRawParrySuccess ||
       penguin.isPerfectRawParrySuccess ||
-      penguin.isApWhiffRecovering
+      penguin.isApWhiffRecovering ||
+      penguin.isMatadorParrying ||
+      penguin.isMatadorSuccess ||
+      penguin.isMatadorWhiffRecovering
     ) {
       return true;
     }
@@ -1109,6 +1126,9 @@ const GameFighter = ({
     penguin.isRawParrySuccess,
     penguin.isPerfectRawParrySuccess,
     penguin.isApWhiffRecovering,
+    penguin.isMatadorParrying,
+    penguin.isMatadorSuccess,
+    penguin.isMatadorWhiffRecovering,
     penguin.isRawParrying,
     penguin.isGuarding,
   ]);
@@ -1292,6 +1312,7 @@ const GameFighter = ({
               isChargingAttack: false,
               isDodging: false,
               isRawParrying: false,
+              isMatadorParrying: false,
               isGrabbing: false,
               timestamp: now,
             };
@@ -1339,6 +1360,7 @@ const GameFighter = ({
               isChargingAttack: false,
               isDodging: false,
               isRawParrying: false,
+              isMatadorParrying: false,
               isGrabbing: false,
               timestamp: now,
             };
@@ -1372,6 +1394,7 @@ const GameFighter = ({
               isChargingAttack: false,
               isDodging: false,
               isRawParrying: false,
+              isMatadorParrying: false,
               isGrabbing: false,
               timestamp: now,
             };
@@ -1397,6 +1420,7 @@ const GameFighter = ({
               isAttacking: false,
               isDodging: false,
               isRawParrying: false,
+              isMatadorParrying: false,
               isGrabbing: false,
               timestamp: now,
             };
@@ -1426,6 +1450,7 @@ const GameFighter = ({
               // Don't clear dodge state - let dodge continue visually
               isDodging: predictedState.current.isDodging,
               isRawParrying: false,
+              isMatadorParrying: false,
               isGrabbing: false,
               timestamp: now,
             };
@@ -1459,6 +1484,7 @@ const GameFighter = ({
               isPalmThrust: false,
               isLowKick: false,
               isRawParrying: false,
+              isMatadorParrying: false,
               isGrabbing: false,
               timestamp: now,
             };
@@ -1490,6 +1516,7 @@ const GameFighter = ({
             predictedState.current = {
               ...predictedState.current,
               isRawParrying: true,
+              isMatadorParrying: false,
               // CRITICAL: Clear other action predictions to prevent visual flicker
               isChargingAttack: false,
               isAttacking: false,
@@ -1503,6 +1530,57 @@ const GameFighter = ({
             predictionChanged = true;
           }
           break;
+        case "matador_start":
+          if (gameStarted) {
+            predictedParryCommitUntilRef.current = Math.max(
+              now + AP_ACTIVE_MS_CLIENT,
+              predictedFlurryUntilRef.current
+            );
+          }
+          if (canPredictAction(gameStarted) && !penguin.isChargingAttack) {
+            predictedState.current = {
+              ...predictedState.current,
+              isMatadorParrying: true,
+              isRawParrying: false,
+              isChargingAttack: false,
+              isAttacking: false,
+              isSlapAttack: false,
+              isPalmThrust: false,
+              isLowKick: false,
+              isDodging: false,
+              isGrabbing: false,
+              timestamp: now,
+            };
+            predictionChanged = true;
+          }
+          break;
+        case "matador_release": {
+          if (gameStarted) {
+            predictedParryCommitUntilRef.current =
+              now + AP_CANCEL_RECOVERY_MS_CLIENT;
+          }
+          const inLiveMatador =
+            isLocalPlayer &&
+            (penguin.isMatadorParrying ||
+              predictedState.current.isMatadorParrying);
+          if (gameStarted && inLiveMatador) {
+            apWhiffPredictRef.current.until = now + AP_WHIFF_RECOVERY_MS;
+            apWhiffPredictRef.current.sawServerWhiff = false;
+            forceVisualRender();
+          }
+          if (
+            penguin.isMatadorParrying ||
+            predictedState.current.isMatadorParrying
+          ) {
+            predictedState.current = {
+              ...predictedState.current,
+              isMatadorParrying: false,
+              timestamp: now,
+            };
+            predictionChanged = true;
+          }
+          break;
+        }
         case "parry_release": {
           // Offense suppress for whiff jail length. Do NOT hold commit until
           // flurry end or you can walk unable to attack for hundreds of ms.
@@ -1528,6 +1606,7 @@ const GameFighter = ({
             predictedState.current = {
               ...predictedState.current,
               isRawParrying: false,
+              isMatadorParrying: false,
               timestamp: now,
             };
             predictionChanged = true;
@@ -1547,6 +1626,7 @@ const GameFighter = ({
               isLowKick: false,
               isDodging: false,
               isRawParrying: false,
+              isMatadorParrying: false,
               timestamp: now,
             };
             predictionChanged = true;
@@ -1880,6 +1960,9 @@ const GameFighter = ({
     if (prediction.isRawParrying && !penguin.isRawParrying) {
       predictedState.current.isRawParrying = false;
     }
+    if (prediction.isMatadorParrying && !penguin.isMatadorParrying) {
+      predictedState.current.isMatadorParrying = false;
+    }
 
     // Grabbing: If server says no grabbing, trust server
     if (prediction.isGrabbing && !penguin.isGrabbing) {
@@ -1920,6 +2003,7 @@ const GameFighter = ({
       !p.isDodging &&
       !p.isChargingAttack &&
       !p.isRawParrying &&
+      !p.isMatadorParrying &&
       !p.isGrabbing &&
       !p.isPowerSliding &&
       !p.isBraking
@@ -1941,6 +2025,7 @@ const GameFighter = ({
       dodgeDirection: p.isDodging ? p.dodgeDirection : penguin.dodgeDirection,
       isChargingAttack: p.isChargingAttack || penguin.isChargingAttack,
       isRawParrying: p.isRawParrying || penguin.isRawParrying,
+      isMatadorParrying: p.isMatadorParrying || penguin.isMatadorParrying,
       // Guard floor is server-authored (window expired while holding). Don't
       // OR-predict it — the live parry window must keep the parry stance.
       isGuarding: !!penguin.isGuarding,
@@ -2081,6 +2166,7 @@ const GameFighter = ({
   const [counterGrabEffectPosition, setCounterGrabEffectPosition] =
     useState(null);
   const [punishBannerPosition, setPunishBannerPosition] = useState(null);
+  const [goredBannerPosition, setGoredBannerPosition] = useState(null);
   const [snowballImpactPosition, setSnowballImpactPosition] = useState(null);
   const [counterHitEffectPosition, setCounterHitEffectPosition] =
     useState(null);
@@ -2456,6 +2542,91 @@ const GameFighter = ({
             );
           }
           grabArmEl.style.setProperty("--grab-arm-belt-y", `${beltTrackY}px`);
+          // Belt vs body-hold arm pose. Local M2 is read live so the flipper
+          // drops to the belt on press without waiting on the 32Hz flag —
+          // but the M2 that started the grab is consumed until release so
+          // connect defaults to body hold (same as server).
+          // Body holds are ASYMMETRIC (over / under) so the two long flippers
+          // nest at different heights instead of crossing through each other.
+          //   Grabber  → overhook (higher chest)
+          //   Grabbed  → underhook (mid torso, still clearly off the belt)
+          const localKeys = isLocalPlayer ? getLocalKeyState() : null;
+          const localM2Down = !!localKeys?.mouse2;
+          if (isLocalPlayer) {
+            const wasClinch = wasInClinchRef.current;
+            wasInClinchRef.current = !!p.inClinch;
+            if (p.inClinch && !wasClinch && localM2Down) {
+              clinchBeltNeedsM2ReleaseRef.current = true;
+            }
+            if (
+              !!p.clinchBeltRequiresM2Release ||
+              clinchBeltNeedsM2ReleaseRef.current
+            ) {
+              if (!localM2Down) {
+                clinchBeltNeedsM2ReleaseRef.current = false;
+              }
+            }
+            if (!p.inClinch) {
+              clinchBeltNeedsM2ReleaseRef.current = false;
+            }
+          }
+          const beltM2Blocked =
+            !!p.clinchBeltRequiresM2Release ||
+            (isLocalPlayer && clinchBeltNeedsM2ReleaseRef.current);
+          const localM2 =
+            isLocalPlayer &&
+            p.inClinch &&
+            !p.isArmClamped &&
+            localM2Down &&
+            !beltM2Blocked;
+          const onBelt =
+            (!!p.isClinchBeltHolding && !beltM2Blocked) ||
+            localM2 ||
+            !!p.isClinchLifting ||
+            !!p.isAttemptingGrabThrow ||
+            !!p.isAttemptingPull;
+          const bodyHolding =
+            p.inClinch && !p.isClinchLifting && !onBelt;
+          // +deg = tip swings UP from the belt-rest asset. Mild over/under
+          // split — server also spaces body holds farther apart so we don't
+          // need a tiny underhook or a severe length chop (those made the
+          // snap to full belt-arm look broken).
+          const BODY_HOLD_OVER_DEG = 20;
+          const BODY_HOLD_UNDER_DEG = 17;
+          const BODY_HOLD_LEN = 0.88;
+          const isOverhook = !!p.isGrabbing;
+          let bodyHoldDeg = 0;
+          let bodyHoldY = "0%";
+          let bodyHoldLen = 1;
+          if (bodyHolding) {
+            bodyHoldDeg = isOverhook
+              ? BODY_HOLD_OVER_DEG
+              : BODY_HOLD_UNDER_DEG;
+            bodyHoldY = isOverhook ? "-0.5%" : "1.5%";
+            bodyHoldLen = BODY_HOLD_LEN;
+          }
+          grabArmEl.style.setProperty(
+            "--grab-arm-body-hold-deg",
+            `${bodyHoldDeg}deg`
+          );
+          grabArmEl.style.setProperty("--grab-arm-body-hold-y", bodyHoldY);
+          grabArmEl.style.setProperty(
+            "--grab-arm-body-hold-len",
+            String(bodyHoldLen)
+          );
+          // Plant / body-hold: pull flipper BACK off the white belly. Belt (M2)
+          // stays pre-aligned (0). Written here so M2 press/release is instant.
+          let nudgeX = 0;
+          let nudgeY = 0;
+          if (p.isClinchPlanting) {
+            nudgeX = 6;
+            nudgeY = 2;
+          } else if (bodyHolding) {
+            nudgeX = 4.5;
+            nudgeY = 0.75;
+          }
+          grabArmEl.style.setProperty("--grab-arm-nudge-x", `${nudgeX}%`);
+          grabArmEl.style.setProperty("--grab-arm-nudge-y", `${nudgeY}%`);
         }
         const animEl = animContainerDomRef.current;
         if (animEl) {
@@ -2837,11 +3008,9 @@ const GameFighter = ({
       fading.stop({ fadeOut: 0.35, hold: 0 });
     }
     battleMusicRoundRef.current += 1;
-    const roundNumber = battleMusicRoundRef.current;
-    const track =
-      roundNumber === BATTLE_MUSIC_ALT_ROUND
-        ? battleMusicTracks[1]
-        : battleMusicTracks[0];
+    const trackIndex =
+      (battleMusicRoundRef.current - 1) % battleMusicTracks.length;
+    const track = battleMusicTracks[trackIndex];
     const loop = createCrossfadeLoop(
       track,
       BATTLE_MUSIC_VOL * getGlobalVolume(),
@@ -3090,6 +3259,9 @@ const GameFighter = ({
           prev.isThrowing !== newState.isThrowing ||
           prev.isBeingThrown !== newState.isBeingThrown ||
           prev.isRawParrying !== newState.isRawParrying ||
+          prev.isMatadorParrying !== newState.isMatadorParrying ||
+          prev.isMatadorSuccess !== newState.isMatadorSuccess ||
+          prev.isMatadorWhiffRecovering !== newState.isMatadorWhiffRecovering ||
           prev.isGuarding !== newState.isGuarding ||
           prev.isApWhiffRecovering !== newState.isApWhiffRecovering ||
           prev.isChargingAttack !== newState.isChargingAttack ||
@@ -3172,6 +3344,9 @@ const GameFighter = ({
           prev.isSidestepStartup !== newState.isSidestepStartup ||
           prev.isSidestepRecovery !== newState.isSidestepRecovery ||
           prev.hasGrip !== newState.hasGrip ||
+          prev.isClinchBeltHolding !== newState.isClinchBeltHolding ||
+          prev.clinchBeltRequiresM2Release !==
+            newState.clinchBeltRequiresM2Release ||
           prev.inClinch !== newState.inClinch ||
           prev.clinchAction !== newState.clinchAction ||
           prev.isBeingLifted !== newState.isBeingLifted ||
@@ -3507,7 +3682,12 @@ const GameFighter = ({
         // hit). Index 0 owns the HUD banner state (same as the old handlers).
         // hitId is the dedup key.
         if (index === 0) {
-          if (data.showCounterBanner) {
+          if (data.showGoredBanner) {
+            setGoredBannerPosition({
+              counterId: `gored-${data.hitId || Date.now()}`,
+              playerNumber: data.attackerPlayerNumber || 1,
+            });
+          } else if (data.showCounterBanner) {
             setCounterHitEffectPosition({
               x: contactFxX(data),
               y: PLAYER_MID_Y,
@@ -3858,8 +4038,8 @@ const GameFighter = ({
     socket.on("perfect_parry", handlePerfectParry);
 
     let handleGrabBreak, handleGrabTech, handleClinchTech, handleCounterGrab,
-    handleStaminaBlocked, handleClinchCallout, handleClinchThrowFail,
-    handleDeepGrip, handlePostureBreak;
+    handleMatadorSuccess, handleStaminaBlocked, handleClinchCallout,
+    handleClinchThrowFail, handleDeepGrip, handlePostureBreak;
     if (index === 0) {
       handleGrabBreak = (data) => {
         if (
@@ -3932,6 +4112,28 @@ const GameFighter = ({
         playSound(counterGrabSound, 0.035);
       };
       socket.on("counter_grab", handleCounterGrab);
+
+      handleMatadorSuccess = (data) => {
+        if (!data || data.type !== "matador_success") return;
+        // Yank SFX/shake only — keep the regular orange plumes running
+        // through the pull (no extra on-hit burst, don't clear hold early).
+        const matX = data.matadorX ?? data.x;
+        const grabX = data.grabberX ?? data.x;
+        const pullDirection =
+          matX != null && grabX != null
+            ? grabX < matX
+              ? 1
+              : -1
+            : 1;
+        const pan = xToPan(data.x ?? matX ?? 640);
+        playSound(throwSound, 0.03, null, 1.15, pan);
+        playSound(dodgeSound, 0.032, null, 0.85, pan);
+        playSound(palmThrustWhiffSound, 0.022, null, 1.2, pan);
+        if (index === 0) {
+          addShake("matador", { dirX: pullDirection });
+        }
+      };
+      socket.on("matador_success", handleMatadorSuccess);
 
       // Clinch stance-read banners: counter_throw (threw a pusher, max drain)
       // and braced (plant blunted an incoming throw to chip drain).
@@ -4328,6 +4530,7 @@ const GameFighter = ({
         socket.off("grab_tech", handleGrabTech);
         socket.off("fighter_action", handleClinchTech);
         socket.off("counter_grab", handleCounterGrab);
+        socket.off("matador_success", handleMatadorSuccess);
         socket.off("stamina_blocked", handleStaminaBlocked);
         socket.off("clinch_callout", handleClinchCallout);
         socket.off("clinch_throw_fail", handleClinchThrowFail);
@@ -5726,6 +5929,35 @@ const GameFighter = ({
     lastRawParryState.current = penguin.isRawParrying;
   }, [penguin.isRawParrying, penguin.x, penguin.y, penguin.facing, emitParticles]);
 
+  // MATADOR activation — cloth/air whoosh + orange AP-style plumes.
+  // Plumes stay up through success/pull; only clear when the whole beat ends.
+  const lastMatadorState = useRef(false);
+  const matadorPlumeActive =
+    !!penguin.isMatadorParrying || !!penguin.isMatadorSuccess;
+  useEffect(() => {
+    if (penguin.isMatadorParrying && !lastMatadorState.current) {
+      playSound(dodgeSound, 0.028, null, 1.35);
+      playSound(palmThrustWhiffSound, 0.018, null, 1.45);
+      emitParticles("matadorActivation", {
+        x: penguin.x,
+        y: penguin.y,
+        facing: penguin.facing,
+      });
+    }
+    if (!matadorPlumeActive && lastMatadorState.current) {
+      clearMatadorGoldHold();
+    }
+    lastMatadorState.current = matadorPlumeActive;
+  }, [
+    penguin.isMatadorParrying,
+    matadorPlumeActive,
+    penguin.x,
+    penguin.y,
+    penguin.facing,
+    emitParticles,
+    clearMatadorGoldHold,
+  ]);
+
   // Parry stance: ongoing luminous motes while holding parry
   const parryStanceIntervalRef = useRef(null);
   const isParryingRef = useRef(false);
@@ -5760,6 +5992,46 @@ const GameFighter = ({
       }
     };
   }, [penguin.isRawParrying, penguin.isRawParrySuccess, penguin.isPerfectRawParrySuccess, penguin.x, penguin.y, emitParticles]);
+
+  // MATADOR plumes continue through the pull (parry window + success).
+  const matadorStanceIntervalRef = useRef(null);
+  const isMatadorRef = useRef(false);
+  useEffect(() => {
+    isMatadorRef.current =
+      !!penguin.isMatadorParrying || !!penguin.isMatadorSuccess;
+
+    if (isMatadorRef.current && !matadorStanceIntervalRef.current) {
+      matadorStanceIntervalRef.current = setInterval(() => {
+        if (!isMatadorRef.current) return;
+        const curX = interpolatedPositionRef.current.x || penguin.x;
+        emitParticles("matadorStance", {
+          x: curX,
+          y: penguin.y,
+          facing: penguin.facing,
+          intensity: 0.85,
+        });
+      }, 90);
+    }
+
+    if (!isMatadorRef.current && matadorStanceIntervalRef.current) {
+      clearInterval(matadorStanceIntervalRef.current);
+      matadorStanceIntervalRef.current = null;
+    }
+
+    return () => {
+      if (matadorStanceIntervalRef.current) {
+        clearInterval(matadorStanceIntervalRef.current);
+        matadorStanceIntervalRef.current = null;
+      }
+    };
+  }, [
+    penguin.isMatadorParrying,
+    penguin.isMatadorSuccess,
+    penguin.x,
+    penguin.y,
+    penguin.facing,
+    emitParticles,
+  ]);
 
   // Raw perfect parry stun: play stunned sound when this player becomes stunned
   useEffect(() => {
@@ -6475,7 +6747,8 @@ const GameFighter = ({
     whiffPredict.until = 0;
     whiffPredict.sawServerWhiff = false;
   }
-  const serverApWhiff = !!penguin.isApWhiffRecovering;
+  const serverApWhiff =
+    !!penguin.isApWhiffRecovering || !!penguin.isMatadorWhiffRecovering;
   if (serverApWhiff) whiffPredict.sawServerWhiff = true;
   else if (whiffPredict.sawServerWhiff) {
     whiffPredict.until = 0;
@@ -6508,7 +6781,8 @@ const GameFighter = ({
     displayPenguin.isAttacking,
     displayPenguin.isDodging,
     penguin.isStrafing,
-    displayPenguin.isRawParrying,
+    // Attempt stance = AP blocking.png. Success uses the pull pose below.
+    displayPenguin.isRawParrying || displayPenguin.isMatadorParrying,
     penguin.isGrabBreaking,
     penguin.isReady,
     readyIntroComplete,
@@ -6547,7 +6821,8 @@ const GameFighter = ({
     // New grab action system states
     penguin.isGrabPushing,
     penguin.isBeingGrabPushed,
-    penguin.isAttemptingPull,
+    // MATADOR success = pull yank pose (not AP success frames).
+    penguin.isAttemptingPull || !!penguin.isMatadorSuccess,
     penguin.isBeingPullReversaled,
     penguin.isGrabSeparating,
     penguin.isGrabBellyFlopping,
@@ -6874,21 +7149,51 @@ const GameFighter = ({
   // either body (bodies are ≤ 99 during a grab); the +1 puts the facing===1
   // penguin's arm on top of the other's.
   const grabArmZ = (penguin.facing ?? -1) === 1 ? 106 : 105;
-  // Planting pose reads as the penguin sitting back/down into the clinch, so
-  // shift the arm slightly BACK (local-space X, symmetric across facing) and
-  // DOWN (screen-space Y). The grabbing pose keeps the arm at 0 (no shift).
-  // +X = back, +Y = down; tune magnitudes to taste.
-  const GRAB_ARM_PLANT_NUDGE_X_PCT = 3; // back
-  const GRAB_ARM_PLANT_NUDGE_Y_PCT = 1.5; // down
+  // Plant / body-hold poses angle the armless body such that the pre-aligned
+  // belt arm lands on the white belly — nudge BACK (local +X, symmetric across
+  // facing) so the flipper sits on the dark torso. Belt (M2) grabbing pose
+  // stays at 0. +X = back, +Y = down.
+  const GRAB_ARM_PLANT_NUDGE_X_PCT = 6; // back
+  const GRAB_ARM_PLANT_NUDGE_Y_PCT = 2; // down
+  const GRAB_ARM_BODY_HOLD_NUDGE_X_PCT = 4.5; // back off white belly
+  const GRAB_ARM_BODY_HOLD_NUDGE_Y_PCT = 0.75;
   const isPlantingArm = effectiveSpriteSrc === clinchPlantingSprite;
-  const grabArmNudgeXPct = isPlantingArm ? GRAB_ARM_PLANT_NUDGE_X_PCT : 0;
-  const grabArmNudgeYPct = isPlantingArm ? GRAB_ARM_PLANT_NUDGE_Y_PCT : 0;
+  const renderLocalM2 = !!getLocalKeyState()?.mouse2;
+  const renderBeltM2Blocked =
+    !!penguin.clinchBeltRequiresM2Release ||
+    (isLocalPlayer && clinchBeltNeedsM2ReleaseRef.current);
+  const localBeltHold =
+    isLocalPlayer &&
+    penguin.inClinch &&
+    !penguin.isArmClamped &&
+    renderLocalM2 &&
+    !renderBeltM2Blocked;
+  const armOnBelt =
+    (!!penguin.isClinchBeltHolding && !renderBeltM2Blocked) ||
+    localBeltHold ||
+    !!penguin.isClinchLifting ||
+    !!penguin.isAttemptingGrabThrow ||
+    !!penguin.isAttemptingPull;
+  let grabArmNudgeXPct = 0;
+  let grabArmNudgeYPct = 0;
+  if (isPlantingArm) {
+    grabArmNudgeXPct = GRAB_ARM_PLANT_NUDGE_X_PCT;
+    grabArmNudgeYPct = GRAB_ARM_PLANT_NUDGE_Y_PCT;
+  } else if (penguin.inClinch && !armOnBelt) {
+    grabArmNudgeXPct = GRAB_ARM_BODY_HOLD_NUDGE_X_PCT;
+    grabArmNudgeYPct = GRAB_ARM_BODY_HOLD_NUDGE_Y_PCT;
+  }
 
   // Lifter arm: belt-track the tip, then hand-pivot rotate so the shoulder
   // settles back onto the torso (pure vertical track parked it up by the beak).
   const grabArmBeltTrackActive =
     !isPlantingArm && !!penguin.isClinchLifting;
   const grabArmLiftDeg = grabArmBeltTrackActive ? 14 : 0;
+  // Clinch arm overlay uses shoulder-pivot rotate driven by CSS var
+  // --grab-arm-body-hold-deg (written per-frame in the rAF loop). Activate the
+  // conjugate transform whenever we're in clinch and not lift-tracking.
+  const grabArmBodyHoldActive =
+    showGrabArm && penguin.inClinch && !grabArmBeltTrackActive;
 
   // ── Equipped top hat (composited into body — NOT a second animated layer) ─
   // Ice slide / brake / breathe apply CSS transforms to the fighter <img>.
@@ -6980,6 +7285,8 @@ const GameFighter = ({
     $isSlideJumping: !!penguin.isSlideJumping && penguin.slideJumpPhase === "flight",
     $isPowerSliding: displayPenguin.isPowerSliding,
     $isRawParrying: displayPenguin.isRawParrying,
+    $isMatadorParrying: !!displayPenguin.isMatadorParrying,
+    $isMatadorSuccess: !!penguin.isMatadorSuccess,
     $isGuarding: !!penguin.isGuarding,
     $isGuardBlockSuccess: guardBlockSuccess,
     $isGrabBreaking: penguin.isGrabBreaking,
@@ -7052,7 +7359,7 @@ const GameFighter = ({
     $ritualAnimationSrc: null,
     $isGrabPushing: penguin.isGrabPushing,
     $isBeingGrabPushed: penguin.isBeingGrabPushed,
-    $isAttemptingPull: penguin.isAttemptingPull,
+    $isAttemptingPull: penguin.isAttemptingPull || !!penguin.isMatadorSuccess,
     $isBeingPullReversaled: penguin.isBeingPullReversaled,
     $isGrabSeparating: penguin.isGrabSeparating,
     $isGrabBellyFlopping: penguin.isGrabBellyFlopping,
@@ -7503,6 +7810,8 @@ const GameFighter = ({
             $isAtTheRopes={penguin.isAtTheRopes}
             $isGrabBreaking={penguin.isGrabBreaking}
             $isRawParrying={displayPenguin.isRawParrying}
+            $isMatadorParrying={!!displayPenguin.isMatadorParrying}
+            $isMatadorSuccess={!!penguin.isMatadorSuccess}
             $isPerfectRawParrySuccess={
               !!penguin.isPerfectRawParrySuccess && inRawParrySuccessAnim
             }
@@ -7547,9 +7856,15 @@ const GameFighter = ({
           $grabArmNudgeYPct={grabArmNudgeYPct}
           $grabArmBeltTrackActive={grabArmBeltTrackActive}
           $grabArmLiftDeg={grabArmLiftDeg}
+          $grabArmBodyHoldActive={grabArmBodyHoldActive}
           decoding="async"
           draggable={false}
-          style={{ display: showRitualSprite ? "none" : "block" }}
+          style={{
+            display: showRitualSprite ? "none" : "block",
+            // No body pop-filter; shoulder stump feathered via mask in CSS.
+            filter: "none",
+            WebkitFilter: "none",
+          }}
         />
       )}
       </>
@@ -7605,6 +7920,7 @@ const GameFighter = ({
       <CounterGrabEffect position={trackedCounterGrabEffectPosition} />
       {index === 0 && <ClinchCalloutEffect callout={clinchCalloutData} />}
       <PunishBannerEffect position={punishBannerPosition} />
+      <GoredBannerEffect position={goredBannerPosition} />
       <CounterHitEffect position={counterHitEffectPosition} />
       <SnowballImpactEffect position={snowballImpactPosition} />
       <StarStunEffect
@@ -7619,10 +7935,8 @@ const GameFighter = ({
         facing={penguin.facing ?? -1}
         isActive={penguin.isAtTheRopes}
       />
-      {/* Grip-up prompt: local player grabbed without a grip — every 100ms
-          gripless is free carry distance for the grabber. Shows CLAMPED!
-          instead when arm-clamped by a counter-grab (grip comes automatically
-          when the clamp releases). */}
+      {/* CLAMPED! prompt only — grip-up is gone; mutual grip is automatic.
+          Counter-grab arm clamp still needs a readable punish tell. */}
       <GripPromptEffect
         ref={gripPromptDomRef}
         x={displayPosition.x}
@@ -7631,12 +7945,11 @@ const GameFighter = ({
           penguin.id === localId &&
           penguin.inClinch === true &&
           penguin.isBeingGrabbed === true &&
-          !penguin.hasGrip &&
+          penguin.isArmClamped === true &&
           !penguin.isBeingLifted &&
           !penguin.isClinchKillThrowVictim &&
           !penguin.isClinchKillPullVictim
         }
-        isClamped={penguin.isArmClamped === true}
       />
       {/* NoStaminaEffect - centered on screen, only render once (index 0) and only for local player */}
       {index === 0 && noStaminaEffectKey > 0 && (

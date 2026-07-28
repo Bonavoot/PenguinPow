@@ -200,6 +200,13 @@
           "x": 522.5,
           "y": 275.6,
           "rotationDeg": -2
+        },
+        "sliding": {
+          "label": "Ice slide",
+          "file": "sliding.png",
+          "x": 529.7,
+          "y": 369.9,
+          "rotationDeg": 0
         }
       }
     },
@@ -402,6 +409,13 @@
           "x": 604.5,
           "y": 231.6,
           "rotationDeg": 25.5
+        },
+        "sliding": {
+          "label": "Ice slide",
+          "file": "sliding.png",
+          "x": 631.7,
+          "y": 322.9,
+          "rotationDeg": 32
         }
       }
     },
@@ -604,6 +618,13 @@
           "x": 524.5,
           "y": 179.6,
           "rotationDeg": 0
+        },
+        "sliding": {
+          "label": "Ice slide",
+          "file": "sliding.png",
+          "x": 540.7,
+          "y": 270.9,
+          "rotationDeg": 0
         }
       }
     },
@@ -805,6 +826,13 @@
           "file": "raw-parry-success-frame-3.png",
           "x": 611.5,
           "y": 273.6,
+          "rotationDeg": 37
+        },
+        "sliding": {
+          "label": "Ice slide",
+          "file": "sliding.png",
+          "x": 618.7,
+          "y": 364.9,
           "rotationDeg": 37
         }
       }

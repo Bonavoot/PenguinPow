@@ -48,6 +48,7 @@ import recovering from "../assets/recovering.png";
 import charging from "../assets/charging.png";
 import attack from "../assets/attack.png";
 import dodging from "../assets/dodging.png";
+import sliding from "../assets/sliding.png";
 
 import { getBaldBodySrc } from "../config/baldSprites";
 
@@ -149,6 +150,7 @@ const BODY_BY_STEM = {
   charging: bodyForStem("charging", charging),
   attack: bodyForStem("attack", attack),
   dodging: bodyForStem("dodging", dodging),
+  sliding: bodyForStem("sliding", sliding),
 };
 
 /** Keep pose edits from localStorage, but always take widthPct from the seed file.

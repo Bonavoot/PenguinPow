@@ -4,6 +4,7 @@ const {
   GRAB_PUSH_BURST_BASE, GRAB_PUSH_MOMENTUM_TRANSFER,
   GRAB_PUSH_MOMENTUM_TRANSFER_MASTERY,
   GRAB_PUSH_DECAY_RATE, GRAB_PUSH_MIN_VELOCITY,
+  ARM_CLAMP_BURST_MULT, ARM_CLAMP_BURST_DECAY_RATE,
   ARM_CLAMP_BURST_END_VELOCITY, ARM_CLAMP_MAX_BURST_MS,
   GRAB_PUSH_STAMINA_DRAIN_INTERVAL, GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL,
   GRAB_STAMINA_DRAIN_INTERVAL,
@@ -37,6 +38,9 @@ const {
   CLINCH_STALEMATE_MOVEMENT_THRESHOLD,
   CLINCH_STALEMATE_BALANCE_THRESHOLD,
   CLINCH_ATTACHED_DISTANCE,
+  CLINCH_MIXED_HOLD_DISTANCE,
+  CLINCH_BODY_HOLD_DISTANCE,
+  CLINCH_ATTACH_LERP_PER_SEC,
   CLINCH_THROW_ANIMATION_MS,
   CLINCH_THROW_COOLDOWN_MS,
   CLINCH_THROW_STAMINA_COST,
@@ -116,6 +120,7 @@ const {
   GRAB_BREAK_TWEEN_DURATION,
   GRAB_BREAK_INPUT_LOCK_MS,
   GRAB_BREAK_GRAB_IMMUNITY_MS,
+  GRAB_BREAK_REACTION_LOCK_MS,
 } = require("./constants");
 
 const {
@@ -245,6 +250,38 @@ function getPlantIntent(player, opponent) {
   return (player.keys[awayKey] && !toward) || (player.keys.s && !toward);
 }
 
+function isPlayerBeltHolding(p) {
+  // The M2 that started the grab must be released once before hold counts as
+  // belt — otherwise connect always defaults to belt arms while the button
+  // is still down from the attempt. Body hold is the default.
+  if (p.clinchBeltRequiresM2Release) {
+    if (!p.keys?.mouse2) {
+      p.clinchBeltRequiresM2Release = false;
+    }
+  }
+  const m2Belt = !!p.keys?.mouse2 && !p.clinchBeltRequiresM2Release;
+  return !!(
+    p.inClinch &&
+    !p.isArmClamped &&
+    (m2Belt ||
+      p.clinchThrowRequest ||
+      p.clinchThrowActive ||
+      p.isClinchThrowing ||
+      p.isClinchLifting ||
+      p.isAttemptingGrabThrow ||
+      p.isAttemptingPull)
+  );
+}
+
+// Body holds need space for the flippers; belt grips pull the pair tight.
+function getClinchTargetAttachDistance(player, opponent) {
+  const belts =
+    (isPlayerBeltHolding(player) ? 1 : 0) + (isPlayerBeltHolding(opponent) ? 1 : 0);
+  if (belts >= 2) return CLINCH_ATTACHED_DISTANCE;
+  if (belts === 1) return CLINCH_MIXED_HOLD_DISTANCE;
+  return CLINCH_BODY_HOLD_DISTANCE;
+}
+
 function updateGrabActions(player, room, io, delta, rooms) {
   // Only process for the player who initiated the grab (isGrabbing)
   if (!player.isGrabbing || !player.grabbedOpponent) return;
@@ -272,15 +309,33 @@ function updateGrabActions(player, room, io, delta, rooms) {
   const deltaSec = delta / 1000;
   const leftBoundary = MAP_LEFT_BOUNDARY;
   const rightBoundary = MAP_RIGHT_BOUNDARY;
-  const fixedDistance = CLINCH_ATTACHED_DISTANCE * (opponent.sizeMultiplier || 1);
+
+  // Belt-arm pose + attach spacing share the same M2/throw intent.
+  // Body holds sit farther apart; pressing M2 (belt) lerps the pair tight.
+  for (const p of [player, opponent]) {
+    p.isClinchBeltHolding = isPlayerBeltHolding(p);
+  }
+  const sizeMult = opponent.sizeMultiplier || 1;
+  const targetAttach =
+    getClinchTargetAttachDistance(player, opponent) * sizeMult;
+  if (!(player.clinchAttachDistance > 0)) {
+    player.clinchAttachDistance = targetAttach;
+  } else {
+    const lerp = Math.min(1, deltaSec * CLINCH_ATTACH_LERP_PER_SEC);
+    player.clinchAttachDistance +=
+      (targetAttach - player.clinchAttachDistance) * lerp;
+  }
+  const fixedDistance = player.clinchAttachDistance;
 
   // ============================================
-  // PHASE A: ONE-SIDED GRIP (auto-burst push)
-  // Grabber has grip, opponent does not yet.
-  // Auto-burst push fires and decays. Grabber retains grip when burst ends.
-  // A throw/pull/lift request cancels the burst push immediately.
+  // PHASE A: SHORT AUTO-BURST PUSH (first-grab reward)
+  // Both players already have grip on connect. Burst rides isGrabPushing and
+  // decays quickly. Either side's throw/pull/lift/break cancels it; during the
+  // burst they can still plant/jolt/throw if they react fast enough.
+  // ARM CLAMP: victim is locked out of those actions until the clamp ends.
   // ============================================
-  if (player.hasGrip && !opponent.hasGrip && player.isGrabPushing && player.clinchThrowRequest) {
+  const eitherThrowRequest = !!(player.clinchThrowRequest || opponent.clinchThrowRequest);
+  if (player.isGrabPushing && eitherThrowRequest) {
     player.isGrabPushing = false;
     opponent.isBeingGrabPushed = false;
     player.isEdgePushing = false;
@@ -288,11 +343,11 @@ function updateGrabActions(player, room, io, delta, rooms) {
     player.isAtBoundaryDuringGrab = false;
     clearEdgePinHold(player, opponent);
     player.grabPushStartTime = 0;
-    player.clinchAction = "neutral";
-    opponent.clinchAction = "neutral";
-    // Fall through to Phase B where throw request will be processed
+    // Fall through — throw request processed below
   }
-  if (player.hasGrip && !opponent.hasGrip && player.isGrabPushing) {
+
+  let burstMovementApplied = false;
+  if (player.isGrabPushing) {
     if (!player.grabPushStartTime) {
       player.grabPushStartTime = simNow(room);
       opponent.isBeingGrabPushed = true;
@@ -304,17 +359,26 @@ function updateGrabActions(player, room, io, delta, rooms) {
     // Calculate burst push speed (exponential decay).
     // MASTERY Phase 1: the grab is the TEMPLATE inheritance mechanic (it already
     // transfers approach speed into the burst) — raise the transfer so a
-    // dash/power-slide grab bites harder. Flag off ⇒ the original 0.6 (identical).
+    // dash/power-slide grab bites harder. Flag off ⇒ base transfer.
     const grabMomentumTransfer = MASTERY_P1_MOMENTUM
       ? GRAB_PUSH_MOMENTUM_TRANSFER_MASTERY
       : GRAB_PUSH_MOMENTUM_TRANSFER;
-    const initialPushSpeed = GRAB_PUSH_BURST_BASE + (player.grabApproachSpeed || 0) * grabMomentumTransfer;
-    let currentPushSpeed = initialPushSpeed * Math.exp(-GRAB_PUSH_DECAY_RATE * pushElapsedSec);
+    // Clamp gets its own shove power — regular connect stays a short reward
+    // nudge; counter-grab should feel like a real parry punish.
+    const clampMult = opponent.isArmClamped ? ARM_CLAMP_BURST_MULT : 1;
+    const burstDecay = opponent.isArmClamped
+      ? ARM_CLAMP_BURST_DECAY_RATE
+      : GRAB_PUSH_DECAY_RATE;
+    const initialPushSpeed =
+      (GRAB_PUSH_BURST_BASE +
+        (player.grabApproachSpeed || 0) * grabMomentumTransfer) *
+      clampMult;
+    let currentPushSpeed =
+      initialPushSpeed * Math.exp(-burstDecay * pushElapsedSec);
 
     // When burst decays below threshold, transition to manual clinch push.
-    // ARM CLAMP: victim can't act during Phase A, so end while the shove is
-    // still lively (higher velocity floor + hard duration cap) instead of
-    // crawling to GRAB_PUSH_MIN_VELOCITY. Boundary contact still ends early.
+    // ARM CLAMP: victim can't act during Phase A — end while the shove is
+    // still lively (velocity floor + hard duration cap), not in a crawl.
     const burstEndVelocity = opponent.isArmClamped
       ? ARM_CLAMP_BURST_END_VELOCITY
       : GRAB_PUSH_MIN_VELOCITY;
@@ -322,15 +386,14 @@ function updateGrabActions(player, room, io, delta, rooms) {
       opponent.isArmClamped && pushElapsed >= ARM_CLAMP_MAX_BURST_MS;
     if (
       (currentPushSpeed < burstEndVelocity || armClampBurstTimedOut) &&
-      pushElapsed > 200
+      pushElapsed > 80
     ) {
       player.isGrabPushing = false;
       opponent.isBeingGrabPushed = false;
       player.grabPushStartTime = 0;
-      // Grabber retains grip — NO auto-separation. Transition to clinch idle.
       player.clinchAction = "neutral";
       opponent.clinchAction = "neutral";
-      // Don't return — fall through to clinch processing below
+      // Fall through to clinch processing below
     } else {
       // Stamina drain during burst push — pusher always drains
       if (!player.lastGrabStaminaDrainTime) {
@@ -353,7 +416,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
         opponent.lastGrabPushStaminaDrainTime = simNow(room);
       }
 
-      // Still in burst push — apply movement
+      // Still in burst push — apply movement (actions still process below)
       const pushDirection = player.x < opponent.x ? 1 : -1;
       const pushDelta = pushDirection * delta * speedFactor * currentPushSpeed;
       let newX = player.x + pushDelta;
@@ -369,14 +432,10 @@ function updateGrabActions(player, room, io, delta, rooms) {
         const pinNow = simNow(room);
         const pinDir = opponentAtLeft ? -1 : 1;
         // ARM CLAMP ends at boundary contact — a clamped victim pinned at the
-        // edge with zero available inputs would be a pure spectator. The carry
-        // earned its wall; grant the grip so the pinned fight is playable.
-        // (Next tick Phase A exits since the victim now has grip.)
+        // edge with zero available inputs would be a pure spectator.
         if (opponent.isArmClamped) {
           opponent.isArmClamped = false;
-          opponent.hasGrip = true;
           opponent.clinchAction = "neutral";
-          opponent.gripAcquiredTime = pinNow;
         }
         if (tryEdgePinRingOut(player, opponent, room, io, rooms, pinDir, pinNow)) {
           return;
@@ -406,40 +465,34 @@ function updateGrabActions(player, room, io, delta, rooms) {
         opponent.facing = -player.facing;
       }
       player.movementVelocity = 0;
-      return;
+      burstMovementApplied = true;
     }
   }
 
   // ============================================
-  // PHASE B: CLINCH (at least grabber has grip)
-  // If opponent doesn't have grip yet, they can only be pushed (no plant, no throw)
-  // Once opponent grips up (Mouse2), both can push/plant
+  // PHASE B: MUTUAL CLINCH
+  // Both have grip from connect. Push/plant/jolt/throw/break are live.
+  // While burst movement owns this tick, skip Phase B shove displacement.
   // ============================================
 
-  // Clear stale burst-push flags — Phase A is over once we reach Phase B
-  if (player.isGrabPushing) {
-    player.isGrabPushing = false;
-    opponent.isBeingGrabPushed = false;
-    player.isEdgePushing = false;
-    opponent.isBeingEdgePushed = false;
-    player.isAtBoundaryDuringGrab = false;
-    player.grabPushStartTime = 0;
-  }
-
-  // ARM CLAMP release: the counter-grab clamp lasts through the burst carry and
-  // any free throw the grabber filed during it (victim gripless = untechable).
-  // Once the burst is over and no throw is pending/active, the victim is granted
-  // their grip automatically — punished once, positionally, then a fair clinch.
-  if (opponent.isArmClamped && !player.clinchThrowRequest && !player.clinchThrowActive) {
+  // ARM CLAMP release: lasts through the burst carry and any free throw the
+  // grabber filed during it (victim locked = untechable). Once the burst is
+  // over and no throw is pending/active, clear the clamp for a fair clinch.
+  if (
+    opponent.isArmClamped &&
+    !player.isGrabPushing &&
+    !player.clinchThrowRequest &&
+    !player.clinchThrowActive
+  ) {
     opponent.isArmClamped = false;
-    opponent.hasGrip = true;
     opponent.clinchAction = "neutral";
-    opponent.gripAcquiredTime = simNow(room);
   }
 
-  // Determine each player's clinch action
+  // Determine each player's clinch action (clamped victim forced neutral)
   const grabberAction = getClinchAction(player, opponent);
-  const opponentAction = opponent.hasGrip ? getClinchAction(opponent, player) : "neutral";
+  const opponentAction = opponent.isArmClamped
+    ? "neutral"
+    : getClinchAction(opponent, player);
 
   player.clinchAction = grabberAction;
   opponent.clinchAction = opponentAction;
@@ -483,6 +536,15 @@ function updateGrabActions(player, room, io, delta, rooms) {
   for (const breaker of [player, opponent]) {
     if (!breaker.clinchBreakRequest) continue;
     const target = breaker === player ? opponent : player;
+
+    // Drop early requests (e.g. latched during grab hitstop before reaction lock opens).
+    // No carry — player must press Space again after the lock.
+    const gripAt = breaker.gripAcquiredTime || 0;
+    if (gripAt && now - gripAt < GRAB_BREAK_REACTION_LOCK_MS) {
+      breaker.clinchBreakRequest = false;
+      breaker.clinchBreakRequestTime = 0;
+      continue;
+    }
 
     // Late safety gates — if any committed action started between input and processing,
     // drop the request silently (no half-processed escape mid-throw).
@@ -549,6 +611,15 @@ function updateGrabActions(player, room, io, delta, rooms) {
       opponent.isClinchJolting = true;
       player.clinchJoltStartTime = now;
       opponent.clinchJoltStartTime = now;
+
+      if (player.isGrabPushing) {
+        player.isGrabPushing = false;
+        opponent.isBeingGrabPushed = false;
+        player.isEdgePushing = false;
+        opponent.isBeingEdgePushed = false;
+        player.isAtBoundaryDuringGrab = false;
+        player.grabPushStartTime = 0;
+      }
 
       player.balance = Math.max(0, player.balance - CLINCH_JOLT_MUTUAL_BALANCE);
       opponent.balance = Math.max(0, opponent.balance - CLINCH_JOLT_MUTUAL_BALANCE);
@@ -625,6 +696,16 @@ function updateGrabActions(player, room, io, delta, rooms) {
     jolter.clinchJoltStartTime = now;
     target.isBeingClinchJolted = true;
     target.clinchJoltRecoilStart = now;
+
+    // Jolt cancels the Phase A burst shove (same as throw/pull/lift).
+    if (player.isGrabPushing) {
+      player.isGrabPushing = false;
+      opponent.isBeingGrabPushed = false;
+      player.isEdgePushing = false;
+      opponent.isBeingEdgePushed = false;
+      player.isAtBoundaryDuringGrab = false;
+      player.grabPushStartTime = 0;
+    }
 
     if (lockoutMs > 0) {
       target.inputLockUntil = Math.max(target.inputLockUntil || 0, now + lockoutMs);
@@ -874,13 +955,13 @@ function updateGrabActions(player, room, io, delta, rooms) {
     // state still refreshes, so we watch for a plant-intent rising edge
     // inside the reaction window. Human keys update through the input-lock
     // branch in socketHandlers; the CPU sets its keys in cpuAI. Gated on
-    // hasGrip so an arm-clamped victim can't soften the counter-grab punish.
+    // !isArmClamped so a counter-grab victim can't soften the punish.
     if (
       !activeTarget.reactBraceUsed &&
       activeTarget.reactBraceDeadline &&
       now <= activeTarget.reactBraceDeadline &&
       (activeTarget.reactBraceRefund || 0) > 0 &&
-      activeTarget.hasGrip &&
+      !activeTarget.isArmClamped &&
       !activeTarget.isGassed &&
       activeTarget.stamina >= CLINCH_REACT_BRACE_STAMINA_COST
     ) {
@@ -1130,14 +1211,15 @@ function updateGrabActions(player, room, io, delta, rooms) {
   // --- Deep grip: winning the push ---
   // Pushing continuously while the opponent doesn't answer with their own
   // push (they plant or stand neutral) for DEEP_GRIP_PUSH_WIN_MS earns the
-  // deep grip. Any break in the condition resets the timer. Mutual-grip only:
-  // shoving a gripless opponent (Phase A burst / arm clamp) earns nothing.
+  // deep grip. Any break in the condition resets the timer. Skip during the
+  // Phase A burst and while the opponent is arm-clamped.
   for (const [p, o, pAction, oAction] of [
     [player, opponent, grabberAction, opponentAction],
     [opponent, player, opponentAction, grabberAction],
   ]) {
     const winningPush = pAction === "push" && oAction !== "push" &&
-      p.hasGrip && o.hasGrip && !p.hasDeepGrip;
+      p.hasGrip && o.hasGrip && !p.hasDeepGrip &&
+      !player.isGrabPushing && !o.isArmClamped;
     if (winningPush) {
       if (!p.deepGripPushStart) {
         p.deepGripPushStart = now;
@@ -1166,6 +1248,11 @@ function updateGrabActions(player, room, io, delta, rooms) {
   }
 
   // --- Movement ---
+  // Burst owns displacement this tick — don't double-apply Phase B shove.
+  if (burstMovementApplied) {
+    return;
+  }
+
   let netPushSpeed = 0; // positive = toward opponent's side
 
   if (grabberAction === "push" && opponentAction === "push") {

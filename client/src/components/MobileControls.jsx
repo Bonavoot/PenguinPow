@@ -36,22 +36,24 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
       // Block inputs during power-up selection or when throwing snowball
       if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
 
-      // Block all inputs except spacebar when being grabbed
+      // When being grabbed, allow full clinch kit (push/plant/throw/jolt/break).
+      // Block open-game actions (dash / power-ups). ARM CLAMP is server-side.
       if (currentPlayer?.isBeingGrabbed) {
-        // Only allow spacebar (grab break)
-        const grabBreakOnly = {
-          w: false,
-          a: false,
-          s: false,
-          d: false,
+        const clinchOnly = {
+          w: newKeyState.w || false,
+          a: newKeyState.a || false,
+          s: newKeyState.s || false,
+          d: newKeyState.d || false,
           " ": newKeyState[" "] || false,
           shift: false,
           e: false,
           f: false,
+          mouse1: newKeyState.mouse1 || false,
+          mouse2: newKeyState.mouse2 || false,
         };
         // Constrained packet — no events array (grab-counter inputs are
         // slow holds and the server doesn't replay events in this branch).
-        socket.emit("fighter_action", { id: socket.id, keys: grabBreakOnly });
+        socket.emit("fighter_action", { id: socket.id, keys: clinchOnly });
         return;
       }
 
@@ -77,9 +79,7 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
     // Block inputs during power-up selection or when throwing snowball
     if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
 
-    // Block joystick inputs when being grabbed
-    if (currentPlayer?.isBeingGrabbed) return;
-
+    // Joystick stays live while grabbed — drives clinch push/plant (A/D/S).
     e.preventDefault();
     const touch = e.touches[0];
     const joystick = e.target.getBoundingClientRect();
@@ -95,9 +95,6 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
   const handleJoystickMove = (e) => {
     // Block inputs during power-up selection or when throwing snowball
     if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
-
-    // Block joystick inputs when being grabbed
-    if (currentPlayer?.isBeingGrabbed) return;
 
     e.preventDefault();
     if (!isTouchingJoystick) return;
@@ -118,9 +115,6 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
   const handleJoystickEnd = (e) => {
     // Block inputs during power-up selection or when throwing snowball
     if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
-
-    // Block joystick inputs when being grabbed
-    if (currentPlayer?.isBeingGrabbed) return;
 
     e.preventDefault();
     setIsTouchingJoystick(false);
@@ -166,8 +160,9 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
     // Block inputs during power-up selection or when throwing snowball
     if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
 
-    // Block all action buttons except attack (spacebar/grab break) when being grabbed
-    if (currentPlayer?.isBeingGrabbed && action !== "attack") return;
+    // While grabbed: allow break (attack/Space), throw (W), grab/M2 (belt).
+    // Block dash — open-game only.
+    if (currentPlayer?.isBeingGrabbed && action === "dash") return;
 
     e.preventDefault();
     setKeyState((prev) => {
@@ -196,8 +191,7 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
     // Block inputs during power-up selection or when throwing snowball
     if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
 
-    // Block all action buttons except attack (spacebar/grab break) when being grabbed
-    if (currentPlayer?.isBeingGrabbed && action !== "attack") return;
+    if (currentPlayer?.isBeingGrabbed && action === "dash") return;
 
     e.preventDefault();
     setKeyState((prev) => {
