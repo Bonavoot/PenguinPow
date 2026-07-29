@@ -24,9 +24,6 @@ function cleanupPlayerStates(player) {
   player.clinchShoveLead = null;
   player.deepGripPushStart = 0;
   player.clinchPushRampStart = 0;
-  player.reactBraceDeadline = 0;
-  player.reactBraceRefund = 0;
-  player.reactBraceUsed = false;
   player.isThrowing = false;
   player.isBeingThrown = false;
   player.isAttacking = false;
@@ -330,7 +327,6 @@ function getCleanedRoomsData(rooms) {
             clinchAction: null,
             isClinchPushing: false,
             isClinchPlanting: false,
-            isClinchLifting: false,
             isResistingThrow: false,
             isResistingPull: false,
             wins: [],

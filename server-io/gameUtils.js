@@ -911,11 +911,12 @@ function isInDodgeStrikeIFrames(player, nowSim) {
 }
 
 /**
- * Start a grounded dodge (full hop + ice-slide kit, including while gassed).
+ * Start a grounded dodge (full hop + ice-slide kit).
+ * Locked while gassed — same as sidestep / rope jump / flap.
  * Caller must already pass situational gates (canPlayerDash, not grabbed, etc.).
  */
 function beginPlayerDodge(player, options = {}) {
-  if (!player) return false;
+  if (!player || player.isGassed) return false;
   const nowSim = options.nowSim ?? simNowForPlayer(player);
   let direction = options.direction;
   if (direction !== 1 && direction !== -1) {
@@ -1596,10 +1597,7 @@ function cancelPendingSlapWork(player) {
 function beginFlapStartup(player, now) {
   // Only a fully GASSED wrestler is denied the flap (that's the one case that
   // surfaces "OUT OF STAMINA"). With even 1 stamina the flap still fires; if the
-  // cost drains them past empty they simply gas out on takeoff — the global
-  // stamina→gassed check in the main loop flips isGassed the moment stamina hits
-  // 0, so no special-casing is needed here beyond letting the cost go negative-
-  // clamped below.
+  // cost drains them past empty they gas out on takeoff via tryEnterGassed.
   if (player.isGassed) {
     return false;
   }
@@ -1626,16 +1624,10 @@ function beginFlapStartup(player, now) {
 
   // Liftoff is the ONLY stamina cost — air flaps are free. Flapping on fumes
   // (stamina below the cost) is allowed, but it drains them past empty and gasses
-  // them out on takeoff. We set the gassed state EXPLICITLY here rather than
-  // leaning on the global stamina→gassed check so a regen tick can't sneak in and
-  // refill them above 0 first — the punishment for an empty-tank flap is guaranteed.
-  const flappedOnFumes = player.stamina < FLAP_STAMINA_COST;
+  // them out on takeoff. Apply gassed immediately so later tick work (including
+  // regen) cannot refill them above 0 before the exhausted state sticks.
   player.stamina = Math.max(0, player.stamina - FLAP_STAMINA_COST);
-  if (flappedOnFumes) {
-    player.isGassed = true;
-    player.gassedUntil = now + GASSED_DURATION_MS;
-    player.stamina = 0;
-  }
+  tryEnterGassed(player, now);
 
   clearChargeState(player, true);
   cancelPendingSlapWork(player);
@@ -1695,6 +1687,51 @@ function clampStaminaValue(value) {
   if (n < 0) return 0;
   if (n > 100) return 100;
   return Math.round(n);
+}
+
+/**
+ * Enter the gassed state when stamina has reached 0.
+ * Call this at the moment of drain (action cost, guard crush, etc.) and again
+ * before any regen pulse so a refill can never rescue a zero-stamina tick.
+ * Returns true if the fighter newly entered gassed.
+ */
+function tryEnterGassed(player, now) {
+  if (!player || player.isGassed || player.stamina > 0) return false;
+  player.isGassed = true;
+  player.gassedUntil = now + GASSED_DURATION_MS;
+  player.stamina = 0;
+  player.staminaRegenAccum = 0;
+  return true;
+}
+
+// Socket.io instance for "OUT OF STAMINA" feedback (injected from index.js).
+let staminaBlockedIo = null;
+
+function setStaminaBlockedIo(io) {
+  staminaBlockedIo = io;
+}
+
+/**
+ * Throttled "not enough stamina" cue for actions hard-locked while gassed.
+ * Call at every intentional press / buffer consume that fails because isGassed.
+ * Returns true if the event was emitted.
+ */
+function emitStaminaBlocked(player, action, io = null) {
+  const socketIo = io || staminaBlockedIo;
+  if (!player || !socketIo || player.isCPU) return false;
+  const now = simNowForPlayer(player);
+  if (
+    player.lastStaminaBlockedTime &&
+    now - player.lastStaminaBlockedTime <= 500
+  ) {
+    return false;
+  }
+  player.lastStaminaBlockedTime = now;
+  socketIo.to(player.id).emit("stamina_blocked", {
+    playerId: player.id,
+    action: action || "action",
+  });
+  return true;
 }
 
 function isNearDohyoEdge(playerX) {
@@ -1770,6 +1807,7 @@ function schedulePalmThrustVisualEnd(player, visualUntilSimTime) {
   );
 }
 
+// Charged freeze scales burst-floor → heavy special (never below palm burst).
 function getChargedHitstop(chargePower) {
   const normalizedPower = Math.max(0, Math.min(1, (chargePower - 0.3) / 0.7));
   return HITSTOP_CHARGED_MIN_MS + (HITSTOP_CHARGED_MAX_MS - HITSTOP_CHARGED_MIN_MS) * normalizedPower;
@@ -1893,6 +1931,9 @@ module.exports = {
   clearChargeState,
   isOutsideDohyo,
   clampStaminaValue,
+  tryEnterGassed,
+  setStaminaBlockedIo,
+  emitStaminaBlocked,
   isNearDohyoEdge,
   getEdgeProximity,
   getIceFriction,

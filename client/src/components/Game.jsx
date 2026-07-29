@@ -379,7 +379,7 @@ const Game = ({
       if (isPowerUpSelectionActive || cp?.isThrowingSnowball) return;
 
       // When being grabbed, allow full clinch kit: directions (push/plant),
-      // W + M2 (throw/pull/lift), M1 (jolt), Space (grab break). Block open-game
+      // W + M2 (throw/pull), M1 (jolt), Space (grab break). Block open-game
       // actions (dash/shift/power-ups). Do NOT gate on hasGrip — grip is
       // automatic on connect and may lag a packet behind isBeingGrabbed.
       // ARM CLAMP is enforced server-side.

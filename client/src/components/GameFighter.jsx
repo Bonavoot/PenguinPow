@@ -33,6 +33,7 @@ import ClinchJoltEffect from "./ClinchJoltEffect";
 import CounterGrabEffect from "./CounterGrabEffect";
 import PunishBannerEffect from "./PunishBannerEffect";
 import GoredBannerEffect from "./GoredBannerEffect";
+import MatadorSuccessEffect from "./MatadorSuccessEffect";
 import CounterHitEffect from "./CounterHitEffect";
 import EdgeDangerEffect from "./EdgeDangerEffect";
 import GripPromptEffect from "./GripPromptEffect";
@@ -1184,7 +1185,6 @@ const GameFighter = ({
         // against the real clinch/grab-break state ("shaking").
         !penguin.inClinch &&
         !penguin.hasGrip &&
-        !penguin.isBeingLifted &&
         // Grab-related intermediate states
         !penguin.isGrabStartup &&
         !penguin.isGrabbingMovement &&
@@ -2136,6 +2136,9 @@ const GameFighter = ({
   const [p2ParryRefund, setP2ParryRefund] = useState(0);
   const [p1BalanceGain, setP1BalanceGain] = useState(0);
   const [p2BalanceGain, setP2BalanceGain] = useState(0);
+  // Tip-slap posture drain flinch on the victim's gauge (spacing tell).
+  const [p1TipDrain, setP1TipDrain] = useState(0);
+  const [p2TipDrain, setP2TipDrain] = useState(0);
   const [showStarStunEffect, setShowStarStunEffect] = useState(false);
   const [hasUsedPowerUp, setHasUsedPowerUp] = useState(false);
   const [countdown, setCountdown] = useState(15);
@@ -2167,11 +2170,13 @@ const GameFighter = ({
     useState(null);
   const [punishBannerPosition, setPunishBannerPosition] = useState(null);
   const [goredBannerPosition, setGoredBannerPosition] = useState(null);
+  const [matadorSuccessStampPosition, setMatadorSuccessStampPosition] =
+    useState(null);
   const [snowballImpactPosition, setSnowballImpactPosition] = useState(null);
   const [counterHitEffectPosition, setCounterHitEffectPosition] =
     useState(null);
   const [clinchJoltEffectPosition, setClinchJoltEffectPosition] = useState(null);
-  // Clinch mind-game callouts: COUNTER THROW / BRACED / RESISTED side banners
+  // Clinch mind-game callouts: COUNTER THROW / RESISTED / DEEP GRIP side banners
   const [clinchCalloutData, setClinchCalloutData] = useState(null);
 
   // "No Stamina" effect - shows when player tries to use action without enough stamina
@@ -2527,21 +2532,6 @@ const GameFighter = ({
         if (grabArmEl) {
           grabArmEl.style.left = leftPct;
           grabArmEl.style.bottom = bottomPct;
-          // Lifter only: raise the pre-aligned arm by the victim's lift Δy so
-          // the hand rides their belt. Victim arm stays body-locked (no track)
-          // — sliding it down ripped it off the shoulder.
-          let beltTrackY = 0;
-          if (p.isClinchLifting) {
-            const opp =
-              index === 0
-                ? allPlayersDataRef.current.player2
-                : allPlayersDataRef.current.player1;
-            beltTrackY = -Math.max(
-              0,
-              (opp?.y ?? SHADOW_GROUND_LEVEL) - SHADOW_GROUND_LEVEL
-            );
-          }
-          grabArmEl.style.setProperty("--grab-arm-belt-y", `${beltTrackY}px`);
           // Belt vs body-hold arm pose. Local M2 is read live so the flipper
           // drops to the belt on press without waiting on the 32Hz flag —
           // but the M2 that started the grab is consumed until release so
@@ -2582,11 +2572,9 @@ const GameFighter = ({
           const onBelt =
             (!!p.isClinchBeltHolding && !beltM2Blocked) ||
             localM2 ||
-            !!p.isClinchLifting ||
             !!p.isAttemptingGrabThrow ||
             !!p.isAttemptingPull;
-          const bodyHolding =
-            p.inClinch && !p.isClinchLifting && !onBelt;
+          const bodyHolding = p.inClinch && !onBelt;
           // +deg = tip swings UP from the belt-rest asset. Mild over/under
           // split — server also spaces body holds farther apart so we don't
           // need a tiny underhook or a severe length chop (those made the
@@ -2688,7 +2676,6 @@ const GameFighter = ({
             isGrabStartup: p.isGrabStartup,
             isThrowing: p.isThrowing,
             isBeingThrown: p.isBeingThrown,
-            isBeingLifted: p.isBeingLifted,
             isRingOutThrowCutscene: p.isRingOutThrowCutscene,
             isRopeJumping: p.isRopeJumping,
             isFlapping: p.isFlapping,
@@ -3349,10 +3336,8 @@ const GameFighter = ({
             newState.clinchBeltRequiresM2Release ||
           prev.inClinch !== newState.inClinch ||
           prev.clinchAction !== newState.clinchAction ||
-          prev.isBeingLifted !== newState.isBeingLifted ||
           prev.isClinchThrowing !== newState.isClinchThrowing ||
           prev.isClinchClashing !== newState.isClinchClashing ||
-          prev.isClinchLifting !== newState.isClinchLifting ||
           prev.isClinchPushing !== newState.isClinchPushing ||
           prev.isClinchPlanting !== newState.isClinchPlanting ||
           prev.isResistingThrow !== newState.isResistingThrow ||
@@ -3528,6 +3513,8 @@ const GameFighter = ({
           let tier = "slap";
           if (data.attackType === "charged") tier = "charged";
           if (data.cinematicKill) tier = "cinematic";
+          // Tip slap confirm reads a touch sharper than a deep mash connect.
+          if (data.tipSlap && tier === "slap") tier = "tip";
           setAttackerConfirmTier(tier);
           if (attackerConfirmTimeoutRef.current) {
             clearTimeout(attackerConfirmTimeoutRef.current);
@@ -3536,7 +3523,8 @@ const GameFighter = ({
           // Slap is short — presses fire fast and the pulse must clear before the next hit.
           const dur =
             tier === "cinematic" ? 280 :
-            tier === "charged" ? 200 : 140;
+            tier === "charged" ? 200 :
+            tier === "tip" ? 170 : 140;
           attackerConfirmTimeoutRef.current = setTimeout(() => {
             setAttackerConfirmTier(null);
             attackerConfirmTimeoutRef.current = null;
@@ -3545,13 +3533,14 @@ const GameFighter = ({
 
         // PROCEDURAL ANIMATION — attacker contact recoil. On connect, the
         // attacker's body jolts back for ~0.18s (attackerContactRecoil
-        // keyframes) before resuming the swing loop. Cinematic kills keep
-        // their scripted attacker pose. The 200ms auto-clear ends before the
-        // fastest slap re-chain, so consecutive hits each restart the jolt.
+        // keyframes) before resuming the swing loop. Charged headbutts PLANT
+        // (server + no CSS bounce). Cinematic kills keep their scripted pose.
+        // The 200ms auto-clear ends before the fastest slap re-chain.
         if (
           data.attackerId &&
           data.attackerId === player.id &&
-          !data.cinematicKill
+          !data.cinematicKill &&
+          data.attackType !== "charged"
         ) {
           setAttackerRecoil(true);
           if (attackerRecoilTimeoutRef.current) {
@@ -3563,13 +3552,71 @@ const GameFighter = ({
           }, 200);
         }
 
+        // Charged attacker: pin plant X/Y the instant the hit lands.
+        // X: kill lunge extrapolation into hitstop.
+        // Y: appear already at land-settle height (never lerp up from grounded
+        //    — that read as a hop before the arc down).
+        if (
+          data.attackerId &&
+          data.attackerId === player.id &&
+          data.attackType === "charged"
+        ) {
+          const plantX =
+            typeof data.attackerX === "number"
+              ? data.attackerX
+              : interpolatedPositionRef.current?.x;
+          const plantY =
+            typeof data.attackerY === "number"
+              ? data.attackerY
+              : interpolatedPositionRef.current?.y;
+          if (typeof plantX === "number" && typeof plantY === "number") {
+            interpolatedPositionRef.current = { x: plantX, y: plantY };
+            if (previousState.current) {
+              previousState.current = {
+                ...previousState.current,
+                x: plantX,
+                y: plantY,
+              };
+            }
+            if (currentState.current) {
+              currentState.current = {
+                ...currentState.current,
+                x: plantX,
+                y: plantY,
+              };
+            }
+            const leftPct = `${(plantX / 1280) * 100}%`;
+            const bottomPct = `${(plantY / 720) * 100}%`;
+            if (fighterImgDomRef.current) {
+              fighterImgDomRef.current.style.left = leftPct;
+              fighterImgDomRef.current.style.bottom = bottomPct;
+            }
+            if (animContainerDomRef.current) {
+              animContainerDomRef.current.style.left = leftPct;
+              animContainerDomRef.current.style.bottom = bottomPct;
+            }
+          }
+          predictedState.current = {
+            ...predictedState.current,
+            isAttacking: false,
+            isChargingAttack: false,
+            isSlapAttack: false,
+            isPalmThrust: false,
+            timestamp: Date.now(),
+          };
+          isChargedLungingRef.current = false;
+        }
+
         // Screen shake — explicit per-hit tiers. Charged attacks get a heavy
         // crunch profile with zoom + roll; slap pokes stay snappy with no zoom.
         // Fired once per client (index===0). Cinematic kills run their own
         // camera, so we skip here to avoid stepping on it.
         if (index === 0 && !data.cinematicKill) {
           const shakeDir = data.knockbackDirection || (data.facing === 1 ? -1 : 1);
-          if (data.attackType === "charged") {
+          if (data.isGored) {
+            // EXPOSED (matador punish) — heavier crack than a normal slap/charge.
+            addShake("slap_parry", { dirX: shakeDir, scale: 0.95 });
+          } else if (data.attackType === "charged") {
             const chargeScale =
               0.8 + Math.min((data.chargePercentage || 0) / 100, 1) * 0.45;
             addShake("charged_hit", { scale: chargeScale, dirX: shakeDir });
@@ -3578,9 +3625,12 @@ const GameFighter = ({
             addShake("throw_landing", { dirX: shakeDir, scale: 1.15 });
           } else {
             // MASTERY Phase 5 (5.2): a momentum hit (dash-in / carried speed)
-            // punches the camera harder than a flat-footed slap. Server-gated ⇒
-            // scale is 1 (today) with the flag off.
-            addShake("slap_hit", { dirX: shakeDir, scale: data.momentumHit ? 1.4 : 1 });
+            // punches the camera harder than a flat-footed slap. Tip spacing
+            // gets a snappier crack (lighter than momentum weight). Server-gated.
+            let slapShake = 1;
+            if (data.momentumHit) slapShake = 1.4;
+            else if (data.tipSlap) slapShake = 1.15 + (data.tipQuality || 0.45) * 0.1;
+            addShake("slap_hit", { dirX: shakeDir, scale: slapShake });
           }
         }
 
@@ -3599,7 +3649,11 @@ const GameFighter = ({
             //   - Punish:  pitched UP,   played simultaneously → adds "crack" snap
             // Both reuse the same selected base sound so the layer sounds like
             // it belongs together, not a separate hit.
-            if (data.isCounterHit) {
+            if (data.isGored) {
+              // EXPOSED — heavier than counter: deep thud + sharp crack.
+              playSound(baseSound, 0.03, null, 0.62, pan);
+              playSound(baseSound, 0.024, null, 1.4, pan);
+            } else if (data.isCounterHit) {
               playSound(baseSound, 0.022, null, 0.78, pan);
             } else if (data.isPunish) {
               playSound(baseSound, 0.020, null, 1.32, pan);
@@ -3625,13 +3679,23 @@ const GameFighter = ({
             if (data.momentumHit) {
               playSound(baseSound, 0.012, null, 0.6, pan);
             }
+            // MASTERY Phase 4 (4.2): tip spacing — pitched-UP crack so a clean
+            // tip connect reads as snappy / precise (opposite of momentum weight).
+            // Scales with tipQuality; silent below the server feel threshold.
+            if (data.tipSlap) {
+              const q = Math.max(0.45, Math.min(1, data.tipQuality || 0.45));
+              playSound(baseSound, 0.016 + q * 0.014, null, 1.22 + q * 0.2, pan);
+            }
           } else {
             const baseSound = pickRandomSound(chargedHitSounds);
             playSound(baseSound, 0.045, null, 1.0, pan);
             // Same layering treatment as slaps but slightly louder/wider pitch
             // gap because charged hits already have weight — the layer needs to
             // stand out without overpowering the primary thwack.
-            if (data.isCounterHit) {
+            if (data.isGored) {
+              playSound(baseSound, 0.034, null, 0.58, pan);
+              playSound(baseSound, 0.028, null, 1.38, pan);
+            } else if (data.isCounterHit) {
               playSound(baseSound, 0.028, null, 0.72, pan);
             } else if (data.isPunish) {
               playSound(baseSound, 0.026, null, 1.36, pan);
@@ -3671,9 +3735,18 @@ const GameFighter = ({
             isPunish: data.isPunish || false,
             isArmorBreak: data.isArmorBreak || false,
             isPowered: data.isPowered || false,
+            isTipSlap: !!data.tipSlap,
             cinematicKill: data.cinematicKill || false,
             cinematicHitstopMs: data.cinematicKill ? 550 : 0,
           });
+        }
+
+        // Tip posture HUD flinch — victim's gauge flashes so the spacing reward
+        // is visible in the moment, not only as a mysterious later throw setup.
+        if (index === 0 && data.tipSlap && data.attackType === "slap") {
+          const vNum = data.victimPlayerNumber;
+          if (vNum === 1) setP1TipDrain(Date.now());
+          else if (vNum === 2) setP2TipDrain(Date.now());
         }
 
         // COUNTER HIT / PUNISH side banners — folded into player_hit (were
@@ -3777,6 +3850,7 @@ const GameFighter = ({
           else if (data.isPunish) amp += 0.15;
           if (data.isArmorBreak) amp += 0.15;
           if (data.momentumHit) amp += 0.12;
+          if (data.tipSlap) amp += 0.08;
           // Braked knockback = the victim dug in — displacement is the tell
           // that shrinks, so the body deformation shrinks with it.
           if (data.braked) amp -= 0.2;
@@ -4115,8 +4189,8 @@ const GameFighter = ({
 
       handleMatadorSuccess = (data) => {
         if (!data || data.type !== "matador_success") return;
-        // Yank SFX/shake only — keep the regular orange plumes running
-        // through the pull (no extra on-hit burst, don't clear hold early).
+        // Yank SFX/shake + gold MATADOR stamp. Keep regular gold plumes
+        // running through the pull (no extra on-hit particle burst).
         const matX = data.matadorX ?? data.x;
         const grabX = data.grabberX ?? data.x;
         const pullDirection =
@@ -4131,15 +4205,19 @@ const GameFighter = ({
         playSound(palmThrustWhiffSound, 0.022, null, 1.2, pan);
         if (index === 0) {
           addShake("matador", { dirX: pullDirection });
+          setMatadorSuccessStampPosition({
+            counterId:
+              data.matadorId_token ||
+              `matador-${data.matadorId || Date.now()}`,
+            playerNumber: data.matadorPlayerNumber || 1,
+          });
         }
       };
       socket.on("matador_success", handleMatadorSuccess);
 
       // Clinch stance-read banners: counter_throw (threw a pusher, max drain)
-      // and braced (plant blunted an incoming throw to chip drain).
       handleClinchCallout = (data) => {
-        if (!data || (data.type !== "counter_throw" && data.type !== "braced"))
-          return;
+        if (!data || data.type !== "counter_throw") return;
         setClinchCalloutData({
           type: data.type,
           playerNumber: data.playerNumber || 1,
@@ -4985,8 +5063,14 @@ const GameFighter = ({
     isChargedLungingRef.current =
       penguin.isAttacking &&
       penguin.attackType === "charged" &&
-      !penguin.isPalmThrust;
-  }, [penguin.isAttacking, penguin.attackType, penguin.isPalmThrust]);
+      !penguin.isPalmThrust &&
+      !penguin.chargedAttackHit;
+  }, [
+    penguin.isAttacking,
+    penguin.attackType,
+    penguin.isPalmThrust,
+    penguin.chargedAttackHit,
+  ]);
 
   // One-shot smoke swoosh at the moment the charged lunge begins (mirrors the
   // dash-start smoke). Transition-guarded so it fires once, not every frame the
@@ -4996,7 +5080,8 @@ const GameFighter = ({
     const isLunging =
       penguin.isAttacking &&
       penguin.attackType === "charged" &&
-      !penguin.isPalmThrust;
+      !penguin.isPalmThrust &&
+      !penguin.chargedAttackHit;
     if (isLunging && !lastChargedLungeState.current) {
       emitParticles("chargedLungeSmoke", {
         x: interpolatedPositionRef.current.x || penguin.x,
@@ -5009,6 +5094,7 @@ const GameFighter = ({
     penguin.isAttacking,
     penguin.attackType,
     penguin.isPalmThrust,
+    penguin.chargedAttackHit,
     penguin.facing,
     penguin.x,
     penguin.y,
@@ -5019,7 +5105,8 @@ const GameFighter = ({
     const isLunging =
       penguin.isAttacking &&
       penguin.attackType === "charged" &&
-      !penguin.isPalmThrust;
+      !penguin.isPalmThrust &&
+      !penguin.chargedAttackHit;
     if (isLunging) {
       chargedTrailLastX.current = interpolatedPositionRef.current.x || penguin.x;
       const EMIT_INTERVAL = 50;
@@ -5061,6 +5148,7 @@ const GameFighter = ({
     penguin.isAttacking,
     penguin.attackType,
     penguin.isPalmThrust,
+    penguin.chargedAttackHit,
     penguin.facing,
     penguin.x,
     penguin.y,
@@ -5477,60 +5565,6 @@ const GameFighter = ({
   ]);
 
   // ─────────────────────────────────────────────────────────────────
-  // LOCAL PLAYER HALO — persistent identity marker
-  //
-  // Emits localPlayerHalo every 600ms while the LOCAL player is alive
-  // and the round isn't over. Each emission spawns one ring on the
-  // default canvas (occluded by the fighter sprite — wraps around the
-  // feet) and one faint copy on the aboveFighters canvas (preserves
-  // identity through overlap). The ring tracks live X/Y via
-  // followGetter, so it dips with the player during the sidestep arc
-  // — they're walking around the dohyo's curved near edge, not jumping.
-  // ─────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!isLocalPlayer || penguin.isDead || gameOver) return;
-
-    // followGetter returns canvas-space coordinates (Y is already flipped
-    // because the engine spawns the particle at GAME_H - y).
-    // While airborne in a flap, the identity ring stays PINNED TO THE GROUND
-    // (like the shadow) so it keeps reading as a ground-position marker rather
-    // than floating up with the penguin. Read live state via a ref since this
-    // closure isn't recreated on every flap toggle.
-    const followGetter = () => {
-      const pos = interpolatedPositionRef.current;
-      const px = pos?.x ?? penguin.x;
-      let py = pos?.y ?? penguin.y;
-      if (typeof px !== "number" || typeof py !== "number") return null;
-      if (penguinRef.current?.isFlapping || penguinRef.current?.isSlideJumping) {
-        py = SHADOW_GROUND_LEVEL;
-      }
-      return { x: px, y: 720 - py };
-    };
-
-    const fire = () => {
-      const pos = interpolatedPositionRef.current;
-      const py =
-        penguinRef.current?.isFlapping || penguinRef.current?.isSlideJumping
-          ? SHADOW_GROUND_LEVEL
-          : pos?.y ?? penguin.y;
-      emitParticles("localPlayerHalo", {
-        x: pos?.x ?? penguin.x,
-        y: py,
-        playerNumber,
-        followGetter,
-      });
-    };
-
-    fire();
-    // 2000ms cadence MATCHES the halo's 2.0s `maxLife` exactly.
-    // Each particle's bump-eased alpha goes BASE → PEAK → BASE, and
-    // the next one starts at BASE — same value, seamless transition,
-    // consistent breath rhythm with no double-pulse from overlap.
-    const id = setInterval(fire, 2000);
-    return () => clearInterval(id);
-  }, [isLocalPlayer, penguin.isDead, gameOver, playerNumber, emitParticles]);
-
-  // ─────────────────────────────────────────────────────────────────
   // SIDESTEP VFX — start / trail / land
   //
   // The sidestep is GROUND footwork, not a leap. The downward Y dip
@@ -5929,7 +5963,7 @@ const GameFighter = ({
     lastRawParryState.current = penguin.isRawParrying;
   }, [penguin.isRawParrying, penguin.x, penguin.y, penguin.facing, emitParticles]);
 
-  // MATADOR activation — cloth/air whoosh + orange AP-style plumes.
+  // MATADOR activation — cloth/air whoosh + gold AP-style plumes.
   // Plumes stay up through success/pull; only clear when the whole beat ends.
   const lastMatadorState = useRef(false);
   const matadorPlumeActive =
@@ -6191,6 +6225,7 @@ const GameFighter = ({
   // Afterimage ghost throttle (rAF-loop spawner) — see the knockback ghost
   // block in the interpolation loop.
   const lastGhostAtRef = useRef(0);
+
 
   // Tracks the cinematic-kill smoke-trail rAF so it can be cancelled on unmount
   // / round change (the trail is a distance-based rAF loop, not a setInterval).
@@ -6839,9 +6874,7 @@ const GameFighter = ({
     penguin.isSidestepRecovery,
     displayPenguin.isChargingAttack,
     penguin.hasGrip,
-    penguin.isBeingLifted,
     penguin.isClinchClashing,
-    penguin.isClinchLifting,
     penguin.isClinchPushing,
     penguin.isClinchPlanting,
     penguin.isResistingThrow,
@@ -7168,10 +7201,9 @@ const GameFighter = ({
     !penguin.isArmClamped &&
     renderLocalM2 &&
     !renderBeltM2Blocked;
-  const armOnBelt =
+    const armOnBelt =
     (!!penguin.isClinchBeltHolding && !renderBeltM2Blocked) ||
     localBeltHold ||
-    !!penguin.isClinchLifting ||
     !!penguin.isAttemptingGrabThrow ||
     !!penguin.isAttemptingPull;
   let grabArmNudgeXPct = 0;
@@ -7184,16 +7216,9 @@ const GameFighter = ({
     grabArmNudgeYPct = GRAB_ARM_BODY_HOLD_NUDGE_Y_PCT;
   }
 
-  // Lifter arm: belt-track the tip, then hand-pivot rotate so the shoulder
-  // settles back onto the torso (pure vertical track parked it up by the beak).
-  const grabArmBeltTrackActive =
-    !isPlantingArm && !!penguin.isClinchLifting;
-  const grabArmLiftDeg = grabArmBeltTrackActive ? 14 : 0;
   // Clinch arm overlay uses shoulder-pivot rotate driven by CSS var
-  // --grab-arm-body-hold-deg (written per-frame in the rAF loop). Activate the
-  // conjugate transform whenever we're in clinch and not lift-tracking.
-  const grabArmBodyHoldActive =
-    showGrabArm && penguin.inClinch && !grabArmBeltTrackActive;
+  // --grab-arm-body-hold-deg (written per-frame in the rAF loop).
+  const grabArmBodyHoldActive = showGrabArm && penguin.inClinch;
 
   // ── Equipped top hat (composited into body — NOT a second animated layer) ─
   // Ice slide / brake / breathe apply CSS transforms to the fighter <img>.
@@ -7370,8 +7395,6 @@ const GameFighter = ({
     $grabTechRole: penguin.grabTechRole,
     $isGrabWhiffRecovery: penguin.isGrabWhiffRecovery,
     $isClinchClashing: penguin.isClinchClashing,
-    $isClinchLifting: penguin.isClinchLifting,
-    $isBeingLifted: penguin.isBeingLifted,
     $isClinchJolting: penguin.isClinchJolting,
     $isBeingClinchJolted: penguin.isBeingClinchJolted,
     $isClinchJoltClashing: penguin.isClinchJoltClashing,
@@ -7504,6 +7527,7 @@ const GameFighter = ({
               player1ParryRefund: p1ParryRefund,
               player1Balance: allPlayersData.player1?.balance ?? 100,
               player1BalanceGain: p1BalanceGain,
+              player1TipDrain: p1TipDrain,
               player1HasDeepGrip: !!allPlayersData.player1?.hasDeepGrip,
               // Only show PUSH/BACK while actually clinched — defends against
               // a stale clinchShoveLead surviving a push-kill / round freeze.
@@ -7532,6 +7556,7 @@ const GameFighter = ({
               player2ParryRefund: p2ParryRefund,
               player2Balance: allPlayersData.player2?.balance ?? 100,
               player2BalanceGain: p2BalanceGain,
+              player2TipDrain: p2TipDrain,
               player2HasDeepGrip: !!allPlayersData.player2?.hasDeepGrip,
               player2ShoveLead: allPlayersData.player2?.inClinch
                 ? (allPlayersData.player2?.clinchShoveLead ?? null)
@@ -7628,7 +7653,6 @@ const GameFighter = ({
             "counterhit",
             "punish",
             "counterthrow",
-            "braced",
             "deepgrip",
             "tech",
             "default",
@@ -7714,7 +7738,6 @@ const GameFighter = ({
             isGrabStartup={penguin.isGrabStartup}
             isThrowing={penguin.isThrowing}
             isBeingThrown={penguin.isBeingThrown}
-            isBeingLifted={penguin.isBeingLifted}
             isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
             isRopeJumping={penguin.isRopeJumping}
             isFlapping={penguin.isFlapping}
@@ -7854,8 +7877,6 @@ const GameFighter = ({
           $grabArmLayer={grabArmZ}
           $grabArmNudgeXPct={grabArmNudgeXPct}
           $grabArmNudgeYPct={grabArmNudgeYPct}
-          $grabArmBeltTrackActive={grabArmBeltTrackActive}
-          $grabArmLiftDeg={grabArmLiftDeg}
           $grabArmBodyHoldActive={grabArmBodyHoldActive}
           decoding="async"
           draggable={false}
@@ -7921,6 +7942,7 @@ const GameFighter = ({
       {index === 0 && <ClinchCalloutEffect callout={clinchCalloutData} />}
       <PunishBannerEffect position={punishBannerPosition} />
       <GoredBannerEffect position={goredBannerPosition} />
+      <MatadorSuccessEffect position={matadorSuccessStampPosition} />
       <CounterHitEffect position={counterHitEffectPosition} />
       <SnowballImpactEffect position={snowballImpactPosition} />
       <StarStunEffect
@@ -7946,7 +7968,6 @@ const GameFighter = ({
           penguin.inClinch === true &&
           penguin.isBeingGrabbed === true &&
           penguin.isArmClamped === true &&
-          !penguin.isBeingLifted &&
           !penguin.isClinchKillThrowVictim &&
           !penguin.isClinchKillPullVictim
         }

@@ -21,6 +21,8 @@ const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'balance', 'id', 'figh
 const DELTA_TRACKED_PROPS = [
   'isAttacking', 'isSlapAttack', 'isPalmThrust', 'palmThrustFxId', 'isLowKick', 'slapAnimation', 'attackType',
   'isChargingAttack', 'chargeAttackPower', 'chargeStartTime',
+  // Stops client lunge trails the moment a charged hit plants.
+  'chargedAttackHit',
   'isBurstKnockback',
   // Client prediction gates: actionLockUntil / attackCooldownUntil live on the
   // pausable sim clock (frozen during hitstop) so absolute times can't be
@@ -61,13 +63,13 @@ const DELTA_TRACKED_PROPS = [
   'isSlapParryRecovering',
   'isHitFalling', 'isSidestepHitReturn',
   'inClinch', 'hasGrip', 'clinchAction',
-  // Holding M2 (or mid throw/lift) → arms on belt; otherwise body-hold pose.
+  // Holding M2 (or mid throw/pull) → arms on belt; otherwise body-hold pose.
   'isClinchBeltHolding',
   // True until M2 is released after grab connect — blocks belt pose on the
   // same hold that started the grab (body hold is the connect default).
   'clinchBeltRequiresM2Release',
-  'isBeingLifted', 'isClinchThrowing', 'isClinchClashing',
-  'isClinchLifting', 'isClinchPushing', 'isClinchPlanting',
+  'isClinchThrowing', 'isClinchClashing',
+  'isClinchPushing', 'isClinchPlanting',
   'isResistingThrow', 'isResistingPull',
   'isClinchKillThrowVictim', 'isClinchKillPullVictim',
   'isClinchJolting', 'isBeingClinchJolted', 'isClinchJoltClashing',
@@ -117,6 +119,10 @@ const STRIKE_TIP_CHARGED_SPRITE_PX = 425;
 const STRIKE_TIP_PALM_SPRITE_PX = 438;
 // Near-zero dig — active-window extension separation already holds tip-meets-body.
 const STRIKE_SKIN_EMBED_PX = 1;
+// Palm is rooted (no lunge) and reads stingy at exact tip-meets-body. A small
+// world-px overhang past the art tip makes the poke connect when the arm
+// visually "just" reaches — not a new range band, just past the tip.
+const STRIKE_PALM_REACH_OVERHANG_PX = 10;
 // ── SLAP CLASH ("slap parry") — RARE, GROUND-based GAIN / LOSE / NEUTRAL ────
 // Design intent: the clash is NOT the texture of close-range fighting — it's a
 // rare highlight you hit on a genuinely simultaneous read. The DEFAULT outcome
@@ -143,8 +149,9 @@ const SLAP_PARRY_NEUTRAL_WINDOW_MS = 30; // Starts within ~1 tick (64Hz ≈ 15.6
 // together, so mashing-after-clash simply re-clashes (fair) instead of letting
 // the winner run away with the tempo. The reward for winning is GROUND, not frames.
 const SLAP_PARRY_RECOVERY_MS = 135;
-const SLAP_PARRY_HITSTOP_MS = 110; // Clash freeze — keep as the CLANG beat (hitstop
-// on a clean slap connect is separate: HITSTOP_SLAP_MS).
+// Legacy slap-clash freeze (clash system removed — trades use HITSTOP_SLAP_MS).
+// Kept exported so stale imports don't crash; not used by live hitstop paths.
+const SLAP_PARRY_HITSTOP_MS = 110;
 // Asymmetric knockback (decisive) — the readable tell, and the ONLY advantage a
 // clash grants. Winner barely moves (holds the center); loser is shoved back
 // toward the rope. Purely positional → always contestable.
@@ -247,16 +254,24 @@ const SLAP_COUNTER_KB_MULT = 1.25;      // Victim drift multiplier on counter (e
 // Safety floor for the dynamically computed hitstun (see processHit).
 const SLAP_MIN_HITSTUN_MS = 60;
 
-// ── GORED (MATADOR punish) ───────────────────────────────────────────────────
+// ── EXPOSED (MATADOR punish) ─────────────────────────────────────────────────
 // Hitting someone during a live / whiffed MATADOR is a special RPS punish —
-// the grab-line counterpart to CLAMPED. Harder shove than a counter hit, and
-// forces ring-out eligibility (the wrong hard-read must hurt).
-const GORED_KB_MULT = 1.9;             // vs SLAP_COUNTER_KB_MULT 1.25
-const GORED_HITSTUN_BONUS_MS = 70;     // vs SLAP_COUNTER_HIT_BONUS_MS 35
-const GORED_CHARGED_KB_MULT = 1.55;    // charged/palm into matador also pays
+// the grab-line counterpart to CLAMPED. Callout reads "EXPOSED". Harder shove
+// than a counter hit, and forces ring-out eligibility (wrong hard-read must hurt).
+// Internals still use GORED_* / isGored names.
+const GORED_KB_MULT = 2.55;            // vs SLAP_COUNTER_KB_MULT 1.25 — must READ as a shove
+const GORED_HITSTUN_BONUS_MS = 130;    // vs SLAP_COUNTER_HIT_BONUS_MS 35 — clear tempo steal
+const GORED_CHARGED_KB_MULT = 1.85;    // charged/palm into matador also pays
+const GORED_HITSTOP_BONUS_MS = 45;     // EXPOSED bonus — special, but stays under palm tier
 
 const CHARGED_STARTUP_MS = 150;   // Clear windup (unchanged)
-const CHARGED_ACTIVE_MS = 120;    // Hitbox live window
+// Hitbox live window AFTER startup. Charge scales MIN→MAX; the lunge ends with
+// the active window (no multi-second skating hitbox). Speed still charge-scales,
+// so fuller charges cover more ground during the same threat window.
+const CHARGED_ACTIVE_MIN_MS = 200;
+const CHARGED_ACTIVE_MAX_MS = 450;
+// Legacy alias — older call sites / docs. Equals the tap-charge floor.
+const CHARGED_ACTIVE_MS = CHARGED_ACTIVE_MIN_MS;
 
 // ── OPEN-PALM THRUST (back + mouse1) ────────────────────────────────────────
 // A rooted, single-hit "hold your ground" strike. Rides the charged
@@ -276,11 +291,11 @@ const PALM_THRUST_HOLD_MS = 260;
 // its strike sprite for the full whiff punish window instead.
 const PALM_THRUST_END_RECOVERY_MS = 60;
 const PALM_THRUST_HIT_RECOVERY_MS = 200;   // Settle on a confirmed hit
-// Fixed "charge %" used ONLY for the palm's priority + hitstop, NOT its
-// knockback: 35 sits ABOVE CHARGE_PRIORITY_THRESHOLD (30) so the thrust beats a
-// slap on a simultaneous trade, and it scales the connect hitstop. The actual
-// shove is a fixed burst impulse (PALM_THRUST_KB_VELOCITY below) via the burst
-// knockback model — the palm does NOT run the 0.45+charge^1.3 charged formula.
+// Fixed "charge %" used ONLY for the palm's trade priority, NOT its knockback
+// or hitstop: 35 sits ABOVE CHARGE_PRIORITY_THRESHOLD (30) so the thrust beats a
+// slap on a simultaneous trade. Connect freeze is flat HITSTOP_BURST_MS (palm/
+// flap tier). The shove is a fixed burst impulse (PALM_THRUST_KB_VELOCITY) —
+// the palm does NOT run the 0.45+charge^1.3 charged formula.
 const PALM_THRUST_POWER = 35;
 // Heavy single-hit knockback — now the game's big committal SHOVE (slaps only
 // gain ground; the palm SENDS them). Delivered via the burst model (smooth
@@ -289,9 +304,9 @@ const PALM_THRUST_POWER = 35;
 // as the ground-based burst tier.
 const PALM_THRUST_KB_VELOCITY = 2.4;
 const PALM_THRUST_STAMINA_COST = 4;        // Slightly above slap (3) — committed poke, not a gas tax
-// Rooted (no lunge), so it needs a little more raw reach than the charged
-// hitbox to feel like a committed extended-arm thrust — a touch past slap.
-const PALM_THRUST_HITBOX_DISTANCE_VALUE = 164; // Rooted thrust — same +34 past pushbox tip overhang as before
+// Legacy fallback — live palm reach is tip-based (STRIKE_TIP_PALM_SPRITE_PX)
+// plus STRIKE_PALM_REACH_OVERHANG_PX in strikeContact.getConnectDistance.
+const PALM_THRUST_HITBOX_DISTANCE_VALUE = 164;
 
 // ── LOW KICK / TRIP (S + mouse1, no forward) ────────────────────────────────
 // Rooted anti-defense poke. Beats parry/guard and grab startup; loses to slap /
@@ -332,8 +347,8 @@ const DODGE_COOLDOWN_MS = 100;    // Forced idle gap after recovery before next 
 // a committed dodge slips a meaty; cuts off before/as active travel begins so
 // late panic into live hitboxes is still hittable. Grabs ignore this entirely.
 const DODGE_IFRAME_MS = 40;
-// Gassed: full dodge + ice-slide kit stays available (weak "panic hop" felt worse
-// than none). Sidestep / rope jump / flap remain hard-locked while gassed.
+// Gassed: dodge / sidestep / rope jump / flap are all hard-locked while gassed
+// (denied attempts surface the "not enough stamina" cue).
 
 // ============================================
 // Sidestep — Henka-style positional escape around the dohyo
@@ -390,7 +405,23 @@ const SIDESTEP_RECOVERY_OVERLAP_THRESHOLD = 80; // Only push out during recovery
 // Dohyo edge fall physics - fast heavy drop with maintained horizontal momentum
 const DOHYO_FALL_SPEED = 5.93; // Scaled for camera zoom (was 8)
 const DOHYO_FALL_DEPTH = 37; // Scaled for camera zoom (was 50)
-const DOHYO_FALL_HORIZONTAL_RETENTION = 0.98; // Maintain horizontal momentum while falling
+// Legacy alias — live fall/off-ice drag uses OUTSIDE_DOHYO_DIRT_* below.
+const DOHYO_FALL_HORIZONTAL_RETENTION = 0.84;
+
+// ============================================
+// OFF-ICE / DIRT APRON (past MAP rope → fall edge)
+// On-ice slap KB decays at ~0.97/tick; once past the rope the loser is on
+// dirt, not ice — markedly stickier, but still a smooth slide (not a hard stop).
+// ============================================
+const PAST_MAP_DIRT_KB_FRICTION = 0.88;       // Knockback on dirt apron (MAP → DOHYO)
+const OUTSIDE_DOHYO_DIRT_KB_FRICTION = 0.84;  // Knockback past the fall edge
+const PAST_MAP_DIRT_MOVE_FRICTION = 0.90;     // Loser coast on dirt apron
+const OUTSIDE_DOHYO_DIRT_MOVE_FRICTION = 0.85; // Coast/slide past fall edge
+// Kill-pull / AP-parry-kill belly-slides are position tweens (not velocity), so
+// dirt is applied by compressing ice overshoot past the rope. ~0.35 keeps a
+// readable dirt slide without the full ice carry; past the fall edge compresses more.
+const KILL_PULL_DIRT_OVERSHOOT_SCALE = 0.35;
+const KILL_PULL_DIRT_FALL_OVERSHOOT_SCALE = 0.20;
 
 // ============================================
 // Power-ups
@@ -561,7 +592,7 @@ const GRAB_PULL_ATTEMPT_DISTANCE_MULTIPLIER = 1.4; // Larger gap during pull att
 
 // Grab break constants — Spacebar in clinch (both players must have grip).
 // Soft-gated by stamina: usable below cost, but breaker self-gasses if under-budget.
-// Halves breaker's current balance. Doesn't reposition meaningfully (boundary-clamped),
+// Stamina cost only (no posture hit). Doesn't reposition meaningfully (boundary-clamped),
 // so edge stress is preserved. Brief grab immunity prevents instant re-clinch.
 const GRAB_BREAK_STAMINA_COST = 30; // Heavy commitment — break is a real escape, not a free reset
 const GRAB_BREAK_FORCED_DISTANCE = 140; // Total separation distance (split between breaker + opponent — each moves half this)
@@ -570,11 +601,12 @@ const GRAB_BREAK_RESIDUAL_VEL = 0; // No residual sliding — players stop clean
 const GRAB_BREAK_INPUT_LOCK_MS = 350; // Breaker is locked during knockback tween — vulnerable window
 const GRAB_BREAK_ACTION_LOCK_MS = 350; // Action lock matches input lock
 const GRAB_BREAK_GRAB_IMMUNITY_MS = 400; // Re-grab protection on the breaker after the tween ends
-// Floor before Space can request a clinch break after mutual grip on connect.
-// Filters late open-game parry presses that would otherwise become instant breaks
-// (parry is meant to lose to grab). Fast intentional reactions still clear this;
-// a press during the lock is discarded — must re-press after it opens.
-const GRAB_BREAK_REACTION_LOCK_MS = 230;
+// Floor before Space / Mouse1 can request clinch break / jolt after mutual grip.
+// Filters late open-game parry / slap-mash presses that would otherwise become
+// instant clinch verbs (parry is meant to lose to grab; slap mash ≠ jolt intent).
+// Sized under typical human RT (~200–250ms) so sharp intentional presses still
+// clear it; a press during the lock is discarded — must re-press after it opens.
+const GRAB_BREAK_REACTION_LOCK_MS = 150;
 // Grab stamina drain: 10 stamina over full 1.5s duration
 // Drain 1 stamina every 150ms (1500ms / 10 = 150ms per stamina point)
 const GRAB_STAMINA_DRAIN_INTERVAL = 150;
@@ -586,18 +618,18 @@ const GRAB_STAMINA_DRAIN_INTERVAL = 150;
 // ============================================
 // Short first-grab reward shove. Both players already have grip on connect —
 // burst is uncancellable by a "grip-up" (removed); only duration/decay end it
-// (or a throw/pull/lift / break from either side).
+// (or a throw/pull / break from either side).
 // Standing (zero approach) duration is tuned to ≈ GRAB_BREAK_REACTION_LOCK_MS
-// (230ms): ln(BASE/MIN_VEL)/DECAY ≈ 0.23s so break opens as the weak shove dies.
-const GRAB_PUSH_BURST_BASE = 1.2;          // Slight snap vs 1.0; same ~230ms standing window
+// (150ms): ln(BASE/MIN_VEL)/DECAY ≈ 0.15s so break/jolt open as the shove dies.
+const GRAB_PUSH_BURST_BASE = 1.2;          // Slight snap vs 1.0; same ~150ms standing window
 const GRAB_PUSH_MOMENTUM_TRANSFER = 0.5;   // Approach → burst (dash/slide grabs bite)
 // PHASE 3.2 — "caught the henka": a grab that connects on a victim still in
 // sidestep-recovery or rope-jump landing floors the Phase A approach speed to
 // this, so a *read-timed* grab bursts them back cornerward hard even from a
 // standing (zero-approach) catch. Reads should pay out in position.
 const GRAB_CATCH_MIN_BURST_SPEED = 1.15;
-const GRAB_PUSH_DECAY_RATE = 4.0;          // Fast decay — blink shove, not a carry
-const GRAB_PUSH_MIN_VELOCITY = 0.48;       // Keep BASE/MIN ≈ 2.5 → ~230ms standing end
+const GRAB_PUSH_DECAY_RATE = 6.1;          // Faster blink — ends with the reaction lock
+const GRAB_PUSH_MIN_VELOCITY = 0.48;       // Keep BASE/MIN ≈ 2.5 → ~150ms standing end
 const GRAB_PUSH_BACKWARD_GRACE = 150;       // ms before backward input triggers pull during push (prevents accidental pull)
 const GRAB_PUSH_STAMINA_DRAIN_INTERVAL = 70; // Drain 1 stamina per 70ms mid-ring (~14/sec)
 const GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL = 35; // Drain 1 stamina per 35ms at edge (~29/sec)
@@ -629,7 +661,7 @@ const PERFECT_PARRY_KNOCKBACK = 0.65; // Slightly stronger than regular parry
 const PERFECT_PARRY_WINDOW = 40; // PERFECT tier window (ms), measured as (hitTime − rawParryStartTime, lag-comp). Tight inner band of AP_ACTIVE_MS — regular owns the generous read; perfect is the rare dead-on grade. Also gates the snowball perfect-reflect.
 const PERFECT_PARRY_SUCCESS_DURATION = 850; // Compressed parry — fast enough to keep pace, long enough for visual read
 const PERFECT_PARRY_ATTACKER_STUN_DURATION = 700; // Stun — comfortable window for slap/grab follow-up
-const PERFECT_PARRY_ANIMATION_LOCK = 370; // 250ms hitstop + 120ms real post-freeze "cool pose" before parrier can act
+const PERFECT_PARRY_ANIMATION_LOCK = 330; // AP_PERFECT_HITSTOP_MS (210) + 120ms post-freeze cool-pose floor
 const PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK = 200; // Shorter than player parry lock — the reflected snowball is the reward
 
 // Lag-compensation: max the raw-parry start time may be backdated toward the
@@ -736,7 +768,7 @@ const AP_COOLDOWN_MS = 40;           // Tiny gap before GUARD may re-enter after
 // strike = GORED. Separate flags from isRawParrying so grabs don't CLAMP it.
 const MATADOR_ACTIVE_MS = AP_ACTIVE_MS;                 // 180 — same live window as AP
 const MATADOR_WHIFF_RECOVERY_MS = AP_WHIFF_RECOVERY_MS; // 300 — same empty-tap jail
-const MATADOR_HITSTOP_MS = 110;                         // Snappy steal freeze (AP regular territory)
+const MATADOR_HITSTOP_MS = 110;                         // Confirm/steal tier — same rung as AP regular
 const MATADOR_SUCCESS_LOCK_MS = AP_SUCCESS_RECOVERY_MS;  // Brief plant on the matador after pull starts
 // Non-kill yank distance — ~20% shorter than a clinch pull (CLINCH_PULL_DISTANCE 280).
 // Kill still uses CLINCH_KILL_PULL_DISTANCE for the finisher read.
@@ -762,14 +794,13 @@ const AP_PERFECT_BALANCE_DRAIN = 18;  // Perfect parry — a real posture swing
 // (one guaranteed button), which needs them still in slap reach.
 const AP_ATTACKER_KNOCKBACK = 1.75;        // Regular ≈ 28px — settle, still slapable
 const AP_PERFECT_ATTACKER_KNOCKBACK = 2.25; // Perfect ≈ 36px — clearer tell, still one-slap range
-// Regular parry freeze — long enough that SUCCESS Frame 2 (deflect) is the
-// pose players actually read during the clash with the slap HIT frame.
-// Frame 1 is only a brief windup (~40ms client-side); the rest of this window
-// must belong to Frame 2. Kept short enough that flurry exchanges still breathe.
+// Regular AP freeze — confirm/steal tier. Long enough that SUCCESS Frame 2
+// (deflect) is the pose players read during the clash; short enough flurries breathe.
 const AP_HITSTOP_MS = 110;
-// Perfect parry — longer freeze so the rare read still feels premium vs regular.
-const AP_PERFECT_HITSTOP_MS = 200;
-const AP_KILL_HITSTOP_MS = 550;      // Heavy finisher freeze on the lethal slap-down — matches the charged CINEMATIC_KILL_HITSTOP_MS so the zoom/darken beat lands identically.
+// Perfect AP — skill/max tier. Rare dead-on read gets the longest non-kill freeze
+// so the match briefly bows to the read (above palm/flap burst weight).
+const AP_PERFECT_HITSTOP_MS = 210;
+const AP_KILL_HITSTOP_MS = 550;      // Presentation tier — matches CINEMATIC_KILL_HITSTOP_MS
 // PERFECT-only balance refund to the PARRIER: a dead-on read is a net posture
 // GAIN, not just mitigation. Sits below clinch thresholds so it can't trivialize pressure.
 const AP_PERFECT_BALANCE_REFUND = 12;
@@ -813,7 +844,7 @@ const GUARD_SLAP_STAMINA_DRAIN = 4;   // Blocking costs stamina — a long flurr
 const GUARD_PALM_STAMINA_DRAIN = 7;
 const GUARD_SLAP_PUSHBACK = 2.0;      // Slide-model velocity — blocked slap nudges you back ≈ 32px (ground still bleeds)
 const GUARD_PALM_PUSHBACK = 4.0;      // Palm shoves a blocker hard ≈ 64px
-const GUARD_HITSTOP_MS = 45;          // Light "tink" on a block — shorter than the parry clink so blocks read as the lesser outcome
+const GUARD_HITSTOP_MS = 40;          // Acknowledgment tier — light tink; lesser than every offensive freeze
 const GUARD_CRUSH_STUN_MS = 500;      // Guard broken (stamina hit 0 while blocking): a brief stun, then the gassed penalty takes over
 
 // ── SLAP TRADE (replaces the slap clash / "slap parry") ─────────────────────
@@ -947,8 +978,12 @@ const KNOCKBACK_IMMUNITY_DURATION = 150; // 150ms immunity window
 // ============================================
 // Stamina System
 // ============================================
+// Per-fighter regen: each player accumulates their own eligible time toward
+// the next +AMOUNT pulse. Never a shared server-wide metronome — that made
+// identical spends at identical displayed stamina resolve differently depending
+// on an invisible global phase (including regen rescuing a zero before gassed).
 const STAMINA_REGEN_INTERVAL_MS = 2000; // regen interval — bumped from 2500 to soften gas pressure
-const STAMINA_REGEN_AMOUNT = 8; // per tick
+const STAMINA_REGEN_AMOUNT = 8; // per pulse
 
 // Charged attack timing
 const CHARGE_FULL_POWER_MS = 1000; // Time to reach 100% charge (1 second)
@@ -1065,11 +1100,11 @@ const CLINCH_ATTACH_LERP_PER_SEC = 14; // Snap-in speed when someone presses/rel
 
 // Clinch throw system (Mouse2 + W during clinch)
 const CLINCH_THROW_ANIMATION_MS = 450;           // Committed throw animation length
-const CLINCH_THROW_COOLDOWN_MS = 1200;           // Cooldown after any throw/pull/lift attempt
+const CLINCH_THROW_COOLDOWN_MS = 1200;           // Cooldown after any throw/pull attempt
 const CLINCH_THROW_STAMINA_COST = 10;            // Stamina cost for throw/pull attempt (uniform)
 const CLINCH_THROW_CLASH_WINDOW_MS = 175;        // Both throw within this → clash
 const CLINCH_THROW_BALANCE_DRAIN_VS_PUSH = 20;   // Balance drain on opponent who was pushing (punishes aggression)
-const CLINCH_THROW_BALANCE_DRAIN_VS_PLANT = 5;   // Balance drain on opponent who was planting (braced = hard to throw)
+const CLINCH_THROW_BALANCE_DRAIN_VS_PLANT = 5;   // Balance drain on opponent who was planting (hard to throw)
 const CLINCH_THROW_BALANCE_DRAIN_VS_NEUTRAL = 10; // Balance drain on neutral opponent
 const CLINCH_THROW_FAIL_BALANCE_DRAIN = 4;       // Minimal chip on opponent when throw fails — throws are finishers, not grinders
 const CLINCH_THROW_FAIL_SELF_BALANCE_DRAIN = 12; // Attacker loses balance on failed throw — high risk, high reward
@@ -1091,10 +1126,10 @@ const CLINCH_THROW_FAIL_STAGGER_MS = 300;        // Attacker forced neutral, no 
 // leaves the lively band, max burst duration, or boundary contact), the victim
 // is free to fight — punished once, positionally, then a fair clinch.
 // Clamp uses its OWN shove power (mult + slower decay). A normal connect is a
-// short ~230ms nudge; clamp is the scary parry-punish carry across the dohyo.
+// short ~150ms nudge; clamp is the scary parry-punish carry across the dohyo.
 const COUNTER_GRAB_BALANCE_DEBUFF = 10;          // Balance hit on counter-grab connect
 const ARM_CLAMP_BURST_MULT = 2.1;                // × initial burst vs regular connect
-const ARM_CLAMP_BURST_DECAY_RATE = 1.9;           // Slower than regular 4.0 — real carry
+const ARM_CLAMP_BURST_DECAY_RATE = 1.9;           // Slower than regular 6.1 — real carry
 const ARM_CLAMP_BURST_END_VELOCITY = 0.55;        // End while still shoving (not a crawl)
 const ARM_CLAMP_MAX_BURST_MS = 950;              // Hard cap on clamp carry
 
@@ -1105,16 +1140,6 @@ const ARM_CLAMP_MAX_BURST_MS = 950;              // Hard cap on clamp carry
 const DEEP_GRIP_THROW_THRESHOLD_BONUS = 10;      // Throws/pulls land at balance <= 60 (vs 50)
 const DEEP_GRIP_PUSH_MULT = 1.1;                 // +10% clinch push force while held
 const DEEP_GRIP_PUSH_WIN_MS = 1000;              // Continuous unanswered push time to earn it
-
-// REACT BRACE — snapping to plant DURING an incoming throw/pull startup.
-// High-skill reaction option: the stance read at throw-start still applies in
-// full, but a plant input landed inside this tight window refunds part of the
-// stance-gap drain (never approaching a pre-emptive plant's value). Edge-gated:
-// the key must be PRESSED inside the window, holding it from before is the
-// pre-read plant and already got the better deal.
-const CLINCH_REACT_BRACE_WINDOW_MS = 250;        // Reaction window from throw/pull startup
-const CLINCH_REACT_BRACE_REFUND_FRACTION = 0.4;  // Fraction of (stanceDrain - plantDrain) refunded
-const CLINCH_REACT_BRACE_STAMINA_COST = 4;       // Stamina price — converts stamina into saved balance
 
 // Clinch tech (clash) cost
 const CLINCH_TECH_STAMINA_COST = 8;              // Both players lose stamina on tech — prevents free resets
@@ -1131,17 +1156,6 @@ const CLINCH_PULL_DISTANCE = 280;                // How far opponent is pulled b
 const CLINCH_PULL_TWEEN_DURATION = 600;          // Tween duration for pull movement
 const CLINCH_PULL_INPUT_LOCK_MS = 650;           // Input lock after pull
 
-// Clinch lift/carry system (Mouse2 + W + toward during clinch)
-const CLINCH_LIFT_TOTAL_MS = 700;                // Total lift duration (rise + move + descend)
-const CLINCH_LIFT_RISE_MS = 150;                 // Time to lift opponent off ground
-const CLINCH_LIFT_DESCEND_MS = 150;              // Time to set opponent down
-// Kept modest so belt-grab arm overlays can stay glued to the same belt
-// contact throughout the carry (client tracks this Δy on the arm layer).
-const CLINCH_LIFT_Y_OFFSET = 16;                 // How high opponent is lifted (pixels)
-const CLINCH_LIFT_BALANCE_COST = 12;             // Balance cost for lifter
-const CLINCH_LIFT_STAMINA_COST = 15;             // Stamina cost for lifter (still the most expensive action)
-const CLINCH_LIFT_TARGET_BALANCE_DRAIN = 8;      // Balance drain on target — being lifted is destabilizing
-
 // ============================================
 // Cinematic Clinch Kill — exaggerated finishers when balance < kill threshold
 // ============================================
@@ -1149,7 +1163,9 @@ const CLINCH_LIFT_TARGET_BALANCE_DRAIN = 8;      // Balance drain on target — 
 // Kill Throw (Mouse2+W): High forward arc — launched above the screen, crashes down
 const CLINCH_KILL_THROW_ARC_HEIGHT = 1000;       // High launch (clears screen) without a pure vertical spike
 const CLINCH_KILL_THROW_DURATION_MS = 1700;      // Overall snappy air time — keep the speed they liked
-const CLINCH_KILL_THROW_HITSTOP_MS = 300;        // Dramatic freeze before the big throw
+// Kill throws intentionally skip start/land hitstop (0) — the arc + camera sell
+// the finisher; an extra freeze read as a hitch. Constant kept for docs/exports.
+const CLINCH_KILL_THROW_HITSTOP_MS = 0;
 const CLINCH_KILL_THROW_DISTANCE = 300;          // Slightly more forward travel so the arc reads as a throw, not a pop-up
 
 // Normal Throw (Mouse2+W): Small forward arc — repositioning tool
@@ -1167,10 +1183,6 @@ const CLINCH_KILL_PULL_INPUT_LOCK_MS = 800;      // Longer lock for dramatic fin
 // Boundary Pull Swap — when puller's back is against the wall, swap positions instead
 const CLINCH_PULL_SWAP_TWEEN_DURATION = 400;     // Quick swap tween (shorter than normal pull)
 const CLINCH_PULL_SWAP_ARC_HEIGHT = 55;          // Hop arc height so pulled player clears the puller visually
-
-// Kill Carry (Mouse2+toward): Bouncer march — carry to the edge, no stamina check
-const CLINCH_KILL_LIFT_TOTAL_MS = 1500;          // Extended march to the edge (vs 700 normal)
-const CLINCH_KILL_LIFT_RISE_MS = 200;            // Slightly longer dramatic lift
 
 // ============================================
 // Clinch Jolt System (Mouse1 during clinch)
@@ -1191,8 +1203,8 @@ const CLINCH_JOLT_PUSH_VS_NEUTRAL = 15;         // Modest positional gain
 const CLINCH_JOLT_PUSH_VS_PUSH = 0;             // No push — you walked into their force
 const CLINCH_JOLT_MUTUAL_BALANCE = 6;           // Balance damage on mutual jolt (both)
 const CLINCH_JOLT_CLASH_WINDOW_MS = 120;        // Mutual jolt detection window
-const CLINCH_JOLT_HITSTOP_MS = 150;             // Dramatic freeze — "that hit LANDED"
-const CLINCH_JOLT_MUTUAL_HITSTOP_MS = 120;      // Mutual jolt freeze
+const CLINCH_JOLT_HITSTOP_MS = 140;             // Medium-heavy — clean clinch hit landed
+const CLINCH_JOLT_MUTUAL_HITSTOP_MS = 110;      // Confirm/clash tier — contested, not a clean heavy
 const CLINCH_JOLT_PLANT_INTERRUPT_MS = 800;     // Full second of no regen — plant is truly broken
 const CLINCH_JOLT_RECOIL_MS = 300;              // Longer recoil — target visibly staggers
 const CLINCH_JOLT_GASSED_MULT = 0.5;            // Damage/push multiplier when jolter is gassed
@@ -1206,82 +1218,79 @@ const GASSED_DURATION_MS = 5000; // 5 second penalty — was 3s, felt like a fak
 const GASSED_RECOVERY_STAMINA = 55; // Granted on exit — enough to actually fight back, not gas in 1 trade
 
 // ============================================
-// HITSTOP TUNING - Smash Bros style
-// Every hit has hitstop to make impacts feel satisfying
-// Scales with power - stronger hits freeze longer
+// HITSTOP TUNING — Fighting-game impact ladder
+// ============================================
+// Freeze length = event rarity × impact class. Sim clock pauses for BOTH players,
+// so frame advantage is unchanged; hitstop is wall-clock recognition + weight only.
+// Sell frequent lights with shake/squash/SFX; reserve long freezes for heavy/rare.
+//
+// Ladder (ms @ ~60fps frames):
+//   0 Acknowledgment  Guard 40          (~2f)  tink
+//   1 Latch           Grab 55           (~3f)  "got you"
+//   2 Light strike    Slap 70           (~4f)  primary flurry — must breathe
+//   3 Confirm/steal   Throw/AP/Matador 100–110 (~6–7f)
+//   4 Medium-heavy    Jolt/Palm/Flap 140–160   (~8–10f)
+//   5 Skill/max       Perfect / full charge 210 (~13f)
+//   6 Presentation    Cinematic / AP kill 550  (~33f)
+// Charged scales 100→210 so a weak charge NEVER freezes lighter than a slap.
 // ============================================
 const SLAP_CHAIN_HIT_GAP_MS = 40;  // Minimum visual gap after slap hitstun before victim can be hit again
-// Flat slap connect freeze (~8 frames at 60fps). Symmetric (sim clock pauses for
-// both), so the +0 frame math is unaffected by hitstop.
-const HITSTOP_SLAP_MS = 100;
-// Heavy burst-hit freeze (~12 frames) — the "BOOM" for palm thrust / flap
-// body-slam class impacts.
-const HITSTOP_BURST_MS = 200;
-const HITSTOP_CHARGED_MIN_MS = 80;  // Minimum charged attack hitstop (5 frames)
-const HITSTOP_CHARGED_MAX_MS = 220; // Max charged hitstop at full power (~13 frames). Bumped from 150 — kill blows feel cinematic.
-const HITSTOP_PARRY_MS = 120;     // Regular parry hitstop - impactful but not too long (7 frames)
-const HITSTOP_SLAP_PARRY_MS = 45; // Slap clash freeze — shorter than hit hitstop, just enough to register
-const HITSTOP_PERFECT_PARRY_MS = 250; // Perfect parry hitstop - the "time stops" moment (15 frames — long enough to digest)
-const HITSTOP_GRAB_MS = 60;       // Brief hitstop when grab connects (4 frames)
-const HITSTOP_THROW_MS = 100;     // Hitstop when throw lands (6 frames)
+// Light-strike tier. Symmetric freeze — +0 slap frame math unaffected.
+const HITSTOP_SLAP_MS = 70;
+// Medium-heavy burst — palm thrust / flap body-slam. Below perfect/full-charge.
+const HITSTOP_BURST_MS = 160;
+// Charged floor sits at burst weight; full charge = heavy special freeze.
+// (Was 100→210 — too close to slap 70ms to read as a committed headbutt.)
+const HITSTOP_CHARGED_MIN_MS = 160;
+const HITSTOP_CHARGED_MAX_MS = 280;
+// Latch tier — brief "got you" on grab connect / tech.
+const HITSTOP_GRAB_MS = 55;
+// Confirm tier — throw / clinch-throw land.
+const HITSTOP_THROW_MS = 100;
 
 // ============================================
 // Cinematic Kill — guaranteed ring-out finishing blow
 // ============================================
-// Charge % a charged hit must reach to be eligible for a cinematic KO. This is a
-// CLEAN, LEARNABLE line: it keys off the raw charge the player held, NOT the
-// finalKnockbackMultiplier (which is muddied by counter ×1.25 / punish ×1.25 /
-// power-up / basho stat mods, so the "how much charge do I need" answer used to
-// silently shift between ~57% and ~79% depending on context).
-//   - NEUTRAL corner kill (victim pinned at the rope): demands a big commit.
-//   - READ kill (counter / punish / gassed, from range): rewards you with a
-//     lower bar — the read IS the earn, so less charge is required.
-const CHARGED_KILL_MIN_CHARGE = 80;       // neutral, pinned-at-rope KO
-const CHARGED_KILL_READ_MIN_CHARGE = 50;  // counter/punish/gassed KO from range
+// Charge % required for CINEMATIC presentation on a charged ring-out.
+// Ring-out itself is separate (killReach / edge zones below) — a tap at the
+// rope still kills, it just doesn't get the stylish freeze/camera/kb boost.
+// Keys off raw charge held, not finalKnockbackMultiplier.
+//   - NEUTRAL edge kill: demands a big commit for the stylish KO.
+//   - READ kill (counter / punish / gassed / GORED): lower bar — the read earns it.
+const CHARGED_KILL_MIN_CHARGE = 80;       // neutral cinematic floor
+const CHARGED_KILL_READ_MIN_CHARGE = 50;  // counter/punish/gassed/GORED cinematic floor
 
-// ── CHARGED CINEMATIC KILL — single "kill reach" model ───────────────────────
+// ── CHARGED RING-OUT — "kill reach" + middle deadzone ────────────────────────
 // A charged hit rings the victim OUT only if, at contact, they are within
 // `killReach` px of the ROPE (MAP_*_BOUNDARY 340/935) they're being knocked
 // toward. killReach scales with the FULL power of the hit
-// (finalKnockbackMultiplier — which already folds in charge %, the POWER
-// power-up / Power Water, BASHO power & resistance stat mods, counter-hit, and
-// punish), mapped linearly:
+// (finalKnockbackMultiplier — charge %, POWER power-up / Power Water, BASHO
+// power & resistance, counter-hit), mapped linearly:
 //   mult CHARGED_KILL_MULT_MIN (weakest charge)      → CHARGED_KILL_REACH_MIN
 //   mult CHARGED_KILL_MULT_MAX (neutral 100% charge) → CHARGED_KILL_REACH_MAX
 // Extra power beyond neutral-full keeps extending the reach along the same slope
 // up to CHARGED_KILL_REACH_CAP — so power attributes / power-ups matter even at
 // low charge, but can never turn it into a from-anywhere one-shot.
 //
-// PLAYABLE SPACE: the ring is 595px wide (left rope 340 → right rope 935, center
-// 637). The cap guarantees a wide NO-KILL DEADZONE always survives in the
-// middle: 595 − 2×CHARGED_KILL_REACH_CAP = 595 − 270 = 325px (~55% of the ring)
-// where a charged hit can NEVER ring out no matter the power — it rope-clamps the
-// victim at the edge instead (see collisionSystem + index.js). Whole feel = 5 dials.
+// MIDDLE DEADZONE (symmetric about center): ring is 595px wide (left 340 → right
+// 935, center 637). Cap ⇒ 595 − 2×CHARGED_KILL_REACH_CAP = 325px (~55% of the
+// ring) where a charged hit can NEVER ring out — rope-clamps at the edge instead
+// (collisionSystem + index.js). Edge bands on both sides are equal. Cinematic is
+// an optional presentation layer on top of kills that already clear this gate.
 const CHARGED_KILL_REACH_MIN = 20;   // px from rope at the weakest charge (must be pinned)
 const CHARGED_KILL_REACH_MAX = 100;  // px from rope at a neutral 100% charge (outer third of a side)
 const CHARGED_KILL_REACH_CAP = 135;  // absolute max reach — the deadzone guard
 const CHARGED_KILL_MULT_MIN = 0.45;  // finalKnockbackMultiplier at 0% charge (curve floor)
 const CHARGED_KILL_MULT_MAX = 1.2;   // finalKnockbackMultiplier at a neutral 100% charge
 
-// Attacker self-recoil on a NON-lethal charged hit — the backward kick that
-// SELLS the impact. Charge-scaled: recoil velocity = 2 × (BASE + charge% ×
-// SCALE), so a hard charge produces a punchy front-loaded pop (the "hard, quick"
-// feel), a light tap barely nudges. Cinematic kills and palm thrust hold ground
-// (no recoil). These are the impact-feel dials — raise BASE for a firmer floor,
-// raise SCALE to make big charges kick back harder.
-const CHARGED_ATTACKER_RECOIL_BASE = 0.3;         // recoil floor (0% charge)
-const CHARGED_ATTACKER_RECOIL_CHARGE_SCALE = 0.5; // extra recoil at 100% charge
-// Recoil settles on its OWN fast friction (not the slow global ice coast) so the
-// backward kick is a QUICK, HARD pop that stops fast — instead of a long drift
-// that shoves the attacker out of pressure range (the "heavy / no advantage"
-// feel). Lower = snappier / shorter slide.
+// Legacy dials — charged hits now PLANT (Honda headbutt): no attacker bounce-back.
+// Kept exported so old Tunings / imports don't break; unused by hit resolution.
+const CHARGED_ATTACKER_RECOIL_BASE = 0.3;
+const CHARGED_ATTACKER_RECOIL_CHARGE_SCALE = 0.5;
 const CHARGED_RECOIL_FRICTION = 0.85;
-// Attacker recovery AFTER a connected charged hit. Deliberately SHORTER than the
-// victim's charged hitstun (~380ms) so a landed charge is PLUS on hit — you
-// recover first and can actually use the space/tempo you earned (pressure,
-// reposition, threaten a follow-up). This is what makes a non-lethal charge
-// USEFUL. Whiff/absorbed recovery is unchanged (still committal & punishable).
-const CHARGED_HIT_RECOVERY_MS = 250;
+// On-hit recovery AFTER hitstop (sim-clock). Victim hitstun is ~380ms; this is
+// deliberately shorter so a landed charge stays PLUS. Whiff recovery is longer.
+const CHARGED_HIT_RECOVERY_MS = 280;
 
 const CINEMATIC_KILL_HITSTOP_MS = 550;
 const CINEMATIC_KILL_KNOCKBACK_BOOST = 4.0;
@@ -1437,6 +1446,9 @@ const BALANCE_SLAP_HIT_DRAIN_P2 = 7;        // was 12 — a single slap chipped 
 const BALANCE_CHARGED_HIT_DRAIN_P2 = 18;    // today 15; SAFE 16
 const BALANCE_PALM_HIT_DRAIN_P2 = 20;       // today 15 (charged); SAFE 18 — the posture-breaker identity
 const BALANCE_PASSIVE_REGEN_PER_SEC_P2 = 6; // today 5;  SAFE 5 — disengaging resets the war a touch faster
+// Gassed taxes posture recovery but does not freeze it — stamina exhaustion
+// shouldn't hard-lock an unrelated resource. Clinch still fully banks pressure.
+const BALANCE_GASSED_REGEN_MULT = 0.5;
 const POSTURE_COUNTER_DRAIN_MULT = 1.5;     // counter-hits drain ×1.5 posture
 
 // 2.4 Oshi conversion — momentum + posture EXPAND the edge kill band (they may
@@ -1492,8 +1504,8 @@ const CPU_CADENCE_IMPOSSIBLE = 0.92;
 // Table cliffs become continuous CURVES, and the player gets to DIAL their own
 // variance on every connect. Every value below is read ONLY on a path gated
 // behind MASTERY_P4_ANALOG; with the flag OFF the parry payouts, clash shove,
-// charge duration, spacing bonus, follow-through shift and counter-hit window
-// all collapse to today's exact constants — byte-identical (invariants #2 & #4).
+// charge duration, spacing bonus, and counter-hit window all collapse to
+// today's exact constants — byte-identical (invariants #2 & #4).
 // Each sub-item is independently flag-testable (they all read the ONE flag), and
 // every curve keeps today's value as its floor endpoint so nothing shrinks below
 // the documented behavior.
@@ -1511,16 +1523,27 @@ const PERFECT_PARRY_ATTACKER_STUN_MAX = 880; // base PERFECT_PARRY_ATTACKER_STUN
 const PERFECT_PARRY_KNOCKBACK_MAX = 0.95;    // base PERFECT_PARRY_KNOCKBACK 0.65; SAFE 0.85
 const PERFECT_PARRY_BALANCE_REFUND_MAX = 20; // base PERFECT_PARRY_BALANCE_REFUND 12; SAFE 18
 
-// 4.2 Tip / deep slap spacing. One threshold (continuous enough via positioning;
-// may become a true curve later if it reads well): a slap that connects at the
-// TIP of its range rewards the spacing (more posture damage + a touch more
-// drift); a DEEP (point-blank) slap is today's baseline. Distance measured
-// attacker↔victim at connect.
-const SLAP_TIP_DISTANCE = 120;      // d > this ⇒ tip; d ≤ this ⇒ deep (baseline)
-const SLAP_TIP_POSTURE_MULT = 1.3;  // SAFE 1.2 — tip slap posture drain scale
-// Tip reward is posture only. Extra tip drift re-opened the soft-whiff problem
-// (slightly out of range, still close enough to get slapped back).
+// 4.2 Slap pocket vs poke (tip). Absolute px bands (95–125) were always-on:
+// resting pushbox (~110 @ 0.85 size) already sat above the old "tip" gate, and
+// ACTIVE extension-sep parks every connect near tip-meets-body before measurement.
+// Tip quality is now RELATIVE to the real hittable window:
+//   pocketEnd = pushbox floor + slack  → 1.0× posture (pressure / mash)
+//   connectDist (art tip meets body) → SLAP_TIP_POSTURE_MULT (true poke)
+// Distance is sampled BEFORE enforceStrikeExtensionSeparation mutates spacing.
+// Feel package (hitstop / crack / spark / HUD) stays additive — pocket slaps keep
+// today's satisfying baseline; only outer-band pokes get the tip juice.
+// Drift stays at 1.0: tip KB re-opened the soft-whiff problem.
+const SLAP_TIP_POCKET_SLACK_PX = 3; // still "pocket" this far past pushbox
+const SLAP_TIP_POSTURE_MULT = 1.3;  // SAFE 1.2 — full poke posture drain scale
+const SLAP_TIP_HITSTOP_BONUS_MS = 20; // spacing reward at full poke (~1f) — not a new tier
+// Tip feel / HUD tell — outer half of the pocket→connect band.
+const SLAP_TIP_FEEL_THRESHOLD = 0.5;
 const SLAP_TIP_DRIFT_MULT = 1.0;
+// Legacy aliases (old absolute band). Kept exported so stale imports don't crash;
+// live tip math no longer uses them.
+const SLAP_TIP_DISTANCE_MIN = 95;
+const SLAP_TIP_DISTANCE_MAX = 125;
+const SLAP_TIP_DISTANCE = SLAP_TIP_DISTANCE_MAX;
 
 // 4.3 Clash margin scaling. The decisive (non-neutral) slap-clash outcome stops
 // being a fixed WINNER/LOSER pair and scales with the timing MARGIN between the
@@ -1546,25 +1569,11 @@ const CHARGE_DURATION_BASE_MS = 300;
 const CHARGE_DURATION_SCALE_MS = 1700;
 const CHARGE_DURATION_EXP = 1.6;
 
-// 4.5 Risk dials (the compounding layer — most sensitive, tune last).
-// FOLLOW-THROUGH: on a slap connect the attacker's HELD direction is a
-// player-chosen bet on GROUND. Holding TOWARD commits — bigger pair-shift.
-// Holding AWAY fades — smaller shift. NEUTRAL keeps shift ×1. Recovery offsets
-// still move the attacker's cycle, but victim hitstun is synced to the same
-// offset so the exchange stays +0 (holding in while mashing must NOT free the
-// victim early to walk out of the next slap — that felt like a soft whiff bug).
-const FOLLOW_THROUGH_TOWARD_SHIFT = 1.35;      // SAFE 1.25
-const FOLLOW_THROUGH_AWAY_SHIFT = 0.8;         // SAFE 0.9
-const FOLLOW_THROUGH_TOWARD_RECOVERY_MS = 25;  // both players' clocks lengthen together
-const FOLLOW_THROUGH_AWAY_RECOVERY_MS = 10;    // both players' clocks shorten together
-// CPU follow-through usage by archetype (rollout / cross-phase CPU table). A
-// pusher biases follow-through (commit), a counter biases fade; IMPOSSIBLE
-// presses the edge (deterministic follow-through) on a broken-posture victim
-// already within CPU_FOLLOW_THROUGH_EDGE_RANGE of their rope. Non-archetype
-// CPUs (PvP/VS-CPU have none) resolve to neutral → today's +0 slap.
-const CPU_FOLLOW_THROUGH_PUSHER = 0.7;
-const CPU_FOLLOW_THROUGH_COUNTER_FADE = 0.7;
-const CPU_FOLLOW_THROUGH_EDGE_RANGE = 150;
+// 4.5 Risk dials — key-held slap follow-through REMOVED.
+// Slap ground transfer is scaled only by ice momentum inheritance (Phase 1:
+// slapEntryAligned → slapMomentumMult). Mouse1 is the commit; held A/D during
+// the slap cycle is movement intent, not a second power dial.
+//
 // COUNTER-HIT HONESTY: counters now feed a ×1.5 posture drain (Phase 2), so the
 // "I just intended to attack" pure-intent counter must be an earned READ, not a
 // free tag. The intent-only window shrinks 150→100ms (the active-startup counter
@@ -1615,6 +1624,7 @@ module.exports = {
   STRIKE_TIP_CHARGED_SPRITE_PX,
   STRIKE_TIP_PALM_SPRITE_PX,
   STRIKE_SKIN_EMBED_PX,
+  STRIKE_PALM_REACH_OVERHANG_PX,
   SLAP_PARRY_WINDOW,
   SLAP_PARRY_NEUTRAL_WINDOW_MS,
   SLAP_PARRY_RECOVERY_MS,
@@ -1630,6 +1640,12 @@ module.exports = {
   DOHYO_FALL_SPEED,
   DOHYO_FALL_DEPTH,
   DOHYO_FALL_HORIZONTAL_RETENTION,
+  PAST_MAP_DIRT_KB_FRICTION,
+  OUTSIDE_DOHYO_DIRT_KB_FRICTION,
+  PAST_MAP_DIRT_MOVE_FRICTION,
+  OUTSIDE_DOHYO_DIRT_MOVE_FRICTION,
+  KILL_PULL_DIRT_OVERSHOOT_SCALE,
+  KILL_PULL_DIRT_FALL_OVERSHOOT_SCALE,
 
   // Power-ups
   POWER_UP_TYPES,
@@ -1713,9 +1729,12 @@ module.exports = {
   GORED_KB_MULT,
   GORED_HITSTUN_BONUS_MS,
   GORED_CHARGED_KB_MULT,
+  GORED_HITSTOP_BONUS_MS,
   SLAP_MIN_HITSTUN_MS,
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MS,
+  CHARGED_ACTIVE_MIN_MS,
+  CHARGED_ACTIVE_MAX_MS,
   PALM_THRUST_STARTUP_MS,
   PALM_THRUST_ACTIVE_MS,
   PALM_THRUST_HOLD_MS,
@@ -1969,9 +1988,6 @@ module.exports = {
   CLINCH_PUSH_RAMP_DELAY_MS,
   CLINCH_PUSH_RAMP_RISE_MS,
   CLINCH_PUSH_RAMP_MAX_MULT,
-  CLINCH_REACT_BRACE_WINDOW_MS,
-  CLINCH_REACT_BRACE_REFUND_FRACTION,
-  CLINCH_REACT_BRACE_STAMINA_COST,
   CLINCH_GASSED_PUSH_MULT,
   CLINCH_PUSH_STAMINA_FLOOR,
   GASSED_RECOVERY_STAMINA_IN_CLINCH,
@@ -2001,7 +2017,7 @@ module.exports = {
   CLINCH_BODY_HOLD_DISTANCE,
   CLINCH_ATTACH_LERP_PER_SEC,
 
-  // Clinch throw/pull/lift
+  // Clinch throw/pull
   CLINCH_THROW_ANIMATION_MS,
   CLINCH_THROW_COOLDOWN_MS,
   CLINCH_THROW_STAMINA_COST,
@@ -2027,13 +2043,6 @@ module.exports = {
   CLINCH_PULL_DISTANCE,
   CLINCH_PULL_TWEEN_DURATION,
   CLINCH_PULL_INPUT_LOCK_MS,
-  CLINCH_LIFT_TOTAL_MS,
-  CLINCH_LIFT_RISE_MS,
-  CLINCH_LIFT_DESCEND_MS,
-  CLINCH_LIFT_Y_OFFSET,
-  CLINCH_LIFT_BALANCE_COST,
-  CLINCH_LIFT_STAMINA_COST,
-  CLINCH_LIFT_TARGET_BALANCE_DRAIN,
 
   // Cinematic clinch kills
   CLINCH_KILL_THROW_ARC_HEIGHT,
@@ -2047,8 +2056,6 @@ module.exports = {
   CLINCH_KILL_PULL_INPUT_LOCK_MS,
   CLINCH_PULL_SWAP_TWEEN_DURATION,
   CLINCH_PULL_SWAP_ARC_HEIGHT,
-  CLINCH_KILL_LIFT_TOTAL_MS,
-  CLINCH_KILL_LIFT_RISE_MS,
 
   // Clinch jolt system
   CLINCH_JOLT_ANIMATION_MS,
@@ -2073,15 +2080,12 @@ module.exports = {
   CLINCH_JOLT_LOCKOUT_VS_NEUTRAL,
   CLINCH_JOLT_LOCKOUT_VS_PUSH,
 
-  // Hitstop
+  // Hitstop (FG impact ladder — see HITSTOP TUNING block)
   SLAP_CHAIN_HIT_GAP_MS,
   HITSTOP_SLAP_MS,
   HITSTOP_BURST_MS,
   HITSTOP_CHARGED_MIN_MS,
   HITSTOP_CHARGED_MAX_MS,
-  HITSTOP_PARRY_MS,
-  HITSTOP_SLAP_PARRY_MS,
-  HITSTOP_PERFECT_PARRY_MS,
   HITSTOP_GRAB_MS,
   HITSTOP_THROW_MS,
 
@@ -2125,6 +2129,7 @@ module.exports = {
   BALANCE_CHARGED_HIT_DRAIN_P2,
   BALANCE_PALM_HIT_DRAIN_P2,
   BALANCE_PASSIVE_REGEN_PER_SEC_P2,
+  BALANCE_GASSED_REGEN_MULT,
   POSTURE_COUNTER_DRAIN_MULT,
   KILLBAND_MOMENTUM,
   KILLBAND_MOMENTUM_REF,
@@ -2147,7 +2152,12 @@ module.exports = {
   PERFECT_PARRY_KNOCKBACK_MAX,
   PERFECT_PARRY_BALANCE_REFUND_MAX,
   SLAP_TIP_DISTANCE,
+  SLAP_TIP_DISTANCE_MIN,
+  SLAP_TIP_DISTANCE_MAX,
+  SLAP_TIP_POCKET_SLACK_PX,
   SLAP_TIP_POSTURE_MULT,
+  SLAP_TIP_HITSTOP_BONUS_MS,
+  SLAP_TIP_FEEL_THRESHOLD,
   SLAP_TIP_DRIFT_MULT,
   CLASH_MARGIN_MIN_MS,
   CLASH_MARGIN_MAX_MS,
@@ -2158,13 +2168,6 @@ module.exports = {
   CHARGE_DURATION_BASE_MS,
   CHARGE_DURATION_SCALE_MS,
   CHARGE_DURATION_EXP,
-  FOLLOW_THROUGH_TOWARD_SHIFT,
-  FOLLOW_THROUGH_AWAY_SHIFT,
-  FOLLOW_THROUGH_TOWARD_RECOVERY_MS,
-  FOLLOW_THROUGH_AWAY_RECOVERY_MS,
-  CPU_FOLLOW_THROUGH_PUSHER,
-  CPU_FOLLOW_THROUGH_COUNTER_FADE,
-  CPU_FOLLOW_THROUGH_EDGE_RANGE,
   COUNTER_HIT_INTENT_WINDOW_MS,
 
   // ── MASTERY OVERHAUL — Phase 5 (assist removal & legibility) ──

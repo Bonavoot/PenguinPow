@@ -19,6 +19,13 @@ const posturePulse = keyframes`
   }
 `;
 
+/* Tip-slap posture bite — overlay remounts per drainKey so rapid tips replay. */
+const tipDrainFlinch = keyframes`
+  0%   { opacity: 0; box-shadow: 0 0 0 0 rgba(255, 120, 80, 0); transform: scale(1); }
+  18%  { opacity: 1; box-shadow: 0 0 10px 1px rgba(255, 120, 80, 0.85); transform: scale(1.07); }
+  100% { opacity: 0; box-shadow: 0 0 0 0 rgba(255, 120, 80, 0); transform: scale(1); }
+`;
+
 const GaugeShell = styled.div`
   flex: 1;
   min-width: 0;
@@ -33,6 +40,21 @@ const GaugeShell = styled.div`
           animation: ${posturePulse} 0.6s ease-in-out infinite;
         `
       : ""}
+`;
+
+const TipDrainFlash = styled.div`
+  position: absolute;
+  inset: -1px;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 3;
+  animation: ${tipDrainFlinch} 0.42s cubic-bezier(0.2, 0.85, 0.25, 1) both;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 140, 90, 0) 0%,
+    rgba(255, 150, 100, 0.22) 50%,
+    rgba(255, 140, 90, 0) 100%
+  );
 `;
 
 const GaugeCanvas = styled.canvas`
@@ -144,6 +166,7 @@ function getCanvasDpr() {
  * @param {boolean} [props.isRight]
  * @param {boolean} [props.danger]
  * @param {number} [props.gainKey]
+ * @param {number} [props.drainKey]
  * @param {boolean} [props.deepGripThreat]
  * @param {boolean} [props.deepGripHold]
  */
@@ -153,6 +176,7 @@ const BalanceGauge = ({
   danger = false,
   broken = false,
   gainKey = 0,
+  drainKey = 0,
   deepGripThreat = false,
   deepGripHold = false,
 }) => {
@@ -164,6 +188,8 @@ const BalanceGauge = ({
     targetBalance: balance,
     gainStart: null,
     lastGainKey: 0,
+    drainStart: null,
+    lastDrainKey: 0,
     deepGripT: deepGripThreat ? 1 : 0,
     targetDeepGrip: deepGripThreat ? 1 : 0,
   });
@@ -175,7 +201,13 @@ const BalanceGauge = ({
       st.lastGainKey = gainKey;
       st.gainStart = performance.now();
     }
-  }, [balance, gainKey]);
+    if (drainKey > 0 && drainKey !== st.lastDrainKey) {
+      st.lastDrainKey = drainKey;
+      st.drainStart = performance.now();
+      // Tip drain snaps the fill down faster so the bite reads immediately.
+      st.displayBalance = balance + (st.displayBalance - balance) * 0.25;
+    }
+  }, [balance, gainKey, drainKey]);
 
   useEffect(() => {
     stateRef.current.targetDeepGrip = deepGripThreat ? 1 : 0;
@@ -227,6 +259,15 @@ const BalanceGauge = ({
         }
       }
 
+      let drainT = null;
+      if (st.drainStart != null) {
+        drainT = (now - st.drainStart) / 420;
+        if (drainT >= 1) {
+          st.drainStart = null;
+          drainT = null;
+        }
+      }
+
       drawBalanceGauge(ctx, {
         width: canvas.width,
         height: canvas.height,
@@ -234,6 +275,7 @@ const BalanceGauge = ({
         isRight,
         danger,
         gainT,
+        drainT,
         time: now / 1000,
         deepGripT: st.deepGripT,
       });
@@ -256,6 +298,7 @@ const BalanceGauge = ({
       <BalLabel>POSTURE</BalLabel>
       <GaugeShell ref={shellRef} $broken={broken} $isRight={isRight}>
         <GaugeCanvas ref={canvasRef} aria-hidden="true" />
+        {drainKey > 0 && <TipDrainFlash key={`tip-drain-${drainKey}`} />}
         {gripMode && (
           <DeepGripChip $mode={gripMode} $isRight={isRight}>
             <GripKanji>握</GripKanji>
@@ -273,6 +316,7 @@ BalanceGauge.propTypes = {
   danger: PropTypes.bool,
   broken: PropTypes.bool,
   gainKey: PropTypes.number,
+  drainKey: PropTypes.number,
   deepGripThreat: PropTypes.bool,
   deepGripHold: PropTypes.bool,
 };

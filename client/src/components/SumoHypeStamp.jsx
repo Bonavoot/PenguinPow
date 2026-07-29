@@ -5,50 +5,79 @@ import {
   C,
   FONT_DISPLAY,
   FONT_KANJI,
-  TEXT_SHADOW_DISPLAY_SOFT,
+  TEXT_SHADOW_COMBAT,
 } from "./menuTheme";
 
 /*
  * SumoHypeStamp — floating overprint mark for hype moments.
  *
- * NOT an edge plaque (that's the info rail). This is a hanko overprint:
- * solid kanji with cream Bungee through the middle. Lives under the HUD
- * nameplate band so it never stacks on Counter Hit / Punish.
+ * Two registers:
+ *   hero  — PERFECT / MATADOR: circular hanko seal + bigger ink press
+ *   mark  — GRAB BREAK / COUNTER GRAB / MATADOR BREAK: cut-through stamp
  *
- * PERFECT / GRAB BREAK / COUNTER GRAB.
+ * Band: ~26–44cqh. Info rail starts ~54cqh.
  */
 
 export const HYPE_DURATION_S = 1.25;
 export const HYPE_DURATION_MS = 1250;
 
 const HYPE_THEMES = {
+  // Ice cyan — same pigment family as perfect-parry VFX rings/sparks.
+  // Hero seal structure (ring + ghost) still differentiates it from utility stamps.
   perfect: {
     color: "#9ae8f5",
     deep: C.iceDeep,
     kanji: "極",
     label: "PERFECT",
-    hype: true,
+    bang: true,
+    hero: true,
   },
   break: {
     color: C.successBright,
     deep: C.successDeep,
     kanji: "破",
-    label: "GRAB BREAK",
-    hype: false,
+    label: "GRAB\nBREAK",
+    bang: false,
+    hero: false,
   },
   countergrab: {
     color: "#e07098",
     deep: "#5a2048",
     kanji: "掴",
-    label: "COUNTER GRAB",
-    hype: false,
+    label: "COUNTER\nGRAB",
+    bang: false,
+    hero: false,
+  },
+  matador: {
+    color: "#f0d060",
+    deep: "#6e4a10",
+    kanji: "誘",
+    label: "MATADOR",
+    bang: true,
+    hero: true,
+  },
+  matadorbreak: {
+    color: "#ff9628",
+    deep: "#7a3208",
+    kanji: "破",
+    label: "MATADOR\nBREAK",
+    bang: false,
+    hero: false,
   },
 };
 
 const getTheme = (type) => HYPE_THEMES[type] || HYPE_THEMES.perfect;
 
+const withSpacedBang = (text) => {
+  if (typeof text !== "string") return text;
+  if (/\u00A0!+\s*$/.test(text) || /\s!+\s*$/.test(text)) {
+    return text.replace(/\s*!+\s*$/, "\u00A0!");
+  }
+  return `${text.replace(/\s*!+\s*$/, "")}\u00A0!`;
+};
+
 // ============================================
-// SIDE HYPE RAIL — one stamp per side
+// SIDE HYPE RAIL
 // ============================================
 
 const activeHypeRails = { left: null, right: null };
@@ -116,7 +145,7 @@ const useHypeRail = (isLeftSide, type) => {
 
 const stampIn = keyframes`
   0%   { opacity: 0; transform: translateY(-10px) scale(1.08); }
-  70%  { opacity: 1; transform: translateY(1px) scale(0.995); }
+  60%  { opacity: 1; transform: translateY(2px) scale(0.99); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
 `;
 
@@ -137,22 +166,20 @@ const stampReplaceOut = keyframes`
 `;
 
 const kanjiPress = keyframes`
-  0%   { opacity: 0; transform: scale(1.28) rotate(-10deg); }
-  55%  { opacity: 1; transform: scale(0.98) rotate(-5deg); }
-  100% { opacity: 1; transform: scale(1) rotate(-6deg); }
+  0%   { opacity: 0; transform: scale(1.45) rotate(-14deg); }
+  50%  { opacity: 1; transform: scale(0.96) rotate(-7deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-8deg); }
+`;
+
+const sealIn = keyframes`
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.25) rotate(-20deg); }
+  55%  { opacity: 1; transform: translate(-50%, -50%) scale(0.97) rotate(-6deg); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(-8deg); }
 `;
 
 const labelSettle = keyframes`
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(1.08);
-    letter-spacing: 0.14em;
-  }
-  100% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-    letter-spacing: 0.06em;
-  }
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.08); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 `;
 
 // ============================================
@@ -161,16 +188,15 @@ const labelSettle = keyframes`
 
 const StampWrapper = styled.div`
   position: absolute;
-  /* Combo-counter band — mid-side, clear of HUD and info rail (~58cqh). */
-  top: clamp(195px, 34cqh, 265px);
-  ${(p) => (p.$isLeftSide ? "left: 3.5%;" : "right: 3.5%;")}
+  top: clamp(155px, 26cqh, 210px);
+  ${(p) => (p.$isLeftSide ? "left: 2.5%;" : "right: 2.5%;")}
   pointer-events: none;
   z-index: 221;
   display: flex;
   justify-content: ${(p) => (p.$isLeftSide ? "flex-start" : "flex-end")};
 
   @media (max-width: 900px) {
-    top: clamp(175px, 32cqh, 240px);
+    top: clamp(140px, 24cqh, 190px);
   }
 `;
 
@@ -190,7 +216,7 @@ const StampMotion = styled.div`
     }
 
     const enter = p.$restrike ? stampRestrike : stampIn;
-    const enterDur = p.$restrike ? RESTRIKE_S : 0.22;
+    const enterDur = p.$restrike ? RESTRIKE_S : 0.2;
     const hold = Math.max(0.45, (p.$duration || HYPE_DURATION_S) - EXIT_S);
 
     return css`
@@ -202,23 +228,23 @@ const StampMotion = styled.div`
   }}
 `;
 
-/* Tight seat under the mark — short falloff, no blur mush. */
 const InkSeat = styled.div`
   position: absolute;
   z-index: 0;
   left: 50%;
   top: 50%;
-  width: 130%;
-  height: 95%;
+  width: ${(p) => (getTheme(p.$type).hero ? "140%" : "125%")};
+  height: ${(p) => (getTheme(p.$type).hero ? "105%" : "90%")};
   transform: translate(-50%, -50%);
   pointer-events: none;
   background: ${(p) => {
-    const { deep } = getTheme(p.$type);
+    const { deep, hero } = getTheme(p.$type);
+    const core = hero ? 88 : 80;
     return css`radial-gradient(
-      ellipse 55% 48% at 50% 50%,
-      color-mix(in srgb, ${deep} 65%, #050608) 0%,
-      rgba(5, 6, 8, 0.7) 45%,
-      transparent 68%
+      ellipse 52% 46% at 50% 50%,
+      color-mix(in srgb, ${deep} ${core}%, #050608) 0%,
+      rgba(5, 6, 8, 0.88) 42%,
+      transparent 65%
     )`;
   }};
 `;
@@ -226,60 +252,127 @@ const InkSeat = styled.div`
 const Mark = styled.div`
   position: relative;
   z-index: 1;
+  overflow: visible;
   width: ${(p) =>
-    getTheme(p.$type).hype
-      ? "clamp(140px, 15.5cqw, 190px)"
-      : "clamp(120px, 13.5cqw, 168px)"};
+    getTheme(p.$type).hero
+      ? "clamp(148px, 16cqw, 200px)"
+      : "clamp(128px, 14cqw, 172px)"};
   height: ${(p) =>
-    getTheme(p.$type).hype
-      ? "clamp(100px, 12.5cqh, 140px)"
-      : "clamp(88px, 11cqh, 122px)"};
+    getTheme(p.$type).hero
+      ? "clamp(118px, 14cqh, 155px)"
+      : "clamp(100px, 12cqh, 132px)"};
+`;
+
+/* Circular hanko ring — hero stamps only. */
+const SealRing = styled.div`
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  z-index: 1;
+  width: 78%;
+  aspect-ratio: 1;
+  border: 3px solid ${(p) => getTheme(p.$type).color};
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, ${(p) => getTheme(p.$type).color} 35%, transparent),
+    0 2px 0 rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  pointer-events: none;
+  animation: ${sealIn} 0.3s cubic-bezier(0.2, 1.15, 0.35, 1) forwards;
 `;
 
 const Kanji = styled.div`
   position: absolute;
-  inset: 0;
+  inset: ${(p) => (getTheme(p.$type).hero ? "-4% -2%" : "-8% -4%")};
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: ${FONT_KANJI};
   font-weight: 900;
   font-size: ${(p) =>
-    getTheme(p.$type).hype
-      ? "clamp(4.6rem, 8.8cqw, 6.2rem)"
-      : "clamp(3.8rem, 7.2cqw, 5.2rem)"};
+    getTheme(p.$type).hero
+      ? "clamp(4.8rem, 8.8cqw, 6.4rem)"
+      : "clamp(4.4rem, 8cqw, 5.8rem)"};
   line-height: 1;
   color: ${(p) => getTheme(p.$type).color};
   opacity: 0;
   transform-origin: center center;
-  animation: ${kanjiPress} 0.28s cubic-bezier(0.25, 1.05, 0.35, 1) forwards;
-  /* Solid stamp — full opacity, hard shelf. */
-  text-shadow:
-    0 2px 0 rgba(0, 0, 0, 0.7),
-    0 0 1px rgba(0, 0, 0, 0.9);
+  animation: ${kanjiPress} 0.28s cubic-bezier(0.2, 1.2, 0.35, 1) forwards;
+  text-shadow: ${(p) =>
+    getTheme(p.$type).hero
+      ? `0 2px 0 rgba(0, 0, 0, 0.9), 2px 4px 0 rgba(0, 0, 0, 0.5),
+         -1px 0 0 color-mix(in srgb, ${getTheme(p.$type).deep} 70%, transparent)`
+      : `0 2px 0 rgba(0, 0, 0, 0.85), 2px 3px 0 rgba(0, 0, 0, 0.4)`};
   user-select: none;
 `;
 
 /*
- * Tight dark cushion under the word only — lifts cream off the solid kanji
- * without becoming a chrome card. Soft edges, short falloff.
+ * Ghost impression — second kanji offset behind the hero seal,
+ * like the stamp hit twice. Cheap depth without blur filters.
  */
+const KanjiGhost = styled.div`
+  position: absolute;
+  inset: -2% 0% -6% 4%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: ${FONT_KANJI};
+  font-weight: 900;
+  font-size: clamp(4.8rem, 8.8cqw, 6.4rem);
+  line-height: 1;
+  color: ${(p) => getTheme(p.$type).deep};
+  opacity: 0.35;
+  transform: rotate(-11deg);
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+`;
+
 const LabelSeat = styled.div`
   position: absolute;
   left: 50%;
   top: 52%;
   z-index: 2;
-  width: 118%;
-  height: 38%;
+  width: ${(p) => (getTheme(p.$type).hero ? "118%" : "112%")};
+  height: ${(p) => {
+    if (p.$stacked) return "44%";
+    return getTheme(p.$type).hero ? "34%" : "30%";
+  }};
   transform: translate(-50%, -50%);
   pointer-events: none;
-  background: radial-gradient(
-    ellipse 70% 55% at 50% 50%,
-    rgba(6, 8, 12, 0.82) 0%,
-    rgba(6, 8, 12, 0.45) 48%,
-    transparent 72%
-  );
-  filter: blur(3px);
+  background: ${(p) => {
+    const { deep, color, hero } = getTheme(p.$type);
+    if (hero) {
+      return css`linear-gradient(
+        90deg,
+        transparent 0%,
+        color-mix(in srgb, ${deep} 70%, #06080c) 10%,
+        color-mix(in srgb, ${deep} 55%, #0a0c10) 50%,
+        color-mix(in srgb, ${deep} 70%, #06080c) 90%,
+        transparent 100%
+      )`;
+    }
+    return css`linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, ${deep} 45%, #06080c) 14%,
+      #06080c 50%,
+      color-mix(in srgb, ${deep} 45%, #06080c) 86%,
+      transparent 100%
+    )`;
+  }};
+  border-top: ${(p) =>
+    getTheme(p.$type).hero
+      ? `1px solid color-mix(in srgb, ${getTheme(p.$type).color} 55%, transparent)`
+      : "none"};
+  border-bottom: ${(p) =>
+    getTheme(p.$type).hero
+      ? `1px solid color-mix(in srgb, ${getTheme(p.$type).color} 40%, transparent)`
+      : "none"};
+  clip-path: ${(p) =>
+    p.$isLeftSide
+      ? "polygon(0 0, 100% 0, 94% 100%, 0 100%)"
+      : "polygon(6% 0, 100% 0, 100% 100%, 0 100%)"};
 `;
 
 const Label = styled.div`
@@ -289,32 +382,20 @@ const Label = styled.div`
   z-index: 3;
   font-family: ${FONT_DISPLAY};
   font-size: ${(p) =>
-    getTheme(p.$type).hype
-      ? "clamp(1.2rem, 2.2cqw, 1.65rem)"
-      : "clamp(0.95rem, 1.75cqw, 1.3rem)"};
+    getTheme(p.$type).hero
+      ? "clamp(1.2rem, 2.15cqw, 1.6rem)"
+      : "clamp(1.05rem, 1.9cqw, 1.4rem)"};
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   line-height: 0.95;
-  white-space: pre-line;
+  white-space: ${(p) => (p.$nowrap ? "nowrap" : "pre-line")};
   text-align: center;
   color: ${C.cream};
-  /*
-   * Soft language (not arcade stroke), but a denser black under-glow so
-   * cream still separates from the solid kanji behind it.
-   */
-  text-shadow: ${(p) => {
-    const { color } = getTheme(p.$type);
-    return css`
-      0 0 3px rgba(0, 0, 0, 0.95),
-      0 0 8px rgba(0, 0, 0, 0.8),
-      0 2px 2px rgba(0, 0, 0, 0.85),
-      0 0 12px color-mix(in srgb, ${color} 18%, transparent),
-      ${TEXT_SHADOW_DISPLAY_SOFT}
-    `;
-  }};
+  text-shadow: ${TEXT_SHADOW_COMBAT};
   opacity: 0;
   transform-origin: center center;
-  animation: ${labelSettle} 0.22s cubic-bezier(0.22, 1, 0.36, 1) 0.04s forwards;
+  animation: ${labelSettle} 0.2s cubic-bezier(0.22, 1, 0.36, 1) 0.03s forwards;
+  -webkit-font-smoothing: antialiased;
 `;
 
 // ============================================
@@ -329,18 +410,35 @@ const SumoHypeStamp = ({
 }) => {
   const { evicted, restrike } = useHypeRail(isLeftSide, type);
   const theme = getTheme(type);
-  const label = text || theme.label;
+  let label = text || theme.label;
+  if (theme.bang) label = withSpacedBang(label);
+  const stacked = typeof label === "string" && label.includes("\n");
 
   return (
     <StampWrapper $isLeftSide={isLeftSide}>
       <StampMotion $evicted={evicted} $restrike={restrike} $duration={duration}>
         <InkSeat $type={type} aria-hidden />
         <Mark $type={type}>
+          {theme.hero && (
+            <>
+              <KanjiGhost $type={type} aria-hidden>
+                {theme.kanji}
+              </KanjiGhost>
+              <SealRing $type={type} aria-hidden />
+            </>
+          )}
           <Kanji $type={type} aria-hidden>
             {theme.kanji}
           </Kanji>
-          <LabelSeat aria-hidden />
-          <Label $type={type}>{label}</Label>
+          <LabelSeat
+            $type={type}
+            $stacked={stacked}
+            $isLeftSide={isLeftSide}
+            aria-hidden
+          />
+          <Label $type={type} $nowrap={!stacked}>
+            {label}
+          </Label>
         </Mark>
       </StampMotion>
     </StampWrapper>
@@ -348,7 +446,13 @@ const SumoHypeStamp = ({
 };
 
 SumoHypeStamp.propTypes = {
-  type: PropTypes.oneOf(["perfect", "break", "countergrab"]),
+  type: PropTypes.oneOf([
+    "perfect",
+    "break",
+    "countergrab",
+    "matador",
+    "matadorbreak",
+  ]),
   isLeftSide: PropTypes.bool,
   duration: PropTypes.number,
   text: PropTypes.string,

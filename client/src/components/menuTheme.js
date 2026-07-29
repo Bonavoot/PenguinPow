@@ -27,12 +27,26 @@ import { keyframes } from "styled-components";
  * design choice without sacrificing the broadcast/data legibility we
  * need for stat plates, tickers, and meta type.
  *
- * Display face stays "Bungee" everywhere — that's the brand.
+ * Display face stays "Bungee" for brand / menus / combat callouts.
+ * (Dela Gothic One was trialed for callouts; it fought the HUD and
+ * looked soft under transforms — callouts share Bungee with UiPlayerInfo.)
  * Kanji accents stay "Noto Serif JP" / "Noto Sans JP".
  */
 export const FONT_BODY = `"Space Grotesk", "Inter", system-ui, sans-serif`;
 export const FONT_DISPLAY = `"Bungee", cursive`;
+/** @deprecated Use FONT_DISPLAY — kept as alias so old imports keep working. */
+export const FONT_COMBAT = FONT_DISPLAY;
 export const FONT_KANJI = `"Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif`;
+
+/*
+ * Crisp combat type seat — single hard shelf, no fake multi-offset
+ * "arcade stroke." The plaque is already opaque; type just needs a
+ * short black step so cream stays sharp over kanji / crowd.
+ */
+export const TEXT_SHADOW_COMBAT =
+  "0 1px 0 rgba(0,0,0,0.9), 0 2px 0 rgba(0,0,0,0.45)";
+export const TEXT_SHADOW_COMBAT_HEAVY =
+  "0 1px 0 rgba(0,0,0,0.95), 0 2px 0 rgba(0,0,0,0.7), 1px 3px 0 rgba(0,0,0,0.4)";
 
 /*
  * Soft ambient seat for cream/white Bungee (and related display type)

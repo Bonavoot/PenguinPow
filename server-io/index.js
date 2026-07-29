@@ -11,6 +11,9 @@ const {
   speedFactor, GROUND_LEVEL, HITBOX_DISTANCE_VALUE,
   GRAB_RANGE,
   DOHYO_FALL_SPEED, DOHYO_FALL_DEPTH,
+  PAST_MAP_DIRT_KB_FRICTION, OUTSIDE_DOHYO_DIRT_KB_FRICTION,
+  PAST_MAP_DIRT_MOVE_FRICTION, OUTSIDE_DOHYO_DIRT_MOVE_FRICTION,
+  KILL_PULL_DIRT_OVERSHOOT_SCALE, KILL_PULL_DIRT_FALL_OVERSHOOT_SCALE,
   POWER_UP_TYPES, POWER_UP_EFFECTS,
   GRAB_DURATION, GRAB_ATTEMPT_DURATION,
   ICE_ACCELERATION, ICE_MAX_SPEED, ICE_INITIAL_BURST,
@@ -62,10 +65,10 @@ const {
   KNOCKBACK_IMMUNITY_DURATION,
   STAMINA_REGEN_INTERVAL_MS, STAMINA_REGEN_AMOUNT,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, DODGE_STAMINA_COST,
-  GASSED_DURATION_MS, GASSED_RECOVERY_STAMINA,
+  GASSED_RECOVERY_STAMINA,
   GASSED_RECOVERY_STAMINA_IN_CLINCH, COUNTER_GRAB_BALANCE_DEBUFF,
   BALANCE_MAX, BALANCE_PASSIVE_REGEN_PER_SEC,
-  BALANCE_PASSIVE_REGEN_PER_SEC_P2,
+  BALANCE_PASSIVE_REGEN_PER_SEC_P2, BALANCE_GASSED_REGEN_MULT,
   POSTURE_BREAK_THRESHOLD, POSTURE_RECOVER_THRESHOLD,
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS, SLAP_PARRY_KB_FRICTION,
   BURST_KB_FRICTION,
@@ -105,6 +108,7 @@ const {
   clearChargeState,
   DEFAULT_PLAYER_SIZE_MULTIPLIER,
   clampStaminaValue,
+  tryEnterGassed,
   isNearDohyoEdge,
   getEdgeProximity,
   getIceFriction,
@@ -114,6 +118,7 @@ const {
   isRoomInHitstop,
   gameNow,
   setSimRoomResolver,
+  setStaminaBlockedIo,
   advanceRoomSimTime,
   lagCompensatedParryStart,
   canArmAttackParry,
@@ -312,9 +317,10 @@ function getPlayerById(playerId) {
 // Wire the pausable sim clock + timeout manager to the room lookup so any
 // module can resolve a player's room sim time (see gameUtils.js).
 setSimRoomResolver(getRoomByPlayerId);
+// Wire stamina-blocked feedback so any module can surface "OUT OF STAMINA".
+setStaminaBlockedIo(io);
 
 let gameLoop = null;
-let staminaRegenCounter = 0;
 let broadcastTickCounter = 0;
 const delta = 1000 / TICK_RATE;
 
@@ -374,8 +380,6 @@ function stopGameLoop() {
 function tick(delta) {
   // PERFORMANCE: Use for-loop instead of forEach to avoid closure overhead at 64Hz.
   // Also skip rooms with < 2 players via continue (no function call overhead).
-  staminaRegenCounter += delta;
-
   for (let _roomIdx = 0; _roomIdx < rooms.length; _roomIdx++) {
     const room = rooms[_roomIdx];
 
@@ -502,8 +506,7 @@ function tick(delta) {
       if (
         player1.isGrabbing &&
         player1.grabbedOpponent &&
-        !player1.isHit &&
-        !(player1.clinchThrowActive && player1.clinchThrowType === "lift")
+        !player1.isHit
       ) {
         // Only handle grab state if not pushing
         const opponent = room.players.find(
@@ -537,7 +540,18 @@ function tick(delta) {
       // handled by the lunge clamp. Safe during game-over (no-op if not attacking).
       // Pass simTime so slap skips the AP late-parry grace (avoids tip-range
       // parking + drift → ghost whiff before the hit is allowed to confirm).
+      //
+      // Snapshot pair spacing BEFORE extension-sep parks the limb at tip-meets-
+      // body. Tip/pocket classification must use this — measuring after the park
+      // made every slap read as a tip connect.
       if (!room.gameOver) {
+        const pairDist = Math.abs(player1.x - player2.x);
+        if (player1.isAttacking && player1.attackType === "slap") {
+          player1.slapSpacingBeforeExtension = pairDist;
+        }
+        if (player2.isAttacking && player2.attackType === "slap") {
+          player2.slapSpacingBeforeExtension = pairDist;
+        }
         enforceStrikeExtensionSeparation(player1, player2, room.simTime);
         enforceStrikeExtensionSeparation(player2, player1, room.simTime);
       }
@@ -834,13 +848,30 @@ function tick(delta) {
         const eased = isBoundarySwap
           ? (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
           : 1 - Math.pow(1 - t, 3);
-        const newX = startX + (targetX - startX) * eased;
+        let newX = startX + (targetX - startX) * eased;
 
         // For pull reversal, clamp to a margin inside boundaries so they stop before the edge
-        // Kill-pull victims ignore map boundaries entirely so the cinematic yank can fling
-        // them straight off the dohyo.
+        // Kill-pull / AP-parry-kill victims may cross the rope, but dirt compresses
+        // ice overshoot so the belly-slide doesn't keep full ice carry off-ring.
         const isPullTween = player.isBeingPullReversaled;
         const isKillPullVictim = player.isClinchKillPullVictim;
+        if (isKillPullVictim) {
+          const slidingRight = targetX >= startX;
+          const mapEdge = slidingRight ? MAP_RIGHT_BOUNDARY : MAP_LEFT_BOUNDARY;
+          const dohyoEdge = slidingRight ? DOHYO_RIGHT_BOUNDARY : DOHYO_LEFT_BOUNDARY;
+          const pastMap = slidingRight ? newX > mapEdge : newX < mapEdge;
+          if (pastMap) {
+            const iceOvershoot = Math.abs(newX - mapEdge);
+            let dirtOvershoot = iceOvershoot * KILL_PULL_DIRT_OVERSHOOT_SCALE;
+            const apronWidth = Math.abs(dohyoEdge - mapEdge);
+            if (dirtOvershoot > apronWidth) {
+              dirtOvershoot =
+                apronWidth +
+                (dirtOvershoot - apronWidth) * KILL_PULL_DIRT_FALL_OVERSHOOT_SCALE;
+            }
+            newX = slidingRight ? mapEdge + dirtOvershoot : mapEdge - dirtOvershoot;
+          }
+        }
         const leftBound = isKillPullVictim
           ? -Infinity
           : isPullTween ? MAP_LEFT_BOUNDARY + PULL_BOUNDARY_MARGIN : MAP_LEFT_BOUNDARY;
@@ -1044,9 +1075,12 @@ function tick(delta) {
               } else if (player.y > targetY) {
                 player.y = Math.max(targetY, player.y - DOHYO_FALL_SPEED);
               }
-              player.knockbackVelocity.x *= 0.92;
-            } else if (isLoserAfterGameOver && isPastMapBoundaries) {
-              player.knockbackVelocity.x *= 0.95;
+              // Dirt past the fall edge — strong but smooth horizontal bleed
+              player.knockbackVelocity.x *= OUTSIDE_DOHYO_DIRT_KB_FRICTION;
+            } else if (isPastMapBoundaries) {
+              // Off the ice the moment they cross the rope (don't wait for
+              // gameOver — that fires later in the same tick loop).
+              player.knockbackVelocity.x *= PAST_MAP_DIRT_KB_FRICTION;
             } else {
               const knockbackDirection = player.knockbackVelocity.x > 0 ? 1 : -1;
               const isHoldingOpposite = (knockbackDirection > 0 && player.keys.a && !player.keys.d) || 
@@ -1063,7 +1097,14 @@ function tick(delta) {
               } else {
                 player.knockbackVelocity.x *= 0.96;
               }
-              if (isHoldingOpposite && !player.isBurstKnockback) {
+              // Burst + charged launches lock out DI for the forced window
+              // (authoritative headbutt / palm shove). Ice coast after hitstun
+              // remains DI-able via movementVelocity handoff.
+              if (
+                isHoldingOpposite &&
+                !player.isBurstKnockback &&
+                !player.isChargedKnockback
+              ) {
                 player.knockbackVelocity.x *= DI_FRICTION_BONUS;
               }
             }
@@ -1099,13 +1140,13 @@ function tick(delta) {
               }
             }
 
-            // PHASE 2 — CHARGED ROPE RESISTANCE. A charged hit that was NOT a
-            // read-gated cinematic kill (see processHit) carries the victim at
-            // full charged velocity until the rope catches them at the edge —
-            // they slam TO the rope (same 12px buffer) instead of through it, so
-            // neutral midscreen charges can no longer ring out. Cinematic-kill
-            // victims fly out via the isCinematicKillVictim branch above and
-            // never reach here.
+            // PHASE 2 — CHARGED ROPE RESISTANCE. A charged hit outside the edge
+            // kill zone (midscreen deadzone / not enough killReach — see
+            // processHit) carries the victim at full charged velocity until the
+            // rope catches them — slam TO the rope (same 12px buffer), not
+            // through it. Edge ring-outs (including non-cinematic taps) set
+            // chargedKnockbackCanRingOut and pass through; cinematic victims
+            // also fly out via the isCinematicKillVictim branch above.
             if (player.isChargedKnockback && !player.chargedKnockbackCanRingOut) {
               const clampedX = Math.max(
                 MAP_LEFT_BOUNDARY + SLAP_ROPE_RESIST_BUFFER,
@@ -1587,34 +1628,53 @@ function tick(delta) {
 
       if (
         room.gameOver &&
-        now - room.gameOverTime >= 3000 &&
+        now - room.gameOverTime >= 2000 &&
         !room.matchOver &&
         !room.bashoAwaitingReset
       ) {
-        // 5 seconds
         resetRoomAndPlayers(room, io);
       }
 
-      // Stamina regen (freeze stamina once round is over)
-      // Don't regen while being grabbed, gassed, or in clinch
-      if (player.stamina < 100 && !room.gameOver && !player.isBeingGrabbed && !player.isGassed && !player.inClinch) {
-        if (staminaRegenCounter >= STAMINA_REGEN_INTERVAL_MS) {
+      // Gassed BEFORE regen: any drain this tick (inputs, collisions, guard
+      // crush) that hit 0 must lock exhausted state first. A regen pulse must
+      // never rescue stamina back above 0 and skip the 5s penalty.
+      player.stamina = clampStaminaValue(player.stamina);
+      if (player.isGassed) {
+        player.stamina = 0;
+      } else if (!room.gameOver) {
+        tryEnterGassed(player, now);
+      }
+
+      // Per-fighter stamina regen (freeze once round is over). Accumulates only
+      // while eligible so gassed / grab / clinch pause the fighter's own clock
+      // instead of sharing one server-wide metronome across rooms.
+      if (
+        player.stamina < 100 &&
+        !room.gameOver &&
+        !player.isBeingGrabbed &&
+        !player.isGassed &&
+        !player.inClinch
+      ) {
+        player.staminaRegenAccum = (player.staminaRegenAccum || 0) + delta;
+        if (player.staminaRegenAccum >= STAMINA_REGEN_INTERVAL_MS) {
+          player.staminaRegenAccum = 0;
           // BASHO STAMINA attribute scales regen rate (1.0 for non-BASHO).
           player.stamina += STAMINA_REGEN_AMOUNT * (player.statMods?.staminaRegen ?? 1);
           player.stamina = Math.min(player.stamina, 100);
         }
       }
 
-      // Balance regen — passive +5/sec, no regen when gassed or in clinch.
-      // MASTERY Phase 2 (2.2): slightly faster passive regen so disengaging
-      // resets the hand-fight war a touch quicker. Flag off ⇒ today's rate.
-      if (player.balance < BALANCE_MAX && !room.gameOver && !player.isGassed && !player.inClinch) {
+      // Balance regen — passive in neutral; clinch still banks pressure (no regen).
+      // Gassed halves posture regen instead of freezing it — stamina exhaustion
+      // shouldn't hard-lock an unrelated resource. Flag off ⇒ today's rate.
+      if (player.balance < BALANCE_MAX && !room.gameOver && !player.inClinch) {
         const deltaSec = delta / 1000;
         let balanceRegen = MASTERY_P2_POSTURE
           ? BALANCE_PASSIVE_REGEN_PER_SEC_P2
           : BALANCE_PASSIVE_REGEN_PER_SEC;
         // BASHO BALANCE attribute scales balance regen rate (1.0 for non-BASHO).
         balanceRegen *= player.statMods?.balanceRegen ?? 1;
+        if (player.isGassed) balanceRegen *= BALANCE_GASSED_REGEN_MULT;
         player.balance = Math.min(BALANCE_MAX, player.balance + balanceRegen * deltaSec);
       }
 
@@ -2007,7 +2067,8 @@ function tick(delta) {
 
           // SHIFT held through dodge land → committed ice slide (sliding pose).
           // Tap-release SHIFT keeps today's soft ice coast.
-          // Gassed: same full kit — no watered-down panic hop.
+          // (New dodges are locked while gassed; this only applies if a dodge
+          // already started before the gassed state began.)
           if (player.keys.shift && landingDirection !== 0) {
             player.isIceSliding = true;
             player.iceSlideDir = landingDirection > 0 ? 1 : -1;
@@ -2945,7 +3006,7 @@ function tick(delta) {
           opponent.isBeingGrabPushed = false;
           opponent.lastGrabPushStaminaDrainTime = 0;
 
-          // SMASH-STYLE: Brief hitstop when grab connects for impact
+          // Latch-tier hitstop — brief "got you" on grab connect
           triggerHitstopAndEmit(io, room, HITSTOP_GRAB_MS, "grab");
           
           // If opponent was at the ropes, clear that state but keep the facing direction locked
@@ -3286,9 +3347,9 @@ function tick(delta) {
             player.movementVelocity *= friction;
 
             if (player.x < DOHYO_LEFT_BOUNDARY || player.x > DOHYO_RIGHT_BOUNDARY) {
-              player.movementVelocity *= 0.92;
+              player.movementVelocity *= OUTSIDE_DOHYO_DIRT_MOVE_FRICTION;
             } else if (isGameOverLoser && (player.x < MAP_LEFT_BOUNDARY || player.x > MAP_RIGHT_BOUNDARY)) {
-              player.movementVelocity *= 0.96;
+              player.movementVelocity *= PAST_MAP_DIRT_MOVE_FRICTION;
             }
             
             // Visual states
@@ -3341,9 +3402,9 @@ function tick(delta) {
             player.movementVelocity *= friction;
 
             if (player.x < DOHYO_LEFT_BOUNDARY || player.x > DOHYO_RIGHT_BOUNDARY) {
-              player.movementVelocity *= 0.92;
+              player.movementVelocity *= OUTSIDE_DOHYO_DIRT_MOVE_FRICTION;
             } else if (isGameOverLoser && (player.x < MAP_LEFT_BOUNDARY || player.x > MAP_RIGHT_BOUNDARY)) {
-              player.movementVelocity *= 0.96;
+              player.movementVelocity *= PAST_MAP_DIRT_MOVE_FRICTION;
             }
             
             player.isBraking = isActiveBraking;
@@ -3583,7 +3644,9 @@ function tick(delta) {
         // Palm thrust is a rooted charged variant — skip the forward lunge
         // entirely, but still fall through to the attackEndTime → recovery
         // handoff below so the move ends normally.
-        if (!player.isPalmThrust) {
+        // On-hit pose hold: plant in place (no further lunge travel).
+        // Lunge Y stays grounded — attack art already reads airborne.
+        if (!player.isPalmThrust && !player.chargedAttackHit) {
         const attackDirection = player.facing === 1 ? -1 : 1;
         const chargePower = player.chargeAttackPower || 0;
         const lungeSpeed = 1.5 + (chargePower / 100) * 5.5;
@@ -3802,22 +3865,20 @@ function tick(delta) {
         player.atTheRopesStartTime = 0;
       }
 
-      // FINAL GUARD: sanitize stamina once per tick per player before emit
+      // FINAL GUARD: sanitize stamina once per tick per player before emit.
+      // Re-check gassed for any drains that happened AFTER the pre-regen pass
+      // (clinch grind, etc.). Regen already ran earlier and will not run again
+      // this tick, so this cannot be rescued by a pulse.
       player.stamina = clampStaminaValue(player.stamina);
-
-      // Gassed state: trigger when stamina hits 0, auto-clear after duration
-      // During gassed, stamina is locked at 0 (no drain can extend it)
       if (player.isGassed) {
         player.stamina = 0;
-      }
-      if (player.stamina <= 0 && !player.isGassed && !room.gameOver) {
-        player.isGassed = true;
-        player.gassedUntil = now + GASSED_DURATION_MS;
-        player.stamina = 0;
+      } else if (!room.gameOver) {
+        tryEnterGassed(player, now);
       }
       if (player.isGassed && now >= player.gassedUntil) {
         player.isGassed = false;
         player.gassedUntil = 0;
+        player.staminaRegenAccum = 0;
         // Weaker second wind inside the clinch — a ground-down opponent
         // shouldn't snap back to full shove power mid-grind.
         player.stamina = Math.min(
@@ -3833,7 +3894,7 @@ function tick(delta) {
     if (
       room.gameOver &&
       room.gameOverTime &&
-      now - room.gameOverTime >= 3000 &&
+      now - room.gameOverTime >= 2000 &&
       !room.matchOver &&
       !room.bashoAwaitingReset
     ) {
@@ -3898,10 +3959,6 @@ function tick(delta) {
   
   // Increment broadcast counter
   broadcastTickCounter++;
-
-  if (staminaRegenCounter >= STAMINA_REGEN_INTERVAL_MS) {
-    staminaRegenCounter = 0; // Reset the counter after interval
-  }
 }
 
 

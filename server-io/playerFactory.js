@@ -54,6 +54,8 @@ function createInitialPlayerState(overrides = {}) {
     balance: 100,
     isGassed: false,
     gassedUntil: 0,
+    // Eligible-time accumulator toward the next stamina regen pulse (per fighter).
+    staminaRegenAccum: 0,
 
     // === Round / match state ===
     isReady: false,
@@ -382,9 +384,6 @@ function createInitialPlayerState(overrides = {}) {
     isPostureBroken: false,
     deepGripPushStart: 0,
     clinchPushRampStart: 0,
-    reactBraceDeadline: 0,
-    reactBraceRefund: 0,
-    reactBraceUsed: false,
     postGrabInputBuffer: false,
     grabImmune: false,
     grabImmuneEndTime: 0,
@@ -405,19 +404,13 @@ function createInitialPlayerState(overrides = {}) {
     clinchBreakRequestTime: 0,
     isClinchPushing: false,
     isClinchPlanting: false,
-    isClinchLifting: false,
     lastPlantStaminaDrainTime: 0,
     isResistingThrow: false,
     isResistingPull: false,
     lastResistStaminaDrainTime: 0,
-    isBeingLifted: false,
-    clinchLiftStartTime: 0,
-    clinchLiftStartX: 0,
-    clinchLiftDir: 0,
-    clinchLiftForwardBlocked: false,
     clinchMouse2BufferTime: 0,
 
-    // === Clinch throw/pull/lift ===
+    // === Clinch throw/pull ===
     clinchThrowRequest: null,
     clinchThrowRequestTime: 0,
     clinchThrowActive: false,

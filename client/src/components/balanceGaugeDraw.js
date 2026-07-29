@@ -4,7 +4,7 @@
  * Posture is composure for throws & grabs — not stamina. Kept deliberately
  * quieter and thinner than the jade stamina bar, with two persistent gates:
  *
- *   0–15   vermillion → KILL   (throw/pull/lift ends the round)
+ *   0–15   vermillion → KILL   (throw/pull ends the round)
  *   15–50  gold       → THROW  (throw/pull lands)
  *   50–60  amber      → GRIP   (lit only while Deep Grip threatens)
  *   50/60–100 ice     → SAFE
@@ -172,6 +172,36 @@ function drawGainVfx(ctx, fx, fy, fw, fh, gainT, isRight) {
   ctx.restore();
 }
 
+/** Tip-slap posture drain — sharp vermillion bite so spacing reward reads now. */
+function drawDrainVfx(ctx, fx, fy, fw, fh, drainT, isRight) {
+  if (drainT == null || drainT < 0 || drainT > 1) return;
+  const flash =
+    drainT < 0.12
+      ? drainT / 0.12
+      : drainT < 0.45
+        ? 1
+        : Math.max(0, 1 - (drainT - 0.45) / 0.55);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(fx, fy, fw, fh);
+  ctx.clip();
+  ctx.fillStyle = `rgba(255, 120, 90,${0.42 * flash})`;
+  ctx.fillRect(fx, fy, fw, fh);
+  const sweepP = Math.min(1, drainT / 0.4);
+  const sweepW = fw * 0.5;
+  const sweepX = isRight
+    ? fx + fw * sweepP - sweepW * 0.5
+    : fx + fw * (1 - sweepP) - sweepW * 0.5;
+  const sg = ctx.createLinearGradient(sweepX, 0, sweepX + sweepW, 0);
+  sg.addColorStop(0, "rgba(255,200,160,0)");
+  sg.addColorStop(0.5, `rgba(255, 210, 170,${0.7 * flash})`);
+  sg.addColorStop(1, "rgba(255,200,160,0)");
+  ctx.fillStyle = sg;
+  ctx.fillRect(fx, fy, fw, fh);
+  ctx.restore();
+}
+
 /**
  * @param {CanvasRenderingContext2D} ctx
  * @param {object} opts
@@ -184,6 +214,7 @@ export function drawBalanceGauge(ctx, opts) {
     isRight,
     danger,
     gainT,
+    drainT,
     time,
     deepGripT = 0,
   } = opts;
@@ -261,6 +292,14 @@ export function drawBalanceGauge(ctx, opts) {
     roundRectPath(ctx, innerX, innerY, innerW, innerH, 1.5);
     ctx.clip();
     drawGainVfx(ctx, fillX, innerY, fillW, innerH, gainT, isRight);
+    ctx.restore();
+  }
+
+  if (fillW > 0.5 && drainT != null) {
+    ctx.save();
+    roundRectPath(ctx, innerX, innerY, innerW, innerH, 1.5);
+    ctx.clip();
+    drawDrainVfx(ctx, fillX, innerY, fillW, innerH, drainT, isRight);
     ctx.restore();
   }
 

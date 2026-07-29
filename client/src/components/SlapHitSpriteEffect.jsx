@@ -36,6 +36,10 @@ const HIT_FX = {
     offsetYPct: 0, // vertical nudge (% of 720)
     filters: {
       normal: null, // untouched yellow art
+      // Tip spacing — cooler white-hot pop (not a status color). Counter /
+      // punish still win the status slot when both apply.
+      tip:
+        "brightness(1.28) saturate(0.85) drop-shadow(0 0 0.55cqw rgba(255, 248, 230, 0.95)) drop-shadow(0 0 0.9cqw rgba(180, 230, 255, 0.45))",
       counter:
         "hue-rotate(-52deg) saturate(2) brightness(1.15) drop-shadow(0 0 0.4cqw rgba(255, 70, 55, 0.8))",
       punish:
@@ -46,14 +50,15 @@ const HIT_FX = {
       // lives on the attacker hand-flash + rising-pitch crack, not a fifth
       // status-color at the contact point (that fought counter/punish reads).
     },
+    tipSizeCqw: 13.4, // slightly larger pop on clean tip connects
   },
   charged: {
     src: chargedHitSheet,
     grid: 4,
     startFrame: 1, // frame 0 empty; content 1–15 (peaks early, long fading tail)
     endFrame: 15,
-    durationMs: 380, // 15 frames → ~25ms/frame (~40fps): the charged sheet's long tail reads better a touch slower
-    sizeCqw: 14, // between slap (12) and the previous 16 — heavy but not huge
+    durationMs: 420, // slightly longer read so the spark owns the connect frame
+    sizeCqw: 18, // impact hierarchy: spark louder than lunge trails
     // Same base as slap; dirXPct less negative = deeper into the opponent
     // (more negative = toward attacker). Pushed further in from -3.5.
     baseXPct: -5.5,
@@ -108,10 +113,12 @@ HIT_FX.lowKick = {
 
 // Map hit status → filter key. Shared across sheets (each sheet supplies its own
 // CSS for the key). Power water (isPowered) is intentionally treated as normal.
+// Tip is a spacing tell — only wins when no higher-priority status color applies.
 const resolveStatusKey = (position) => {
   if (position.isArmorBreak) return "armorBreak";
   if (position.isCounterHit) return "counter";
   if (position.isPunish) return "punish";
+  if (position.isTipSlap) return "tip";
   return "normal";
 };
 
@@ -204,12 +211,17 @@ const HitBurst = ({ effect, onDone }) => {
   const baseX = effect.seamAnchored ? 0 : cfg.baseXPct;
   const dirX = effect.seamAnchored ? 0 : cfg.dirXPct;
 
+  const size =
+    effect.statusKey === "tip" && cfg.tipSizeCqw
+      ? cfg.tipSizeCqw
+      : cfg.sizeCqw;
+
   return (
     <SpriteContainer
       $x={effect.x}
       $y={effect.y}
       $facing={effect.facing}
-      $size={cfg.sizeCqw}
+      $size={size}
       $baseX={baseX}
       $dirX={dirX}
       $offsetY={cfg.offsetYPct || 0}
@@ -268,6 +280,7 @@ const SlapHitSpriteEffect = ({ position }) => {
     position?.isPunish,
     position?.isArmorBreak,
     position?.isPowered,
+    position?.isTipSlap,
   ]);
 
   const handleDone = (effectId) => {
@@ -301,6 +314,7 @@ SlapHitSpriteEffect.propTypes = {
     isPunish: PropTypes.bool,
     isArmorBreak: PropTypes.bool,
     isPowered: PropTypes.bool,
+    isTipSlap: PropTypes.bool,
   }),
 };
 

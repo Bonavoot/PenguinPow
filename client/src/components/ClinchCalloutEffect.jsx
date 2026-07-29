@@ -9,13 +9,11 @@ import SumoAnnouncementBanner, {
  * ClinchCalloutEffect - Side banners that surface the invisible clinch mind
  * game as it resolves:
  *   counter_throw — you threw an opponent mid-push (max balance drain)
- *   braced        — your plant blunted an incoming throw to chip drain
  *   resisted      — a throw/pull attempt failed against balance > 50
  *   deep_grip     — you earned the deep grip (throws land earlier, stronger push)
  */
 const CALLOUT_CONFIG = {
   counter_throw: { text: "COUNTER\nTHROW", type: "counterthrow" },
-  braced: { text: "BRACED", type: "braced" },
   resisted: { text: "RESISTED", type: "tech" },
   deep_grip: { text: "DEEP\nGRIP", type: "deepgrip" },
 };
@@ -82,7 +80,7 @@ const ClinchCalloutEffect = ({ callout }) => {
 ClinchCalloutEffect.propTypes = {
   callout: PropTypes.shape({
     calloutId: PropTypes.string,
-    type: PropTypes.oneOf(["counter_throw", "braced", "resisted", "deep_grip"]),
+    type: PropTypes.oneOf(["counter_throw", "resisted", "deep_grip"]),
     playerNumber: PropTypes.number,
   }),
 };

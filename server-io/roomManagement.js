@@ -55,6 +55,32 @@ function applySingleSlotPowerUp(player, type) {
   player.powerUpRevealed = true;
 }
 
+const PLAYER_1_READY_X = 543;
+const PLAYER_2_READY_X = 735;
+
+// Salt throw only on the first ritual of a match/series:
+// - VS CPU / Custom: score 0-0 (both wins empty)
+// - Basho: first bout of the 7/15-day series (bashoBout === 0)
+function shouldPlaySaltRitual(room) {
+  if (room.matchMode === "basho") {
+    return (room.bashoBout || 0) === 0;
+  }
+  return room.players.every((p) => !p.wins || p.wins.length === 0);
+}
+
+// Skip the walk-up: put the fighter on the ready mark so HANDS DOWN can fire
+// as soon as both players are ready.
+function snapPlayerToReady(player) {
+  player.isInRitualPhase = false;
+  player.isThrowingSalt = false;
+  player.saltCooldown = false;
+  player.canMoveToReady = false;
+  player.isStrafing = false;
+  player.x = player.fighter === "player 1" ? PLAYER_1_READY_X : PLAYER_2_READY_X;
+  player.y = GROUND_LEVEL;
+  player.isReady = true;
+}
+
 // BASHO salt-throw ritual: the throw animation, then auto-unlock movement to
 // the ready position. Mirrors handleSaltThrowAndPowerUp but WITHOUT the
 // power-up card reveal (the BASHO pick is made on the DAY card beforehand).
@@ -81,21 +107,27 @@ function handlePowerUpSelection(room, io) {
 
   // BASHO (§Phase 7 rework): the human drafts their power-up on the DAY card
   // BEFORE the bout (applied via basho_set_draft → applyBashoDraftToPlayer), so
-  // there is NO mid-match card selection. Both fighters just run the salt-throw
-  // ritual and then auto-walk to ready. The CPU uses the roster opponent's
-  // stacked loadout (applyBashoOpponentProfile) — never a random VS-CPU pick.
+  // there is NO mid-match card selection. First bout of a series runs the
+  // salt-throw ritual; later bouts snap straight to ready for HANDS DOWN.
+  // The CPU uses the roster opponent's stacked loadout
+  // (applyBashoOpponentProfile) — never a random VS-CPU pick.
   // PvP / VS CPU fall through to the normal selection path below, untouched.
   if (room.matchMode === "basho") {
     room.powerUpSelectionPhase = false;
     const opp =
       room.bashoOpponents && room.bashoOpponents[room.bashoBout || 0];
+    const playSalt = shouldPlaySaltRitual(room);
     room.players.forEach((player) => {
       if (player.isCPU && opp) {
         applyBashoOpponentProfile(player, opp);
       } else if (!player.isCPU) {
         applyBashoDraftToPlayer(player, room.bashoDraftList || []);
       }
-      bashoSaltThrow(player, room, io);
+      if (playSalt) {
+        bashoSaltThrow(player, room, io);
+      } else {
+        snapPlayerToReady(player);
+      }
     });
     return;
   }
@@ -190,17 +222,23 @@ function handlePowerUpSelection(room, io) {
 
 function handleSaltThrowAndPowerUp(player, room, io) {
   player.isInRitualPhase = false;
-  
-  player.isThrowingSalt = true;
-  player.saltCooldown = true;
-  player.canMoveToReady = false;
 
   if (player.selectedPowerUp) {
     player.pendingPowerUp = player.selectedPowerUp;
     player.powerUpRevealed = false;
   }
-  
+
   checkAndRevealPowerUps(room, io);
+
+  // Later rounds skip salt and start already on the ready mark (HANDS DOWN next).
+  if (!shouldPlaySaltRitual(room)) {
+    snapPlayerToReady(player);
+    return;
+  }
+
+  player.isThrowingSalt = true;
+  player.saltCooldown = true;
+  player.canMoveToReady = false;
 
   setPlayerTimeout(
     player.id,
@@ -422,6 +460,7 @@ function resetRoomAndPlayers(room, io) {
     player.isPostureBroken = false;
     player.isGassed = false;
     player.gassedUntil = 0;
+    player.staminaRegenAccum = 0;
     player.isBowing = false;
     player.x = player.fighter === "player 1" ? 440 : 840;
     player.y = GROUND_LEVEL;
@@ -581,7 +620,6 @@ function resetRoomAndPlayers(room, io) {
     player.isClinchKillThrowVictim = false;
     player.isClinchKillPullVictim = false;
     player.isClinchKillThrow = false;
-    player.isClinchKillLift = false;
   });
 
   room.playerAvailablePowerUps = {};

@@ -48,7 +48,7 @@ export const PREDICTION_CONSTANTS = {
   DOHYO_RIGHT_BOUNDARY: 1030,
   GROUND_LEVEL: 286,
   HITBOX_DISTANCE_VALUE: 65, // Pushbox half-width — must match server-io/constants.js
-  OUTSIDE_DOHYO_VELOCITY_PENALTY: 0.92,
+  OUTSIDE_DOHYO_VELOCITY_PENALTY: 0.85, // must match OUTSIDE_DOHYO_DIRT_MOVE_FRICTION
 };
 
 const C = PREDICTION_CONSTANTS;
@@ -134,10 +134,8 @@ const BLOCKING_FLAGS = [
   "hasGrip",
   "isClinchBeltHolding",
   "clinchBeltRequiresM2Release",
-  "isBeingLifted",
   "isClinchThrowing",
   "isClinchClashing",
-  "isClinchLifting",
   "isClinchPushing",
   "isClinchPlanting",
   "isResistingThrow",

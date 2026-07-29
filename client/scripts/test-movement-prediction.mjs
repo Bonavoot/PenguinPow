@@ -114,9 +114,9 @@ for (const name of [
 
 const indexSrc = readFileSync(path.join(serverRoot, "index.js"), "utf8");
 check(
-  "outside-dohyo velocity penalty (×0.92) still present in server",
-  indexSrc.includes("movementVelocity *= 0.92") &&
-    C.OUTSIDE_DOHYO_VELOCITY_PENALTY === 0.92
+  "outside-dohyo velocity penalty still present in server",
+  indexSrc.includes("movementVelocity *= OUTSIDE_DOHYO_DIRT_MOVE_FRICTION") &&
+    C.OUTSIDE_DOHYO_VELOCITY_PENALTY === 0.85
 );
 
 // ============================================

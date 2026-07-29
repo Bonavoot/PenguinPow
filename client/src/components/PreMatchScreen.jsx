@@ -18,8 +18,10 @@ import { SHADOW_GRADIENT } from "./PlayerShadow";
 /*
  * PreMatchScreen — printed banzuke face-off over the live arena.
  *
- * Floating identity (no boxed containers). Rank plaque matches
- * UiPlayerInfo exactly. No glass scrims, color washes, or glow blooms.
+ * Identity sits in each fighter column, outer-anchored so the side
+ * band isn't empty. Name floats; rank is gold type under the name,
+ * no lacquer box on this screen. HUD keeps the full plaque. No glass
+ * scrims or glow blooms.
  *
  * Game.jsx still adds `is-prematch-hidden` on .ui while this is up.
  */
@@ -86,7 +88,7 @@ const breathe = keyframes`
 const identityInLeft = keyframes`
   from {
     opacity: 0;
-    transform: translate(-40px, 16px);
+    transform: translate(-28px, 10px);
   }
   to {
     opacity: 1;
@@ -97,7 +99,7 @@ const identityInLeft = keyframes`
 const identityInRight = keyframes`
   from {
     opacity: 0;
-    transform: translate(40px, 16px);
+    transform: translate(28px, 10px);
   }
   to {
     opacity: 1;
@@ -223,8 +225,8 @@ const FighterStage = styled.div`
   top: clamp(20px, 3.5cqh, 40px);
   left: 0;
   right: 0;
-  /* Clear the identity block so sprites aren't chopped by names */
-  bottom: clamp(118px, 19cqh, 160px);
+  /* Leave a band under the feet for the identity unit */
+  bottom: clamp(100px, 16cqh, 140px);
   display: grid;
   /* Center corridor — fighters face off over the dohyo */
   grid-template-columns: 1fr minmax(52px, 8cqw) 1fr;
@@ -242,9 +244,9 @@ const FighterSide = styled.div`
 
 const FighterWrap = styled.div`
   position: absolute;
-  top: 8%;
-  /* Raised so feet land on the blue dohyo, not the tawara rim */
-  bottom: clamp(48px, 8cqh, 70px);
+  top: 4%;
+  /* Mid-dohyo — just forward of the shikiri-sen, not the back rim */
+  bottom: clamp(78px, 12.5cqh, 108px);
   /* Inward pull toward the ring center */
   ${(p) =>
     p.$side === "left"
@@ -306,11 +308,11 @@ const VsColumn = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* Pin from the stage floor so VS sits at mid-torso, not eye level */
+  /* Pin from the stage floor so VS tracks mid-torso as fighters rise */
   justify-content: flex-end;
   z-index: 25;
   padding-top: 0;
-  padding-bottom: clamp(100px, 26cqh, 180px);
+  padding-bottom: clamp(128px, 32cqh, 212px);
   /* Subtle left bias — less than the left fighter nudge */
   transform: translateX(-0.15cqw);
 `;
@@ -389,27 +391,36 @@ const VsLoadDots = styled.div`
 `;
 
 // ============================================
-// IDENTITY — floating type, no containers
+// IDENTITY — under each fighter's feet, floating type only
 // ============================================
 
 const IdentityStage = styled.div`
   position: absolute;
   left: 0;
   right: 0;
-  bottom: clamp(14px, 2.2cqh, 28px);
-  display: flex;
+  /* Anchored up into the under-feet band — not a screen-edge footer */
+  bottom: clamp(44px, 7.5cqh, 84px);
+  display: grid;
+  grid-template-columns: 1fr minmax(52px, 8cqw) 1fr;
   align-items: flex-end;
-  justify-content: space-between;
-  gap: clamp(20px, 4cqw, 48px);
-  padding: 0 clamp(18px, 3cqw, 40px);
   z-index: 30;
   pointer-events: none;
 `;
 
+/* Slightly inset from the bezel — under each fighter's side of the ring. */
+const IdentitySlot = styled.div`
+  display: flex;
+  justify-content: ${(p) => (p.$side === "left" ? "flex-start" : "flex-end")};
+  padding: ${(p) =>
+    p.$side === "left"
+      ? "0 6% 0 clamp(36px, 6.5cqw, 72px)"
+      : "0 clamp(36px, 6.5cqw, 72px) 0 6%"};
+  min-width: 0;
+`;
+
 const IdentityBlock = styled.div`
   position: relative;
-  flex: 1 1 0;
-  max-width: min(46cqw, 560px);
+  max-width: min(44cqw, 520px);
   display: flex;
   flex-direction: column;
   align-items: ${(p) => (p.$side === "left" ? "flex-start" : "flex-end")};
@@ -417,7 +428,7 @@ const IdentityBlock = styled.div`
   will-change: transform, opacity;
   animation: ${(p) =>
       p.$side === "left" ? identityInLeft : identityInRight}
-    0.5s cubic-bezier(0.2, 0.7, 0.2, 1) 0.28s both;
+    0.48s cubic-bezier(0.2, 0.7, 0.2, 1) 0.26s both;
 `;
 
 const SideTag = styled.div`
@@ -425,8 +436,7 @@ const SideTag = styled.div`
   z-index: 2;
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: clamp(4px, 0.55cqh, 8px);
+  margin-bottom: clamp(2px, 0.35cqh, 5px);
 `;
 
 const SideLabel = styled.span`
@@ -443,11 +453,11 @@ const FighterName = styled.div`
   position: relative;
   z-index: 2;
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(24px, 3.8cqw, 48px);
+  font-size: clamp(26px, 4.1cqw, 52px);
   color: #ffffff;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  line-height: 0.92;
+  line-height: 0.9;
   /* Soft ambient seat — hard 1px stroke read as jagged at these sizes */
   text-shadow: ${TEXT_SHADOW_DISPLAY};
   white-space: nowrap;
@@ -456,87 +466,20 @@ const FighterName = styled.div`
   text-overflow: ellipsis;
 `;
 
-/* Rank sits on its own row under the name — never shares the name line. */
-const RankRow = styled.div`
+/* Prematch only — gold type, no lacquer box (HUD keeps the plaque). */
+const RankLine = styled.div`
   position: relative;
   z-index: 2;
-  display: flex;
-  justify-content: ${(p) =>
-    p.$side === "left" ? "flex-start" : "flex-end"};
-  margin-top: clamp(6px, 0.75cqh, 10px);
-`;
-
-/*
- * Rank plaque — kept in lockstep with UiPlayerInfo so prematch and HUD
- * print the same lacquered banzuke plate (gold-leaf hairline + side ticks).
- */
-const RankPlaque = styled.div`
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(5px, 0.55cqw, 9px);
-  flex-shrink: 0;
-  padding: clamp(3px, 0.4cqh, 6px) clamp(8px, 1cqw, 14px);
-  background:
-    repeating-linear-gradient(
-      90deg,
-      transparent 0px,
-      transparent 2px,
-      rgba(245, 236, 217, 0.028) 2px,
-      rgba(245, 236, 217, 0.028) 3px
-    ),
-    repeating-linear-gradient(
-      0deg,
-      transparent 0px,
-      transparent 4px,
-      rgba(245, 236, 217, 0.018) 4px,
-      rgba(245, 236, 217, 0.018) 5px
-    ),
-    linear-gradient(
-      180deg,
-      rgba(22, 28, 40, 0.96) 0%,
-      rgba(12, 16, 26, 0.98) 48%,
-      rgba(8, 10, 18, 0.96) 100%
-    );
-  border-radius: 3px;
-  border: 1px solid rgba(232, 197, 71, 0.42);
-  box-shadow:
-    0 2px 10px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 246, 210, 0.14),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.4);
-
-  &::before,
-  &::after {
-    content: "";
-    width: 2px;
-    height: 55%;
-    border-radius: 1px;
-    background: linear-gradient(
-      180deg,
-      transparent 0%,
-      rgba(232, 197, 71, 0.55) 30%,
-      rgba(232, 197, 71, 0.75) 50%,
-      rgba(232, 197, 71, 0.55) 70%,
-      transparent 100%
-    );
-    flex-shrink: 0;
-  }
-`;
-
-const RankText = styled.div`
+  margin-top: clamp(3px, 0.4cqh, 6px);
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(10px, 1.2cqw, 14px);
+  font-size: clamp(10px, 1.15cqw, 14px);
   color: ${C.gold};
   text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.18em;
   line-height: 1;
   text-shadow:
-    0 0 10px rgba(232, 197, 71, 0.4),
-    0 0 3px rgba(232, 197, 71, 0.35),
-    0 1px 3px rgba(0, 0, 0, 0.95);
+    0 0 10px rgba(232, 197, 71, 0.3),
+    0 1px 3px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
 `;
 
@@ -547,16 +490,16 @@ const RankText = styled.div`
 const BrushStroke = styled.div`
   position: relative;
   z-index: 1;
-  width: min(100%, clamp(140px, 24cqw, 280px));
-  height: 4px;
-  margin-top: clamp(6px, 0.75cqh, 9px);
+  width: min(100%, clamp(110px, 18cqw, 220px));
+  height: 3px;
+  margin-top: clamp(5px, 0.55cqh, 7px);
   background: ${(p) => p.$gradient || p.$color};
   transform-origin: ${(p) => (p.$side === "left" ? "left center" : "right center")};
   clip-path: ${(p) =>
     p.$side === "left"
       ? "polygon(0 30%, 8% 0%, 40% 20%, 70% 0%, 100% 35%, 94% 100%, 60% 80%, 30% 100%, 0 70%)"
       : "polygon(0 35%, 6% 100%, 40% 80%, 70% 100%, 100% 70%, 100% 30%, 92% 0%, 60% 20%, 30% 0%)"};
-  animation: ${brushDraw} 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) 0.48s both;
+  animation: ${brushDraw} 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) 0.46s both;
 `;
 
 const MetaRow = styled.div`
@@ -568,7 +511,7 @@ const MetaRow = styled.div`
   justify-content: ${(p) =>
     p.$side === "left" ? "flex-start" : "flex-end"};
   gap: clamp(6px, 0.85cqw, 10px);
-  margin-top: clamp(8px, 1cqh, 12px);
+  margin-top: clamp(4px, 0.55cqh, 7px);
   max-width: 100%;
 `;
 
@@ -859,67 +802,65 @@ const PreMatchScreen = ({
       </FighterStage>
 
       <IdentityStage>
-        <IdentityBlock $side="left">
-          <SideTag>
-            <SideLabel $accent={p1Accent}>East</SideLabel>
-          </SideTag>
-          <FighterName>{player1Name}</FighterName>
-          <RankRow $side="left">
-            <RankPlaque>
-              <RankText>{formatRankLabel(player1Rank)}</RankText>
-            </RankPlaque>
-          </RankRow>
-          <BrushStroke
-            $side="left"
-            $color={p1Accent}
-            $gradient={p1Gradient}
-            aria-hidden
-          />
-          <MetaRow $side="left">
-            <MetaItem>{player1Dojo}</MetaItem>
-            <MetaSep />
-            <MetaItem>{player1Style}</MetaItem>
-            <MetaSep />
-            <RecordText>
-              {player1Record.wins}
-              <small>W</small>
-              <span style={{ opacity: 0.35, margin: "0 3px" }}>·</span>
-              {player1Record.losses}
-              <small>L</small>
-            </RecordText>
-          </MetaRow>
-        </IdentityBlock>
+        <IdentitySlot $side="left">
+          <IdentityBlock $side="left">
+            <SideTag>
+              <SideLabel $accent={p1Accent}>East</SideLabel>
+            </SideTag>
+            <FighterName>{player1Name}</FighterName>
+            <RankLine>{formatRankLabel(player1Rank)}</RankLine>
+            <BrushStroke
+              $side="left"
+              $color={p1Accent}
+              $gradient={p1Gradient}
+              aria-hidden
+            />
+            <MetaRow $side="left">
+              <MetaItem>{player1Dojo}</MetaItem>
+              <MetaSep />
+              <MetaItem>{player1Style}</MetaItem>
+              <MetaSep />
+              <RecordText>
+                {player1Record.wins}
+                <small>W</small>
+                <span style={{ opacity: 0.35, margin: "0 3px" }}>·</span>
+                {player1Record.losses}
+                <small>L</small>
+              </RecordText>
+            </MetaRow>
+          </IdentityBlock>
+        </IdentitySlot>
 
-        <IdentityBlock $side="right">
-          <SideTag>
-            <SideLabel $accent={p2Accent}>West</SideLabel>
-          </SideTag>
-          <FighterName>{player2Name}</FighterName>
-          <RankRow $side="right">
-            <RankPlaque>
-              <RankText>{formatRankLabel(player2Rank)}</RankText>
-            </RankPlaque>
-          </RankRow>
-          <BrushStroke
-            $side="right"
-            $color={p2Accent}
-            $gradient={p2Gradient}
-            aria-hidden
-          />
-          <MetaRow $side="right">
-            <RecordText>
-              {player2Record.wins}
-              <small>W</small>
-              <span style={{ opacity: 0.35, margin: "0 3px" }}>·</span>
-              {player2Record.losses}
-              <small>L</small>
-            </RecordText>
-            <MetaSep />
-            <MetaItem>{player2Style}</MetaItem>
-            <MetaSep />
-            <MetaItem>{player2Dojo}</MetaItem>
-          </MetaRow>
-        </IdentityBlock>
+        <div aria-hidden />
+
+        <IdentitySlot $side="right">
+          <IdentityBlock $side="right">
+            <SideTag>
+              <SideLabel $accent={p2Accent}>West</SideLabel>
+            </SideTag>
+            <FighterName>{player2Name}</FighterName>
+            <RankLine>{formatRankLabel(player2Rank)}</RankLine>
+            <BrushStroke
+              $side="right"
+              $color={p2Accent}
+              $gradient={p2Gradient}
+              aria-hidden
+            />
+            <MetaRow $side="right">
+              <RecordText>
+                {player2Record.wins}
+                <small>W</small>
+                <span style={{ opacity: 0.35, margin: "0 3px" }}>·</span>
+                {player2Record.losses}
+                <small>L</small>
+              </RecordText>
+              <MetaSep />
+              <MetaItem>{player2Style}</MetaItem>
+              <MetaSep />
+              <MetaItem>{player2Dojo}</MetaItem>
+            </MetaRow>
+          </IdentityBlock>
+        </IdentitySlot>
       </IdentityStage>
     </ScreenContainer>
   );

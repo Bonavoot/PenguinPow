@@ -6,7 +6,7 @@ import {
   FONT_BODY,
   FONT_DISPLAY,
   FONT_KANJI,
-  TEXT_SHADOW_DISPLAY_SOFT,
+  TEXT_SHADOW_COMBAT,
 } from "./menuTheme";
 
 /*
@@ -14,14 +14,16 @@ import {
  *
  * Lane: combat-read callouts you wouldn't fully know without the game
  * saying so — COUNTER HIT, PUNISH, COUNTER THROW, clinch reads, tech.
- * Hype moments (PERFECT / GRAB BREAK / COUNTER GRAB) use SumoHypeStamp
- * on a separate band above this rail.
+ * Hype moments (PERFECT / GRAB BREAK / COUNTER GRAB / MATADOR /
+ * MATADOR BREAK) use SumoHypeStamp on a separate band above this rail.
  *
  * Edge-plaque language:
- *   dark lacquer dissolving toward ring center, cream Bungee,
- *   type-colored hairlines + soft type ambient for differentiation.
- * Copy sits on the INNER (ring-facing) end of the solid ink; kanji
- * stamps the OUTER edge.
+ *   opaque lacquer parallelogram via clip-path (no dissolve, no skew),
+ *   cream Bungee (same face as HUD), type-colored accent + hanko kanji.
+ *   Subtle tier hierarchy. Selective spaced " !" on bang types only.
+ *
+ * Band contract (per side, must not collide with SumoHypeStamp):
+ *   hype stamps own ~26–44cqh; this rail owns ~54cqh+.
  *
  * RAIL: ONE plaque per side. A new callout replaces the prior — old
  * snaps out, new owns the rail. Same-type repeats restrike in place.
@@ -34,7 +36,7 @@ export const ANNOUNCEMENT_DURATION_S = 1.5;
 export const ANNOUNCEMENT_DURATION_MS = 1500;
 
 // ============================================
-// COLOR THEMES — washi pigments, not arcade neon
+// COLOR THEMES — lacquer pigments, hard fills
 // ============================================
 
 const TYPE_COLORS = {
@@ -43,10 +45,7 @@ const TYPE_COLORS = {
   counter: { color: C.vermillionBright, deep: C.vermillionDeep },
   countergrab: { color: "#e07098", deep: "#5a2048" },
   counterthrow: { color: "#e89a5c", deep: "#7a3a14" },
-  braced: { color: "#9cbc6a", deep: "#3a5218" },
   deepgrip: { color: "#e0b85a", deep: "#6e4a10" },
-  // MATADOR wrong-read punish — tangerine (matches matador plume; not CLAMP magenta).
-  gored: { color: "#ff9628", deep: "#7a3208" },
   parry: { color: C.iceBright, deep: C.iceDeep },
   tech: { color: C.ice, deep: C.iceMid },
   break: { color: C.successBright, deep: C.successDeep },
@@ -68,14 +67,77 @@ const TYPE_KANJI = {
   counter: "反",
   countergrab: "掴",
   counterthrow: "投",
-  braced: "耐",
   deepgrip: "締",
-  gored: "突",
   parry: "受",
   tech: "技",
   break: "破",
   perfect: "極",
   perfectparry: "極",
+};
+
+/*
+ * Tier drives size + vertical seat. Same plaque language, quiet weight
+ * differences — readable hierarchy without a billboard COUNTER HIT.
+ * All seats sit below the hype-stamp band (~44cqh clear).
+ */
+const TYPE_TIER = {
+  counterhit: "hero",
+  counter: "primary",
+  counterthrow: "primary",
+  deepgrip: "primary",
+  countergrab: "primary",
+  perfect: "primary",
+  perfectparry: "primary",
+  break: "primary",
+  punish: "secondary",
+  parry: "secondary",
+  tech: "secondary",
+  default: "primary",
+};
+
+const getTier = (type) => TYPE_TIER[type] || "primary";
+
+const TIER_LAYOUT = {
+  hero: {
+    top: "clamp(345px, 54cqh, 410px)",
+    topMobile: "clamp(300px, 52cqh, 365px)",
+    fontSize: "clamp(1.05rem, 1.85cqw, 1.4rem)",
+    fontSizeMobile: "clamp(0.9rem, 2.2cqw, 1.15rem)",
+    /* Kanji oversized vs plaque so it reads as a pressed hanko, not chrome. */
+    kanjiSize: "clamp(2.6rem, 4.8cqw, 3.6rem)",
+    padBlock: "clamp(9px, 1.2cqh, 13px)",
+    minWidth: "clamp(170px, 17.5cqw, 255px)",
+  },
+  primary: {
+    top: "clamp(375px, 59cqh, 440px)",
+    topMobile: "clamp(325px, 57cqh, 390px)",
+    fontSize: "clamp(0.95rem, 1.65cqw, 1.25rem)",
+    fontSizeMobile: "clamp(0.82rem, 2cqw, 1.05rem)",
+    kanjiSize: "clamp(2.35rem, 4.3cqw, 3.25rem)",
+    padBlock: "clamp(8px, 1.1cqh, 12px)",
+    minWidth: "clamp(155px, 16cqw, 230px)",
+  },
+  secondary: {
+    top: "clamp(410px, 65cqh, 480px)",
+    topMobile: "clamp(355px, 62cqh, 420px)",
+    fontSize: "clamp(0.82rem, 1.4cqw, 1.05rem)",
+    fontSizeMobile: "clamp(0.72rem, 1.85cqw, 0.95rem)",
+    kanjiSize: "clamp(2rem, 3.7cqw, 2.85rem)",
+    padBlock: "clamp(7px, 0.95cqh, 10px)",
+    minWidth: "clamp(135px, 14cqw, 200px)",
+  },
+};
+
+/* Spaced " !" — PUMO signature. Selective types only; don't spam the rail. */
+const BANG_TYPES = new Set(["punish"]);
+
+/* Non-breaking space before ! so it can't wrap onto its own line. */
+const withSpacedBang = (text) => {
+  if (typeof text !== "string") return text;
+  if (/\u00A0!+\s*$/.test(text) || /\s!+\s*$/.test(text)) {
+    return text.replace(/\s*!+\s*$/, "\u00A0!");
+  }
+  return `${text.replace(/\s*!+\s*$/, "")}\u00A0!`;
 };
 
 // ============================================
@@ -158,81 +220,68 @@ const useAnnouncementRail = (isLeftSide, type) => {
 
 // ============================================
 // ANIMATIONS
+// Shape slant lives on PlaqueFill via clip-path — NOT transform:skew
+// (skew + filter:drop-shadow are what made the type look soft).
 // ============================================
 
 const slabInFromLeft = keyframes`
-  0%   { opacity: 0; transform: translateX(-44px) scaleX(0.9); }
-  65%  { opacity: 1; transform: translateX(4px) scaleX(1.015); }
+  0%   { opacity: 0; transform: translateX(-40px) scaleX(0.94); }
+  70%  { opacity: 1; transform: translateX(3px) scaleX(1.01); }
   100% { opacity: 1; transform: translateX(0) scaleX(1); }
 `;
 
 const slabInFromRight = keyframes`
-  0%   { opacity: 0; transform: translateX(44px) scaleX(0.9); }
-  65%  { opacity: 1; transform: translateX(-4px) scaleX(1.015); }
+  0%   { opacity: 0; transform: translateX(40px) scaleX(0.94); }
+  70%  { opacity: 1; transform: translateX(-3px) scaleX(1.01); }
   100% { opacity: 1; transform: translateX(0) scaleX(1); }
 `;
 
 const slabOutToLeft = keyframes`
   0%   { opacity: 1; transform: translateX(0) scaleX(1); }
-  100% { opacity: 0; transform: translateX(-28px) scaleX(0.94); }
+  100% { opacity: 0; transform: translateX(-28px) scaleX(0.96); }
 `;
 
 const slabOutToRight = keyframes`
   0%   { opacity: 1; transform: translateX(0) scaleX(1); }
-  100% { opacity: 0; transform: translateX(28px) scaleX(0.94); }
+  100% { opacity: 0; transform: translateX(28px) scaleX(0.96); }
 `;
 
-/* Replaced by a different callout — snap up/out so the rail clears cleanly. */
 const slabReplaceOutLeft = keyframes`
-  0%   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
-  100% { opacity: 0; transform: translate3d(-8px, -18px, 0) scale(0.88); filter: blur(2px); }
+  0%   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  100% { opacity: 0; transform: translate3d(-6px, -12px, 0) scale(0.94); }
 `;
 
 const slabReplaceOutRight = keyframes`
-  0%   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
-  100% { opacity: 0; transform: translate3d(8px, -18px, 0) scale(0.88); filter: blur(2px); }
+  0%   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  100% { opacity: 0; transform: translate3d(6px, -12px, 0) scale(0.94); }
 `;
 
-/* Same-type restrike — old plaque dissolves in place under the punch. */
 const slabRestrikeOut = keyframes`
   0%   { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(0.96); }
+  100% { opacity: 0; transform: scale(0.97); }
 `;
 
-/* Same-type restrike — punch the rail instead of a twin. */
 const slabRestrikeLeft = keyframes`
-  0%   { opacity: 0.75; transform: translateX(-8px) scale(0.96); }
-  40%  { opacity: 1; transform: translateX(3px) scale(1.03); }
+  0%   { opacity: 0.8; transform: translateX(-6px) scale(0.97); }
+  40%  { opacity: 1; transform: translateX(2px) scale(1.02); }
   100% { opacity: 1; transform: translateX(0) scale(1); }
 `;
 
 const slabRestrikeRight = keyframes`
-  0%   { opacity: 0.75; transform: translateX(8px) scale(0.96); }
-  40%  { opacity: 1; transform: translateX(-3px) scale(1.03); }
+  0%   { opacity: 0.8; transform: translateX(6px) scale(0.97); }
+  40%  { opacity: 1; transform: translateX(-2px) scale(1.02); }
   100% { opacity: 1; transform: translateX(0) scale(1); }
 `;
 
 const textSettle = keyframes`
-  0% {
-    opacity: 0;
-    transform: scale(1.08);
-    letter-spacing: 0.14em;
-  }
-  55% {
-    opacity: 1;
-    transform: scale(0.99);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-    letter-spacing: 0.1em;
-  }
+  0%   { opacity: 0; transform: scale(1.04); }
+  100% { opacity: 1; transform: scale(1); }
 `;
 
 const kanjiPress = keyframes`
-  0%   { opacity: 0; transform: scale(1.35) rotate(-8deg); }
-  55%  { opacity: 0.3; transform: scale(0.98) rotate(-7deg); }
-  100% { opacity: 0.26; transform: scale(1) rotate(-7deg); }
+  0%   { opacity: 0; transform: scale(1.4) rotate(-12deg); }
+  55%  { opacity: 0.95; transform: scale(0.97) rotate(-7deg); }
+  100% { opacity: 0.9; transform: scale(1) rotate(-8deg); }
 `;
 
 const ruleDraw = keyframes`
@@ -251,13 +300,13 @@ const subTextRise = keyframes`
 
 const BannerWrapper = styled.div`
   position: absolute;
-  top: clamp(360px, 58cqh, 440px);
+  top: ${(p) => TIER_LAYOUT[getTier(p.$type)].top};
   ${(p) => (p.$isLeftSide ? "left: 0;" : "right: 0;")}
   pointer-events: none;
   z-index: 220;
 
   @media (max-width: 900px) {
-    top: clamp(310px, 55cqh, 390px);
+    top: ${(p) => TIER_LAYOUT[getTier(p.$type)].topMobile};
   }
 `;
 
@@ -291,7 +340,7 @@ const BannerMotion = styled.div`
       : p.$isLeftSide
         ? slabInFromLeft
         : slabInFromRight;
-    const enterDuration = isRestrike ? RESTRIKE_IN_DURATION_S : 0.24;
+    const enterDuration = isRestrike ? RESTRIKE_IN_DURATION_S : 0.22;
     const enterEase = isRestrike
       ? "cubic-bezier(0.22, 0.9, 0.2, 1)"
       : "cubic-bezier(0.2, 0.72, 0.2, 1)";
@@ -311,48 +360,20 @@ const BannerMotion = styled.div`
 `;
 
 /*
- * Soft ambient seat under the SOLID outer half only — never a box-shadow.
- * A rectangular box-shadow reads as a hard grey slab at the dissolve tip
- * because the transparent gradient end still casts a full rect.
- */
-const Haze = styled.div`
-  position: absolute;
-  z-index: 0;
-  top: 50%;
-  ${(p) => (p.$isLeftSide ? "left: -2%;" : "right: -2%;")}
-  transform: translateY(-50%);
-  width: 72%;
-  height: 170%;
-  pointer-events: none;
-  background: ${(p) => {
-    const { deep } = getTheme(p.$type);
-    const at = p.$isLeftSide ? "18% 50%" : "82% 50%";
-    return css`radial-gradient(
-      ellipse 85% 70% at ${at},
-      color-mix(in srgb, ${deep} 18%, rgba(8, 10, 16, 0.55)) 0%,
-      rgba(8, 10, 16, 0.22) 38%,
-      transparent 70%
-    )`;
-  }};
-  filter: blur(12px);
-`;
-
-/*
- * Dark sumi plaque — ink dominant, light type tint, type-colored hairlines.
- * Solid ink holds farther toward ring center so inner-aligned copy stays
- * readable; dissolve still clears the dohyo. No box-shadow (see Haze).
+ * Layout shell — padding + overflow for the hanko stamp.
+ * Paint lives on PlaqueFill (clip-path slant) so English type stays
+ * axis-aligned and sharp.
  */
 const Slab = styled.div`
   position: relative;
   z-index: 1;
   overflow: visible;
-  min-width: clamp(190px, 20cqw, 300px);
-  max-width: 38cqw;
-  padding-block: clamp(10px, 1.35cqh, 15px);
+  min-width: ${(p) => TIER_LAYOUT[getTier(p.$type)].minWidth};
+  max-width: 32cqw;
+  padding-block: ${(p) => TIER_LAYOUT[getTier(p.$type)].padBlock};
   ${(p) =>
     p.$isLeftSide
       ? css`
-          /* Outer pad clears kanji stamp; copy sits ring-facing. */
           padding-left: clamp(36px, 3.8cqw, 52px);
           padding-right: clamp(18px, 2cqw, 28px);
           text-align: right;
@@ -362,19 +383,37 @@ const Slab = styled.div`
           padding-right: clamp(36px, 3.8cqw, 52px);
           text-align: left;
         `}
+`;
+
+const PlaqueFill = styled.div`
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  ${(p) =>
+    p.$isLeftSide
+      ? css`
+          border-left: 2px solid ${getTheme(p.$type).color};
+          clip-path: polygon(0 0, 100% 0, 92% 100%, 0 100%);
+        `
+      : css`
+          border-right: 2px solid ${getTheme(p.$type).color};
+          clip-path: polygon(8% 0, 100% 0, 100% 100%, 0 100%);
+        `}
   background: ${(p) => {
-    const { color, deep } = getTheme(p.$type);
+    const { deep } = getTheme(p.$type);
     const dir = p.$isLeftSide ? "90deg" : "270deg";
     return css`linear-gradient(
       ${dir},
-      color-mix(in srgb, ${deep} 22%, rgba(16, 20, 28, 0.97)) 0%,
-      color-mix(in srgb, ${color} 7%, rgba(12, 15, 22, 0.95)) 28%,
-      rgba(12, 15, 22, 0.9) 52%,
-      rgba(12, 15, 22, 0.55) 72%,
-      rgba(12, 15, 22, 0.18) 88%,
-      transparent 100%
+      color-mix(in srgb, ${deep} 28%, #0a0c10) 0%,
+      #0c0f14 55%,
+      #0c0f14 100%
     )`;
   }};
+  box-shadow: ${(p) =>
+    p.$isLeftSide
+      ? "2px 2px 0 rgba(0, 0, 0, 0.45)"
+      : "-2px 2px 0 rgba(0, 0, 0, 0.45)"};
 
   &::before,
   &::after {
@@ -382,18 +421,17 @@ const Slab = styled.div`
     position: absolute;
     left: 0;
     right: 0;
-    height: 2px;
+    height: 1px;
     pointer-events: none;
     transform-origin: ${(p) => (p.$isLeftSide ? "left center" : "right center")};
-    animation: ${ruleDraw} 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) 0.04s both;
+    animation: ${ruleDraw} 0.2s cubic-bezier(0.2, 0.7, 0.2, 1) 0.03s both;
     background: ${(p) => {
       const { color } = getTheme(p.$type);
       const dir = p.$isLeftSide ? "90deg" : "270deg";
       return css`linear-gradient(
         ${dir},
         ${color} 0%,
-        color-mix(in srgb, ${color} 70%, transparent) 48%,
-        color-mix(in srgb, ${color} 22%, transparent) 76%,
+        color-mix(in srgb, ${color} 40%, transparent) 62%,
         transparent 100%
       )`;
     }};
@@ -412,22 +450,23 @@ const KanjiPrint = styled.div`
   position: absolute;
   z-index: 1;
   top: 50%;
-  /* Stamp on the solid outer edge — opposite the ring-facing copy. */
   ${(p) =>
     p.$isLeftSide
-      ? css`left: clamp(6px, 0.7cqw, 12px);`
-      : css`right: clamp(6px, 0.7cqw, 12px);`}
+      ? css`left: clamp(-6px, -0.4cqw, -2px);`
+      : css`right: clamp(-6px, -0.4cqw, -2px);`}
   font-family: ${FONT_KANJI};
   font-weight: 900;
-  font-size: clamp(1.9rem, 3.8cqw, 2.95rem);
+  font-size: ${(p) => TIER_LAYOUT[getTier(p.$type)].kanjiSize};
   line-height: 1;
   color: ${(p) => getTheme(p.$type).color};
   opacity: 0;
   pointer-events: none;
-  transform-origin: ${(p) => (p.$isLeftSide ? "left center" : "right center")};
-  animation: ${kanjiPress} 0.34s cubic-bezier(0.3, 1.2, 0.5, 1) forwards;
-  will-change: transform, opacity;
-  margin-top: -0.52em;
+  transform-origin: center center;
+  animation: ${kanjiPress} 0.3s cubic-bezier(0.22, 1.15, 0.4, 1) forwards;
+  margin-top: -0.55em;
+  text-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.85),
+    2px 3px 0 rgba(0, 0, 0, 0.4);
 `;
 
 const Content = styled.div`
@@ -437,32 +476,26 @@ const Content = styled.div`
   flex-direction: column;
   align-items: ${(p) => (p.$isLeftSide ? "flex-end" : "flex-start")};
   width: 100%;
-  gap: clamp(3px, 0.4cqh, 5px);
+  gap: clamp(2px, 0.25cqh, 3px);
 `;
 
 const MainText = styled.div`
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(0.95rem, 1.7cqw, 1.32rem);
+  font-size: ${(p) => TIER_LAYOUT[getTier(p.$type)].fontSize};
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  line-height: 1;
-  white-space: nowrap;
+  letter-spacing: 0.05em;
+  line-height: 0.95;
+  white-space: ${(p) => (p.$nowrap ? "nowrap" : "pre-line")};
   text-align: inherit;
   transform-origin: ${(p) => (p.$isLeftSide ? "right center" : "left center")};
   color: ${C.cream};
-  text-shadow: ${(p) => {
-    const { color } = getTheme(p.$type);
-    return css`
-      0 0 12px color-mix(in srgb, ${color} 24%, transparent),
-      ${TEXT_SHADOW_DISPLAY_SOFT}
-    `;
-  }};
+  text-shadow: ${TEXT_SHADOW_COMBAT};
   opacity: 0;
-  animation: ${textSettle} 0.3s cubic-bezier(0.22, 1, 0.36, 1) 0.05s forwards;
-  will-change: transform, opacity;
+  animation: ${textSettle} 0.22s cubic-bezier(0.22, 1, 0.36, 1) 0.03s forwards;
+  -webkit-font-smoothing: antialiased;
 
   @media (max-width: 900px) {
-    font-size: clamp(0.78rem, 2.1cqw, 1.05rem);
+    font-size: ${(p) => TIER_LAYOUT[getTier(p.$type)].fontSizeMobile};
   }
 `;
 
@@ -472,18 +505,18 @@ const SubText = styled.div`
   font-size: clamp(0.45rem, 0.75cqw, 0.62rem);
   color: ${(p) => {
     const { color } = getTheme(p.$type);
-    return css`color-mix(in srgb, ${color} 35%, ${C.creamMute})`;
+    return css`color-mix(in srgb, ${color} 45%, ${C.creamMute})`;
   }};
   text-transform: uppercase;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.2em;
   text-align: inherit;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9);
   opacity: 0;
-  animation: ${subTextRise} 0.24s ease-out 0.2s forwards;
+  animation: ${subTextRise} 0.22s ease-out 0.16s forwards;
 
   @media (max-width: 900px) {
     font-size: clamp(0.45rem, 1.35cqw, 0.66rem);
-    letter-spacing: 0.2em;
+    letter-spacing: 0.16em;
   }
 `;
 
@@ -503,10 +536,21 @@ const SumoAnnouncementBanner = ({
     type,
   );
   const kanji = TYPE_KANJI[type];
-  const label = typeof text === "string" ? text.replace(/\s*\n\s*/g, " ") : text;
+  // Preserve intentional line breaks (COUNTER\nHIT); collapse odd whitespace.
+  let label =
+    typeof text === "string"
+      ? text
+          .replace(/\r\n/g, "\n")
+          .replace(/[^\S\n]+/g, " ")
+          .replace(/\n /g, "\n")
+          .replace(/ \n/g, "\n")
+          .trim()
+      : text;
+  if (BANG_TYPES.has(type)) label = withSpacedBang(label);
+  const stacked = typeof label === "string" && label.includes("\n");
 
   return (
-    <BannerWrapper $isLeftSide={isLeftSide}>
+    <BannerWrapper $isLeftSide={isLeftSide} $type={type}>
       <BannerMotion
         $isLeftSide={isLeftSide}
         $duration={duration}
@@ -514,15 +558,15 @@ const SumoAnnouncementBanner = ({
         $replacedBySameType={replacedBySameType}
         $handoff={handoff}
       >
-        <Haze $isLeftSide={isLeftSide} $type={type} aria-hidden />
         <Slab $isLeftSide={isLeftSide} $type={type}>
+          <PlaqueFill $isLeftSide={isLeftSide} $type={type} aria-hidden />
           {kanji && (
             <KanjiPrint $type={type} $isLeftSide={isLeftSide} aria-hidden>
               {kanji}
             </KanjiPrint>
           )}
           <Content $isLeftSide={isLeftSide}>
-            <MainText $type={type} $isLeftSide={isLeftSide}>
+            <MainText $type={type} $isLeftSide={isLeftSide} $nowrap={!stacked}>
               {label}
             </MainText>
             {subText && <SubText $type={type}>{subText}</SubText>}
@@ -542,11 +586,9 @@ SumoAnnouncementBanner.propTypes = {
     "counter",
     "counterhit",
     "counterthrow",
-    "braced",
     "deepgrip",
     "punish",
     "countergrab",
-    "gored",
     "break",
     "tech",
     "default",

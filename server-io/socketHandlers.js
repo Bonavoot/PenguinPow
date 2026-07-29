@@ -42,6 +42,7 @@ const {
   tryIceSlideReverse,
   beginPlayerDodge,
   beginGrabStartup,
+  emitStaminaBlocked,
 } = require("./gameUtils");
 
 const {
@@ -645,16 +646,8 @@ function processInputPacket(room, player, data, io, rooms) {
       // Liftoff if affordable; otherwise surface the "out of stamina" cue and
       // do nothing (no fallback to raw parry — Flap fully replaces it).
       const lifted = beginFlapStartup(player, nowSim);
-      if (
-        !lifted &&
-        (!player.lastStaminaBlockedTime ||
-          nowSim - player.lastStaminaBlockedTime > 500)
-      ) {
-        player.lastStaminaBlockedTime = nowSim;
-        io.to(player.id).emit("stamina_blocked", {
-          playerId: player.id,
-          action: "flap",
-        });
+      if (!lifted) {
+        emitStaminaBlocked(player, "flap", io);
       }
     }
   }
@@ -1022,6 +1015,18 @@ function processInputPacket(room, player, data, io, rooms) {
       }
     }
   }
+  // "Not enough stamina" feedback when gassed sidestep is denied
+  else if (
+    player.shiftJustPressed &&
+    player.keys.s &&
+    !player.keys.mouse2 &&
+    !player.isBeingGrabbed &&
+    !isInChargedAttackExecution() &&
+    canPlayerSidestep(player) &&
+    player.isGassed
+  ) {
+    emitStaminaBlocked(player, "sidestep", io);
+  }
   // ── ICE SLIDE bunny-hop reverse ──
   // SHIFT repress while sliding: buffer + try reverse. Always eat the edge so
   // mid-slide repress never becomes a dodge (even if dig isn't ready yet).
@@ -1041,7 +1046,7 @@ function processInputPacket(room, player, data, io, rooms) {
     player.shiftJustPressed = false;
   }
   // Handle dash - allow canceling recovery but block during charged attack execution
-  // Gassed: full dodge + ice-slide kit still available (sidestep/rope/flap stay locked).
+  // Gassed: dodge locked (same as sidestep/rope/flap) — surfaces "not enough stamina".
   // Use shiftJustPressed to prevent dash from triggering when key is held through other actions
   else if (
     player.shiftJustPressed &&
@@ -1050,7 +1055,8 @@ function processInputPacket(room, player, data, io, rooms) {
     !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
     !player.isBeingGrabbed && // Block dash when being grabbed
     !isInChargedAttackExecution() && // Block during charged attack execution
-    canPlayerDash(player)
+    canPlayerDash(player) &&
+    !player.isGassed
   ) {
     // Allow dodge to cancel recovery
     if (player.isRecovering) {
@@ -1070,6 +1076,19 @@ function processInputPacket(room, player, data, io, rooms) {
 
     // Dodge lifecycle (landing, recovery, cooldown) is handled entirely by the tick
     // loop in index.js. Pending charge attacks are executed when recovery ends.
+  }
+  // "Not enough stamina" feedback when gassed dodge is denied
+  else if (
+    player.shiftJustPressed &&
+    !player.isIceSliding &&
+    !player.keys.mouse2 &&
+    !(player.keys.w && player.isGrabbing && !player.isBeingGrabbed) &&
+    !player.isBeingGrabbed &&
+    !isInChargedAttackExecution() &&
+    canPlayerDash(player) &&
+    player.isGassed
+  ) {
+    emitStaminaBlocked(player, "dodge", io);
   } else if (
     (player.shiftJustPressed || player.keys.shift) && // Buffer on press OR hold (catches spammers who end on held key)
     (player.isAttacking ||
@@ -1085,12 +1104,14 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.isMatadorWhiffRecovering &&
     !isInChargedAttackExecution()
   ) {
-    // Sidestep stays hard-locked while gassed; full dodge can still buffer.
-    if (player.keys.s) {
-      if (!player.isGassed) {
-        player.bufferedAction = { type: "sidestep" };
-        player.bufferExpiryTime = simNowForPlayer(player) + 500;
+    // Sidestep and dodge both hard-locked while gassed — don't buffer either.
+    if (player.isGassed) {
+      if (player.shiftJustPressed) {
+        emitStaminaBlocked(player, player.keys.s ? "sidestep" : "dodge", io);
       }
+    } else if (player.keys.s) {
+      player.bufferedAction = { type: "sidestep" };
+      player.bufferExpiryTime = simNowForPlayer(player) + 500;
     } else {
       const dodgeDirection = player.keys.a
         ? -1
@@ -1113,7 +1134,11 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.isDodging &&
     (player.isDodgeRecovery || (player.dodgeCooldownUntil && simNowForPlayer(player) < player.dodgeCooldownUntil))
   ) {
-    player.inputBuffer = { type: "dodge", timestamp: simNowForPlayer(player) };
+    if (player.isGassed) {
+      emitStaminaBlocked(player, "dodge", io);
+    } else {
+      player.inputBuffer = { type: "dodge", timestamp: simNowForPlayer(player) };
+    }
   }
 
   // ── ROPE JUMP: W + forward key near map boundary ──
@@ -1168,11 +1193,9 @@ function processInputPacket(room, player, data, io, rooms) {
       !player.isRopeJumping &&
       !player.keys.shift &&
       canPlayerDash(player) &&
-      player.isGassed &&
-      (!player.lastStaminaBlockedTime || simNowForPlayer(player) - player.lastStaminaBlockedTime > 500)
+      player.isGassed
     ) {
-      player.lastStaminaBlockedTime = simNowForPlayer(player);
-      io.to(player.id).emit("stamina_blocked", { playerId: player.id, action: "ropeJump" });
+      emitStaminaBlocked(player, "ropeJump", io);
     }
   }
 
@@ -1223,25 +1246,32 @@ function processInputPacket(room, player, data, io, rooms) {
 
   // === CLINCH JOLT: Mouse1 while in clinch with grip ===
   // ARM CLAMP: clamped victims cannot jolt during the punish burst.
+  // Reaction lock: same fresh-press floor as grab break — slap-mash Mouse1
+  // edges that land right after grip connect are discarded (no latch).
   if (
     player.mouse1JustPressed && player.hasGrip && player.inClinch &&
     !player.isArmClamped &&
     !player.isClinchJolting && !player.clinchJoltRecovery && !player.clinchJoltCooldown &&
     !player.clinchThrowActive && !player.isClinchClashing &&
-    !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted &&
+    !player.isResistingThrow && !player.isResistingPull &&
     !player.isClinchJoltClashing && !player.clinchJoltRequest &&
     !player.clinchThrowFailStagger
   ) {
-    player.clinchJoltRequest = true;
-    player.clinchJoltRequestTime = simNowForPlayer(player);
+    const joltNow = simNowForPlayer(player);
+    const gripAt = player.gripAcquiredTime || 0;
+    if (!gripAt || joltNow - gripAt >= GRAB_BREAK_REACTION_LOCK_MS) {
+      player.clinchJoltRequest = true;
+      player.clinchJoltRequestTime = joltNow;
+    }
   }
 
   // === CLINCH BREAK: Spacebar while in mutual clinch (both have grip on connect) ===
-  // Defensive escape — costs heavy stamina, halves balance, soft-gated
+  // Defensive escape — costs heavy stamina (no posture), soft-gated
   // (under-budget breakers self-gas). Does NOT require holding M2.
   // ARM CLAMP: clamped victims cannot break during the punish burst.
-  // Reaction lock: Space during the first ~human-reaction window after grip
-  // connect is ignored (no latch) so late open-game parries don't become breaks.
+  // Reaction lock: Space during the first window after grip connect is ignored
+  // (no latch) so late open-game parries don't become breaks.
+  // GASSED: hard-locked — surface the same "OUT OF STAMINA" cue as dodge/flap.
   if (
     player.spaceJustPressed && player.hasGrip && player.inClinch &&
     !player.isArmClamped &&
@@ -1249,7 +1279,7 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.clinchThrowActive && !player.isClinchClashing &&
     !player.isClinchJolting && !player.isClinchJoltClashing && !player.clinchJoltRecovery &&
     !player.clinchThrowFailStagger &&
-    !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted &&
+    !player.isResistingThrow && !player.isResistingPull &&
     !player.clinchBreakRequest && !player.isGrabBreaking && !player.isGrabBreakCountered &&
     !player.isGrabBreakSeparating
   ) {
@@ -1262,16 +1292,28 @@ function processInputPacket(room, player, data, io, rooms) {
         player.clinchBreakRequestTime = breakNow;
       }
     }
+  } else if (
+    player.spaceJustPressed && player.hasGrip && player.inClinch &&
+    !player.isArmClamped &&
+    player.isGassed &&
+    !player.clinchThrowActive && !player.isClinchClashing &&
+    !player.isClinchJolting && !player.isClinchJoltClashing && !player.clinchJoltRecovery &&
+    !player.clinchThrowFailStagger &&
+    !player.isResistingThrow && !player.isResistingPull &&
+    !player.isGrabBreaking && !player.isGrabBreakCountered &&
+    !player.isGrabBreakSeparating
+  ) {
+    const otherPlayer = room.players.find((p) => p.id !== player.id);
+    if (otherPlayer && otherPlayer.hasGrip) {
+      emitStaminaBlocked(player, "grabBreak", io);
+    }
   }
 
-  // === CLINCH THROW/PULL/LIFT: Mouse2 + direction while in clinch with grip ===
+  // === CLINCH THROW/PULL: Mouse2 + direction while in clinch with grip ===
   //   THROW — Mouse2 + W
   //   PULL  — Mouse2 + away
-  //   LIFT  — Mouse2 + W + toward  (deliberate chord; Mouse2+toward alone does nothing
-  //           so push can keep the toward axis without accidental carries)
-  // Priority: lift > throw > pull when chords overlap.
   // Detects three patterns:
-  //   1) Mouse2 just pressed + direction(s) already held
+  //   1) Mouse2 just pressed + direction already held
   //   2) Mouse2 already held + relevant key just pressed
   //   3) Mouse2 just pressed, direction arrives within 200ms buffer
   // Holding M2 also drives the belt-arm pose (isClinchBeltHolding).
@@ -1283,34 +1325,29 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.isArmClamped &&
     !player.clinchThrowActive && !player.clinchThrowCooldown && !player.isClinchClashing &&
     !player.clinchThrowRequest && !player.clinchThrowFailStagger &&
-    !player.isResistingThrow && !player.isResistingPull && !player.isBeingLifted
+    !player.isResistingThrow && !player.isResistingPull
   ) {
     const otherPlayer = room.players.find((p) => p.id !== player.id);
     if (otherPlayer) {
-      const towardKey = player.x < otherPlayer.x ? 'd' : 'a';
       const awayKey = player.x < otherPlayer.x ? 'a' : 'd';
 
       const m2Edge = player.mouse2JustPressed ||
         (player.clinchMouse2BufferTime && simNowForPlayer(player) - player.clinchMouse2BufferTime < 200);
       const wEdge = player.wJustPressed;
       const awayJustPressed = awayKey === 'a' ? player.aJustPressed : player.dJustPressed;
-      const towardJustPressed = towardKey === 'a' ? player.aJustPressed : player.dJustPressed;
-      const holdingLiftChord = player.keys.w && player.keys[towardKey];
 
       if (player.mouse2JustPressed) {
         player.clinchMouse2BufferTime = simNowForPlayer(player);
       }
 
       let request = null;
-      // Pattern 1 & 3: Mouse2 edge + direction(s) held
-      if (m2Edge && holdingLiftChord) request = "lift";
-      else if (m2Edge && player.keys.w) request = "throw";
+      // Pattern 1 & 3: Mouse2 edge + direction held (W+toward still throws)
+      if (m2Edge && player.keys.w) request = "throw";
       else if (m2Edge && player.keys[awayKey]) request = "pull";
       // Pattern 2: Mouse2 held — complete the chord on a key edge
-      else if ((wEdge || towardJustPressed) && holdingLiftChord) request = "lift";
       else if (wEdge) request = "throw";
       else if (awayJustPressed) request = "pull";
-      // towardJustPressed alone while Mouse2 held → no request (push stance)
+      // toward alone while Mouse2 held → no request (push stance)
 
       if (request) {
         player.clinchThrowRequest = request;
@@ -1323,7 +1360,7 @@ function processInputPacket(room, player, data, io, rooms) {
   // NOTE: The legacy W-throw and pull-reversal grab paths were removed.
   // Every successful grab now enters the clinch (inClinch = true is set at
   // grab connect), so any branch gated on `isGrabbing && !inClinch` was
-  // unreachable. Clinch throws/pulls/lifts live in grabActionSystem.js.
+  // unreachable. Clinch throws/pulls live in grabActionSystem.js.
 
   // Handle grab attacks — instant grab with no forward movement
   // Use mouse2JustPressed to prevent grab from triggering when key is held through other actions

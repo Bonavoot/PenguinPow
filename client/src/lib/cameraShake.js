@@ -27,8 +27,8 @@ export const SHAKE_PROFILES = {
   // ── Per-hit tiers (driven by player_hit: attackType) ──
   // Slap pokes — snappy rattle.
   slap_hit:        { trauma: 0.40, punch: 0.0, rot: 0.0 },
-  // Charged hit — heavy crunch + roll (caller scales by charge %).
-  charged_hit:     { trauma: 0.88, punch: 0.0, rot: 0.50 },
+  // Charged hit — heavy crunch + roll + micro zoom-punch (caller scales by charge %).
+  charged_hit:     { trauma: 0.92, punch: 0.06, rot: 0.55 },
 
   // ── Light / repeatable events ──
   parry:           { trauma: 0.46, punch: 0.0, rot: 0.0 },

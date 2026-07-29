@@ -4,13 +4,11 @@ import PropTypes from "prop-types";
 import SumoHypeStamp, { HYPE_DURATION_MS } from "./SumoHypeStamp";
 
 /**
- * GoredBannerEffect — "MATADOR BREAK" hype stamp when a strike hits someone
- * during a live / whiffed MATADOR (grab-line parry).
- *
- * Orange hanko (success MATADOR is gold). Same hype band as COUNTER GRAB /
- * GRAB BREAK / PERFECT — peer callout to GRAB BREAK: you denied their matador.
+ * MatadorSuccessEffect — "MATADOR" hype stamp when a grab-line parry lands
+ * (instant pull). Peer to COUNTER GRAB / PERFECT on the hype band.
+ * Gold stamp; MATADOR BREAK (orange) is the opposite RPS punish.
  */
-const GoredBannerEffect = ({ position }) => {
+const MatadorSuccessEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedRef = useRef(new Set());
   const effectIdCounter = useRef(0);
@@ -51,8 +49,8 @@ const GoredBannerEffect = ({ position }) => {
         return (
           <SumoHypeStamp
             key={effect.id}
-            type="matadorbreak"
-            text={"MATADOR\nBREAK"}
+            type="matador"
+            text={"MATADOR"}
             isLeftSide={isLeftSide}
           />
         );
@@ -62,11 +60,11 @@ const GoredBannerEffect = ({ position }) => {
   );
 };
 
-GoredBannerEffect.propTypes = {
+MatadorSuccessEffect.propTypes = {
   position: PropTypes.shape({
     counterId: PropTypes.string,
     playerNumber: PropTypes.number,
   }),
 };
 
-export default memo(GoredBannerEffect);
+export default memo(MatadorSuccessEffect);

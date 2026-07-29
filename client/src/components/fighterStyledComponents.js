@@ -3,6 +3,14 @@ import { isOutsideDohyo } from "../constants";
 import getImageSrc from "./getImageSrc";
 import { GROUND_LEVEL } from "./fighterAssets";
 
+// Painted soles sit ~2.1% above the sprite box bottom (transparent padding
+// under the feet — keep in sync with ICE_REFLECTION_FOOT_NUDGE_PCT).
+// Procedural scaleY/skew MUST pivot here: origin at box-bottom ("center
+// bottom") lifts/dips the visual feet whenever the body squashes.
+// Transparent padding below may expand into the ice when squashing; that's
+// invisible and keeps soles glued to GROUND_LEVEL.
+export const FIGHTER_SOLE_TRANSFORM_ORIGIN = "50% calc(100% - 2.1%)";
+
 const validProps = [
   "src",
   "style",
@@ -144,8 +152,6 @@ export const getFighterPopFilter = (props) => {
     (props.$inClinch ||
       props.$isGrabbing ||
       props.$isClinchPlanting ||
-      props.$isClinchLifting ||
-      props.$isBeingLifted ||
       props.$isAttemptingGrabThrow ||
       props.$isAttemptingPull ||
       props.$isGrabBellyFlopping ||
@@ -166,7 +172,7 @@ export const getFighterPopFilter = (props) => {
   if (props.$isAtTheRopes) {
     return `${base} drop-shadow(0 0 3px rgba(255, 55, 55, 0.9)) drop-shadow(0 0 1px rgba(255, 120, 120, 0.95))`;
   }
-  // Clinch balance danger (<15 — every throw/pull/lift is now a kill): the
+  // Clinch balance danger (<15 — every throw/pull is now a kill): the
   // SAME red rim as at-the-ropes, deliberately. Both mean "you can die right
   // now", so they share one visual grammar instead of inventing a new color.
   if (props.$inClinch && props.$balanceDanger) {
@@ -219,6 +225,9 @@ export const getFighterPopFilter = (props) => {
       tier === "cinematic" ? "drop-shadow(0 0 18px rgba(255, 220, 100, 1)) drop-shadow(0 0 32px rgba(255, 200, 80, 0.55))"
       : tier === "charged" ? "drop-shadow(0 0 12px rgba(255, 235, 160, 0.9))"
       : tier === "burst"   ? "drop-shadow(0 0 9px rgba(255, 230, 140, 0.78))"
+      // Tip spacing — cooler white/ice rim so a clean tip confirm reads sharper
+      // than a deep mash slap without borrowing charged's warm gold weight.
+      : tier === "tip"     ? "drop-shadow(0 0 8px rgba(230, 248, 255, 0.85)) drop-shadow(0 0 14px rgba(160, 220, 255, 0.4))"
       :                       "drop-shadow(0 0 6px rgba(255, 245, 220, 0.62))";
     return `${base} ${glow}`;
   }
@@ -248,28 +257,10 @@ const grabArmNudge = (props) => {
   );
 };
 
-// Lifter arm: (1) translate up by lift Δy so the HAND stays on the belt,
-// then (2) rotate around that hand so the shoulder swings down into the body
-// instead of riding straight up with the tip. Hand ≈ (25.2%, 73%) on the
-// arm sheet; conjugate from center-bottom. Victim arm: no extra motion.
-const GRAB_ARM_HAND_DX_PCT = -24.8; // 25.2 - 50
-const GRAB_ARM_HAND_DY_PCT = -27; // 73 - 100
-const grabArmLiftMotion = (props) => {
-  const deg = props.$grabArmLiftDeg || 0;
-  const dx = GRAB_ARM_HAND_DX_PCT;
-  const dy = GRAB_ARM_HAND_DY_PCT;
-  let t = " translateY(var(--grab-arm-belt-y, 0px))";
-  if (deg) {
-    t += ` translate(${dx}%, ${dy}%) rotate(${deg}deg) translate(${-dx}%, ${-dy}%)`;
-  }
-  return t;
-};
-
 // Body-hold pose: rest sheet is belt-aligned; rotate around the shoulder so
-// the flipper tip swings UP toward the torso (+deg). Placeholder — same
-// conjugate pattern as the lift hand-pivot. Shoulder ≈ (56%, 42%) on sheet.
-// Degree is a CSS var so the rAF loop can snap belt↔body on local M2 without
-// waiting for a React re-render / server delta.
+// the flipper tip swings UP toward the torso (+deg). Shoulder ≈ (56%, 42%)
+// on sheet. Degree is a CSS var so the rAF loop can snap belt↔body on local
+// M2 without waiting for a React re-render / server delta.
 const GRAB_ARM_SHOULDER_DX_PCT = 6; // 56 - 50
 const GRAB_ARM_SHOULDER_DY_PCT = -58; // 42 - 100
 const grabArmBodyHoldMotion = (props) => {
@@ -289,22 +280,8 @@ const grabArmBodyHoldMotion = (props) => {
 };
 
 const grabArmExtra = (props) => {
-  if (props.$grabArmBeltTrackActive) return grabArmLiftMotion(props);
   if (props.$grabArmBodyHoldActive) return grabArmBodyHoldMotion(props);
   return grabArmNudge(props);
-};
-
-// Clinch-lift leans — different tool per role:
-// Lifter (grounded): skewX ONLY. On a single sprite that includes the feet,
-// any rotate tips the foot pixels; skew shears the torso while keeping the
-// whole bottom edge flat on the ice (same reason clinchTeeter uses skew).
-// Kept mild so it doesn't read as a warped squash.
-// Victim (airborne): plain forward rotate — feet aren't planted, so tipping
-// the whole body toward the lifter is what we want. Never use the lifter lean.
-const clinchLiftLean = (props) => {
-  if (props.$isClinchLifting) return " skewX(-7deg)";
-  if (props.$isBeingLifted) return " rotate(-14deg)";
-  return "";
 };
 
 export const StyledImage = styled("img")
@@ -465,9 +442,7 @@ export const StyledImage = styled("img")
         props.$isSidestepRecovery,
         props.$isChargingAttack,
         props.$hasGrip,
-        props.$isBeingLifted,
         props.$isClinchClashing,
-        props.$isClinchLifting,
         props.$isClinchPushing,
         props.$isClinchPlanting,
         props.$isResistingThrow,
@@ -525,11 +500,9 @@ export const StyledImage = styled("img")
           ? props.$facing === 1
             ? "scaleX(1) translateY(10%)"
             : "scaleX(-1) translateY(10%)"
-          // Clinch-lift leans (skewX) + lift arm belt-track / hand-pivot rotate
-          // (or planting nudge).
           : props.$facing === 1
-          ? `scaleX(1)${clinchLiftLean(props)}${grabArmExtra(props)}`
-          : `scaleX(-1)${clinchLiftLean(props)}${grabArmExtra(props)}`,
+          ? `scaleX(1)${grabArmExtra(props)}`
+          : `scaleX(-1)${grabArmExtra(props)}`,
       // Grab-arm overlay: rides above BOTH locked bodies (which sit at ~98–99
       // during a grab). $grabArmLayer carries the resolved z (facing decides
       // which of the two arms wins). Still sinks with the body when outside the
@@ -572,7 +545,7 @@ export const StyledImage = styled("img")
       // grabPushStrain / clinchTeeter replace `transform` entirely and wipe the
       // shoulder-pivot body-hold rotate — after the first shove/teeter the arm
       // stuck at the asset's native belt pose. Body keeps the anim; arm stays
-      // pose-driven (body-hold / belt / lift track) via the static transform.
+      // pose-driven (body-hold / belt) via the static transform.
       animation: props.$grabArmLayer
         ? "none"
         : props.$isClinchKillThrowVictim
@@ -632,11 +605,6 @@ export const StyledImage = styled("img")
         ? "grabTechShake 0.25s ease-in-out infinite"
         : props.$isGrabTeching
         ? "grabTechShake 0.25s ease-in-out infinite"
-        // Lift pose is a static skew lean + optional lifter arm belt-track.
-        : props.$isBeingLifted ||
-          props.$isClinchLifting ||
-          props.$grabArmBeltTrackActive
-        ? "none"
         : props.$clinchThrowFailStagger
         ? "clinchFailStumble 0.3s cubic-bezier(0.22, 0.6, 0.35, 1)"
         : props.$inClinch && props.$balanceDanger
@@ -747,7 +715,7 @@ export const StyledImage = styled("img")
       transformOrigin:
         props.$isClinchKillThrowVictim && !props.$showClinchKillThrowLanding
           ? "center center"
-          : "center bottom",
+          : FIGHTER_SOLE_TRANSFORM_ORIGIN,
       transition: "none",
     },
   }))`
@@ -773,15 +741,18 @@ export const StyledImage = styled("img")
     75% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 12px rgba(0, 255, 128, 0.95)); }
     100% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 2px rgba(0, 255, 128, 0.45)); }
   }
+  /* FEET RULE: procedural juice never moves sole Y. Pivot at sole origin
+     (not box-bottom). Lean with skewX — rotate lifts a foot corner into ice.
+     translateY is reserved for intentional airborne / ground-plant poses. */
   /* Every deviation from the identity pose scales with --impact-amp (see the
      attrs var above) — same shape at amp 1, ~2x deformation on a max hit. */
   @keyframes hitSquash {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
-    6% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.25 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.25 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -3% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * 2deg * var(--impact-amp, 1))); }
-    18% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.12 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.12 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -5% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * -4deg * var(--impact-amp, 1))); }
-    35% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.08 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.08 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -2% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * 1.5deg * var(--impact-amp, 1))); }
-    55% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.04 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.04 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -0.5% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * -0.5deg * var(--impact-amp, 1))); }
-    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); }
+    6% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.25 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.25 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -3% * var(--impact-amp, 1))) skewX(calc(var(--facing, 1) * 2deg * var(--impact-amp, 1))); }
+    18% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.12 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.12 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -5% * var(--impact-amp, 1))) skewX(calc(var(--facing, 1) * -4deg * var(--impact-amp, 1))); }
+    35% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.08 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.08 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -2% * var(--impact-amp, 1))) skewX(calc(var(--facing, 1) * 1.5deg * var(--impact-amp, 1))); }
+    55% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.04 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.04 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -0.5% * var(--impact-amp, 1))) skewX(calc(var(--facing, 1) * -0.5deg * var(--impact-amp, 1))); }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); }
   }
   /* Chained after hitSquash (0.28s delay in the animation shorthand): a
      decaying feet-pinned rock away from the hit while the victim is still
@@ -789,20 +760,20 @@ export const StyledImage = styled("img")
      whole animation is removed), so in practice this reads only on charged /
      flap / burst launches — exactly where the post-squash rigidity showed. */
   @keyframes hitStaggerSettle {
-    0% { transform: scaleX(var(--facing, 1)) rotate(0deg) translateX(0); }
-    24% { transform: scaleX(var(--facing, 1)) rotate(calc(var(--facing, 1) * -2.2deg * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -0.8% * var(--impact-amp, 1))); }
-    52% { transform: scaleX(var(--facing, 1)) rotate(calc(var(--facing, 1) * 1.2deg * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * 0.3% * var(--impact-amp, 1))); }
-    78% { transform: scaleX(var(--facing, 1)) rotate(calc(var(--facing, 1) * -0.5deg * var(--impact-amp, 1))) translateX(0); }
-    100% { transform: scaleX(var(--facing, 1)) rotate(0deg) translateX(0); }
+    0% { transform: scaleX(var(--facing, 1)) skewX(0deg) translateX(0); }
+    24% { transform: scaleX(var(--facing, 1)) skewX(calc(var(--facing, 1) * -2.2deg * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -0.8% * var(--impact-amp, 1))); }
+    52% { transform: scaleX(var(--facing, 1)) skewX(calc(var(--facing, 1) * 1.2deg * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * 0.3% * var(--impact-amp, 1))); }
+    78% { transform: scaleX(var(--facing, 1)) skewX(calc(var(--facing, 1) * -0.5deg * var(--impact-amp, 1))) translateX(0); }
+    100% { transform: scaleX(var(--facing, 1)) skewX(0deg) translateX(0); }
   }
   /* Attacker-side contact recoil — a short backward jolt + settle when their
      strike lands. Fixed amplitude (the ATTACKER's mass doesn't change with
      hit strength; the victim's --impact-amp carries the grading). */
   @keyframes attackerContactRecoil {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
-    30% { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.96) translateX(calc(var(--facing, 1) * -1.5%)) rotate(calc(var(--facing, 1) * -1.5deg)); }
-    65% { transform: scaleX(calc(var(--facing, 1) * 0.99)) scaleY(1.008) translateX(calc(var(--facing, 1) * -0.35%)) rotate(calc(var(--facing, 1) * 0.35deg)); }
-    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); }
+    30% { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.96) translateX(calc(var(--facing, 1) * -1.5%)) skewX(calc(var(--facing, 1) * -1.5deg)); }
+    65% { transform: scaleX(calc(var(--facing, 1) * 0.99)) scaleY(1.008) translateX(calc(var(--facing, 1) * -0.35%)) skewX(calc(var(--facing, 1) * 0.35deg)); }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); }
   }
   @keyframes attackPunch {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1); }
@@ -814,31 +785,34 @@ export const StyledImage = styled("img")
     0%, 100% { transform: scaleX(var(--facing, 1)) translateX(var(--charge-shake, 0px)); }
     50% { transform: scaleX(var(--facing, 1)) translateX(calc(var(--charge-shake, 0px) * -1)); }
   }
+  /* Idle breath — scaleY from soles so only torso/head rises; feet stay planted. */
   @keyframes breathe {
     0%, 100% { transform: scaleX(var(--facing, 1)) scaleY(1); }
     50% { transform: scaleX(var(--facing, 1)) scaleY(1.03); }
   }
   @keyframes powerSlide {
-    0%, 100% { transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.92); transform-origin: center bottom; }
-    50% { transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.88); transform-origin: center bottom; }
+    0%, 100% { transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.92); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    50% { transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.88); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
+  /* Rope land: settle onto the ice — never translateY(+) below the plant. */
   @keyframes ropeJumpLandBounce {
-    0% { transform: scaleX(var(--facing, 1)) translateY(-8%); }
-    35% { transform: scaleX(var(--facing, 1)) translateY(2%); }
-    65% { transform: scaleX(var(--facing, 1)) translateY(-1%); }
-    100% { transform: scaleX(var(--facing, 1)) translateY(0%); }
+    0% { transform: scaleX(var(--facing, 1)) translateY(-8%) scaleY(1); }
+    35% { transform: scaleX(var(--facing, 1)) translateY(0%) scaleY(0.94); }
+    65% { transform: scaleX(var(--facing, 1)) translateY(0%) scaleY(1.02); }
+    100% { transform: scaleX(var(--facing, 1)) translateY(0%) scaleY(1); }
   }
+  /* Ropes lean — skewX + lateral only. No rotate / translateY (those dipped soles). */
   @keyframes atTheRopesWobble {
-    0%, 100% { transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(0deg) translateX(0); }
-    25% { transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(-4deg) translateX(-2px) translateY(1px); }
-    50% { transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(2deg) translateX(1px) translateY(-1px); }
-    75% { transform: scaleX(var(--facing, 1)) scaleY(0.95) rotate(-2deg) translateX(-1px) translateY(1px); }
+    0%, 100% { transform: scaleX(var(--facing, 1)) scaleY(0.95) skewX(0deg) translateX(0); }
+    25% { transform: scaleX(var(--facing, 1)) scaleY(0.95) skewX(calc(var(--facing, 1) * -4deg)) translateX(-2px); }
+    50% { transform: scaleX(var(--facing, 1)) scaleY(0.95) skewX(calc(var(--facing, 1) * 2deg)) translateX(1px); }
+    75% { transform: scaleX(var(--facing, 1)) scaleY(0.95) skewX(calc(var(--facing, 1) * -2deg)) translateX(-1px); }
   }
-  /* Clinch balance teeter — skewX shear anchored at the feet (transform-
-     origin is center bottom). Unlike rotation, a shear leaves the ENTIRE
-     bottom edge of the sprite pinned in place: the feet never lift or slide,
-     only the upper body sways sideways over the planted base. That's the
-     physical "losing my footing" read. Asymmetric angles sell weight. */
+  /* Clinch balance teeter — skewX shear anchored at the soles. Unlike
+     rotation, a shear leaves the ENTIRE sole line pinned in place: the feet
+     never lift or slide, only the upper body sways sideways over the planted
+     base. That's the physical "losing my footing" read. Asymmetric angles
+     sell weight. */
   @keyframes clinchTeeter {
     0%, 100% { transform: scaleX(var(--facing, 1)) skewX(0deg); }
     32% { transform: scaleX(var(--facing, 1)) skewX(-1.7deg); }
@@ -850,7 +824,7 @@ export const StyledImage = styled("img")
     55% { transform: scaleX(var(--facing, 1)) skewX(2.2deg); }
     78% { transform: scaleX(var(--facing, 1)) skewX(-2.4deg); }
   }
-  /* Open-field broken-posture tell — feet pinned (origin center bottom).
+  /* Open-field broken-posture tell — feet pinned (sole origin).
      Mostly still, with short tremor bursts so it reads "shaken / open"
      instead of a constant drunk sway. Tiny skew + micro lateral jitter. */
   @keyframes postureBrokenTeeter {
@@ -894,10 +868,10 @@ export const StyledImage = styled("img")
     100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); }
   }
   @keyframes clinchJoltRecoil {
-    0% { transform: scaleX(var(--facing, 1)) translateX(0) rotate(0deg) scaleY(1); }
-    20% { transform: scaleX(var(--facing, 1)) translateX(calc(var(--facing, 1) * 14px)) rotate(calc(var(--facing, 1) * -6deg)) scaleY(0.92); }
-    50% { transform: scaleX(var(--facing, 1)) translateX(calc(var(--facing, 1) * 8px)) rotate(calc(var(--facing, 1) * -3deg)) scaleY(0.96); }
-    100% { transform: scaleX(var(--facing, 1)) translateX(0) rotate(0deg) scaleY(1); }
+    0% { transform: scaleX(var(--facing, 1)) translateX(0) skewX(0deg) scaleY(1); }
+    20% { transform: scaleX(var(--facing, 1)) translateX(calc(var(--facing, 1) * 14px)) skewX(calc(var(--facing, 1) * -6deg)) scaleY(0.92); }
+    50% { transform: scaleX(var(--facing, 1)) translateX(calc(var(--facing, 1) * 8px)) skewX(calc(var(--facing, 1) * -3deg)) scaleY(0.96); }
+    100% { transform: scaleX(var(--facing, 1)) translateX(0) skewX(0deg) scaleY(1); }
   }
   @keyframes clinchJoltClash {
     0% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); }
@@ -921,62 +895,64 @@ export const StyledImage = styled("img")
        body snaps back from the impact (away from the opponent) then smoothly
        settles. Reads as a crisp recoil rather than a rubbery jiggle. The real
        gain/lose ground travel is the server knockback slide underneath this. */
-    0% { transform: scaleX(var(--facing, 1)) translateX(0); transform-origin: center bottom; }
-    30% { transform: scaleX(var(--facing, 1)) translateX(calc(var(--facing, 1) * -7px)); transform-origin: center bottom; }
-    100% { transform: scaleX(var(--facing, 1)) translateX(0); transform-origin: center bottom; }
+    0% { transform: scaleX(var(--facing, 1)) translateX(0); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    30% { transform: scaleX(var(--facing, 1)) translateX(calc(var(--facing, 1) * -7px)); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) translateX(0); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
+  /* Throw pull strain — stretch from soles only (no translateY hop). */
   @keyframes attemptingGrabThrowPull {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: center bottom; }
-    15% { transform: scaleX(calc(var(--facing, 1) * 0.95)) scaleY(1.08) translateY(-3px); transform-origin: center bottom; }
-    40% { transform: scaleX(calc(var(--facing, 1) * 0.93)) scaleY(1.10) translateY(-5px); transform-origin: center bottom; }
-    70% { transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.06) translateY(-3px); transform-origin: center bottom; }
-    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: center bottom; }
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    15% { transform: scaleX(calc(var(--facing, 1) * 0.95)) scaleY(1.08); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    40% { transform: scaleX(calc(var(--facing, 1) * 0.93)) scaleY(1.10); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    70% { transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.06); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
   @keyframes grabPushStrain {
-    0%, 100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); transform-origin: center bottom; }
-    50% { transform: scaleX(calc(var(--facing, 1) * 1.03)) translateX(calc(var(--facing, 1) * -2px)) scaleY(0.97); transform-origin: center bottom; }
+    0%, 100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    50% { transform: scaleX(calc(var(--facing, 1) * 1.03)) translateX(calc(var(--facing, 1) * -2px)) scaleY(0.97); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
   @keyframes grabPushResist {
-    0%, 100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); transform-origin: center bottom; }
-    30% { transform: scaleX(calc(var(--facing, 1) * 0.97)) translateX(calc(var(--facing, 1) * 1px)) scaleY(1.02); transform-origin: center bottom; }
-    70% { transform: scaleX(calc(var(--facing, 1) * 0.98)) translateX(calc(var(--facing, 1) * 2px)) scaleY(1.01); transform-origin: center bottom; }
+    0%, 100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    30% { transform: scaleX(calc(var(--facing, 1) * 0.97)) translateX(calc(var(--facing, 1) * 1px)) scaleY(1.02); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    70% { transform: scaleX(calc(var(--facing, 1) * 0.98)) translateX(calc(var(--facing, 1) * 2px)) scaleY(1.01); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
   @keyframes attemptingPullTug {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: 50% 100%; }
-    12% { transform: scaleX(var(--facing, 1)) scaleY(0.95); transform-origin: 50% 100%; }
-    28% { transform: scaleX(var(--facing, 1)) scaleY(0.94); transform-origin: 50% 100%; }
-    45% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: 50% 100%; }
-    62% { transform: scaleX(var(--facing, 1)) scaleY(0.94); transform-origin: 50% 100%; }
-    78% { transform: scaleX(var(--facing, 1)) scaleY(0.96); transform-origin: 50% 100%; }
-    92% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: 50% 100%; }
-    100% { transform: scaleX(var(--facing, 1)) scaleY(0.97); transform-origin: 50% 100%; }
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    12% { transform: scaleX(var(--facing, 1)) scaleY(0.95); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    28% { transform: scaleX(var(--facing, 1)) scaleY(0.94); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    45% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    62% { transform: scaleX(var(--facing, 1)) scaleY(0.94); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    78% { transform: scaleX(var(--facing, 1)) scaleY(0.96); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    92% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(0.97); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
   @keyframes grabSeparatePush {
-    0% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); transform-origin: center bottom; }
-    40% { transform: scaleX(calc(var(--facing, 1) * 1.04)) translateX(calc(var(--facing, 1) * 3px)) scaleY(0.97); transform-origin: center bottom; }
-    100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); transform-origin: center bottom; }
+    0% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    40% { transform: scaleX(calc(var(--facing, 1) * 1.04)) translateX(calc(var(--facing, 1) * 3px)) scaleY(0.97); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
+  /* Belly flop / force-out: intentional body-plant into ice — translateY kept. */
   @keyframes grabBellyFlopLunge {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: center bottom; }
-    40% { transform: scaleX(calc(var(--facing, 1) * 1.15)) scaleY(0.85) translateY(0); transform-origin: center bottom; }
-    70% { transform: scaleX(calc(var(--facing, 1) * 1.2)) scaleY(0.75) translateY(2px); transform-origin: center bottom; }
-    100% { transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.7) translateY(4px); transform-origin: center bottom; }
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    40% { transform: scaleX(calc(var(--facing, 1) * 1.15)) scaleY(0.85) translateY(0); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    70% { transform: scaleX(calc(var(--facing, 1) * 1.2)) scaleY(0.75) translateY(2px); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.7) translateY(4px); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
   @keyframes grabBellyFlopVictim {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: center bottom; }
-    30% { transform: scaleX(calc(var(--facing, 1) * 0.85)) scaleY(1.1) translateY(-4px); transform-origin: center bottom; }
-    70% { transform: scaleX(calc(var(--facing, 1) * 1.15)) scaleY(0.8) translateY(2px); transform-origin: center bottom; }
-    100% { transform: scaleX(calc(var(--facing, 1) * 1.3)) scaleY(0.65) translateY(5px); transform-origin: center bottom; }
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    30% { transform: scaleX(calc(var(--facing, 1) * 0.85)) scaleY(1.1) translateY(-4px); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    70% { transform: scaleX(calc(var(--facing, 1) * 1.15)) scaleY(0.8) translateY(2px); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(calc(var(--facing, 1) * 1.3)) scaleY(0.65) translateY(5px); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
   @keyframes grabFrontalForceOut {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: center bottom; }
-    50% { transform: scaleX(calc(var(--facing, 1) * 1.1)) scaleY(0.92) translateX(calc(var(--facing, 1) * -3px)); transform-origin: center bottom; }
-    100% { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.95) translateX(calc(var(--facing, 1) * -5px)); transform-origin: center bottom; }
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    50% { transform: scaleX(calc(var(--facing, 1) * 1.1)) scaleY(0.92) translateX(calc(var(--facing, 1) * -3px)); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.95) translateX(calc(var(--facing, 1) * -5px)); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
   @keyframes grabFrontalForceOutVictim {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: center bottom; }
-    40% { transform: scaleX(calc(var(--facing, 1) * 0.9)) scaleY(1.05) translateY(-2px); transform-origin: center bottom; }
-    100% { transform: scaleX(calc(var(--facing, 1) * 0.85)) scaleY(0.9) translateY(3px); transform-origin: center bottom; }
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    40% { transform: scaleX(calc(var(--facing, 1) * 0.9)) scaleY(1.05) translateY(-2px); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(calc(var(--facing, 1) * 0.85)) scaleY(0.9) translateY(3px); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
   /* ── Dash jump, split into three real beats (see GameFighter sprite swap) ──
      The dodge is now a proper jump with bookend frames:
@@ -988,21 +964,22 @@ export const StyledImage = styled("img")
          easing curve) shape the arc.
        - dashLanding plays on justLandedFromDodge back on the recovering pose:
          an impact squash that catches the landing before the ice slide.
-     All squash is VERTICAL only (scaleY, origin center bottom) so scaleX stays
+     All squash is VERTICAL only (scaleY, sole origin) so scaleX stays
      locked to facing and the character never stretches horizontally. */
+  /* Intentional hop — translateY is the jump. Crouch squash uses sole origin. */
   @keyframes slideJumpPop {
     0% {
-      transform: scaleX(var(--facing, 1)) scaleY(0.82) translateY(6%);
-      transform-origin: center bottom;
+      transform: scaleX(var(--facing, 1)) scaleY(0.82) translateY(0);
+      transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN};
     }
     35% {
       transform: scaleX(calc(var(--facing, 1) * 0.92)) scaleY(1.14)
         translateY(-4%);
-      transform-origin: center bottom;
+      transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN};
     }
     100% {
       transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0);
-      transform-origin: center bottom;
+      transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN};
     }
   }
 
@@ -1013,20 +990,20 @@ export const StyledImage = styled("img")
        The arc peak is deliberately LOW (~15%) so it stays proportional to the
        ~118px of forward travel — a tall arc over a short distance reads as
        fake/sped-up. This is a low forward hop, not a vertical pop. */
-    0%   { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(1);    transform-origin: center bottom; } /* windup start */
-    11%  { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(0.92); transform-origin: center bottom; } /* crouching */
-    19%  { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(0.9);  transform-origin: center bottom; } /* crouch bottom (leaving ground) */
-    33%  { transform: scaleX(var(--facing, 1)) translateY(-9%)  scaleY(1);    transform-origin: center bottom; } /* pushoff */
-    52%  { transform: scaleX(var(--facing, 1)) translateY(-14%) scaleY(1);    transform-origin: center bottom; } /* rising */
-    60%  { transform: scaleX(var(--facing, 1)) translateY(-15%) scaleY(1);    transform-origin: center bottom; } /* apex */
-    68%  { transform: scaleX(var(--facing, 1)) translateY(-13%) scaleY(1);    transform-origin: center bottom; } /* hang */
-    86%  { transform: scaleX(var(--facing, 1)) translateY(-6%)  scaleY(1);    transform-origin: center bottom; } /* falling */
-    100% { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(1);    transform-origin: center bottom; } /* touchdown */
+    0%   { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* windup start */
+    11%  { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(0.92); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* crouching */
+    19%  { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(0.9);  transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* crouch bottom (leaving ground) */
+    33%  { transform: scaleX(var(--facing, 1)) translateY(-9%)  scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* pushoff */
+    52%  { transform: scaleX(var(--facing, 1)) translateY(-14%) scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* rising */
+    60%  { transform: scaleX(var(--facing, 1)) translateY(-15%) scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* apex */
+    68%  { transform: scaleX(var(--facing, 1)) translateY(-13%) scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* hang */
+    86%  { transform: scaleX(var(--facing, 1)) translateY(-6%)  scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* falling */
+    100% { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* touchdown */
   }
   @keyframes dashLanding {
-    0%   { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(0.9);  transform-origin: center bottom; } /* impact */
-    40%  { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(1.01); transform-origin: center bottom; } /* rebound */
-    100% { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(1);    transform-origin: center bottom; } /* settle */
+    0%   { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(0.9);  transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* impact */
+    40%  { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(1.01); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* rebound */
+    100% { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* settle */
   }
   @keyframes dashInvincibilityFlash {
     0% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) brightness(2.5) saturate(0.2); }
@@ -1037,29 +1014,28 @@ export const StyledImage = styled("img")
   /* Impact juice only — no translateX. Horizontal slide read as "walking
      in the parry-success pose" while feet should stay planted. */
   @keyframes rawParryRecoil {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: center bottom; }
-    10% { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.95); transform-origin: center bottom; }
-    25% { transform: scaleX(calc(var(--facing, 1) * 0.92)) scaleY(1.08); transform-origin: center bottom; }
-    45% { transform: scaleX(calc(var(--facing, 1) * 1.03)) scaleY(0.97); transform-origin: center bottom; }
-    65% { transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.02); transform-origin: center bottom; }
-    85% { transform: scaleX(calc(var(--facing, 1) * 1.01)) scaleY(0.99); transform-origin: center bottom; }
-    100% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: center bottom; }
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    10% { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.95); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    25% { transform: scaleX(calc(var(--facing, 1) * 0.92)) scaleY(1.08); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    45% { transform: scaleX(calc(var(--facing, 1) * 1.03)) scaleY(0.97); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    65% { transform: scaleX(calc(var(--facing, 1) * 0.98)) scaleY(1.02); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    85% { transform: scaleX(calc(var(--facing, 1) * 1.01)) scaleY(0.99); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
   @keyframes clinchKillThrowSpin {
     0% { transform: scaleX(var(--facing, 1)) rotate(0deg); transform-origin: center center; }
     30% { transform: scaleX(var(--facing, 1)) rotate(30deg); transform-origin: center center; }
     100% { transform: scaleX(var(--facing, 1)) rotate(90deg); transform-origin: center center; }
   }
-  /* Heavy body-slam plant: flatten into the ice, then a short dead-weight
-     jiggle settle. translateY stays planted (rest pose is 10%) — no hop. */
+  /* Heavy body-slam plant: intentional flatten into ice (art padding + plant). */
   @keyframes clinchKillThrowLandSquash {
-    0%   { transform: scaleX(calc(var(--facing, 1) * 1.42)) scaleY(0.42) translateY(22%); transform-origin: center bottom; }
-    16%  { transform: scaleX(calc(var(--facing, 1) * 1.18)) scaleY(0.72) translateY(14%); transform-origin: center bottom; }
-    34%  { transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.06) translateY(9%);  transform-origin: center bottom; }
-    48%  { transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.9)  translateY(12%); transform-origin: center bottom; }
-    62%  { transform: scaleX(calc(var(--facing, 1) * 0.97)) scaleY(1.03) translateY(9.5%); transform-origin: center bottom; }
-    78%  { transform: scaleX(calc(var(--facing, 1) * 1.03)) scaleY(0.97) translateY(10.5%); transform-origin: center bottom; }
-    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(10%); transform-origin: center bottom; }
+    0%   { transform: scaleX(calc(var(--facing, 1) * 1.42)) scaleY(0.42) translateY(22%); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    16%  { transform: scaleX(calc(var(--facing, 1) * 1.18)) scaleY(0.72) translateY(14%); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    34%  { transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(1.06) translateY(9%);  transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    48%  { transform: scaleX(calc(var(--facing, 1) * 1.08)) scaleY(0.9)  translateY(12%); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    62%  { transform: scaleX(calc(var(--facing, 1) * 0.97)) scaleY(1.03) translateY(9.5%); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    78%  { transform: scaleX(calc(var(--facing, 1) * 1.03)) scaleY(0.97) translateY(10.5%); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(10%); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
 `;
 
@@ -1142,7 +1118,8 @@ export const AnimatedFighterContainer = styled.div
           : 99,
         pointerEvents: "none",
         clipPath: "inset(0 0.5% 0 0.5%)",
-        transformOrigin: "center bottom",
+        // Sole origin so sidestep scaleY / hit squash never lift painted feet.
+        transformOrigin: FIGHTER_SOLE_TRANSFORM_ORIGIN,
         // Hit reactions chain a decaying stagger after the contact squash so
         // long-stun launches keep reacting through the knockback slide (see
         // hitStaggerSettle in StyledImage — the keyframes are shared globals).
@@ -1169,26 +1146,25 @@ export const AnimatedFighterContainer = styled.div
     70% { transform: scaleX(var(--facing, 1)) skewX(0.35deg) translateX(0.2px); }
     73% { transform: scaleX(var(--facing, 1)) skewX(0deg) translateX(0); }
   }
-  /* Amp-scaled like StyledImage's hitSquash — every deviation from identity
-     multiplies by --impact-amp so hit strength is visible in the deformation. */
+  /* Amp-scaled like StyledImage's hitSquash — sole-pivoted, skewX lean (no rotate). */
   @keyframes hitSquashContainer {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
-    6% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.25 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.25 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -3% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * 2deg * var(--impact-amp, 1))); }
-    18% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.12 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.12 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -5% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * -4deg * var(--impact-amp, 1))); }
-    35% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.08 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.08 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -2% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * 1.5deg * var(--impact-amp, 1))); }
-    55% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.04 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.04 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -0.5% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * -0.5deg * var(--impact-amp, 1))); }
-    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); }
+    6% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.25 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.25 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -3% * var(--impact-amp, 1))) skewX(calc(var(--facing, 1) * 2deg * var(--impact-amp, 1))); }
+    18% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.12 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.12 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -5% * var(--impact-amp, 1))) skewX(calc(var(--facing, 1) * -4deg * var(--impact-amp, 1))); }
+    35% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.08 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.08 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -2% * var(--impact-amp, 1))) skewX(calc(var(--facing, 1) * 1.5deg * var(--impact-amp, 1))); }
+    55% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.04 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.04 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -0.5% * var(--impact-amp, 1))) skewX(calc(var(--facing, 1) * -0.5deg * var(--impact-amp, 1))); }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); }
   }
 
   /* Burst keyframes start bigger than hitSquash; the amp for burst hits is
      kept near 1 in GameFighter's grading so max deformation stays sane. */
   @keyframes burstHitSquash {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
-    5% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.35 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.35 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -4% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * 3deg * var(--impact-amp, 1))); }
-    15% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.18 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.18 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -7% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * -5deg * var(--impact-amp, 1))); }
-    30% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.12 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.12 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -3% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * 2deg * var(--impact-amp, 1))); }
-    50% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.06 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.06 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -1% * var(--impact-amp, 1))) rotate(calc(var(--facing, 1) * -1deg * var(--impact-amp, 1))); }
-    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) rotate(0deg); }
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); }
+    5% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.35 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.35 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -4% * var(--impact-amp, 1))) skewX(calc(var(--facing, 1) * 3deg * var(--impact-amp, 1))); }
+    15% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.18 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.18 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -7% * var(--impact-amp, 1))) skewX(calc(var(--facing, 1) * -5deg * var(--impact-amp, 1))); }
+    30% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.12 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.12 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -3% * var(--impact-amp, 1))) skewX(calc(var(--facing, 1) * 2deg * var(--impact-amp, 1))); }
+    50% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.06 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.06 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -1% * var(--impact-amp, 1))) skewX(calc(var(--facing, 1) * -1deg * var(--impact-amp, 1))); }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); }
   }
 `;
 

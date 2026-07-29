@@ -17,8 +17,10 @@ const {
   STRIKE_TIP_CHARGED_SPRITE_PX,
   STRIKE_TIP_PALM_SPRITE_PX,
   STRIKE_SKIN_EMBED_PX,
+  STRIKE_PALM_REACH_OVERHANG_PX,
   SLAP_STARTUP_MS,
   AP_LATE_PARRY_MS,
+  SLAP_TIP_POCKET_SLACK_PX,
 } = require("./constants");
 
 // Fighter sprite display width / canvas size → world px per source pixel.
@@ -77,13 +79,17 @@ function getStrikeTipWorld(attackKind, attacker) {
 
 /**
  * Center-to-center distance at which the strike tip meets the victim body
- * (minus a tiny skin embed for impact dig).
+ * (minus a tiny skin embed for impact dig). Palm gets a small overhang past
+ * the art tip so the rooted poke doesn't feel short of the limb.
  */
 function getConnectDistance(attackKind, attacker, victim) {
+  const tipKey = resolveTipKey(attackKind, attacker);
+  const overhang = tipKey === "palm" ? (STRIKE_PALM_REACH_OVERHANG_PX || 0) : 0;
   return (
     getStrikeTipWorld(attackKind, attacker) +
     getVictimBodyHalf(victim) -
-    STRIKE_SKIN_EMBED_PX
+    STRIKE_SKIN_EMBED_PX +
+    overhang
   );
 }
 
@@ -135,6 +141,29 @@ function getHitParkDistance(attackKind, attacker, victim) {
     return Math.max(connect - EXTENSION_HIT_SLACK_PX, 1);
   }
   return connect;
+}
+
+/**
+ * Resting pushbox floor (center-to-center) for this pair — the "pocket" depth
+ * of a slap mash. Matches adjustPlayerPositions' half-width sum.
+ */
+function getSlapPocketDistance(attacker, victim) {
+  const a = HITBOX_DISTANCE_VALUE * ((attacker && attacker.sizeMultiplier) || 1);
+  const b = HITBOX_DISTANCE_VALUE * ((victim && victim.sizeMultiplier) || 1);
+  return a + b;
+}
+
+/**
+ * Pocket→poke quality in [0, 1] from a pre-extension-sep spacing sample.
+ * 0 = belly-to-belly pressure slap; 1 = art-tip poke at max connect.
+ */
+function getSlapTipQuality(distance, attacker, victim) {
+  if (typeof distance !== "number" || !Number.isFinite(distance)) return 0;
+  const pocketEnd = getSlapPocketDistance(attacker, victim) + SLAP_TIP_POCKET_SLACK_PX;
+  const connect = getConnectDistance("slap", attacker, victim);
+  const span = connect - pocketEnd;
+  if (!(span > 1)) return 0;
+  return Math.max(0, Math.min(1, (distance - pocketEnd) / span));
 }
 
 /**
@@ -238,6 +267,8 @@ module.exports = {
   getStrikeTipWorld,
   getConnectDistance,
   getHitParkDistance,
+  getSlapPocketDistance,
+  getSlapTipQuality,
   isWithinConnectRange,
   getContactSeamX,
   applyContactCorrection,

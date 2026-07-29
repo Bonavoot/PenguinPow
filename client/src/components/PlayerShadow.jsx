@@ -31,7 +31,7 @@ export function playerShadowShouldShow(x, y, { forceShow = false } = {}) {
 export function playerShadowBottomY(
   x,
   y,
-  { isSidestepping, isDodging, isBeingThrown, isBeingLifted, isRingOutThrowCutscene, isRopeJumping, isFlapping, isGrabStartup, isThrowing } = {}
+  { isSidestepping, isDodging, isBeingThrown, isRingOutThrowCutscene, isRopeJumping, isFlapping, isGrabStartup, isThrowing } = {}
 ) {
   // Fully off the platform — follow real y (dirt / fall).
   if (isOutsideDohyo(x, y)) return y;
@@ -41,7 +41,6 @@ export function playerShadowBottomY(
     isGrabStartup ||
     isThrowing ||
     isBeingThrown ||
-    isBeingLifted ||
     isRingOutThrowCutscene ||
     isRopeJumping ||
     isFlapping ||
@@ -74,7 +73,6 @@ const PlayerShadow = memo(forwardRef(({
   isRingOutThrowCutscene,
   isRopeJumping,
   isFlapping,
-  isBeingLifted,
   forceShow,
   width,
   height,
@@ -87,7 +85,6 @@ const PlayerShadow = memo(forwardRef(({
     isGrabStartup,
     isThrowing,
     isBeingThrown,
-    isBeingLifted,
     isRingOutThrowCutscene,
     isRopeJumping,
     isFlapping,
@@ -136,7 +133,6 @@ PlayerShadow.propTypes = {
   isRingOutThrowCutscene: PropTypes.bool,
   isRopeJumping: PropTypes.bool,
   isFlapping: PropTypes.bool,
-  isBeingLifted: PropTypes.bool,
   forceShow: PropTypes.bool,
   width: PropTypes.string,
   height: PropTypes.string,

@@ -566,8 +566,8 @@ function createBluePuff(size, seed) {
   return c;
 }
 
-// MATADOR plume — same blob recipe as AP blue, luminous tangerine/orange.
-// Loud like the blue plumes, but clear of CLAMP magenta and AP ice-blue.
+// MATADOR plume — same blob recipe as AP blue, rich metallic gold.
+// Loud + additive like the blue plumes; gold (not orange, not CLAMP magenta).
 function createMatadorPuff(size, seed) {
   const c = document.createElement("canvas");
   c.width = size;
@@ -588,11 +588,11 @@ function createMatadorPuff(size, seed) {
     const br = size * (0.18 + srand() * 0.18);
 
     const grad = ctx.createRadialGradient(bx, by, 0, bx, by, br);
-    grad.addColorStop(0, "rgba(255,230,160,0.98)");
-    grad.addColorStop(0.35, "rgba(255,150,40,0.95)");
-    grad.addColorStop(0.62, "rgba(255,90,20,0.78)");
-    grad.addColorStop(0.85, "rgba(200,50,0,0.4)");
-    grad.addColorStop(1, "rgba(120,30,0,0)");
+    grad.addColorStop(0, "rgba(255,248,210,0.98)");
+    grad.addColorStop(0.32, "rgba(255,220,100,0.95)");
+    grad.addColorStop(0.58, "rgba(232,197,71,0.82)");
+    grad.addColorStop(0.82, "rgba(184,134,11,0.42)");
+    grad.addColorStop(1, "rgba(100,70,10,0)");
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(bx, by, br, 0, Math.PI * 2);
@@ -1675,8 +1675,8 @@ function generateTextures(s) {
     matadorPuff2: createMatadorPuff(r(96), 5926),
     matadorPuff3: createMatadorPuff(r(96), 7182),
     matadorPuff4: createMatadorPuff(r(112), 8453),
-    circleMatador: createChunk(r(24), 255, 160, 50, 0.95),
-    chunkMatador: createChunk(r(12), 255, 120, 30, 0.92),
+    circleMatador: createChunk(r(24), 255, 220, 90, 0.95),
+    chunkMatador: createChunk(r(12), 232, 197, 71, 0.92),
     circleGold: createChunk(r(24), 255, 248, 150, 0.95),
     chunkGold: createChunk(r(12), 255, 238, 110, 0.92),
 
@@ -4489,7 +4489,7 @@ const PRESETS = {
     }
   },
 
-  // MATADOR activation — same plume recipe as regular AP, orange tint.
+  // MATADOR activation — same plume recipe as regular AP, gold tint.
   matadorActivation(engine, { x, y, facing }) {
     const dir = facing || 1;
     const bodyX = x + dir * 10;
@@ -4550,7 +4550,7 @@ const PRESETS = {
       });
     }
 
-    // Orange sparks rising from body area
+    // Gold sparks rising from body area
     for (let i = 0; i < 6; i++) {
       const side = i < 3 ? -1 : 1;
       engine.spawn({
@@ -4599,8 +4599,8 @@ const PRESETS = {
     }
   },
 
-  // Parry stance — rising orange smoke from both sides of the character.
-  // MATADOR stance — same ongoing motes as regular AP, orange tint.
+  // Parry stance — rising gold smoke from both sides of the character.
+  // MATADOR stance — same ongoing motes as regular AP, gold tint.
   matadorStance(engine, { x, y, facing, intensity = 0.5 }) {
     const dir = facing || 1;
     const bodyX = x + dir * 10;

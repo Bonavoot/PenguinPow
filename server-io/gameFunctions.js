@@ -33,11 +33,12 @@ const {
   alignedEntryVelocity,
   takeInheritedVelocity,
   beginGrabStartup,
+  emitStaminaBlocked,
 } = require("./gameUtils");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum inheritance, Phase 3: cadence,
 // Phase 4: analog resolutions).
-const { MASTERY_P1_MOMENTUM, MASTERY_P3_CADENCE, MASTERY_P4_ANALOG } = require("./masteryFlags");
+const { MASTERY_P1_MOMENTUM, MASTERY_P3_CADENCE } = require("./masteryFlags");
 
 // Per-match input audit log (open at first round, close on matchOver)
 const { openLog: openAuditLog, closeLog: closeAuditLog, appendWinType } = require("./inputAuditLog");
@@ -76,7 +77,8 @@ const {
   SLAP_SLIDE_MIN,
   SLAP_SLIDE_MAX,
   CHARGED_STARTUP_MS,
-  CHARGED_ACTIVE_MS,
+  CHARGED_ACTIVE_MIN_MS,
+  CHARGED_ACTIVE_MAX_MS,
   PALM_THRUST_STARTUP_MS,
   PALM_THRUST_ACTIVE_MS,
   PALM_THRUST_HOLD_MS,
@@ -91,13 +93,6 @@ const {
   LOW_KICK_HIT_RECOVERY_MS,
   LOW_KICK_TOTAL_MS,
   LOW_KICK_STAMINA_COST,
-  CHARGED_TIER_LIGHT_MS,
-  CHARGED_TIER_MED_MS,
-  CHARGED_TIER_HEAVY_BASE_MS,
-  CHARGED_TIER_HEAVY_SCALE_MS,
-  CHARGE_DURATION_BASE_MS,
-  CHARGE_DURATION_SCALE_MS,
-  CHARGE_DURATION_EXP,
   GRAB_STATES,
   INPUT_BUFFER_WINDOW_MS,
   POWER_UP_TYPES,
@@ -135,9 +130,6 @@ function cleanupGrabStates(player, opponent) {
     p.clinchShoveLead = null;
     p.deepGripPushStart = 0;
     p.clinchPushRampStart = 0;
-    p.reactBraceDeadline = 0;
-    p.reactBraceRefund = 0;
-    p.reactBraceUsed = false;
   }
 
   // Clean up grabber states
@@ -198,7 +190,7 @@ function cleanupGrabStates(player, opponent) {
   player.clinchStalemateStart = 0;
   player.clinchStalemateLastX = 0;
   player.clinchStalemateLastBalance = 0;
-  // Clinch throw/pull/lift cleanup
+  // Clinch throw/pull cleanup
   player.clinchThrowRequest = null;
   player.clinchThrowRequestTime = 0;
   player.clinchThrowActive = false;
@@ -208,13 +200,7 @@ function cleanupGrabStates(player, opponent) {
   player.isClinchThrowing = false;
   player.isClinchClashing = false;
   player.clinchClashStartTime = 0;
-  player.clinchLiftStartTime = 0;
-  player.clinchLiftStartX = 0;
-  player.clinchLiftDir = 0;
-  player.clinchLiftForwardBlocked = false;
-  player.isBeingLifted = false;
   player.clinchMouse2BufferTime = 0;
-  player.isClinchLifting = false;
   player.isClinchPushing = false;
   player.isClinchPlanting = false;
   player.lastPlantStaminaDrainTime = 0;
@@ -294,7 +280,7 @@ function cleanupGrabStates(player, opponent) {
   opponent.clinchStalemateStart = 0;
   opponent.clinchStalemateLastX = 0;
   opponent.clinchStalemateLastBalance = 0;
-  // Clinch throw/pull/lift cleanup
+  // Clinch throw/pull cleanup
   opponent.clinchThrowRequest = null;
   opponent.clinchThrowRequestTime = 0;
   opponent.clinchThrowActive = false;
@@ -304,13 +290,7 @@ function cleanupGrabStates(player, opponent) {
   opponent.isClinchThrowing = false;
   opponent.isClinchClashing = false;
   opponent.clinchClashStartTime = 0;
-  opponent.clinchLiftStartTime = 0;
-  opponent.clinchLiftStartX = 0;
-  opponent.clinchLiftDir = 0;
-  opponent.clinchLiftForwardBlocked = false;
-  opponent.isBeingLifted = false;
   opponent.clinchMouse2BufferTime = 0;
-  opponent.isClinchLifting = false;
   opponent.isClinchPushing = false;
   opponent.isClinchPlanting = false;
   opponent.lastPlantStaminaDrainTime = 0;
@@ -452,14 +432,11 @@ function handleWinCondition(room, loser, winner, io, winType) {
     }, 1050);
   }
 
-  // Pull-kill victim: let them lie there dazed (eyes open) for a beat after sliding
-  // to a stop, THEN close the eyes as a separate "passed out" moment. This runs on
-  // its own timer (not the winner's bow timeout) so it lands later in the bow window
-  // but still well before the ~3000ms round reset. isBowing here is only the
-  // eyes-closed signal — the belly-laying pose still takes render precedence, so the
-  // victim doesn't actually bow or reposition.
+  // Pull-kill victim: lie dazed (eyes open) briefly after the ~850ms slide, then
+  // close eyes as a "passed out" beat — must land before the ~2000ms round reset.
+  // isBowing here is only the eyes-closed signal; belly-laying still wins for render.
   if (loser.isClinchKillPullVictim) {
-    setPlayerTimeout(loser.id, () => { loser.isBowing = true; }, 2100, "killPullEyesClose");
+    setPlayerTimeout(loser.id, () => { loser.isBowing = true; }, 1200, "killPullEyesClose");
   }
 
   // Store the current states that we want to preserve
@@ -652,12 +629,6 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.isClinchThrowing = false;
     p.isClinchClashing = false;
     p.clinchClashStartTime = 0;
-    p.clinchLiftStartTime = 0;
-    p.clinchLiftStartX = 0;
-    p.clinchLiftDir = 0;
-    p.clinchLiftForwardBlocked = false;
-    p.isBeingLifted = false;
-    p.isClinchLifting = false;
     p.isClinchPushing = false;
     p.isClinchPlanting = false;
     p.isResistingThrow = false;
@@ -1266,29 +1237,14 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   player.isPalmThrust = false;
   player.isLowKick = false;
 
-  // Lunge duration scales with charge.
-  // MASTERY Phase 4 (4.4): a CONTINUOUS curve replaces the 300/500/1000 tier
-  // buckets — attackDuration = 300 + 1700*(charge/100)^1.6. It matches the old
-  // endpoints (charge 0 → 300ms, charge 100 → 2000ms) and keeps low-charge
-  // lunges short, but removes the cliffs between tiers so every extra ms of
-  // charge buys a little more lunge. The priority threshold (30) and kill gates
-  // (50/80) are untouched — those stay legible bets. Flag off ⇒ today's tier
-  // buckets exactly (byte-identical). Tier thresholds: ≤25% light, 26–75% med,
-  // >75% heavy with linear tail.
-  let attackDuration;
-  if (MASTERY_P4_ANALOG) {
-    attackDuration =
-      CHARGE_DURATION_BASE_MS +
-      CHARGE_DURATION_SCALE_MS *
-        Math.pow(Math.max(0, Math.min(chargePercentage, 100)) / 100, CHARGE_DURATION_EXP);
-  } else if (chargePercentage <= 25) {
-    attackDuration = CHARGED_TIER_LIGHT_MS;
-  } else if (chargePercentage <= 75) {
-    attackDuration = CHARGED_TIER_MED_MS;
-  } else {
-    const extraDuration = ((chargePercentage - 50) / 50) * CHARGED_TIER_HEAVY_SCALE_MS;
-    attackDuration = CHARGED_TIER_HEAVY_BASE_MS + extraDuration;
-  }
+  // Honda-style headbutt window: startup → charge-scaled active → whiff recovery.
+  // Lunge travel = startup + active (no multi-second skating hitbox). Range still
+  // grows with charge via lunge SPEED (and a longer active at higher charge).
+  const charge01 = Math.max(0, Math.min(chargePercentage, 100)) / 100;
+  const activeMs =
+    CHARGED_ACTIVE_MIN_MS +
+    (CHARGED_ACTIVE_MAX_MS - CHARGED_ACTIVE_MIN_MS) * charge01;
+  const attackDuration = CHARGED_STARTUP_MS + activeMs;
 
   // Attack-cycle timestamps live on the pausable sim clock (freeze with hitstop)
   const nowSim = simNowForPlayer(player);
@@ -1306,9 +1262,8 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   // === STARTUP FRAMES - Telegraph before attack becomes active ===
   player.isInStartupFrames = true;
   player.startupEndTime = nowSim + CHARGED_STARTUP_MS;
-  // Hitbox stays active from end of startup until the attack ends (full lunge duration).
-  // CHARGED_ACTIVE_MS is no longer used as a cutoff — the lunge IS the active window.
-  player.chargedActiveEndTime = player.attackEndTime;
+  // Hitbox live only during the active window (not a long coast after).
+  player.chargedActiveEndTime = nowSim + CHARGED_STARTUP_MS + activeMs;
   
   // Set timeout to end startup frames
   setPlayerTimeout(
@@ -1793,9 +1748,9 @@ function safelyEndChargedAttack(player, rooms) {
           );
           palmHoldScheduled = true;
         } else {
+          // Whiff: grounded recover + slide forward (no flip / no Y lift).
           player.recoveryDuration = 400; // Was 250ms - now longer for clearer punishment
           player.recoveryDirection = player.facing;
-          // Use movement velocity for natural sliding
           player.movementVelocity = player.facing * -3;
           player.knockbackVelocity = { x: 0, y: 0 };
         }
@@ -1831,6 +1786,24 @@ function safelyEndChargedAttack(player, rooms) {
       player.recoveryStartTime + PALM_THRUST_HIT_RECOVERY_MS
     );
     palmHoldScheduled = true;
+  } else if (!isPalm && attackConnected) {
+    // Connected charged hits end in processHit (recovering + plant). This is
+    // a safety cleanup if attackEndTime still fires with the hit flag set.
+    player.isAttacking = false;
+    player.isSlapAttack = false;
+    player.isPalmThrust = false;
+    player.attackStartTime = 0;
+    player.attackEndTime = 0;
+    player.chargingFacingDirection = null;
+    player.attackType = null;
+    player.chargeAttackPower = 0;
+    player.chargedAttackHit = false;
+    player.chargedActiveEndTime = 0;
+    player.currentAction = null;
+    player.actionLockUntil = 0;
+    player.movementVelocity = 0;
+    player.knockbackVelocity = { x: 0, y: 0 };
+    player.isChargedHitRecoil = false;
   } else {
     player.isAttacking = false;
     player.isSlapAttack = false;
@@ -1878,13 +1851,17 @@ function safelyEndChargedAttack(player, rooms) {
 
             // Execute the buffered action
             // CRITICAL: Block buffered dash if player is being grabbed
-            // Gassed: full dodge still allowed.
+            // Gassed: dodge locked (same as sidestep) — surface OUT OF STAMINA.
             if (action.type === "dash" && !player.isBeingGrabbed && canPlayerDash(player)) {
-              beginPlayerDodge(player, {
-                direction: action.direction,
-                nowSim: simNowForPlayer(player),
-                skipStartup: true, // legacy endlag buffer path had no startup
-              });
+              if (player.isGassed) {
+                emitStaminaBlocked(player, "dodge");
+              } else {
+                beginPlayerDodge(player, {
+                  direction: action.direction,
+                  nowSim: simNowForPlayer(player),
+                  skipStartup: true, // legacy endlag buffer path had no startup
+                });
+              }
             }
           }
         },
@@ -1915,11 +1892,14 @@ function activateBufferedInputAfterGrab(player, rooms) {
     player.bufferedAction &&
     player.bufferedAction.type === "sidestep" &&
     player.bufferExpiryTime &&
-    simNowForPlayer(player) < player.bufferExpiryTime &&
-    !player.isGassed
+    simNowForPlayer(player) < player.bufferExpiryTime
   ) {
     player.bufferedAction = null;
     player.bufferExpiryTime = 0;
+    if (player.isGassed) {
+      emitStaminaBlocked(player, "sidestep");
+      return;
+    }
     const currentRoom = rooms.find(r => r.players.some(p => p.id === player.id));
     const sOpp = currentRoom && currentRoom.players.find(p => p.id !== player.id && !p.isDead);
     if (sOpp && canPlayerSidestep(player)) {
@@ -1950,7 +1930,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
   }
 
   // Priority 0b: Buffered dash (spammed shift while grabbed/thrown)
-  // Gassed: full dodge still buffers — sidestep does not.
+  // Gassed: dodge locked (same as sidestep) — surface OUT OF STAMINA.
   if (
     player.bufferedAction &&
     player.bufferedAction.type === "dash" &&
@@ -1961,6 +1941,10 @@ function activateBufferedInputAfterGrab(player, rooms) {
     const direction = player.bufferedAction.direction;
     player.bufferedAction = null;
     player.bufferExpiryTime = 0;
+    if (player.isGassed) {
+      emitStaminaBlocked(player, "dodge");
+      return;
+    }
     beginPlayerDodge(player, {
       direction,
       nowSim: simNowForPlayer(player),
@@ -1978,7 +1962,11 @@ function activateBufferedInputAfterGrab(player, rooms) {
   }
 
   // Priority 2a: Sidestep (S + SHIFT) - lateral evasion
-  if (player.keys.shift && player.keys.s && !player.keys.mouse2 && !player.isGassed) {
+  if (player.keys.shift && player.keys.s && !player.keys.mouse2) {
+    if (player.isGassed) {
+      emitStaminaBlocked(player, "sidestep");
+      return;
+    }
     const currentRoom = rooms.find(r => r.players.some(p => p.id === player.id));
     const sOpp = currentRoom && currentRoom.players.find(p => p.id !== player.id && !p.isDead);
     if (sOpp && canPlayerSidestep(player)) {
@@ -2008,8 +1996,12 @@ function activateBufferedInputAfterGrab(player, rooms) {
     }
   }
 
-  // Priority 2b: Dodge (shift) — full dodge even while gassed
+  // Priority 2b: Dodge (shift) — locked while gassed (same as sidestep)
   if (player.keys.shift && !player.keys.mouse2 && canPlayerDash(player)) {
+    if (player.isGassed) {
+      emitStaminaBlocked(player, "dodge");
+      return;
+    }
     beginPlayerDodge(player, { nowSim: simNowForPlayer(player) });
     return;
   }
@@ -2134,11 +2126,21 @@ function executeInputBuffer(player, rooms) {
           player.inputBuffer = null;
           return true;
         }
+        if (player.isGassed) {
+          emitStaminaBlocked(player, "flap");
+          player.inputBuffer = null;
+          return true;
+        }
       }
       break;
     }
     case "dodge": {
       if (canPlayerDash(player)) {
+        if (player.isGassed) {
+          emitStaminaBlocked(player, "dodge");
+          player.inputBuffer = null;
+          return true;
+        }
         beginPlayerDodge(player, { nowSim: simNowForPlayer(player) });
         player.inputBuffer = null;
         return true;
@@ -2172,7 +2174,12 @@ function executeInputBuffer(player, rooms) {
       break;
     }
     case "sidestep": {
-      if (canPlayerSidestep(player) && !player.isGassed) {
+      if (canPlayerSidestep(player)) {
+        if (player.isGassed) {
+          emitStaminaBlocked(player, "sidestep");
+          player.inputBuffer = null;
+          return true;
+        }
         const room = rooms.find(r => r.players.some(p => p.id === player.id));
         const sidestepOpponent = room && room.players.find(p => p.id !== player.id && !p.isDead);
         if (sidestepOpponent) {

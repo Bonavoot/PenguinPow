@@ -1773,6 +1773,7 @@ const UiPlayerInfo = ({
   player1ParryRefund = 0,
   player1Balance = 100,
   player1BalanceGain = 0,
+  player1TipDrain = 0,
   player1HasDeepGrip = false,
   player1PostureBroken = false,
   player1ShoveLead = null,
@@ -1786,6 +1787,7 @@ const UiPlayerInfo = ({
   player2ParryRefund = 0,
   player2Balance = 100,
   player2BalanceGain = 0,
+  player2TipDrain = 0,
   player2HasDeepGrip = false,
   player2PostureBroken = false,
   player2ShoveLead = null,
@@ -1857,6 +1859,11 @@ const UiPlayerInfo = ({
   const [p2BalGainKey, setP2BalGainKey] = useState(0);
   const p1BalGainTimer = useRef(null);
   const p2BalGainTimer = useRef(null);
+  // Tip-slap posture drain flinch keys (clear after the flash finishes).
+  const [p1TipDrainKey, setP1TipDrainKey] = useState(0);
+  const [p2TipDrainKey, setP2TipDrainKey] = useState(0);
+  const p1TipDrainTimer = useRef(null);
+  const p2TipDrainTimer = useRef(null);
 
   // ── Impact feedback (heavy hits) ──
   // Bumping the impact counter remounts the ImpactSpark via `key` so its
@@ -1927,6 +1934,29 @@ const UiPlayerInfo = ({
       if (p2BalGainTimer.current) clearTimeout(p2BalGainTimer.current);
     };
   }, [player2BalanceGain]);
+
+  // Tip-slap posture drain — brief vermillion bite on the victim's gauge.
+  useEffect(() => {
+    if (player1TipDrain > 0) {
+      setP1TipDrainKey(player1TipDrain);
+      if (p1TipDrainTimer.current) clearTimeout(p1TipDrainTimer.current);
+      p1TipDrainTimer.current = setTimeout(() => setP1TipDrainKey(0), 420);
+    }
+    return () => {
+      if (p1TipDrainTimer.current) clearTimeout(p1TipDrainTimer.current);
+    };
+  }, [player1TipDrain]);
+
+  useEffect(() => {
+    if (player2TipDrain > 0) {
+      setP2TipDrainKey(player2TipDrain);
+      if (p2TipDrainTimer.current) clearTimeout(p2TipDrainTimer.current);
+      p2TipDrainTimer.current = setTimeout(() => setP2TipDrainKey(0), 420);
+    }
+    return () => {
+      if (p2TipDrainTimer.current) clearTimeout(p2TipDrainTimer.current);
+    };
+  }, [player2TipDrain]);
 
   // ── Post-reset throttle bypass ──
   // After a round reset, the first stamina update from the server may arrive
@@ -2432,6 +2462,7 @@ const UiPlayerInfo = ({
                 danger={b1Danger}
                 broken={player1PostureBroken}
                 gainKey={p1BalGainKey}
+                drainKey={p1TipDrainKey}
                 deepGripThreat={player2HasDeepGrip}
                 deepGripHold={player1HasDeepGrip}
               />
@@ -2587,6 +2618,7 @@ const UiPlayerInfo = ({
                 danger={b2Danger}
                 broken={player2PostureBroken}
                 gainKey={p2BalGainKey}
+                drainKey={p2TipDrainKey}
                 deepGripThreat={player1HasDeepGrip}
                 deepGripHold={player2HasDeepGrip}
               />
@@ -2656,6 +2688,7 @@ UiPlayerInfo.propTypes = {
   player1ParryRefund: PropTypes.number,
   player1Balance: PropTypes.number,
   player1BalanceGain: PropTypes.number,
+  player1TipDrain: PropTypes.number,
   player1HasDeepGrip: PropTypes.bool,
   player1PostureBroken: PropTypes.bool,
   player2Stamina: PropTypes.number,
@@ -2668,6 +2701,7 @@ UiPlayerInfo.propTypes = {
   player2ParryRefund: PropTypes.number,
   player2Balance: PropTypes.number,
   player2BalanceGain: PropTypes.number,
+  player2TipDrain: PropTypes.number,
   player2HasDeepGrip: PropTypes.bool,
   player2PostureBroken: PropTypes.bool,
   player1ShoveLead: PropTypes.number,
