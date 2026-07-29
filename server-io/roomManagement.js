@@ -543,6 +543,8 @@ function resetRoomAndPlayers(room, io) {
     player.isCounterGrabbed = false;
     player.isArmClamped = false;
     player.clinchThrowFailStagger = false;
+    player.isClinchOpen = false;
+    player.clinchOpenUntil = 0;
     player.hasDeepGrip = false;
     player.clinchShoveLead = null;
     player.deepGripPushStart = 0;
@@ -607,6 +609,14 @@ function resetRoomAndPlayers(room, io) {
     player.isRingOutFreezeActive = false;
     player.ringOutFreezeEndTime = 0;
     player.ringOutThrowDirection = null;
+    player.isRingOutPushCutscene = false;
+    player.ringOutPushStartTime = 0;
+    player.ringOutPushDuration = 0;
+    player.ringOutPushStartX = 0;
+    player.ringOutPushTargetX = 0;
+    player.ringOutPushSettled = false;
+    player.ringOutPushAttachDistance = 0;
+    player.ringOutPushAllowSeparate = false;
     player.inputLockUntil = 0;
     player.isFallingOffDohyo = false;
     player.lastHitType = null;

@@ -2,7 +2,9 @@ import { useEffect, useState, useRef, memo } from "react";
 import { createPortal } from "react-dom";
 import styled from "styled-components";
 import PropTypes from "prop-types";
-import SumoHypeStamp, { HYPE_DURATION_MS } from "./SumoHypeStamp";
+import SumoAnnouncementBanner, {
+  ANNOUNCEMENT_DURATION_MS,
+} from "./SumoAnnouncementBanner";
 import clampedSheet from "../assets/clamped-effect.png";
 
 // ── Counter-grab "LOCKED / CLAMPED" burst (sprite sheet) ─────────────────────
@@ -10,7 +12,7 @@ import clampedSheet from "../assets/clamped-effect.png";
 // drawn 4x4 / 16-frame magenta electric burst (frame 0 empty; content 1–15). The
 // art's native pink/purple already matches the counter-grab theme, so no recolor
 // is needed. Played once, fast, for the same snappy read as the other sprite FX.
-// The "COUNTER GRAB" side banner is kept (it's the shared announcement system).
+// "COUNTER GRAB" callout lives on the hero info rail (same seat as COUNTER HIT).
 const CL_GRID = 4;
 const CL_START_FRAME = 1;
 const CL_END_FRAME = 15;
@@ -18,6 +20,7 @@ const CL_DURATION_MS = 340; // 15 frames → ~23ms/frame: snappy, display-synced
 const CL_SIZE_CQW = 20;
 const CL_BASELINE_OFFSET_Y = 0;
 const CL_CENTER_OFFSET_X = 0;
+const EFFECT_DURATION = ANNOUNCEMENT_DURATION_MS;
 
 const ClampSprite = styled.div`
   position: absolute;
@@ -91,8 +94,6 @@ const CounterGrabEffect = ({ position }) => {
   const processedCountersRef = useRef(new Set());
   const effectIdCounter = useRef(0);
   const pendingTimeouts = useRef([]);
-  // Kept for the hype stamp window (sprite unmounts itself after its burst).
-  const EFFECT_DURATION = HYPE_DURATION_MS;
 
   useEffect(() => {
     if (!position || !position.counterId) return;
@@ -153,9 +154,9 @@ const CounterGrabEffect = ({ position }) => {
             <ClampSpriteBurst x={effect.x} y={effect.y} />
             {hudEl &&
               createPortal(
-                <SumoHypeStamp
+                <SumoAnnouncementBanner
+                  text={"COUNTER GRAB"}
                   type="countergrab"
-                  text={"COUNTER\nGRAB"}
                   isLeftSide={isLeftSide}
                 />,
                 hudEl

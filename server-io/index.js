@@ -506,13 +506,14 @@ function tick(delta) {
       if (
         player1.isGrabbing &&
         player1.grabbedOpponent &&
-        !player1.isHit
+        !player1.isHit &&
+        !player1.isRingOutPushCutscene
       ) {
         // Only handle grab state if not pushing
         const opponent = room.players.find(
           (p) => p.id === player1.grabbedOpponent
         );
-        if (opponent && !opponent.isHit) {
+        if (opponent && !opponent.isHit && !opponent.isRingOutPushCutscene) {
           // Keep opponent at fixed distance during grab
           const fixedDistance =
             Math.round(75 * 0.96) * (opponent.sizeMultiplier || 1);
@@ -527,11 +528,74 @@ function tick(delta) {
         }
       }
 
+      // FORCE OUT: ease the pair past the rope. Clinch attach stays locked until
+      // pushbox separation is explicitly armed (after idle poses have committed).
+      if (
+        room.gameOver &&
+        player1.isRingOutPushCutscene &&
+        player2.isRingOutPushCutscene
+      ) {
+        const elapsed = now - (player1.ringOutPushStartTime || now);
+        const duration = player1.ringOutPushDuration || 650;
+        const allowSeparate =
+          player1.ringOutPushAllowSeparate || player2.ringOutPushAllowSeparate;
+
+        for (const p of [player1, player2]) {
+          const startX = p.ringOutPushStartX ?? p.x;
+          const targetX = p.ringOutPushTargetX ?? p.x;
+          if (elapsed < duration) {
+            const t = duration > 0 ? elapsed / duration : 1;
+            const eased = 1 - Math.pow(1 - t, 3);
+            p.x = startX + (targetX - startX) * eased;
+          } else if (!p.ringOutPushSettled) {
+            p.x = targetX;
+            p.ringOutPushSettled = true;
+          }
+          p.y = GROUND_LEVEL;
+          p.movementVelocity = 0;
+          p.knockbackVelocity.x = 0;
+          p.knockbackVelocity.y = 0;
+          p.isFallingOffDohyo = false;
+        }
+
+        // Hold win-time clinch gap until separation is armed — covers the shove,
+        // the post-shove clinch hold, AND the idle-but-not-yet-separated beat.
+        if (!allowSeparate) {
+          const grabber = player1.isGrabbing
+            ? player1
+            : player2.isGrabbing
+              ? player2
+              : player1.ringOutPushStartX <= player2.ringOutPushStartX
+                ? player1
+                : player2;
+          const grabbed = grabber === player1 ? player2 : player1;
+          const attach =
+            grabber.ringOutPushAttachDistance ||
+            grabbed.ringOutPushAttachDistance ||
+            Math.round(75 * 0.96);
+          const grabbedOnRight =
+            (grabbed.ringOutPushStartX ?? grabbed.x) >=
+            (grabber.ringOutPushStartX ?? grabber.x);
+          grabbed.x = grabbedOnRight
+            ? grabber.x + attach
+            : grabber.x - attach;
+        }
+      }
+
       // Pushbox: always resolve overlap when players are colliding.
       // arePlayersColliding already returns false during dodge/grab/throw states.
-      // Skip during game over — boundary clamping inside adjustPlayerPositions
-      // would drag the loser back to the map edge after isHit expires.
-      if (!room.gameOver && arePlayersColliding(player1, player2)) {
+      // Normally skip during game over (MAP clamps drag ring-out losers back).
+      // FORCE OUT: only after idle poses AND the separate-delay — never under clinch.
+      const forceOutIdlePushbox =
+        room.gameOver &&
+        (player1.ringOutPushAllowSeparate || player2.ringOutPushAllowSeparate) &&
+        !player1.inClinch &&
+        !player2.inClinch &&
+        !player1.isGrabbing &&
+        !player2.isGrabbing &&
+        !player1.isBeingGrabbed &&
+        !player2.isBeingGrabbed;
+      if ((!room.gameOver || forceOutIdlePushbox) && arePlayersColliding(player1, player2)) {
         adjustPlayerPositions(player1, player2, delta);
       }
 
@@ -799,6 +863,25 @@ function tick(delta) {
       if (isRoomInHitstop(room)) {
         return;
       }
+
+      // FORCE OUT: pair block owns X (incl. clinch-attach lock). Here only pin
+      // Y/velocities and honor round reset — don't overwrite spacing.
+      if (player.isRingOutPushCutscene) {
+        player.y = GROUND_LEVEL;
+        player.movementVelocity = 0;
+        player.knockbackVelocity.x = 0;
+        player.knockbackVelocity.y = 0;
+        if (
+          room.gameOver &&
+          now - room.gameOverTime >= 2000 &&
+          !room.matchOver &&
+          !room.bashoAwaitingReset
+        ) {
+          resetRoomAndPlayers(room, io);
+        }
+        return;
+      }
+
       const isGameOverLoser = room.gameOver && player.id === room.loserId;
       if (isGameOverLoser && !player.isHit && !player.isCinematicKillVictim &&
           !player.isClinchKillPullVictim && !player.isClinchKillThrowVictim &&
@@ -1357,9 +1440,7 @@ function tick(delta) {
               player.inClinch = true;
               player.clinchAction = "push";
               player.gripAcquiredTime = now;
-              // Don't count the grab-attempt M2 as belt hold — body arms until
-              // they release and re-press (or weren't holding through connect).
-              player.clinchBeltRequiresM2Release = true;
+              player.clinchBeltRequiresM2Release = false;
               opponent.hasGrip = true;
               opponent.inClinch = true;
               opponent.clinchAction = "neutral";
@@ -1508,7 +1589,13 @@ function tick(delta) {
       }
 
       // Add separate boundary check for grabbing state
-      if (player.isGrabbing && !player.isThrowing && !player.isBeingThrown) {
+      // FORCE OUT cutscene intentionally walks past the rope — don't clamp.
+      if (
+        player.isGrabbing &&
+        !player.isThrowing &&
+        !player.isBeingThrown &&
+        !player.isRingOutPushCutscene
+      ) {
         // Calculate effective boundary based on player size with different multipliers
         const sizeOffset = 0;
 
@@ -1755,7 +1842,11 @@ function tick(delta) {
           } else if (player.isClinchKillThrow) {
             throwDistance = CLINCH_KILL_THROW_DISTANCE;
           } else {
-            throwDistance = CLINCH_THROW_DISTANCE;
+            // Clinch Flow P2 — Balance-scaled travel (stamped at resolve).
+            throwDistance =
+              player.clinchThrowArcDistance > 0
+                ? player.clinchThrowArcDistance
+                : CLINCH_THROW_DISTANCE;
           }
 
           let newX =
@@ -2930,7 +3021,7 @@ function tick(delta) {
           player.inClinch = true;
           player.clinchAction = "push";
           player.gripAcquiredTime = now;
-          player.clinchBeltRequiresM2Release = true;
+          player.clinchBeltRequiresM2Release = false;
           opponent.hasGrip = true;
           opponent.inClinch = true;
           opponent.clinchAction = "neutral";

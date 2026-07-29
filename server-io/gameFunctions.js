@@ -124,8 +124,20 @@ function cleanupGrabStates(player, opponent) {
     timeoutManager.clearPlayerSpecific(p.id, "clinchJoltRecovery");
     timeoutManager.clearPlayerSpecific(p.id, "clinchJoltCooldown");
     timeoutManager.clearPlayerSpecific(p.id, "clinchThrowFailStagger");
+    timeoutManager.clearPlayerSpecific(p.id, "clinchPerfectBraceFlash");
     p.isArmClamped = false;
     p.clinchThrowFailStagger = false;
+    p.isClinchOpen = false;
+    p.clinchOpenUntil = 0;
+    p.clinchThrowUsedDeepGrip = false;
+    p.clinchThrowWasCounter = false;
+    p.isClinchCommittedDrive = false;
+    p.isClinchPerfectBracing = false;
+    p.clinchDriveHoldStart = 0;
+    p.clinchDrivePlantCancelUntil = 0;
+    p.clinchPushLossStart = 0;
+    p.clinchBraceSimTime = 0;
+    p.clinchBracePressGameTime = 0;
     p.hasDeepGrip = false;
     p.clinchShoveLead = null;
     p.deepGripPushStart = 0;
@@ -197,15 +209,28 @@ function cleanupGrabStates(player, opponent) {
   player.clinchThrowType = null;
   player.clinchThrowStartTime = 0;
   player.clinchThrowCooldown = false;
+  player.clinchThrowUsedDeepGrip = false;
   player.isClinchThrowing = false;
   player.isClinchClashing = false;
   player.clinchClashStartTime = 0;
   player.clinchMouse2BufferTime = 0;
+  player.clinchWTapTime = 0;
+  player.clinchAwayTapTime = 0;
+  player.clinchTechniquePressGameTime = 0;
   player.isClinchPushing = false;
   player.isClinchPlanting = false;
   player.lastPlantStaminaDrainTime = 0;
   player.isResistingThrow = false;
   player.isResistingPull = false;
+  player.isClinchOpen = false;
+  player.clinchOpenUntil = 0;
+  player.isClinchCommittedDrive = false;
+  player.isClinchPerfectBracing = false;
+  player.clinchDriveHoldStart = 0;
+  player.clinchDrivePlantCancelUntil = 0;
+  player.clinchPushLossStart = 0;
+  player.clinchBraceSimTime = 0;
+  player.clinchBracePressGameTime = 0;
   // Clinch jolt cleanup
   player.isClinchJolting = false;
   player.clinchJoltRecovery = false;
@@ -287,15 +312,28 @@ function cleanupGrabStates(player, opponent) {
   opponent.clinchThrowType = null;
   opponent.clinchThrowStartTime = 0;
   opponent.clinchThrowCooldown = false;
+  opponent.clinchThrowUsedDeepGrip = false;
   opponent.isClinchThrowing = false;
   opponent.isClinchClashing = false;
   opponent.clinchClashStartTime = 0;
   opponent.clinchMouse2BufferTime = 0;
+  opponent.clinchWTapTime = 0;
+  opponent.clinchAwayTapTime = 0;
+  opponent.clinchTechniquePressGameTime = 0;
   opponent.isClinchPushing = false;
   opponent.isClinchPlanting = false;
   opponent.lastPlantStaminaDrainTime = 0;
   opponent.isResistingThrow = false;
   opponent.isResistingPull = false;
+  opponent.isClinchOpen = false;
+  opponent.clinchOpenUntil = 0;
+  opponent.isClinchCommittedDrive = false;
+  opponent.isClinchPerfectBracing = false;
+  opponent.clinchDriveHoldStart = 0;
+  opponent.clinchDrivePlantCancelUntil = 0;
+  opponent.clinchPushLossStart = 0;
+  opponent.clinchBraceSimTime = 0;
+  opponent.clinchBracePressGameTime = 0;
   // Clinch jolt cleanup
   opponent.isClinchJolting = false;
   opponent.clinchJoltRecovery = false;
@@ -384,6 +422,10 @@ function handleWinCondition(room, loser, winner, io, winType) {
     isMatchEnd = winCount > 1;
   }
 
+  // FORCE OUT (grabPush) holds the push/being-grabbed pose through the callout
+  // — no bow. Other win types still bow after the result banner.
+  const skipBow = winType === "grabPush";
+
   if (isMatchEnd) {
     io.in(room.id).emit("match_over", {
       isMatchOver: true,
@@ -395,24 +437,26 @@ function handleWinCondition(room, loser, winner, io, winType) {
     // Clear wins AFTER we've stored the count (will be used in game_over event below)
     winner.wins = [];
     loser.wins = [];
-    setPlayerTimeout(winner.id, () => {
-      winner.y = GROUND_LEVEL;
-      winner.isBowing = true;
-      
-      const killVictimStaysDown = loser.isCinematicKillVictim || loser.isClinchKillThrowVictim || loser.isClinchKillPullVictim;
-      if (killVictimStaysDown) {
-        // Kill victims stay in their final pose — no bowing, no repositioning
-      } else {
-        const loserFellOffDohyo = 
-          loser.isFallingOffDohyo || 
-          isOutsideDohyo(loser.x, loser.y) || 
-          loser.y < GROUND_LEVEL;
-        const loserGroundLevel = loserFellOffDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
-        loser.y = loserGroundLevel;
-        loser.isBowing = true;
-      }
-    }, 1050);
-  } else {
+    if (!skipBow) {
+      setPlayerTimeout(winner.id, () => {
+        winner.y = GROUND_LEVEL;
+        winner.isBowing = true;
+        
+        const killVictimStaysDown = loser.isCinematicKillVictim || loser.isClinchKillThrowVictim || loser.isClinchKillPullVictim;
+        if (killVictimStaysDown) {
+          // Kill victims stay in their final pose — no bowing, no repositioning
+        } else {
+          const loserFellOffDohyo = 
+            loser.isFallingOffDohyo || 
+            isOutsideDohyo(loser.x, loser.y) || 
+            loser.y < GROUND_LEVEL;
+          const loserGroundLevel = loserFellOffDohyo ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
+          loser.y = loserGroundLevel;
+          loser.isBowing = true;
+        }
+      }, 1050);
+    }
+  } else if (!skipBow) {
     setPlayerTimeout(winner.id, () => {
       winner.y = GROUND_LEVEL;
       winner.isBowing = true;
@@ -626,11 +670,22 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.clinchThrowType = null;
     p.clinchThrowStartTime = 0;
     p.clinchThrowCooldown = false;
+    p.clinchThrowUsedDeepGrip = false;
     p.isClinchThrowing = false;
     p.isClinchClashing = false;
     p.clinchClashStartTime = 0;
     p.isClinchPushing = false;
     p.isClinchPlanting = false;
+    p.isClinchOpen = false;
+    p.clinchOpenUntil = 0;
+    p.isClinchCommittedDrive = false;
+    p.isClinchPerfectBracing = false;
+    p.clinchDriveHoldStart = 0;
+    p.clinchDrivePlantCancelUntil = 0;
+    p.clinchPushLossStart = 0;
+    p.clinchBraceSimTime = 0;
+    p.clinchBracePressGameTime = 0;
+    p.clinchThrowArcDistance = 0;
     p.isResistingThrow = false;
     p.isResistingPull = false;
     p.isClinchJolting = false;
@@ -1661,8 +1716,13 @@ function adjustPlayerPositions(player1, player2, delta) {
   const leftBoundary = MAP_LEFT_BOUNDARY;
   const rightBoundary = MAP_RIGHT_BOUNDARY;
 
+  // FORCE OUT cutscene parks fighters past the rope — don't yank them back
+  // to MAP while pushbox un-overlaps them into idle spacing.
+  const skipMapClamp =
+    player1.isRingOutPushCutscene || player2.isRingOutPushCutscene;
+
   // Boundary enforcement with remainder transfer
-  if (!player1.isHit) {
+  if (!skipMapClamp && !player1.isHit) {
     const clamped = Math.max(leftBoundary, Math.min(player1.x, rightBoundary));
     if (clamped !== player1.x) {
       const remainder = Math.abs(player1.x - clamped);
@@ -1672,7 +1732,7 @@ function adjustPlayerPositions(player1, player2, delta) {
       }
     }
   }
-  if (!player2.isHit) {
+  if (!skipMapClamp && !player2.isHit) {
     const clamped = Math.max(leftBoundary, Math.min(player2.x, rightBoundary));
     if (clamped !== player2.x) {
       const remainder = Math.abs(player2.x - clamped);
@@ -1684,10 +1744,10 @@ function adjustPlayerPositions(player1, player2, delta) {
   }
 
   // Final safety clamp
-  if (!player1.isHit) {
+  if (!skipMapClamp && !player1.isHit) {
     player1.x = Math.max(leftBoundary, Math.min(player1.x, rightBoundary));
   }
-  if (!player2.isHit) {
+  if (!skipMapClamp && !player2.isHit) {
     player2.x = Math.max(leftBoundary, Math.min(player2.x, rightBoundary));
   }
 

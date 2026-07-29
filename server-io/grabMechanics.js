@@ -31,8 +31,9 @@ function correctFacingAfterGrabOrThrow(player, opponent) {
   }
 }
 
-// Mutual grab: both players grab simultaneously → immediately enter mutual clinch (both get grips).
-// No tech animation, no burst push — straight to clinch.
+// Mutual grab: both grab at once → same clinch as a normal connect, but
+// neither side gets the Phase A burst (no one won the initiate). No special
+// tech pose / TECH VFX — the missing shove is the tell. (Headbonk art later.)
 function executeGrabTech(player1, player2, room, io) {
   player1.isGrabStartup = false;
   player1.isGrabbingMovement = false;
@@ -58,9 +59,14 @@ function executeGrabTech(player1, player2, room, io) {
   timeoutManager.clearPlayerSpecific(player1.id, "grabMovementTimeout");
   timeoutManager.clearPlayerSpecific(player2.id, "grabMovementTimeout");
 
-  triggerHitstopAndEmit(io, room, HITSTOP_GRAB_MS, "grab_tech");
+  player1.isGrabTeching = false;
+  player2.isGrabTeching = false;
+  player1.grabTechRole = null;
+  player2.grabTechRole = null;
 
-  // Immediately enter mutual clinch (both get grips, no burst push)
+  // Same hitstop as a normal grab — not a special "TECH" beat.
+  triggerHitstopAndEmit(io, room, HITSTOP_GRAB_MS, "grab");
+
   const clinchNow = simNow(room);
   player1.isGrabbing = true;
   player1.grabStartTime = clinchNow;
@@ -69,9 +75,8 @@ function executeGrabTech(player1, player2, room, io) {
   player1.inClinch = true;
   player1.clinchAction = "neutral";
   player1.gripAcquiredTime = clinchNow;
-  // Both may still be holding the M2 that started the grab attempt — require
-  // a release before belt arms (same as normal connect).
-  player1.clinchBeltRequiresM2Release = true;
+  player1.clinchBeltRequiresM2Release = false;
+  // No Phase A burst — simultaneous initiate.
   player1.isGrabPushing = false;
   player1.grabPushStartTime = 0;
 
@@ -80,7 +85,8 @@ function executeGrabTech(player1, player2, room, io) {
   player2.inClinch = true;
   player2.clinchAction = "neutral";
   player2.gripAcquiredTime = clinchNow;
-  player2.clinchBeltRequiresM2Release = true;
+  player2.clinchBeltRequiresM2Release = false;
+  player2.isBeingGrabPushed = false;
 
   const dist = CLINCH_ATTACHED_DISTANCE * (player2.sizeMultiplier || 1);
   if (player1.x < player2.x) {

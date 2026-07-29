@@ -376,8 +376,18 @@ function createInitialPlayerState(overrides = {}) {
     isCounterGrabbed: false,
     isArmClamped: false,
     clinchThrowFailStagger: false,
+    isClinchOpen: false,
+    clinchOpenUntil: 0,
     hasDeepGrip: false,
     clinchShoveLead: null,
+    isClinchCommittedDrive: false,
+    isClinchPerfectBracing: false,
+    clinchDriveHoldStart: 0,
+    clinchDrivePlantCancelUntil: 0,
+    clinchPushLossStart: 0,
+    clinchBraceSimTime: 0,
+    clinchBracePressGameTime: 0,
+    clinchThrowArcDistance: 0,
     // MASTERY Phase 2 (posture coupling): broken-posture "openable" tell,
     // derived from `balance` each tick behind MASTERY_P2_POSTURE (false when
     // the flag is off).
@@ -409,6 +419,10 @@ function createInitialPlayerState(overrides = {}) {
     isResistingPull: false,
     lastResistStaminaDrainTime: 0,
     clinchMouse2BufferTime: 0,
+    clinchWTapTime: 0,
+    clinchAwayTapTime: 0,
+    clinchTechniquePressGameTime: 0,
+    sJustPressed: false,
 
     // === Clinch throw/pull ===
     clinchThrowRequest: null,
@@ -416,7 +430,9 @@ function createInitialPlayerState(overrides = {}) {
     clinchThrowActive: false,
     clinchThrowType: null,
     clinchThrowStartTime: 0,
-    clinchThrowCooldown: false,
+    clinchThrowCooldown: false, // retired (Open/recovery); kept for safe cleanup
+    clinchThrowUsedDeepGrip: false,
+    clinchThrowWasCounter: false,
     isClinchThrowing: false,
     isClinchClashing: false,
     clinchClashStartTime: 0,
@@ -426,7 +442,7 @@ function createInitialPlayerState(overrides = {}) {
     // === Clinch jolt ===
     isClinchJolting: false,
     clinchJoltRecovery: false,
-    clinchJoltCooldown: false,
+    clinchJoltCooldown: false, // retired; kept for safe cleanup
     clinchJoltStartTime: 0,
     isBeingClinchJolted: false,
     clinchJoltPlantInterrupt: false,
@@ -463,6 +479,15 @@ function createInitialPlayerState(overrides = {}) {
     ringOutFreezeEndTime: 0,
     ringOutThrowDirection: null,
     pendingRingOutThrowTarget: null,
+    // FORCE OUT continued-push cutscene (replaces throw hop for grabPush)
+    isRingOutPushCutscene: false,
+    ringOutPushStartTime: 0,
+    ringOutPushDuration: 0,
+    ringOutPushStartX: 0,
+    ringOutPushTargetX: 0,
+    ringOutPushSettled: false,
+    ringOutPushAttachDistance: 0,
+    ringOutPushAllowSeparate: false,
 
     // === Input ===
     keys: createInitialKeys(),

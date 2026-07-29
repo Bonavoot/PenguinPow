@@ -12,6 +12,7 @@ const {
   CHARGE_FULL_POWER_MS,
   LOW_KICK_ENABLED,
   GRAB_BREAK_REACTION_LOCK_MS,
+  CLINCH_THROW_CHORD_WINDOW_MS,
 } = require("./constants");
 
 const {
@@ -33,6 +34,8 @@ const {
   simNowForPlayer,
   logVerbInitiation,
   lagCompensatedParryStart,
+  lagCompensatedClinchInputStart,
+  lagCompensatedClinchBraceStart,
   canArmAttackParry,
   armAttackParry,
   wantsMatadorChord,
@@ -512,6 +515,7 @@ function processInputPacket(room, player, data, io, rooms) {
     player.wJustPressed = !!rising.w;
     player.aJustPressed = !!rising.a;
     player.dJustPressed = !!rising.d;
+    player.sJustPressed = !!rising.s;
     player.fJustPressed = !!rising.f;
     player.spaceJustPressed = !!rising[" "];
 
@@ -1251,11 +1255,11 @@ function processInputPacket(room, player, data, io, rooms) {
   if (
     player.mouse1JustPressed && player.hasGrip && player.inClinch &&
     !player.isArmClamped &&
-    !player.isClinchJolting && !player.clinchJoltRecovery && !player.clinchJoltCooldown &&
+    !player.isClinchJolting && !player.clinchJoltRecovery &&
     !player.clinchThrowActive && !player.isClinchClashing &&
     !player.isResistingThrow && !player.isResistingPull &&
     !player.isClinchJoltClashing && !player.clinchJoltRequest &&
-    !player.clinchThrowFailStagger
+    !player.clinchThrowFailStagger && !player.isClinchOpen
   ) {
     const joltNow = simNowForPlayer(player);
     const gripAt = player.gripAcquiredTime || 0;
@@ -1272,14 +1276,15 @@ function processInputPacket(room, player, data, io, rooms) {
   // Reaction lock: Space during the first window after grip connect is ignored
   // (no latch) so late open-game parries don't become breaks.
   // GASSED: hard-locked — surface the same "OUT OF STAMINA" cue as dodge/flap.
+  // Break is allowed during opponent technique startup (expensive escape).
+  // Blocked while Open / own technique / jolt recovery.
   if (
     player.spaceJustPressed && player.hasGrip && player.inClinch &&
     !player.isArmClamped &&
     !player.isGassed &&
     !player.clinchThrowActive && !player.isClinchClashing &&
     !player.isClinchJolting && !player.isClinchJoltClashing && !player.clinchJoltRecovery &&
-    !player.clinchThrowFailStagger &&
-    !player.isResistingThrow && !player.isResistingPull &&
+    !player.clinchThrowFailStagger && !player.isClinchOpen &&
     !player.clinchBreakRequest && !player.isGrabBreaking && !player.isGrabBreakCountered &&
     !player.isGrabBreakSeparating
   ) {
@@ -1298,8 +1303,7 @@ function processInputPacket(room, player, data, io, rooms) {
     player.isGassed &&
     !player.clinchThrowActive && !player.isClinchClashing &&
     !player.isClinchJolting && !player.isClinchJoltClashing && !player.clinchJoltRecovery &&
-    !player.clinchThrowFailStagger &&
-    !player.isResistingThrow && !player.isResistingPull &&
+    !player.clinchThrowFailStagger && !player.isClinchOpen &&
     !player.isGrabBreaking && !player.isGrabBreakCountered &&
     !player.isGrabBreakSeparating
   ) {
@@ -1309,50 +1313,106 @@ function processInputPacket(room, player, data, io, rooms) {
     }
   }
 
-  // === CLINCH THROW/PULL: Mouse2 + direction while in clinch with grip ===
-  //   THROW — Mouse2 + W
-  //   PULL  — Mouse2 + away
-  // Detects three patterns:
-  //   1) Mouse2 just pressed + direction already held
-  //   2) Mouse2 already held + relevant key just pressed
-  //   3) Mouse2 just pressed, direction arrives within 200ms buffer
-  // Holding M2 also drives the belt-arm pose (isClinchBeltHolding).
-  // The M2 that started the grab must be released first — same gate as belt pose.
-  // ARM CLAMP: clamped victims cannot throw during the punish burst.
+  // === CLINCH PERFECT BRACE: rising Plant intent while a technique is incoming ===
+  // Stamp lag-compensated press time so the final-window check is ping-fair.
+  if (player.inClinch && player.hasGrip && !player.isClinchOpen && !player.clinchThrowFailStagger) {
+    const otherForBrace = room.players.find((p) => p.id !== player.id);
+    if (otherForBrace) {
+      const awayKey = player.x < otherForBrace.x ? "a" : "d";
+      const awayEdge = awayKey === "a" ? player.aJustPressed : player.dJustPressed;
+      const plantEdge = !!(awayEdge || player.sJustPressed);
+      const towardKey = awayKey === "a" ? "d" : "a";
+      const towardHeld = !!player.keys[towardKey];
+      if (plantEdge && !towardHeld) {
+        const completingKey = awayEdge ? awayKey : "s";
+        const pressGameTime = pressGameTimeFromEvents(data, completingKey);
+        if (pressGameTime) player.clinchBracePressGameTime = pressGameTime;
+        player.clinchBraceSimTime = lagCompensatedClinchBraceStart(
+          player,
+          simNowForPlayer(player)
+        );
+      }
+    }
+  }
+
+  // === CLINCH THROW/PULL: Mouse2 + direction chord (either order) ===
+  //   THROW — M2 + W
+  //   PULL  — M2 + away
+  // Either input can be the tap that completes the chord while the other is
+  // held or was tapped within the window. Holding M2 alone is still belt pose.
+  // Tradeoff: holding away (Plant) + tapping M2 will pull — plant with S, or
+  // keep M2 held, if you only want belt arms.
+  if (player.wJustPressed) {
+    player.clinchWTapTime = simNowForPlayer(player);
+  }
+  {
+    const otherForAway = room.players.find((p) => p.id !== player.id);
+    if (otherForAway) {
+      const awayKey = player.x < otherForAway.x ? "a" : "d";
+      const awayJustPressed = awayKey === "a" ? player.aJustPressed : player.dJustPressed;
+      if (awayJustPressed) player.clinchAwayTapTime = simNowForPlayer(player);
+    }
+  }
+  if (player.mouse2JustPressed) {
+    player.clinchMouse2BufferTime = simNowForPlayer(player);
+  }
+
   if (
-    player.keys.mouse2 && player.hasGrip && player.inClinch &&
-    !player.clinchBeltRequiresM2Release &&
+    player.hasGrip && player.inClinch &&
     !player.isArmClamped &&
-    !player.clinchThrowActive && !player.clinchThrowCooldown && !player.isClinchClashing &&
-    !player.clinchThrowRequest && !player.clinchThrowFailStagger &&
-    !player.isResistingThrow && !player.isResistingPull
+    !player.clinchThrowActive && !player.isClinchClashing &&
+    !player.clinchThrowRequest &&
+    !player.clinchThrowFailStagger && !player.isClinchOpen &&
+    !player.isResistingThrow && !player.isResistingPull &&
+    !player.clinchJoltRecovery
   ) {
     const otherPlayer = room.players.find((p) => p.id !== player.id);
     if (otherPlayer) {
-      const awayKey = player.x < otherPlayer.x ? 'a' : 'd';
-
-      const m2Edge = player.mouse2JustPressed ||
-        (player.clinchMouse2BufferTime && simNowForPlayer(player) - player.clinchMouse2BufferTime < 200);
-      const wEdge = player.wJustPressed;
-      const awayJustPressed = awayKey === 'a' ? player.aJustPressed : player.dJustPressed;
-
-      if (player.mouse2JustPressed) {
-        player.clinchMouse2BufferTime = simNowForPlayer(player);
-      }
+      const nowSim = simNowForPlayer(player);
+      const chord = CLINCH_THROW_CHORD_WINDOW_MS;
+      const awayKey = player.x < otherPlayer.x ? "a" : "d";
+      const awayEdge = awayKey === "a" ? player.aJustPressed : player.dJustPressed;
+      const awayHeld = !!player.keys[awayKey];
+      const wHeld = !!player.keys.w;
+      const m2Down = !!player.keys.mouse2;
+      const m2TapRecent =
+        !!player.clinchMouse2BufferTime && nowSim - player.clinchMouse2BufferTime < chord;
+      const wTapRecent =
+        !!player.clinchWTapTime && nowSim - player.clinchWTapTime < chord;
+      const awayTapRecent =
+        !!player.clinchAwayTapTime && nowSim - player.clinchAwayTapTime < chord;
+      const m2Ready = m2Down || m2TapRecent;
+      // Direction is "ready" if rising now, tapped recently, OR currently held
+      // (so M2 can complete a chord that started from a held dir).
+      const wReady = player.wJustPressed || wTapRecent || wHeld;
+      const awayReady = awayEdge || awayTapRecent || awayHeld;
 
       let request = null;
-      // Pattern 1 & 3: Mouse2 edge + direction held (W+toward still throws)
-      if (m2Edge && player.keys.w) request = "throw";
-      else if (m2Edge && player.keys[awayKey]) request = "pull";
-      // Pattern 2: Mouse2 held — complete the chord on a key edge
-      else if (wEdge) request = "throw";
-      else if (awayJustPressed) request = "pull";
-      // toward alone while Mouse2 held → no request (push stance)
+      let completingKey = null;
+      // Prefer the input that just edged as the completing key (fairer lag-comp).
+      if (m2Ready && player.wJustPressed) {
+        request = "throw";
+        completingKey = "w";
+      } else if (m2Ready && awayEdge) {
+        request = "pull";
+        completingKey = awayKey;
+      } else if (player.mouse2JustPressed && wReady) {
+        request = "throw";
+        completingKey = "mouse2";
+      } else if (player.mouse2JustPressed && awayReady) {
+        request = "pull";
+        completingKey = "mouse2";
+      }
 
       if (request) {
+        const pressGameTime = pressGameTimeFromEvents(data, completingKey);
+        if (pressGameTime) player.clinchTechniquePressGameTime = pressGameTime;
+
         player.clinchThrowRequest = request;
-        player.clinchThrowRequestTime = simNowForPlayer(player);
+        player.clinchThrowRequestTime = lagCompensatedClinchInputStart(player, nowSim);
         player.clinchMouse2BufferTime = 0;
+        player.clinchWTapTime = 0;
+        player.clinchAwayTapTime = 0;
       }
     }
   }

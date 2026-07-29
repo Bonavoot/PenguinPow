@@ -13,14 +13,14 @@ import {
  * SumoAnnouncementBanner — side INFO rail plaque.
  *
  * Lane: combat-read callouts you wouldn't fully know without the game
- * saying so — COUNTER HIT, PUNISH, COUNTER THROW, clinch reads, tech.
- * Hype moments (PERFECT / GRAB BREAK / COUNTER GRAB / MATADOR /
+ * saying so — COUNTER HIT, COUNTER GRAB, PUNISH, GRAB BREAK, COUNTER
+ * THROW, clinch reads, tech. Hype moments (PERFECT / MATADOR /
  * MATADOR BREAK) use SumoHypeStamp on a separate band above this rail.
  *
  * Edge-plaque language:
  *   opaque lacquer parallelogram via clip-path (no dissolve, no skew),
  *   cream Bungee (same face as HUD), type-colored accent + hanko kanji.
- *   Subtle tier hierarchy. Selective spaced " !" on bang types only.
+ *   Subtle tier hierarchy. Spaced " !" on every callout.
  *
  * Band contract (per side, must not collide with SumoHypeStamp):
  *   hype stamps own ~26–44cqh; this rail owns ~54cqh+.
@@ -50,6 +50,12 @@ const TYPE_COLORS = {
   tech: { color: C.ice, deep: C.iceMid },
   break: { color: C.successBright, deep: C.successDeep },
   perfect: { color: C.gold, deep: C.goldDeep },
+  perfectbrace: {
+    color: "#f0d078",
+    deep: "#5a3a08",
+    accent: C.cream,
+    textAccent: "#fff6d8",
+  },
   perfectparry: {
     color: "#9ae8f5",
     deep: C.iceDeep,
@@ -72,25 +78,27 @@ const TYPE_KANJI = {
   tech: "技",
   break: "破",
   perfect: "極",
+  perfectbrace: "構",
   perfectparry: "極",
 };
 
 /*
  * Tier drives size + vertical seat. Same plaque language, quiet weight
- * differences — readable hierarchy without a billboard COUNTER HIT.
+ * differences — readable hierarchy without a billboard COUNTER HIT plaque.
  * All seats sit below the hype-stamp band (~44cqh clear).
  */
 const TYPE_TIER = {
   counterhit: "hero",
+  countergrab: "hero",
   counter: "primary",
   counterthrow: "primary",
-  deepgrip: "primary",
-  countergrab: "primary",
   perfect: "primary",
+  perfectbrace: "primary",
   perfectparry: "primary",
-  break: "primary",
   punish: "secondary",
   parry: "secondary",
+  break: "secondary",
+  deepgrip: "secondary",
   tech: "secondary",
   default: "primary",
 };
@@ -104,34 +112,32 @@ const TIER_LAYOUT = {
     fontSize: "clamp(1.05rem, 1.85cqw, 1.4rem)",
     fontSizeMobile: "clamp(0.9rem, 2.2cqw, 1.15rem)",
     /* Kanji oversized vs plaque so it reads as a pressed hanko, not chrome. */
-    kanjiSize: "clamp(2.6rem, 4.8cqw, 3.6rem)",
-    padBlock: "clamp(9px, 1.2cqh, 13px)",
-    minWidth: "clamp(170px, 17.5cqw, 255px)",
+    kanjiSize: "clamp(2.15rem, 3.9cqw, 2.9rem)",
+    /* Single-line labels — keep pad tight to the word height. */
+    padBlock: "clamp(5px, 0.65cqh, 8px)",
+    minWidth: "clamp(195px, 20cqw, 290px)",
   },
   primary: {
     top: "clamp(375px, 59cqh, 440px)",
     topMobile: "clamp(325px, 57cqh, 390px)",
     fontSize: "clamp(0.95rem, 1.65cqw, 1.25rem)",
     fontSizeMobile: "clamp(0.82rem, 2cqw, 1.05rem)",
-    kanjiSize: "clamp(2.35rem, 4.3cqw, 3.25rem)",
-    padBlock: "clamp(8px, 1.1cqh, 12px)",
-    minWidth: "clamp(155px, 16cqw, 230px)",
+    kanjiSize: "clamp(1.95rem, 3.5cqw, 2.65rem)",
+    padBlock: "clamp(4px, 0.55cqh, 7px)",
+    minWidth: "clamp(180px, 18.5cqw, 265px)",
   },
   secondary: {
     top: "clamp(410px, 65cqh, 480px)",
     topMobile: "clamp(355px, 62cqh, 420px)",
     fontSize: "clamp(0.82rem, 1.4cqw, 1.05rem)",
     fontSizeMobile: "clamp(0.72rem, 1.85cqw, 0.95rem)",
-    kanjiSize: "clamp(2rem, 3.7cqw, 2.85rem)",
-    padBlock: "clamp(7px, 0.95cqh, 10px)",
-    minWidth: "clamp(135px, 14cqw, 200px)",
+    kanjiSize: "clamp(1.7rem, 3.1cqw, 2.3rem)",
+    padBlock: "clamp(4px, 0.5cqh, 6px)",
+    minWidth: "clamp(145px, 15cqw, 215px)",
   },
 };
 
-/* Spaced " !" — PUMO signature. Selective types only; don't spam the rail. */
-const BANG_TYPES = new Set(["punish"]);
-
-/* Non-breaking space before ! so it can't wrap onto its own line. */
+/* Spaced " !" — PUMO signature. Non-breaking space so ! can't wrap alone. */
 const withSpacedBang = (text) => {
   if (typeof text !== "string") return text;
   if (/\u00A0!+\s*$/.test(text) || /\s!+\s*$/.test(text)) {
@@ -484,8 +490,8 @@ const MainText = styled.div`
   font-size: ${(p) => TIER_LAYOUT[getTier(p.$type)].fontSize};
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  line-height: 0.95;
-  white-space: ${(p) => (p.$nowrap ? "nowrap" : "pre-line")};
+  line-height: 1;
+  white-space: nowrap;
   text-align: inherit;
   transform-origin: ${(p) => (p.$isLeftSide ? "right center" : "left center")};
   color: ${C.cream};
@@ -536,18 +542,12 @@ const SumoAnnouncementBanner = ({
     type,
   );
   const kanji = TYPE_KANJI[type];
-  // Preserve intentional line breaks (COUNTER\nHIT); collapse odd whitespace.
+  // Side-rail labels are single-line; collapse any leftover breaks/whitespace.
   let label =
     typeof text === "string"
-      ? text
-          .replace(/\r\n/g, "\n")
-          .replace(/[^\S\n]+/g, " ")
-          .replace(/\n /g, "\n")
-          .replace(/ \n/g, "\n")
-          .trim()
+      ? text.replace(/\s+/g, " ").trim()
       : text;
-  if (BANG_TYPES.has(type)) label = withSpacedBang(label);
-  const stacked = typeof label === "string" && label.includes("\n");
+  label = withSpacedBang(label);
 
   return (
     <BannerWrapper $isLeftSide={isLeftSide} $type={type}>
@@ -566,7 +566,7 @@ const SumoAnnouncementBanner = ({
             </KanjiPrint>
           )}
           <Content $isLeftSide={isLeftSide}>
-            <MainText $type={type} $isLeftSide={isLeftSide} $nowrap={!stacked}>
+            <MainText $type={type} $isLeftSide={isLeftSide}>
               {label}
             </MainText>
             {subText && <SubText $type={type}>{subText}</SubText>}
@@ -582,6 +582,7 @@ SumoAnnouncementBanner.propTypes = {
   type: PropTypes.oneOf([
     "parry",
     "perfect",
+    "perfectbrace",
     "perfectparry",
     "counter",
     "counterhit",

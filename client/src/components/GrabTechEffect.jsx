@@ -343,7 +343,7 @@ const GrabTechEffect = ({ position }) => {
             </EffectContainer>
             {document.getElementById("game-hud-callouts") && createPortal(
               <SumoAnnouncementBanner
-                text={"GRAB\nTECH"}
+                text={"GRAB TECH"}
                 type="tech"
                 isLeftSide={true}
               />,

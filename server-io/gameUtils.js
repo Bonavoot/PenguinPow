@@ -288,6 +288,30 @@ function lagCompensatedParryStart(player, simNowMs) {
   return simNowMs - backdate;
 }
 
+// Clinch Flow: same bounded backdate for throw/pull request timestamps so the
+// ~60ms true-simultaneous window isn't decided by ping jitter. Consumes the
+// stamp; spoofed ages can only make the window HARDER (never easier).
+function lagCompensatedClinchInputStart(player, simNowMs) {
+  const pressGameTime = player.clinchTechniquePressGameTime || 0;
+  player.clinchTechniquePressGameTime = 0;
+  if (!pressGameTime) return simNowMs;
+  const age = gameNow() - pressGameTime;
+  if (!Number.isFinite(age) || age <= 0) return simNowMs;
+  const backdate = Math.min(age, MAX_PARRY_BACKDATE_MS);
+  return simNowMs - backdate;
+}
+
+// Perfect Brace press — same bounded backdate as technique requests / parries.
+function lagCompensatedClinchBraceStart(player, simNowMs) {
+  const pressGameTime = player.clinchBracePressGameTime || 0;
+  player.clinchBracePressGameTime = 0;
+  if (!pressGameTime) return simNowMs;
+  const age = gameNow() - pressGameTime;
+  if (!Number.isFinite(age) || age <= 0) return simNowMs;
+  const backdate = Math.min(age, MAX_PARRY_BACKDATE_MS);
+  return simNowMs - backdate;
+}
+
 // ── GUARD & PARRY arming ────────────────────────────────────────────────────
 // True when a FRESH tap (rising space edge) may open / re-stamp a PARRY window.
 // Gates:
@@ -1891,6 +1915,8 @@ module.exports = {
   logVerbInitiation,
   advanceRoomSimTime,
   lagCompensatedParryStart,
+  lagCompensatedClinchInputStart,
+  lagCompensatedClinchBraceStart,
   canArmAttackParry,
   armAttackParry,
   grantAttackParryFlurryCover,

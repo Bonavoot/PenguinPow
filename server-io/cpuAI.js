@@ -12,8 +12,7 @@ const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
         SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST,
         RAW_PARRY_STAMINA_COST, POWER_UP_TYPES, SLAP_KILL_RANGE,
         PALM_THRUST_STAMINA_COST,
-        CLINCH_THROW_LAND_THRESHOLD, CLINCH_THROW_KILL_THRESHOLD,
-        DEEP_GRIP_THROW_THRESHOLD_BONUS,
+        CLINCH_THROW_KILL_THRESHOLD,
         FLAP_IMPULSE, FLAP_FLAP_H_IMPULSE, FLAP_CHARGE_COOLDOWN_MS, FLAP_STAMINA_COST,
         SLAP_TOTAL_MS, CADENCE_WINDOW_MS,
         CPU_CADENCE_EASY, CPU_CADENCE_NORMAL, CPU_CADENCE_HARD, CPU_CADENCE_IMPOSSIBLE,
@@ -1750,14 +1749,80 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   // non-archetype CPU runs the exact legacy clinch rolls below.
   const CS = CLINCH_STYLE[PERS_KEY] || CLINCH_STYLE.balanced;
 
-  // During active throw/pull/clash/jolt animations, the system handles everything
+  // During own committed technique / Open / jolt, wait it out
   if (cpu.clinchThrowActive || cpu.isClinchClashing || cpu.isClinchThrowing ||
-      cpu.isResistingThrow || cpu.isResistingPull ||
+      cpu.isClinchOpen || cpu.clinchThrowFailStagger ||
       cpu.isGrabSeparating ||
       cpu.isClinchJolting || cpu.isClinchJoltClashing || cpu.isBeingClinchJolted) {
     return;
   }
-  if (opponent.clinchThrowActive || opponent.isClinchClashing || opponent.isClinchThrowing) {
+
+  // Opponent technique startup — maybe Plant (not a perfect human read).
+  // Roll once per technique with a short reaction delay so throws can land
+  // when the CPU whiffs the brace or is late.
+  if (opponent.clinchThrowActive || opponent.isClinchThrowing) {
+    const throwStamp =
+      opponent.clinchThrowStartTime || opponent.clinchThrowRequestTime || 0;
+    if (aiState.clinchBraceForThrowStart !== throwStamp) {
+      aiState.clinchBraceForThrowStart = throwStamp;
+      // Easy ~35%, Normal ~55%, Hard ~72%, Impossible ~88%
+      const braceChance = clampChance(
+        0.35 +
+          (DIFF_KEY === "EASY"
+            ? 0
+            : DIFF_KEY === "NORMAL"
+              ? 0.2
+              : DIFF_KEY === "HARD"
+                ? 0.37
+                : 0.53) +
+          CS.breakEager * 0.08
+      );
+      aiState.clinchBraceDecision = chance(braceChance) ? "plant" : "whiff";
+      aiState.clinchBraceReadyTime =
+        currentTime +
+        randomInRange(
+          Math.max(40, DIFF.jitterMin || 0),
+          Math.max(90, (DIFF.jitterMax || 80) + 60)
+        );
+    }
+
+    if (
+      aiState.clinchBraceDecision === "plant" &&
+      currentTime >= (aiState.clinchBraceReadyTime || 0)
+    ) {
+      const towardKeyBrace = cpu.x < opponent.x ? "d" : "a";
+      const awayKeyBrace = cpu.x < opponent.x ? "a" : "d";
+      // Hard/Impossible sometimes delay the Plant press into the Perfect Brace
+      // window instead of holding from reaction start.
+      const animMs = opponent.clinchThrowType === "pull" ? 250 : 220;
+      const throwStart = opponent.clinchThrowStartTime || currentTime;
+      const perfectWindowStart = throwStart + Math.max(0, animMs - 100);
+      const wantPerfect =
+        (DIFF_KEY === "HARD" || DIFF_KEY === "IMPOSSIBLE") &&
+        chance(DIFF_KEY === "IMPOSSIBLE" ? 0.45 : 0.22);
+
+      if (wantPerfect && currentTime < perfectWindowStart) {
+        // Wait in neutral / prior stance until the window — then tap Plant.
+        return;
+      }
+
+      cpu.keys[awayKeyBrace] = true;
+      cpu.keys[towardKeyBrace] = false;
+      cpu.keys.s = true;
+      // Rising-edge stamp for Perfect Brace (CPU path has no socket events).
+      if (!cpu.clinchBraceSimTime || cpu.clinchBraceSimTime < throwStart) {
+        cpu.clinchBraceSimTime = currentTime;
+      }
+      return;
+    }
+    // Whiff / still reacting — stay committed to prior stance (don't auto-plant)
+    return;
+  } else if (aiState.clinchBraceForThrowStart) {
+    aiState.clinchBraceForThrowStart = 0;
+    aiState.clinchBraceDecision = null;
+    aiState.clinchBraceReadyTime = 0;
+  }
+  if (opponent.isClinchClashing) {
     return;
   }
 
@@ -1792,14 +1857,14 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   // PHASE 4.3: throw/pull are gated by the clinchThrow verb (Sandanme+). A
   // lower-division CPU can only push/plant in the clinch.
   const canRequestAction = cpu.hasGrip && !cpu.clinchThrowActive &&
-                           !cpu.clinchThrowCooldown && !cpu.clinchThrowRequest &&
-                           !cpu.isClinchClashing && !cpu.clinchThrowFailStagger &&
+                           !cpu.clinchThrowRequest &&
+                           !cpu.isClinchClashing &&
+                           !cpu.clinchThrowFailStagger && !cpu.isClinchOpen &&
+                           !cpu.clinchJoltRecovery &&
                            hasVerb("clinchThrow");
-  // Deep grip raises the CPU's landing window the same way the server resolves
-  // it — a CPU holding the deep grip converts its advantage into earlier throws.
-  const cpuLandThreshold = CLINCH_THROW_LAND_THRESHOLD +
-    (cpu.hasDeepGrip ? DEEP_GRIP_THROW_THRESHOLD_BONUS : 0);
-  const canLand = opponentBalance <= cpuLandThreshold;
+  // Clinch Flow: every undefended technique lands. Plant resists unless Deep Grip.
+  const opponentPlanting = opponent.clinchAction === "plant" || opponent.isClinchPlanting;
+  const canLand = !opponentPlanting || !!cpu.hasDeepGrip;
   const canKill = opponentBalance < CLINCH_THROW_KILL_THRESHOLD;
 
   // Detect when CPU is the one pinned at the boundary (closer to edge than opponent)
@@ -1823,8 +1888,7 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
     !cpu.clinchThrowActive && !opponent.clinchThrowActive &&
     !cpu.isClinchClashing && !opponent.isClinchClashing &&
     !cpu.isClinchJolting && !cpu.isClinchJoltClashing &&
-    !cpu.clinchThrowFailStagger &&
-    !cpu.isResistingThrow && !cpu.isResistingPull &&
+    !cpu.clinchThrowFailStagger && !cpu.isClinchOpen &&
     !cpu.clinchBreakRequest && !cpu.isGrabBreaking && !cpu.isGrabBreakCountered &&
     !cpu.isGrabBreakSeparating &&
     (!cpu.gripAcquiredTime || currentTime - cpu.gripAcquiredTime >= GRAB_BREAK_REACTION_LOCK_MS)
@@ -1876,7 +1940,7 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
     aiState.clinchLastThrowCheck = currentTime;
     const aggMult = getAggressionMultiplier(aiState);
 
-    if (canKill && chance(AI_CONFIG.CLINCH_THROW_CHANCE_KILL * Math.min(aggMult.grab, 1.3) * diffMult("clinchKillMult"))) {
+    if (canKill && canLand && chance(AI_CONFIG.CLINCH_THROW_CHANCE_KILL * Math.min(aggMult.grab, 1.3) * diffMult("clinchKillMult"))) {
       // CS.pullBias: grappler favors pull over the raw throw; pusher the reverse.
       const action = chance(clampChance(0.55 - CS.pullBias)) ? "throw" : "pull";
       aiState.clinchThrowPending = action;
@@ -1897,9 +1961,9 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
           AI_CONFIG.CLINCH_THROW_REACTION_MAX + 100
         );
       }
-    } else if (!canLand && chance(AI_CONFIG.CLINCH_THROW_CHANCE_FAIL * Math.min(aggMult.grab, 1.3))) {
-      // Failed throws now cost attacker balance — only attempt if CPU has balance to spare
-      if (cpuBalance > 40) {
+    } else if (!canLand && chance(AI_CONFIG.CLINCH_THROW_CHANCE_FAIL * Math.min(aggMult.grab, 1.3) * 0.35)) {
+      // Opponent is planting without our Deep Grip — rare bait; usually jolt instead.
+      if (cpuBalance > 40 && cpu.hasDeepGrip) {
         const action = chance(0.6) ? "throw" : "pull";
         aiState.clinchThrowPending = action;
         aiState.clinchThrowExecuteTime = currentTime + randomInRange(
@@ -1929,9 +1993,9 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   // PHASE 4.3: clinch jolt is a Makushita+ verb.
   const canJolt = hasVerb("jolt") &&
                   cpu.hasGrip && !cpu.isClinchJolting && !cpu.clinchJoltRecovery &&
-                  !cpu.clinchJoltCooldown && !cpu.clinchThrowActive && !cpu.isClinchClashing &&
+                  !cpu.clinchThrowActive && !cpu.isClinchClashing &&
                   !cpu.clinchJoltRequest && !cpu.isResistingThrow && !cpu.isResistingPull &&
-                  !cpu.clinchThrowFailStagger && cpuStamina >= 10;
+                  !cpu.clinchThrowFailStagger && !cpu.isClinchOpen && cpuStamina >= 10;
 
   if (canJolt && !aiState.clinchJoltPending && !aiState.clinchThrowPending && !cpu.clinchThrowRequest) {
     const joltCheckInterval = 1600;

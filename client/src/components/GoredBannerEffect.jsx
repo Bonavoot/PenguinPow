@@ -7,8 +7,8 @@ import SumoHypeStamp, { HYPE_DURATION_MS } from "./SumoHypeStamp";
  * GoredBannerEffect — "MATADOR BREAK" hype stamp when a strike hits someone
  * during a live / whiffed MATADOR (grab-line parry).
  *
- * Orange hanko (success MATADOR is gold). Same hype band as COUNTER GRAB /
- * GRAB BREAK / PERFECT — peer callout to GRAB BREAK: you denied their matador.
+ * Orange hanko (success MATADOR is gold). Same hype band as PERFECT —
+ * peer denial callout: you punished their matador.
  */
 const GoredBannerEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
@@ -52,7 +52,7 @@ const GoredBannerEffect = ({ position }) => {
           <SumoHypeStamp
             key={effect.id}
             type="matadorbreak"
-            text={"MATADOR\nBREAK"}
+            text={"MATADOR BREAK"}
             isLeftSide={isLeftSide}
           />
         );

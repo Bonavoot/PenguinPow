@@ -23,7 +23,6 @@ import {
   salt,
   recovering,
   charging,
-  rawParrySuccess,
   rawParrySuccessFrame1,
   rawParrySuccessFrame2,
   blocking,
@@ -101,7 +100,7 @@ const getImageSrc = (
   isGrabFrontalForceOut,
   isBeingGrabFrontalForceOut,
   isGrabTeching,
-  grabTechRole,
+  grabTechRole, // eslint-disable-line no-unused-vars -- positional wire arg
   isGrabWhiffRecovery,
   isRopeJumping,
   ropeJumpPhase,
@@ -179,17 +178,17 @@ const getImageSrc = (
   // Pull kill: eyes open during the slide, then eyes closed once the bow phase begins.
   if (isClinchKillPullVictim) return isBowing ? bellyLaying : bellyLayingEyesOpen;
   if (isAttemptingPull) return attemptingPull;
-  if (isClinchClashing) return attemptingGrabThrow;
+  // Clinch throw-clash / separation placeholder — success-f1 for the whole
+  // beat. Not Attack Parry (that still owns f1→f2 via isRawParrySuccess).
+  if (isClinchClashing) return rawParrySuccessFrame1;
 
   const attemptingGrabMovement =
     typeof isGrabbingMovementTrailing === "boolean"
       ? isGrabbingMovementTrailing
       : !!isGrabbingMovement;
 
-  if (isGrabTeching) {
-    if (grabTechRole === "grabber") return grabbing;
-    return rawParrySuccess;
-  }
+  // Legacy flag — mutual grab no longer plays a special tech pose.
+  if (isGrabTeching) return grabbing;
   if (isGrabWhiffRecovery) return grabAttempt;
 
   if (isGrabBellyFlopping) return grabbing;
@@ -197,7 +196,7 @@ const getImageSrc = (
   if (isGrabFrontalForceOut) return grabbing;
   if (isBeingGrabFrontalForceOut) return beingGrabbed;
   if (isBeingPullReversaled) return beingGrabbed;
-  if (isGrabSeparating) return rawParrySuccess;
+  if (isGrabSeparating) return rawParrySuccessFrame1;
   if (isGrabBreaking) return crouching;
   if (isGrabBreakCountered) return hit;
   // Attack Parry SUCCESS: blocking → f1 (quick) → f2 (hold). No frame 3.
@@ -277,9 +276,12 @@ const getImageSrc = (
   if (isThrowingSnowball) return snowballThrow;
   if (isSpawningPumoArmy) return pumoArmy;
   if (isAttemptingGrabThrow) return attemptingGrabThrow;
+  // Clinch Flow: bracing Plant during technique startup shows plant, not hit-react.
+  if (isClinchPlanting && (isResistingThrow || isResistingPull)) return clinchPlanting;
   if (isResistingThrow) return hit;
   if (isResistingPull) return hit;
   if (isClinchPlanting) return clinchPlanting;
+  // Committed drive reuses grabbing body — lean is CSS.
   if (isClinchPushing) return grabbing;
   // Grip is automatic on clinch connect — grabbed fighters use the armless
   // grabbing body + flipper overlay (body-hold / belt-hold via arm rotate).

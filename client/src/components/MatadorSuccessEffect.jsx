@@ -5,7 +5,7 @@ import SumoHypeStamp, { HYPE_DURATION_MS } from "./SumoHypeStamp";
 
 /**
  * MatadorSuccessEffect — "MATADOR" hype stamp when a grab-line parry lands
- * (instant pull). Peer to COUNTER GRAB / PERFECT on the hype band.
+ * (instant pull). Peer to PERFECT on the hype band.
  * Gold stamp; MATADOR BREAK (orange) is the opposite RPS punish.
  */
 const MatadorSuccessEffect = ({ position }) => {

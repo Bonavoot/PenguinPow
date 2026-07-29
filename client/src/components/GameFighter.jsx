@@ -26,7 +26,9 @@ import SlapParryEffect from "./SlapParryEffect";
 import BlockingEffect, { BLOCK_SUCCESS_POSE_MS } from "./BlockingEffect";
 import ChargeClashEffect from "./ChargeClashEffect";
 import { useParticles } from "../particles/ParticleContext";
-import StarStunEffect from "./StarStunEffect";
+import StarStunEffect, {
+  STAR_STUN_BOTTOM_OFFSET_PCT,
+} from "./StarStunEffect";
 import GrabBreakEffect from "./GrabBreakEffect";
 import GrabTechEffect from "./GrabTechEffect";
 import ClinchJoltEffect from "./ClinchJoltEffect";
@@ -63,6 +65,7 @@ import MatchOver from "./MatchOver";
 import RoundResult from "./RoundResult";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
 import SumoHypeStamp from "./SumoHypeStamp";
+import PerfectBraceEffect from "./PerfectBraceEffect";
 import HitEffect from "./HitEffect";
 import RawParryEffect from "./RawParryEffect";
 import { getGlobalVolume } from "./Settings";
@@ -920,10 +923,6 @@ const GameFighter = ({
   // all flag-dependent styling still flows through React renders).
   const fighterImgDomRef = useRef(null); // StyledImage (static sprite)
   const grabArmImgDomRef = useRef(null); // grab/clinch arm overlay (static)
-  // After grab connect, ignore the same M2 hold that started the grab until
-  // a release is seen (mirrors server clinchBeltRequiresM2Release).
-  const clinchBeltNeedsM2ReleaseRef = useRef(false);
-  const wasInClinchRef = useRef(false);
   const animContainerDomRef = useRef(null); // AnimatedFighterContainer
   const shadowDomRef = useRef(null); // PlayerShadow root div
   const reflectionDomRef = useRef(null); // IceReflection root div
@@ -932,6 +931,7 @@ const GameFighter = ({
   const isRoundLoserRef = useRef(false);
   const youLabelDomRef = useRef(null); // pre-game "You" label
   const gripPromptDomRef = useRef(null); // in-clinch "CLAMPED!" prompt
+  const starStunDomRef = useRef(null); // Raw-parry stun stars (head orbit)
   // Mirror of the latest rendered penguin state for the rAF loop (flags used
   // in position formulas: at-the-ropes nudge, shadow ground-pinning).
   const penguinRef = useRef(penguin);
@@ -2178,6 +2178,9 @@ const GameFighter = ({
   const [clinchJoltEffectPosition, setClinchJoltEffectPosition] = useState(null);
   // Clinch mind-game callouts: COUNTER THROW / RESISTED / DEEP GRIP side banners
   const [clinchCalloutData, setClinchCalloutData] = useState(null);
+  // Perfect Brace — hype stamp (same register as PERFECT parry)
+  const [perfectBraceStampPosition, setPerfectBraceStampPosition] =
+    useState(null);
 
   // "No Stamina" effect - shows when player tries to use action without enough stamina
   const [noStaminaEffectKey, setNoStaminaEffectKey] = useState(0);
@@ -2533,44 +2536,21 @@ const GameFighter = ({
           grabArmEl.style.left = leftPct;
           grabArmEl.style.bottom = bottomPct;
           // Belt vs body-hold arm pose. Local M2 is read live so the flipper
-          // drops to the belt on press without waiting on the 32Hz flag —
-          // but the M2 that started the grab is consumed until release so
-          // connect defaults to body hold (same as server).
+          // drops to the belt on press without waiting on the 32Hz flag.
+          // Holding M2 through grab connect stays on the belt (cosmetic only).
           // Body holds are ASYMMETRIC (over / under) so the two long flippers
           // nest at different heights instead of crossing through each other.
           //   Grabber  → overhook (higher chest)
           //   Grabbed  → underhook (mid torso, still clearly off the belt)
           const localKeys = isLocalPlayer ? getLocalKeyState() : null;
           const localM2Down = !!localKeys?.mouse2;
-          if (isLocalPlayer) {
-            const wasClinch = wasInClinchRef.current;
-            wasInClinchRef.current = !!p.inClinch;
-            if (p.inClinch && !wasClinch && localM2Down) {
-              clinchBeltNeedsM2ReleaseRef.current = true;
-            }
-            if (
-              !!p.clinchBeltRequiresM2Release ||
-              clinchBeltNeedsM2ReleaseRef.current
-            ) {
-              if (!localM2Down) {
-                clinchBeltNeedsM2ReleaseRef.current = false;
-              }
-            }
-            if (!p.inClinch) {
-              clinchBeltNeedsM2ReleaseRef.current = false;
-            }
-          }
-          const beltM2Blocked =
-            !!p.clinchBeltRequiresM2Release ||
-            (isLocalPlayer && clinchBeltNeedsM2ReleaseRef.current);
           const localM2 =
             isLocalPlayer &&
             p.inClinch &&
             !p.isArmClamped &&
-            localM2Down &&
-            !beltM2Blocked;
+            localM2Down;
           const onBelt =
-            (!!p.isClinchBeltHolding && !beltM2Blocked) ||
+            !!p.isClinchBeltHolding ||
             localM2 ||
             !!p.isAttemptingGrabThrow ||
             !!p.isAttemptingPull;
@@ -2733,6 +2713,13 @@ const GameFighter = ({
         if (gripEl) {
           gripEl.style.left = `${(newPos.x / 1280) * 100 + 2}%`;
           gripEl.style.bottom = `${(newPos.y / 720) * 100 + 27}%`;
+        }
+        // Stun stars: same per-frame writes as the sprite / You label so they
+        // don't hitch to React re-renders while the fighter slides.
+        const starEl = starStunDomRef.current;
+        if (starEl) {
+          starEl.style.left = plainLeftPct;
+          starEl.style.bottom = `${(newPos.y / 720) * 100 + STAR_STUN_BOTTOM_OFFSET_PCT}%`;
         }
 
         // Position-driven zIndex flip (falling off the dohyo): needs a real
@@ -3350,6 +3337,7 @@ const GameFighter = ({
           prev.clinchJoltRecovery !== newState.clinchJoltRecovery ||
           prev.isArmClamped !== newState.isArmClamped ||
           prev.clinchThrowFailStagger !== newState.clinchThrowFailStagger ||
+          prev.isClinchOpen !== newState.isClinchOpen ||
           prev.hasDeepGrip !== newState.hasDeepGrip ||
           prev.clinchShoveLead !== newState.clinchShoveLead ||
           // MASTERY Phase 2 (2.1): broken-posture tell drives the openable teeter.
@@ -4111,7 +4099,7 @@ const GameFighter = ({
     };
     socket.on("perfect_parry", handlePerfectParry);
 
-    let handleGrabBreak, handleGrabTech, handleClinchTech, handleCounterGrab,
+    let handleGrabBreak, handleClinchTech, handleCounterGrab,
     handleMatadorSuccess, handleStaminaBlocked, handleClinchCallout,
     handleClinchThrowFail, handleDeepGrip, handlePostureBreak;
     if (index === 0) {
@@ -4133,18 +4121,8 @@ const GameFighter = ({
       };
       socket.on("grab_break", handleGrabBreak);
 
-      handleGrabTech = (data) => {
-        if (data && typeof data.x === "number") {
-          setGrabTechEffectPosition({
-            x: data.x + SPRITE_HALF_W,
-            y: PLAYER_MID_Y,
-            techId: data.techId || `tech-${Date.now()}`,
-            facing: data.grabberFacing || 1,
-          });
-          playSound(isTechingSound, 0.04);
-        }
-      };
-      socket.on("grab_tech", handleGrabTech);
+      // Mutual grab-at-once is a quiet clinch (no TECH rings / pose).
+      // GrabTechEffect is still used for clinch throw-clash tumble below.
 
       let wasClinchClashing = false;
       handleClinchTech = (data) => {
@@ -4215,7 +4193,7 @@ const GameFighter = ({
       };
       socket.on("matador_success", handleMatadorSuccess);
 
-      // Clinch stance-read banners: counter_throw (threw a pusher, max drain)
+      // Clinch stance-read banners (counter_throw only emits after a LAND)
       handleClinchCallout = (data) => {
         if (!data || data.type !== "counter_throw") return;
         setClinchCalloutData({
@@ -4226,9 +4204,16 @@ const GameFighter = ({
       };
       socket.on("clinch_callout", handleClinchCallout);
 
-      // Failed throw/pull vs balance > 50 — credit the defender with RESISTED
+      // Failed throw/pull — RESISTED plaque, or PERFECT BRACE hype stamp
       handleClinchThrowFail = (data) => {
         if (!data) return;
+        if (data.perfectBrace) {
+          setPerfectBraceStampPosition({
+            braceId: data.failId || `perfect-brace-${Date.now()}`,
+            playerNumber: data.playerNumber || 1,
+          });
+          return;
+        }
         setClinchCalloutData({
           type: "resisted",
           playerNumber: data.playerNumber || 1,
@@ -4605,7 +4590,6 @@ const GameFighter = ({
       }
       if (index === 0) {
         socket.off("grab_break", handleGrabBreak);
-        socket.off("grab_tech", handleGrabTech);
         socket.off("fighter_action", handleClinchTech);
         socket.off("counter_grab", handleCounterGrab);
         socket.off("matador_success", handleMatadorSuccess);
@@ -6159,21 +6143,15 @@ const GameFighter = ({
     lastWinnerState.current = gameOver;
   }, [gameOver]);
 
-  // Hide star stun effect when stun ends
+  // Stun stars: raw-parry stun only (not clinch Open / grab-tech recovery).
   useEffect(() => {
-    if (!penguin.isRawParryStun && showStarStunEffect) {
-      setShowStarStunEffect(false);
+    const shouldShowStars = !!penguin.isRawParryStun;
+    if (shouldShowStars !== showStarStunEffect) {
+      setShowStarStunEffect(shouldShowStars);
     }
-    // Also show the effect if the player becomes stunned but the effect isn't showing
-    // This handles cases where the perfect_parry event might arrive after the fighter_action update
-    if (
-      penguin.isRawParryStun &&
-      !showStarStunEffect &&
-      penguin.id === player.id
-    ) {
-      setShowStarStunEffect(true);
-    }
-  }, [penguin.isRawParryStun, showStarStunEffect, penguin.id, player.id]);
+  }, [penguin.isRawParryStun, showStarStunEffect]);
+
+  const starStunVariant = "parry";
 
   // ============================================
   // SCREEN SHAKE — unified trauma bus (lib/cameraShake)
@@ -7192,17 +7170,13 @@ const GameFighter = ({
   const GRAB_ARM_BODY_HOLD_NUDGE_Y_PCT = 0.75;
   const isPlantingArm = effectiveSpriteSrc === clinchPlantingSprite;
   const renderLocalM2 = !!getLocalKeyState()?.mouse2;
-  const renderBeltM2Blocked =
-    !!penguin.clinchBeltRequiresM2Release ||
-    (isLocalPlayer && clinchBeltNeedsM2ReleaseRef.current);
   const localBeltHold =
     isLocalPlayer &&
     penguin.inClinch &&
     !penguin.isArmClamped &&
-    renderLocalM2 &&
-    !renderBeltM2Blocked;
-    const armOnBelt =
-    (!!penguin.isClinchBeltHolding && !renderBeltM2Blocked) ||
+    renderLocalM2;
+  const armOnBelt =
+    !!penguin.isClinchBeltHolding ||
     localBeltHold ||
     !!penguin.isAttemptingGrabThrow ||
     !!penguin.isAttemptingPull;
@@ -7400,6 +7374,9 @@ const GameFighter = ({
     $isClinchJoltClashing: penguin.isClinchJoltClashing,
     $clinchJoltRecovery: penguin.clinchJoltRecovery,
     $clinchThrowFailStagger: penguin.clinchThrowFailStagger,
+    $isClinchOpen: !!(penguin.isClinchOpen || penguin.clinchThrowFailStagger),
+    $isClinchPerfectBracing: !!penguin.isClinchPerfectBracing,
+    $isClinchCommittedDrive: !!penguin.isClinchCommittedDrive,
     $inClinch: penguin.inClinch,
     $hasDeepGrip: penguin.hasDeepGrip,
     // MASTERY Phase 2 (2.1): broken-posture openable teeter (server-derived;
@@ -7651,9 +7628,11 @@ const GameFighter = ({
             "parry",
             "counter",
             "counterhit",
+            "countergrab",
             "punish",
             "counterthrow",
             "deepgrip",
+            "break",
             "tech",
             "default",
           ].map((t) => (
@@ -7662,7 +7641,7 @@ const GameFighter = ({
               <SumoAnnouncementBanner text="WARM" type={t} isLeftSide={false} />
             </span>
           ))}
-          {["perfect", "break", "countergrab"].map((t) => (
+          {["perfect"].map((t) => (
             <span key={`warm-hype-${t}`}>
               <SumoHypeStamp type={t} isLeftSide={true} />
               <SumoHypeStamp type={t} isLeftSide={false} />
@@ -7882,9 +7861,6 @@ const GameFighter = ({
           draggable={false}
           style={{
             display: showRitualSprite ? "none" : "block",
-            // No body pop-filter; shoulder stump feathered via mask in CSS.
-            filter: "none",
-            WebkitFilter: "none",
           }}
         />
       )}
@@ -7940,16 +7916,21 @@ const GameFighter = ({
       <ClinchJoltEffect position={clinchJoltEffectPosition} />
       <CounterGrabEffect position={trackedCounterGrabEffectPosition} />
       {index === 0 && <ClinchCalloutEffect callout={clinchCalloutData} />}
+      {index === 0 && (
+        <PerfectBraceEffect position={perfectBraceStampPosition} />
+      )}
       <PunishBannerEffect position={punishBannerPosition} />
       <GoredBannerEffect position={goredBannerPosition} />
       <MatadorSuccessEffect position={matadorSuccessStampPosition} />
       <CounterHitEffect position={counterHitEffectPosition} />
       <SnowballImpactEffect position={snowballImpactPosition} />
       <StarStunEffect
+        ref={starStunDomRef}
         x={displayPosition.x}
         y={displayPosition.y}
         facing={penguin.facing ?? -1}
         isActive={showStarStunEffect}
+        variant={starStunVariant}
       />
       <EdgeDangerEffect
         x={displayPosition.x}

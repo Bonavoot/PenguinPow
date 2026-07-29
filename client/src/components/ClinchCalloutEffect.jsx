@@ -8,14 +8,15 @@ import SumoAnnouncementBanner, {
 /**
  * ClinchCalloutEffect - Side banners that surface the invisible clinch mind
  * game as it resolves:
- *   counter_throw — you threw an opponent mid-push (max balance drain)
- *   resisted      — a throw/pull attempt failed against balance > 50
- *   deep_grip     — you earned the deep grip (throws land earlier, stronger push)
+ *   counter_throw  — you threw an opponent mid-push (lands only)
+ *   resisted       — held Plant stuffed a technique
+ *   deep_grip      — you earned Deep Grip advantage
+ * (Perfect Brace is a hype stamp via PerfectBraceEffect, not this rail.)
  */
 const CALLOUT_CONFIG = {
-  counter_throw: { text: "COUNTER\nTHROW", type: "counterthrow" },
+  counter_throw: { text: "COUNTER THROW", type: "counterthrow" },
   resisted: { text: "RESISTED", type: "tech" },
-  deep_grip: { text: "DEEP\nGRIP", type: "deepgrip" },
+  deep_grip: { text: "DEEP GRIP", type: "deepgrip" },
 };
 
 const ClinchCalloutEffect = ({ callout }) => {

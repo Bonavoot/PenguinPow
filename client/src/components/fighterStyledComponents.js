@@ -160,7 +160,10 @@ export const getFighterPopFilter = (props) => {
       props.$isBeingGrabFrontalForceOut ||
       (props.$isBeingGrabbed && props.$hasGrip));
 
-  const base = grabArmComposited ? "" : `${edge} ${ground}`;
+  // Grab-arm overlay: status glows only (no edge/ground cut-out shadow).
+  // Body under a composited arm also drops dark shadows so they don't seam.
+  const base =
+    props.$grabArmLayer || grabArmComposited ? "" : `${edge} ${ground}`;
 
   // Kill-throw victim: skip the soft ground drop-shadow. On a spinning / prone
   // body it reads as a second translucent penguin (the "ghost frame" in the
@@ -190,12 +193,20 @@ export const getFighterPopFilter = (props) => {
   if (props.$isRawParrying) {
     return `${base} drop-shadow(0 0 6px rgba(0,130,255,0.9))`;
   }
+  // Perfect Brace flash — bright cream flash on the defender who timed it.
+  if (props.$isClinchPerfectBracing) {
+    return `${base} drop-shadow(0 0 6px rgba(255, 236, 170, 0.95)) drop-shadow(0 0 2px rgba(255, 220, 120, 1))`;
+  }
   // Deep grip holder: a subtle burnished-gold rim for the clinch's earned
   // advantage. Persistent (not a flash), so it stays quieter than the
   // perfect-parry electric cyan flash — "who holds the grip" at a glance.
   // Danger red above still outranks it: "you can die" always wins the rim.
   if (props.$inClinch && props.$hasDeepGrip) {
     return `${base} drop-shadow(0 0 5px rgba(255, 194, 71, 0.55))`;
+  }
+  // Committed Drive — slightly hotter push rim than light poke pressure.
+  if (props.$inClinch && props.$isClinchCommittedDrive) {
+    return `${base} drop-shadow(0 0 4px rgba(255, 140, 60, 0.55))`;
   }
   // MASTERY Phase 2 (2.1): broken posture no longer uses a colored rim —
   // the openable tell is the feet-planted teeter (see postureBrokenTeeter
@@ -534,20 +545,19 @@ export const StyledImage = styled("img")
         : props.$isStrikeExtending
         ? 100
         : 99,
-      // Grab-arm overlay: NO pop filter (see css` filter: none !important `
-      // below). Inline "none" alone can lose to style merges / animation
-      // leftovers; the arm must not carry the body's edge+ground drop-shadow.
-      filter: props.$grabArmLayer ? "none" : getFighterPopFilter(props),
+      // Grab-arm: status glows (Open / Deep Grip / etc.) via getFighterPopFilter
+      // with an empty base — never the body's edge/ground cut-out shadow.
+      filter: getFighterPopFilter(props),
       // Kill-throw spin only while airborne (pre-landing pose). On true impact
       // (!isBeingThrown) play a heavy ground-plant squash — dead weight into the
       // ice with a short jiggle settle, no bounce arc.
-      // Grab-arm overlay: NEVER inherit body clinch animations. Keyframes like
-      // grabPushStrain / clinchTeeter replace `transform` entirely and wipe the
-      // shoulder-pivot body-hold rotate — after the first shove/teeter the arm
-      // stuck at the asset's native belt pose. Body keeps the anim; arm stays
-      // pose-driven (body-hold / belt) via the static transform.
+      // Grab-arm overlay: NEVER transform-animate — shoulder pose is owned by
+      // --grab-arm-* vars. Open only gets a filter-brightness flash so the arm
+      // stays pixel-locked to the body while still reading the vulnerability.
       animation: props.$grabArmLayer
-        ? "none"
+        ? (props.$isClinchOpen || props.$clinchThrowFailStagger)
+          ? "clinchOpenFlashArm 0.42s ease-in-out infinite"
+          : "none"
         : props.$isClinchKillThrowVictim
         ? props.$showClinchKillThrowLanding
           ? props.$isBeingThrown
@@ -596,17 +606,17 @@ export const StyledImage = styled("img")
         : props.$isRawParrying
         ? "parryActivationFlash 0.22s ease-out forwards"
         : props.$isClinchJoltClashing
-        ? "clinchJoltClash 0.15s ease-out"
+        ? "clinchJoltClash 0.25s ease-out"
         : props.$isClinchJolting
-        ? "clinchJoltLunge 0.15s ease-out"
+        ? "clinchJoltLunge 0.25s ease-out forwards"
         : props.$isBeingClinchJolted
-        ? "clinchJoltRecoil 0.2s ease-out"
+        ? "clinchJoltRecoil 0.3s ease-out"
         : props.$isClinchClashing
         ? "grabTechShake 0.25s ease-in-out infinite"
         : props.$isGrabTeching
         ? "grabTechShake 0.25s ease-in-out infinite"
-        : props.$clinchThrowFailStagger
-        ? "clinchFailStumble 0.3s cubic-bezier(0.22, 0.6, 0.35, 1)"
+        : props.$isClinchOpen || props.$clinchThrowFailStagger
+        ? "clinchOpenWobble 0.42s ease-in-out infinite"
         : props.$inClinch && props.$balanceDanger
         ? "clinchTeeterHeavy 0.95s ease-in-out infinite"
         : props.$inClinch && props.$balanceWobble
@@ -719,16 +729,6 @@ export const StyledImage = styled("img")
       transition: "none",
     },
   }))`
-  /* Arm overlay: no body pop-filter (edge/ground drop-shadow). Join seam at
-     the shoulder is an art issue on belt-grab-arm-only.png — don't fake it
-     with masks (reads as a halo). */
-  ${(props) =>
-    props.$grabArmLayer
-      ? `
-    filter: none !important;
-    -webkit-filter: none !important;
-  `
-      : ""}
   @keyframes parryActivationFlash {
     0% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 12px rgba(100,200,255,1)); }
     35% { filter: drop-shadow(0 0 clamp(1px, 0.08cqw, 2.5px) #000) drop-shadow(0 0 8px rgba(0,150,255,0.95)); }
@@ -840,15 +840,38 @@ export const StyledImage = styled("img")
     70% { transform: scaleX(var(--facing, 1)) skewX(0.35deg) translateX(0.2px); }
     73% { transform: scaleX(var(--facing, 1)) skewX(0deg) translateX(0); }
   }
-  /* Failed clinch throw/pull — the attacker's weight drops as the attempt
-     dies. Pure squash-and-recover in the hitSquash family (no rotation, no
-     lateral jitter): a hard scaleY dip with a matching scaleX bulge, then a
-     smooth settle. Reads as "over-committed and got stuffed". */
+  /* Failed clinch throw/pull — one-shot stuffed feel (kept for reference /
+     non-loop call sites). Live Open uses clinchOpenWobble below. */
   @keyframes clinchFailStumble {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1); }
     22% { transform: scaleX(calc(var(--facing, 1) * 1.14)) scaleY(0.86); }
     55% { transform: scaleX(calc(var(--facing, 1) * 0.97)) scaleY(1.03); }
     100% { transform: scaleX(var(--facing, 1)) scaleY(1); }
+  }
+  /* OPEN — looping readable vulnerability for the whole Open window.
+     Soft sway + squash so stars aren't the only tell. */
+  @keyframes clinchOpenWobble {
+    0%, 100% {
+      transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1) skewX(0deg);
+      filter: brightness(1);
+    }
+    35% {
+      transform: scaleX(calc(var(--facing, 1) * 1.06)) translateX(calc(var(--facing, 1) * -3px))
+        scaleY(0.94) skewX(calc(var(--facing, 1) * -2deg));
+      filter: brightness(1.18);
+    }
+    70% {
+      transform: scaleX(calc(var(--facing, 1) * 0.98)) translateX(calc(var(--facing, 1) * 2px))
+        scaleY(1.02) skewX(calc(var(--facing, 1) * 1.5deg));
+      filter: brightness(1.08);
+    }
+  }
+  /* OPEN on grab-arm — filter ONLY. Transform stays on --grab-arm-* pose vars
+     so the flipper never leaves its shoulder anchor. */
+  @keyframes clinchOpenFlashArm {
+    0%, 100% { filter: brightness(1); }
+    35% { filter: brightness(1.18); }
+    70% { filter: brightness(1.08); }
   }
   @keyframes grabTechShake {
     0% { transform: scaleX(var(--facing, 1)) translateX(0px); }
@@ -861,11 +884,12 @@ export const StyledImage = styled("img")
     87% { transform: scaleX(var(--facing, 1)) translateX(-2px); }
     100% { transform: scaleX(var(--facing, 1)) translateX(0px); }
   }
+  /* 250ms telegraphed startup — coil, then lunge into contact as impact resolves */
   @keyframes clinchJoltLunge {
     0% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); }
-    25% { transform: scaleX(calc(var(--facing, 1) * 1.15)) translateX(calc(var(--facing, 1) * -16px)) scaleY(0.90); }
-    50% { transform: scaleX(calc(var(--facing, 1) * 1.08)) translateX(calc(var(--facing, 1) * -10px)) scaleY(0.94); }
-    100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); }
+    35% { transform: scaleX(calc(var(--facing, 1) * 1.12)) translateX(calc(var(--facing, 1) * -18px)) scaleY(0.88); }
+    75% { transform: scaleX(calc(var(--facing, 1) * 1.18)) translateX(calc(var(--facing, 1) * 22px)) scaleY(0.92); }
+    100% { transform: scaleX(calc(var(--facing, 1) * 1.1)) translateX(calc(var(--facing, 1) * 14px)) scaleY(0.96); }
   }
   @keyframes clinchJoltRecoil {
     0% { transform: scaleX(var(--facing, 1)) translateX(0) skewX(0deg) scaleY(1); }

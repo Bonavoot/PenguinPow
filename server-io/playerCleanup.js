@@ -20,6 +20,8 @@ function cleanupPlayerStates(player) {
   player.isCounterGrabbed = false;
   player.isArmClamped = false;
   player.clinchThrowFailStagger = false;
+  player.isClinchOpen = false;
+  player.clinchOpenUntil = 0;
   player.hasDeepGrip = false;
   player.clinchShoveLead = null;
   player.deepGripPushStart = 0;

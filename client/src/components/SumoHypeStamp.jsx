@@ -13,7 +13,8 @@ import {
  *
  * Two registers:
  *   hero  — PERFECT / MATADOR: circular hanko seal + bigger ink press
- *   mark  — GRAB BREAK / COUNTER GRAB / MATADOR BREAK: cut-through stamp
+ *   mark  — MATADOR BREAK: cut-through stamp
+ *   (COUNTER GRAB / GRAB BREAK live on the info rail with COUNTER HIT.)
  *
  * Band: ~26–44cqh. Info rail starts ~54cqh.
  */
@@ -29,39 +30,28 @@ const HYPE_THEMES = {
     deep: C.iceDeep,
     kanji: "極",
     label: "PERFECT",
-    bang: true,
     hero: true,
   },
-  break: {
-    color: C.successBright,
-    deep: C.successDeep,
-    kanji: "破",
-    label: "GRAB\nBREAK",
-    bang: false,
-    hero: false,
-  },
-  countergrab: {
-    color: "#e07098",
-    deep: "#5a2048",
-    kanji: "掴",
-    label: "COUNTER\nGRAB",
-    bang: false,
-    hero: false,
+  // Clinch Flow Perfect Brace — warm gold seal (same hero register as PERFECT)
+  perfectbrace: {
+    color: "#f0d078",
+    deep: "#5a3a08",
+    kanji: "構",
+    label: "PERFECT BRACE",
+    hero: true,
   },
   matador: {
     color: "#f0d060",
     deep: "#6e4a10",
     kanji: "誘",
     label: "MATADOR",
-    bang: true,
     hero: true,
   },
   matadorbreak: {
     color: "#ff9628",
     deep: "#7a3208",
     kanji: "破",
-    label: "MATADOR\nBREAK",
-    bang: false,
+    label: "MATADOR BREAK",
     hero: false,
   },
 };
@@ -253,14 +243,15 @@ const Mark = styled.div`
   position: relative;
   z-index: 1;
   overflow: visible;
+  /* Wider for single-line labels; shorter so the ink seat hugs the word. */
   width: ${(p) =>
     getTheme(p.$type).hero
-      ? "clamp(148px, 16cqw, 200px)"
-      : "clamp(128px, 14cqw, 172px)"};
+      ? "clamp(168px, 18.5cqw, 230px)"
+      : "clamp(155px, 17cqw, 210px)"};
   height: ${(p) =>
     getTheme(p.$type).hero
-      ? "clamp(118px, 14cqh, 155px)"
-      : "clamp(100px, 12cqh, 132px)"};
+      ? "clamp(100px, 12cqh, 132px)"
+      : "clamp(86px, 10cqh, 112px)"};
 `;
 
 /* Circular hanko ring — hero stamps only. */
@@ -333,15 +324,13 @@ const LabelSeat = styled.div`
   left: 50%;
   top: 52%;
   z-index: 2;
-  width: ${(p) => (getTheme(p.$type).hero ? "118%" : "112%")};
-  height: ${(p) => {
-    if (p.$stacked) return "44%";
-    return getTheme(p.$type).hero ? "34%" : "30%";
-  }};
+  width: ${(p) => (getTheme(p.$type).hero ? "122%" : "118%")};
+  /* Single-line word height — thin lacquer strip across the seal. */
+  height: ${(p) => (getTheme(p.$type).hero ? "26%" : "24%")};
   transform: translate(-50%, -50%);
   pointer-events: none;
   background: ${(p) => {
-    const { deep, color, hero } = getTheme(p.$type);
+    const { deep, hero } = getTheme(p.$type);
     if (hero) {
       return css`linear-gradient(
         90deg,
@@ -383,12 +372,12 @@ const Label = styled.div`
   font-family: ${FONT_DISPLAY};
   font-size: ${(p) =>
     getTheme(p.$type).hero
-      ? "clamp(1.2rem, 2.15cqw, 1.6rem)"
-      : "clamp(1.05rem, 1.9cqw, 1.4rem)"};
+      ? "clamp(1.1rem, 1.95cqw, 1.45rem)"
+      : "clamp(0.95rem, 1.7cqw, 1.25rem)"};
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  line-height: 0.95;
-  white-space: ${(p) => (p.$nowrap ? "nowrap" : "pre-line")};
+  line-height: 1;
+  white-space: nowrap;
   text-align: center;
   color: ${C.cream};
   text-shadow: ${TEXT_SHADOW_COMBAT};
@@ -410,9 +399,9 @@ const SumoHypeStamp = ({
 }) => {
   const { evicted, restrike } = useHypeRail(isLeftSide, type);
   const theme = getTheme(type);
-  let label = text || theme.label;
-  if (theme.bang) label = withSpacedBang(label);
-  const stacked = typeof label === "string" && label.includes("\n");
+  const raw = text || theme.label;
+  let label = typeof raw === "string" ? raw.replace(/\s+/g, " ").trim() : raw;
+  label = withSpacedBang(label);
 
   return (
     <StampWrapper $isLeftSide={isLeftSide}>
@@ -430,15 +419,8 @@ const SumoHypeStamp = ({
           <Kanji $type={type} aria-hidden>
             {theme.kanji}
           </Kanji>
-          <LabelSeat
-            $type={type}
-            $stacked={stacked}
-            $isLeftSide={isLeftSide}
-            aria-hidden
-          />
-          <Label $type={type} $nowrap={!stacked}>
-            {label}
-          </Label>
+          <LabelSeat $type={type} $isLeftSide={isLeftSide} aria-hidden />
+          <Label $type={type}>{label}</Label>
         </Mark>
       </StampMotion>
     </StampWrapper>
@@ -448,8 +430,7 @@ const SumoHypeStamp = ({
 SumoHypeStamp.propTypes = {
   type: PropTypes.oneOf([
     "perfect",
-    "break",
-    "countergrab",
+    "perfectbrace",
     "matador",
     "matadorbreak",
   ]),

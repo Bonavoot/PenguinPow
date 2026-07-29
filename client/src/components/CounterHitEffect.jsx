@@ -58,7 +58,7 @@ const CounterHitEffect = ({ position }) => {
         return (
           <SumoAnnouncementBanner
             key={effect.id}
-            text={"COUNTER\nHIT"}
+            text={"COUNTER HIT"}
             type="counterhit"
             isLeftSide={isLeftSide}
           />

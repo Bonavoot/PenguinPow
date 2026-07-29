@@ -8,7 +8,10 @@ const {
   ARM_CLAMP_BURST_END_VELOCITY, ARM_CLAMP_MAX_BURST_MS,
   GRAB_PUSH_STAMINA_DRAIN_INTERVAL, GRAB_PUSH_EDGE_STAMINA_DRAIN_INTERVAL,
   GRAB_STAMINA_DRAIN_INTERVAL,
-  RINGOUT_THROW_DURATION_MS,
+  RINGOUT_PUSH_DURATION_MS,
+  RINGOUT_PUSH_DISTANCE,
+  RINGOUT_PUSH_IDLE_DELAY_MS,
+  RINGOUT_PUSH_SEPARATE_DELAY_MS,
   BALANCE_MAX,
   CLINCH_PUSH_BASE_SPEED,
   CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC,
@@ -39,9 +42,9 @@ const {
   CLINCH_BODY_HOLD_DISTANCE,
   CLINCH_ATTACH_LERP_PER_SEC,
   CLINCH_THROW_ANIMATION_MS,
-  CLINCH_THROW_COOLDOWN_MS,
   CLINCH_THROW_STAMINA_COST,
   CLINCH_THROW_CLASH_WINDOW_MS,
+  CLINCH_THROW_REQUEST_PUSH_CAP_MULT,
   CLINCH_THROW_BALANCE_DRAIN_VS_PUSH,
   CLINCH_THROW_BALANCE_DRAIN_VS_PLANT,
   CLINCH_THROW_BALANCE_DRAIN_VS_NEUTRAL,
@@ -52,12 +55,27 @@ const {
   CLINCH_PULL_BALANCE_DRAIN_VS_PLANT,
   CLINCH_PULL_BALANCE_DRAIN_VS_NEUTRAL,
   CLINCH_PULL_FAIL_SELF_BALANCE_DRAIN,
-  CLINCH_TECH_STAMINA_COST,
+  CLINCH_LIGHT_DRIVE_MS,
+  CLINCH_LIGHT_DRIVE_SPEED_MULT,
+  CLINCH_DRIVE_PLANT_CANCEL_MS,
+  CLINCH_PUSH_LOSS_OPEN_T,
+  CLINCH_PUSH_LOSS_OPEN_MS,
+  CLINCH_PUSH_LOSS_OPEN_DURATION_MS,
+  CLINCH_PERFECT_BRACE_OPEN_MS,
+  CLINCH_PERFECT_BRACE_WINDOW_MS,
+  CLINCH_PERFECT_BRACE_FLASH_MS,
+  CLINCH_OPEN_TUMBLE_MS,
+  CLINCH_OPEN_JOLT_INTO_DRIVE_MS,
+  CLINCH_TUMBLE_STAMINA_COST,
+  CLINCH_TUMBLE_BALANCE_DRAIN,
+  CLINCH_THROW_DISTANCE_MIN,
+  CLINCH_THROW_DISTANCE_MAX,
+  CLINCH_PULL_DISTANCE_MIN,
+  CLINCH_PULL_DISTANCE_MAX,
   CLINCH_EDGE_ZONE_THRESHOLD,
   CLINCH_EDGE_BALANCE_DRAIN_MULT,
   CLINCH_EDGE_THROW_DRAIN_BONUS,
   CLINCH_EDGE_PULL_DRAIN_BONUS,
-  CLINCH_THROW_LAND_THRESHOLD,
   CLINCH_THROW_KILL_THRESHOLD,
   CLINCH_THROW_DURATION_MS,
   CLINCH_CLASH_ANIMATION_MS,
@@ -90,7 +108,6 @@ const {
   CLINCH_JOLT_LOCKOUT_VS_PLANT,
   CLINCH_JOLT_LOCKOUT_VS_NEUTRAL,
   CLINCH_JOLT_LOCKOUT_VS_PUSH,
-  CLINCH_JOLT_COOLDOWN_MS,
   CLINCH_JOLT_SELF_BALANCE_VS_PUSH,
   PULL_BOUNDARY_MARGIN,
   CLINCH_THROW_BOUNDARY_MARGIN,
@@ -98,7 +115,6 @@ const {
   CLINCH_PULL_SWAP_TWEEN_DURATION,
   CLINCH_PUSH_STAMINA_FLOOR,
   CLINCH_THROW_FAIL_STAGGER_MS,
-  DEEP_GRIP_THROW_THRESHOLD_BONUS,
   DEEP_GRIP_PUSH_MULT,
   DEEP_GRIP_PUSH_WIN_MS,
   GRAB_BREAK_STAMINA_COST,
@@ -107,6 +123,7 @@ const {
   GRAB_BREAK_INPUT_LOCK_MS,
   GRAB_BREAK_GRAB_IMMUNITY_MS,
   GRAB_BREAK_REACTION_LOCK_MS,
+  GROUND_LEVEL,
 } = require("./constants");
 
 const {
@@ -117,6 +134,8 @@ const {
   triggerHitstopAndEmit,
   emitThrottledScreenShake,
   emitStaminaBlocked,
+  tryEnterGassed,
+  timeoutManager,
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
 } = require("./gameUtils");
@@ -187,6 +206,31 @@ function grantDeepGrip(holder, other, room, io, source) {
   });
 }
 
+// OPEN — punishable vulnerability. Blocks clinch offense / stance until clear.
+// `stumble` adds the fail-stagger pose (resisted techniques / tumble).
+// Stun stars are raw-parry only — Open is conveyed by pose / action lock.
+function applyClinchOpen(player, durationMs, room, options = {}) {
+  if (!player || durationMs <= 0) return;
+  const stumble = options.stumble !== false;
+  const now = room ? simNow(room) : Date.now();
+  player.isClinchOpen = true;
+  if (stumble) player.clinchThrowFailStagger = true;
+  player.clinchOpenUntil = now + durationMs;
+  player.clinchAction = "neutral";
+  player.isClinchPushing = false;
+  player.isClinchPlanting = false;
+  timeoutManager.clearPlayerSpecific(player.id, "clinchThrowFailStagger");
+  setPlayerTimeout(player.id, () => {
+    player.clinchThrowFailStagger = false;
+    player.isClinchOpen = false;
+    player.clinchOpenUntil = 0;
+  }, durationMs, "clinchThrowFailStagger");
+}
+
+function isClinchOpen(player) {
+  return !!(player && (player.isClinchOpen || player.clinchThrowFailStagger));
+}
+
 function isInEdgeZone(playerX) {
   return playerX <= MAP_LEFT_BOUNDARY + CLINCH_EDGE_ZONE_THRESHOLD ||
          playerX >= MAP_RIGHT_BOUNDARY - CLINCH_EDGE_ZONE_THRESHOLD;
@@ -198,14 +242,24 @@ function clearEdgePinHold(...players) {
   }
 }
 
-// Edge pin ring-out: stamina ≤ 0 (resource dump) OR continuous hold ≥ CLINCH_EDGE_PIN_HOLD_MS.
-// Returns true if a ring-out fired. Call only while actively pinning at the boundary.
+// Edge pin ring-out while actively driving someone into the boundary:
+//   • Gassed / empty tank → through immediately
+//   • Open (stuffed throw, bad jolt, etc.) → through immediately (same as gassed)
+//   • Otherwise → continuous hold ≥ CLINCH_EDGE_PIN_HOLD_MS
+// Open/gassed still require the pusher to keep driving — this is not an auto
+// win from a passive brace. Returns true if a ring-out fired.
 function tryEdgePinRingOut(pusher, victim, room, io, rooms, dir, now) {
-  if (victim.stamina <= 0) {
+  const instantThrough =
+    victim.stamina <= 0 ||
+    !!victim.isGassed ||
+    isClinchOpen(victim);
+
+  if (instantThrough) {
     clearEdgePinHold(victim);
     triggerRingOut(pusher, victim, room, io, rooms, dir);
     return true;
   }
+
   if (!victim.clinchEdgePinStart) {
     victim.clinchEdgePinStart = now;
   } else if (now - victim.clinchEdgePinStart >= CLINCH_EDGE_PIN_HOLD_MS) {
@@ -216,14 +270,48 @@ function tryEdgePinRingOut(pusher, victim, room, io, rooms, dir, now) {
   return false;
 }
 
-function getClinchAction(player, opponent) {
+function getClinchAction(player, opponent, now = 0) {
   if (!player.hasGrip) return "neutral";
-  if (getPlantIntent(player, opponent)) return "plant";
+  // Open / jolt recovery: visible vulnerability — no push or plant until clear.
+  if (player.clinchJoltRecovery || player.isClinchOpen || player.clinchThrowFailStagger) {
+    return "neutral";
+  }
+  const plantIntent = getPlantIntent(player, opponent);
+  // Committed Drive → Plant cancel has a short transition (not instant).
+  if (
+    plantIntent &&
+    now &&
+    player.clinchDrivePlantCancelUntil &&
+    now < player.clinchDrivePlantCancelUntil
+  ) {
+    return "neutral";
+  }
+  if (plantIntent) return "plant";
 
   const towardKey = player.x < opponent.x ? 'd' : 'a';
   const pressingToward = player.keys[towardKey] && !player.keys[player.x < opponent.x ? 'a' : 'd'];
   if (pressingToward) return "push";
   return "neutral";
+}
+
+// Balance-scaled non-kill technique distance (P2).
+function scaledClinchTechniqueDistance(balance, minDist, maxDist) {
+  const bal = Math.max(
+    CLINCH_THROW_KILL_THRESHOLD,
+    Math.min(BALANCE_MAX, typeof balance === "number" ? balance : BALANCE_MAX)
+  );
+  const span = Math.max(1, BALANCE_MAX - CLINCH_THROW_KILL_THRESHOLD);
+  const t = 1 - (bal - CLINCH_THROW_KILL_THRESHOLD) / span; // 0 at full, 1 at kill
+  return Math.round(minDist + (maxDist - minDist) * Math.max(0, Math.min(1, t)));
+}
+
+function isPerfectBraceTiming(actor, target, animDuration) {
+  const braceTime = target.clinchBraceSimTime || 0;
+  if (!braceTime || !actor.clinchThrowStartTime) return false;
+  const impactTime = actor.clinchThrowStartTime + animDuration;
+  const windowStart = impactTime - CLINCH_PERFECT_BRACE_WINDOW_MS;
+  // Press must land in the final window of the visible startup (not pre-held).
+  return braceTime >= windowStart && braceTime <= impactTime + 16;
 }
 
 // Plant/brace stance intent from raw keys: pull-back (away) alone, or S alone —
@@ -238,19 +326,12 @@ function getPlantIntent(player, opponent) {
 }
 
 function isPlayerBeltHolding(p) {
-  // The M2 that started the grab must be released once before hold counts as
-  // belt — otherwise connect always defaults to belt arms while the button
-  // is still down from the attempt. Body hold is the default.
-  if (p.clinchBeltRequiresM2Release) {
-    if (!p.keys?.mouse2) {
-      p.clinchBeltRequiresM2Release = false;
-    }
-  }
-  const m2Belt = !!p.keys?.mouse2 && !p.clinchBeltRequiresM2Release;
+  // Cosmetic arm pose: M2 held = belt, released = body hold. Holding M2
+  // through grab connect stays on the belt — no forced release/re-press.
   return !!(
     p.inClinch &&
     !p.isArmClamped &&
-    (m2Belt ||
+    (!!p.keys?.mouse2 ||
       p.clinchThrowRequest ||
       p.clinchThrowActive ||
       p.isClinchThrowing ||
@@ -271,6 +352,8 @@ function getClinchTargetAttachDistance(player, opponent) {
 function updateGrabActions(player, room, io, delta, rooms) {
   // Only process for the player who initiated the grab (isGrabbing)
   if (!player.isGrabbing || !player.grabbedOpponent) return;
+  // FORCE OUT cutscene owns movement/poses after the win — don't run clinch AI.
+  if (player.isRingOutPushCutscene || room.gameOver) return;
   // Skip during throw/pull animation states (Phase 4 will handle these)
   if (player.isThrowing || player.isBeingThrown) return;
 
@@ -471,14 +554,52 @@ function updateGrabActions(player, room, io, delta, rooms) {
     opponent.clinchAction = "neutral";
   }
 
-  // Determine each player's clinch action (clamped victim forced neutral)
-  const grabberAction = getClinchAction(player, opponent);
-  const opponentAction = opponent.isArmClamped
-    ? "neutral"
-    : getClinchAction(opponent, player);
+  const now = simNow(room);
+
+  // Arm-clamped Plant-brace: respect committed→plant cancel lock too.
+  const clampedOpponentAction = (() => {
+    if (!opponent.isArmClamped) return null;
+    if (
+      getPlantIntent(opponent, player) &&
+      !(opponent.clinchDrivePlantCancelUntil && now < opponent.clinchDrivePlantCancelUntil)
+    ) {
+      return "plant";
+    }
+    return "neutral";
+  })();
+
+  // Determine each player's clinch action. Arm-clamped victims cannot push /
+  // throw / jolt / break, but may still Plant-brace against techniques.
+  const grabberActionPass1 = getClinchAction(player, opponent, now);
+  const opponentActionPass1 = clampedOpponentAction ?? getClinchAction(opponent, player, now);
+
+  // Committed Drive → Plant: arm a short cancel lock on the transition edge.
+  for (const [p, action] of [[player, grabberActionPass1], [opponent, opponentActionPass1]]) {
+    const wasCommitted = !!p.isClinchCommittedDrive;
+    if (wasCommitted && action === "plant") {
+      p.clinchDrivePlantCancelUntil = now + CLINCH_DRIVE_PLANT_CANCEL_MS;
+    }
+  }
+  // Re-resolve if cancel lock just armed this tick (plant → neutral beat).
+  const grabberAction = getClinchAction(player, opponent, now);
+  const opponentAction = clampedOpponentAction ?? getClinchAction(opponent, player, now);
 
   player.clinchAction = grabberAction;
   opponent.clinchAction = opponentAction;
+
+  // Drive hold timers — Light vs Committed
+  for (const [p, action] of [
+    [player, grabberAction],
+    [opponent, opponentAction],
+  ]) {
+    if (action === "push") {
+      if (!p.clinchDriveHoldStart) p.clinchDriveHoldStart = now;
+      p.isClinchCommittedDrive = now - p.clinchDriveHoldStart >= CLINCH_LIGHT_DRIVE_MS;
+    } else {
+      if (p.clinchDriveHoldStart) p.clinchDriveHoldStart = 0;
+      p.isClinchCommittedDrive = false;
+    }
+  }
 
   // Set visual states
   player.inClinch = true;
@@ -508,8 +629,6 @@ function updateGrabActions(player, room, io, delta, rooms) {
     executeClinchSeparation(player, opponent, room, io);
     return;
   }
-
-  const now = simNow(room);
 
   // ============================================
   // CLINCH BREAK (Spacebar) — defensive escape from mutual clinch
@@ -553,9 +672,35 @@ function updateGrabActions(player, room, io, delta, rooms) {
   }
 
   // ============================================
-  // CLINCH JOLT (Mouse1) — quick balance-damage shove
-  // Processed before throw/pull/lift — recovery blocks those actions
+  // CLINCH JOLT (Mouse1) — telegraphed chest-shove
+  // Startup (250ms) is visible commitment; impact resolves at the end against
+  // the opponent's CURRENT plant/push/neutral. Mutual clash uses overlapping
+  // startups within CLINCH_JOLT_CLASH_WINDOW_MS of each start time.
+  // Processed before throw/pull/lift — recovery blocks those actions.
   // ============================================
+
+  const beginClinchJoltRecovery = (p, opts = {}) => {
+    if (p.clinchJoltRecovery) return;
+    p.clinchJoltRecovery = true;
+    // Punishable recovery — Open without stumble pose, unless a worse Open
+    // (e.g. jolt into committed Drive) already armed a stumble window.
+    if (!opts.skipOpen && !isClinchOpen(p)) {
+      applyClinchOpen(p, CLINCH_JOLT_RECOVERY_MS, room, { stumble: false });
+    }
+    setPlayerTimeout(p.id, () => {
+      p.clinchJoltRecovery = false;
+    }, CLINCH_JOLT_RECOVERY_MS, "clinchJoltRecovery");
+  };
+
+  const cancelPhaseABurst = () => {
+    if (!player.isGrabPushing) return;
+    player.isGrabPushing = false;
+    opponent.isBeingGrabPushed = false;
+    player.isEdgePushing = false;
+    opponent.isBeingEdgePushed = false;
+    player.isAtBoundaryDuringGrab = false;
+    player.grabPushStartTime = 0;
+  };
 
   // Drop early jolt requests (same fresh-press floor as grab break).
   // No carry — player must press Mouse1 again after the lock.
@@ -568,22 +713,8 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
   }
 
-  // --- Clear expired jolt animation states ---
+  // --- Clear expired recoil / plant-interrupt (impact aftermath) ---
   for (const p of [player, opponent]) {
-    if (p.isClinchJolting && p.clinchJoltStartTime && now - p.clinchJoltStartTime >= CLINCH_JOLT_ANIMATION_MS) {
-      p.isClinchJolting = false;
-      p.isClinchJoltClashing = false;
-      if (!p.clinchJoltRecovery) {
-        p.clinchJoltRecovery = true;
-        setPlayerTimeout(p.id, () => {
-          p.clinchJoltRecovery = false;
-          p.clinchJoltCooldown = true;
-          setPlayerTimeout(p.id, () => {
-            p.clinchJoltCooldown = false;
-          }, CLINCH_JOLT_COOLDOWN_MS, "clinchJoltCooldown");
-        }, CLINCH_JOLT_RECOVERY_MS, "clinchJoltRecovery");
-      }
-    }
     if (p.isBeingClinchJolted && p.clinchJoltRecoilStart && now - p.clinchJoltRecoilStart >= CLINCH_JOLT_RECOIL_MS) {
       p.isBeingClinchJolted = false;
     }
@@ -592,160 +723,226 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
   }
 
-  // --- Mutual jolt detection ---
-  if (player.clinchJoltRequest && opponent.clinchJoltRequest) {
+  // --- Accept jolt requests → begin 250ms telegraphed startup (no impact yet) ---
+  for (const jolter of [player, opponent]) {
+    if (!jolter.clinchJoltRequest) continue;
+
+    if (
+      jolter.isClinchJolting ||
+      jolter.isClinchJoltClashing ||
+      jolter.clinchJoltRecovery ||
+      isClinchOpen(jolter) ||
+      jolter.clinchThrowActive ||
+      jolter.isClinchClashing ||
+      jolter.isResistingThrow ||
+      jolter.isResistingPull ||
+      !jolter.hasGrip
+    ) {
+      jolter.clinchJoltRequest = false;
+      jolter.clinchJoltRequestTime = 0;
+      continue;
+    }
+
+    // Stamina never hard-blocks jolt — gassed / empty tank can still hand-fight
+    // (CLINCH_JOLT_GASSED_MULT weakens impact). Pay what you can; floor at 0.
+    jolter.clinchJoltRequest = false;
+    jolter.clinchJoltRequestTime = 0;
+    jolter.isClinchJolting = true;
+    jolter.clinchJoltStartTime = now;
+    jolter.stamina = Math.max(0, (jolter.stamina || 0) - CLINCH_JOLT_STAMINA_COST);
+    tryEnterGassed(jolter, now);
+    cancelPhaseABurst();
+  }
+
+  // --- Mutual clash: both committed startups within the 120ms window ---
+  if (
+    player.isClinchJolting &&
+    opponent.isClinchJolting &&
+    !player.clinchJoltRecovery &&
+    !opponent.clinchJoltRecovery
+  ) {
     const timeDiff = Math.abs(
-      (player.clinchJoltRequestTime || 0) - (opponent.clinchJoltRequestTime || 0)
+      (player.clinchJoltStartTime || 0) - (opponent.clinchJoltStartTime || 0)
     );
     if (timeDiff <= CLINCH_JOLT_CLASH_WINDOW_MS) {
-      player.clinchJoltRequest = false;
-      player.clinchJoltRequestTime = 0;
-      opponent.clinchJoltRequest = false;
-      opponent.clinchJoltRequestTime = 0;
-
       player.isClinchJoltClashing = true;
       opponent.isClinchJoltClashing = true;
-      player.isClinchJolting = true;
-      opponent.isClinchJolting = true;
-      player.clinchJoltStartTime = now;
-      opponent.clinchJoltStartTime = now;
+    }
+  }
 
-      if (player.isGrabPushing) {
-        player.isGrabPushing = false;
-        opponent.isBeingGrabPushed = false;
-        player.isEdgePushing = false;
-        opponent.isBeingEdgePushed = false;
-        player.isAtBoundaryDuringGrab = false;
-        player.grabPushStartTime = 0;
-      }
+  // --- Resolve impact when startup completes ---
+  const playerStartupDone =
+    player.isClinchJolting &&
+    player.clinchJoltStartTime &&
+    now - player.clinchJoltStartTime >= CLINCH_JOLT_ANIMATION_MS;
+  const opponentStartupDone =
+    opponent.isClinchJolting &&
+    opponent.clinchJoltStartTime &&
+    now - opponent.clinchJoltStartTime >= CLINCH_JOLT_ANIMATION_MS;
+  // Impact clears isClinchJolting; keep this tick from falling into push/throw.
+  let joltImpactResolved = false;
 
-      player.balance = Math.max(0, player.balance - CLINCH_JOLT_MUTUAL_BALANCE);
-      opponent.balance = Math.max(0, opponent.balance - CLINCH_JOLT_MUTUAL_BALANCE);
-      player.stamina = Math.max(0, player.stamina - CLINCH_JOLT_STAMINA_COST);
-      opponent.stamina = Math.max(0, opponent.stamina - CLINCH_JOLT_STAMINA_COST);
+  // Mutual: first to reach impact resolves the clash for both (cuts short the later startup).
+  if (
+    player.isClinchJoltClashing &&
+    opponent.isClinchJoltClashing &&
+    (playerStartupDone || opponentStartupDone)
+  ) {
+    player.isClinchJolting = false;
+    opponent.isClinchJolting = false;
+    player.isClinchJoltClashing = false;
+    opponent.isClinchJoltClashing = false;
+    player.clinchJoltStartTime = 0;
+    opponent.clinchJoltStartTime = 0;
+
+    player.balance = Math.max(0, player.balance - CLINCH_JOLT_MUTUAL_BALANCE);
+    opponent.balance = Math.max(0, opponent.balance - CLINCH_JOLT_MUTUAL_BALANCE);
+
+    player.isBeingClinchJolted = true;
+    opponent.isBeingClinchJolted = true;
+    player.clinchJoltRecoilStart = now;
+    opponent.clinchJoltRecoilStart = now;
+    player.inputLockUntil = Math.max(player.inputLockUntil || 0, now + CLINCH_JOLT_RECOIL_MS);
+    opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, now + CLINCH_JOLT_RECOIL_MS);
+
+    beginClinchJoltRecovery(player);
+    beginClinchJoltRecovery(opponent);
+    joltImpactResolved = true;
 
     triggerHitstopAndEmit(io, room, CLINCH_JOLT_MUTUAL_HITSTOP_MS, "clinch_jolt_mutual");
     emitThrottledScreenShake(room, io, { type: "clinch_jolt", scale: 1.1 });
-      io.in(room.id).emit("clinch_jolt", {
-        jolterId: player.id,
-        targetId: opponent.id,
-        jolterX: player.x,
-        targetX: opponent.x,
-        type: "mutual",
-        direction: 0,
-        // Midpoint seam at clinch attach spacing — same contact rail as strikes.
-        contactX: (player.x + opponent.x) / 2,
-        contactY: player.y,
-      });
-
-      player.clinchStalemateStart = now;
-      opponent.clinchStalemateStart = now;
-      player.clinchStalemateLastBalance = player.balance;
-      opponent.clinchStalemateLastBalance = opponent.balance;
-    }
-  }
-
-  // --- Process single jolt ---
-  for (const [jolter, target] of [[player, opponent], [opponent, player]]) {
-    if (!jolter.clinchJoltRequest || jolter.isClinchJolting || jolter.isClinchJoltClashing ||
-        jolter.clinchThrowFailStagger) continue;
-
-    jolter.clinchJoltRequest = false;
-    jolter.clinchJoltRequestTime = 0;
-
-    const targetAction = target === player ? grabberAction : opponentAction;
-
-    let balanceDmg, pushDist, lockoutMs;
-    if (targetAction === "plant") {
-      balanceDmg = CLINCH_JOLT_BALANCE_VS_PLANT;
-      pushDist = CLINCH_JOLT_PUSH_VS_PLANT;
-      lockoutMs = CLINCH_JOLT_LOCKOUT_VS_PLANT;
-    } else if (targetAction === "push") {
-      balanceDmg = CLINCH_JOLT_BALANCE_VS_PUSH;
-      pushDist = CLINCH_JOLT_PUSH_VS_PUSH;
-      lockoutMs = CLINCH_JOLT_LOCKOUT_VS_PUSH;
-    } else {
-      balanceDmg = CLINCH_JOLT_BALANCE_VS_NEUTRAL;
-      pushDist = CLINCH_JOLT_PUSH_VS_NEUTRAL;
-      lockoutMs = CLINCH_JOLT_LOCKOUT_VS_NEUTRAL;
-    }
-
-    const gassedMult = jolter.isGassed ? CLINCH_JOLT_GASSED_MULT : 1;
-    balanceDmg = Math.round(balanceDmg * gassedMult);
-    pushDist = Math.round(pushDist * gassedMult);
-
-    target.balance = Math.max(0, target.balance - balanceDmg);
-    jolter.stamina = Math.max(0, jolter.stamina - CLINCH_JOLT_STAMINA_COST);
-
-    if (targetAction === "push") {
-      jolter.balance = Math.max(0, jolter.balance - CLINCH_JOLT_SELF_BALANCE_VS_PUSH);
-    }
-
-    // Chest-bump: target takes 70% of push, jolter advances 30%
-    const pushDir = jolter.x < target.x ? 1 : -1;
-    if (pushDist > 0) {
-      const targetPush = pushDist * 0.7;
-      const jolterPush = pushDist * 0.3;
-      jolter.x = Math.max(leftBoundary, Math.min(rightBoundary, jolter.x + pushDir * jolterPush));
-      target.x = Math.max(leftBoundary, Math.min(rightBoundary, target.x + pushDir * targetPush));
-    }
-
-    jolter.isClinchJolting = true;
-    jolter.clinchJoltStartTime = now;
-    target.isBeingClinchJolted = true;
-    target.clinchJoltRecoilStart = now;
-
-    // Jolt cancels the Phase A burst shove (same as throw/pull/lift).
-    if (player.isGrabPushing) {
-      player.isGrabPushing = false;
-      opponent.isBeingGrabPushed = false;
-      player.isEdgePushing = false;
-      opponent.isBeingEdgePushed = false;
-      player.isAtBoundaryDuringGrab = false;
-      player.grabPushStartTime = 0;
-    }
-
-    if (lockoutMs > 0) {
-      target.inputLockUntil = Math.max(target.inputLockUntil || 0, now + lockoutMs);
-    }
-
-    if (targetAction === "plant") {
-      target.clinchJoltPlantInterrupt = true;
-      target.clinchJoltPlantInterruptStart = now;
-    }
-
-    // DEEP GRIP: a landed jolt always strips the target's deep grip, and
-    // jolting a PLANTED opponent (posture broken, hand slips inside) earns it.
-    if (target.hasDeepGrip) target.hasDeepGrip = false;
-    if (targetAction === "plant") {
-      grantDeepGrip(jolter, target, room, io, "jolt");
-    }
-
-    triggerHitstopAndEmit(io, room, CLINCH_JOLT_HITSTOP_MS, "clinch_jolt");
-    emitThrottledScreenShake(room, io, { type: "clinch_jolt" });
     io.in(room.id).emit("clinch_jolt", {
-      jolterId: jolter.id,
-      targetId: target.id,
-      jolterX: jolter.x,
-      targetX: target.x,
-      type: "single",
-      direction: pushDir,
-      contactX: (jolter.x + target.x) / 2,
-      contactY: jolter.y,
+      jolterId: player.id,
+      targetId: opponent.id,
+      jolterX: player.x,
+      targetX: opponent.x,
+      type: "mutual",
+      direction: 0,
+      contactX: (player.x + opponent.x) / 2,
+      contactY: player.y,
     });
 
-    // Stalemate reset
-    jolter.clinchStalemateStart = now;
-    target.clinchStalemateStart = now;
-    jolter.clinchStalemateLastBalance = jolter.balance;
-    target.clinchStalemateLastBalance = target.balance;
-    jolter.clinchStalemateLastX = jolter.x;
-    target.clinchStalemateLastX = target.x;
+    player.clinchStalemateStart = now;
+    opponent.clinchStalemateStart = now;
+    player.clinchStalemateLastBalance = player.balance;
+    opponent.clinchStalemateLastBalance = opponent.balance;
+    player.clinchStalemateLastX = player.x;
+    opponent.clinchStalemateLastX = opponent.x;
+  } else {
+    // Single jolt impact — snapshot opponent keys NOW (after the telegraph).
+    for (const [jolter, target] of [[player, opponent], [opponent, player]]) {
+      const startupDone =
+        jolter === player ? playerStartupDone : opponentStartupDone;
+      if (
+        !startupDone ||
+        jolter.isClinchJoltClashing ||
+        !jolter.isClinchJolting
+      ) {
+        continue;
+      }
+
+      jolter.isClinchJolting = false;
+      jolter.clinchJoltStartTime = 0;
+
+      const targetAction = target === player ? grabberAction : opponentAction;
+
+      // Light Drive reads closer to neutral; Committed Drive is the full
+      // "jolt into their force" disaster (self-damage + Open).
+      const targetCommitted = targetAction === "push" && !!target.isClinchCommittedDrive;
+      const targetLightDrive = targetAction === "push" && !targetCommitted;
+
+      let balanceDmg, pushDist, lockoutMs;
+      if (targetAction === "plant") {
+        balanceDmg = CLINCH_JOLT_BALANCE_VS_PLANT;
+        pushDist = CLINCH_JOLT_PUSH_VS_PLANT;
+        lockoutMs = CLINCH_JOLT_LOCKOUT_VS_PLANT;
+      } else if (targetCommitted) {
+        balanceDmg = CLINCH_JOLT_BALANCE_VS_PUSH;
+        pushDist = CLINCH_JOLT_PUSH_VS_PUSH;
+        lockoutMs = CLINCH_JOLT_LOCKOUT_VS_PUSH;
+      } else if (targetLightDrive) {
+        balanceDmg = CLINCH_JOLT_BALANCE_VS_NEUTRAL;
+        pushDist = CLINCH_JOLT_PUSH_VS_NEUTRAL;
+        lockoutMs = CLINCH_JOLT_LOCKOUT_VS_NEUTRAL;
+      } else {
+        balanceDmg = CLINCH_JOLT_BALANCE_VS_NEUTRAL;
+        pushDist = CLINCH_JOLT_PUSH_VS_NEUTRAL;
+        lockoutMs = CLINCH_JOLT_LOCKOUT_VS_NEUTRAL;
+      }
+
+      const gassedMult = jolter.isGassed ? CLINCH_JOLT_GASSED_MULT : 1;
+      balanceDmg = Math.round(balanceDmg * gassedMult);
+      pushDist = Math.round(pushDist * gassedMult);
+
+      target.balance = Math.max(0, target.balance - balanceDmg);
+
+      if (targetCommitted) {
+        jolter.balance = Math.max(0, jolter.balance - CLINCH_JOLT_SELF_BALANCE_VS_PUSH);
+        applyClinchOpen(
+          jolter,
+          Math.max(CLINCH_OPEN_JOLT_INTO_DRIVE_MS, CLINCH_JOLT_RECOVERY_MS),
+          room,
+          { stumble: true }
+        );
+      }
+
+      // Chest-bump: target takes 70% of push, jolter advances 30%
+      const pushDir = jolter.x < target.x ? 1 : -1;
+      if (pushDist > 0) {
+        const targetPush = pushDist * 0.7;
+        const jolterPush = pushDist * 0.3;
+        jolter.x = Math.max(leftBoundary, Math.min(rightBoundary, jolter.x + pushDir * jolterPush));
+        target.x = Math.max(leftBoundary, Math.min(rightBoundary, target.x + pushDir * targetPush));
+      }
+
+      target.isBeingClinchJolted = true;
+      target.clinchJoltRecoilStart = now;
+
+      if (lockoutMs > 0) {
+        target.inputLockUntil = Math.max(target.inputLockUntil || 0, now + lockoutMs);
+      }
+
+      if (targetAction === "plant") {
+        target.clinchJoltPlantInterrupt = true;
+        target.clinchJoltPlantInterruptStart = now;
+      }
+
+      // DEEP GRIP: a landed jolt always strips the target's deep grip, and
+      // jolting a PLANTED opponent (posture broken, hand slips inside) earns it.
+      if (target.hasDeepGrip) target.hasDeepGrip = false;
+      if (targetAction === "plant") {
+        grantDeepGrip(jolter, target, room, io, "jolt");
+      }
+
+      beginClinchJoltRecovery(jolter, { skipOpen: targetCommitted });
+      joltImpactResolved = true;
+
+      triggerHitstopAndEmit(io, room, CLINCH_JOLT_HITSTOP_MS, "clinch_jolt");
+      emitThrottledScreenShake(room, io, { type: "clinch_jolt" });
+      io.in(room.id).emit("clinch_jolt", {
+        jolterId: jolter.id,
+        targetId: target.id,
+        jolterX: jolter.x,
+        targetX: target.x,
+        type: "single",
+        direction: pushDir,
+        intoCommittedDrive: targetCommitted,
+        contactX: (jolter.x + target.x) / 2,
+        contactY: jolter.y,
+      });
+
+      jolter.clinchStalemateStart = now;
+      target.clinchStalemateStart = now;
+      jolter.clinchStalemateLastBalance = jolter.balance;
+      target.clinchStalemateLastBalance = target.balance;
+      jolter.clinchStalemateLastX = jolter.x;
+      target.clinchStalemateLastX = target.x;
+    }
   }
 
-  // --- Block actions during jolt recovery / failed-throw stagger ---
+  // --- Block actions during jolt recovery / Open ---
   for (const p of [player, opponent]) {
-    if (p.clinchJoltRecovery || p.clinchThrowFailStagger) {
+    if (p.clinchJoltRecovery || isClinchOpen(p)) {
       p.clinchAction = "neutral";
       if (p === player) {
         player.isClinchPushing = false;
@@ -757,80 +954,106 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
   }
 
-  // --- Skip throw/pull/lift/push/plant during active jolt animation ---
+  // --- Skip throw/pull/lift/push/plant during startup and the impact tick ---
   if (player.isClinchJolting || opponent.isClinchJolting ||
-      player.isClinchJoltClashing || opponent.isClinchJoltClashing) {
+      player.isClinchJoltClashing || opponent.isClinchJoltClashing ||
+      joltImpactResolved) {
     maintainClinchPositions(player, opponent, fixedDistance, leftBoundary, rightBoundary);
     return;
   }
 
   // ============================================
-  // CLINCH ACTIONS: Throw / Pull / Lift (Phase 4)
-  // Processed before push/plant — a committed action overrides normal clinch
+  // CLINCH ACTIONS: Throw / Pull (both are throws)
+  // Clinch Flow P1: short simul window → Deep Grip wins or mutual tumble.
+  // Outside that window the first technique owns; Plant resists at impact.
   // ============================================
 
-  // --- Clinch tech: both players filed ANY clinch action within the clash window → cancel both, stay in clinch ---
-  if (player.clinchThrowRequest && opponent.clinchThrowRequest) {
-    const timeDiff = Math.abs((player.clinchThrowRequestTime || 0) - (opponent.clinchThrowRequestTime || 0));
+  const canCommitTechnique = (p) =>
+    p.clinchThrowRequest &&
+    !p.clinchThrowActive &&
+    !isClinchOpen(p) &&
+    !p.isResistingThrow &&
+    !p.isResistingPull &&
+    !p.clinchJoltRecovery &&
+    !p.isClinchJolting &&
+    p.hasGrip;
+
+  const bufferExpired = (p) =>
+    (now - (p.clinchThrowRequestTime || 0)) > CLINCH_THROW_CLASH_WINDOW_MS;
+
+  // --- True simultaneous techniques ---
+  if (
+    player.clinchThrowRequest &&
+    opponent.clinchThrowRequest &&
+    !player.clinchThrowActive &&
+    !opponent.clinchThrowActive
+  ) {
+    const timeDiff = Math.abs(
+      (player.clinchThrowRequestTime || 0) - (opponent.clinchThrowRequestTime || 0)
+    );
     if (timeDiff <= CLINCH_THROW_CLASH_WINDOW_MS) {
-      player.clinchThrowRequest = null;
-      player.clinchThrowRequestTime = 0;
-      opponent.clinchThrowRequest = null;
-      opponent.clinchThrowRequestTime = 0;
-      player.isClinchClashing = true;
-      opponent.isClinchClashing = true;
-      player.clinchClashStartTime = now;
-      opponent.clinchClashStartTime = now;
-      player.clinchThrowCooldown = true;
-      opponent.clinchThrowCooldown = true;
-      player.stamina = Math.max(0, player.stamina - CLINCH_TECH_STAMINA_COST);
-      opponent.stamina = Math.max(0, opponent.stamina - CLINCH_TECH_STAMINA_COST);
-      player.clinchStalemateStart = now;
-      opponent.clinchStalemateStart = now;
+      const pDeep = !!player.hasDeepGrip;
+      const oDeep = !!opponent.hasDeepGrip;
+      if (pDeep !== oDeep) {
+        // Deep Grip wins the collision — loser's request is erased.
+        const winner = pDeep ? player : opponent;
+        const loser = pDeep ? opponent : player;
+        loser.clinchThrowRequest = null;
+        loser.clinchThrowRequestTime = 0;
+        // Winner keeps request; commits below once buffer expires / immediately.
+      } else {
+        // Mutual tumble — funny, final, ends the clinch. No throw-tech loop.
+        player.clinchThrowRequest = null;
+        player.clinchThrowRequestTime = 0;
+        opponent.clinchThrowRequest = null;
+        opponent.clinchThrowRequestTime = 0;
+        player.isClinchClashing = true;
+        opponent.isClinchClashing = true;
+        player.clinchClashStartTime = now;
+        opponent.clinchClashStartTime = now;
+        player.stamina = Math.max(0, player.stamina - CLINCH_TUMBLE_STAMINA_COST);
+        opponent.stamina = Math.max(0, opponent.stamina - CLINCH_TUMBLE_STAMINA_COST);
+        player.balance = Math.max(0, player.balance - CLINCH_TUMBLE_BALANCE_DRAIN);
+        opponent.balance = Math.max(0, opponent.balance - CLINCH_TUMBLE_BALANCE_DRAIN);
+      }
     }
   }
 
-  // --- Process active clash animation ---
+  // --- Mutual tumble flash → separate + Open ---
   if (player.isClinchClashing || opponent.isClinchClashing) {
-    const clashElapsed = now - (player.clinchClashStartTime || now);
+    const clashElapsed = now - (player.clinchClashStartTime || opponent.clinchClashStartTime || now);
     if (clashElapsed >= CLINCH_CLASH_ANIMATION_MS) {
       player.isClinchClashing = false;
       opponent.isClinchClashing = false;
       player.clinchClashStartTime = 0;
       opponent.clinchClashStartTime = 0;
-      setPlayerTimeout(player.id, () => { player.clinchThrowCooldown = false; }, CLINCH_THROW_COOLDOWN_MS, "clinchThrowCooldown");
-      setPlayerTimeout(opponent.id, () => { opponent.clinchThrowCooldown = false; }, CLINCH_THROW_COOLDOWN_MS, "clinchThrowCooldown");
+      io.in(room.id).emit("clinch_tumble", {
+        player1Id: player.id,
+        player2Id: opponent.id,
+        x: (player.x + opponent.x) / 2,
+        tumbleId: `clinch-tumble-${now}-${player.id}`,
+      });
+      emitThrottledScreenShake(room, io, { type: "clinch_tumble" });
+      executeClinchSeparation(player, opponent, room, io);
+      applyClinchOpen(player, CLINCH_OPEN_TUMBLE_MS, room);
+      applyClinchOpen(opponent, CLINCH_OPEN_TUMBLE_MS, room);
+      return;
     }
     maintainClinchPositions(player, opponent, fixedDistance, leftBoundary, rightBoundary);
     return;
   }
 
-  // --- Start new throw/pull from request ---
-  // ALL clinch actions buffer for the clash window so the opponent has time to tech.
-  const bufferExpired = (p) =>
-    (now - (p.clinchThrowRequestTime || 0)) > CLINCH_THROW_CLASH_WINDOW_MS;
-
+  // --- Commit technique after short simul window (no 175ms freeze) ---
   const requesters = [];
-  if (player.clinchThrowRequest && !player.clinchThrowActive && !player.clinchThrowCooldown &&
-      !player.isResistingThrow && !player.isResistingPull &&
-      !player.clinchJoltRecovery && !player.isClinchJolting &&
-      !player.clinchThrowFailStagger &&
-      bufferExpired(player)) requesters.push(player);
-  if (opponent.clinchThrowRequest && !opponent.clinchThrowActive && !opponent.clinchThrowCooldown && opponent.hasGrip &&
-      !opponent.isResistingThrow && !opponent.isResistingPull &&
-      !opponent.clinchJoltRecovery && !opponent.isClinchJolting &&
-      !opponent.clinchThrowFailStagger &&
-      bufferExpired(opponent)) requesters.push(opponent);
+  if (canCommitTechnique(player) && bufferExpired(player)) requesters.push(player);
+  if (canCommitTechnique(opponent) && bufferExpired(opponent)) requesters.push(opponent);
 
-  for (const actor of requesters) {
-    const target = actor === player ? opponent : player;
+  const commitTechnique = (actor, target) => {
     const actionType = actor.clinchThrowRequest;
-
-    // Lift was removed — ignore stale lift requests (e.g. old CPU kits / lag).
     if (actionType !== "throw" && actionType !== "pull") {
       actor.clinchThrowRequest = null;
       actor.clinchThrowRequestTime = 0;
-      continue;
+      return;
     }
 
     actor.clinchThrowRequest = null;
@@ -840,7 +1063,11 @@ function updateGrabActions(player, room, io, delta, rooms) {
     actor.clinchThrowStartTime = now;
     actor.stamina = Math.max(0, actor.stamina - CLINCH_THROW_STAMINA_COST);
 
-    // Clear push/clinch visual states so they don't interfere with the committed action
+    // Consume Deep Grip on commit — snapshot whether it can break held Plant.
+    actor.clinchThrowUsedDeepGrip = !!actor.hasDeepGrip;
+    if (actor.hasDeepGrip) actor.hasDeepGrip = false;
+
+    // Attacker leaves stance visuals; defender KEEPS Plant intent for brace.
     actor.isGrabPushing = false;
     actor.isEdgePushing = false;
     actor.isGrabWalking = false;
@@ -849,23 +1076,20 @@ function updateGrabActions(player, room, io, delta, rooms) {
     actor.isClinchPlanting = false;
     target.isBeingGrabPushed = false;
     target.isBeingEdgePushed = false;
-    target.isClinchPushing = false;
-    target.isClinchPlanting = false;
     target.lastGrabPushStaminaDrainTime = 0;
 
     actor.isClinchThrowing = true;
-    actor.isAttemptingGrabThrow = (actionType === "throw");
-    actor.isAttemptingPull = (actionType === "pull");
-    target.isResistingThrow = (actionType === "throw");
-    target.isResistingPull = (actionType === "pull");
+    actor.isAttemptingGrabThrow = actionType === "throw";
+    actor.isAttemptingPull = actionType === "pull";
+    target.isResistingThrow = actionType === "throw";
+    target.isResistingPull = actionType === "pull";
 
-    // Lock target during throw/pull startup — no inputs, no counter-requests
-    const animDuration = actionType === "throw" ? CLINCH_THROW_ANIMATION_MS : CLINCH_PULL_ANIMATION_MS;
-    target.inputLockUntil = Math.max(target.inputLockUntil || 0, now + animDuration);
+    // Defender is NOT fully input-locked — they may keep/start Plant brace.
+    // Erase only a late counter-technique request (first technique owns).
     target.clinchThrowRequest = null;
     target.clinchThrowRequestTime = 0;
 
-    const targetAction = target === player ? grabberAction : opponentAction;
+    const targetAction = getClinchAction(target, actor);
     let stanceDrain;
     if (actionType === "pull") {
       stanceDrain = CLINCH_PULL_BALANCE_DRAIN_VS_NEUTRAL;
@@ -882,19 +1106,16 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
     target.balance = Math.max(0, target.balance - balanceDrain);
 
-    // Surface the stance read — counter_throw credits the actor (caught a pusher).
-    if (targetAction === "push") {
-      io.in(room.id).emit("clinch_callout", {
-        type: "counter_throw",
-        actorId: actor.id,
-        targetId: target.id,
-        actionType,
-        playerNumber: room.players.indexOf(actor) === 0 ? 1 : 2,
-        calloutId: `clinch-callout-${now}-${actor.id}`,
-        x: (actor.x + target.x) / 2,
-      });
-    }
+    // Snapshot for callout at LAND only — resisted/Perfect-Braced counters
+    // must not flash COUNTER THROW.
+    actor.clinchThrowWasCounter = targetAction === "push";
     actor.clinchStalemateStart = now;
+  };
+
+  for (const actor of requesters) {
+    const target = actor === player ? opponent : player;
+    if (target.clinchThrowActive) continue;
+    commitTechnique(actor, target);
   }
 
   // --- Safety: clear stale target states when no active action exists ---
@@ -904,15 +1125,23 @@ function updateGrabActions(player, room, io, delta, rooms) {
     if (opponent.isResistingThrow) opponent.isResistingThrow = false;
     if (player.isResistingPull) player.isResistingPull = false;
     if (opponent.isResistingPull) opponent.isResistingPull = false;
-    if (player.inputLockUntil && player.inputLockUntil <= now) player.inputLockUntil = 0;
-    if (opponent.inputLockUntil && opponent.inputLockUntil <= now) opponent.inputLockUntil = 0;
   }
 
   // --- Process active throw/pull ---
   if (activeActor && (activeActor.clinchThrowType === "throw" || activeActor.clinchThrowType === "pull")) {
     const activeTarget = activeActor === player ? opponent : player;
     const elapsed = now - activeActor.clinchThrowStartTime;
-    const animDuration = activeActor.clinchThrowType === "throw" ? CLINCH_THROW_ANIMATION_MS : CLINCH_PULL_ANIMATION_MS;
+    const animDuration =
+      activeActor.clinchThrowType === "throw" ? CLINCH_THROW_ANIMATION_MS : CLINCH_PULL_ANIMATION_MS;
+
+    // Keep brace visuals live during startup (Plant is the throw answer).
+    if (getPlantIntent(activeTarget, activeActor)) {
+      activeTarget.isClinchPlanting = true;
+      activeTarget.isClinchPushing = false;
+      activeTarget.clinchAction = "plant";
+    } else {
+      activeTarget.isClinchPlanting = false;
+    }
 
     if (elapsed >= animDuration) {
       resolveClinchThrow(activeActor, activeTarget, room, io, rooms);
@@ -921,19 +1150,17 @@ function updateGrabActions(player, room, io, delta, rooms) {
     return;
   }
 
-  // --- Stance latch: freeze the clinch while a throw/pull request buffers ---
-  // Filing a request (e.g. releasing push-back to input a pull) momentarily reads
-  // as "neutral" on the keys. Without this freeze, the ~175ms buffer window lets
-  // the opponent's push carry the requester at full unresisted speed — enough to
-  // cross the entire edge zone. Freezing movement and drains for the buffer means
-  // going for a throw/pull near the edge is a read, not a suicide. No stall risk:
-  // requests always resolve within the clash window and pay full action costs.
+  // Soft latch: while a technique request waits out the short simul window,
+  // cap opposing push instead of freezing the clinch entirely.
   const requestBuffering =
     (player.clinchThrowRequest && !bufferExpired(player)) ||
     (opponent.clinchThrowRequest && !bufferExpired(opponent));
   if (requestBuffering) {
-    maintainClinchPositions(player, opponent, fixedDistance, leftBoundary, rightBoundary);
-    return;
+    player._clinchRequestPushCap = CLINCH_THROW_REQUEST_PUSH_CAP_MULT;
+    opponent._clinchRequestPushCap = CLINCH_THROW_REQUEST_PUSH_CAP_MULT;
+  } else {
+    player._clinchRequestPushCap = 1;
+    opponent._clinchRequestPushCap = 1;
   }
 
   // --- Balance and stamina effects ---
@@ -1054,19 +1281,42 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
   }
 
-  // --- Push momentum ramp timer ---
-  // Builds only while pushing an opponent who is standing NEUTRAL — plant and
-  // push-back are both "answers" and reset it. Being neutral against a push
-  // gets progressively more punishing the longer it goes unaddressed.
+  // --- Push momentum ramp timer (committed drive vs neutral only) ---
   for (const [p, pAction, oAction] of [
     [player, grabberAction, opponentAction],
     [opponent, opponentAction, grabberAction],
   ]) {
-    if (pAction === "push" && oAction === "neutral") {
+    if (pAction === "push" && p.isClinchCommittedDrive && oAction === "neutral") {
       if (!p.clinchPushRampStart) p.clinchPushRampStart = now;
     } else if (p.clinchPushRampStart) {
       p.clinchPushRampStart = 0;
     }
+  }
+
+  // --- Major push-war loss → brief Open (readable shove collapse) ---
+  if (grabberAction === "push" && opponentAction === "push") {
+    const { speed, t } = getPushVsPushSpeed(
+      getShovePower(player) - getShovePower(opponent)
+    );
+    if (t >= CLINCH_PUSH_LOSS_OPEN_T && speed !== 0) {
+      const loser = speed > 0 ? opponent : player;
+      const winner = speed > 0 ? player : opponent;
+      if (!loser.clinchPushLossStart) loser.clinchPushLossStart = now;
+      winner.clinchPushLossStart = 0;
+      if (
+        !isClinchOpen(loser) &&
+        now - loser.clinchPushLossStart >= CLINCH_PUSH_LOSS_OPEN_MS
+      ) {
+        applyClinchOpen(loser, CLINCH_PUSH_LOSS_OPEN_DURATION_MS, room);
+        loser.clinchPushLossStart = 0;
+      }
+    } else {
+      player.clinchPushLossStart = 0;
+      opponent.clinchPushLossStart = 0;
+    }
+  } else {
+    player.clinchPushLossStart = 0;
+    opponent.clinchPushLossStart = 0;
   }
 
   // --- Movement ---
@@ -1109,21 +1359,34 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
   } else if (grabberAction === "push") {
     let speed = CLINCH_PUSH_BASE_SPEED * getPushForceMult(player);
-    if (opponentAction === "plant") {
+    if (!player.isClinchCommittedDrive) {
+      speed *= CLINCH_LIGHT_DRIVE_SPEED_MULT;
+      if (opponentAction === "plant") speed *= CLINCH_PUSH_VS_PLANT_SPEED_MULT;
+    } else if (opponentAction === "plant") {
       speed *= CLINCH_PUSH_VS_PLANT_SPEED_MULT;
     } else {
-      speed *= getPushRampMult(player, now); // neutral opponent → snowball
+      speed *= getPushRampMult(player, now); // committed vs neutral → snowball
     }
     netPushSpeed = speed;
   } else if (opponentAction === "push") {
     let speed = CLINCH_PUSH_BASE_SPEED * getPushForceMult(opponent);
-    if (grabberAction === "plant") {
+    if (!opponent.isClinchCommittedDrive) {
+      speed *= CLINCH_LIGHT_DRIVE_SPEED_MULT;
+      if (grabberAction === "plant") speed *= CLINCH_PUSH_VS_PLANT_SPEED_MULT;
+    } else if (grabberAction === "plant") {
       speed *= CLINCH_PUSH_VS_PLANT_SPEED_MULT;
     } else {
-      speed *= getPushRampMult(opponent, now); // neutral opponent → snowball
+      speed *= getPushRampMult(opponent, now); // committed vs neutral → snowball
     }
     netPushSpeed = -speed; // negative = toward grabber's side
   }
+
+  // Soft latch during short technique simul window — cap shove, don't freeze.
+  const pushCap = Math.min(
+    player._clinchRequestPushCap || 1,
+    opponent._clinchRequestPushCap || 1
+  );
+  if (pushCap < 1) netPushSpeed *= pushCap;
 
   // Apply movement
   if (Math.abs(netPushSpeed) > 0.001) {
@@ -1332,28 +1595,40 @@ function executeClinchBreak(breaker, opponent, room, io) {
   });
 }
 
-// Resolve throw/pull outcome after committed animation ends
-// Both throw and pull are gated by opponent balance the same way.
-// The difference is the mechanic when it lands: throw = arc, pull = tween.
+// Resolve throw/pull after startup. Both techniques share the same matrix:
+// held Plant resists (unless Deep Grip was consumed on commit); Perfect Brace
+// beats even Deep Grip. Balance only chooses kill vs non-kill + travel scale.
 function resolveClinchThrow(actor, target, room, io, rooms) {
   const actionType = actor.clinchThrowType;
   const targetBalance = target.balance;
+  const usedDeepGrip = !!actor.clinchThrowUsedDeepGrip;
+  const wasCounter = !!actor.clinchThrowWasCounter;
+  actor.clinchThrowUsedDeepGrip = false;
+  actor.clinchThrowWasCounter = false;
+  const animDuration =
+    actionType === "pull" ? CLINCH_PULL_ANIMATION_MS : CLINCH_THROW_ANIMATION_MS;
+  const perfectBrace = isPerfectBraceTiming(actor, target, animDuration);
+  const bracing = getPlantIntent(target, actor) || perfectBrace;
 
   clearClinchThrowState(actor);
   target.isResistingThrow = false;
   target.isResistingPull = false;
-  actor.clinchThrowCooldown = true;
-  setPlayerTimeout(actor.id, () => { actor.clinchThrowCooldown = false; }, CLINCH_THROW_COOLDOWN_MS, "clinchThrowCooldown");
 
-  // DEEP GRIP: the holder's throws/pulls land against higher balance —
-  // the payoff that makes earning the grip worth playing for.
-  const landThreshold = CLINCH_THROW_LAND_THRESHOLD +
-    (actor.hasDeepGrip ? DEEP_GRIP_THROW_THRESHOLD_BONUS : 0);
+  const emitCounterThrowCallout = () => {
+    if (!wasCounter) return;
+    io.in(room.id).emit("clinch_callout", {
+      type: "counter_throw",
+      actorId: actor.id,
+      targetId: target.id,
+      actionType,
+      playerNumber: room.players.indexOf(actor) === 0 ? 1 : 2,
+      calloutId: `clinch-callout-${simNow(room)}-${actor.id}`,
+      x: (actor.x + target.x) / 2,
+    });
+  };
 
-  // --- FAIL: opponent balance above land threshold → stay in clinch ---
-  if (targetBalance > landThreshold) {
-    // Over-committed: a failed attempt costs the deep grip along with the stagger
-    actor.hasDeepGrip = false;
+  // --- PERFECT BRACE: timed Plant in the final startup window beats Deep Grip ---
+  if (perfectBrace) {
     target.balance = Math.max(0, target.balance - CLINCH_THROW_FAIL_BALANCE_DRAIN);
     const selfBalDrain = actionType === "pull"
       ? CLINCH_PULL_FAIL_SELF_BALANCE_DRAIN
@@ -1361,13 +1636,13 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     actor.balance = Math.max(0, actor.balance - selfBalDrain);
     actor.stamina = Math.max(0, actor.stamina - CLINCH_THROW_FAIL_STAMINA_COST);
 
-    // Attacker visibly stumbles — a readable punish moment for the defender.
-    // Forced neutral (can't push/plant/jolt/throw/break) for the stagger window,
-    // which makes throw-baiting a teachable strategy instead of silent attrition.
-    actor.clinchThrowFailStagger = true;
-    setPlayerTimeout(actor.id, () => {
-      actor.clinchThrowFailStagger = false;
-    }, CLINCH_THROW_FAIL_STAGGER_MS, "clinchThrowFailStagger");
+    applyClinchOpen(actor, CLINCH_PERFECT_BRACE_OPEN_MS, room);
+    grantDeepGrip(target, actor, room, io, "perfect_brace");
+
+    target.isClinchPerfectBracing = true;
+    setPlayerTimeout(target.id, () => {
+      target.isClinchPerfectBracing = false;
+    }, CLINCH_PERFECT_BRACE_FLASH_MS, "clinchPerfectBraceFlash");
 
     io.in(room.id).emit("clinch_throw_fail", {
       actorId: actor.id,
@@ -1375,22 +1650,58 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
       actionType,
       actorX: actor.x,
       targetX: target.x,
-      // RESISTED credits the defender — banner anchors to their side
+      resistedByPlant: true,
+      perfectBrace: true,
+      playerNumber: room.players.indexOf(target) === 0 ? 1 : 2,
+      failId: `perfect-brace-${simNow(room)}-${target.id}`,
+    });
+    target.clinchBraceSimTime = 0;
+    return;
+  }
+
+  // --- RESISTED: held Plant beats a normal technique; Deep Grip breaks Plant ---
+  if (bracing && !usedDeepGrip) {
+    target.balance = Math.max(0, target.balance - CLINCH_THROW_FAIL_BALANCE_DRAIN);
+    const selfBalDrain = actionType === "pull"
+      ? CLINCH_PULL_FAIL_SELF_BALANCE_DRAIN
+      : CLINCH_THROW_FAIL_SELF_BALANCE_DRAIN;
+    actor.balance = Math.max(0, actor.balance - selfBalDrain);
+    actor.stamina = Math.max(0, actor.stamina - CLINCH_THROW_FAIL_STAMINA_COST);
+
+    applyClinchOpen(actor, CLINCH_THROW_FAIL_STAGGER_MS, room);
+
+    io.in(room.id).emit("clinch_throw_fail", {
+      actorId: actor.id,
+      targetId: target.id,
+      actionType,
+      actorX: actor.x,
+      targetX: target.x,
+      resistedByPlant: true,
       playerNumber: room.players.indexOf(target) === 0 ? 1 : 2,
       failId: `clinch-fail-${simNow(room)}-${actor.id}`,
     });
+    target.clinchBraceSimTime = 0;
     return;
   }
 
   // --- KILL: opponent balance below kill threshold → round over ---
   const isKill = targetBalance < CLINCH_THROW_KILL_THRESHOLD && !room.gameOver;
+  target.clinchBraceSimTime = 0;
+  // Technique landed — counter callout only now (never on resist / Perfect Brace).
+  emitCounterThrowCallout();
 
   if (actionType === "pull") {
     // Snapshot the victim's facing before any facing-correction — kill pulls
     // preserve it so the belly-laying slam stays oriented as the victim was.
     const targetFacingBeforeKill = target.facing;
     const pullDirection = target.x < actor.x ? 1 : -1;
-    const pullDist = isKill ? CLINCH_KILL_PULL_DISTANCE : CLINCH_PULL_DISTANCE;
+    const pullDist = isKill
+      ? CLINCH_KILL_PULL_DISTANCE
+      : scaledClinchTechniqueDistance(
+          targetBalance,
+          CLINCH_PULL_DISTANCE_MIN,
+          CLINCH_PULL_DISTANCE_MAX
+        );
     const pullTweenDur = isKill ? CLINCH_KILL_PULL_TWEEN_DURATION : CLINCH_PULL_TWEEN_DURATION;
     const pullLockMs = isKill ? CLINCH_KILL_PULL_INPUT_LOCK_MS : CLINCH_PULL_INPUT_LOCK_MS;
     // Kill pull drives the opponent THROUGH the thrower and down — same travel
@@ -1490,6 +1801,13 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     cleanupGrabStates(actor, target);
     actor.isThrowing = true;
     actor.isClinchKillThrow = isKill;
+    actor.clinchThrowArcDistance = isKill
+      ? 0
+      : scaledClinchTechniqueDistance(
+          targetBalance,
+          CLINCH_THROW_DISTANCE_MIN,
+          CLINCH_THROW_DISTANCE_MAX
+        );
     const hitstopMs = isKill ? 0 : HITSTOP_THROW_MS;
     // Sim clock pauses during the throw hitstop triggered below, so the throw
     // arc starts right after the freeze with NO manual +hitstopMs offset
@@ -1526,97 +1844,135 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
 }
 
 function triggerRingOut(pusher, victim, room, io, rooms, direction) {
-  pusher.isGrabBellyFlopping = pusher.isAtBoundaryDuringGrab;
-  victim.isBeingGrabBellyFlopped = pusher.isAtBoundaryDuringGrab;
-  if (!pusher.isAtBoundaryDuringGrab) {
-    pusher.isGrabFrontalForceOut = true;
-    victim.isBeingGrabFrontalForceOut = true;
-  }
+  // FORCE OUT: no freeze / throw hop. Keep the live push pose and walk both
+  // fighters a short distance past the rope during the round-result callout.
+  const pushDir =
+    direction || (pusher.x < victim.x ? 1 : -1);
+  const pusherStartX = pusher.x;
+  const victimStartX = victim.x;
 
-  pusher.isRingOutFreezeActive = true;
-  pusher.ringOutFreezeEndTime = simNow(room) + 200;
-  pusher.ringOutThrowDirection = direction;
-  pusher.pendingRingOutThrowTarget = victim.id;
+  // Snapshot the exact clinch/push pose before win cleanup wipes it — loser
+  // stays in gripped clinch (grabbing body + arms), not the beingGrabbed fall-back.
+  const pose = {
+    pusherGrabPushing: !!pusher.isGrabPushing,
+    pusherClinchPushing: !!pusher.isClinchPushing,
+    pusherEdgePushing: !!pusher.isEdgePushing,
+    pusherCommittedDrive: !!pusher.isClinchCommittedDrive,
+    pusherBeltHolding: !!pusher.isClinchBeltHolding,
+    pusherAttach: pusher.clinchAttachDistance || 0,
+    victimGrabPushed: !!victim.isBeingGrabPushed,
+    victimEdgePushed: !!victim.isBeingEdgePushed,
+    victimBeltHolding: !!victim.isClinchBeltHolding,
+    victimAttach: victim.clinchAttachDistance || 0,
+  };
 
+  handleWinCondition(room, victim, pusher, io, "grabPush");
+
+  const now = simNow(room);
+  // Lock the PIXEL gap at the win — never a stale clinchAttach lerp target.
+  // That gap stays enforced for the whole clinch-pose window.
+  const liveAttach =
+    Math.abs(victimStartX - pusherStartX) ||
+    pose.pusherAttach ||
+    pose.victimAttach ||
+    Math.round(75 * 0.96);
+
+  const applyPushCutscene = (p, startX) => {
+    p.isRingOutPushCutscene = true;
+    p.ringOutPushStartTime = now;
+    p.ringOutPushDuration = RINGOUT_PUSH_DURATION_MS;
+    p.ringOutPushStartX = startX;
+    p.ringOutPushTargetX = startX + pushDir * RINGOUT_PUSH_DISTANCE;
+    p.ringOutPushSettled = false;
+    p.ringOutPushAttachDistance = liveAttach;
+    p.ringOutPushAllowSeparate = false;
+    p.y = GROUND_LEVEL;
+    p.movementVelocity = 0;
+    p.knockbackVelocity = { x: 0, y: 0 };
+    p.isFallingOffDohyo = false;
+    // Clear legacy throw / force-out plant poses — this win holds the push look.
+    p.isRingOutFreezeActive = false;
+    p.ringOutFreezeEndTime = 0;
+    p.isRingOutThrowCutscene = false;
+    p.ringOutThrowDistance = 0;
+    p.ringOutThrowDirection = null;
+    p.pendingRingOutThrowTarget = null;
+    p.isThrowing = false;
+    p.isBeingThrown = false;
+    p.throwOpponent = null;
+    p.isGrabFrontalForceOut = false;
+    p.isBeingGrabFrontalForceOut = false;
+    p.isGrabBellyFlopping = false;
+    p.isBeingGrabBellyFlopped = false;
+    p.isBowing = false;
+  };
+
+  applyPushCutscene(pusher, pusherStartX);
+  applyPushCutscene(victim, victimStartX);
+
+  // Restore the live clinch push poses (no bow). Loser keeps gripped clinch
+  // (grabbing body + arms via hasGrip) — not the ungripped beingGrabbed sprite.
+  pusher.isGrabbing = true;
+  pusher.grabbedOpponent = victim.id;
+  pusher.inClinch = true;
+  pusher.hasGrip = true;
+  pusher.isGrabPushing = pose.pusherGrabPushing;
+  pusher.isClinchPushing = pose.pusherClinchPushing || !pose.pusherGrabPushing;
+  pusher.isEdgePushing = pose.pusherEdgePushing;
+  pusher.isClinchCommittedDrive = pose.pusherCommittedDrive;
+  pusher.isClinchBeltHolding = pose.pusherBeltHolding;
+  pusher.clinchAttachDistance = liveAttach;
+
+  victim.isBeingGrabbed = true; // grab link only; hasGrip ⇒ clinch grabbing sprite/arms
+  victim.inClinch = true;
+  victim.hasGrip = true;
+  victim.isBeingGrabPushed = pose.victimGrabPushed;
+  victim.isBeingEdgePushed = pose.victimEdgePushed;
+  victim.isClinchBeltHolding = pose.victimBeltHolding;
+  victim.clinchAttachDistance = liveAttach;
+
+  // Two-phase end: (1) idle pose at clinch spacing, (2) then pushbox separate.
+  // Never move X in the same beat as clearing clinch — client interpolates X
+  // before React swaps the sprite, which reads as clinch at the wrong distance.
   setPlayerTimeout(
     pusher.id,
     () => {
-      const currentRoom = rooms.find((r) => r.id === room.id);
-      if (!currentRoom) return;
-      const grabberRef = currentRoom.players.find((p) => p.id === pusher.id);
-      const grabbedRef = currentRoom.players.find((p) => p.id === victim.id);
-      if (!grabberRef || !grabbedRef) return;
-
-      grabberRef.isRingOutFreezeActive = false;
-      grabberRef.isGrabbing = false;
-      grabberRef.grabbedOpponent = null;
-      grabberRef.isGrabFrontalForceOut = false;
-      grabberRef.isGrabBellyFlopping = false;
-      grabberRef.isGrabPushing = false;
-      grabberRef.isEdgePushing = false;
-      grabberRef.hasGrip = false;
-      grabberRef.inClinch = false;
-      grabberRef.isClinchPushing = false;
-      grabberRef.isClinchPlanting = false;
-      grabberRef.isResistingThrow = false;
-      grabberRef.isResistingPull = false;
-      grabberRef.isClinchJolting = false;
-      grabberRef.clinchJoltRecovery = false;
-      grabberRef.clinchJoltCooldown = false;
-      grabberRef.isBeingClinchJolted = false;
-      grabberRef.isClinchJoltClashing = false;
-      grabberRef.clinchJoltPlantInterrupt = false;
-      grabbedRef.isBeingGrabbed = false;
-      grabbedRef.isBeingGrabFrontalForceOut = false;
-      grabbedRef.isBeingGrabBellyFlopped = false;
-      grabbedRef.isBeingGrabPushed = false;
-      grabbedRef.isBeingEdgePushed = false;
-      grabbedRef.hasGrip = false;
-      grabbedRef.inClinch = false;
-      grabbedRef.isClinchPushing = false;
-      grabbedRef.isClinchPlanting = false;
-      grabbedRef.isResistingThrow = false;
-      grabbedRef.isResistingPull = false;
-      grabbedRef.isClinchJolting = false;
-      grabbedRef.clinchJoltRecovery = false;
-      grabbedRef.clinchJoltCooldown = false;
-      grabbedRef.isBeingClinchJolted = false;
-      grabbedRef.isClinchJoltClashing = false;
-      grabbedRef.clinchJoltPlantInterrupt = false;
-      grabbedRef.isArmClamped = false;
-      grabberRef.clinchThrowFailStagger = false;
-      grabbedRef.clinchThrowFailStagger = false;
-      grabberRef.hasDeepGrip = false;
-      grabbedRef.hasDeepGrip = false;
-      grabberRef.clinchShoveLead = null;
-      grabbedRef.clinchShoveLead = null;
-      grabberRef.deepGripPushStart = 0;
-      grabbedRef.deepGripPushStart = 0;
-      grabberRef.clinchPushRampStart = 0;
-      grabbedRef.clinchPushRampStart = 0;
-
-      grabberRef.isThrowing = true;
-      grabberRef.throwStartTime = simNow(currentRoom);
-      grabberRef.throwEndTime = simNow(currentRoom) + RINGOUT_THROW_DURATION_MS;
-      grabberRef.throwOpponent = grabbedRef.id;
-
-      clearAllActionStates(grabbedRef);
-      grabbedRef.isBeingThrown = true;
-
-      grabberRef.throwingFacingDirection = grabberRef.ringOutThrowDirection || 1;
-      grabbedRef.beingThrownFacingDirection = grabbedRef.facing;
-
-      grabberRef.isRingOutThrowCutscene = true;
-      grabberRef.ringOutThrowDistance = 5;
-      grabberRef.ringOutThrowDirection = null;
-      grabberRef.pendingRingOutThrowTarget = null;
+      clearRingOutPushPoseToIdle(pusher);
+      clearRingOutPushPoseToIdle(victim);
+      setPlayerTimeout(
+        pusher.id,
+        () => {
+          if (pusher.isRingOutPushCutscene) pusher.ringOutPushAllowSeparate = true;
+          if (victim.isRingOutPushCutscene) victim.ringOutPushAllowSeparate = true;
+        },
+        RINGOUT_PUSH_SEPARATE_DELAY_MS,
+        "ringOutPushSeparate"
+      );
     },
-    200,
-    "ringOutFreezeDelay"
+    RINGOUT_PUSH_DURATION_MS + RINGOUT_PUSH_IDLE_DELAY_MS,
+    "ringOutPushIdle"
   );
+}
 
-  handleWinCondition(room, victim, pusher, io, "grabPush");
-  victim.knockbackVelocity = { ...victim.knockbackVelocity };
+function clearRingOutPushPoseToIdle(p) {
+  if (!p) return;
+  p.isGrabbing = false;
+  p.grabbedOpponent = null;
+  p.isBeingGrabbed = false;
+  p.inClinch = false;
+  p.hasGrip = false;
+  p.isGrabPushing = false;
+  p.isClinchPushing = false;
+  p.isEdgePushing = false;
+  p.isBeingGrabPushed = false;
+  p.isBeingEdgePushed = false;
+  p.isClinchCommittedDrive = false;
+  p.isClinchBeltHolding = false;
+  p.clinchAttachDistance = 0;
+  p.isBowing = false;
+  // Keep isRingOutPushCutscene + ringOutPushAttachDistance until separate
+  // is allowed — parks them past the rope at clinch spacing under idle poses.
+  // Inputs stay dead via room.gameOver.
 }
 
 module.exports = { updateGrabActions, grantDeepGrip };

@@ -65,8 +65,7 @@ const DELTA_TRACKED_PROPS = [
   'inClinch', 'hasGrip', 'clinchAction',
   // Holding M2 (or mid throw/pull) → arms on belt; otherwise body-hold pose.
   'isClinchBeltHolding',
-  // True until M2 is released after grab connect — blocks belt pose on the
-  // same hold that started the grab (body hold is the connect default).
+  // Legacy wire field — always false. M2-through-connect is valid belt hold.
   'clinchBeltRequiresM2Release',
   'isClinchThrowing', 'isClinchClashing',
   'isClinchPushing', 'isClinchPlanting',
@@ -74,8 +73,12 @@ const DELTA_TRACKED_PROPS = [
   'isClinchKillThrowVictim', 'isClinchKillPullVictim',
   'isClinchJolting', 'isBeingClinchJolted', 'isClinchJoltClashing',
   'clinchJoltRecovery',
-  'isArmClamped', 'clinchThrowFailStagger', 'isCounterGrabbed',
+  'isArmClamped', 'clinchThrowFailStagger', 'isClinchOpen', 'isCounterGrabbed',
   'hasDeepGrip',
+  // Clinch Flow P2 — committed drive lean (visual + counterthrow vulnerability)
+  'isClinchCommittedDrive',
+  // Perfect Brace flash (one-shot tell on the defender)
+  'isClinchPerfectBracing',
   // Push-war read for HUD: null = not mutual shove, 0 = EVEN, 1/-1 = walk lead.
   'clinchShoveLead',
   // MASTERY Phase 2 (posture coupling): the broken-posture "openable" tell.
@@ -650,7 +653,17 @@ const INPUT_BUFFER_WINDOW_MS = 200; // Buffer window: inputs within this window 
 // ============================================
 // Ring-out cutscene
 // ============================================
-const RINGOUT_THROW_DURATION_MS = 400; // Match normal throw timing for consistent physics
+const RINGOUT_THROW_DURATION_MS = 400; // Legacy throw hop (unused by FORCE OUT path)
+// FORCE OUT (grabPush): continue the clinch/grab push a short distance past the
+// rope during the round-result callout, then drop to idle before round reset.
+// Idle clears clinch flags so the normal pushbox can un-overlap them (inputs
+// stay locked via gameOver).
+const RINGOUT_PUSH_DURATION_MS = 650;
+const RINGOUT_PUSH_DISTANCE = 52; // px both fighters travel past the win line
+const RINGOUT_PUSH_IDLE_DELAY_MS = 220; // brief hold after shove, then pumo-idle
+// MUST lag idle so clients commit idle sprites before X moves — otherwise
+// interpolated spacing changes under a still-visible clinch pose.
+const RINGOUT_PUSH_SEPARATE_DELAY_MS = 140;
 
 // ============================================
 // Parry System
@@ -1046,13 +1059,20 @@ const CLINCH_PUSH_VS_PUSH_MAX_SPEED = 1.45;     // Crush cap ≈ 268 px/s
 // balance → throwable; stamina → snowball the walk lead.
 const CLINCH_PUSH_VS_PUSH_LOSER_BAL_DRAIN_PER_SEC = 10;
 const CLINCH_PUSH_VS_PUSH_LOSER_STAM_DRAIN_PER_SEC = 7;
-// Momentum ramp — an UNANSWERED push (opponent standing neutral: not pushing
-// back, not planting) snowballs instead of drifting at constant speed. After
-// the delay, speed climbs linearly to the max multiplier over the rise window.
-// Plant and push-back both kill the ramp, so ignoring a push is what's punished.
-const CLINCH_PUSH_RAMP_DELAY_MS = 500;          // Unanswered push time before the ramp starts building
-const CLINCH_PUSH_RAMP_RISE_MS = 1000;          // Time from ramp start to full multiplier
+// Clinch Flow P2 — Light vs Committed Drive.
+// First LIGHT window of holding toward is poking pressure (slower, cancelable,
+// not fully throw-vulnerable). After that the drive commits: stronger shove,
+// snowball vs neutral, brief plant-cancel transition, jolt-into-it → Open.
+const CLINCH_LIGHT_DRIVE_MS = 300;              // Toward-hold before drive commits
+const CLINCH_LIGHT_DRIVE_SPEED_MULT = 0.7;      // Light drive shove speed vs base
+const CLINCH_DRIVE_PLANT_CANCEL_MS = 90;         // Committed→Plant transition (not instant)
+// Momentum ramp — unanswered COMMITTED push vs neutral snowballs.
+const CLINCH_PUSH_RAMP_DELAY_MS = 0;            // Ramp builds as soon as drive is committed
+const CLINCH_PUSH_RAMP_RISE_MS = 900;           // Time from commit to full multiplier
 const CLINCH_PUSH_RAMP_MAX_MULT = 1.6;          // Speed multiplier at full ramp
+const CLINCH_PUSH_LOSS_OPEN_T = 0.92;           // Push-war intensity to start Open arm
+const CLINCH_PUSH_LOSS_OPEN_MS = 450;           // Sustained loss before loser goes Open
+const CLINCH_PUSH_LOSS_OPEN_DURATION_MS = 280;  // Brief Open after major shove loss
 // Legacy — push-vs-push no longer mixes balance into shove power. Kept exported
 // so old docs/tools don't break; unused by grabActionSystem.
 const CLINCH_PUSH_STAMINA_WEIGHT = 0.2;
@@ -1071,7 +1091,9 @@ const GASSED_RECOVERY_STAMINA_IN_CLINCH = 30;   // vs 55 outside the clinch
 
 // Edge push (at boundary)
 const CLINCH_EDGE_STAMINA_DRAIN_PER_SEC = 29;   // Opponent stamina drain at edge (matches burst: 1 per 35ms ≈ 29/sec)
-// Dual finish at the ropes: empty tank (stamina ≤ 0) OR continuous pin hold.
+// Edge finish while driving someone into the boundary:
+//   instant — gassed / empty tank, OR Open (no grace timer)
+//   timed   — continuous pin hold (grace for Break / throw / bait)
 // Hold resets if the pin breaks (ease off / space created / movement stops).
 const CLINCH_EDGE_PIN_HOLD_MS = 1500;
 
@@ -1098,61 +1120,69 @@ const CLINCH_MIXED_HOLD_DISTANCE = Math.round(88 * 0.96); // ~85px — one on be
 const CLINCH_BODY_HOLD_DISTANCE = Math.round(108 * 0.96); // ~104px — both body-holding
 const CLINCH_ATTACH_LERP_PER_SEC = 14; // Snap-in speed when someone presses/releases M2
 
-// Clinch throw system (Mouse2 + W during clinch)
-const CLINCH_THROW_ANIMATION_MS = 450;           // Committed throw animation length
-const CLINCH_THROW_COOLDOWN_MS = 1200;           // Cooldown after any throw/pull attempt
+// Clinch Flow P1 — throw/pull techniques (both are throws; pull = side-switch yank).
+// Clean techniques always land unless held Plant resists (Deep Grip breaks Plant).
+// Balance only gates kill vs non-kill. Visible Open/recovery replaces hidden CDs.
+const CLINCH_THROW_ANIMATION_MS = 220;           // Startup → impact (Plant checked at end)
+const CLINCH_THROW_COOLDOWN_MS = 0;              // Retired — Open / recovery govern retries
 const CLINCH_THROW_STAMINA_COST = 10;            // Stamina cost for throw/pull attempt (uniform)
-const CLINCH_THROW_CLASH_WINDOW_MS = 175;        // Both throw within this → clash
-const CLINCH_THROW_BALANCE_DRAIN_VS_PUSH = 20;   // Balance drain on opponent who was pushing (punishes aggression)
-const CLINCH_THROW_BALANCE_DRAIN_VS_PLANT = 5;   // Balance drain on opponent who was planting (hard to throw)
-const CLINCH_THROW_BALANCE_DRAIN_VS_NEUTRAL = 10; // Balance drain on neutral opponent
-const CLINCH_THROW_FAIL_BALANCE_DRAIN = 4;       // Minimal chip on opponent when throw fails — throws are finishers, not grinders
-const CLINCH_THROW_FAIL_SELF_BALANCE_DRAIN = 12; // Attacker loses balance on failed throw — high risk, high reward
-const CLINCH_THROW_FAIL_STAMINA_COST = 5;        // Extra stamina cost on failed throw (self-balance drain is the main punishment)
+const CLINCH_THROW_CLASH_WINDOW_MS = 60;         // True simultaneous technique window
+const CLINCH_THROW_CHORD_WINDOW_MS = 220;        // Generous M2 + direction TAP chord
+const CLINCH_THROW_REQUEST_PUSH_CAP_MULT = 0.25; // Soft latch while a request is pending
+const CLINCH_THROW_BALANCE_DRAIN_VS_PUSH = 20;   // Initiation drain vs pushing
+const CLINCH_THROW_BALANCE_DRAIN_VS_PLANT = 5;   // Initiation drain vs planting
+const CLINCH_THROW_BALANCE_DRAIN_VS_NEUTRAL = 10; // Initiation drain vs neutral
+const CLINCH_THROW_FAIL_BALANCE_DRAIN = 4;       // Chip on defender when Plant resists
+const CLINCH_THROW_FAIL_SELF_BALANCE_DRAIN = 12; // Attacker balance cost on resisted throw
+const CLINCH_THROW_FAIL_STAMINA_COST = 5;        // Extra stamina on resisted throw
 
-// Clinch pull balance drain (reduced vs throw — pull is repositioning, not balance-breaking)
-const CLINCH_PULL_BALANCE_DRAIN_VS_PUSH = 14;    // 70% of throw value
-const CLINCH_PULL_BALANCE_DRAIN_VS_PLANT = 4;    // 70% of throw value
-const CLINCH_PULL_BALANCE_DRAIN_VS_NEUTRAL = 7;  // 70% of throw value
-const CLINCH_PULL_FAIL_SELF_BALANCE_DRAIN = 6;   // Pull is safer — less self-punishment on fail
+// Clinch pull initiation drain (same matrix as throw; slightly cheaper reposition)
+const CLINCH_PULL_BALANCE_DRAIN_VS_PUSH = 14;
+const CLINCH_PULL_BALANCE_DRAIN_VS_PLANT = 4;
+const CLINCH_PULL_BALANCE_DRAIN_VS_NEUTRAL = 7;
+const CLINCH_PULL_FAIL_SELF_BALANCE_DRAIN = 6;
 
-// Failed throw/pull stagger — the attacker visibly stumbles, giving the defender
-// a readable moment (and making throw-baiting a teachable strategy, not silent attrition)
-const CLINCH_THROW_FAIL_STAGGER_MS = 300;        // Attacker forced neutral, no clinch actions
+// OPEN — punishable vulnerability (stars). Resisted techniques / mutual tumbles.
+const CLINCH_THROW_FAIL_STAGGER_MS = 320;        // Resisted-technique Open duration
+const CLINCH_PERFECT_BRACE_OPEN_MS = 400;        // Attacker Open after Perfect Brace
+const CLINCH_PERFECT_BRACE_WINDOW_MS = 100;      // Final portion of startup (press must land here)
+const CLINCH_PERFECT_BRACE_FLASH_MS = 220;       // Defender Perfect Brace visual flash
+const CLINCH_OPEN_TUMBLE_MS = 350;               // Mutual-tumble Open after separation
+const CLINCH_OPEN_JOLT_INTO_DRIVE_MS = 300;      // Jolter Open after jolt into committed Drive
+const CLINCH_TUMBLE_STAMINA_COST = 5;            // Both pay on mutual tumble
+const CLINCH_TUMBLE_BALANCE_DRAIN = 4;           // Both lose a little Balance on tumble
 
-// Counter-grab ARM CLAMP — grabbing a raw-parrying opponent clamps their arms:
-// they cannot act (throw/jolt/break/plant) during the Phase A burst carry, so
-// the grabber's mid-burst throw stays untechable. When the clamp ends (burst
-// leaves the lively band, max burst duration, or boundary contact), the victim
-// is free to fight — punished once, positionally, then a fair clinch.
-// Clamp uses its OWN shove power (mult + slower decay). A normal connect is a
-// short ~150ms nudge; clamp is the scary parry-punish carry across the dohyo.
+// Counter-grab ARM CLAMP — clamps offense (throw/jolt/break) during Phase A
+// burst. Plant brace remains available so the victim can still defend throws.
 const COUNTER_GRAB_BALANCE_DEBUFF = 10;          // Balance hit on counter-grab connect
 const ARM_CLAMP_BURST_MULT = 2.1;                // × initial burst vs regular connect
 const ARM_CLAMP_BURST_DECAY_RATE = 1.9;           // Slower than regular 6.1 — real carry
 const ARM_CLAMP_BURST_END_VELOCITY = 0.55;        // End while still shoving (not a crawl)
 const ARM_CLAMP_MAX_BURST_MS = 950;              // Hard cap on clamp carry
 
-// DEEP GRIP — the clinch's earned-advantage layer. Won by out-wrestling the
-// opponent inside the clinch (jolting a planter, or winning the push for a
-// sustained window); lost when the opponent jolts you, when your throw fails,
-// or when the clinch ends. Only one player can hold it at a time.
-const DEEP_GRIP_THROW_THRESHOLD_BONUS = 10;      // Throws/pulls land at balance <= 60 (vs 50)
+// DEEP GRIP — earned advantage. Breaks held Plant on throw/pull; consumed on
+// technique commit. Still boosts push. Earned via jolt-vs-plant / push win.
+const DEEP_GRIP_THROW_THRESHOLD_BONUS = 0;       // Retired — no land threshold
 const DEEP_GRIP_PUSH_MULT = 1.1;                 // +10% clinch push force while held
 const DEEP_GRIP_PUSH_WIN_MS = 1000;              // Continuous unanswered push time to earn it
 
-// Clinch tech (clash) cost
-const CLINCH_TECH_STAMINA_COST = 8;              // Both players lose stamina on tech — prevents free resets
-const CLINCH_THROW_LAND_THRESHOLD = 50;          // Balance at/below which throw lands
+// Mutual technique collision (no Deep Grip winner) → tumble apart, end clinch
+const CLINCH_TECH_STAMINA_COST = 8;              // Legacy export; tumble uses CLINCH_TUMBLE_*
+const CLINCH_THROW_LAND_THRESHOLD = 0;           // Retired — every undefended technique lands
 const CLINCH_THROW_KILL_THRESHOLD = 15;          // Balance below which = KILL THROW (round over)
-const CLINCH_THROW_DISTANCE = 260;               // Forward throw distance — repositioning push
+// Balance-scaled non-kill throw distance (full composure → short toss; near-kill → far)
+const CLINCH_THROW_DISTANCE_MIN = 140;           // Clean throw at full Balance
+const CLINCH_THROW_DISTANCE_MAX = 260;           // Clean throw near lethal Balance
+const CLINCH_THROW_DISTANCE = 260;               // Legacy alias (= max); prefer scaled helper
 const CLINCH_THROW_ARC_HEIGHT = 100;             // Low hill arc (peak ~80px) — not a big sky launch
 const CLINCH_THROW_DURATION_MS = 550;            // Longer travel time for the farther distance
-const CLINCH_CLASH_ANIMATION_MS = 400;           // Cosmetic clash animation duration
+const CLINCH_CLASH_ANIMATION_MS = 280;           // Brief flash before mutual tumble separates
 
-// Clinch pull system (Mouse2 + away during clinch)
-const CLINCH_PULL_ANIMATION_MS = 450;            // Committed pull animation length
-const CLINCH_PULL_DISTANCE = 280;                // How far opponent is pulled backward
+// Clinch pull system (Mouse2 + away TAP during clinch)
+const CLINCH_PULL_ANIMATION_MS = 250;            // Startup → impact
+const CLINCH_PULL_DISTANCE_MIN = 160;            // Side-switch yank at full Balance
+const CLINCH_PULL_DISTANCE_MAX = 280;            // Side-switch yank near lethal
+const CLINCH_PULL_DISTANCE = 280;                // Legacy alias (= max)
 const CLINCH_PULL_TWEEN_DURATION = 600;          // Tween duration for pull movement
 const CLINCH_PULL_INPUT_LOCK_MS = 650;           // Input lock after pull
 
@@ -1190,10 +1220,10 @@ const CLINCH_PULL_SWAP_ARC_HEIGHT = 55;          // Hop arc height so pulled pla
 // Correct read (vs plant) = dramatic payoff. Wrong read (vs push) = severe punishment.
 // Cooldown ensures each jolt is a real decision, not spam.
 // ============================================
-const CLINCH_JOLT_ANIMATION_MS = 250;           // Telegraphed lunge — opponent can see it and react
-const CLINCH_JOLT_RECOVERY_MS = 400;            // Long recovery — real vulnerability if you're wrong
-const CLINCH_JOLT_COOLDOWN_MS = 1200;           // One jolt per clinch cycle (matches throw cooldown)
-const CLINCH_JOLT_STAMINA_COST = 10;            // Committal cost (matches other big clinch actions)
+const CLINCH_JOLT_ANIMATION_MS = 240;           // Telegraphed startup — impact resolves AFTER this
+const CLINCH_JOLT_RECOVERY_MS = 420;            // Visible recovery — punishable (no hidden CD)
+const CLINCH_JOLT_COOLDOWN_MS = 0;              // Retired — recovery alone anti-spams
+const CLINCH_JOLT_STAMINA_COST = 10;            // Soft cost — never blocks; floors at 0 (gassed still jolts)
 const CLINCH_JOLT_BALANCE_VS_PLANT = 15;        // Heavy balance damage — correct read rewarded
 const CLINCH_JOLT_BALANCE_VS_NEUTRAL = 6;       // Modest — neutral isn't the intended target
 const CLINCH_JOLT_BALANCE_VS_PUSH = 0;          // No damage — you lunged into their momentum
@@ -1202,7 +1232,7 @@ const CLINCH_JOLT_PUSH_VS_PLANT = 60;           // 10% of arena — the opponent
 const CLINCH_JOLT_PUSH_VS_NEUTRAL = 15;         // Modest positional gain
 const CLINCH_JOLT_PUSH_VS_PUSH = 0;             // No push — you walked into their force
 const CLINCH_JOLT_MUTUAL_BALANCE = 6;           // Balance damage on mutual jolt (both)
-const CLINCH_JOLT_CLASH_WINDOW_MS = 120;        // Mutual jolt detection window
+const CLINCH_JOLT_CLASH_WINDOW_MS = 120;        // Mutual if both startups begin within this window
 const CLINCH_JOLT_HITSTOP_MS = 140;             // Medium-heavy — clean clinch hit landed
 const CLINCH_JOLT_MUTUAL_HITSTOP_MS = 110;      // Confirm/clash tier — contested, not a clean heavy
 const CLINCH_JOLT_PLANT_INTERRUPT_MS = 800;     // Full second of no regen — plant is truly broken
@@ -1827,6 +1857,10 @@ module.exports = {
 
   // Ring-out
   RINGOUT_THROW_DURATION_MS,
+  RINGOUT_PUSH_DURATION_MS,
+  RINGOUT_PUSH_DISTANCE,
+  RINGOUT_PUSH_IDLE_DELAY_MS,
+  RINGOUT_PUSH_SEPARATE_DELAY_MS,
 
   // Parry system
   RAW_PARRY_KNOCKBACK,
@@ -2022,6 +2056,25 @@ module.exports = {
   CLINCH_THROW_COOLDOWN_MS,
   CLINCH_THROW_STAMINA_COST,
   CLINCH_THROW_CLASH_WINDOW_MS,
+  CLINCH_THROW_CHORD_WINDOW_MS,
+  CLINCH_THROW_REQUEST_PUSH_CAP_MULT,
+  CLINCH_LIGHT_DRIVE_MS,
+  CLINCH_LIGHT_DRIVE_SPEED_MULT,
+  CLINCH_DRIVE_PLANT_CANCEL_MS,
+  CLINCH_PUSH_LOSS_OPEN_T,
+  CLINCH_PUSH_LOSS_OPEN_MS,
+  CLINCH_PUSH_LOSS_OPEN_DURATION_MS,
+  CLINCH_PERFECT_BRACE_OPEN_MS,
+  CLINCH_PERFECT_BRACE_WINDOW_MS,
+  CLINCH_PERFECT_BRACE_FLASH_MS,
+  CLINCH_OPEN_TUMBLE_MS,
+  CLINCH_OPEN_JOLT_INTO_DRIVE_MS,
+  CLINCH_TUMBLE_STAMINA_COST,
+  CLINCH_TUMBLE_BALANCE_DRAIN,
+  CLINCH_THROW_DISTANCE_MIN,
+  CLINCH_THROW_DISTANCE_MAX,
+  CLINCH_PULL_DISTANCE_MIN,
+  CLINCH_PULL_DISTANCE_MAX,
   CLINCH_THROW_BALANCE_DRAIN_VS_PUSH,
   CLINCH_THROW_BALANCE_DRAIN_VS_PLANT,
   CLINCH_THROW_BALANCE_DRAIN_VS_NEUTRAL,

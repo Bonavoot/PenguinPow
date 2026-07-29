@@ -1,23 +1,24 @@
 /**
  * Canvas renderer for the in-game balance (stance / posture) gauge.
  *
- * Posture is composure for throws & grabs — not stamina. Kept deliberately
- * quieter and thinner than the jade stamina bar, with two persistent gates:
+ * Clinch Flow: Balance gates kill severity, not throw permission.
+ * Undefended techniques always land; held Plant / Deep Grip decide success.
  *
- *   0–15   vermillion → KILL   (throw/pull ends the round)
- *   15–50  gold       → THROW  (throw/pull lands)
- *   50–60  amber      → GRIP   (lit only while Deep Grip threatens)
- *   50/60–100 ice     → SAFE
+ *   0–15    vermillion → KILL   (throw/pull ends the round)
+ *   15–100  composure band (positional danger scales with how low you are)
+ * Deep Grip lights an advantage tell — not a land-threshold notch.
  *
- * Fill is smooth (no plate seams). Gates are capped notches — kill in
- * vermillion, throw in gold — so they read without shouting over stamina.
+ * Fill is smooth (no plate seams). Kill notch stays the primary gate.
  */
 
 import { C } from "./menuTheme";
 
 export const KILL_THRESHOLD = 0.15;
-export const THROW_THRESHOLD = 0.5;
-export const DEEP_GRIP_THROW_THRESHOLD = 0.6;
+/** @deprecated Clinch Flow — throws no longer use a land threshold */
+export const THROW_THRESHOLD = 0.15;
+/** @deprecated Clinch Flow — Deep Grip no longer raises a land threshold */
+export const DEEP_GRIP_THROW_THRESHOLD = 0.15;
+const DANGER_SOFT = 0.4; // warm tint below this — "you're getting soft"
 
 const INK = "#080a12";
 
@@ -231,11 +232,9 @@ export function drawBalanceGauge(ctx, opts) {
 
   const pct = Math.max(0, Math.min(100, balance)) / 100;
   const dg = Math.max(0, Math.min(1, deepGripT));
-  const throwLand =
-    THROW_THRESHOLD + (DEEP_GRIP_THROW_THRESHOLD - THROW_THRESHOLD) * dg;
   const inKill = pct < KILL_THRESHOLD;
-  const inThrow = pct <= throwLand && !inKill;
-  const zone = inKill ? "kill" : inThrow ? "throw" : "safe";
+  const inDanger = !inKill && pct < DANGER_SOFT;
+  const zone = inKill ? "kill" : inDanger ? "throw" : "safe";
 
   // Recessed well
   roundRectPath(ctx, trackX, trackY, trackW, trackH, 2);
@@ -249,18 +248,16 @@ export function drawBalanceGauge(ctx, opts) {
   ctx.fillStyle = wellShade;
   ctx.fill();
 
-  // Quiet territory tint in the empty well
+  // Quiet territory tint — kill + soft danger; no land-threshold gates
   ctx.save();
   roundRectPath(ctx, trackX, trackY, trackW, trackH, 2);
   ctx.clip();
   drawZoneBand(ctx, trackX, trackW, trackY, trackH, 0, KILL_THRESHOLD, isRight, "rgb(150, 28, 22)", 0.4);
-  drawZoneBand(ctx, trackX, trackW, trackY, trackH, KILL_THRESHOLD, THROW_THRESHOLD, isRight, "rgb(150, 116, 26)", 0.22);
-  drawZoneBand(
-    ctx, trackX, trackW, trackY, trackH,
-    THROW_THRESHOLD, DEEP_GRIP_THROW_THRESHOLD, isRight,
-    "rgb(196, 132, 32)", 0.08 + 0.38 * dg
-  );
-  drawZoneBand(ctx, trackX, trackW, trackY, trackH, DEEP_GRIP_THROW_THRESHOLD, 1, isRight, "rgb(48, 96, 120)", 0.12);
+  drawZoneBand(ctx, trackX, trackW, trackY, trackH, KILL_THRESHOLD, DANGER_SOFT, isRight, "rgb(150, 116, 26)", 0.18);
+  drawZoneBand(ctx, trackX, trackW, trackY, trackH, DANGER_SOFT, 1, isRight, "rgb(48, 96, 120)", 0.12);
+  if (dg > 0.05) {
+    drawZoneBand(ctx, trackX, trackW, trackY, trackH, 0, 1, isRight, "rgb(255, 178, 64)", 0.04 + 0.1 * dg);
+  }
   ctx.restore();
 
   const inset = 1.25;
@@ -303,18 +300,13 @@ export function drawBalanceGauge(ctx, opts) {
     ctx.restore();
   }
 
-  // Gates on top of fill + well
+  // Kill gate only — Deep Grip is an advantage wash, not a second land notch
   const killX = thresholdX(trackX, trackW, KILL_THRESHOLD, isRight);
-  const throwX = thresholdX(trackX, trackW, throwLand, isRight);
-  const gripX = thresholdX(trackX, trackW, DEEP_GRIP_THROW_THRESHOLD, isRight);
-  const baseThrowX = thresholdX(trackX, trackW, THROW_THRESHOLD, isRight);
-
   drawThresholdNotch(ctx, killX, trackY, trackH, "rgba(238, 81, 65, 0.95)", 0.95);
   if (dg > 0.05) {
-    drawThresholdNotch(ctx, baseThrowX, trackY, trackH, "rgba(232, 197, 71, 0.55)", 0.45);
+    const dangerX = thresholdX(trackX, trackW, DANGER_SOFT, isRight);
+    drawThresholdNotch(ctx, dangerX, trackY, trackH, "rgba(255, 178, 64, 0.85)", 0.35 + 0.55 * dg);
   }
-  drawThresholdNotch(ctx, throwX, trackY, trackH, "rgba(232, 197, 71, 0.95)", 0.9);
-  drawThresholdNotch(ctx, gripX, trackY, trackH, "rgba(255, 178, 64, 1)", dg);
 
   // Quiet frame — subordinate to stamina chrome
   const dangerActive = danger && (gainT == null || gainT > 0.8);
@@ -327,7 +319,7 @@ export function drawBalanceGauge(ctx, opts) {
     borderColor = `rgba(${Math.round(216 + 22 * pulse)},${Math.round(59 + 22 * pulse)},${Math.round(39 + 26 * pulse)},${0.75 + 0.2 * pulse})`;
   } else if (dg > 0.5) {
     borderColor = `rgba(255, 178, 64, ${0.35 + 0.3 * dg})`;
-  } else if (inThrow) {
+  } else if (inDanger) {
     borderColor = "rgba(232, 197, 71, 0.42)";
   }
 
