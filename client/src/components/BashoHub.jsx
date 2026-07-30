@@ -57,6 +57,7 @@ import {
   LOADOUT_OPTIONS,
   LOADOUT_BUDGET,
   loadoutSpent,
+  migrateLoadout,
   UNLOCK_BY_ID,
   isUnlocked,
   DIVISIONS,
@@ -1857,7 +1858,10 @@ function BashoHub({ onBack, onStartRun }) {
     loadSave().then((doc) => {
       if (cancelled) return;
       saveDocRef.current = doc;
-      setCareer(doc.career);
+      setCareer({
+        ...doc.career,
+        loadout: migrateLoadout(doc.career?.loadout),
+      });
       const c = normalizeCustomization(doc.customization);
       setCustomization(c);
       setActiveOutfitId(c.activeOutfitId);
@@ -2249,7 +2253,17 @@ function BashoHub({ onBack, onStartRun }) {
             <FighterFigure>
               <PortraitRing aria-hidden />
               <PortraitFloor />
-              <PortraitImage src={previewSrc} alt="Your wrestler" />
+              <PortraitImage
+                src={previewSrc}
+                alt="Your wrestler"
+                onError={(e) => {
+                  // Dead hat-composite blob after a match teardown used to leave
+                  // the flipped alt text ("relts erw ruoY") in the portrait.
+                  if (e.currentTarget.src !== pumo) {
+                    e.currentTarget.src = pumo;
+                  }
+                }}
+              />
             </FighterFigure>
           </PortraitStage>
 

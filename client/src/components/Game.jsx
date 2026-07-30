@@ -20,6 +20,7 @@ import {
   clearRecolorCache,
   rewarmDecodedImages,
 } from "../utils/SpriteRecolorizer";
+import { clearHatCompositeCache } from "../utils/hatComposite";
 import {
   pickRandomGyojiOutfit,
   GYOJI_OUTFIT_PRESETS,
@@ -36,7 +37,7 @@ import {
   setLocalGameActive,
   getLocalKeyState,
 } from "../prediction/localInput";
-import { getServerOffset, isServerClockSynced } from "../lib/serverClock";
+import { getServerOffset, isServerClockSynced, getEstimatedRtt } from "../lib/serverClock";
 import {
   applyDohyoOverlayVars,
   loadDohyoOverlay,
@@ -275,18 +276,14 @@ const Game = ({
   //
   // CRITICAL ORDERING/PAIRING: clearDecodedImageCache() REVOKES the blob URLs of
   // every decoded sprite. Those exact blob URLs are also the VALUES stored in the
-  // persistent recolor LRU (recoloredImageCache). If we only clear the decoded
-  // cache, the recolor cache survives the unmount still mapping each sprite key
-  // to a now-DEAD (revoked) blob URL. On the next match in the same session (no
-  // page refresh) preloadSprites() → recolorImage() hits that cache and hands
-  // back the dead blob; the <img> fails to load and the browser keeps painting
-  // the previously-shown frame — so poses render as the wrong/last sprite and
-  // animated poses appear to vanish (the BASHO "second run animations all
-  // scrambled" bug). Clearing the recolor cache here keeps the two caches
-  // consistent; the next match re-recolors fresh via the awaited preloadSprites.
+  // persistent recolor LRU (recoloredImageCache) AND the hat-composite Map.
+  // If we only clear decoded/recolor, hat cache survives mapping each pose to a
+  // now-DEAD blob → BashoHub "Your wrestler" broken image + combat hat ghosts.
+  // Clear hats first (unprotect + revoke), then recolor, then decoded.
   useEffect(() => {
     return () => {
       clearGyojiRecolorCache();
+      clearHatCompositeCache();
       clearRecolorCache();
       clearDecodedImageCache();
     };
@@ -359,6 +356,7 @@ const Game = ({
         events,
         clientSynced,
         clientOffset: clientSynced ? getServerOffset() : 0,
+        clientRtt: clientSynced ? getEstimatedRtt() : 0,
       });
     };
 
@@ -440,20 +438,16 @@ const Game = ({
         applyPrediction("dash", direction);
       }
       if (gamepadKeyState[" "] && !keyState[" "]) {
-        // Flap replaces raw parry on Space — don't locally predict a parry
-        // (and its blue flame) for flap players; flight is server-authoritative.
-        if (cp?.activePowerUp !== "flap") {
-          if (cp?.facing != null) {
-            const forwardKey = cp.facing === -1 ? "d" : "a";
-            const backKey = cp.facing === -1 ? "a" : "d";
-            if (gamepadKeyState[backKey] && !gamepadKeyState[forwardKey]) {
-              applyPrediction("matador_start");
-            } else {
-              applyPrediction("parry_start");
-            }
+        if (cp?.facing != null) {
+          const forwardKey = cp.facing === -1 ? "d" : "a";
+          const backKey = cp.facing === -1 ? "a" : "d";
+          if (gamepadKeyState[backKey] && !gamepadKeyState[forwardKey]) {
+            applyPrediction("matador_start");
           } else {
             applyPrediction("parry_start");
           }
+        } else {
+          applyPrediction("parry_start");
         }
       }
       if (!gamepadKeyState[" "] && keyState[" "]) {
@@ -516,21 +510,18 @@ const Game = ({
             const direction = keyState.a ? -1 : keyState.d ? 1 : null;
             applyPrediction("dash", direction);
           }
-          // Space: BACK+SPACE → MATADOR, else ATTACK PARRY. Skip for flap
-          // players (Space takes flight — server-authoritative).
+          // Space: BACK+SPACE → MATADOR, else ATTACK PARRY.
           else if (key === " ") {
-            if (cp?.activePowerUp !== "flap") {
-              if (cp?.facing != null) {
-                const forwardKey = cp.facing === -1 ? "d" : "a";
-                const backKey = cp.facing === -1 ? "a" : "d";
-                if (keyState[backKey] && !keyState[forwardKey]) {
-                  applyPrediction("matador_start");
-                } else {
-                  applyPrediction("parry_start");
-                }
+            if (cp?.facing != null) {
+              const forwardKey = cp.facing === -1 ? "d" : "a";
+              const backKey = cp.facing === -1 ? "a" : "d";
+              if (keyState[backKey] && !keyState[forwardKey]) {
+                applyPrediction("matador_start");
               } else {
                 applyPrediction("parry_start");
               }
+            } else {
+              applyPrediction("parry_start");
             }
           }
         }
@@ -885,6 +876,7 @@ const Game = ({
           events: [],
           clientSynced,
           clientOffset: clientSynced ? getServerOffset() : 0,
+          clientRtt: clientSynced ? getEstimatedRtt() : 0,
         });
       }
     };

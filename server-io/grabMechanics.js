@@ -20,14 +20,15 @@ const {
 } = require("./gameUtils");
 
 const { cleanupGrabStates, activateBufferedInputAfterGrab } = require("./gameFunctions");
+const { facingTowardOpponent } = require("./facingSystem");
 
 function correctFacingAfterGrabOrThrow(player, opponent) {
   if (!player || !opponent) return;
   if (player.atTheRopesFacingDirection == null) {
-    player.facing = player.x < opponent.x ? -1 : 1;
+    player.facing = facingTowardOpponent(player, opponent);
   }
   if (opponent.atTheRopesFacingDirection == null) {
-    opponent.facing = opponent.x < player.x ? -1 : 1;
+    opponent.facing = facingTowardOpponent(opponent, player);
   }
 }
 

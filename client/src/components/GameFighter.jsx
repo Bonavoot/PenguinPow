@@ -1,6 +1,7 @@
 import React, {
   useContext,
   useEffect,
+  useLayoutEffect,
   useState,
   useRef,
   useCallback,
@@ -203,6 +204,7 @@ import {
 } from "../utils/hatComposite";
 import {
   StyledImage,
+  DeepGripArmGlow,
   RitualSpriteContainer,
   RitualSpriteImage,
   AnimatedFighterContainer,
@@ -378,6 +380,7 @@ function isSlapAttackBlocked(state) {
   return (
     isInFlapMechanic(state) ||
     state.isHit === true ||
+    state.isHitFalling === true ||
     state.isBeingGrabbed === true ||
     state.isBeingThrown === true ||
     state.isRawParryStun === true ||
@@ -926,6 +929,7 @@ const GameFighter = ({
   // all flag-dependent styling still flows through React renders).
   const fighterImgDomRef = useRef(null); // StyledImage (static sprite)
   const grabArmImgDomRef = useRef(null); // grab/clinch arm overlay (static)
+  const deepGripGlowDomRef = useRef(null); // Deep Grip tip glow (arm motion twin)
   const animContainerDomRef = useRef(null); // AnimatedFighterContainer
   const shadowDomRef = useRef(null); // PlayerShadow root div
   const reflectionDomRef = useRef(null); // IceReflection root div
@@ -934,7 +938,7 @@ const GameFighter = ({
   const isRoundLoserRef = useRef(false);
   const youLabelDomRef = useRef(null); // pre-game "You" label
   const gripPromptDomRef = useRef(null); // in-clinch "CLAMPED!" prompt
-  const starStunDomRef = useRef(null); // Raw-parry stun stars (head orbit)
+  const starStunDomRef = useRef(null); // Open / parry stun stars (head orbit)
   // Mirror of the latest rendered penguin state for the rAF loop (flags used
   // in position formulas: at-the-ropes nudge, shadow ground-pinning).
   const penguinRef = useRef(penguin);
@@ -2101,6 +2105,33 @@ const GameFighter = ({
     }
   }, [predictionRef, isLocalPlayer, applyPrediction]);
 
+  // Deep Grip tip glow mounts mid-clinch — copy live arm motion CSS vars
+  // before paint so it doesn't flash at belt-rest for a frame.
+  useLayoutEffect(() => {
+    if (!penguin.hasDeepGrip || !penguin.inClinch) return;
+    const glow = deepGripGlowDomRef.current;
+    const arm = grabArmImgDomRef.current;
+    if (!glow || !arm) return;
+    glow.style.left = arm.style.left;
+    glow.style.bottom = arm.style.bottom;
+    for (const prop of [
+      "--grab-arm-body-hold-deg",
+      "--grab-arm-body-hold-y",
+      "--grab-arm-body-hold-len",
+      "--grab-arm-nudge-x",
+      "--grab-arm-nudge-y",
+    ]) {
+      const v = arm.style.getPropertyValue(prop);
+      if (v) glow.style.setProperty(prop, v);
+    }
+  }, [
+    penguin.hasDeepGrip,
+    penguin.inClinch,
+    penguin.isClinchBeltHolding,
+    penguin.isClinchPlanting,
+    penguin.isGrabbing,
+  ]);
+
   // Store both players' data for UI (only needed for first component)
   const [allPlayersData, setAllPlayersData] = useState({
     player1: null,
@@ -2534,10 +2565,10 @@ const GameFighter = ({
         }
         // Grab-arm overlay shares the body's exact position formula so it stays
         // pixel-locked to the (armless) grab/clinch body as it slides.
+        // Deep Grip tip glow is a motion twin — same left/bottom + CSS vars.
         const grabArmEl = grabArmImgDomRef.current;
-        if (grabArmEl) {
-          grabArmEl.style.left = leftPct;
-          grabArmEl.style.bottom = bottomPct;
+        const deepGripGlowEl = deepGripGlowDomRef.current;
+        if (grabArmEl || deepGripGlowEl) {
           // Belt vs body-hold arm pose. Local M2 is read live so the flipper
           // drops to the belt on press without waiting on the 32Hz flag.
           // Holding M2 through grab connect stays on the belt (cosmetic only).
@@ -2576,15 +2607,6 @@ const GameFighter = ({
             bodyHoldY = isOverhook ? "-0.5%" : "1.5%";
             bodyHoldLen = BODY_HOLD_LEN;
           }
-          grabArmEl.style.setProperty(
-            "--grab-arm-body-hold-deg",
-            `${bodyHoldDeg}deg`
-          );
-          grabArmEl.style.setProperty("--grab-arm-body-hold-y", bodyHoldY);
-          grabArmEl.style.setProperty(
-            "--grab-arm-body-hold-len",
-            String(bodyHoldLen)
-          );
           // Plant / body-hold: pull flipper BACK off the white belly. Belt (M2)
           // stays pre-aligned (0). Written here so M2 press/release is instant.
           let nudgeX = 0;
@@ -2596,8 +2618,24 @@ const GameFighter = ({
             nudgeX = 4.5;
             nudgeY = 0.75;
           }
-          grabArmEl.style.setProperty("--grab-arm-nudge-x", `${nudgeX}%`);
-          grabArmEl.style.setProperty("--grab-arm-nudge-y", `${nudgeY}%`);
+          const applyGrabArmMotion = (el) => {
+            if (!el) return;
+            el.style.left = leftPct;
+            el.style.bottom = bottomPct;
+            el.style.setProperty(
+              "--grab-arm-body-hold-deg",
+              `${bodyHoldDeg}deg`
+            );
+            el.style.setProperty("--grab-arm-body-hold-y", bodyHoldY);
+            el.style.setProperty(
+              "--grab-arm-body-hold-len",
+              String(bodyHoldLen)
+            );
+            el.style.setProperty("--grab-arm-nudge-x", `${nudgeX}%`);
+            el.style.setProperty("--grab-arm-nudge-y", `${nudgeY}%`);
+          };
+          applyGrabArmMotion(grabArmEl);
+          applyGrabArmMotion(deepGripGlowEl);
         }
         const animEl = animContainerDomRef.current;
         if (animEl) {
@@ -2761,7 +2799,13 @@ const GameFighter = ({
       // showed as active has expired, so the "off" state actually commits.
       if (isLocalPlayer) {
         const p = penguinRef.current;
-        if (p?.isFlapping && p?.flapPhase === "flight") {
+        // S toggles dodge/dive pose for legacy FLAP flight AND slide-jump flight.
+        // Without this, local S on a slide-jump never forces a re-render until
+        // the next server discrete packet — reads as a stuck/cached pose.
+        const inAirSPose =
+          (p?.isFlapping && p?.flapPhase === "flight") ||
+          (p?.isSlideJumping && p?.slideJumpPhase === "flight");
+        if (inAirSPose) {
           const sHeld = !!getLocalKeyState()?.s;
           if (sHeld !== lastFlapSHeldRef.current) {
             lastFlapSHeldRef.current = sHeld;
@@ -3230,6 +3274,7 @@ const GameFighter = ({
           prev.isAttacking !== newState.isAttacking ||
           prev.isDodging !== newState.isDodging ||
           prev.isHit !== newState.isHit ||
+          prev.isHitFalling !== newState.isHitFalling ||
           prev.lastHitType !== newState.lastHitType ||
           prev.isGrabbing !== newState.isGrabbing ||
           prev.isBeingGrabbed !== newState.isBeingGrabbed ||
@@ -3316,6 +3361,7 @@ const GameFighter = ({
           prev.isIceSlideReverseHopping !== newState.isIceSlideReverseHopping ||
           prev.isSlideJumping !== newState.isSlideJumping ||
           prev.slideJumpPhase !== newState.slideJumpPhase ||
+          prev.slideJumpHasFlap !== newState.slideJumpHasFlap ||
           prev.slideJumpDiveCommitted !== newState.slideJumpDiveCommitted ||
           prev.slideJumpFastFalling !== newState.slideJumpFastFalling ||
           prev.isSidestepping !== newState.isSidestepping ||
@@ -3342,6 +3388,7 @@ const GameFighter = ({
           prev.isArmClamped !== newState.isArmClamped ||
           prev.clinchThrowFailStagger !== newState.clinchThrowFailStagger ||
           prev.isClinchOpen !== newState.isClinchOpen ||
+          prev.clinchOpenHideStars !== newState.clinchOpenHideStars ||
           prev.hasDeepGrip !== newState.hasDeepGrip ||
           prev.clinchShoveLead !== newState.clinchShoveLead ||
           // MASTERY Phase 2 (2.1): broken-posture tell drives the openable teeter.
@@ -5453,7 +5500,12 @@ const GameFighter = ({
   ]);
 
   useEffect(() => {
-    if (penguin.isFlapping && penguin.flapPhase === "flight") {
+    const inFlapChargeFlight =
+      (penguin.isSlideJumping &&
+        penguin.slideJumpPhase === "flight" &&
+        penguin.slideJumpHasFlap) ||
+      (penguin.isFlapping && penguin.flapPhase === "flight");
+    if (inFlapChargeFlight) {
       const charges = penguin.flapCharges ?? 0;
       if (
         prevFlapChargesParticles.current !== null &&
@@ -5483,6 +5535,9 @@ const GameFighter = ({
   }, [
     penguin.isFlapping,
     penguin.flapPhase,
+    penguin.isSlideJumping,
+    penguin.slideJumpPhase,
+    penguin.slideJumpHasFlap,
     penguin.flapCharges,
     penguin.x,
     penguin.y,
@@ -5491,11 +5546,14 @@ const GameFighter = ({
     emitParticles,
   ]);
 
-  // Flap audio — each wing beat (liftoff + every air flap) plays layered whoosh.
+  // Flap audio — each wing beat (air charge during FLAP-armed slide-jump).
   const prevFlapBeatSound = useRef(0);
   useEffect(() => {
+    const inFlapChargeFlight =
+      (penguin.isSlideJumping && penguin.slideJumpHasFlap) ||
+      penguin.isFlapping;
     if (
-      penguin.isFlapping &&
+      inFlapChargeFlight &&
       penguin.flapWingBeatTime &&
       penguin.flapWingBeatTime !== prevFlapBeatSound.current
     ) {
@@ -5504,7 +5562,13 @@ const GameFighter = ({
       playSound(flapSound, 0.012, null, 1.0, pan);
     }
     prevFlapBeatSound.current = penguin.flapWingBeatTime || 0;
-  }, [penguin.flapWingBeatTime, penguin.isFlapping, penguin.x]);
+  }, [
+    penguin.flapWingBeatTime,
+    penguin.isFlapping,
+    penguin.isSlideJumping,
+    penguin.slideJumpHasFlap,
+    penguin.x,
+  ]);
 
   // Fast-fall / belly-flop trail — vertical dive streaks while S is held
   // mid-flight (flap power-up OR slide-jump dive). Interval runs for the whole
@@ -6191,15 +6255,31 @@ const GameFighter = ({
     lastWinnerState.current = gameOver;
   }, [gameOver]);
 
-  // Stun stars: raw-parry stun only (not clinch Open / grab-tech recovery).
+  // Stun stars: raw-parry stun OR clinch Open / punishable recovery.
+  // Mutual throw/pull tumble sets clinchOpenHideStars — separation already
+  // sells that lockout, so no stars there.
+  const clinchVulnerable = !!(
+    penguin.isClinchOpen ||
+    penguin.clinchThrowFailStagger ||
+    penguin.clinchJoltRecovery
+  );
+  const clinchStarsOk = clinchVulnerable && !penguin.clinchOpenHideStars;
   useEffect(() => {
-    const shouldShowStars = !!penguin.isRawParryStun;
+    const shouldShowStars = !!(penguin.isRawParryStun || clinchStarsOk);
     if (shouldShowStars !== showStarStunEffect) {
       setShowStarStunEffect(shouldShowStars);
     }
-  }, [penguin.isRawParryStun, showStarStunEffect]);
+  }, [
+    penguin.isRawParryStun,
+    clinchStarsOk,
+    showStarStunEffect,
+  ]);
 
-  const starStunVariant = "parry";
+  const starStunVariant = clinchStarsOk
+    ? penguin.id === localId
+      ? "self"
+      : "foe"
+    : "parry";
 
   // ============================================
   // SCREEN SHAKE — unified trauma bus (lib/cameraShake)
@@ -6703,14 +6783,19 @@ const GameFighter = ({
       : 1;
 
   // Slide-jump: flap wing art while airborne; dodge pose on S butt-slam dive.
+  // FLAP-armed jumps also wing-beat on charge spends (same flapFrame timing).
   const slideJumpUseDodgePose =
     !!penguin.isSlideJumping &&
     penguin.slideJumpPhase === "flight" &&
     (!!penguin.slideJumpDiveCommitted ||
       !!penguin.slideJumpFastFalling ||
       (isLocalPlayer && !!getLocalKeyState()?.s));
-  // Slide-jump air pose: flap1 only (no wing-beat toggle).
-  const slideJumpFlapFrame = 1;
+  const slideJumpFlapFrame =
+    penguin.slideJumpHasFlap &&
+    flapBeatRef.current.startedAt &&
+    performance.now() - flapBeatRef.current.startedAt < FLAP_WINGBEAT_MS
+      ? 2
+      : 1;
 
   // OPEN-PALM THRUST frame. Anchor a local clock when a thrust begins, then
   // advance startup → smear → active → recovery off elapsed ms. We anchor on
@@ -6847,7 +6932,9 @@ const GameFighter = ({
     penguin.isGrabBreaking,
     penguin.isReady,
     readyIntroComplete,
-    penguin.isHit,
+    // Keep hit pose through air-hit dump — stun can end mid-air while
+    // isHitFalling is still true; dropping to idle remounts the <img> (ghost).
+    penguin.isHit || penguin.isHitFalling,
     penguin.isDead,
     displayPenguin.isSlapAttack,
     penguin.isThrowing,
@@ -7001,14 +7088,15 @@ const GameFighter = ({
       hitTintUntilRef.current = renderNowMs + HIT_TINT_MS;
     }
   }
-  if (!penguin.isHit) {
+  const inHitVisual = penguin.isHit || penguin.isHitFalling;
+  if (!inHitVisual) {
     hitTintUntilRef.current = 0;
     hitFlashUntilRef.current = 0;
   }
   const showHitTintThisFrame =
-    penguin.isHit && renderNowMs < hitTintUntilRef.current;
+    inHitVisual && renderNowMs < hitTintUntilRef.current;
   const showHitFlashThisFrame =
-    penguin.isHit && renderNowMs < hitFlashUntilRef.current;
+    inHitVisual && renderNowMs < hitFlashUntilRef.current;
   // Safety precedence: by construction (see hit-trigger block above) only ONE
   // of the two windows is opened per hit, so they shouldn't overlap. The
   // && !showHitFlashThisFrame guard remains as a defensive net for the rare
@@ -7023,12 +7111,16 @@ const GameFighter = ({
   renderedHitVisualsRef.current.hold = effectiveSpriteSrc !== displaySpriteSrc;
   renderedHitVisualsRef.current.dashAnim =
     displayPenguin.isDodging || penguin.justLandedFromDodge;
-  // FLAP wing-beat: when this render committed the down-stroke (flap2), the rAF
-  // loop forces the flip back to flap1 once the beat window expires — unless
-  // we're in the dodge pose (out of charges or fast-falling), which holds until
-  // landing or S is released.
+  // FLAP / slide-jump wing-beat: when this render committed the down-stroke
+  // (flap2), the rAF loop forces the flip back to flap1 once the beat window
+  // expires — unless we're in the dodge/dive pose. Slide-jump charges reuse
+  // the same flapBeatRef timing but previously never armed this flag, so
+  // flap2 could stick until an unrelated discrete update (felt like cache).
   renderedHitVisualsRef.current.flapBeat =
-    !flapUseDodgePose && flapFrame === 2;
+    (!flapUseDodgePose && flapFrame === 2) ||
+    (!!penguin.isSlideJumping &&
+      !slideJumpUseDodgePose &&
+      slideJumpFlapFrame === 2);
   // OPEN-PALM THRUST: keep re-rendering while the animation hasn't reached its
   // terminal recovery frame (3) so startup → smear → active advance on their
   // ms boundaries. Frame 3 is a static hold, so it needs no further forcing.
@@ -7075,6 +7167,18 @@ const GameFighter = ({
     ? resolveBodyForHeadGear(effectiveSpriteSrc, fighterGearIds)
     : effectiveSpriteSrc;
 
+  // Hit react MUST stay on the static <StyledImage> path. `hit` has a
+  // spritesheet, so the default path mounts <AnimatedFighterImage>; when
+  // stun/air-dump ends we switch to idle on <StyledImage> — that component
+  // swap remounts and decodes → classic one-frame ghost. Air-hit fall made
+  // this constant (isHit clears mid-air, then isHitFalling → idle on land).
+  // forceStatic keeps hit.png on the same element as surrounding poses; white
+  // flash / red tint still apply. (Kill victims already forceStatic.)
+  const forceHitStatic =
+    penguin.isHit ||
+    penguin.isHitFalling ||
+    effectiveSpriteSrc === hitSprite;
+
   // Get sprite render info (handles animated spritesheets and recoloring).
   // `renderHitTint` (NOT raw showHitTintThisFrame) is passed for the red tint
   // arg so the white impact flash visually takes priority during its 4-frame
@@ -7084,7 +7188,7 @@ const GameFighter = ({
     renderHitTint,
     showHitFlashThisFrame,
     useBlubberTint,
-    false,
+    forceHitStatic,
     useArmorTint
   );
   const isKillVictim = penguin.isClinchKillThrowVictim || penguin.isClinchKillPullVictim;
@@ -7113,61 +7217,22 @@ const GameFighter = ({
     : spriteRenderInfo;
 
   // GHOST-FRAME / INTERACTION-HITCH FIX:
-  // Key the fighter <img> on the tint- and color-INDEPENDENT base source (the
-  // pose identity), NOT the recolored/tinted blob URL. During combat the tint
-  // toggles every few frames (white impact flash, red damage tint, charge
-  // white, blubber purple); each toggle changes `recoloredSpriteSrc`. When that
-  // was the React `key`, every toggle REMOUNTED the <img> — which (a) starts
-  // blank and must decode → the one-frame "ghost", and (b) restarts the CSS
-  // spritesheet animation from frame 0 → a visible animation reset mid-combo.
-  //
-  // Keying on the base source instead means tint/color changes update `src` IN
-  // PLACE on a stable element: the browser keeps painting the last decoded
-  // frame until the new src decodes (no blank), and the animation keeps running.
-  // A remount (and intended animation restart) now happens ONLY on a genuine
-  // pose change. This mirrors `sourceToRecolor` inside getSpriteRenderInfo:
-  // animated → the spritesheet; static → the original (kill-victim) source.
-  // Palm thrust rapidly swaps its static pose (smear → active → startup) within
-  // one move. Since the fighter <img> is keyed on the pose src, letting the key
-  // change per frame would REMOUNT the element three times — each remount starts
-  // blank and must decode → the one-frame ghost between frames. Collapse all
-  // palm-thrust frames to a single stable key identity so the element persists
-  // and swaps `src` IN PLACE (browser keeps painting the last decoded frame
-  // until the next decodes → no blank), exactly like the tint-change handling.
+  // Key the fighter <img> on a tint-independent identity, NOT the recolored
+  // blob URL (tint toggles used to remount every flash). For ANIMATED sheets,
+  // key the sheet so loop restarts only when the sheet changes. For STATIC
+  // poses, use ONE stable key for the whole fighter — static pose swaps have
+  // no spritesheet loop to restart, and pose-keyed remounts were the main
+  // remaining ghost source (slide-jump → hit → idle, slap frames, flap wings,
+  // hat composite URL changes). In-place `src` updates keep the last decoded
+  // frame painted until the next src decodes (no blank).
   const baseSpriteSrc = spriteConfig
-    ? spriteConfig.spritesheet
-    : penguin.isClinchKillThrowVictim
-    // Stable across hit→landing pose swap so the <img> does NOT remount mid-arc
-    // (remount + decode = the translucent "ghost penguin" in the smoke trail).
-    ? "clinch-kill-throw-victim"
-    : isKillVictim
-    ? killVictimSprite
-    : displayPenguin.isPalmThrust
-    ? "palm-thrust-anim"
-    // Dash swaps recovering (windup/landing) ↔ dodging mid-move. A pose-keyed
-    // remount restarts dashJump from 0% and eats the hop apex — keep one key
-    // for the whole windup→jump→landing beat (same pattern as palm thrust).
-    : displayPenguin.isDodging || penguin.justLandedFromDodge
-    ? "dash-anim"
-    : penguin.isIceSliding
-    ? "ice-slide-anim"
-    : penguin.isSlideJumping
-    ? "slide-jump-anim"
-    // A slap rapidly swaps its static pose (windup → blur → hit → recovery)
-    // within one cycle. Collapse to one stable key so the <img> persists and
-    // swaps `src` in place (no remount/ghost between frames), exactly like
-    // palm thrust.
-    : inSlapPhaseAnim
-    ? "slap-anim"
-    // Raw parry SUCCESS swaps frame-1 → frame-2 mid-hitstop. Stable key so the
-    // <img> persists and swaps src in place (no remount/ghost on the deflect).
-    : inRawParrySuccessAnim
-    ? "raw-parry-success-anim"
-    // Flap rapidly swaps recovering ↔ flap1 ↔ flap2 ↔ dodging. Collapse to one
-    // key so hat composite src swaps don't remount/decode-flash each wing-beat.
-    : penguin.isFlapping
-    ? "flap-anim"
-    : effectiveSpriteSrc;
+    ? penguin.isClinchKillThrowVictim
+      ? "clinch-kill-throw-victim"
+      : displayPenguin.isDodging || penguin.justLandedFromDodge
+      ? "dash-anim"
+      : spriteConfig.spritesheet
+    : // All static combat poses share one element (incl. forceStatic hit).
+      "static-fighter";
 
   // BASHO no-remount fix: the fighter <img> is keyed on the color-INDEPENDENT
   // base source (the ghost-frame fix above) so tint toggles update `src` in
@@ -7295,8 +7360,6 @@ const GameFighter = ({
       setHattedPairKey(pairKey);
       return undefined;
     }
-    // Miss: do NOT clear React state here — pairKey mismatch already prevents
-    // painting a stale composite. Clearing forced a 1-frame unhatted flash.
     let cancelled = false;
     compositeHatOntoSprite(recoloredSpriteSrc, hatOverlaySrc, hatUnderBody)
       .then(async (url) => {
@@ -7344,7 +7407,7 @@ const GameFighter = ({
     $isGrabBreaking: penguin.isGrabBreaking,
     $isReady: penguin.isReady,
     $readyIntroComplete: readyIntroComplete,
-    $isHit: penguin.isHit,
+    $isHit: penguin.isHit || penguin.isHitFalling,
     $lastHitType: penguin.lastHitType,
     // Procedural impact grading + attacker contact recoil (see the
     // player_hit handler and fighterStyledComponents keyframes).
@@ -7847,7 +7910,7 @@ const GameFighter = ({
           $isGrabbing={displayPenguin.isGrabbing}
           $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
           $isAtTheRopes={penguin.isAtTheRopes}
-          $isHit={penguin.isHit}
+          $isHit={penguin.isHit || penguin.isHitFalling}
           $isBurstKnockback={penguin.isBurstKnockback}
           $impactAmp={impactAmp}
           $isRawParryStun={penguin.isRawParryStun}
@@ -7871,7 +7934,7 @@ const GameFighter = ({
             $isPerfectRawParrySuccess={
               !!penguin.isPerfectRawParrySuccess && inRawParrySuccessAnim
             }
-            $isHit={penguin.isHit}
+            $isHit={penguin.isHit || penguin.isHitFalling}
             $isChargingAttack={displayPenguin.isChargingAttack}
             $isGrabTeching={penguin.isGrabTeching}
             $grabTechRole={penguin.grabTechRole}
@@ -7918,6 +7981,28 @@ const GameFighter = ({
           }}
         />
       )}
+      {/* Deep Grip tip glow — motion twin of the grab arm (same footprint,
+          shoulder pivot, nudges, arm keyframes, and $grabArmLayer z). Renders
+          after the arm so it sits on the flipper tip; an opponent arm at the
+          higher facing z still paints over it. */}
+      {!isAnimatedSprite &&
+        showGrabArm &&
+        !!penguin.hasDeepGrip &&
+        penguin.inClinch && (
+          <DeepGripArmGlow
+            ref={deepGripGlowDomRef}
+            key={`grabarm-dg-${baseSpriteSrc}-${chargeAnimKeyRef.current}`}
+            {...fighterImgStyleProps}
+            $grabArmLayer={grabArmZ}
+            $grabArmNudgeXPct={grabArmNudgeXPct}
+            $grabArmNudgeYPct={grabArmNudgeYPct}
+            $grabArmBodyHoldActive={grabArmBodyHoldActive}
+            style={{ display: showRitualSprite ? "none" : "block" }}
+            aria-hidden
+          >
+            <i />
+          </DeepGripArmGlow>
+        )}
       </>
       );
       return isOutsideRingNow && fallenSpriteHost
@@ -7993,7 +8078,7 @@ const GameFighter = ({
         isActive={penguin.isAtTheRopes}
       />
       {/* CLAMPED! prompt only — grip-up is gone; mutual grip is automatic.
-          Counter-grab arm clamp still needs a readable punish tell. */}
+          Counter-grab arm clamp: readable strong-advantage tell (Plant still ok). */}
       <GripPromptEffect
         ref={gripPromptDomRef}
         x={displayPosition.x}

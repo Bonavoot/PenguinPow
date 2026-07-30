@@ -213,12 +213,13 @@ function enforceStrikeExtensionSeparation(attacker, opponent, nowSim) {
   // flapping / slide-jumping / rope-jumping / dodging / sidestepping / thrown
   // fighter. Without this, a grounded slap ACTIVE turned the tip-sep into an
   // invisible wall the airborne fighter could not fly past.
+  // Passive flight passes through grounded tip-sep. Dive-committed flyers stay
+  // exempt from the horizontal pin too — hit confirm uses collision, not tip park.
   if (
     opponent.isDodging ||
     opponent.isSidestepping ||
     opponent.isBeingThrown ||
     opponent.isThrowing ||
-    (opponent.isFlapping && opponent.flapPhase === "flight") ||
     (opponent.isSlideJumping && opponent.slideJumpPhase === "flight") ||
     (opponent.isRopeJumping && opponent.ropeJumpPhase === "active")
   ) {

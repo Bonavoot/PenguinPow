@@ -8,6 +8,7 @@ import {
   clearPersistentCache,
   isPersistentCacheAvailable,
 } from "../utils/SpriteRecolorizer";
+import { clearHatCompositeCache } from "../utils/hatComposite";
 
 // Global volume state preserved across mounts so audio code outside this
 // component (see getGlobalVolume below) can read the user's last setting.
@@ -418,6 +419,7 @@ const Settings = ({ onClose }) => {
 
   const handleClearSpritePack = async () => {
     if (installState === "running") return;
+    clearHatCompositeCache();
     await clearPersistentCache();
     try {
       localStorage.removeItem("spritePackInstalled");

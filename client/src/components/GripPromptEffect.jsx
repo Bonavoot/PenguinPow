@@ -5,6 +5,8 @@ import { C } from "./menuTheme";
 
 /*
  * CLAMPED! prompt for the local player during a counter-grab arm clamp.
+ * Advantage-state tell (offense locked; Plant brace still available) — not a
+ * "free throw" / untechable cue.
  * Grip-up was removed — mutual clinch grip is automatic on connect. This
  * tell remains so the punish window stays readable.
  *

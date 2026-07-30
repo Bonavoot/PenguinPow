@@ -310,6 +310,291 @@ const grabArmExtra = (props) => {
   return grabArmNudge(props);
 };
 
+// CSS animation string for the grab-arm overlay (and any motion twin that must
+// stay glued to it — e.g. Deep Grip tip glow). Kept as one resolver so the arm
+// img and the glow never drift onto different keyframes.
+export const resolveGrabArmAnimation = (props) => {
+  if (!props.$grabArmLayer) return null;
+  if (props.$isGrabBellyFlopping) {
+    return "grabBellyFlopLungeArm 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards";
+  }
+  if (props.$isBeingGrabBellyFlopped) {
+    return "grabBellyFlopVictimArm 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards";
+  }
+  if (props.$isGrabFrontalForceOut) {
+    return "grabFrontalForceOutArm 0.3s ease-out forwards";
+  }
+  if (props.$isBeingGrabFrontalForceOut) {
+    return "grabFrontalForceOutVictimArm 0.3s ease-out forwards";
+  }
+  if (props.$isGrabSeparating) return "grabSeparatePushArm 0.3s ease-out";
+  if (props.$isAttemptingPull || props.$isMatadorSuccess) {
+    return "attemptingPullTugArm 0.6s cubic-bezier(0.4, 0.0, 0.6, 1.0)";
+  }
+  if (props.$isGrabPushing) return "grabPushStrainArm 0.3s ease-in-out infinite";
+  if (props.$isBeingGrabPushed) {
+    return "grabPushResistArm 0.3s ease-in-out infinite";
+  }
+  if (props.$isAttemptingGrabThrow) {
+    return "attemptingGrabThrowPullArm 1.0s cubic-bezier(0.4, 0.0, 0.6, 1.0)";
+  }
+  if (props.$isGrabBreaking || props.$isGrabBreakCountered) {
+    return "grabBreakShakeArm 0.1s ease-in-out infinite";
+  }
+  if (props.$isClinchJoltClashing) return "clinchJoltClashArm 0.25s ease-out";
+  if (props.$isClinchJolting) {
+    return "clinchJoltLungeArm 0.25s ease-out forwards";
+  }
+  if (props.$isBeingClinchJolted) return "clinchJoltRecoilArm 0.3s ease-out";
+  if (props.$isClinchClashing || props.$isGrabTeching) {
+    return "grabTechShakeArm 0.25s ease-in-out infinite";
+  }
+  if (props.$isClinchOpen || props.$clinchThrowFailStagger) {
+    return "clinchOpenWobbleArm 0.42s ease-in-out infinite";
+  }
+  if (props.$inClinch && props.$balanceDanger) {
+    return "clinchTeeterHeavyArm 0.95s ease-in-out infinite";
+  }
+  if (props.$inClinch && props.$balanceWobble) {
+    return "clinchTeeterArm 1.5s ease-in-out infinite";
+  }
+  return "none";
+};
+
+// Flipper HAND center on belt-grab-arm-only.png (960²) — opaque centroid of
+// the distal pad (along the shoulder→tip axis), not the tip extremity.
+export const GRAB_ARM_HAND_X_PCT = 20.6;
+export const GRAB_ARM_HAND_Y_PCT = 73.2;
+
+// Smoky static bomb — overlapping soft blobs (same family as particle
+// puffs). No hard disc / ring edges; white heat melts into orange smoke.
+function bakeDeepGripOrb(size, seed) {
+  if (typeof document === "undefined") return "";
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  const half = size / 2;
+  let s = seed;
+  const srand = () => {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+
+  // Soft circular orange body — silhouette is a soft circle. Texture lives
+  // INSIDE (no rim beads / circumference dots).
+  {
+    const base = ctx.createRadialGradient(half, half, 0, half, half, half * 0.88);
+    base.addColorStop(0, "rgba(255,165,40,0.72)");
+    base.addColorStop(0.4, "rgba(255,130,20,0.58)");
+    base.addColorStop(0.7, "rgba(240,95,8,0.3)");
+    base.addColorStop(0.88, "rgba(200,70,0,0.1)");
+    base.addColorStop(1, "rgba(160,40,0,0)");
+    ctx.fillStyle = base;
+    ctx.beginPath();
+    ctx.arc(half, half, half * 0.88, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Interior + near-edge smoke mottling — soft, subtle patches.
+  const midBlobs = 10 + Math.floor(srand() * 4);
+  for (let i = 0; i < midBlobs; i++) {
+    const ang = srand() * Math.PI * 2;
+    const dist = size * Math.sqrt(srand()) * 0.3;
+    const bx = half + Math.cos(ang) * dist;
+    const by = half + Math.sin(ang) * dist;
+    const br = size * (0.06 + srand() * 0.08);
+    const grad = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+    grad.addColorStop(0, "rgba(255,210,90,0.38)");
+    grad.addColorStop(0.5, "rgba(255,150,30,0.16)");
+    grad.addColorStop(1, "rgba(255,120,20,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Light outer haze wisps — sparse and quiet.
+  const hazeBlobs = 4 + Math.floor(srand() * 2);
+  for (let i = 0; i < hazeBlobs; i++) {
+    const ang = srand() * Math.PI * 2;
+    const dist = size * (0.28 + srand() * 0.1);
+    const bx = half + Math.cos(ang) * dist;
+    const by = half + Math.sin(ang) * dist;
+    const br = size * (0.09 + srand() * 0.07);
+    const grad = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+    grad.addColorStop(0, "rgba(255,150,30,0.14)");
+    grad.addColorStop(0.55, "rgba(255,110,10,0.06)");
+    grad.addColorStop(1, "rgba(200,60,0,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // White-hot core — soft clustered blobs + a guaranteed centered wash so
+  // orange smoke never eats the bottom of the core.
+  {
+    const coreWash = ctx.createRadialGradient(
+      half, half, 0, half, half, size * 0.16
+    );
+    coreWash.addColorStop(0, "rgba(255,255,255,1)");
+    coreWash.addColorStop(0.45, "rgba(255,252,240,0.92)");
+    coreWash.addColorStop(0.78, "rgba(255,230,160,0.35)");
+    coreWash.addColorStop(1, "rgba(255,200,80,0)");
+    ctx.fillStyle = coreWash;
+    ctx.beginPath();
+    ctx.arc(half, half, size * 0.16, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const coreBlobs = 5 + Math.floor(srand() * 3);
+  for (let i = 0; i < coreBlobs; i++) {
+    const ang = srand() * Math.PI * 2;
+    const dist = size * srand() * 0.05;
+    const bx = half + Math.cos(ang) * dist;
+    const by = half + Math.sin(ang) * dist;
+    const br = size * (0.06 + srand() * 0.06);
+    const grad = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+    grad.addColorStop(0, "rgba(255,255,255,1)");
+    grad.addColorStop(0.4, "rgba(255,255,245,0.85)");
+    grad.addColorStop(1, "rgba(255,200,80,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Static speckles — quiet crackle outside the core
+  const flecks = 12 + Math.floor(srand() * 6);
+  for (let i = 0; i < flecks; i++) {
+    const ang = srand() * Math.PI * 2;
+    const dist = size * (0.14 + Math.sqrt(srand()) * 0.3);
+    const fx = half + Math.cos(ang) * dist;
+    const fy = half + Math.sin(ang) * dist;
+    const fr = size * (0.007 + srand() * 0.012);
+    const a = 0.18 + srand() * 0.28;
+    const grad = ctx.createRadialGradient(fx, fy, 0, fx, fy, fr);
+    grad.addColorStop(0, `rgba(255,255,255,${a})`);
+    grad.addColorStop(1, "rgba(255,180,60,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(fx, fy, fr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Soft circular alpha mask — round silhouette, slight room for outer haze.
+  ctx.globalCompositeOperation = "destination-in";
+  const mask = ctx.createRadialGradient(half, half, 0, half, half, half * 0.92);
+  mask.addColorStop(0, "rgba(0,0,0,1)");
+  mask.addColorStop(0.68, "rgba(0,0,0,1)");
+  mask.addColorStop(0.86, "rgba(0,0,0,0.5)");
+  mask.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = mask;
+  ctx.fillRect(0, 0, size, size);
+  ctx.globalCompositeOperation = "source-over";
+
+  return c.toDataURL("image/png");
+}
+
+const DEEP_GRIP_ORB_A =
+  typeof document !== "undefined" ? bakeDeepGripOrb(160, 11) : "";
+const DEEP_GRIP_ORB_B =
+  typeof document !== "undefined" ? bakeDeepGripOrb(160, 29) : "";
+
+const deepGripSmokeBreath = keyframes`
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  }
+  35% {
+    transform: translate(-50%, -50%) scale(1.08) rotate(3deg);
+  }
+  65% {
+    transform: translate(-50%, -50%) scale(1.03) rotate(-2deg);
+  }
+`;
+
+// Crackly crossfade between two baked smoke frames.
+const deepGripStaticA = keyframes`
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.15; }
+`;
+const deepGripStaticB = keyframes`
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 1; }
+`;
+
+// Motion twin of the grab-arm overlay: same footprint / facing / shoulder
+// pivot / nudges / arm keyframes / z-index as the arm img. Smoky static
+// bomb on the flipper pad — baked blob cloud, not layered CSS circles.
+export const DeepGripArmGlow = styled.div
+  .withConfig({
+    shouldForwardProp: (prop) => !prop.startsWith("$"),
+  })
+  .attrs((props) => ({
+    style: {
+      position: "absolute",
+      left:
+        props.$isAtTheRopes && props.$fighter === "player 1"
+          ? `${((props.$x + (props.$x < 640 ? -5 : 5)) / 1280) * 100}%`
+          : `${(props.$x / 1280) * 100}%`,
+      bottom: `${(props.$y / 720) * 100}%`,
+      translate: "-50%",
+      "--facing": props.$facing === 1 ? "1" : "-1",
+      width:
+        props.$isAtTheRopes && props.$fighter === "player 1"
+          ? "min(11.56%, 356px)"
+          : "min(12.30%, 379px)",
+      aspectRatio: "1 / 1",
+      height: "auto",
+      pointerEvents: "none",
+      transformOrigin: FIGHTER_SOLE_TRANSFORM_ORIGIN,
+      transform:
+        props.$facing === 1
+          ? `scaleX(1)${grabArmExtra(props)}`
+          : `scaleX(-1)${grabArmExtra(props)}`,
+      // Match the holder arm exactly — facing===1 wins at 106 over 105, so
+      // the underhook arm's glow stays under the overhook flipper.
+      zIndex:
+        props.$grabArmLayer && !isOutsideDohyo(props.$x, props.$y)
+          ? props.$grabArmLayer
+          : 0,
+      animation: resolveGrabArmAnimation(props) || "none",
+      willChange: "transform",
+      transition: "none",
+    },
+  }))`
+  > i {
+    position: absolute;
+    left: ${GRAB_ARM_HAND_X_PCT}%;
+    top: ${GRAB_ARM_HAND_Y_PCT}%;
+    width: 21%;
+    height: 21%;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    animation: ${deepGripSmokeBreath} 1.35s ease-in-out infinite;
+  }
+
+  > i::before,
+  > i::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+  }
+
+  > i::before {
+    background-image: url(${DEEP_GRIP_ORB_A});
+    animation: ${deepGripStaticA} 0.28s steps(2, end) infinite;
+  }
+
+  > i::after {
+    background-image: url(${DEEP_GRIP_ORB_B});
+    animation: ${deepGripStaticB} 0.28s steps(2, end) infinite;
+  }
+`;
+
 export const StyledImage = styled("img")
   .withConfig({
     shouldForwardProp: (prop) =>
@@ -568,41 +853,7 @@ export const StyledImage = styled("img")
       // Grab-arm overlay: any body transform anim must be mirrored here (with
       // shoulder pivot appended) or the flipper detaches mid-wobble / jolt.
       animation: props.$grabArmLayer
-        ? props.$isGrabBellyFlopping
-          ? "grabBellyFlopLungeArm 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
-          : props.$isBeingGrabBellyFlopped
-          ? "grabBellyFlopVictimArm 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
-          : props.$isGrabFrontalForceOut
-          ? "grabFrontalForceOutArm 0.3s ease-out forwards"
-          : props.$isBeingGrabFrontalForceOut
-          ? "grabFrontalForceOutVictimArm 0.3s ease-out forwards"
-          : props.$isGrabSeparating
-          ? "grabSeparatePushArm 0.3s ease-out"
-          : props.$isAttemptingPull || props.$isMatadorSuccess
-          ? "attemptingPullTugArm 0.6s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
-          : props.$isGrabPushing
-          ? "grabPushStrainArm 0.3s ease-in-out infinite"
-          : props.$isBeingGrabPushed
-          ? "grabPushResistArm 0.3s ease-in-out infinite"
-          : props.$isAttemptingGrabThrow
-          ? "attemptingGrabThrowPullArm 1.0s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
-          : props.$isGrabBreaking || props.$isGrabBreakCountered
-          ? "grabBreakShakeArm 0.1s ease-in-out infinite"
-          : props.$isClinchJoltClashing
-          ? "clinchJoltClashArm 0.25s ease-out"
-          : props.$isClinchJolting
-          ? "clinchJoltLungeArm 0.25s ease-out forwards"
-          : props.$isBeingClinchJolted
-          ? "clinchJoltRecoilArm 0.3s ease-out"
-          : props.$isClinchClashing || props.$isGrabTeching
-          ? "grabTechShakeArm 0.25s ease-in-out infinite"
-          : props.$isClinchOpen || props.$clinchThrowFailStagger
-          ? "clinchOpenWobbleArm 0.42s ease-in-out infinite"
-          : props.$inClinch && props.$balanceDanger
-          ? "clinchTeeterHeavyArm 0.95s ease-in-out infinite"
-          : props.$inClinch && props.$balanceWobble
-          ? "clinchTeeterArm 1.5s ease-in-out infinite"
-          : "none"
+        ? resolveGrabArmAnimation(props)
         : props.$isClinchKillThrowVictim
         ? props.$showClinchKillThrowLanding
           ? props.$isBeingThrown

@@ -13,13 +13,15 @@ const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
         RAW_PARRY_STAMINA_COST, POWER_UP_TYPES, SLAP_KILL_RANGE,
         PALM_THRUST_STAMINA_COST,
         CLINCH_THROW_KILL_THRESHOLD,
-        FLAP_IMPULSE, FLAP_FLAP_H_IMPULSE, FLAP_CHARGE_COOLDOWN_MS, FLAP_STAMINA_COST,
+        GRAB_BREAK_STAMINA_COST,
+        CLINCH_LIGHT_DRIVE_MS,
+        FLAP_CHARGE_COOLDOWN_MS, FLAP_STAMINA_COST,
         SLAP_TOTAL_MS, CADENCE_WINDOW_MS,
         CPU_CADENCE_EASY, CPU_CADENCE_NORMAL, CPU_CADENCE_HARD, CPU_CADENCE_IMPOSSIBLE,
         BALANCE_MAX, GRAB_BREAK_REACTION_LOCK_MS } = require("./constants");
 const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
         canPlayerSidestep, getSidestepInitData, simNowForPlayer,
-        logVerbInitiation, beginFlapStartup, beginPlayerDodge,
+        logVerbInitiation, beginPlayerDodge,
         beginGrabStartup,
         canArmAttackParry, armAttackParry } = require("./gameUtils");
 const { getConnectDistance, attackKindFromPlayer } = require("./strikeContact");
@@ -37,12 +39,14 @@ const MAP_WIDTH = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
 // When true, Easy VS CPU is a grab-only dummy with infinite posture so you can
 // isolate MATADOR feel. Flip to false to restore normal Easy behavior.
 // (Was slap-only for Attack Parry lab — same pattern, grab verb instead.)
-const EASY_GRAB_MATADOR_DUMMY = true;
+const EASY_GRAB_MATADOR_DUMMY = false;
 
 // AI Configuration - Tuned for expert sumo gameplay
 const AI_CONFIG = {
-  // Distance thresholds — adjusted for new frame data hitbox ranges
-  SLAP_RANGE: 120,         // Must exceed pushbox (~110px @ 0.85 size) so AI attacks at body contact
+  // Distance thresholds — slap fire range is derived from getConnectDistance
+  // at use-time (tip ~133px @ 0.85). SLAP_RANGE is the "close pocket" band only.
+  SLAP_RANGE: 140,         // ≈ tip connect + slack — close-range offense pocket
+  SLAP_REACH_SLACK: 10,    // Extra px past connect for ice drift into ACTIVE
   GRAB_RANGE: 135,
   GRAB_APPROACH_RANGE: 165,
   MID_RANGE: 185,          // Scaled for camera zoom (was 250)
@@ -62,9 +66,11 @@ const AI_CONFIG = {
   DECISION_COOLDOWN: 120,  // Minimum time between major decisions
   
   // Stamina thresholds
-  GRAB_BREAK_STAMINA: 10,  // Stamina cost for grab break (equal for both players)
+  GRAB_BREAK_STAMINA: GRAB_BREAK_STAMINA_COST, // Matches live clinch break cost
   DODGE_STAMINA_COST: 4,   // Matches new DODGE_STAMINA_COST constant
   LOW_STAMINA_THRESHOLD: 25, // Opponent considered low stamina
+  CLINCH_STAMINA_DESPERATE: 20, // Near-gas — never Plant to "recover"
+  CLINCH_STAMINA_LOW: 40,       // Prefer neutral breathing / light drive over Plant
   
   // Movement
   STRAFE_CHANGE_INTERVAL: 350, // How often to change strafe direction
@@ -397,6 +403,9 @@ function runEasyGrabDummyClinchEscape(cpu, human, aiState, currentTime) {
   aiState.clinchThrowPending = null;
   aiState.clinchThrowExecuteTime = 0;
   aiState.clinchPushPlantDecision = null;
+  aiState.clinchLightDrivePulse = false;
+  aiState.clinchClampHoldPlant = false;
+  aiState.clinchClampPlantUntil = 0;
 
   // Reaction lock must expire before break/jolt is accepted.
   const gripAt = cpu.gripAcquiredTime || 0;
@@ -890,6 +899,9 @@ function getAIState(playerId) {
       clinchThrowExecuteTime: 0,
       clinchPushPlantDecision: null,
       clinchPushPlantUntil: 0,
+      clinchLightDrivePulse: false, // true after a short Light Drive → force neutral breath
+      clinchClampHoldPlant: false,  // sticky Plant while arm-clamped (offense locked)
+      clinchClampPlantUntil: 0,
       // Defensive clinch-break (high-tier tech-out) interval gate
       lastClinchBreakCheck: 0,
       // === FLAP power-up tracking ===
@@ -982,6 +994,20 @@ function isAtGrabRange(cpu, human) {
   return Math.abs(cpu.x - human.x) <= AI_CONFIG.GRAB_RANGE;
 }
 
+// True when the human is airborne enough that a ground grab cannot connect.
+// Matches server grab immunity (flight / rope / elevated) — CPU must not
+// grab-fish jumpers / FLAP / air-hit dumps.
+function isOpponentAirborne(human) {
+  if (!human) return false;
+  if (human.isSlideJumping && human.slideJumpPhase === "flight") return true;
+  if (human.isFlapping && human.flapPhase === "flight") return true;
+  if (human.isRopeJumping && human.ropeJumpPhase === "active") return true;
+  if (human.isHitFalling) return true;
+  if (human.isIceSlideReverseHopping) return true;
+  if (typeof human.y === "number" && human.y > GROUND_LEVEL + 8) return true;
+  return false;
+}
+
 // Check if the opponent is in a state where a grab can actually connect
 // Grabs beat dodge at any point — dodge is never safe from grabs
 // Sidestep: grabs track through it by design, but the AI shouldn't react-grab
@@ -993,7 +1019,8 @@ function isOpponentGrabbable(human) {
          !human.isGrabTeching &&
          !human.isGrabBreaking &&
          !human.isGrabBreakSeparating &&
-         !human.isSidestepping;
+         !human.isSidestepping &&
+         !isOpponentAirborne(human);
 }
 
 // Check if the opponent is actively moving away from the CPU
@@ -1452,16 +1479,18 @@ function updateCPUAI(cpu, human, room, currentTime) {
     return;
   }
 
-  // HIGHEST PRIORITY (flap): if WE are airborne, piloting the flight overrides
-  // all normal logic (grab-approach, clinch, offense) — steer over the opponent
-  // and dive for the body-slam. Checked before everything else because canAct/
-  // canGrab don't exclude the flap states.
-  if (cpu.isFlapping) {
+  // HIGHEST PRIORITY (FLAP slide-jump): if WE are in a FLAP-armed slide-jump,
+  // pilot air charges + dive. Plain slide-jumps fall through to normal logic.
+  if (cpu.isSlideJumping && cpu.slideJumpHasFlap) {
     pilotFlapFlight(cpu, human, aiState, currentTime, distance);
     return;
   }
   // Reset incoming-flap reaction bookkeeping once the opponent lands.
-  if (!human.isFlapping && aiState.flapReactTarget) {
+  if (
+    !(human.isSlideJumping &&
+      (human.slideJumpPhase === "flight" || human.slideJumpPhase === "landing")) &&
+    aiState.flapReactTarget
+  ) {
     aiState.flapReactTarget = null;
     aiState.flapReactProcessed = false;
   }
@@ -1517,6 +1546,9 @@ function updateCPUAI(cpu, human, room, currentTime) {
     aiState.clinchThrowExecuteTime = 0;
     aiState.clinchPushPlantDecision = null;
     aiState.clinchPushPlantUntil = 0;
+    aiState.clinchLightDrivePulse = false;
+    aiState.clinchClampHoldPlant = false;
+    aiState.clinchClampPlantUntil = 0;
     aiState.lastClinchBreakCheck = 0;
     aiState.grabDecisionMade = false;
     aiState.grabStrategy = null;
@@ -1678,9 +1710,12 @@ function updateCPUAI(cpu, human, room, currentTime) {
     return;
   }
   
-  // Priority 7: Offensive actions based on distance
+  // Priority 7: Offensive actions based on distance.
+  // Close pocket uses live tip-connect (not a stale footsie constant) so the
+  // CPU doesn't enter "mid" still short of body contact, or slap from mid air.
   if (canAttack(cpu) || canGrab(cpu)) {
-    if (distance < AI_CONFIG.SLAP_RANGE) {
+    const slapEngage = getSlapInitiateRange(cpu, human);
+    if (distance <= slapEngage) {
       handleCloseRange(cpu, human, aiState, currentTime, distance);
     } else if (distance < AI_CONFIG.MID_RANGE) {
       handleMidRange(cpu, human, aiState, currentTime, distance);
@@ -1827,20 +1862,44 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   }
 
   // During burst push as grabber: let the short auto-shove ride.
-  // ARM CLAMP exception: victim can't tech — allow throw/pull conversion
-  // mid-burst (mirrors human input; cancels Phase A the same way).
+  // ARM CLAMP exception: convert mid-burst is allowed (victim offense locked;
+  // they can still Plant-brace). Cancels Phase A the same way as human input.
   if (cpu.isGrabPushing && !opponent.isArmClamped) {
-    return;
-  }
-
-  // ARM CLAMP: locked out of clinch actions for the punish burst (mirrors human).
-  if (cpu.isArmClamped) {
     return;
   }
 
   // Positional awareness (toward/away relative to opponent position, not facing)
   const towardKey = cpu.x < opponent.x ? 'd' : 'a';
   const awayKey = cpu.x < opponent.x ? 'a' : 'd';
+
+  // ARM CLAMP: offense locked for the punish burst. Plant brace remains —
+  // sticky hold so a convert throw isn't automatic vs CPU either.
+  if (cpu.isArmClamped) {
+    if (!aiState.clinchClampPlantUntil || currentTime > aiState.clinchClampPlantUntil) {
+      aiState.clinchClampPlantUntil = currentTime + randomInRange(280, 650);
+      const plantChance = clampChance(
+        0.40 +
+          (DIFF_KEY === "EASY"
+            ? -0.15
+            : DIFF_KEY === "NORMAL"
+              ? 0
+              : DIFF_KEY === "HARD"
+                ? 0.18
+                : 0.32) +
+          CS.breakEager * 0.1
+      );
+      aiState.clinchClampHoldPlant = hasVerb("plant") && chance(plantChance);
+    }
+    if (aiState.clinchClampHoldPlant) {
+      cpu.keys[awayKey] = true;
+      cpu.keys[towardKey] = false;
+      cpu.keys.s = true;
+    }
+    return;
+  } else if (aiState.clinchClampHoldPlant || aiState.clinchClampPlantUntil) {
+    aiState.clinchClampHoldPlant = false;
+    aiState.clinchClampPlantUntil = 0;
+  }
   const cpuDistLeft = cpu.x - MAP_LEFT_BOUNDARY;
   const cpuDistRight = MAP_RIGHT_BOUNDARY - cpu.x;
   const oppDistLeft = opponent.x - MAP_LEFT_BOUNDARY;
@@ -1873,20 +1932,30 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   // --- DEFENSIVE CLINCH BREAK (tech out of a lethal clinch) ---
   // High-tier only. When pinned at the edge and LOSING the balance war, the CPU
   // would otherwise get shoved/thrown out with no escape (it never broke clinch
-  // before). Spend a break to end the clinch and deny the throw — costs stamina,
-  // so it's reserved for genuine "about to die" situations and gated/interval-
-  // limited so it can't be spammed. Mirrors the human input gates.
+  // before). Also fires when stamina is collapsing under edge pressure — Plant
+  // does NOT recover stam (it drains), and gassing at the edge enables instant
+  // ring-out. Spend Break only when affordable. Gated/interval-limited so it
+  // can't be spammed. Mirrors the human input gates.
+  const opponentPushingNow =
+    opponent.clinchAction === "push" || opponent.isClinchPushing;
+  const canAffordBreak = cpuStamina >= GRAB_BREAK_STAMINA_COST + 5;
+  const losingBalanceWar =
+    // CS.breakEager: the counter bails earlier (threshold 8 → ~2) — "breaks early".
+    opponentBalance > cpuBalance + (8 - CS.breakEager * 20);
+  const breakToAvoidGas =
+    cpuStamina < AI_CONFIG.CLINCH_STAMINA_LOW &&
+    opponentPushingNow &&
+    !losingBalanceWar; // already covered by balance branch; this is the gas read
   if (
     DIFF.clinchBreakEscape &&
     cpu.hasGrip &&
     opponent.hasGrip &&
     cpuBackedToEdge &&
-    // CS.breakEager: the counter bails earlier (threshold 8 → ~2) — "breaks early".
-    opponentBalance > cpuBalance + (8 - CS.breakEager * 20) && // losing the shove → throw-out imminent
-    cpuStamina > 28 && // enough stamina that breaking won't gas us
+    (losingBalanceWar || breakToAvoidGas) &&
+    canAffordBreak &&
     !cpu.isGassed &&
-    !cpu.clinchThrowActive && !opponent.clinchThrowActive &&
-    !cpu.isClinchClashing && !opponent.isClinchClashing &&
+    !cpu.clinchThrowActive &&
+    !cpu.isClinchClashing &&
     !cpu.isClinchJolting && !cpu.isClinchJoltClashing &&
     !cpu.clinchThrowFailStagger && !cpu.isClinchOpen &&
     !cpu.clinchBreakRequest && !cpu.isGrabBreaking && !cpu.isGrabBreakCountered &&
@@ -1895,10 +1964,15 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   ) {
     if (currentTime - (aiState.lastClinchBreakCheck || 0) > 450) {
       aiState.lastClinchBreakCheck = currentTime;
-      if (chance(clampChance(0.75 + CS.breakEager))) {
+      const breakChance = breakToAvoidGas
+        ? clampChance(0.55 + CS.breakEager)
+        : clampChance(0.75 + CS.breakEager);
+      if (chance(breakChance)) {
         cpu.clinchBreakRequest = true;
         cpu.clinchBreakRequestTime = currentTime;
-        aiState.lastActionType = "clinch_break_escape";
+        aiState.lastActionType = breakToAvoidGas
+          ? "clinch_break_gas_escape"
+          : "clinch_break_escape";
         return;
       }
     }
@@ -1971,6 +2045,20 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
           AI_CONFIG.CLINCH_THROW_REACTION_MAX + 200
         );
       }
+    } else if (
+      // Low stam: spend a preemptive technique while meters still allow it,
+      // instead of grinding into Plant (which drains stam further).
+      canLand &&
+      cpuStamina < AI_CONFIG.CLINCH_STAMINA_LOW &&
+      cpuBalance > opponentBalance + 8 &&
+      chance(clampChance(0.40 * Math.min(aggMult.grab, 1.3)))
+    ) {
+      const action = chance(clampChance(0.55 - CS.pullBias)) ? "throw" : "pull";
+      aiState.clinchThrowPending = action;
+      aiState.clinchThrowExecuteTime = currentTime + randomInRange(
+        AI_CONFIG.CLINCH_THROW_REACTION_MIN,
+        AI_CONFIG.CLINCH_THROW_REACTION_MAX
+      );
     }
   }
 
@@ -2033,54 +2121,98 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
     aiState.clinchJoltExecuteTime = 0;
   }
 
-  // --- PUSH / PLANT DECISION (set keys for getClinchAction to read) ---
+  // --- PUSH / PLANT / NEUTRAL DECISION (set keys for getClinchAction to read) ---
+  // Resource identity (live): Stamina walks. Balance throws. Plant buys time.
+  // Plant drains stamina (more under push) and regenerates Balance — it does NOT
+  // recover stamina. Neutral is the only clinch stance that breathes stam back.
   // Stay neutral when a throw/jolt is pending or just submitted (avoid push penalty on throw)
   if (aiState.clinchThrowPending || cpu.clinchThrowRequest || aiState.clinchJoltPending || cpu.clinchJoltRequest) {
     return;
   }
 
-  // Re-evaluate push/plant at intervals to avoid jittery tick-by-tick flipping
+  // Re-evaluate push/plant/neutral at intervals to avoid jittery tick-by-tick flipping
   if (!aiState.clinchPushPlantUntil || currentTime > aiState.clinchPushPlantUntil) {
-    aiState.clinchPushPlantUntil = currentTime + randomInRange(
+    const opponentNearEdge = oppNearestEdge < AI_CONFIG.EDGE_DANGER_ZONE;
+    const balanceAdvantage = cpuBalance - opponentBalance;
+    const staminaDesperate = cpuStamina < AI_CONFIG.CLINCH_STAMINA_DESPERATE;
+    const staminaLow = cpuStamina < AI_CONFIG.CLINCH_STAMINA_LOW;
+    const balanceCritical = cpuBalance < 25;
+    // Plant is a paid brake — only spend stam when Balance preservation matters.
+    const plantWorthStaminaTax =
+      balanceCritical && cpuStamina > 12 && !cpu.isGassed;
+
+    let holdMs = randomInRange(
       AI_CONFIG.CLINCH_PUSH_PLANT_INTERVAL_MIN,
       AI_CONFIG.CLINCH_PUSH_PLANT_INTERVAL_MAX
     );
 
-    const opponentNearEdge = oppNearestEdge < AI_CONFIG.EDGE_DANGER_ZONE;
-    const cpuNearEdge = cpuNearestEdge < AI_CONFIG.EDGE_DANGER_ZONE;
-    const balanceAdvantage = cpuBalance - opponentBalance;
-
     if (cpuBackedToEdge) {
-      // At the edge: push to resist being shoved off, but plant if stamina is critical
-      if (cpuStamina < 15) {
+      // Edge: never Plant because stam is low — gassing enables instant ring-out.
+      // Resist with push, or breathe in neutral if not under a shove and meters
+      // are collapsing. Plant only when Balance itself is the lethal threat.
+      aiState.clinchLightDrivePulse = false;
+      if (plantWorthStaminaTax && !staminaDesperate) {
         aiState.clinchPushPlantDecision = "plant";
+      } else if (staminaDesperate && !opponentPushingNow) {
+        aiState.clinchPushPlantDecision = "neutral";
       } else {
         aiState.clinchPushPlantDecision = "push";
       }
-    } else if (opponentNearEdge && cpuBalance > 30) {
+    } else if (opponentNearEdge && cpuBalance > 30 && !staminaDesperate) {
       // Opponent near edge — push harder (edge zone amplifies balance drain)
       aiState.clinchPushPlantDecision = "push";
-    } else if (cpuBalance < 25 && !opponentNearEdge) {
+      aiState.clinchLightDrivePulse = false;
+    } else if (plantWorthStaminaTax && !opponentNearEdge && !staminaDesperate) {
       aiState.clinchPushPlantDecision = "plant";
-    } else if (cpuStamina < 40) {
-      // Plant recovers stamina now — plant more readily when stamina is moderate-low
-      aiState.clinchPushPlantDecision = "plant";
+      aiState.clinchLightDrivePulse = false;
+    } else if (staminaLow) {
+      // Low stam: breathe (neutral), poke with a short Light Drive, or last-ditch
+      // Plant only if Balance is about to open a kill. Never Plant to "recover".
+      if (plantWorthStaminaTax && staminaDesperate) {
+        aiState.clinchPushPlantDecision = "plant";
+        aiState.clinchLightDrivePulse = false;
+      } else if (aiState.clinchLightDrivePulse) {
+        // Forced breath after a Light Drive so hold-time can't chain into Commit.
+        aiState.clinchPushPlantDecision = "neutral";
+        aiState.clinchLightDrivePulse = false;
+        holdMs = randomInRange(220, 420);
+      } else if (
+        (opponentPushingNow && cpuStamina >= AI_CONFIG.CLINCH_STAMINA_DESPERATE) ||
+        (!opponentPushingNow && balanceAdvantage > 5 && chance(0.35))
+      ) {
+        // Light Drive pulse — release before CLINCH_LIGHT_DRIVE_MS commits it.
+        aiState.clinchPushPlantDecision = "push";
+        aiState.clinchLightDrivePulse = true;
+        holdMs = randomInRange(140, Math.max(160, CLINCH_LIGHT_DRIVE_MS - 40));
+      } else {
+        aiState.clinchPushPlantDecision = "neutral";
+        aiState.clinchLightDrivePulse = false;
+      }
     } else if (balanceAdvantage > 10) {
       aiState.clinchPushPlantDecision = "push";
+      aiState.clinchLightDrivePulse = false;
     } else if (chance(clampChance(0.60 + CS.pushBias))) {
       // CS.pushBias: pusher leans push (0.80), counter leans plant (0.48).
       aiState.clinchPushPlantDecision = "push";
-    } else {
+      aiState.clinchLightDrivePulse = false;
+    } else if (chance(0.55)) {
       aiState.clinchPushPlantDecision = "plant";
+      aiState.clinchLightDrivePulse = false;
+    } else {
+      aiState.clinchPushPlantDecision = "neutral";
+      aiState.clinchLightDrivePulse = false;
     }
+
+    aiState.clinchPushPlantUntil = currentTime + holdMs;
   }
 
   // PHASE 4.3: plant is a Jonidan+ verb — a Jonokuchi CPU only knows how to push.
   if (aiState.clinchPushPlantDecision === "plant" && !hasVerb("plant")) {
-    aiState.clinchPushPlantDecision = "push";
+    aiState.clinchPushPlantDecision =
+      cpuStamina < AI_CONFIG.CLINCH_STAMINA_LOW ? "neutral" : "push";
   }
 
-  // Apply the push/plant decision via keys
+  // Apply the push/plant/neutral decision via keys (neutral = no stance keys)
   if (aiState.clinchPushPlantDecision === "push") {
     cpu.keys[towardKey] = true;
   } else if (aiState.clinchPushPlantDecision === "plant") {
@@ -2169,13 +2301,11 @@ function handlePowerUpUsage(cpu, human, aiState, currentTime, distance) {
 // ============================================================
 // FLAP POWER-UP AI
 // ============================================================
-// The Flap power-up lets the CPU take flight (Space) and body-slam a grounded
-// opponent on the way down. Three pieces:
-//   • pilotFlapFlight  — fly our OWN flight: steer over the opponent, time
-//                        air-flaps, then dive (the slam connects while falling).
-//   • handleFlapOffense — decide WHEN to lift off (engage / punish a whiff).
-//   • handleFlapDefense — react to the OPPONENT's flight (dash the landing or
-//                        parry the slam — the move's intended counters).
+// FLAP arms ice-slide → W takeoffs with air charges. No Space liftoff, no
+// parry swap. Three pieces:
+//   • pilotFlapFlight  — during FLAP-armed slide-jump: steer, W air-flaps, S dive
+//   • handleFlapOffense — dodge into ice slide, then W jump when ready
+//   • handleFlapDefense — react to opponent's FLAP-armed slide-jump slam
 
 // Pick a horizontal flee direction away from the opponent, biased toward center
 // so we don't dash ourselves off the edge.
@@ -2186,57 +2316,48 @@ function pickFleeDir(cpu, human) {
   return dir;
 }
 
-// Pilot an in-progress flight. Startup (grounded telegraph) and landing
-// (recovery) phases are locked — just hold. During flight, steer over the
-// opponent and air-flap to keep enough altitude to reach them, then commit a
-// no-flap dive so gravity brings the body-slam down on top of them.
 function pilotFlapFlight(cpu, human, aiState, currentTime, distance) {
   resetAllKeys(cpu);
-  if (cpu.flapPhase !== "flight") return;
+  if (!cpu.isSlideJumping || cpu.slideJumpPhase !== "flight") return;
 
   const horiz = cpu.x - human.x; // + => cpu is to the right of the opponent
   const absH = Math.abs(horiz);
   const aligned = absH <= AI_CONFIG.FLAP_DIVE_ALIGN;
   const heightAbove = cpu.y - GROUND_LEVEL;
   const canAirFlap =
-    cpu.flapCharges > 0 &&
-    !cpu.flapHitLanded &&
-    !cpu.flapDiveCommitted &&
+    (cpu.flapCharges || 0) > 0 &&
+    !cpu.slideJumpHitLanded &&
+    !cpu.slideJumpDiveCommitted &&
     currentTime - (cpu.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS;
 
-  // Face + steer toward the opponent.
   cpu.facing = horiz > 0 ? 1 : -1;
   if (!aligned) {
     if (horiz > 0) cpu.keys.a = true;
     else cpu.keys.d = true;
   }
 
-  // Once we've lined up over them, commit to the drop — never flap again.
   if (aligned) aiState.flapDiveCommitted = true;
 
-  // Otherwise flap to maintain altitude while closing, so we don't fall short.
-  if (
-    !aiState.flapDiveCommitted &&
-    canAirFlap &&
-    !aligned &&
-    heightAbove < AI_CONFIG.FLAP_DIVE_KEEP_HEIGHT
-  ) {
-    cpu.keys[" "] = true;
-    aiState.spaceReleaseTime = currentTime + 50;
+  if (aiState.flapDiveCommitted) {
+    cpu.keys.s = true; // body-slam dive
+    return;
+  }
+
+  if (canAirFlap && !aligned && heightAbove < AI_CONFIG.FLAP_DIVE_KEEP_HEIGHT) {
+    cpu.keys.w = true;
+    cpu.wJustPressed = true;
     if (horiz > 0) cpu.keys.a = true;
     else cpu.keys.d = true;
   }
 }
 
-// Decide whether to take flight. Best windows: punish an opponent whiff/recovery
-// from range (the slam beats their wake-up), or a mid-range engage mix-up.
 function handleFlapOffense(cpu, human, aiState, currentTime, distance) {
   if (cpu.activePowerUp !== POWER_UP_TYPES.FLAP) return false;
-  if (cpu.isFlapping) return false; // already airborne — piloting handles it
+  if (cpu.isSlideJumping) return false;
   if (!canAct(cpu)) return false;
   if (cpu.isGassed || cpu.stamina < FLAP_STAMINA_COST + 8) return false;
   if (currentTime - (aiState.lastFlapTime || 0) < AI_CONFIG.FLAP_COOLDOWN) return false;
-  if (human.isAttacking) return false; // don't lift into a slap (startup is interruptible)
+  if (human.isAttacking) return false;
 
   const horiz = Math.abs(cpu.x - human.x);
   const punishing =
@@ -2249,40 +2370,75 @@ function handleFlapOffense(cpu, human, aiState, currentTime, distance) {
   const engage = horiz >= AI_CONFIG.FLAP_MIN_RANGE && horiz <= AI_CONFIG.FLAP_MAX_RANGE;
   if (!punishing && !engage) return false;
 
+  // Already ice-sliding → takeoff
+  if (cpu.isIceSliding) {
+    resetAllKeys(cpu);
+    cpu.keys.shift = true; // stay in slide
+    cpu.keys.w = true;
+    cpu.wJustPressed = true;
+    if (cpu.x < human.x) cpu.keys.d = true;
+    else cpu.keys.a = true;
+    aiState.lastFlapTime = currentTime;
+    aiState.flapDiveCommitted = false;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "flap_slide_jump";
+    return true;
+  }
+
+  // Start / continue a dodge into ice slide toward the opponent
+  if (!canDodge(cpu) && !cpu.isDodging) return false;
+
   const aggMult = getAggressionMultiplier(aiState);
   const useChance = punishing ? 0.85 : AI_CONFIG.FLAP_USE_CHANCE * aggMult.attack;
-  if (!chance(useChance)) {
-    // Don't re-roll every tick — wait most of the cooldown before trying again.
+  if (!chance(useChance) && !cpu.isDodging) {
     aiState.lastFlapTime = currentTime - AI_CONFIG.FLAP_COOLDOWN + 600;
     return false;
   }
 
   resetAllKeys(cpu);
-  cpu.facing = cpu.x < human.x ? -1 : 1;
-  cpu.keys[" "] = true;
-  aiState.spaceReleaseTime = currentTime + 60;
+  cpu.keys.shift = true;
+  if (cpu.x < human.x) cpu.keys.d = true;
+  else cpu.keys.a = true;
+  aiState.shiftReleaseTime = 0; // hold through land into ice slide
   aiState.lastFlapTime = currentTime;
   aiState.flapDiveCommitted = false;
   aiState.lastDecisionTime = currentTime;
-  aiState.lastActionType = "flap_liftoff";
+  aiState.lastActionType = "flap_slide_setup";
   return true;
 }
 
-// React to the OPPONENT flying. They're hit-immune in flight, so the answers are
-// the move's intended counters: dash out from under the landing, or parry the
-// body-slam (which beats it via resolveFlapRawParry). While they're still rising
-// or far, just drift out of the landing lane.
 function handleFlapDefense(cpu, human, aiState, currentTime, distance) {
-  if (!human.isFlapping || human.flapPhase !== "flight") return false;
-  if (cpu.isFlapping) return false; // we're airborne too — our pilot handles us
+  // Air body hitbox is live for the whole flight (parryable). Hurtbox stays
+  // immune until land — so: parry/dodge the body, punish landing, don't grab-fish.
+  const inFlight =
+    human.isSlideJumping && human.slideJumpPhase === "flight";
+  const landing =
+    human.isSlideJumping && human.slideJumpPhase === "landing";
+
+  if (!inFlight && !landing) return false;
+  if (cpu.isSlideJumping && cpu.slideJumpPhase === "flight") return false;
   if (!canAct(cpu)) return false;
 
   const horiz = Math.abs(cpu.x - human.x);
-  const descending = (human.flapVelocityY ?? 0) <= 0;
   const flapperHeight = human.y - GROUND_LEVEL;
+  const descending =
+    (human.slideJumpVelocityY ?? 0) <= 0 || !!human.slideJumpDiveCommitted;
+  // Matches FLAP_BODYSLAM_CONTACT_HEIGHT — descending body only.
+  const bodyThreat =
+    inFlight &&
+    descending &&
+    flapperHeight <= 100 &&
+    !human.slideJumpHitLanded;
 
-  // Not an imminent slam (rising or far): sidestep out of the landing lane.
-  if (!descending || horiz > AI_CONFIG.FLAP_DEF_RANGE) {
+  if (aiState.flapReactTarget !== (landing ? "land" : bodyThreat ? "body" : "air")) {
+    aiState.flapReactTarget = landing ? "land" : bodyThreat ? "body" : "air";
+    aiState.flapReactDetectTime = currentTime;
+    aiState.flapReactDelay = randomInRange(DIFF.jitterMin, DIFF.jitterMax);
+    aiState.flapReactProcessed = false;
+  }
+
+  // High / clearing flight — just create space (no empty-air swings).
+  if (inFlight && !bodyThreat) {
     if (
       horiz < AI_CONFIG.FLAP_DEF_RANGE * 1.5 &&
       currentTime - aiState.lastDecisionTime > DIFF.decisionCooldown
@@ -2298,49 +2454,62 @@ function handleFlapDefense(cpu, human, aiState, currentTime, distance) {
     return false;
   }
 
-  // Imminent slam — react once, with human-like jitter.
-  if (aiState.flapReactTarget !== "incoming") {
-    aiState.flapReactTarget = "incoming";
-    aiState.flapReactDetectTime = currentTime;
-    aiState.flapReactDelay = randomInRange(DIFF.jitterMin, DIFF.jitterMax);
-    aiState.flapReactProcessed = false;
-  }
-  if (aiState.flapReactProcessed) return false; // already committed this descent
+  if (aiState.flapReactProcessed) return false;
   if (currentTime - aiState.flapReactDetectTime < aiState.flapReactDelay) return false;
   aiState.flapReactProcessed = true;
 
   const roll = Math.random();
-  const canParryHit = cpu.activePowerUp !== POWER_UP_TYPES.FLAP; // FLAP replaces parry
-  const aboutToLand = flapperHeight < AI_CONFIG.FLAP_DEF_REACT_HEIGHT;
   const flapDodgeChance = clampChance(AI_CONFIG.FLAP_DODGE_CHANCE * DIFF.flapDefMult);
   const flapParryChance = clampChance(AI_CONFIG.FLAP_PARRY_CHANCE * DIFF.flapDefMult);
 
-  // Primary: dash out from under the landing.
-  if (canDodge(cpu) && roll < flapDodgeChance) {
+  // Body-threat flight — parry the air hitbox; dodge as backup.
+  if (bodyThreat) {
+    if (
+      canParry(cpu) &&
+      horiz < AI_CONFIG.FLAP_DEF_RANGE &&
+      roll < flapParryChance + 0.3
+    ) {
+      resetAllKeys(cpu);
+      cpu.keys.s = true;
+      aiState.pendingParry = true;
+      aiState.parryStartTime = currentTime;
+      aiState.parryReleaseTime = currentTime + randomInRange(120, 220);
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "flap_parry";
+      return true;
+    }
+    if (canDodge(cpu) && roll < flapDodgeChance + flapParryChance) {
+      resetAllKeys(cpu);
+      cpu.keys.shift = true;
+      const dir = pickFleeDir(cpu, human);
+      if (dir === 1) cpu.keys.d = true;
+      else cpu.keys.a = true;
+      aiState.shiftReleaseTime = currentTime + 80;
+      aiState.lastDecisionTime = currentTime;
+      aiState.lastActionType = "flap_dash";
+      return true;
+    }
+    // Create space if we didn't commit a read.
     resetAllKeys(cpu);
-    cpu.keys.shift = true;
     const dir = pickFleeDir(cpu, human);
     if (dir === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
-    aiState.shiftReleaseTime = currentTime + 80;
     aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "flap_dash";
+    aiState.lastActionType = "flap_evade";
     return true;
   }
-  // Secondary: parry the slam as it arrives (punishes the flapper).
+
+  // Landing recovery — punish with slap when in tip range.
   if (
-    canParryHit &&
-    aboutToLand &&
-    canParry(cpu) &&
-    roll < flapDodgeChance + flapParryChance
+    landing &&
+    canInitiateSlap(cpu, human, horiz) &&
+    canAttack(cpu) &&
+    roll < 0.7
   ) {
     resetAllKeys(cpu);
-    cpu.keys.s = true;
-    aiState.pendingParry = true;
-    aiState.parryStartTime = currentTime;
-    aiState.parryReleaseTime = currentTime + randomInRange(120, 220);
+    cpu.keys.mouse1 = true;
     aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "flap_parry";
+    aiState.lastActionType = "flap_land_punish";
     return true;
   }
 
@@ -2692,10 +2861,15 @@ function handleWhiffPunish(cpu, human, aiState, currentTime, distance) {
   if (canGrab(cpu) && distance < AI_CONFIG.GRAB_RANGE) {
     cpu.keys.mouse2 = true;
     aiState.lastActionType = "whiff_grab_punish";
-  } else if (canAttack(cpu)) {
+  } else if (canAttack(cpu) && canInitiateSlap(cpu, human, distance)) {
     cpu.keys.mouse1 = true;
     aiState.mouse1ReleaseTime = currentTime + 40;
     aiState.lastActionType = "whiff_slap_punish";
+  } else if (canAttack(cpu) || canGrab(cpu)) {
+    // In approach band but not tip-connect yet — chase, don't whiff the punish.
+    if (getDirectionToOpponent(cpu, human) === 1) cpu.keys.d = true;
+    else cpu.keys.a = true;
+    aiState.lastActionType = "whiff_chase";
   } else {
     return false;
   }
@@ -2710,7 +2884,7 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
   const aggMult = getAggressionMultiplier(aiState);
   const ringMult = diffMult("ringOutMult");
   
-  if (distance < AI_CONFIG.SLAP_RANGE && canAttack(cpu)) {
+  if (canInitiateSlap(cpu, human, distance) && canAttack(cpu)) {
     // Smart grab decision: if opponent low stamina, grab is almost guaranteed win via push
     const opponentLowStamina = human.stamina < AI_CONFIG.LOW_STAMINA_THRESHOLD;
     const grabChance = (opponentLowStamina ? 0.60 : 0.40) * postureHuntGrabMult(human) * ringMult;
@@ -2745,32 +2919,12 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
     }
   }
   
-  // Mid-range: approach with attack intent (slaps while walking in).
-  // Keep approach fighty on all tiers; only the kill-convert grab is dialed.
+  // Mid-range (outside tip-connect): walk/dash in — don't slap-whiff the finish.
   if (distance < AI_CONFIG.MID_RANGE) {
     const midRoll = Math.random();
     const dirToOpponent = getDirectionToOpponent(cpu, human);
 
-    if (midRoll < 0.40 && canAttack(cpu)) {
-      // Slap while approaching — slap hitbox reaches just past pushbox
-      cpu.keys.mouse1 = true;
-      aiState.mouse1ReleaseTime = currentTime + 40;
-      if (dirToOpponent === 1) cpu.keys.d = true;
-      else cpu.keys.a = true;
-      aiState.lastDecisionTime = currentTime;
-      aiState.lastActionType = "slap_approach_ringout";
-      return;
-    } else if (midRoll < 0.60 && canAttack(cpu)) {
-      // Slap approach — close gap and start a string
-      cpu.keys.mouse1 = true;
-      aiState.mouse1ReleaseTime = currentTime + 40;
-      const dirToOpponent2 = getDirectionToOpponent(cpu, human);
-      if (dirToOpponent2 === 1) cpu.keys.d = true;
-      else cpu.keys.a = true;
-      aiState.lastDecisionTime = currentTime;
-      aiState.lastActionType = "slap_approach";
-      return;
-    } else if (midRoll < 0.80 && canGrab(cpu) && chance(ringMult)) {
+    if (midRoll < 0.80 && canGrab(cpu) && chance(ringMult)) {
       const result = attemptGrabOrApproach(cpu, human, aiState, currentTime, distance);
       if (result) {
         aiState.lastActionType = "grab_ringout";
@@ -2779,7 +2933,6 @@ function handleRingOutOpportunity(cpu, human, aiState, currentTime, distance) {
       }
     }
 
-    // Walk in carefully as fallback
     if (dirToOpponent === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
     aiState.lastActionType = "approach_ringout";
@@ -2810,6 +2963,17 @@ function getIncomingAttackThreatRange(human, cpu) {
   return connect + 20;
 }
 
+// Max distance the CPU should PRESS a slap — tip connect + ice-drift slack.
+// Mid-range used to fire from ~185–200px while tip connect is ~133px, which
+// looked "in range" on camera but systematically whiffed.
+function getSlapInitiateRange(cpu, human) {
+  return getConnectDistance("slap", cpu, human) + AI_CONFIG.SLAP_REACH_SLACK;
+}
+
+function canInitiateSlap(cpu, human, distance) {
+  return distance <= getSlapInitiateRange(cpu, human);
+}
+
 // Handle defensive reactions — dodge restricted to charged attacks only
 // Dodge has NO i-frames vs slaps, so using it defensively vs slaps is a waste.
 // underPressure: true when the AI has taken 3+ consecutive hits (boosted parry chance)
@@ -2827,7 +2991,7 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance, und
   
   // In aggressive mode, sometimes trade hits instead of defending
   // But NOT when under pressure — the AI has learned to stop trading into a barrage
-  if (!underPressure && aiState.aggressionMode === 'aggressive' && distance < AI_CONFIG.SLAP_RANGE && canAttack(cpu) && roll < 0.30) {
+  if (!underPressure && aiState.aggressionMode === 'aggressive' && canInitiateSlap(cpu, human, distance) && canAttack(cpu) && roll < 0.30) {
     resetAllKeys(cpu);
     cpu.keys.mouse1 = true;
     aiState.mouse1ReleaseTime = currentTime + 40;
@@ -2842,9 +3006,7 @@ function handleDefensiveReaction(cpu, human, aiState, currentTime, distance, und
       : AI_CONFIG.PARRY_CHANCE * aggMult.defense) * DIFF.parryMult
   );
   
-  // FLAP replaces raw parry entirely — a flap-CPU can't parry, so skip straight
-  // to the dodge option (vs charged) rather than mashing a dead 's'.
-  if (cpu.activePowerUp !== POWER_UP_TYPES.FLAP && roll < parryChance && canParry(cpu)) {
+  if (roll < parryChance && canParry(cpu)) {
     resetAllKeys(cpu);
     cpu.keys.s = true;
     aiState.lastAttackReactionTime = currentTime;
@@ -2989,7 +3151,8 @@ function startCommitment(aiState, action, count, currentTime) {
 function handleCommitment(cpu, human, aiState, currentTime, distance) {
   // === Slap burst (individual presses — each one contestable) ===
   if (aiState.commitAction === 'slap_burst') {
-    if (distance < AI_CONFIG.SLAP_RANGE + 30 && canAttack(cpu)) {
+    const slapEngage = getSlapInitiateRange(cpu, human);
+    if (canInitiateSlap(cpu, human, distance) && canAttack(cpu)) {
       resetAllKeys(cpu);
       cpu.keys.mouse1 = true;
       aiState.mouse1ReleaseTime = currentTime + 40;
@@ -3003,7 +3166,7 @@ function handleCommitment(cpu, human, aiState, currentTime, distance) {
       if (dirToOpponent === 1) cpu.keys.d = true;
       else cpu.keys.a = true;
       return true;
-    } else if (distance < AI_CONFIG.SLAP_RANGE + 80) {
+    } else if (distance < slapEngage + 50) {
       const dirToOpponent = getDirectionToOpponent(cpu, human);
       if (dirToOpponent === 1) cpu.keys.d = true;
       else cpu.keys.a = true;
@@ -3226,56 +3389,25 @@ function handleMidRange(cpu, human, aiState, currentTime, distance) {
       }
     }
   }
-  
-  // If on the closer end of mid-range, throw slaps
-  if (distance < 200 && canAttack(cpu) && roll < 0.45 * aggMult.attack) {
-    cpu.keys.mouse1 = true;
-    aiState.mouse1ReleaseTime = currentTime + 40;
-    aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "slap";
-    // Keep approaching
-    const dirToOpponent = getDirectionToOpponent(cpu, human);
+
+  // Mid-range is OUTSIDE tip-connect by definition (close pocket handles
+  // engage). Never slap from here — approach / dash in until connect range.
+  const dirToOpponent = getDirectionToOpponent(cpu, human);
+  if (canDodge(cpu) && chance(0.15) && aiState.aggressionMode === 'aggressive') {
+    cpu.keys.shift = true;
     if (dirToOpponent === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
+    aiState.shiftReleaseTime = currentTime + 80;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "dodge_approach";
     return;
   }
-  
-  // Aggressive approach (dominant behavior)
-  if (roll < 0.55) {
-    const dirToOpponent = getDirectionToOpponent(cpu, human);
-    // Sometimes dash in with dodge for fast approach
-    if (canDodge(cpu) && chance(0.15) && aiState.aggressionMode === 'aggressive') {
-      cpu.keys.shift = true;
-      if (dirToOpponent === 1) cpu.keys.d = true;
-      else cpu.keys.a = true;
-      aiState.shiftReleaseTime = currentTime + 80;
-      aiState.lastDecisionTime = currentTime;
-      aiState.lastActionType = "dodge_approach";
-      return;
-    }
+  if (roll < 0.75) {
     if (dirToOpponent === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
     aiState.lastActionType = "approach";
-  }
-  // Dynamic strafing
-  else if (roll < 0.68) {
-    handleMovement(cpu, human, aiState, currentTime, distance);
-  }
-  // Slap pressure at mid range
-  else if (roll < 0.82 && canAttack(cpu)) {
-    cpu.keys.mouse1 = true;
-    aiState.mouse1ReleaseTime = currentTime + 40;
-    const dirToOpponent = getDirectionToOpponent(cpu, human);
-    if (dirToOpponent === 1) cpu.keys.d = true;
-    else cpu.keys.a = true;
-    aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "slap_approach";
   } else {
-    // Approach
-    const dirToOpponent = getDirectionToOpponent(cpu, human);
-    if (dirToOpponent === 1) cpu.keys.d = true;
-    else cpu.keys.a = true;
-    aiState.lastActionType = "approach";
+    handleMovement(cpu, human, aiState, currentTime, distance);
   }
   
   aiState.lastDecisionTime = currentTime;
@@ -3438,7 +3570,7 @@ function scheduleCpuCadence(cpu, human, currentTime) {
     // INTO a tap-parry is what makes the human's read pay; chip into a hold is
     // fine too. (Grab-punish is handleParryResponse's job, after delay.)
     const wantContinue =
-      distance < AI_CONFIG.SLAP_RANGE + 30 &&
+      canInitiateSlap(cpu, human, distance) &&
       cpu.stamina > SLAP_ATTACK_STAMINA_COST &&
       !human.isDead;
 
@@ -3563,42 +3695,10 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     return;
   }
 
-  // Process FLAP (Space) — mirrors the human handler in socketHandlers.
-  // Liftoff begins a grounded startup; while airborne (flight phase) a press
-  // spends a charge for another wing-beat. Air-flaps are reachable here because
-  // the flight phase clears actionLock and isn't in shouldBlockAction().
-  if (keyJustPressed(" ") && cpu.activePowerUp === POWER_UP_TYPES.FLAP) {
-    if (cpu.isFlapping && cpu.flapPhase === "flight") {
-      if (
-        cpu.flapCharges > 0 &&
-        !cpu.flapHitLanded &&
-        !cpu.flapDiveCommitted &&
-        currentTime - (cpu.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS
-      ) {
-        cpu.flapCharges -= 1;
-        cpu.flapVelocityY = FLAP_IMPULSE;
-        if (cpu.keys.d && !cpu.keys.a) {
-          cpu.flapVelocityX = FLAP_FLAP_H_IMPULSE;
-          cpu.facing = -1;
-          cpu.flapBeatHDir = 1;
-        } else if (cpu.keys.a && !cpu.keys.d) {
-          cpu.flapVelocityX = -FLAP_FLAP_H_IMPULSE;
-          cpu.facing = 1;
-          cpu.flapBeatHDir = -1;
-        } else {
-          cpu.flapBeatHDir = 0;
-        }
-        cpu.flapWingBeatTime = currentTime;
-        cpu.lastFlapChargeTime = currentTime;
-      }
-      Object.assign(cpu._prevKeys, cpu.keys);
-      return;
-    }
-    if (!cpu.isFlapping) {
-      beginFlapStartup(cpu, currentTime); // gates stamina/gassed internally
-      Object.assign(cpu._prevKeys, cpu.keys);
-      return;
-    }
+  // Propagate W rising edge for slide-jump takeoff / FLAP air charges
+  // (game loop reads wJustPressed; humans get this from socketHandlers).
+  if (keyJustPressed("w")) {
+    cpu.wJustPressed = true;
   }
 
   // Process palm thrust (PHASE 3.4) — mirrors the human back+mouse1 palm. The AI
@@ -3753,9 +3853,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   // Process ATTACK PARRY — the CPU "taps" s (edge-triggered via keyJustPressed).
   // Arms one short deflect window via the shared helper; the main-loop AP state
   // machine handles the active→whiff-recovery transition (so NO manual release
-  // here). FLAP replaces AP entirely (same as humans).
-  if (keyJustPressed("s") && 
-      cpu.activePowerUp !== POWER_UP_TYPES.FLAP &&
+  // here).
+  if (keyJustPressed("s") &&
       !shouldBlockAction() &&
       !cpu.isRawParryStun &&
       !cpu.isSidestepping &&

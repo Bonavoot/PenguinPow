@@ -21,6 +21,7 @@ function cleanupPlayerStates(player) {
   player.isArmClamped = false;
   player.clinchThrowFailStagger = false;
   player.isClinchOpen = false;
+  player.clinchOpenHideStars = false;
   player.clinchOpenUntil = 0;
   player.hasDeepGrip = false;
   player.clinchShoveLead = null;
@@ -90,6 +91,8 @@ function cleanupPlayerStates(player) {
   player.isFlapping = false;
   player.flapPhase = null;
   player.flapCharges = 0;
+  player.slideJumpHasFlap = false;
+  player.slideJumpFlapFlightActive = false;
   player.flapVelocityY = 0;
   player.flapVelocityX = 0;
   player.flapStartTime = 0;

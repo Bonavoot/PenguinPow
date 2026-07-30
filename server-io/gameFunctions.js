@@ -29,7 +29,6 @@ const {
   clearMatadorWindow,
   clearAllActionStates,
   triggerHitstopAndEmit,
-  beginFlapStartup,
   alignedEntryVelocity,
   takeInheritedVelocity,
   beginGrabStartup,
@@ -128,16 +127,27 @@ function cleanupGrabStates(player, opponent) {
     p.isArmClamped = false;
     p.clinchThrowFailStagger = false;
     p.isClinchOpen = false;
+    p.clinchOpenHideStars = false;
     p.clinchOpenUntil = 0;
     p.clinchThrowUsedDeepGrip = false;
     p.clinchThrowWasCounter = false;
+    p.clinchThrowKillBalance = null;
+    p.clinchThrowInitiationDrain = 0;
+    p.clinchThrowInitiationEdgeBonus = 0;
     p.isClinchCommittedDrive = false;
     p.isClinchPerfectBracing = false;
     p.clinchDriveHoldStart = 0;
     p.clinchDrivePlantCancelUntil = 0;
     p.clinchPushLossStart = 0;
     p.clinchBraceSimTime = 0;
+    p.clinchBraceLatchUntil = 0;
     p.clinchBracePressGameTime = 0;
+    p.clinchBracePressReceiptGameNow = 0;
+    p.clinchTechniquePressGameTime = 0;
+    p.clinchTechniquePressReceiptGameNow = 0;
+    p.rawParryPressGameTime = 0;
+    p.rawParryPressReceiptGameNow = 0;
+    p.lastTrustedPressGameTime = 0;
     p.hasDeepGrip = false;
     p.clinchShoveLead = null;
     p.deepGripPushStart = 0;
@@ -210,6 +220,9 @@ function cleanupGrabStates(player, opponent) {
   player.clinchThrowStartTime = 0;
   player.clinchThrowCooldown = false;
   player.clinchThrowUsedDeepGrip = false;
+  player.clinchThrowKillBalance = null;
+  player.clinchThrowInitiationDrain = 0;
+  player.clinchThrowInitiationEdgeBonus = 0;
   player.isClinchThrowing = false;
   player.isClinchClashing = false;
   player.clinchClashStartTime = 0;
@@ -217,12 +230,14 @@ function cleanupGrabStates(player, opponent) {
   player.clinchWTapTime = 0;
   player.clinchAwayTapTime = 0;
   player.clinchTechniquePressGameTime = 0;
+  player.clinchTechniquePressReceiptGameNow = 0;
   player.isClinchPushing = false;
   player.isClinchPlanting = false;
   player.lastPlantStaminaDrainTime = 0;
   player.isResistingThrow = false;
   player.isResistingPull = false;
   player.isClinchOpen = false;
+  player.clinchOpenHideStars = false;
   player.clinchOpenUntil = 0;
   player.isClinchCommittedDrive = false;
   player.isClinchPerfectBracing = false;
@@ -230,7 +245,10 @@ function cleanupGrabStates(player, opponent) {
   player.clinchDrivePlantCancelUntil = 0;
   player.clinchPushLossStart = 0;
   player.clinchBraceSimTime = 0;
+  player.clinchBraceLatchUntil = 0;
   player.clinchBracePressGameTime = 0;
+  player.clinchBracePressReceiptGameNow = 0;
+  player.lastTrustedPressGameTime = 0;
   // Clinch jolt cleanup
   player.isClinchJolting = false;
   player.clinchJoltRecovery = false;
@@ -313,6 +331,9 @@ function cleanupGrabStates(player, opponent) {
   opponent.clinchThrowStartTime = 0;
   opponent.clinchThrowCooldown = false;
   opponent.clinchThrowUsedDeepGrip = false;
+  opponent.clinchThrowKillBalance = null;
+  opponent.clinchThrowInitiationDrain = 0;
+  opponent.clinchThrowInitiationEdgeBonus = 0;
   opponent.isClinchThrowing = false;
   opponent.isClinchClashing = false;
   opponent.clinchClashStartTime = 0;
@@ -320,12 +341,14 @@ function cleanupGrabStates(player, opponent) {
   opponent.clinchWTapTime = 0;
   opponent.clinchAwayTapTime = 0;
   opponent.clinchTechniquePressGameTime = 0;
+  opponent.clinchTechniquePressReceiptGameNow = 0;
   opponent.isClinchPushing = false;
   opponent.isClinchPlanting = false;
   opponent.lastPlantStaminaDrainTime = 0;
   opponent.isResistingThrow = false;
   opponent.isResistingPull = false;
   opponent.isClinchOpen = false;
+  opponent.clinchOpenHideStars = false;
   opponent.clinchOpenUntil = 0;
   opponent.isClinchCommittedDrive = false;
   opponent.isClinchPerfectBracing = false;
@@ -333,7 +356,10 @@ function cleanupGrabStates(player, opponent) {
   opponent.clinchDrivePlantCancelUntil = 0;
   opponent.clinchPushLossStart = 0;
   opponent.clinchBraceSimTime = 0;
+  opponent.clinchBraceLatchUntil = 0;
   opponent.clinchBracePressGameTime = 0;
+  opponent.clinchBracePressReceiptGameNow = 0;
+  opponent.lastTrustedPressGameTime = 0;
   // Clinch jolt cleanup
   opponent.isClinchJolting = false;
   opponent.clinchJoltRecovery = false;
@@ -671,12 +697,16 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.clinchThrowStartTime = 0;
     p.clinchThrowCooldown = false;
     p.clinchThrowUsedDeepGrip = false;
+    p.clinchThrowKillBalance = null;
+    p.clinchThrowInitiationDrain = 0;
+    p.clinchThrowInitiationEdgeBonus = 0;
     p.isClinchThrowing = false;
     p.isClinchClashing = false;
     p.clinchClashStartTime = 0;
     p.isClinchPushing = false;
     p.isClinchPlanting = false;
     p.isClinchOpen = false;
+    p.clinchOpenHideStars = false;
     p.clinchOpenUntil = 0;
     p.isClinchCommittedDrive = false;
     p.isClinchPerfectBracing = false;
@@ -684,6 +714,7 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.clinchDrivePlantCancelUntil = 0;
     p.clinchPushLossStart = 0;
     p.clinchBraceSimTime = 0;
+    p.clinchBraceLatchUntil = 0;
     p.clinchBracePressGameTime = 0;
     p.clinchThrowArcDistance = 0;
     p.isResistingThrow = false;
@@ -1525,11 +1556,14 @@ function handleReadyPositions(room, player1, player2, io) {
 }
 
 function arePlayersColliding(player1, player2) {
-  // If either player is dodging, sidestepping, or rope jumping, return false immediately
+  // If either player is dodging, sidestepping, rope jumping, or slide-jumping
+  // (incl. FLAP-armed), return false — airborne bodies have no ground pushbox.
   if (player1.isDodging || player2.isDodging ||
       player1.isSidestepping || player2.isSidestepping ||
       (player1.isRopeJumping && player1.ropeJumpPhase === "active") ||
-      (player2.isRopeJumping && player2.ropeJumpPhase === "active")) {
+      (player2.isRopeJumping && player2.ropeJumpPhase === "active") ||
+      (player1.isSlideJumping && player1.slideJumpPhase === "flight") ||
+      (player2.isSlideJumping && player2.slideJumpPhase === "flight")) {
     return false;
   }
 
@@ -2135,10 +2169,8 @@ function executeInputBuffer(player, rooms) {
   if (player.isHit || player.isBeingThrown || player.isBeingGrabbed) return false;
   if (player.isAtTheRopes || player.isRopeJumping || player.isGrabClashing) return false;
   if (player.canMoveToReady) return false;
-  // While airborne/recovering from a flap, no other buffered action may fire.
-  // (A buffered "flap" liftoff only reaches here once isFlapping is already
-  // false, so this doesn't block re-flapping.)
-  if (player.isFlapping) return false;
+  // While airborne on slide-jump (or legacy flap), no other buffered action.
+  if (player.isFlapping || player.isSlideJumping) return false;
 
   const buffer = player.inputBuffer;
 
@@ -2174,33 +2206,6 @@ function executeInputBuffer(player, rooms) {
         clearChargeState(player, true);
         player.inputBuffer = null;
         return true;
-      }
-      break;
-    }
-    case "flap": {
-      // Buffered liftoff for the Flap power-up. Air flaps are never buffered —
-      // they fire immediately in socketHandlers while already airborne.
-      // beginFlapStartup only denies a GASSED wrestler (returns false without
-      // mutating state); with any stamina it fires and may gas them out on cost.
-      if (
-        (player.activePowerUp === "flap" || player.loadout?.flapReplacesParry) &&
-        !player.isFlapping &&
-        !player.isRawParrying && !player.isRawParryStun &&
-        !player.isAttacking && !player.isDodging &&
-        !player.isRecovering && !player.isGrabbing &&
-        !player.isGrabStartup &&
-        !player.isGrabbingMovement && !player.isWhiffingGrab &&
-        !player.isThrowing
-      ) {
-        if (beginFlapStartup(player, simNowForPlayer(player))) {
-          player.inputBuffer = null;
-          return true;
-        }
-        if (player.isGassed) {
-          emitStaminaBlocked(player, "flap");
-          player.inputBuffer = null;
-          return true;
-        }
       }
       break;
     }

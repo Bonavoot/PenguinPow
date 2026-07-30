@@ -7,12 +7,11 @@ import SumoAnnouncementBanner, {
 } from "./SumoAnnouncementBanner";
 import clampedSheet from "../assets/clamped-effect.png";
 
-// ── Counter-grab "LOCKED / CLAMPED" burst (sprite sheet) ─────────────────────
-// Replaces the old CSS cage/ring/bars/flash/sparks + "LOCKED!" text with a hand-
-// drawn 4x4 / 16-frame magenta electric burst (frame 0 empty; content 1–15). The
-// art's native pink/purple already matches the counter-grab theme, so no recolor
-// is needed. Played once, fast, for the same snappy read as the other sprite FX.
-// "COUNTER GRAB" callout lives on the hero info rail (same seat as COUNTER HIT).
+// ── Counter-grab CLAMPED burst (sprite sheet) ────────────────────────────────
+// Magenta electric burst for the arm-clamp advantage state (strong punish window,
+// not a free/untechable throw — Plant brace still works). Hand-drawn 4x4 /
+// 16-frame sheet (frame 0 empty; content 1–15). Native pink/purple matches the
+// counter-grab theme. "COUNTER GRAB" callout lives on the hero info rail.
 const CL_GRID = 4;
 const CL_START_FRAME = 1;
 const CL_END_FRAME = 15;

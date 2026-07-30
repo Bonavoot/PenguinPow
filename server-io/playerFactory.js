@@ -83,6 +83,7 @@ function createInitialPlayerState(overrides = {}) {
     isHitFalling: false,
     hitFallStartTime: 0,
     hitFallStartY: 0,
+    hitFallVelocityY: 0,
     isFallingOffDohyo: false,
 
     // === Movement ===
@@ -112,6 +113,8 @@ function createInitialPlayerState(overrides = {}) {
     slideJumpLandingTime: 0,
     slideJumpStartTime: 0,
     slideJumpBufferUntil: 0, // W pressed during min flash — consume when jump becomes legal
+    slideJumpHasFlap: false, // FLAP-armed takeoff — grants charges; flight still i-frame until S dive
+    slideJumpFlapFlightActive: false, // true after first air-charge spend → FLAP flight physics
     isCrouchStance: false,
     isCrouchStrafing: false,
     // MASTERY Phase 1: momentum carry window — a dodge landing / active power
@@ -273,10 +276,10 @@ function createInitialPlayerState(overrides = {}) {
     ropeJumpLandingTime: 0,
     ropeJumpBufferedAttackRelease: 0,
 
-    // === Flap (flight power-up) ===
-    isFlapping: false,
-    flapPhase: null, // "startup" | "flight" | "landing"
-    flapCharges: 0, // Remaining flaps in the current flight
+    // === Flap charges (ride on FLAP-armed slide-jump; standalone liftoff removed) ===
+    isFlapping: false, // legacy — always false; cleared for safety
+    flapPhase: null,
+    flapCharges: 0, // Remaining air flaps in the current FLAP-armed slide-jump
     flapVelocityY: 0, // Vertical velocity (px/tick); + = rising, - = falling
     flapVelocityX: 0, // Horizontal lunge velocity (px/tick) from directional flaps; decays via friction
     flapStartTime: 0,
@@ -378,6 +381,7 @@ function createInitialPlayerState(overrides = {}) {
     isArmClamped: false,
     clinchThrowFailStagger: false,
     isClinchOpen: false,
+    clinchOpenHideStars: false,
     clinchOpenUntil: 0,
     hasDeepGrip: false,
     clinchShoveLead: null,
@@ -387,6 +391,7 @@ function createInitialPlayerState(overrides = {}) {
     clinchDrivePlantCancelUntil: 0,
     clinchPushLossStart: 0,
     clinchBraceSimTime: 0,
+    clinchBraceLatchUntil: 0, // Throw/Pull brace grace after Plant release
     clinchBracePressGameTime: 0,
     clinchThrowArcDistance: 0,
     // MASTERY Phase 2 (posture coupling): broken-posture "openable" tell,
@@ -434,6 +439,9 @@ function createInitialPlayerState(overrides = {}) {
     clinchThrowCooldown: false, // retired (Open/recovery); kept for safe cleanup
     clinchThrowUsedDeepGrip: false,
     clinchThrowWasCounter: false,
+    clinchThrowKillBalance: null, // Balance at technique commit (pre-initiation drain); kill check only
+    clinchThrowInitiationDrain: 0, // Stance+edge drain applied at commit (resist refunds excess)
+    clinchThrowInitiationEdgeBonus: 0,
     isClinchThrowing: false,
     isClinchClashing: false,
     clinchClashStartTime: 0,
@@ -495,6 +503,13 @@ function createInitialPlayerState(overrides = {}) {
     // Raw fighter_action packets queued by the socket handler, drained and
     // dispatched by the game tick (held during hitstop). See processInputPacket.
     inputQueue: [],
+    // Netcode trust — server EMA of client clock offset / RTT for lag-comp clamps.
+    netRttMs: 60,
+    netClockOffsetMs: null, // serverNow - clientPerfNow (EMA); null until first sync packet
+    lastTrustedPressGameTime: 0,
+    rawParryPressReceiptGameNow: 0,
+    clinchTechniquePressReceiptGameNow: 0,
+    clinchBracePressReceiptGameNow: 0,
     bufferedAction: null,
     bufferExpiryTime: 0,
     inputBuffer: null,

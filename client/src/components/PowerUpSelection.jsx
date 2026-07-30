@@ -736,10 +736,10 @@ const PowerUpSelection = ({
       },
       flap: {
         name: "Flap",
-        description: "Take flight",
+        description: "Slide jump air charges",
         icon: flapIcon,
         active: true,
-        usageLabel: "Space",
+        usageLabel: "W mid-air",
       },
       shatter_palm: {
         name: "Shatter Palm",

@@ -416,6 +416,8 @@ function resetRoomAndPlayers(room, io) {
     player.isFlapping = false;
     player.flapPhase = null;
     player.flapCharges = 0;
+    player.slideJumpHasFlap = false;
+    player.slideJumpFlapFlightActive = false;
     player.flapVelocityY = 0;
     player.flapVelocityX = 0;
     player.flapStartTime = 0;
@@ -434,6 +436,7 @@ function resetRoomAndPlayers(room, io) {
     player.isHitFalling = false;
     player.hitFallStartTime = 0;
     player.hitFallStartY = 0;
+    player.hitFallVelocityY = 0;
     player.isSidestepHitReturn = false;
     player.sidestepHitReturnStartTime = 0;
     player.sidestepHitReturnStartY = 0;
@@ -545,6 +548,7 @@ function resetRoomAndPlayers(room, io) {
     player.isArmClamped = false;
     player.clinchThrowFailStagger = false;
     player.isClinchOpen = false;
+    player.clinchOpenHideStars = false;
     player.clinchOpenUntil = 0;
     player.hasDeepGrip = false;
     player.clinchShoveLead = null;

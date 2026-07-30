@@ -29,10 +29,44 @@ import {
   getCachedRecoloredImage,
   preDecodeImage,
   pinDecodedImagesAppend,
+  protectBlobUrl,
+  unprotectBlobUrl,
 } from "./SpriteRecolorizer";
 
 const cache = new Map();
 const MAX_CACHE = 512;
+
+/**
+ * Drop every hat composite mapping and revoke their blob URLs.
+ *
+ * CRITICAL: Game teardown calls clearDecodedImageCache(), which revokes blob
+ * URLs still held as VALUES in this Map. Without clearing here, the next Hub
+ * portrait / combat pose hits getCachedHatComposite() and paints a DEAD blob
+ * → broken <img> (flipped "Your wrestler" alt) and hat ghosts on every swap.
+ */
+export function clearHatCompositeCache() {
+  for (const url of cache.values()) {
+    if (typeof url === "string" && url.startsWith("blob:")) {
+      unprotectBlobUrl(url);
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        /* already revoked */
+      }
+    }
+  }
+  cache.clear();
+}
+
+function forgetCachedComposite(baseSrc, overlaySrc, underBody = false) {
+  const key = cacheKey(baseSrc, overlaySrc, underBody);
+  const old = cache.get(key);
+  if (!old) return;
+  cache.delete(key);
+  if (typeof old === "string" && old.startsWith("blob:")) {
+    unprotectBlobUrl(old);
+  }
+}
 
 const TINTS = ["base", "hit", "charge", "blubber", "armor"];
 
@@ -160,14 +194,19 @@ function drawComposite(baseImg, overlayImg, underBody = false) {
 async function storeComposite(baseSrc, overlaySrc, canvas, underBody = false) {
   const key = cacheKey(baseSrc, overlaySrc, underBody);
   const url = await canvasToBlobUrl(canvas);
+  // Survive clearDecodedImageCache / recolor LRU until clearHatCompositeCache.
+  protectBlobUrl(url);
   await preDecodeImage(url);
   cache.set(key, url);
   while (cache.size > MAX_CACHE) {
     const first = cache.keys().next().value;
     const old = cache.get(first);
     cache.delete(first);
-    // Don't revoke — may still be pinned / on-screen; GC later via LRU pressure.
-    void old;
+    // Drop protection so a later clearDecoded pass can reclaim; don't revoke
+    // here — URL may still be the on-screen fighter src.
+    if (typeof old === "string" && old.startsWith("blob:")) {
+      unprotectBlobUrl(old);
+    }
   }
   return url;
 }
@@ -185,7 +224,7 @@ export function getCachedHatComposite(baseSrc, overlaySrc, underBody = false) {
 
 /**
  * Sync composite when both layers are already decoded. Returns null if either
- * image isn't warm yet (caller should fall through to async / unhatted briefly).
+ * image isn't warm yet (caller falls through to async / unhatted briefly).
  * @param {boolean} [underBody] - draw gear under the body (e.g. plunger)
  */
 export function compositeHatOntoSpriteSync(baseSrc, overlaySrc, underBody = false) {
@@ -197,13 +236,10 @@ export function compositeHatOntoSpriteSync(baseSrc, overlaySrc, underBody = fals
   const overlay = getDecodedImage(overlaySrc);
   if (!base || !overlay) return null;
 
-  // Sync path uses data URL so we can return immediately; warm path prefers blobs.
   const canvas = drawComposite(base, overlay, underBody);
   const url = canvas.toDataURL("image/png");
   const key = cacheKey(baseSrc, overlaySrc, underBody);
   cache.set(key, url);
-  // Fire-and-forget decode so the next paint is warm; first paint may still
-  // use this URL — preload warm should make this rare.
   preDecodeImage(url);
   while (cache.size > MAX_CACHE) {
     const first = cache.keys().next().value;
@@ -223,10 +259,26 @@ export async function compositeHatOntoSprite(baseSrc, overlaySrc, underBody = fa
   if (!overlaySrc) return baseSrc;
 
   const hit = getCachedHatComposite(baseSrc, overlaySrc, underBody);
-  if (hit) return hit;
+  if (hit) {
+    // Revoked blob URLs still sit in the Map after a partial cache clear —
+    // verify before handing them to <img src>.
+    try {
+      await loadImage(hit);
+      return hit;
+    } catch {
+      forgetCachedComposite(baseSrc, overlaySrc, underBody);
+    }
+  }
 
   const sync = compositeHatOntoSpriteSync(baseSrc, overlaySrc, underBody);
-  if (sync) return sync;
+  if (sync) {
+    try {
+      await loadImage(sync);
+      return sync;
+    } catch {
+      forgetCachedComposite(baseSrc, overlaySrc, underBody);
+    }
+  }
 
   const [base, overlay] = await Promise.all([
     loadImage(baseSrc),
@@ -328,8 +380,23 @@ export async function warmHatCompositesForFighter({
       resolveHatOverlaySrcSync(rawOverlay, gearId, mawashiColor);
     const bodySrc = getBaldBodySrc(hairedSrc) || hairedSrc;
     for (const tint of TINTS) {
-      const base = resolveBodySrc(bodySrc, mawashiColor, bodyColor, tint);
-      if (!base) continue;
+      let base = resolveBodySrc(bodySrc, mawashiColor, bodyColor, tint);
+      // Baked/skip-recolor preloads often leave tint+bald combos uncached.
+      // Recolor on the spot so we don't skip poses — a skipped warm is a
+      // guaranteed first-use ghost in combat.
+      if (!base) {
+        try {
+          base = await recolorImage(
+            bodySrc,
+            BLUE_COLOR_RANGES,
+            mawashiColor || SPRITE_BASE_COLOR,
+            tintOptionsFor(tint, bodyColor),
+          );
+        } catch (err) {
+          console.warn("[Hat] warm recolor failed", bodySrc, tint, err);
+          continue;
+        }
+      }
       await preDecodeImage(base);
       try {
         const url = await compositeHatOntoSprite(base, overlaySrc, underBody);

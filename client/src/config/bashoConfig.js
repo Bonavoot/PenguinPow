@@ -69,7 +69,7 @@ export const LOADOUT_BUDGET = 3;
  * Fundamentals are ALWAYS available and never cost a point (spec §5.4: "Lock
  * additions/alternatives, never fundamentals"). Shown in the hub as on-by-
  * default so the player can see what an empty loadout already gives them.
- * A selected option may REPLACE one of these (e.g. Flap replaces Raw Parry).
+ * A selected option may REPLACE one of these (display-only `replaces` field).
  */
 export const LOADOUT_DEFAULTS = {
   attack: ["Slap string", "Charge finisher", "Palm thrust"],
@@ -105,18 +105,17 @@ export const LOADOUT_OPTIONS = {
       desc: "Your palm thrust shatters grab startup armor instead of being absorbed — the same armor-break read as a charged attack, without the forward lunge commitment.",
     },
   ],
-  defense: [
+  defense: [],
+  movement: [
     {
       id: "flap",
       label: "Flap",
       kanji: "翔",
       cost: 1,
-      replaces: "Raw Parry",
       unlock: "loadout_flap", // must be purchased from the kenshō shop (§Phase 6)
-      desc: "Trade the parry for flight. Space beats your wings — a free liftoff to escape pressure and re-angle, with air-flaps to maneuver. You give up the parry reversal entirely: a mobility-first defense for players who'd rather not be there than counter.",
+      desc: "Your slide jumps grant air-flap charges. After a slide takeoff, tap W mid-air to beat your wings and re-angle, then S to body-slam. Parry stays intact — Flap is pure movement conversion off the ice slide.",
     },
   ],
-  movement: [],
   grappling: [
     {
       id: "thick_blubber",
@@ -139,11 +138,34 @@ export const LOADOUT_OPTION_BY_ID = Object.values(LOADOUT_OPTIONS)
   }, {});
 
 /**
+ * Move legacy Flap picks from defense → movement (Flap used to replace parry).
+ * Idempotent; safe to run on every career load / match start.
+ */
+export function migrateLoadout(selected = {}) {
+  const next = {};
+  for (const cat of Object.keys(LOADOUT_OPTIONS)) {
+    next[cat] = Array.isArray(selected?.[cat]) ? [...selected[cat]] : [];
+  }
+  // Preserve unknown categories from older saves.
+  for (const cat of Object.keys(selected || {})) {
+    if (!next[cat]) next[cat] = Array.isArray(selected[cat]) ? [...selected[cat]] : [];
+  }
+  const def = next.defense || [];
+  if (def.includes("flap")) {
+    next.defense = def.filter((id) => id !== "flap");
+    if (!(next.movement || []).includes("flap")) {
+      next.movement = [...(next.movement || []), "flap"];
+    }
+  }
+  return next;
+}
+
+/**
  * Total points spent by a `selected` map ({ category: [optionId, ...] }).
  * Unknown ids contribute 0 so a stale save can never over-count.
  */
 export function loadoutSpent(selected = {}) {
-  return Object.values(selected)
+  return Object.values(migrateLoadout(selected))
     .flat()
     .reduce((sum, id) => sum + (LOADOUT_OPTION_BY_ID[id]?.cost || 0), 0);
 }
@@ -191,10 +213,10 @@ export const UNLOCKS = [
   {
     id: "loadout_flap",
     label: "Flap",
-    sub: "Defense Sidegrade",
+    sub: "Movement Sidegrade",
     kanji: "翔",
     cost: 150,
-    desc: "Unlock the Flap defense option: trade your raw parry for a flight liftoff.",
+    desc: "Unlock the Flap movement option: slide-jump takeoffs grant air-flap charges.",
   },
   {
     id: "loadout_shattering_palm",
@@ -235,7 +257,7 @@ export function isUnlocked(career, id) {
 /*
  * The pool the between-bout DAY-card draft rolls from. These are the existing
  * special power-ups MINUS Flap, Shatter Palm, and Thick Blubber — those live in
- * the persistent loadout (Defense / Attack / Grappling sidegrades), and the
+ * the persistent loadout (Movement / Attack / Grappling sidegrades), and the
  * §5.4 "one-home rule" keeps each effect in exactly ONE system (loadout OR
  * draft). The exotic pool expands here in a dedicated content pass — adding ids
  * is data-only.

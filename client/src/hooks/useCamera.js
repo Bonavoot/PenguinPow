@@ -159,9 +159,16 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
     p2x: null,
     p1y: null,
     p2y: null,
-    // Last-known flap flags. fighter_action is delta-encoded so isFlapping only
-    // arrives on the ticks it changes — persist it so the flight pan stays gated
-    // to actual flappers (and never tracks, e.g., a clinch-thrown player's Y).
+    // Last-known flap-follow flags. fighter_action is delta-encoded so these
+    // only arrive on the ticks they change — persist + recompute so the flight
+    // pan stays gated to FLAP-armed slide-jump flight (never tracks, e.g., a
+    // clinch-thrown player's Y).
+    p1SlideJumping: false,
+    p2SlideJumping: false,
+    p1SlideJumpPhase: null,
+    p2SlideJumpPhase: null,
+    p1SlideJumpHasFlap: false,
+    p2SlideJumpHasFlap: false,
     p1Flap: false,
     p2Flap: false,
   });
@@ -224,12 +231,37 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
       if (p1 && p2 && typeof p1.x === "number" && typeof p2.x === "number") {
         posRef.current.p1x = p1.x;
         posRef.current.p2x = p2.x;
-        // Y is tracked too so the camera can follow flight (flap power-up).
+        // Y is tracked too so the camera can follow flight (FLAP slide-jump).
         if (typeof p1.y === "number") posRef.current.p1y = p1.y;
         if (typeof p2.y === "number") posRef.current.p2y = p2.y;
-        // Persist flap state across deltas (see posRef init note).
-        if (typeof p1.isFlapping === "boolean") posRef.current.p1Flap = p1.isFlapping;
-        if (typeof p2.isFlapping === "boolean") posRef.current.p2Flap = p2.isFlapping;
+        // Persist FLAP-armed slide-jump flags across deltas, then derive the
+        // same p1Flap/p2Flap gate the old isFlapping path used for flight pan.
+        if (typeof p1.isSlideJumping === "boolean") {
+          posRef.current.p1SlideJumping = p1.isSlideJumping;
+        }
+        if (typeof p2.isSlideJumping === "boolean") {
+          posRef.current.p2SlideJumping = p2.isSlideJumping;
+        }
+        if (typeof p1.slideJumpPhase !== "undefined") {
+          posRef.current.p1SlideJumpPhase = p1.slideJumpPhase;
+        }
+        if (typeof p2.slideJumpPhase !== "undefined") {
+          posRef.current.p2SlideJumpPhase = p2.slideJumpPhase;
+        }
+        if (typeof p1.slideJumpHasFlap === "boolean") {
+          posRef.current.p1SlideJumpHasFlap = p1.slideJumpHasFlap;
+        }
+        if (typeof p2.slideJumpHasFlap === "boolean") {
+          posRef.current.p2SlideJumpHasFlap = p2.slideJumpHasFlap;
+        }
+        posRef.current.p1Flap =
+          !!posRef.current.p1SlideJumping &&
+          posRef.current.p1SlideJumpPhase === "flight" &&
+          !!posRef.current.p1SlideJumpHasFlap;
+        posRef.current.p2Flap =
+          !!posRef.current.p2SlideJumping &&
+          posRef.current.p2SlideJumpPhase === "flight" &&
+          !!posRef.current.p2SlideJumpHasFlap;
       }
     };
 
@@ -459,11 +491,11 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
           cam.scale = lerp(cam.scale, normalTargetScale, lerpT(zoomRate));
           cam.x = lerp(cam.x, normalTargetX, lerpT(SMOOTH_FACTOR));
 
-          // Vertical flight follow: pan up a touch ONLY when a FLAPPING wrestler
-          // is airborne (flap take-off). Gated on the flap flag so other sources
-          // of altitude — e.g. a clinch/grab cinematic throw arcing a player up —
-          // never drag the camera's Y. Scaled by the highest flapper, hard-capped
-          // at FLIGHT_PAN_UP, and still subject to the maxPanY clamp below.
+          // Vertical flight follow: pan up a touch ONLY during FLAP-armed
+          // slide-jump flight (same feel as the old isFlapping takeoff). Gated
+          // so other altitude sources — e.g. a clinch throw — never drag Y.
+          // Scaled by the highest flapper, hard-capped at FLIGHT_PAN_UP, and
+          // still subject to the maxPanY clamp below.
           const { p1y, p2y, p1Flap, p2Flap } = posRef.current;
           const air1 =
             p1Flap && typeof p1y === "number" ? p1y - FLIGHT_GROUND_Y : 0;

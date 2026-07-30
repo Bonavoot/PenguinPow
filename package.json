@@ -15,7 +15,12 @@
     "dev:game": "concurrently \"npm run dev:server\" \"npm run dev:client\" \"wait-on http://localhost:3001 http://localhost:5173 && npm start\"",
     "dev:web": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:full": "concurrently \"npm run dev:client\" \"wait-on http://localhost:5173 && npm start\"",
-    "install:all": "npm install && cd client && npm install && cd ../server-io && npm install"
+    "install:all": "npm install && cd client && npm install && cd ../server-io && npm install",
+    "test": "npm run test --prefix server-io",
+    "test:clinch": "npm run test:clinch --prefix server-io",
+    "test:clinch:network": "npm run test:clinch:network --prefix server-io",
+    "test:clinch:watch": "npm run test:clinch:watch --prefix server-io",
+    "test:clinch:coverage": "npm run test:clinch:coverage --prefix server-io"
   },
   "dependencies": {
     "react-player": "^2.15.1",

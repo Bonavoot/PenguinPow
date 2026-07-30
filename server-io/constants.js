@@ -56,8 +56,10 @@ const DELTA_TRACKED_PROPS = [
   'isPowerSliding', 'isBraking', 'movementVelocity', 'isStrafing', 'effectiveMoveSpeedMult',
   // iceSlideDir: +1 right / -1 left — client foot FX wake (dodgeDirection is
   // cleared on the same land tick that arms isIceSliding).
-  'isIceSliding', 'iceSlideDir', 'isIceSlideReverseHopping', 'isSlideJumping', 'slideJumpDiveCommitted', 'slideJumpFastFalling', 'slideJumpPhase',
+  'isIceSliding', 'iceSlideDir', 'isIceSlideReverseHopping', 'isSlideJumping', 'slideJumpDiveCommitted', 'slideJumpFastFalling', 'slideJumpPhase', 'slideJumpHasFlap',
   'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
+  // Flap charges / wing-beat sync ride on slide-jump when FLAP is equipped
+  // (standalone isFlapping liftoff was removed). Fields kept for cleanup/deltas.
   'isFlapping', 'flapPhase', 'flapCharges', 'flapWingBeatTime', 'flapFastFalling', 'flapBeatHDir',
   'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery',
   'isSlapParryRecovering',
@@ -73,7 +75,7 @@ const DELTA_TRACKED_PROPS = [
   'isClinchKillThrowVictim', 'isClinchKillPullVictim',
   'isClinchJolting', 'isBeingClinchJolted', 'isClinchJoltClashing',
   'clinchJoltRecovery',
-  'isArmClamped', 'clinchThrowFailStagger', 'isClinchOpen', 'isCounterGrabbed',
+  'isArmClamped', 'clinchThrowFailStagger', 'isClinchOpen', 'clinchOpenHideStars', 'isCounterGrabbed',
   'hasDeepGrip',
   // Clinch Flow P2 — committed drive lean (visual + counterthrow vulnerability)
   'isClinchCommittedDrive',
@@ -679,14 +681,19 @@ const PERFECT_PARRY_ATTACKER_STUN_DURATION = 700; // Stun — comfortable window
 const PERFECT_PARRY_ANIMATION_LOCK = 330; // AP_PERFECT_HITSTOP_MS (210) + 120ms post-freeze cool-pose floor
 const PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK = 200; // Shorter than player parry lock — the reflected snowball is the reward
 
-// Lag-compensation: max the raw-parry start time may be backdated toward the
-// player's true press moment (reconstructed from the client clock offset). The
-// perfect window is 100ms; 120ms covers typical input latency (net/2 + client
-// throttle + server tick phase) so the window is judged against when the player
-// pressed, not when the packet arrived. Clamped both ways: a press can never be
-// backdated past this, and never dated into the future — so a spoofed client
-// can do no better than today's (uncompensated) behavior.
+// Lag-compensation backdate caps. Absolute ceiling covers high-ping one-way
+// delay + client emit throttle (16ms) + tick phase. Per-connection effective
+// cap is RTT-aware (see getPlayerInputBackdateCapMs) — LAN spoofing cannot
+// claim the full 120ms. IMPORTANT: for single-player windows (perfect parry
+// duration) more backdate only makes success harder; for RELATIVE ordering
+// (clinch 60ms simul window) timestamps from two clients are compared, so
+// spoofing earlier CAN help. Trusted reconstruction must clamp to receipt
+// time, RTT cap, and monotonic history — never trust raw client ages alone.
 const MAX_PARRY_BACKDATE_MS = 120;
+const INPUT_BACKDATE_MIN_MS = 32;           // Floor: emit throttle + one tick
+const INPUT_BACKDATE_RTT_SLACK_MS = 16;     // Slack beyond estimated one-way
+const INPUT_CLOCK_OFFSET_MAX_DELTA_MS = 80; // Prefer server EMA if client offset jumps
+const INPUT_PRESS_MONOTONIC_SLACK_MS = 8;   // Allow tiny reorder noise vs last press
 
 // Raw parry commitment: minimum time locked in parry stance
 const RAW_PARRY_MIN_DURATION = 200; // Whiffed parry: punishable but not sluggish (was 375 — felt like parry jail)
@@ -897,77 +904,60 @@ const ROPE_JUMP_BOUNDARY_ZONE = 40;      // Tight to the rope — must be near t
 const ROPE_JUMP_CENTER_FRACTION = 0.33;
 
 // ============================================
-// FLAP — "Flappy bird" flight power-up (replaces raw parry on Space)
+// FLAP — air charges on slide-jump (power-up / BASHO movement loadout)
 // ============================================
-// State machine: startup (grounded telegraph) → flight (airborne, velocity
-// physics) → landing (recovery endlag). Startup is counter-hittable (see
-// processHit); flight is hit-immune; landing whiff is the punish window.
-// Liftoff is FREE; the player then has
-// FLAP_CHARGES (3) air flaps. Each press sets the vertical velocity to a hard
-// impulse (NOT additive — that's what makes it read as a flappy-bird flap),
-// then FLAP_GRAVITY pulls them back down each tick. Airborne = fully hit-immune;
-// while DESCENDING the flapper is an attacker (body-slam). The per-tick values
-// are tuned against the fixed ~64Hz timestep (delta ≈ 15.6ms): a single impulse
-// arcs to ~impulse²/(2·FLAP_GRAVITY) — liftoff (11.5) ≈ 150px, an air flap (9.5)
-// ≈ 102px from the press point. FLAP_MAX_HEIGHT caps a chained climb just above
-// the visible top of the screen — a modest headroom bump, not a sky-high arc.
-//
-// "FEEL" — soft & cute, not flappy-bird twitchy. The launch impulse and gravity
-// are deliberately LOW and tuned TOGETHER: a low impulse means a gentle pop
-// (no sharp snap), and low gravity means a graceful, slightly-hanging descent
-// instead of a fast plummet. Because the arc is symmetric, impact speed ≈ the
-// launch impulse, so lowering it softens BOTH the rise and the fall. The default
-// float is intentionally easy on the eyes — the AGGRESSIVE option is the S-key
-// fast-fall (FLAP_FASTFALL_GRAVITY), whose heavy dive now contrasts hard against
-// this soft baseline (that's the "hard to react to when you commit" dial).
-const FLAP_STARTUP_MS = 166;             // Grounded telegraph (matches rope jump; interruptible)
-const FLAP_CHARGES = 3;                  // Air flaps AFTER liftoff (liftoff itself is free)
-const FLAP_LIFTOFF_IMPULSE = 11.5;       // Upward velocity (px/tick) on the initial liftoff — gentle pop, peaks ~150px, clearly below the top UI
-const FLAP_IMPULSE = 9.5;                // Upward velocity (px/tick) per AIR flap press — soft beat, peaks ~102px; chaining climbs toward the cap with effort
-const FLAP_GRAVITY = 0.44;               // Downward accel (px/tick²) on the main fall — light & graceful (cute float), NOT a heavy plummet. S-key fast-fall is the committal option.
-const FLAP_MAX_HEIGHT = 300;             // Y-offset cap above GROUND_LEVEL — slightly above the old screen-height cap
-const FLAP_AIR_MOVE_SPEED = 4.6;         // Horizontal air-control speed (px/tick) via A/D — fine steering while holding
-// Fast-fall: pressing S during flight COMMITS to a locked straight plummet —
-// pins X to the spot overhead, drains all remaining air charges, kills upward
-// momentum, and holds heavy dive gravity until touchdown (hit or whiff).
+// FLAP no longer replaces parry and has no standalone liftoff. When equipped,
+// each ice-slide → W takeoff grants FLAP_CHARGES and costs FLAP_STAMINA_COST.
+// Without spending charges: plain slide-jump physics (SLIDE_JUMP_*).
+// After the first air-charge spend: full FLAP flight physics (gravity, air
+// steer, ceiling cushion, H-burst friction, landing recovery) for the rest
+// of that jump. Descending flight carries an offensive body hitbox (ascent
+// is pushbox-only / no hit — matches pre-Honda pass-through on the way up).
+// S dive is a committed plummet of the same hit. One connect per jump.
+// Commitment model: passive flight is still hurtbox-immune (can't be stuffed
+// by ground strikes), but the descending body hit is parryable. Landing
+// recovery remains punishable.
+const FLAP_STARTUP_MS = 166;             // Legacy — standalone grounded startup removed
+const FLAP_CHARGES = 2;                  // Air flaps granted on FLAP-armed slide-jump takeoff
+const FLAP_LIFTOFF_IMPULSE = 11.5;       // Legacy standalone liftoff (slide takeoff uses SLIDE_JUMP_LIFTOFF_IMPULSE)
+const FLAP_IMPULSE = 9.5;                // Upward velocity (px/tick) per AIR flap (W)
+const FLAP_GRAVITY = 0.44;               // Flight gravity once charges are in use
+const FLAP_MAX_HEIGHT = 300;             // Soft ceiling above GROUND_LEVEL
+const FLAP_AIR_MOVE_SPEED = 4.6;         // Horizontal air-control (px/tick) via A/D during flap flight
+// Fast-fall: pressing S COMMITS to a locked straight plummet.
 const FLAP_FASTFALL_GRAVITY = 1.5;       // Downward accel (px/tick²) while dive-locked
 const FLAP_DIVE_MIN_DOWN_VELOCITY = 8;   // Minimum downward speed (px/tick) once committed
 const FLAP_FASTFALL_AIR_MOVE_SPEED = 1.1; // Unused while dive-locked (X is pinned); kept for reference
-// Ceiling "feel" fix: a hard velocity clamp at the cap made hitting the ceiling
-// snap from rising → dead-stop → fast drop, which reads as an ugly bounce. The
-// fix is a CUSHION band just below the cap: rising into it bleeds off upward
-// speed (glide to a stop, no slam) and gravity is softened there (HANG at the
-// peak). The instant the wrestler drops BELOW the band, full FLAP_GRAVITY takes
-// over again — so the actual fall stays fast, and normal mid-air arcs (below the
-// band) are totally unaffected, preserving the "perfect flight" skill ceiling.
-const FLAP_CEILING_CUSHION = 42;         // Height (px) of the soft band below the cap
-const FLAP_CEILING_HANG_GRAVITY = 0.25;  // Reduced gravity inside the cushion band — peak hang, not a full float (kept ~0.57× of FLAP_GRAVITY)
-// Per-flap horizontal burst: a flap pressed WHILE holding A/D flings the player
-// up-AND-forward (diagonal arc) instead of near-vertical. Decays via friction so
-// it reads as a momentary lunge layered on top of the steering drift. No
-// direction held on the press = no burst (pure vertical).
-const FLAP_FLAP_H_IMPULSE = 7;           // Horizontal velocity (px/tick) added on a directional flap press
-const FLAP_H_FRICTION = 0.88;            // Per-tick decay of the horizontal burst (~58px of lunge per flap)
-const FLAP_CHARGE_COOLDOWN_MS = 150;     // Min interval between flaps (gives the wing-beat room to read)
-const FLAP_STAMINA_COST = 12;            // Liftoff cost only (air flaps are free) — pricier than a dodge since liftoff buys an immune flight + a body-slam; still cheap enough for several flights per bar
-const FLAP_LANDING_RECOVERY_MS = 250;    // WHIFF landing endlag — the punish window
-// Connecting the body-slam latches the flight and syncs landing recovery to the
-// victim's hitstun (BURST_STUN_MS) so the slam grants NO frame advantage.
-// The flapper keeps normal flight physics until they touch down — no self
-// pushback and no scripted descent on connect.
-// Body-slam impulse uses the burst-knockback (no-DI) model so the "drop on
-// their head" payoff reads like a real heavy hit. The move has plenty of
-// counters (parry, dash the landing, walk under it), so a clean connect earns
-// the game's heaviest strike knockback.
+const FLAP_CEILING_CUSHION = 42;         // Soft band below the cap
+const FLAP_CEILING_HANG_GRAVITY = 0.25;  // Reduced gravity inside the cushion band
+const FLAP_FLAP_H_IMPULSE = 7;           // Horizontal velocity (px/tick) on a directional air flap
+const FLAP_H_FRICTION = 0.88;            // Per-tick decay of the horizontal burst
+const FLAP_CHARGE_COOLDOWN_MS = 150;     // Min interval between air flaps
+const FLAP_STAMINA_COST = 4;             // Takeoff tax only (air flaps free) — match dodge/rope jump
+const FLAP_LANDING_RECOVERY_MS = 250;    // Whiff landing endlag once flap flight was used this jump
+// Max height (px above ground) at which grounded strikes can still hit an
+// airborne FLAP-armed flyer. Above this, horizontal-only hitboxes can't "floor
+// hit" a high body. Tuned near the body-slam contact band so anti-airs work
+// when the flapper is actually low enough to stuff.
+const AIR_STRIKE_HURT_HEIGHT = 72;
+// Body-slam impulse (S dive connect). Parry beats the slam.
 const FLAP_BODYSLAM_KB_VELOCITY = BURST_KB_VELOCITY;
 
 // ============================================
-// Hit Recovery — smooth Y return when hit at non-ground positions
+// Hit Recovery — heavy sumo dump when hit airborne
 // ============================================
-const HIT_FALL_BASE_MS = 150;              // Min fall duration (near ground)
-const HIT_FALL_HEIGHT_SCALE = 1.6;        // Extra ms per unit of height above ground
-const HIT_FALL_POP_FRACTION = 0.12;       // Fraction of fall time spent on upward pop
-const HIT_FALL_POP_HEIGHT_RATIO = 0.08;   // Pop height as fraction of current height above ground
+// Commitment model: passive flight is immune. Air hits are mostly dive-stuffs
+// / rare elevated connects. Stronger H KB + faster dump; blend prior air travel
+// into the shove so it isn't a straight vertical teleport.
+const HIT_FALL_GRAVITY = 1.18;            // Accelerated plummet (jump 0.52 / flap 0.44)
+const HIT_FALL_DUMP_LIGHT = 4.2;          // Slap / low kick — immediate down dump
+const HIT_FALL_DUMP_MEDIUM = 5.6;         // Palm / snowball / pumo
+const HIT_FALL_DUMP_HEAVY = 7.2;          // Charged tier
+const HIT_FALL_CARRY_DOWN_SCALE = 0.85;   // Keep downward dive carry
+const HIT_FALL_COUNTER_DUMP_MULT = 1.18;  // Counter / gored — slightly harder dump
+const HIT_FALL_MAX_FALL_SPEED = 20;       // Terminal down speed while hit-falling
+const AIR_HIT_KB_MULT = 1.4;              // Air connects shove harder than grounded
+const AIR_HIT_CARRY_X_SCALE = 0.5;        // Fraction of prior air H folded into KB
 const SIDESTEP_HIT_RETURN_BASE_MS = 80;   // Base duration for sidestep Y return at max dip depth
 const SIDESTEP_HIT_RETURN_MIN_MS = 30;    // Floor — even a tiny dip gets a brief ease
 
@@ -1131,10 +1121,13 @@ const CLINCH_THROW_STAMINA_COST = 10;            // Stamina cost for throw/pull 
 const CLINCH_THROW_CLASH_WINDOW_MS = 60;         // True simultaneous technique window
 const CLINCH_THROW_CHORD_WINDOW_MS = 220;        // Generous M2 + direction TAP chord
 const CLINCH_THROW_REQUEST_PUSH_CAP_MULT = 0.25; // Soft latch while a request is pending
+// Initiation drains at COMMIT from defender stance. If Plant resists at impact,
+// excess over plant-tier is refunded — a successful brace keeps plant-tier posture
+// pressure (incl. edge bonus), not the push/neutral tax from a late scramble.
 const CLINCH_THROW_BALANCE_DRAIN_VS_PUSH = 20;   // Initiation drain vs pushing
 const CLINCH_THROW_BALANCE_DRAIN_VS_PLANT = 5;   // Initiation drain vs planting
 const CLINCH_THROW_BALANCE_DRAIN_VS_NEUTRAL = 10; // Initiation drain vs neutral
-const CLINCH_THROW_FAIL_BALANCE_DRAIN = 4;       // Chip on defender when Plant resists
+const CLINCH_THROW_FAIL_BALANCE_DRAIN = 0;       // Resisted Plant: no defender chip (thrower pays)
 const CLINCH_THROW_FAIL_SELF_BALANCE_DRAIN = 12; // Attacker balance cost on resisted throw
 const CLINCH_THROW_FAIL_STAMINA_COST = 5;        // Extra stamina on resisted throw
 
@@ -1149,13 +1142,25 @@ const CLINCH_THROW_FAIL_STAGGER_MS = 320;        // Resisted-technique Open dura
 const CLINCH_PERFECT_BRACE_OPEN_MS = 400;        // Attacker Open after Perfect Brace
 const CLINCH_PERFECT_BRACE_WINDOW_MS = 100;      // Final portion of startup (press must land here)
 const CLINCH_PERFECT_BRACE_FLASH_MS = 220;       // Defender Perfect Brace visual flash
+// After authoritative Plant is active, a short latch keeps Throw/Pull brace armed
+// if the defender releases early (tap instinct). Does NOT arm during Drive→Plant
+// cancel — only refreshes while isActivelyPlanting.
+const CLINCH_BRACE_LATCH_MS = 150;
 const CLINCH_OPEN_TUMBLE_MS = 350;               // Mutual-tumble Open after separation
 const CLINCH_OPEN_JOLT_INTO_DRIVE_MS = 300;      // Jolter Open after jolt into committed Drive
 const CLINCH_TUMBLE_STAMINA_COST = 5;            // Both pay on mutual tumble
 const CLINCH_TUMBLE_BALANCE_DRAIN = 4;           // Both lose a little Balance on tumble
 
-// Counter-grab ARM CLAMP — clamps offense (throw/jolt/break) during Phase A
-// burst. Plant brace remains available so the victim can still defend throws.
+// Counter-grab ARM CLAMP — STRONG ADVANTAGE, not a free / untechable throw.
+// Catching raw parry with Grab grants a highly favorable punish window:
+//   • Immediate Balance damage (COUNTER_GRAB_BALANCE_DEBUFF)
+//   • Stronger Phase A opening burst (ARM_CLAMP_BURST_*)
+//   • Victim offense locked: no push / throw / pull / jolt / break
+// Plant brace REMAINS available — a precise Plant can still deny the technique.
+// Do not describe the convert throw as "free" or "untechable" in comments,
+// animation copy, or teaching: the reward is advantage, not an automatic KO.
+// Clamp clears on: burst end (no pending/active throw), boundary contact, or
+// once the grabber's filed technique is no longer pending/active.
 const COUNTER_GRAB_BALANCE_DEBUFF = 10;          // Balance hit on counter-grab connect
 const ARM_CLAMP_BURST_MULT = 2.1;                // × initial burst vs regular connect
 const ARM_CLAMP_BURST_DECAY_RATE = 1.9;           // Slower than regular 6.1 — real carry
@@ -1880,6 +1885,10 @@ module.exports = {
   RAW_PARRY_REARM_STAMINA_COST,
   RAW_PARRY_REARM_INTERVAL_MS,
   MAX_PARRY_BACKDATE_MS,
+  INPUT_BACKDATE_MIN_MS,
+  INPUT_BACKDATE_RTT_SLACK_MS,
+  INPUT_CLOCK_OFFSET_MAX_DELTA_MS,
+  INPUT_PRESS_MONOTONIC_SLACK_MS,
   PARRY_SUCCESS_DURATION,
   RAW_PARRY_STAMINA_COST,
   RAW_PARRY_STAMINA_REFUND,
@@ -1960,13 +1969,19 @@ module.exports = {
   FLAP_CHARGE_COOLDOWN_MS,
   FLAP_STAMINA_COST,
   FLAP_LANDING_RECOVERY_MS,
+  AIR_STRIKE_HURT_HEIGHT,
   FLAP_BODYSLAM_KB_VELOCITY,
 
   // Hit recovery
-  HIT_FALL_BASE_MS,
-  HIT_FALL_HEIGHT_SCALE,
-  HIT_FALL_POP_FRACTION,
-  HIT_FALL_POP_HEIGHT_RATIO,
+  HIT_FALL_GRAVITY,
+  HIT_FALL_DUMP_LIGHT,
+  HIT_FALL_DUMP_MEDIUM,
+  HIT_FALL_DUMP_HEAVY,
+  HIT_FALL_CARRY_DOWN_SCALE,
+  HIT_FALL_COUNTER_DUMP_MULT,
+  HIT_FALL_MAX_FALL_SPEED,
+  AIR_HIT_KB_MULT,
+  AIR_HIT_CARRY_X_SCALE,
   SIDESTEP_HIT_RETURN_BASE_MS,
   SIDESTEP_HIT_RETURN_MIN_MS,
 
@@ -2070,6 +2085,7 @@ module.exports = {
   CLINCH_PERFECT_BRACE_OPEN_MS,
   CLINCH_PERFECT_BRACE_WINDOW_MS,
   CLINCH_PERFECT_BRACE_FLASH_MS,
+  CLINCH_BRACE_LATCH_MS,
   CLINCH_OPEN_TUMBLE_MS,
   CLINCH_OPEN_JOLT_INTO_DRIVE_MS,
   CLINCH_TUMBLE_STAMINA_COST,

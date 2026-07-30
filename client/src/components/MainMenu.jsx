@@ -31,6 +31,7 @@ import {
   STAT_BASE,
   ATTRIBUTES,
   LOADOUT_OPTION_BY_ID,
+  migrateLoadout,
   isUnlocked,
   rollDraftOptions,
   effectiveDifficulty,
@@ -913,7 +914,7 @@ const MainMenu = ({
     // had a now-gated option toggled on) so the §6 unlock economy is the
     // authority on what applies.
     const careerSave = bashoSaveRef.current?.career || {};
-    const rawLoadout = careerSave.loadout || {};
+    const rawLoadout = migrateLoadout(careerSave.loadout || {});
     const loadout = Object.fromEntries(
       Object.entries(rawLoadout).map(([cat, ids]) => [
         cat,

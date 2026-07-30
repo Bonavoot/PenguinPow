@@ -11,14 +11,11 @@
 // behaves EXACTLY as it does today. That's the firewall: a loadout sidegrade
 // literally cannot apply to a non-BASHO fighter because the key isn't there.
 //
-// Phase 5 ships exactly ONE real sidegrade — the spec's canonical example,
-// "Flap replaces Raw Parry" (DEFENSE). The flap mechanic already exists and is
-// gated everywhere on `activePowerUp === FLAP`; this flag simply ORs a
-// loadout-driven route into those same gates without ever touching the
-// power-up/draft system. New options append to this mapping as they're
-// designed (spec §8.2) — one flag per behavioral hook.
+// Flap is a Movement sidegrade: slide-jump takeoffs grant air-flap charges.
+// It does NOT touch parry. Legacy saves may still store `flap` under defense —
+// both categories are accepted here so old careers keep working.
 
-// `selected` = { attack: [], defense: ["flap"], movement: [], ... }
+// `selected` = { attack: [], defense: [], movement: ["flap"], ... }
 // Returns the flag set read by the combat sites. Tolerant of a missing/oddly
 // shaped argument so a corrupt save can never throw here.
 function deriveLoadout(selected = {}) {
@@ -28,14 +25,18 @@ function deriveLoadout(selected = {}) {
   const defense = Array.isArray(selected && selected.defense)
     ? selected.defense
     : [];
+  const movement = Array.isArray(selected && selected.movement)
+    ? selected.movement
+    : [];
   const grappling = Array.isArray(selected && selected.grappling)
     ? selected.grappling
     : [];
   return {
     // ATTACK sidegrade: palm thrust shatters grab startup armor (charged-style).
     palmBreaksGrabArmor: attack.includes("shattering_palm"),
-    // DEFENSE sidegrade: swap the raw-parry-on-Space for the flight liftoff.
-    flapReplacesParry: defense.includes("flap"),
+    // MOVEMENT sidegrade: slide-jump takeoffs grant FLAP air charges.
+    // Also accepts legacy defense-slot saves that still list "flap".
+    hasFlap: movement.includes("flap") || defense.includes("flap"),
     // GRAPPLING sidegrade: Thick Blubber — your grab absorbs one hit during its
     // startup (refreshed every grab attempt). Grabs-only; does not protect palm
     // thrust or charged attacks. Read grabs-only inside hasHitAbsorption's call

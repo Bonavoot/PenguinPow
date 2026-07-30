@@ -19,9 +19,22 @@ const {
   SIDESTEP_STAMINA_COST,
   HITBOX_DISTANCE_VALUE,
   MAX_PARRY_BACKDATE_MS,
-  FLAP_STARTUP_MS,
+  INPUT_BACKDATE_MIN_MS,
+  INPUT_BACKDATE_RTT_SLACK_MS,
+  INPUT_CLOCK_OFFSET_MAX_DELTA_MS,
+  INPUT_PRESS_MONOTONIC_SLACK_MS,
   FLAP_CHARGES,
   FLAP_STAMINA_COST,
+  HIT_FALL_DUMP_LIGHT,
+  HIT_FALL_DUMP_MEDIUM,
+  HIT_FALL_DUMP_HEAVY,
+  HIT_FALL_CARRY_DOWN_SCALE,
+  HIT_FALL_COUNTER_DUMP_MULT,
+  HIT_FALL_MAX_FALL_SPEED,
+  AIR_HIT_KB_MULT,
+  AIR_HIT_CARRY_X_SCALE,
+  TICK_RATE,
+  speedFactor,
   GASSED_DURATION_MS,
   POWER_UP_TYPES,
   MAX_MOVE_SPEED_MULT,
@@ -257,6 +270,86 @@ function logVerbInitiation(room, player, verb, entryVelocity) {
 // RAW PARRY LAG-COMPENSATION
 // ============================================================
 // Returns the sim-clock start time to stamp on a freshly-started raw parry,
+// ── Trusted lag-compensation (receipt + RTT + monotonic) ─────────────────────
+// Client event timestamps are useful for feel, but two players' reconstructed
+// times are compared for clinch simul / first-owner. Spoofing an EARLIER press
+// can move a request into/out of the 60ms window — unlike perfect-parry duration
+// where more backdate only makes success harder. Harden every press:
+//   • age measured from PACKET RECEIPT (not drain-after-hitstop)
+//   • backdate cap = min(global ceiling, RTT/2 + slack), floored for emit throttle
+//   • never future vs receipt; monotonic vs last trusted press
+
+// Resolve a player's estimated RTT for lag-comp clamps.
+// Numeric 0 / string "0" are valid (LAN / localhost). Only missing, non-finite,
+// or negative values fall back to the historical default of 60ms.
+function resolvePlayerNetRttMs(player) {
+  const raw = player && player.netRttMs;
+  if (raw === null || raw === undefined || raw === "") return 60;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return 60;
+  return Math.min(400, parsed);
+}
+
+function getPlayerInputBackdateCapMs(player) {
+  const rtt = resolvePlayerNetRttMs(player);
+  return Math.min(
+    MAX_PARRY_BACKDATE_MS,
+    Math.max(INPUT_BACKDATE_MIN_MS, rtt * 0.5 + INPUT_BACKDATE_RTT_SLACK_MS)
+  );
+}
+
+function updatePlayerNetEstimate(player, data) {
+  if (!player || !data || data.clientSynced !== true) return;
+  if (typeof data.clientRtt === "number" && Number.isFinite(data.clientRtt)) {
+    const rtt = Math.max(0, Math.min(400, data.clientRtt));
+    player.netRttMs =
+      typeof player.netRttMs === "number"
+        ? player.netRttMs * 0.8 + rtt * 0.2
+        : rtt;
+  }
+  if (typeof data.clientOffset === "number" && Number.isFinite(data.clientOffset)) {
+    if (typeof player.netClockOffsetMs !== "number") {
+      player.netClockOffsetMs = data.clientOffset;
+    } else {
+      const delta = Math.abs(data.clientOffset - player.netClockOffsetMs);
+      const alpha = delta > INPUT_CLOCK_OFFSET_MAX_DELTA_MS ? 0.35 : 0.12;
+      player.netClockOffsetMs =
+        player.netClockOffsetMs * (1 - alpha) + data.clientOffset * alpha;
+    }
+  }
+}
+
+// Clamp a reconstructed press onto the trusted envelope. Updates monotonic watermark.
+function clampTrustedPressGameTime(player, pressGameTime, receiptGameNow) {
+  if (!pressGameTime || !player) return 0;
+  const receipt =
+    typeof receiptGameNow === "number" && Number.isFinite(receiptGameNow)
+      ? receiptGameNow
+      : gameNow();
+  const cap = getPlayerInputBackdateCapMs(player);
+  let trusted = Math.min(pressGameTime, receipt);
+  trusted = Math.max(trusted, receipt - cap);
+  const last = player.lastTrustedPressGameTime || 0;
+  if (last > 0) {
+    trusted = Math.max(trusted, last - INPUT_PRESS_MONOTONIC_SLACK_MS);
+  }
+  trusted = Math.min(trusted, receipt);
+  player.lastTrustedPressGameTime = Math.max(last, trusted);
+  return trusted;
+}
+
+function lagCompensatedFromPress(player, simNowMs, pressGameTime, receiptGameNow) {
+  if (!pressGameTime) return simNowMs;
+  const receipt =
+    typeof receiptGameNow === "number" && Number.isFinite(receiptGameNow)
+      ? receiptGameNow
+      : gameNow();
+  const age = receipt - pressGameTime;
+  if (!Number.isFinite(age) || age <= 0) return simNowMs;
+  const backdate = Math.min(age, getPlayerInputBackdateCapMs(player));
+  return simNowMs - backdate;
+}
+
 // backdated toward the player's TRUE press moment instead of the moment the
 // input was drained on the server.
 //
@@ -265,51 +358,36 @@ function logVerbInitiation(room, player, verb, entryVelocity) {
 // network latency + the client send-throttle + the server tick phase all get
 // baked into that duration — and, worse, they JITTER tick-to-tick, so an
 // identically-timed press lands "perfect" one round and "regular" the next.
-// That's the clunky, inconsistent feel.
 //
-// `rawParryPressGameTime` is the press moment expressed on the server's
-// monotonic gameNow() clock (reconstructed client-side from the synced clock
-// offset, set in socketHandlers when the rising space edge is seen). Its age is
-// a real-world duration, so it's valid to subtract from the (pausable) sim
-// clock: no hitstop occurs between a parry press and the hit it answers.
-//
-// Clamped to [0, MAX_PARRY_BACKDATE_MS]: never dates a press into the future,
-// never backdates further than the cap. Because more backdate only makes the
-// perfect window HARDER to hit, a spoofed offset can do no better than the
-// uncompensated (age 0) behavior — so this is exploit-safe by construction.
-// Consumes the press stamp so a stale press can't backdate a later parry.
+// Age uses PACKET RECEIPT (not drain time) so hitstop queue wait cannot inflate
+// backdate. Cap is RTT-aware. Consumes the press stamp.
 function lagCompensatedParryStart(player, simNowMs) {
   const pressGameTime = player.rawParryPressGameTime || 0;
+  const receipt = player.rawParryPressReceiptGameNow || 0;
   player.rawParryPressGameTime = 0;
-  if (!pressGameTime) return simNowMs;
-  const age = gameNow() - pressGameTime;
-  if (!Number.isFinite(age) || age <= 0) return simNowMs;
-  const backdate = Math.min(age, MAX_PARRY_BACKDATE_MS);
-  return simNowMs - backdate;
+  player.rawParryPressReceiptGameNow = 0;
+  return lagCompensatedFromPress(player, simNowMs, pressGameTime, receipt || undefined);
 }
 
-// Clinch Flow: same bounded backdate for throw/pull request timestamps so the
-// ~60ms true-simultaneous window isn't decided by ping jitter. Consumes the
-// stamp; spoofed ages can only make the window HARDER (never easier).
+// Clinch Flow: bounded backdate for throw/pull request timestamps so the ~60ms
+// true-simultaneous window isn't decided by ping jitter. Relative ordering IS
+// competitively sensitive — trust comes from clampTrustedPressGameTime, not
+// from "more backdate is safer."
 function lagCompensatedClinchInputStart(player, simNowMs) {
   const pressGameTime = player.clinchTechniquePressGameTime || 0;
+  const receipt = player.clinchTechniquePressReceiptGameNow || 0;
   player.clinchTechniquePressGameTime = 0;
-  if (!pressGameTime) return simNowMs;
-  const age = gameNow() - pressGameTime;
-  if (!Number.isFinite(age) || age <= 0) return simNowMs;
-  const backdate = Math.min(age, MAX_PARRY_BACKDATE_MS);
-  return simNowMs - backdate;
+  player.clinchTechniquePressReceiptGameNow = 0;
+  return lagCompensatedFromPress(player, simNowMs, pressGameTime, receipt || undefined);
 }
 
-// Perfect Brace press — same bounded backdate as technique requests / parries.
+// Perfect Brace press — same trusted backdate as technique requests / parries.
 function lagCompensatedClinchBraceStart(player, simNowMs) {
   const pressGameTime = player.clinchBracePressGameTime || 0;
+  const receipt = player.clinchBracePressReceiptGameNow || 0;
   player.clinchBracePressGameTime = 0;
-  if (!pressGameTime) return simNowMs;
-  const age = gameNow() - pressGameTime;
-  if (!Number.isFinite(age) || age <= 0) return simNowMs;
-  const backdate = Math.min(age, MAX_PARRY_BACKDATE_MS);
-  return simNowMs - backdate;
+  player.clinchBracePressReceiptGameNow = 0;
+  return lagCompensatedFromPress(player, simNowMs, pressGameTime, receipt || undefined);
 }
 
 // ── GUARD & PARRY arming ────────────────────────────────────────────────────
@@ -1314,6 +1392,7 @@ function clearAllActionStates(player) {
   player.isHitFalling = false;
   player.hitFallStartTime = 0;
   player.hitFallStartY = 0;
+  player.hitFallVelocityY = 0;
   player.isSidestepHitReturn = false;
   player.sidestepHitReturnStartTime = 0;
   player.sidestepHitReturnStartY = 0;
@@ -1365,6 +1444,14 @@ function clearSlideJumpState(player) {
   player.slideJumpLandingTime = 0;
   player.slideJumpStartTime = 0;
   player.slideJumpBufferUntil = 0;
+  player.slideJumpHasFlap = false;
+  player.slideJumpFlapFlightActive = false;
+  // Charge / wing-beat / H-burst fields shared with FLAP flight mode.
+  player.flapCharges = 0;
+  player.flapWingBeatTime = 0;
+  player.flapBeatHDir = 0;
+  player.flapVelocityX = 0;
+  player.lastFlapChargeTime = 0;
 }
 
 function clearIceSlideState(player) {
@@ -1393,6 +1480,11 @@ function beginGrabStartup(player, room) {
 
   const now = simNowForPlayer(player);
   const entryVel = player.movementVelocity || 0;
+
+  // Grab-start M2 must not later complete a throw/pull chord on connect.
+  player.clinchMouse2BufferTime = 0;
+  player.clinchWTapTime = 0;
+  player.clinchAwayTapTime = 0;
 
   // Slap clears ice slide the instant isAttacking latches; grab must do the
   // same explicitly — isGrabStartup was never on the ice-slide interrupt list.
@@ -1476,7 +1568,7 @@ function tryIceSlideReverse(player, nowSim) {
   player.movementVelocity = newDir * ICE_SLIDE_REVERSE_BURST;
   player.isBraking = false;
   player.isStrafing = false;
-  player.facing = newDir > 0 ? -1 : 1;
+  // Facing stays opponent-facing (facingSystem). Slide travel is iceSlideDir.
   player.isIceSlideReverseHopping = true;
   player.iceSlideReverseHopStartTime = nowSim;
   player.iceSlideReverseHopUntil = nowSim + ICE_SLIDE_REVERSE_HOP_MS;
@@ -1492,6 +1584,146 @@ function clearHitFall(player) {
   player.isHitFalling = false;
   player.hitFallStartTime = 0;
   player.hitFallStartY = 0;
+  player.hitFallVelocityY = 0;
+}
+
+/**
+ * Commitment model: passive slide-jump / FLAP flight is strike-immune.
+ * S dive (`slideJumpDiveCommitted`) and landing phase are hittable.
+ */
+function isSlideJumpFlightImmune(player) {
+  return !!(
+    player &&
+    player.isSlideJumping &&
+    player.slideJumpPhase === "flight" &&
+    !player.slideJumpDiveCommitted
+  );
+}
+
+/** Prior vertical velocity to carry into an air-hit fall (call BEFORE clearAllActionStates). */
+function captureAirVerticalVelocity(player) {
+  if (!player) return 0;
+  if (player.isHitFalling && typeof player.hitFallVelocityY === "number") {
+    return player.hitFallVelocityY;
+  }
+  if (player.isSlideJumping) return player.slideJumpVelocityY || 0;
+  if (player.isFlapping) return player.flapVelocityY || 0;
+  if (player.knockbackVelocity && typeof player.knockbackVelocity.y === "number") {
+    return player.knockbackVelocity.y;
+  }
+  return 0;
+}
+
+/** Prior horizontal air travel in px/tick (call BEFORE clearAllActionStates). */
+function captureAirHorizontalVelocity(player) {
+  if (!player) return 0;
+  if (player.isSlideJumping) {
+    if (player.slideJumpFlapFlightActive && player.flapVelocityX) {
+      return player.flapVelocityX;
+    }
+    return player.slideJumpVelocityX || 0;
+  }
+  if (player.isFlapping) return player.flapVelocityX || 0;
+  return 0;
+}
+
+/**
+ * Amplify air-connect KB and fold prior air H travel into the shove so the
+ * dump continues their path instead of dropping straight down.
+ */
+function applyAirHitKnockbackBoost(player, airCarryX = 0) {
+  if (!player?.knockbackVelocity) return;
+  if (Math.abs(player.knockbackVelocity.x) < 0.001 && Math.abs(airCarryX) < 0.001) {
+    return;
+  }
+  player.knockbackVelocity.x *= AIR_HIT_KB_MULT;
+  // slide-jump X is raw px/tick; knockback integrates as x += kb * delta * speedFactor
+  const pxPerKbUnit = (1000 / TICK_RATE) * speedFactor;
+  if (pxPerKbUnit > 0 && Math.abs(airCarryX) > 0.01) {
+    player.knockbackVelocity.x += (airCarryX / pxPerKbUnit) * AIR_HIT_CARRY_X_SCALE;
+  }
+}
+
+/**
+ * Start heavy-sumo dump after an airborne hit.
+ * No upward pop — kill rise, dump down by move power. Horizontal KB stays on
+ * knockbackVelocity.x until touchdown (see endHitKnockback / landing handoff).
+ * impactTier: 'light' | 'medium' | 'heavy'
+ * chargePercentage: 0–100; when > 0, lerps medium→heavy for charged hits.
+ */
+function beginAirHitFall(player, {
+  now = 0,
+  carryVelY = 0,
+  impactTier = "light",
+  chargePercentage = 0,
+  isCounterHit = false,
+  isGored = false,
+} = {}) {
+  if (!player || !(player.y > GROUND_LEVEL)) return false;
+
+  clearSidestepHitReturn(player);
+
+  let dump = HIT_FALL_DUMP_LIGHT;
+  if (impactTier === "medium") dump = HIT_FALL_DUMP_MEDIUM;
+  else if (impactTier === "heavy") dump = HIT_FALL_DUMP_HEAVY;
+
+  if (typeof chargePercentage === "number" && chargePercentage > 0) {
+    const t = Math.max(0, Math.min(1, chargePercentage / 100));
+    dump = HIT_FALL_DUMP_MEDIUM + (HIT_FALL_DUMP_HEAVY - HIT_FALL_DUMP_MEDIUM) * t;
+  }
+
+  if (isCounterHit || isGored) dump *= HIT_FALL_COUNTER_DUMP_MULT;
+
+  // Keep only downward carry; rising momentum is killed on impact.
+  const downCarry =
+    carryVelY < 0 ? carryVelY * HIT_FALL_CARRY_DOWN_SCALE : 0;
+  let velY = downCarry - dump;
+  if (velY < -HIT_FALL_MAX_FALL_SPEED) velY = -HIT_FALL_MAX_FALL_SPEED;
+
+  player.isHitFalling = true;
+  player.hitFallStartTime = now;
+  player.hitFallStartY = player.y;
+  player.hitFallVelocityY = velY;
+  return true;
+}
+
+/**
+ * Hitstun end. If still dumping from an air hit, keep horizontal KB alive so
+ * the shove isn't cut short mid-air. Grounded hits hand off to ice coast.
+ */
+function endHitKnockback(player) {
+  if (!player) return;
+  if (player.isHitFalling && Math.abs(player.knockbackVelocity?.x || 0) > 0.01) {
+    player.isHit = false;
+    return;
+  }
+  if (Math.abs(player.knockbackVelocity?.x || 0) > 0.01) {
+    player.movementVelocity = player.knockbackVelocity.x;
+  }
+  player.knockbackVelocity.x = 0;
+  player.isHit = false;
+  player.isSlapKnockback = false;
+  player.slapKnockbackCanRingOut = false;
+  player.isBurstKnockback = false;
+  player.burstKnockbackStartTime = 0;
+  player.isChargedKnockback = false;
+  player.chargedKnockbackCanRingOut = false;
+}
+
+/** Touchdown from air-hit dump — hand residual KB to ice coast. */
+function finishAirHitFallLanding(player) {
+  if (!player) return;
+  if (Math.abs(player.knockbackVelocity?.x || 0) > 0.01) {
+    player.movementVelocity = player.knockbackVelocity.x;
+  }
+  player.knockbackVelocity.x = 0;
+  player.isSlapKnockback = false;
+  player.slapKnockbackCanRingOut = false;
+  player.isBurstKnockback = false;
+  player.burstKnockbackStartTime = 0;
+  player.isChargedKnockback = false;
+  player.chargedKnockbackCanRingOut = false;
+  clearHitFall(player);
 }
 
 function clearSidestepHitReturn(player) {
@@ -1607,79 +1839,41 @@ function cancelPendingSlapWork(player) {
   }
 }
 
-// ── FLAP: begin the grounded liftoff telegraph ───────────────────────────
-// Shared by the immediate Space-press path (socketHandlers) and the buffered
-// path (gameFunctions.executeInputBuffer) so the two can't drift. Mirrors the
-// raw-parry cleanup it replaces: kills movement/charge/slap-string momentum so
-// the player commits cleanly to the startup. The flight itself (the liftoff
-// impulse) happens when index.js promotes startup → flight; the liftoff is
-// FREE (no charge spent), leaving all FLAP_CHARGES air flaps available. Startup
-// is interruptible — getting hit here cancels the whole flap.
-//
-// Returns false WITHOUT mutating state if the player can't afford the liftoff
-// (gassed or stamina < cost) so callers can surface the "out of stamina" cue.
-function beginFlapStartup(player, now) {
-  // Only a fully GASSED wrestler is denied the flap (that's the one case that
-  // surfaces "OUT OF STAMINA"). With even 1 stamina the flap still fires; if the
-  // cost drains them past empty they gas out on takeoff via tryEnterGassed.
-  if (player.isGassed) {
+// ── FLAP: slide-jump air charges (no standalone liftoff / no parry swap) ──
+/** FLAP power-up or BASHO movement loadout — arms slide-jump with air charges. */
+function playerHasFlap(player) {
+  return (
+    !!player &&
+    (player.activePowerUp === POWER_UP_TYPES.FLAP || !!player.loadout?.hasFlap)
+  );
+}
+
+/**
+ * On FLAP-armed slide-jump takeoff: pay stamina and grant a fresh charge bank.
+ * Does not alter slide-jump physics. Returns false if gassed (jump still happens
+ * elsewhere without charges). Air flaps themselves are free.
+ */
+function armSlideJumpFlapCharges(player, now) {
+  if (!playerHasFlap(player) || player.isGassed) {
+    player.slideJumpHasFlap = false;
+    player.flapCharges = 0;
     return false;
   }
-
-  player.isFlapping = true;
-  player.flapPhase = "startup";
-  player.flapStartTime = now;
-  player.flapCharges = FLAP_CHARGES; // air flaps available once airborne
-  player.flapVelocityY = 0;
-  player.flapVelocityX = 0;
-  player.flapWingBeatTime = 0;
-  player.flapFastFalling = false;
-  player.flapDiveCommitted = false;
-  player.flapDiveLockX = 0;
-  player.flapBeatHDir = 0;
-  player.flapHitLanded = false;
-  player.flapHitLandStartY = 0;
-  player.flapHitLandStartX = 0;
-  player.flapHitLandTargetX = 0;
-  player.flapHitRecoverDuration = 0;
-  player.lastFlapChargeTime = 0;
-  player.currentAction = "flap";
-  player.actionLockUntil = now + FLAP_STARTUP_MS;
-
-  // Liftoff is the ONLY stamina cost — air flaps are free. Flapping on fumes
-  // (stamina below the cost) is allowed, but it drains them past empty and gasses
-  // them out on takeoff. Apply gassed immediately so later tick work (including
-  // regen) cannot refill them above 0 before the exhausted state sticks.
   player.stamina = Math.max(0, player.stamina - FLAP_STAMINA_COST);
   tryEnterGassed(player, now);
-
-  clearChargeState(player, true);
-  cancelPendingSlapWork(player);
-  player.movementVelocity = 0;
-  // Air steering uses A/D but is not ground strafe — clear so stale isStrafing
-  // never leaks into the client delta stream mid-flight.
-  player.isStrafing = false;
-  player.isPowerSliding = false;
-  player.isBraking = false;
-  player.isCrouchStance = false;
-  player.isCrouchStrafing = false;
-  player.isRawParrySuccess = false;
-  player.isPerfectRawParrySuccess = false;
-  // Cancel any in-progress attack so its VFX/SFX (e.g. the slap-hands effect,
-  // slap whiff sound) don't bleed into flight. Liftoff out of a slap/charge
-  // must read as a clean takeoff — nothing on screen but the flap.
-  player.isAttacking = false;
-  player.isSlapAttack = false;
-  player.isPalmThrust = false;
-  player.isLowKick = false;
-  player.isChargingAttack = false;
-  player.attackType = null;
-  player.attackStartTime = 0;
-  player.attackEndTime = 0;
-  player.attackCooldownUntil = 0;
-  timeoutManager.clearPlayerSpecific(player.id, "lowKickCycle");
+  player.slideJumpHasFlap = true;
+  player.flapCharges = FLAP_CHARGES;
+  player.lastFlapChargeTime = 0;
+  player.flapWingBeatTime = 0;
+  player.flapBeatHDir = 0;
   return true;
 }
+
+/** @deprecated Standalone flap liftoff removed — FLAP is slide-jump charges only. */
+function beginFlapStartup(_player, _now) {
+  return false;
+}
+
 
 // Centralized action lock helpers to prevent simultaneous actions during input mashing
 function isActionLocked(player) {
@@ -1914,6 +2108,12 @@ module.exports = {
   simNowForPlayer,
   logVerbInitiation,
   advanceRoomSimTime,
+  getPlayerInputBackdateCapMs,
+  resolvePlayerNetRttMs,
+  updatePlayerNetEstimate,
+  clampTrustedPressGameTime,
+  // Exported for clinch/network regression tests (pure; no behavior change).
+  lagCompensatedFromPress,
   lagCompensatedParryStart,
   lagCompensatedClinchInputStart,
   lagCompensatedClinchBraceStart,
@@ -1948,6 +2148,8 @@ module.exports = {
   canPlayerSidestep,
   resetPlayerAttackStates,
   clearAllActionStates,
+  playerHasFlap,
+  armSlideJumpFlapCharges,
   beginFlapStartup,
   cancelPendingSlapWork,
   isWithinMapBoundaries,
@@ -1975,6 +2177,13 @@ module.exports = {
   getSidestepInitData,
   clearHitFall,
   clearSidestepHitReturn,
+  isSlideJumpFlightImmune,
+  captureAirVerticalVelocity,
+  captureAirHorizontalVelocity,
+  applyAirHitKnockbackBoost,
+  beginAirHitFall,
+  endHitKnockback,
+  finishAirHitFallLanding,
   clearSlideJumpState,
   clearIceSlideState,
   tryIceSlideReverse,

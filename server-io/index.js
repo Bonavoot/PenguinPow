@@ -53,15 +53,13 @@ const {
   AT_THE_ROPES_DURATION,
   ROPE_JUMP_STARTUP_MS, ROPE_JUMP_ACTIVE_MS, ROPE_JUMP_LANDING_RECOVERY_MS,
   ROPE_JUMP_ARC_HEIGHT,
-  FLAP_STARTUP_MS, FLAP_LIFTOFF_IMPULSE, FLAP_IMPULSE, FLAP_GRAVITY, FLAP_MAX_HEIGHT,
-  FLAP_AIR_MOVE_SPEED, FLAP_FASTFALL_GRAVITY, FLAP_DIVE_MIN_DOWN_VELOCITY, FLAP_FASTFALL_AIR_MOVE_SPEED,
+  FLAP_IMPULSE, FLAP_GRAVITY, FLAP_MAX_HEIGHT, FLAP_AIR_MOVE_SPEED,
+  FLAP_FASTFALL_GRAVITY, FLAP_DIVE_MIN_DOWN_VELOCITY,
   FLAP_CEILING_CUSHION, FLAP_CEILING_HANG_GRAVITY,
-  FLAP_FLAP_H_IMPULSE, FLAP_H_FRICTION,
+  FLAP_FLAP_H_IMPULSE, FLAP_H_FRICTION, FLAP_CHARGE_COOLDOWN_MS,
   FLAP_LANDING_RECOVERY_MS,
-  HIT_FALL_BASE_MS,
-  HIT_FALL_HEIGHT_SCALE,
-  HIT_FALL_POP_FRACTION,
-  HIT_FALL_POP_HEIGHT_RATIO,
+  HIT_FALL_GRAVITY,
+  HIT_FALL_MAX_FALL_SPEED,
   KNOCKBACK_IMMUNITY_DURATION,
   STAMINA_REGEN_INTERVAL_MS, STAMINA_REGEN_AMOUNT,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, DODGE_STAMINA_COST,
@@ -132,10 +130,12 @@ const {
   isAttackParryPostLocked,
   emitThrottledScreenShake,
   clearHitFall,
+  finishAirHitFallLanding,
   clearSidestepHitReturn,
   clearIceSlideState,
   tryIceSlideReverse,
   clearSlideJumpState,
+  armSlideJumpFlapCharges,
   cancelPendingSlapWork,
   stampMomentumWindow,
 } = require("./gameUtils");
@@ -174,6 +174,9 @@ const {
 const {
   resetRoomAndPlayers,
 } = require("./roomManagement");
+
+// Facing hard rule: always face opponent unless purposefully locked
+const { enforcePairFacing } = require("./facingSystem");
 
 // Import combat helpers (shared between tick and socket handlers)
 const {
@@ -620,79 +623,9 @@ function tick(delta) {
         enforceStrikeExtensionSeparation(player2, player1, room.simTime);
       }
 
-      if (
-        !player1.isGrabbing &&
-        !player1.isBeingGrabbed &&
-        !player2.isGrabbing &&
-        !player2.isBeingGrabbed &&
-        !player1.isThrowing &&
-        !player2.isThrowing &&
-        !(player1.isHit && player2.isHit)
-      ) {
-        // Preserve facing direction during attacks and throws
-        // Special case: allow dodging player to update facing even when opponent is attacking
-        // This allows dodge-through to work correctly during charged attacks
-        if (
-          (!player1.isAttacking && !player2.isAttacking && !player1.isDodging && !player2.isDodging && !player1.isSidestepping && !player2.isSidestepping) ||
-          (player1.isDodging && player2.isAttacking) ||
-          (player2.isDodging && player1.isAttacking)
-        ) {
-          // Only update facing for non-isHit players and those not locked by slap attacks
-          // IMPORTANT: Players with atTheRopesFacingDirection set keep their locked facing direction
-          if (!player1.isHit && !player2.isHit) {
-            // Normal facing logic when both players are not hit
-            // Don't update facing if player has locked slap facing direction OR is attacking OR has atTheRopes facing locked
-            // The pull-kill victim keeps its preserved facing (excluded below) so it
-            // doesn't flip as it slides through/past the thrower. The thrower itself
-            // is NOT excluded — its facing still responds naturally.
-            if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection && !player1.isClinchKillPullVictim && !player1.isFlapping && !player1.isSlideJumping && player1.x < player2.x) {
-              player1.facing = -1;
-            } else if (
-              !player1.slapFacingDirection &&
-              !player1.isAttacking &&
-              !player1.atTheRopesFacingDirection &&
-              !player1.isClinchKillPullVictim &&
-              !player1.isFlapping &&
-              !player1.isSlideJumping &&
-              player1.x >= player2.x
-            ) {
-              player1.facing = 1;
-            }
-
-            if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection && !player2.isClinchKillPullVictim && !player2.isFlapping && !player2.isSlideJumping && player1.x < player2.x) {
-              player2.facing = 1;
-            } else if (
-              !player2.slapFacingDirection &&
-              !player2.isAttacking &&
-              !player2.atTheRopesFacingDirection &&
-              !player2.isClinchKillPullVictim &&
-              !player2.isFlapping &&
-              !player2.isSlideJumping &&
-              player1.x >= player2.x
-            ) {
-              player2.facing = -1;
-            }
-          } else if (!player1.isHit && player2.isHit) {
-            if (!player1.slapFacingDirection && !player1.isAttacking && !player1.atTheRopesFacingDirection) {
-              if (player1.x < player2.x) {
-                player1.facing = -1; // Player 1 faces right
-              } else {
-                player1.facing = 1; // Player 1 faces left
-              }
-            }
-          } else if (player1.isHit && !player2.isHit) {
-            // Only update player2's facing when player1 is hit and player2 doesn't have locked slap facing
-            if (!player2.slapFacingDirection && !player2.isAttacking && !player2.atTheRopesFacingDirection) {
-              if (player1.x < player2.x) {
-                player2.facing = 1; // Player 2 faces left
-              } else {
-                player2.facing = -1; // Player 2 faces right
-              }
-            }
-          }
-          // If both are hit, don't update facing at all (handled by outer condition)
-        }
-      }
+      // Facing is enforced once per tick AFTER movement (see enforcePairFacing
+      // below). Early/mid-tick writes from attacks / grabs still snapshot locks;
+      // locomotion no longer owns facing.
 
       if (player1.isAttacking) {
         checkCollision(player1, player2, rooms, io);
@@ -701,12 +634,12 @@ function tick(delta) {
         checkCollision(player2, player1, rooms, io);
       }
 
-      // Body-slam: descending flap OR slide-jump dive onto a grounded opponent.
+      // Air body hitbox: slide-jump / FLAP flight (Honda-style, not only S dive).
       // Polled every tick (it isn't a regular `isAttacking` strike).
-      if (player1.isFlapping || player1.isSlideJumping) {
+      if (player1.isSlideJumping) {
         checkFlapBodySlam(player1, player2, rooms, io);
       }
-      if (player2.isFlapping || player2.isSlideJumping) {
+      if (player2.isSlideJumping) {
         checkFlapBodySlam(player2, player1, rooms, io);
       }
 
@@ -1118,15 +1051,20 @@ function tick(delta) {
         player.knockbackVelocity.x = 0;
         player.knockbackVelocity.y = 0;
         // Keep facing and position; do nothing else until freeze ends
-      } else if (player.isHit) {
+      } else if (
+        player.isHit ||
+        (player.isHitFalling && Math.abs(player.knockbackVelocity?.x || 0) > 0.01)
+      ) {
+        // Air-hit dump keeps horizontal KB after stun ends (heavy sumo shove
+        // must not die mid-air). Same friction / rope clamps as grounded hit.
         // Cinematic kill victims fly off with no friction, no DI, no slowdown
-        if (player.isCinematicKillVictim) {
+        if (player.isHit && player.isCinematicKillVictim) {
           player.x += player.knockbackVelocity.x * delta * speedFactor;
         } else {
           // SAFETY: Maximum isHit duration to prevent stuck states (1 second max)
           const MAX_HIT_DURATION = 1000;
           const hitDuration = player.lastHitTime ? room.simTime - player.lastHitTime : 0;
-          if (hitDuration > MAX_HIT_DURATION) {
+          if (player.isHit && hitDuration > MAX_HIT_DURATION) {
             player.isHit = false;
             player.isAlreadyHit = false;
             player.isSlapKnockback = false;
@@ -1134,8 +1072,11 @@ function tick(delta) {
             player.isChargedKnockback = false;
             player.burstKnockbackStartTime = 0;
             player.isParryKnockback = false;
-            player.knockbackVelocity.x = 0;
-            player.movementVelocity = 0;
+            // Still air-dumping — keep residual KB for the fall coast.
+            if (!player.isHitFalling) {
+              player.knockbackVelocity.x = 0;
+              player.movementVelocity = 0;
+            }
             // Don't return - continue normal processing
           } else {
             // Standard knockback — knockbackVelocity drives displacement
@@ -1368,7 +1309,16 @@ function tick(delta) {
             Math.abs(player.x - opponent.x) < sidestepGrabTrackRange;
           const normalGrabInRange = opponent && !opponentSidestepping && isOpponentCloseEnoughForGrab(player, opponent) && isOpponentInFrontOfGrabber(player, opponent);
 
-          if (opponent && !(opponent.isRopeJumping && opponent.ropeJumpPhase === "active") && !(opponent.isFlapping && opponent.flapPhase === "flight") && !(opponent.isSlideJumping && opponent.slideJumpPhase === "flight") && (normalGrabInRange || sidestepTrackInRange)) {
+          // Ground grab only — airborne / air-hit-dump victims are ungrabbable
+          // (CPU + humans). Matches cpuAI isOpponentAirborne.
+          const opponentAirborneForGrab =
+            (opponent.isRopeJumping && opponent.ropeJumpPhase === "active") ||
+            (opponent.isFlapping && opponent.flapPhase === "flight") ||
+            (opponent.isSlideJumping && opponent.slideJumpPhase === "flight") ||
+            opponent.isHitFalling ||
+            opponent.isIceSlideReverseHopping ||
+            (typeof opponent.y === "number" && opponent.y > GROUND_LEVEL + 8);
+          if (opponent && !opponentAirborneForGrab && (normalGrabInRange || sidestepTrackInRange)) {
             // === TECH CHECK: opponent also in grab startup → both tech ===
             // Whiffing players CANNOT tech — they are fully vulnerable.
             // Also check if opponent's startup has already expired AND their grab
@@ -1478,10 +1428,11 @@ function tick(delta) {
               player.isAttemptingGrabThrow = false;
 
               // COUNTER GRAB: grab landed while the opponent was raw-parrying.
-              // ARM CLAMP: the punished parrier cannot act during the Phase A
-              // burst carry (clamp clears on burst end, boundary contact, or
-              // after the grabber's free throw). Seeds a balance debuff so the
-              // punish scales with prior damage.
+              // ARM CLAMP: strong advantage — victim offense locked during the
+              // Phase A burst / convert window; Plant brace remains (not a free
+              // or untechable throw). Clears on burst end, boundary contact, or
+              // once the grabber's filed technique is no longer pending/active.
+              // Seeds a balance debuff so the punish scales with prior damage.
               const wasOpponentRawParrying = opponent.isRawParrying;
               opponent.isCounterGrabbed = wasOpponentRawParrying;
 
@@ -2603,11 +2554,16 @@ function tick(delta) {
             player.slideJumpHitRecoverDuration = 0;
             player.slideJumpLandingTime = 0;
             player.slideJumpBufferUntil = 0;
+            player.slideJumpFlapFlightActive = false;
+            player.flapVelocityX = 0;
             player.movementVelocity = 0;
             player.isStrafing = false;
             player.isBraking = false;
             player.currentAction = "slideJump";
             player.actionLockUntil = 0;
+            // FLAP arms this jump with charges; physics stay plain slide-jump
+            // until a charge is spent. Fresh bank every takeoff.
+            armSlideJumpFlapCharges(player, now);
             clearIceSlideState(player);
             // Consume the edge so rope-jump / other W readers don't also fire.
             player.wJustPressed = false;
@@ -2622,56 +2578,139 @@ function tick(delta) {
         if (player.slideJumpPhase === "flight") {
           player.isStrafing = false;
 
-          // S belly-flop — mirrors flap dive commit exactly:
-          // pin X to the commit spot, kill horizontal, heavy plummet. Landing
-          // stays where you pressed S (same "drop on their head" read as flap).
+          // FLAP air charges: first spend switches this jump into classic FLAP
+          // flight physics for the rest of the airtime. No spend → plain slide-jump.
+          if (
+            player.wJustPressed &&
+            player.slideJumpHasFlap &&
+            (player.flapCharges || 0) > 0 &&
+            !player.slideJumpHitLanded &&
+            !player.slideJumpDiveCommitted &&
+            now - (player.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS
+          ) {
+            const enteringFlapFlight = !player.slideJumpFlapFlightActive;
+            player.slideJumpFlapFlightActive = true;
+            player.flapCharges -= 1;
+            player.slideJumpVelocityY = FLAP_IMPULSE;
+            // Drop slide carry on first charge — flap air control + H-burst take over.
+            if (enteringFlapFlight) {
+              player.slideJumpVelocityX = 0;
+            }
+            // Directional flap = set H burst (same as old air flaps, not additive).
+            if (player.keys.d && !player.keys.a) {
+              player.flapVelocityX = FLAP_FLAP_H_IMPULSE;
+              player.facing = -1;
+              player.flapBeatHDir = 1;
+            } else if (player.keys.a && !player.keys.d) {
+              player.flapVelocityX = -FLAP_FLAP_H_IMPULSE;
+              player.facing = 1;
+              player.flapBeatHDir = -1;
+            } else {
+              player.flapBeatHDir = 0;
+            }
+            player.flapWingBeatTime = now;
+            player.lastFlapChargeTime = now;
+            player.wJustPressed = false;
+          }
+
+          // S belly-flop — pin X, kill horizontal, heavy plummet; burns charges.
           if (!player.slideJumpDiveCommitted && player.keys.s) {
             player.slideJumpDiveCommitted = true;
             player.slideJumpDiveLockX = player.x;
             player.slideJumpVelocityX = 0;
+            player.flapVelocityX = 0;
+            player.flapCharges = 0;
             if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
             if (player.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
               player.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
             }
           }
 
-          // Mirror flapFastFalling: latched every tick for client VFX/sprites.
           player.slideJumpFastFalling = player.slideJumpDiveCommitted;
           const isDiveLocked = player.slideJumpDiveCommitted;
+          const flapFlight = !!player.slideJumpFlapFlightActive;
 
-          const gravity = isDiveLocked ? FLAP_FASTFALL_GRAVITY : SLIDE_JUMP_GRAVITY;
-          player.slideJumpVelocityY -= gravity;
-          if (isDiveLocked) {
-            if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
-            if (player.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
-              player.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
+          if (flapFlight) {
+            // ── Classic FLAP flight integrator ──
+            const ceiling = GROUND_LEVEL + FLAP_MAX_HEIGHT;
+            const cushionStart = ceiling - FLAP_CEILING_CUSHION;
+            const inCeilingZone = player.y > cushionStart;
+
+            if (!isDiveLocked && inCeilingZone && player.slideJumpVelocityY > 0) {
+              const into = Math.min(
+                1,
+                (player.y - cushionStart) / FLAP_CEILING_CUSHION
+              );
+              player.slideJumpVelocityY *= Math.max(0, 1 - into);
             }
-          }
-          player.y += player.slideJumpVelocityY;
 
-          if (isDiveLocked) {
-            // Locked plummet — land exactly below the S-commit point (flap parity).
-            player.slideJumpVelocityX = 0;
-            player.x = player.slideJumpDiveLockX;
+            const gravity = isDiveLocked
+              ? FLAP_FASTFALL_GRAVITY
+              : inCeilingZone
+              ? FLAP_CEILING_HANG_GRAVITY
+              : FLAP_GRAVITY;
+            player.slideJumpVelocityY -= gravity;
+            if (isDiveLocked) {
+              if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
+              if (player.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
+                player.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
+              }
+            }
+            player.y += player.slideJumpVelocityY;
+            if (player.y > ceiling) {
+              player.y = ceiling;
+              if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
+            }
+
+            if (isDiveLocked) {
+              player.slideJumpVelocityX = 0;
+              player.flapVelocityX = 0;
+              player.x = player.slideJumpDiveLockX;
+            } else {
+              if (player.keys.d && !player.keys.a) {
+                player.x += FLAP_AIR_MOVE_SPEED;
+                player.facing = -1;
+              } else if (player.keys.a && !player.keys.d) {
+                player.x -= FLAP_AIR_MOVE_SPEED;
+                player.facing = 1;
+              }
+              if (player.flapVelocityX !== 0) {
+                player.x += player.flapVelocityX;
+                player.flapVelocityX *= FLAP_H_FRICTION;
+                if (Math.abs(player.flapVelocityX) < 0.1) player.flapVelocityX = 0;
+              }
+            }
           } else {
-            player.x += player.slideJumpVelocityX;
-            // Weak air steer — bleeds horizontal range (disabled once diving).
-            if (player.keys.d && !player.keys.a) {
-              player.x += SLIDE_JUMP_AIR_STEER;
-              player.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
-              player.facing = -1;
-            } else if (player.keys.a && !player.keys.d) {
-              player.x -= SLIDE_JUMP_AIR_STEER;
-              player.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
-              player.facing = 1;
+            // ── Plain slide-jump arc (unchanged when no charges spent) ──
+            const gravity = isDiveLocked ? FLAP_FASTFALL_GRAVITY : SLIDE_JUMP_GRAVITY;
+            player.slideJumpVelocityY -= gravity;
+            if (isDiveLocked) {
+              if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
+              if (player.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
+                player.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
+              }
+            }
+            player.y += player.slideJumpVelocityY;
+
+            if (isDiveLocked) {
+              player.slideJumpVelocityX = 0;
+              player.x = player.slideJumpDiveLockX;
+            } else {
+              player.x += player.slideJumpVelocityX;
+              if (player.keys.d && !player.keys.a) {
+                player.x += SLIDE_JUMP_AIR_STEER;
+                player.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
+                player.facing = -1;
+              } else if (player.keys.a && !player.keys.d) {
+                player.x -= SLIDE_JUMP_AIR_STEER;
+                player.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
+                player.facing = 1;
+              }
             }
           }
           player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
 
-          // Post-integrate slam check — same shared checkFlapBodySlam as flap
-          // (identical contact band / width / KB / hitstop). Catches the dive
-          // on the tick we enter the band; early-tick poll can race past it.
-          if (isDiveLocked && !player.slideJumpHitLanded && sjOpponent) {
+          if (!player.slideJumpHitLanded && sjOpponent) {
             checkFlapBodySlam(player, sjOpponent, rooms, io);
           }
 
@@ -2679,17 +2718,19 @@ function tick(delta) {
             player.y = GROUND_LEVEL;
             player.slideJumpVelocityY = 0;
             player.slideJumpVelocityX = 0;
-            // Stay parked on the dive-lock X through touchdown.
+            player.flapVelocityX = 0;
             if (isDiveLocked) {
               player.x = player.slideJumpDiveLockX;
             }
             player.slideJumpPhase = "landing";
             player.slideJumpLandingTime = now;
+            const whiffRecovery = flapFlight
+              ? FLAP_LANDING_RECOVERY_MS
+              : SLIDE_JUMP_LANDING_RECOVERY_MS;
             const recovery = player.slideJumpHitLanded
               ? player.slideJumpHitRecoverDuration
-              : SLIDE_JUMP_LANDING_RECOVERY_MS;
+              : whiffRecovery;
             player.actionLockUntil = now + recovery;
-            // Match flap: server rope_landing; client adds belly-flop land VFX.
             emitThrottledScreenShake(room, io, { type: "rope_landing" });
           }
         } else if (player.slideJumpPhase === "landing") {
@@ -2697,9 +2738,12 @@ function tick(delta) {
           // slideJumpDiveCommitted latched so the land-smoke path can still
           // read that this touchdown was a belly-flop (cleared on exit).
           player.slideJumpFastFalling = false;
+          const whiffRecovery = player.slideJumpFlapFlightActive
+            ? FLAP_LANDING_RECOVERY_MS
+            : SLIDE_JUMP_LANDING_RECOVERY_MS;
           const recovery = player.slideJumpHitLanded
             ? player.slideJumpHitRecoverDuration
-            : SLIDE_JUMP_LANDING_RECOVERY_MS;
+            : whiffRecovery;
 
           if (now >= player.slideJumpLandingTime + recovery) {
             player.y = GROUND_LEVEL;
@@ -2714,196 +2758,16 @@ function tick(delta) {
         }
       }
 
-      // ── FLAP flight physics ──
-      // Flappy-bird integrator: each press sets flapVelocityY to FLAP_IMPULSE
-      // (handled on the input edge), gravity pulls it down here every tick.
-      // Airborne = hit-immune (see collisionSystem); while DESCENDING the
-      // flapper is an attacker that body-slams a grounded opponent.
-      if (player.isFlapping) {
-        const flapOpponent = room.players.find((p) => p.id !== player.id);
-
-        if (player.flapPhase === "startup") {
-          player.flapFastFalling = false;
-          player.flapDiveCommitted = false;
-          player.flapDiveLockX = 0;
-          // Grounded telegraph. Interruptible — a hit here runs
-          // clearAllActionStates and cancels the whole flap.
-          if (now >= player.flapStartTime + FLAP_STARTUP_MS) {
-            player.flapPhase = "flight";
-            // Liftoff is FREE — it does not consume a charge. The player keeps
-            // all FLAP_CHARGES air flaps to spend while airborne. Liftoff uses a
-            // taller impulse than air flaps so take-off launches noticeably high.
-            player.flapVelocityY = FLAP_LIFTOFF_IMPULSE;
-            // Directional liftoff lunges forward too (diagonal arc); a neutral
-            // liftoff stays vertical.
-            if (player.keys.d && !player.keys.a) {
-              player.flapVelocityX = FLAP_FLAP_H_IMPULSE;
-              player.facing = -1;
-              player.flapBeatHDir = 1;
-            } else if (player.keys.a && !player.keys.d) {
-              player.flapVelocityX = -FLAP_FLAP_H_IMPULSE;
-              player.facing = 1;
-              player.flapBeatHDir = -1;
-            } else {
-              player.flapVelocityX = 0;
-              player.flapBeatHDir = 0;
-            }
-            player.flapWingBeatTime = now;
-            player.lastFlapChargeTime = now;
-            player.actionLockUntil = 0; // free to turn / air-flap immediately
-          }
-        } else if (player.flapPhase === "flight") {
-          // A/D air-steer is not ground strafe — keep the flag cleared so client
-          // deltas never resurrect waddle/strafe state mid-flight.
-          player.isStrafing = false;
-
-          // S-key dive commit: first press locks a straight plummet to the ground
-          // directly below — burns all air charges and pins X for the rest of flight.
-          if (!player.flapDiveCommitted && player.keys.s) {
-            player.flapDiveCommitted = true;
-            player.flapDiveLockX = player.x;
-            player.flapCharges = 0;
-            player.flapVelocityX = 0;
-            if (player.flapVelocityY > 0) player.flapVelocityY = 0;
-            if (player.flapVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
-              player.flapVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
-            }
-          }
-
-          player.flapFastFalling = player.flapDiveCommitted;
-          const isDiveLocked = player.flapDiveCommitted;
-
-          // Vertical integration with a SOFT CEILING (see constants).
-          const ceiling = GROUND_LEVEL + FLAP_MAX_HEIGHT;
-          const cushionStart = ceiling - FLAP_CEILING_CUSHION;
-          const inCeilingZone = player.y > cushionStart;
-
-          // 1) Glide-to-stop at the ceiling band — skipped while dive-locked.
-          if (!isDiveLocked && inCeilingZone && player.flapVelocityY > 0) {
-            const into = Math.min(
-              1,
-              (player.y - cushionStart) / FLAP_CEILING_CUSHION
-            ); // 0 at band entry → 1 at the cap
-            player.flapVelocityY *= Math.max(0, 1 - into);
-          }
-
-          // 2) Peak hang inside the cushion — dive lock always uses heavy gravity.
-          const gravity = isDiveLocked
-            ? FLAP_FASTFALL_GRAVITY
-            : inCeilingZone
-            ? FLAP_CEILING_HANG_GRAVITY
-            : FLAP_GRAVITY;
-          player.flapVelocityY -= gravity;
-          if (isDiveLocked) {
-            if (player.flapVelocityY > 0) player.flapVelocityY = 0;
-            if (player.flapVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
-              player.flapVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
-            }
-          }
-          player.y += player.flapVelocityY;
-
-          // Hard cap on position only (velocity already bled off above).
-          if (player.y > ceiling) {
-            player.y = ceiling;
-            if (player.flapVelocityY > 0) player.flapVelocityY = 0;
-          }
-
-          if (isDiveLocked) {
-            // Locked plummet — no horizontal drift; land exactly below commit point.
-            player.flapVelocityX = 0;
-            player.x = player.flapDiveLockX;
-          } else {
-            // Horizontal air control — free facing, independent of the opponent.
-            // Steering drift (held A/D) layered with the per-flap lunge burst
-            // (flapVelocityX, set on a directional press) which decays via friction.
-            if (player.keys.d && !player.keys.a) {
-              player.x += FLAP_AIR_MOVE_SPEED;
-              player.facing = -1;
-            } else if (player.keys.a && !player.keys.d) {
-              player.x -= FLAP_AIR_MOVE_SPEED;
-              player.facing = 1;
-            }
-            if (player.flapVelocityX !== 0) {
-              player.x += player.flapVelocityX;
-              player.flapVelocityX *= FLAP_H_FRICTION;
-              if (Math.abs(player.flapVelocityX) < 0.1) player.flapVelocityX = 0;
-            }
-          }
-          player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
-
-          // Landing: touched ground while descending (or out of charges). Hit or
-          // whiff — same natural drop; only the recovery window differs.
-          if (player.y <= GROUND_LEVEL && player.flapVelocityY <= 0) {
-            player.y = GROUND_LEVEL;
-            player.flapVelocityY = 0;
-            player.flapPhase = "landing";
-            player.flapLandingTime = now;
-            const recovery = player.flapHitLanded
-              ? player.flapHitRecoverDuration
-              : FLAP_LANDING_RECOVERY_MS;
-            player.actionLockUntil = now + recovery;
-            emitThrottledScreenShake(room, io, { type: "rope_landing" });
-          }
-        } else if (player.flapPhase === "landing") {
-          player.flapFastFalling = false;
-          player.flapDiveCommitted = false;
-          player.flapDiveLockX = 0;
-          const recovery = player.flapHitLanded
-            ? player.flapHitRecoverDuration
-            : FLAP_LANDING_RECOVERY_MS;
-
-          if (now >= player.flapLandingTime + recovery) {
-            player.y = GROUND_LEVEL;
-            cancelPendingSlapWork(player);
-            player.isFlapping = false;
-            player.flapPhase = null;
-            player.flapCharges = 0;
-            player.flapVelocityY = 0;
-            player.flapVelocityX = 0;
-            player.flapStartTime = 0;
-            player.flapLandingTime = 0;
-            player.flapWingBeatTime = 0;
-            player.flapFastFalling = false;
-            player.flapDiveCommitted = false;
-            player.flapDiveLockX = 0;
-            player.flapBeatHDir = 0;
-            player.flapHitLanded = false;
-            player.flapHitLandStartY = 0;
-            player.flapHitLandStartX = 0;
-            player.flapHitLandTargetX = 0;
-            player.flapHitRecoverDuration = 0;
-            player.lastFlapChargeTime = 0;
-            player.currentAction = null;
-            player.actionLockUntil = 0;
-
-            if (flapOpponent) {
-              player.facing = player.x < flapOpponent.x ? -1 : 1;
-            }
-          }
-        }
-      }
-
-      // ── Hit Fall — parametric arc back to ground after airborne hit ──
+      // ── Hit Fall — heavy dump after airborne hit (pairs with full H KB) ──
       if (player.isHitFalling) {
-        const heightAboveGround = player.hitFallStartY - GROUND_LEVEL;
-        const fallDuration = HIT_FALL_BASE_MS + heightAboveGround * HIT_FALL_HEIGHT_SCALE;
-        const elapsed = now - player.hitFallStartTime;
-        const t = Math.min(elapsed / fallDuration, 1);
-        const popHeight = heightAboveGround * HIT_FALL_POP_HEIGHT_RATIO;
-
-        if (t < HIT_FALL_POP_FRACTION) {
-          const popT = t / HIT_FALL_POP_FRACTION;
-          player.y = player.hitFallStartY + popHeight * Math.sin(Math.PI * popT * 0.5);
-        } else {
-          const fallT = (t - HIT_FALL_POP_FRACTION) / (1 - HIT_FALL_POP_FRACTION);
-          const easeIn = fallT * fallT;
-          const peakY = player.hitFallStartY + popHeight;
-          player.y = peakY - (peakY - GROUND_LEVEL) * easeIn;
+        player.hitFallVelocityY = (player.hitFallVelocityY || 0) - HIT_FALL_GRAVITY;
+        if (player.hitFallVelocityY < -HIT_FALL_MAX_FALL_SPEED) {
+          player.hitFallVelocityY = -HIT_FALL_MAX_FALL_SPEED;
         }
-
-        if (t >= 1) {
+        player.y += player.hitFallVelocityY;
+        if (player.y <= GROUND_LEVEL) {
           player.y = GROUND_LEVEL;
-          clearHitFall(player);
+          finishAirHitFallLanding(player);
         }
       }
 
@@ -3061,15 +2925,17 @@ function tick(delta) {
           
           // COUNTER GRAB: grab landed while the opponent was raw-parrying (grabbing
           // during recovery does NOT count — normal grab only).
-          // ARM CLAMP: the punished parrier cannot act during the Phase A burst
-          // carry (clamp clears on burst end, boundary, or after free throw).
+          // ARM CLAMP: strong advantage — victim offense locked during the Phase A
+          // burst / convert window; Plant brace remains (not a free/untechable
+          // throw). Clears on burst end, boundary, or once the filed technique
+          // is no longer pending/active.
           const wasOpponentRawParrying = opponent.isRawParrying;
           opponent.isCounterGrabbed = wasOpponentRawParrying;
 
           if (wasOpponentRawParrying) {
             opponent.isArmClamped = true;
             opponent.balance = Math.max(0, opponent.balance - COUNTER_GRAB_BALANCE_DEBUFF);
-            // Counter Grab: grabbed their raw parry - show LOCKED! effect + "Counter Grab" banner
+            // Counter Grab: grabbed their raw parry — CLAMPED FX + "Counter Grab" banner
             const grabberPlayerNumber = room.players.indexOf(player) === 0 ? 1 : 2;
             const centerX = (player.x + opponent.x) / 2;
             const centerY = (player.y + opponent.y) / 2;
@@ -3161,6 +3027,7 @@ function tick(delta) {
         !player.isMatadorSuccess &&
         !player.isIceSliding && // Ice-slide owns its own X integration
         !player.isSlideJumping && // Slide-jump owns its own X/Y integration
+        !player.isHitFalling && // Air-hit KB owns X until touchdown (no mid-air DI kill)
         !player.isGrabbingMovement && // Block normal movement during grab movement
         !player.isWhiffingGrab && // Block movement during grab whiff recovery
         !player.isGrabWhiffRecovery && // Block movement during grab whiff recovery (new)
@@ -3646,8 +3513,6 @@ function tick(delta) {
       if (
         !player.isCPU &&
         player.keys[" "] &&
-        player.activePowerUp !== POWER_UP_TYPES.FLAP && // Flap replaces AP on Space
-        !player.loadout?.flapReplacesParry && // BASHO Flap loadout also replaces parry (absent → falsy for non-BASHO)
         !player.isFlapping &&
         !player.isSlideJumping && // Airborne slide-jump — no parry mid-air
         !player.isGrabBreaking && // Block while grab break is active
@@ -3978,6 +3843,13 @@ function tick(delta) {
         );
       }
     });
+
+    // HARD RULE: after all movement / side-switches this tick, face each other
+    // unless a purposeful lock is active (attack, dodge hop, ropes, throw, etc.).
+    // (Player loop is outside the early hitstop pair-block, so resolve from room.)
+    if (room.players.length === 2 && !isRoomInHitstop(room)) {
+      enforcePairFacing(room.players[0], room.players[1]);
+    }
 
     // ROOM-LEVEL SAFETY: Check game reset outside player loop
     // This ensures reset is checked even if all players return early

@@ -1,7 +1,13 @@
 {
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "test": "node --test 'test/**/*.test.js'",
+    "test:clinch": "node --test 'test/clinch/**/*.test.js'",
+    "test:clinch:network": "node --test 'test/clinch/integration/network-timestamp.test.js' 'test/clinch/unit/timestamp-sanitize.test.js'",
+    "test:clinch:watch": "node --test --watch 'test/clinch/**/*.test.js'",
+    "test:clinch:coverage": "node --test --experimental-test-coverage --test-coverage-include='grabActionSystem.js' --test-coverage-include='gameUtils.js' --test-coverage-include='socketHandlers.js' --test-coverage-include='grabMechanics.js' 'test/clinch/**/*.test.js'",
+    "test:clinch:plant-cancel-legacy": "node scripts/test-drive-plant-cancel-defense.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

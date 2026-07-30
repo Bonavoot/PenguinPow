@@ -11,7 +11,7 @@
 // player, so PvP / VS CPU never see it (the firewall: `player.bashoDraft?.x ?? neutral`).
 //
 // Flap is intentionally NOT draftable — it lives in the persistent loadout
-// (Defense sidegrade). One effect, one home (§5.4).
+// (Movement sidegrade). One effect, one home (§5.4).
 
 const { POWER_UP_TYPES, POWER_UP_EFFECTS } = require("./constants");
 

@@ -83,6 +83,7 @@ const {
   LOW_KICK_BALANCE_DRAIN_VS_PARRY,
   LOW_KICK_BALANCE_DRAIN_COUNTER,
   FLAP_BODYSLAM_KB_VELOCITY,
+  AIR_STRIKE_HURT_HEIGHT,
   AP_ACTIVE_MS,
   AP_LATE_PARRY_MS,
   SLAP_GRACE_CONFIRM_SLACK_PX,
@@ -136,6 +137,12 @@ const {
   DOHYO_RIGHT_BOUNDARY,
   clearHitFall,
   clearSidestepHitReturn,
+  isSlideJumpFlightImmune,
+  captureAirVerticalVelocity,
+  captureAirHorizontalVelocity,
+  applyAirHitKnockbackBoost,
+  beginAirHitFall,
+  endHitKnockback,
   hasHitAbsorption,
   consumeHitAbsorption,
   schedulePalmThrustVisualEnd,
@@ -326,14 +333,19 @@ function checkCollision(player, otherPlayer, rooms, io) {
     return;
   }
 
-  // Flap: full immunity for the entire airborne flight (liftoff → landing).
-  // Punish the grounded startup telegraph or the landing recovery instead.
-  if (otherPlayer.isFlapping && otherPlayer.flapPhase === "flight") {
+  // Slide-jump / FLAP commitment model: passive flight is immune. S dive and
+  // landing recovery are hittable (parry answers the dive; land is punishable).
+  if (isSlideJumpFlightImmune(otherPlayer)) {
     return;
   }
 
-  // Slide-jump: full immunity while airborne (same role as flap/rope jump).
-  if (otherPlayer.isSlideJumping && otherPlayer.slideJumpPhase === "flight") {
+  // Strikes are horizontal-only. Without a height gate, a high airborne body
+  // still "occupies" ground X and gets floor-hit. Only allow connects when the
+  // victim is actually low enough to anti-air / stuff.
+  if (
+    otherPlayer.y - GROUND_LEVEL > AIR_STRIKE_HURT_HEIGHT &&
+    !(player.isSlideJumping && player.slideJumpPhase === "flight")
+  ) {
     return;
   }
 
@@ -1470,6 +1482,11 @@ function processHit(player, otherPlayer, rooms, io) {
       }
     }
     
+    // Capture air velocity before clearAllActionStates zeros flight channels
+    const airCarryY = captureAirVerticalVelocity(otherPlayer);
+    const airCarryX = captureAirHorizontalVelocity(otherPlayer);
+    const hitFromAir = otherPlayer.y > GROUND_LEVEL;
+
     // CRITICAL: Clear ALL action states - ensures only ONE state at a time
     // TAP-style: clearAllActionStates now preserves charge power when mouse1 is held
     clearAllActionStates(otherPlayer);
@@ -2041,11 +2058,26 @@ function processHit(player, otherPlayer, rooms, io) {
 
     otherPlayer.knockbackVelocity.y = 0;
 
-    if (otherPlayer.y > GROUND_LEVEL) {
-      clearSidestepHitReturn(otherPlayer);
-      otherPlayer.isHitFalling = true;
-      otherPlayer.hitFallStartTime = currentTime;
-      otherPlayer.hitFallStartY = otherPlayer.y;
+    if (hitFromAir || otherPlayer.y > GROUND_LEVEL) {
+      let impactTier = "medium";
+      let hitChargePct = 0;
+      if (isSlapAttack || isLowKick) {
+        impactTier = "light";
+      } else if (player.isPalmThrust) {
+        impactTier = "medium";
+      } else {
+        impactTier = "heavy";
+        hitChargePct = chargePercentage || 0;
+      }
+      applyAirHitKnockbackBoost(otherPlayer, airCarryX);
+      beginAirHitFall(otherPlayer, {
+        now: currentTime,
+        carryVelY: airCarryY,
+        impactTier,
+        chargePercentage: hitChargePct,
+        isCounterHit: !!isCounterHit,
+        isGored: !!isGored,
+      });
     } else if (otherPlayer.y < GROUND_LEVEL) {
       clearHitFall(otherPlayer);
       const depthRatio = (GROUND_LEVEL - otherPlayer.y) / 55;
@@ -2114,17 +2146,7 @@ function processHit(player, otherPlayer, rooms, io) {
     setPlayerTimeout(
       otherPlayer.id,
       () => {
-        if (Math.abs(otherPlayer.knockbackVelocity.x) > 0.01) {
-          otherPlayer.movementVelocity = otherPlayer.knockbackVelocity.x;
-        }
-        otherPlayer.knockbackVelocity.x = 0;
-        otherPlayer.isHit = false;
-        otherPlayer.isSlapKnockback = false;
-        otherPlayer.slapKnockbackCanRingOut = false;
-        otherPlayer.isBurstKnockback = false;
-        otherPlayer.burstKnockbackStartTime = 0;
-        otherPlayer.isChargedKnockback = false;
-        otherPlayer.chargedKnockbackCanRingOut = false;
+        endHitKnockback(otherPlayer);
 
         if (isSlapAttack && SLAP_CHAIN_HIT_GAP_MS > 0) {
           setPlayerTimeout(
@@ -2163,17 +2185,13 @@ function processHit(player, otherPlayer, rooms, io) {
 }
 
 // ── FLAP body-slam ────────────────────────────────────────────────────────
-// The descending flapper is an attacker: dropping onto a grounded opponent
-// deals a burst hit equal to HALF a slap-string finisher (slap3). This is NOT
-// a regular `isAttacking` strike, so it lives outside checkCollision and is
-// polled each tick from the game loop while the flapper is airborne. One
-// connect per flight (flapHitLanded latches it), and only while DESCENDING.
-// Hitbox tuning — kept deliberately modest so the slam isn't oppressive.
-// CONTACT_HEIGHT is the bottom of the slam window raised UP (smaller = the
-// flapper must be nearer the ground to connect). WIDTH_SCALE narrows the
-// left/right reach relative to a full pushbox.
-const FLAP_BODYSLAM_CONTACT_HEIGHT = 60; // Y-offset above ground at which the drop "lands" on a body
-const FLAP_BODYSLAM_WIDTH_SCALE = 0.7;   // Horizontal reach as a fraction of pushbox width
+// Slide-jump / FLAP descending air body (ascent = pushbox pass-through only).
+// Not a regular `isAttacking` strike — polled each tick. One connect per
+// flight (`slideJumpHitLanded`). Grounded defenders can raw-parry it.
+// CONTACT_HEIGHT = max height above ground where the body still overlaps a
+// standing opponent. WIDTH_SCALE narrows left/right vs full pushbox.
+const FLAP_BODYSLAM_CONTACT_HEIGHT = 100;
+const FLAP_BODYSLAM_WIDTH_SCALE = 0.7;
 
 // A grounded defender raw-parrying the flap drop. Mirrors the strike-vs-parry
 // resolution in processHit, but scoped to the flap: the parry ENDS the flight
@@ -2377,27 +2395,22 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
 }
 
 function checkFlapBodySlam(flapper, opponent, rooms, io) {
-  // Descending dive from flap flight OR slide-jump that hasn't connected yet.
-  const isFlapDive =
-    flapper &&
-    flapper.isFlapping &&
-    flapper.flapPhase === "flight" &&
-    flapper.flapVelocityY <= 0 &&
-    !flapper.flapHitLanded;
-  const isSlideJumpDive =
+  // Air body hitbox — DESCENDING flight only (ascent keeps pushbox pass-through
+  // but no offensive hit). S dive forces a plummet so it always qualifies.
+  const descending =
+    (flapper.slideJumpVelocityY ?? 0) <= 0 || !!flapper.slideJumpDiveCommitted;
+  const inAirBodyWindow =
     flapper &&
     flapper.isSlideJumping &&
     flapper.slideJumpPhase === "flight" &&
-    flapper.slideJumpDiveCommitted &&
-    flapper.slideJumpVelocityY <= 0 &&
+    descending &&
     !flapper.slideJumpHitLanded;
 
-  if (!isFlapDive && !isSlideJumpDive) {
+  if (!inAirBodyWindow) {
     return;
   }
 
-  // Contact band: low enough that the body is dropping onto the opponent.
-  // Slide-jump dive uses the SAME band/width as flap — one shared slam feel.
+  // Must overlap a standing body — clear over their head = no hit.
   if (flapper.y - GROUND_LEVEL > FLAP_BODYSLAM_CONTACT_HEIGHT) return;
 
   // Opponent must be a grounded, hittable target. Airborne/immune/dead/locked
@@ -2411,8 +2424,7 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
     opponent.isBeingGrabbed ||
     opponent.isGrabbing ||
     (opponent.isRopeJumping && opponent.ropeJumpPhase === "active") ||
-    (opponent.isFlapping && opponent.flapPhase === "flight") ||
-    (opponent.isSlideJumping && opponent.slideJumpPhase === "flight") ||
+    isSlideJumpFlightImmune(opponent) ||
     (opponent.isSidestepping && !opponent.isSidestepStartup) ||
     !canApplyKnockback(opponent)
   ) {
@@ -2448,14 +2460,9 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   // down. Flight physics keep running — no self pushback / scripted descent.
   // Flapper recovery stays BURST_STUN_MS (neutral slam is still +0); CH/GORED
   // extend victim stun only so the read earns tempo.
-  if (isFlapDive) {
-    flapper.flapHitLanded = true;
-    flapper.flapCharges = 0;
-    flapper.flapHitRecoverDuration = BURST_STUN_MS;
-  } else {
-    flapper.slideJumpHitLanded = true;
-    flapper.slideJumpHitRecoverDuration = BURST_STUN_MS;
-  }
+  flapper.slideJumpHitLanded = true;
+  flapper.flapCharges = 0;
+  flapper.slideJumpHitRecoverDuration = BURST_STUN_MS;
 
   // Knockback away from the flapper (burst model — no DI).
   const knockbackDirection = opponent.x >= flapper.x ? 1 : -1;
@@ -2488,6 +2495,9 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   if (isGored) flapReadMult *= GORED_KB_MULT;
   else if (isCounterHit) flapReadMult *= SLAP_COUNTER_KB_MULT;
 
+  const airCarryY = captureAirVerticalVelocity(opponent);
+  const airCarryX = captureAirHorizontalVelocity(opponent);
+  const hitFromAir = opponent.y > GROUND_LEVEL;
   clearAllActionStates(opponent);
   opponent.isRawParrySuccess = false;
   opponent.isPerfectRawParrySuccess = false;
@@ -2502,6 +2512,19 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
     knockbackDirection * FLAP_BODYSLAM_KB_VELOCITY * flapKbScale * flapReadMult;
   opponent.knockbackVelocity.y = 0;
   opponent.movementVelocity = 0;
+
+  if (hitFromAir) {
+    applyAirHitKnockbackBoost(opponent, airCarryX);
+    beginAirHitFall(opponent, {
+      now: currentTime,
+      carryVelY: airCarryY,
+      impactTier: "heavy",
+      isCounterHit: !!isCounterHit,
+      isGored: !!isGored,
+    });
+  } else {
+    opponent.y = GROUND_LEVEL;
+  }
 
   // ROPE RESISTANCE (same treatment as the slap/palm): the slam may only send the
   // victim OUT of the ring if they were already within SLAP_KILL_RANGE of the
@@ -2578,17 +2601,11 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
     );
   }
 
-  // Burst stun → hand the residual velocity to the ice coast when it ends.
+  // Burst stun → hand residual KB to ice coast (or keep it if still air-dumping).
   setPlayerTimeout(
     opponent.id,
     () => {
-      if (Math.abs(opponent.knockbackVelocity.x) > 0.01) {
-        opponent.movementVelocity = opponent.knockbackVelocity.x;
-      }
-      opponent.knockbackVelocity.x = 0;
-      opponent.isHit = false;
-      opponent.isBurstKnockback = false;
-      opponent.burstKnockbackStartTime = 0;
+      endHitKnockback(opponent);
       opponent.isAlreadyHit = false;
     },
     stunDuration,

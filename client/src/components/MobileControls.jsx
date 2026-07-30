@@ -1,6 +1,11 @@
 import { useState, useEffect, useContext, useCallback, useRef } from "react";
 import { SocketContext } from "../SocketContext";
 import PropTypes from "prop-types";
+import {
+  getServerOffset,
+  isServerClockSynced,
+  getEstimatedRtt,
+} from "../lib/serverClock";
 import "./MobileControls.css";
 
 const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
@@ -53,7 +58,14 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
         };
         // Constrained packet — no events array (grab-counter inputs are
         // slow holds and the server doesn't replay events in this branch).
-        socket.emit("fighter_action", { id: socket.id, keys: clinchOnly });
+        const clientSynced = isServerClockSynced();
+        socket.emit("fighter_action", {
+          id: socket.id,
+          keys: clinchOnly,
+          clientSynced,
+          clientOffset: clientSynced ? getServerOffset() : 0,
+          clientRtt: clientSynced ? getEstimatedRtt() : 0,
+        });
         return;
       }
 
@@ -69,7 +81,15 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
         }
       }
       lastEmittedKeysRef.current = { ...newKeyState };
-      socket.emit("fighter_action", { id: socket.id, keys: newKeyState, events });
+      const clientSynced = isServerClockSynced();
+      socket.emit("fighter_action", {
+        id: socket.id,
+        keys: newKeyState,
+        events,
+        clientSynced,
+        clientOffset: clientSynced ? getServerOffset() : 0,
+        clientRtt: clientSynced ? getEstimatedRtt() : 0,
+      });
     },
     [socket, isInputBlocked, currentPlayer?.isThrowingSnowball, currentPlayer?.isBeingGrabbed]
   );

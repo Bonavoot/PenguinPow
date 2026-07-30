@@ -1361,7 +1361,15 @@ function CustomizePage({ onBack, onOpenHatTuner }) {
             <FighterFigure>
               <FloorShadow />
               <FighterSpriteStack $ready={!isLoading}>
-                <FighterImg src={previewSrc} alt="Your wrestler" />
+                <FighterImg
+                  src={previewSrc}
+                  alt="Your wrestler"
+                  onError={(e) => {
+                    if (e.currentTarget.src !== pumo) {
+                      e.currentTarget.src = pumo;
+                    }
+                  }}
+                />
               </FighterSpriteStack>
             </FighterFigure>
           </Portrait>

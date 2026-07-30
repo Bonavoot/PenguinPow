@@ -23,6 +23,12 @@ const {
   MAP_RIGHT_BOUNDARY,
   clearHitFall,
   clearSidestepHitReturn,
+  isSlideJumpFlightImmune,
+  captureAirVerticalVelocity,
+  captureAirHorizontalVelocity,
+  applyAirHitKnockbackBoost,
+  beginAirHitFall,
+  endHitKnockback,
   hasHitAbsorption,
   consumeHitAbsorption,
 } = require("./gameUtils");
@@ -69,7 +75,7 @@ function updateProjectiles(room, io, delta) {
         targetPlayer &&
         !targetPlayer.isDodging &&
         !targetPlayer.isRawParrying &&
-        !(targetPlayer.isFlapping && targetPlayer.flapPhase === "flight") &&
+        !isSlideJumpFlightImmune(targetPlayer) &&
         !snowball.hasHit
       ) {
         const distance = sweptHorizDistance(snowballPrevX, snowball.x, targetPlayer.x);
@@ -155,14 +161,20 @@ function updateProjectiles(room, io, delta) {
             }
           }
           
+          // Capture air velocity before clearAllActionStates zeros flight channels
+          const airCarryY = captureAirVerticalVelocity(targetPlayer);
+          const airCarryX = captureAirHorizontalVelocity(targetPlayer);
+          const hitFromAir = targetPlayer.y > GROUND_LEVEL;
+
           // CRITICAL: Clear ALL action states before setting isHit
           clearAllActionStates(targetPlayer);
 
-          if (targetPlayer.y > GROUND_LEVEL) {
-            clearSidestepHitReturn(targetPlayer);
-            targetPlayer.isHitFalling = true;
-            targetPlayer.hitFallStartTime = simNow(room);
-            targetPlayer.hitFallStartY = targetPlayer.y;
+          if (hitFromAir) {
+            beginAirHitFall(targetPlayer, {
+              now: simNow(room),
+              carryVelY: airCarryY,
+              impactTier: "medium",
+            });
           } else if (targetPlayer.y < GROUND_LEVEL) {
             clearHitFall(targetPlayer);
             const depthRatio = (GROUND_LEVEL - targetPlayer.y) / 55;
@@ -203,6 +215,7 @@ function updateProjectiles(room, io, delta) {
 
             targetPlayer.knockbackVelocity.x = knockbackDirection * 1.55;
             targetPlayer.movementVelocity = 0;
+            if (hitFromAir) applyAirHitKnockbackBoost(targetPlayer, airCarryX);
 
             setKnockbackImmunity(targetPlayer);
           }
@@ -210,16 +223,8 @@ function updateProjectiles(room, io, delta) {
           setPlayerTimeout(
             targetPlayer.id,
             () => {
-              if (Math.abs(targetPlayer.knockbackVelocity.x) > 0.01) {
-                targetPlayer.movementVelocity = targetPlayer.knockbackVelocity.x;
-              }
-              targetPlayer.knockbackVelocity.x = 0;
-              targetPlayer.isHit = false;
+              endHitKnockback(targetPlayer);
               targetPlayer.isAlreadyHit = false;
-              targetPlayer.isSlapKnockback = false;
-              targetPlayer.slapKnockbackCanRingOut = false;
-              targetPlayer.isBurstKnockback = false;
-              targetPlayer.burstKnockbackStartTime = 0;
             },
             300
           );
@@ -423,7 +428,7 @@ function updateProjectiles(room, io, delta) {
         opponent &&
         !opponent.isDodging &&
         !opponent.isRawParrying &&
-        !(opponent.isFlapping && opponent.flapPhase === "flight") &&
+        !isSlideJumpFlightImmune(opponent) &&
         !clone.hasHit &&
         (!isFlanker || opponent.isSidestepping)
       ) {
@@ -507,14 +512,19 @@ function updateProjectiles(room, io, delta) {
             }
           }
           
+          const airCarryY = captureAirVerticalVelocity(opponent);
+          const airCarryX = captureAirHorizontalVelocity(opponent);
+          const hitFromAir = opponent.y > GROUND_LEVEL;
+
           // CRITICAL: Clear ALL action states before setting isHit
           clearAllActionStates(opponent);
 
-          if (opponent.y > GROUND_LEVEL) {
-            clearSidestepHitReturn(opponent);
-            opponent.isHitFalling = true;
-            opponent.hitFallStartTime = simNow(room);
-            opponent.hitFallStartY = opponent.y;
+          if (hitFromAir) {
+            beginAirHitFall(opponent, {
+              now: simNow(room),
+              carryVelY: airCarryY,
+              impactTier: "medium",
+            });
           } else if (opponent.y < GROUND_LEVEL) {
             clearHitFall(opponent);
             const depthRatio = (GROUND_LEVEL - opponent.y) / 55;
@@ -552,6 +562,7 @@ function updateProjectiles(room, io, delta) {
 
             opponent.knockbackVelocity.x = knockbackDirection * 1.6;
             opponent.movementVelocity = 0;
+            if (hitFromAir) applyAirHitKnockbackBoost(opponent, airCarryX);
 
             setKnockbackImmunity(opponent);
           }
@@ -559,16 +570,8 @@ function updateProjectiles(room, io, delta) {
           setPlayerTimeout(
             opponent.id,
             () => {
-              if (Math.abs(opponent.knockbackVelocity.x) > 0.01) {
-                opponent.movementVelocity = opponent.knockbackVelocity.x;
-              }
-              opponent.knockbackVelocity.x = 0;
-              opponent.isHit = false;
+              endHitKnockback(opponent);
               opponent.isAlreadyHit = false;
-              opponent.isSlapKnockback = false;
-              opponent.slapKnockbackCanRingOut = false;
-              opponent.isBurstKnockback = false;
-              opponent.burstKnockbackStartTime = 0;
             },
             200
           );

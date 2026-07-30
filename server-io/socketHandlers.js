@@ -4,7 +4,6 @@ const {
   HITBOX_DISTANCE_VALUE, DOHYO_FALL_DEPTH,
   ICE_SLIDE_REVERSE_BUFFER_MS,
   ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST, ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_CENTER_FRACTION,
-  FLAP_STARTUP_MS, FLAP_CHARGES, FLAP_IMPULSE, FLAP_FLAP_H_IMPULSE, FLAP_STAMINA_COST, FLAP_CHARGE_COOLDOWN_MS,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS,
   SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, RAW_PARRY_STAMINA_COST, RAW_PARRY_COOLDOWN_MS,
@@ -13,6 +12,7 @@ const {
   LOW_KICK_ENABLED,
   GRAB_BREAK_REACTION_LOCK_MS,
   CLINCH_THROW_CHORD_WINDOW_MS,
+  INPUT_CLOCK_OFFSET_MAX_DELTA_MS,
 } = require("./constants");
 
 const {
@@ -29,13 +29,14 @@ const {
   canPlayerCharge,
   canPlayerUseAction,
   startCharging,
-  beginFlapStartup,
   gameNow,
   simNowForPlayer,
   logVerbInitiation,
   lagCompensatedParryStart,
   lagCompensatedClinchInputStart,
   lagCompensatedClinchBraceStart,
+  updatePlayerNetEstimate,
+  clampTrustedPressGameTime,
   canArmAttackParry,
   armAttackParry,
   wantsMatadorChord,
@@ -197,15 +198,22 @@ function detectEdges(prevKeys, events, newKeys) {
 }
 
 // Scan a packet's edge events for the most recent DOWN edge of `key` and return
-// its timestamp expressed on the server's monotonic gameNow() clock, using the
-// client-supplied clock offset (serverGameNow - clientPerfNow). Returns 0 when
-// the clock isn't synced, the offset is missing/non-finite, or there's no such
-// event (e.g. snapshot-only packet) — callers treat 0 as "no lag-comp data,
-// fall back to arrival time."
-function pressGameTimeFromEvents(data, key) {
-  if (!data || data.clientSynced !== true) return 0;
-  const offset = data.clientOffset;
+// a TRUSTED timestamp on the server's monotonic gameNow() clock.
+// Reconstructs via clock offset, then clamps to receipt/RTT/monotonic bounds.
+// Returns 0 when unsynced / missing — callers fall back to arrival/sim time.
+function pressGameTimeFromEvents(player, data, key) {
+  if (!player || !data || data.clientSynced !== true) return 0;
+  updatePlayerNetEstimate(player, data);
+  let offset = data.clientOffset;
   if (typeof offset !== "number" || !Number.isFinite(offset)) return 0;
+  // If the packet offset jumps far from the server EMA, prefer the EMA so a
+  // spoofed offset can't invent an earlier press than the connection's clock.
+  if (
+    typeof player.netClockOffsetMs === "number" &&
+    Math.abs(offset - player.netClockOffsetMs) > INPUT_CLOCK_OFFSET_MAX_DELTA_MS
+  ) {
+    offset = player.netClockOffsetMs;
+  }
   const events = data.events;
   if (!Array.isArray(events) || events.length === 0) return 0;
   let latestT = 0;
@@ -216,7 +224,9 @@ function pressGameTimeFromEvents(data, key) {
       if (ev.t > latestT) latestT = ev.t;
     }
   }
-  return latestT ? latestT + offset : 0;
+  if (!latestT) return 0;
+  const receipt = data._receiptGameNow || gameNow();
+  return clampTrustedPressGameTime(player, latestT + offset, receipt);
 }
 
 // On a rising space edge, record the player's true press moment (in server
@@ -224,8 +234,11 @@ function pressGameTimeFromEvents(data, key) {
 // toward it. See lagCompensatedParryStart() in gameUtils for the rationale.
 function recordParryPressTime(player, data, rising) {
   if (!rising || !rising[" "]) return;
-  const pressGameTime = pressGameTimeFromEvents(data, " ");
-  if (pressGameTime) player.rawParryPressGameTime = pressGameTime;
+  const pressGameTime = pressGameTimeFromEvents(player, data, " ");
+  if (pressGameTime) {
+    player.rawParryPressGameTime = pressGameTime;
+    player.rawParryPressReceiptGameNow = data._receiptGameNow || gameNow();
+  }
 }
 
 // ============================================================
@@ -351,29 +364,14 @@ function processInputPacket(room, player, data, io, rooms) {
       } else {
         // Non-slap states: use generic inputBuffer
         if (rising[" "]) {
-          // Flap replaces raw parry on Space (the grab/clinch break has its own
-          // handler and is unaffected). Active when the FLAP power-up is held
-          // OR the BASHO human picked the Flap DEFENSE loadout sidegrade
-          // (player.loadout is absent for every non-BASHO fighter → falsy).
-          // Don't buffer a liftoff while already airborne — the air-flap
-          // re-press path owns that.
-          if (
-            player.activePowerUp === POWER_UP_TYPES.FLAP ||
-            player.loadout?.flapReplacesParry
-          ) {
-            if (!player.isFlapping) {
-              player.inputBuffer = { type: "flap", timestamp: simNowForPlayer(player) };
-            }
-          } else {
-            const fwdK = player.facing === -1 ? "d" : "a";
-            const backK = player.facing === -1 ? "a" : "d";
-            const wantsMatador =
-              !!data.keys[backK] && !data.keys[fwdK];
-            player.inputBuffer = {
-              type: wantsMatador ? "matador" : "rawParry",
-              timestamp: simNowForPlayer(player),
-            };
-          }
+          const fwdK = player.facing === -1 ? "d" : "a";
+          const backK = player.facing === -1 ? "a" : "d";
+          const wantsMatador =
+            !!data.keys[backK] && !data.keys[fwdK];
+          player.inputBuffer = {
+            type: wantsMatador ? "matador" : "rawParry",
+            timestamp: simNowForPlayer(player),
+          };
         } else if (rising.shift && data.keys.s && !data.keys.mouse2) {
           player.inputBuffer = { type: "sidestep", timestamp: simNowForPlayer(player) };
         } else if (rising.shift && !data.keys.mouse2) {
@@ -451,10 +449,9 @@ function processInputPacket(room, player, data, io, rooms) {
     ) {
       return true;
     }
-    // Block all other actions while flapping (startup, flight, landing). The
-    // air-flap re-press is handled on its own Space path, not through here, so
-    // this only stops slap/grab/dodge/charge/etc. from firing mid-flight.
-    if (player.isFlapping) {
+    // Block other actions while airborne on slide-jump (or legacy flap state).
+    // Air-flap charges are spent in the slide-jump physics loop via W.
+    if (player.isFlapping || player.isSlideJumping) {
       return true;
     }
     // Block all actions when at the ropes
@@ -532,22 +529,10 @@ function processInputPacket(room, player, data, io, rooms) {
     // The game loop processes the buffer on the first actionable frame.
     if (shouldBlockAction()) {
       if (player.spaceJustPressed) {
-        // Don't buffer a flap liftoff while already airborne (air-flap path
-        // handles mid-flight re-presses). Flap is active via the power-up OR
-        // the BASHO Flap loadout sidegrade (loadout absent → falsy elsewhere).
-        if (
-          player.activePowerUp === POWER_UP_TYPES.FLAP ||
-          player.loadout?.flapReplacesParry
-        ) {
-          if (!player.isFlapping) {
-            player.inputBuffer = { type: "flap", timestamp: simNowForPlayer(player) };
-          }
-        } else {
-          player.inputBuffer = {
-            type: wantsMatadorChord(player) ? "matador" : "rawParry",
-            timestamp: simNowForPlayer(player),
-          };
-        }
+        player.inputBuffer = {
+          type: wantsMatadorChord(player) ? "matador" : "rawParry",
+          timestamp: simNowForPlayer(player),
+        };
       } else if (player.shiftJustPressed && data.keys.s && !data.keys.mouse2) {
         player.inputBuffer = { type: "sidestep", timestamp: simNowForPlayer(player) };
       } else if (player.shiftJustPressed && !data.keys.mouse2) {
@@ -584,86 +569,12 @@ function processInputPacket(room, player, data, io, rooms) {
     // ============================================
   }
 
-  // SPACE PRESS with FLAP power-up: take flight instead of raw parry.
-  // - On the ground → begin the grounded liftoff startup (interruptible).
-  // - Already airborne (flight phase) → spend a charge for another wing-beat.
-  // The grab/clinch break has its own Space handler (gated on inClinch/hasGrip)
-  // and is intentionally left intact — Flap only replaces the raw parry.
-  if (
-    player.spaceJustPressed &&
-    (player.activePowerUp === POWER_UP_TYPES.FLAP ||
-      player.loadout?.flapReplacesParry)
-  ) {
-    const nowSim = simNowForPlayer(player);
-    if (player.isFlapping && player.flapPhase === "flight") {
-      // Air flap: spend a charge for another upward beat (throttled so the
-      // wing-beat animation has room to read — see FLAP_CHARGE_COOLDOWN_MS).
-      if (
-        player.flapCharges > 0 &&
-        !player.flapHitLanded &&
-        !player.flapDiveCommitted &&
-        nowSim - (player.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS
-      ) {
-        player.flapCharges -= 1;
-        player.flapVelocityY = FLAP_IMPULSE;
-        // Directional flap = diagonal lunge; neutral flap = pure vertical beat.
-        if (player.keys.d && !player.keys.a) {
-          player.flapVelocityX = FLAP_FLAP_H_IMPULSE;
-          player.facing = -1;
-          player.flapBeatHDir = 1;
-        } else if (player.keys.a && !player.keys.d) {
-          player.flapVelocityX = -FLAP_FLAP_H_IMPULSE;
-          player.facing = 1;
-          player.flapBeatHDir = -1;
-        } else {
-          player.flapBeatHDir = 0;
-        }
-        player.flapWingBeatTime = nowSim;
-        player.lastFlapChargeTime = nowSim;
-      }
-    } else if (
-      !player.isFlapping &&
-      !player.isSlideJumping && // No flap liftoff mid slide-jump (air flaps only with flap power-up while flapping)
-      !player.isIceSliding &&
-      !shouldBlockAction() &&
-      !player.isRawParrying &&
-      !player.isMatadorParrying &&
-      !player.isMatadorWhiffRecovering &&
-      !player.isRawParryStun &&
-      !player.grabBreakSpaceConsumed &&
-      !player.isSidestepping &&
-      !player.isRopeJumping &&
-      !player.isGrabbing &&
-      !player.isBeingGrabbed &&
-      !player.isGrabStartup &&
-      !player.isGrabbingMovement &&
-      !player.isWhiffingGrab &&
-      !player.isGrabClashing &&
-      !player.isThrowing &&
-      !player.isBeingThrown &&
-      !player.isAttacking &&
-      !player.isHit &&
-      !player.isThrowingSnowball &&
-      !player.isSpawningPumoArmy &&
-      !player.canMoveToReady
-    ) {
-      // Liftoff if affordable; otherwise surface the "out of stamina" cue and
-      // do nothing (no fallback to raw parry — Flap fully replaces it).
-      const lifted = beginFlapStartup(player, nowSim);
-      if (!lifted) {
-        emitStaminaBlocked(player, "flap", io);
-      }
-    }
-  }
-
   // SPACE PRESS (rising edge):
   //   BACK+SPACE → MATADOR (grab-line tap parry; never becomes GUARD)
   //   SPACE alone → ATTACK PARRY (tap read → hold settles into GUARD)
   // PRIMARY human path; lag-compensated. Shared apSpaceConsumed latch.
   if (
     player.spaceJustPressed &&
-    player.activePowerUp !== POWER_UP_TYPES.FLAP &&
-    !player.loadout?.flapReplacesParry && // BASHO Flap loadout also suppresses parry
     !shouldBlockAction() &&
     !player.isRawParryStun &&
     !player.grabBreakSpaceConsumed &&
@@ -1249,7 +1160,7 @@ function processInputPacket(room, player, data, io, rooms) {
   }
 
   // === CLINCH JOLT: Mouse1 while in clinch with grip ===
-  // ARM CLAMP: clamped victims cannot jolt during the punish burst.
+  // ARM CLAMP: offense locked — clamped victims cannot jolt (Plant still ok).
   // Reaction lock: same fresh-press floor as grab break — slap-mash Mouse1
   // edges that land right after grip connect are discarded (no latch).
   if (
@@ -1272,12 +1183,13 @@ function processInputPacket(room, player, data, io, rooms) {
   // === CLINCH BREAK: Spacebar while in mutual clinch (both have grip on connect) ===
   // Defensive escape — costs heavy stamina (no posture), soft-gated
   // (under-budget breakers self-gas). Does NOT require holding M2.
-  // ARM CLAMP: clamped victims cannot break during the punish burst.
+  // ARM CLAMP: offense locked — clamped victims cannot break (Plant still ok).
   // Reaction lock: Space during the first window after grip connect is ignored
   // (no latch) so late open-game parries don't become breaks.
   // GASSED: hard-locked — surface the same "OUT OF STAMINA" cue as dodge/flap.
-  // Break is allowed during opponent technique startup (expensive escape).
-  // Blocked while Open / own technique / jolt recovery.
+  // Break interrupts opposing technique startup (throw/pull) — expensive escape.
+  // Blocked only by own committed throw / Open / jolt / already-breaking.
+  // Gates must stay in sync with grabActionSystem break resolution.
   if (
     player.spaceJustPressed && player.hasGrip && player.inClinch &&
     !player.isArmClamped &&
@@ -1325,8 +1237,11 @@ function processInputPacket(room, player, data, io, rooms) {
       const towardHeld = !!player.keys[towardKey];
       if (plantEdge && !towardHeld) {
         const completingKey = awayEdge ? awayKey : "s";
-        const pressGameTime = pressGameTimeFromEvents(data, completingKey);
-        if (pressGameTime) player.clinchBracePressGameTime = pressGameTime;
+        const pressGameTime = pressGameTimeFromEvents(player, data, completingKey);
+        if (pressGameTime) {
+          player.clinchBracePressGameTime = pressGameTime;
+          player.clinchBracePressReceiptGameNow = data._receiptGameNow || gameNow();
+        }
         player.clinchBraceSimTime = lagCompensatedClinchBraceStart(
           player,
           simNowForPlayer(player)
@@ -1342,6 +1257,11 @@ function processInputPacket(room, player, data, io, rooms) {
   // held or was tapped within the window. Holding M2 alone is still belt pose.
   // Tradeoff: holding away (Plant) + tapping M2 will pull — plant with S, or
   // keep M2 held, if you only want belt arms.
+  //
+  // Grab-initiate M2 must NOT feed the throw chord. A tap that starts a grab
+  // is grab-only; instant throw on connect requires M2 still held when W/away
+  // edges, or a fresh M2 retap in clinch with the dir input.
+  // ARM CLAMP: offense locked — clamped victims cannot throw/pull (Plant still ok).
   if (player.wJustPressed) {
     player.clinchWTapTime = simNowForPlayer(player);
   }
@@ -1353,7 +1273,12 @@ function processInputPacket(room, player, data, io, rooms) {
       if (awayJustPressed) player.clinchAwayTapTime = simNowForPlayer(player);
     }
   }
-  if (player.mouse2JustPressed) {
+  // Only clinch M2 presses arm the throw buffer — never grab-startup taps.
+  if (
+    player.mouse2JustPressed &&
+    player.hasGrip &&
+    player.inClinch
+  ) {
     player.clinchMouse2BufferTime = simNowForPlayer(player);
   }
 
@@ -1405,8 +1330,11 @@ function processInputPacket(room, player, data, io, rooms) {
       }
 
       if (request) {
-        const pressGameTime = pressGameTimeFromEvents(data, completingKey);
-        if (pressGameTime) player.clinchTechniquePressGameTime = pressGameTime;
+        const pressGameTime = pressGameTimeFromEvents(player, data, completingKey);
+        if (pressGameTime) {
+          player.clinchTechniquePressGameTime = pressGameTime;
+          player.clinchTechniquePressReceiptGameNow = data._receiptGameNow || gameNow();
+        }
 
         player.clinchThrowRequest = request;
         player.clinchThrowRequestTime = lagCompensatedClinchInputStart(player, nowSim);
@@ -2179,6 +2107,12 @@ function registerSocketHandlers(socket, io, rooms, context) {
     // (processInputPacket above). Bounded: under pathological flooding or a
     // long freeze, drop the OLDEST packets; the newest key snapshot must
     // survive so held-key state can't get stuck.
+    // Stamp receipt on the monotonic clock so lag-comp ages against arrival,
+    // not drain-after-hitstop (queue wait must not inflate backdate).
+    if (data && typeof data === "object") {
+      data._receiptGameNow = gameNow();
+      updatePlayerNetEstimate(player, data);
+    }
     if (!player.inputQueue) player.inputQueue = [];
     if (player.inputQueue.length >= MAX_INPUT_QUEUE_PACKETS) {
       player.inputQueue.shift();
