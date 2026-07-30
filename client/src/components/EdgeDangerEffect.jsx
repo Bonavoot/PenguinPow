@@ -1,6 +1,7 @@
 import { memo } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
+import { FONT_DISPLAY, TEXT_SHADOW_COMBAT } from "./menuTheme";
 
 // Dramatic pulsing and scaling for the exclamation mark
 const panicPulse = keyframes`
@@ -59,19 +60,14 @@ const EffectContainer = styled.div.attrs((props) => ({
 
 // Large exclamation mark
 const ExclamationMark = styled.div`
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_DISPLAY};
   font-size: 2.76cqw;
-  font-weight: 900;
+  font-weight: 400;
   color: #ff1a1a;
   -webkit-text-stroke: 3px #000;
   paint-order: stroke fill;
-  text-shadow: 
-    -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000,
-    2px 2px 0 #1a0808,
-    4px 4px 0 rgba(18, 8, 8, 0.6),
-    0 2px 6px rgba(0, 0, 0, 0.7);
+  text-shadow: ${TEXT_SHADOW_COMBAT};
   animation: ${panicPulse} 0.5s ease-in-out infinite;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6));
   line-height: 0.8;
   margin-bottom: -8px;
 `;

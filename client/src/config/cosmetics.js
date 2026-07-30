@@ -11,6 +11,7 @@ import topHatIcon from "../assets/cosmetics/top-hat.png";
 import crownIcon from "../assets/cosmetics/crown.png";
 import haloIcon from "../assets/cosmetics/halo.png";
 import plungerIcon from "../assets/cosmetics/plunger.png";
+import ponytailIcon from "../assets/cosmetics/ponytail-icon.png";
 
 import pumoIdle from "../assets/pumo-idle.png";
 import mainMenuPumo from "../assets/main-menu-pumo.png";
@@ -162,10 +163,41 @@ import plungerAttack from "../assets/cosmetics/overlays/plunger-attack.png";
 import plungerDodging from "../assets/cosmetics/overlays/plunger-dodging.png";
 import plungerSliding from "../assets/cosmetics/overlays/plunger-sliding.png";
 
+import ponytailPumoIdle from "../assets/cosmetics/overlays/ponytail-pumo-idle.png";
+import ponytailMainMenuPumo from "../assets/cosmetics/overlays/ponytail-main-menu-pumo.png";
+import ponytailPumoTachiai from "../assets/cosmetics/overlays/ponytail-pumo-tachiai-position.png";
+import ponytailPumoReady from "../assets/cosmetics/overlays/ponytail-pumo-ready-position.png";
+import ponytailGrabbing from "../assets/cosmetics/overlays/ponytail-grabbing.png";
+import ponytailClinchPlanting from "../assets/cosmetics/overlays/ponytail-clinch-planting.png";
+import ponytailAttemptingGrabThrow from "../assets/cosmetics/overlays/ponytail-attempting-grab-throw.png";
+import ponytailAttemptingPull from "../assets/cosmetics/overlays/ponytail-is-attempting-pull.png";
+import ponytailSlapAttack1 from "../assets/cosmetics/overlays/ponytail-slapAttack1.png";
+import ponytailSlapAttack2 from "../assets/cosmetics/overlays/ponytail-slapAttack2.png";
+import ponytailSlap1Blur from "../assets/cosmetics/overlays/ponytail-slap-attack-1-blur-frame.png";
+import ponytailSlap1Hit from "../assets/cosmetics/overlays/ponytail-slap-attack-1-hit-frame.png";
+import ponytailSlap2Blur from "../assets/cosmetics/overlays/ponytail-slap-attack-2-blur-frame.png";
+import ponytailSlap2Hit from "../assets/cosmetics/overlays/ponytail-slap-attack-2-hit-frame.png";
+import ponytailPalmThrust from "../assets/cosmetics/overlays/ponytail-palm-thrust.png";
+import ponytailPalmStartup from "../assets/cosmetics/overlays/ponytail-palm-thrust-startup.png";
+import ponytailPalmSmear from "../assets/cosmetics/overlays/ponytail-palm-thrust-smear.png";
+import ponytailBlocking from "../assets/cosmetics/overlays/ponytail-blocking.png";
+import ponytailBlockParry from "../assets/cosmetics/overlays/ponytail-block-parry.png";
+import ponytailRawParrySuccessFrame1 from "../assets/cosmetics/overlays/ponytail-raw-parry-success-frame-1.png";
+import ponytailRawParrySuccessFrame2 from "../assets/cosmetics/overlays/ponytail-raw-parry-success-frame-2.png";
+import ponytailRawParrySuccessFrame3 from "../assets/cosmetics/overlays/ponytail-raw-parry-success-frame-3.png";
+import ponytailFlap1 from "../assets/cosmetics/overlays/ponytail-pumo-flap-1.png";
+import ponytailFlap2 from "../assets/cosmetics/overlays/ponytail-pumo-flap-2.png";
+import ponytailRecovering from "../assets/cosmetics/overlays/ponytail-recovering.png";
+import ponytailCharging from "../assets/cosmetics/overlays/ponytail-charging.png";
+import ponytailAttack from "../assets/cosmetics/overlays/ponytail-attack.png";
+import ponytailDodging from "../assets/cosmetics/overlays/ponytail-dodging.png";
+import ponytailSliding from "../assets/cosmetics/overlays/ponytail-sliding.png";
+
 export const GEAR_TOP_HAT = "top_hat";
 export const GEAR_CROWN = "crown";
 export const GEAR_HALO = "halo";
 export const GEAR_PLUNGER = "plunger";
+export const GEAR_PONYTAIL = "ponytail";
 
 /**
  * Head / Topper catalog — hats, hair, and anything that sits on the
@@ -201,6 +233,15 @@ export const GEAR_CATALOG = [
     description: "Industrial-strength headgear. Clogged pipes fear him.",
     /** Catalog tile: tip sideways so the tall handle fits the square well. */
     iconTransform: "rotate(48deg) scale(1.05)",
+  },
+  {
+    id: GEAR_PONYTAIL,
+    name: "Ponytail",
+    slot: "head",
+    icon: ponytailIcon,
+    description: "High blonde pony. Hair tie matches your mawashi.",
+    /** Draw behind the body so the head occludes the hair root. */
+    underBody: true,
   },
 ];
 
@@ -376,11 +417,44 @@ const PLUNGER_BY_STEM = {
   sliding: plungerSliding,
 };
 
+const PONYTAIL_BY_STEM = {
+  "pumo-idle": ponytailPumoIdle,
+  "main-menu-pumo": ponytailMainMenuPumo,
+  "pumo-tachiai-position": ponytailPumoTachiai,
+  "pumo-ready-position": ponytailPumoReady,
+  grabbing: ponytailGrabbing,
+  "clinch-planting": ponytailClinchPlanting,
+  "attempting-grab-throw": ponytailAttemptingGrabThrow,
+  "is-attempting-pull": ponytailAttemptingPull,
+  slapAttack1: ponytailSlapAttack1,
+  slapAttack2: ponytailSlapAttack2,
+  "slap-attack-1-blur-frame": ponytailSlap1Blur,
+  "slap-attack-1-hit-frame": ponytailSlap1Hit,
+  "slap-attack-2-blur-frame": ponytailSlap2Blur,
+  "slap-attack-2-hit-frame": ponytailSlap2Hit,
+  "palm-thrust": ponytailPalmThrust,
+  "palm-thrust-startup": ponytailPalmStartup,
+  "palm-thrust-smear": ponytailPalmSmear,
+  blocking: ponytailBlocking,
+  "block-parry": ponytailBlockParry,
+  "raw-parry-success-frame-1": ponytailRawParrySuccessFrame1,
+  "raw-parry-success-frame-2": ponytailRawParrySuccessFrame2,
+  "raw-parry-success-frame-3": ponytailRawParrySuccessFrame3,
+  "pumo-flap-1": ponytailFlap1,
+  "pumo-flap-2": ponytailFlap2,
+  recovering: ponytailRecovering,
+  charging: ponytailCharging,
+  attack: ponytailAttack,
+  dodging: ponytailDodging,
+  sliding: ponytailSliding,
+};
+
 const OVERLAYS_BY_GEAR = {
   [GEAR_TOP_HAT]: TOP_HAT_BY_STEM,
   [GEAR_CROWN]: CROWN_BY_STEM,
   [GEAR_HALO]: HALO_BY_STEM,
   [GEAR_PLUNGER]: PLUNGER_BY_STEM,
+  [GEAR_PONYTAIL]: PONYTAIL_BY_STEM,
 };
 
 const STEM_ORDER = Object.keys(TOP_HAT_BY_STEM);
@@ -399,6 +473,7 @@ const OVERLAY_SRC_BY_GEAR = {
   [GEAR_CROWN]: mapFromStemTable(CROWN_BY_STEM),
   [GEAR_HALO]: mapFromStemTable(HALO_BY_STEM),
   [GEAR_PLUNGER]: mapFromStemTable(PLUNGER_BY_STEM),
+  [GEAR_PONYTAIL]: mapFromStemTable(PONYTAIL_BY_STEM),
 };
 
 /** Top-hat map kept for preload / backward compat. */
@@ -410,6 +485,7 @@ export const ALL_HEAD_OVERLAYS = [
   ...Object.values(CROWN_BY_STEM),
   ...Object.values(HALO_BY_STEM),
   ...Object.values(PLUNGER_BY_STEM),
+  ...Object.values(PONYTAIL_BY_STEM),
 ];
 
 /** Stem fallback tables keyed by gear id. */
@@ -425,6 +501,11 @@ export function getIdleHatOverlay(gearId) {
 
 export function getGearById(id) {
   return GEAR_CATALOG.find((g) => g.id === id) || null;
+}
+
+/** True when this head gear's overlay contains mawashi-blue to retint. */
+export function headGearRecolorsWithMawashi(gearId) {
+  return !!getGearById(gearId)?.recolorWithMawashi;
 }
 
 export function outfitHasGear(outfitOrGearIds, gearId) {

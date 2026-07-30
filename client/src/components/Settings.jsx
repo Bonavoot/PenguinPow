@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
-import { C, FONT_DISPLAY, FONT_BODY } from "./menuTheme";
+import { C, FONT_BODY, FONT_UI, FONT_WEIGHT, TRACK } from "./menuTheme";
 import { usePlayerColors } from "../context/PlayerColorContext";
 import {
   getPersistentCacheCount,
@@ -100,11 +100,12 @@ const TitleBar = styled.div`
 
 const Title = styled.h2`
   color: ${C.cream};
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   margin: 0;
   text-align: center;
   font-size: 1.3rem;
-  letter-spacing: 0.04em;
+  letter-spacing: ${TRACK.meta};
 `;
 
 const SettingsBody = styled.div`
@@ -121,9 +122,10 @@ const Label = styled.label`
   justify-content: space-between;
   color: ${C.inkText};
   margin-bottom: 0.5rem;
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: 0.78rem;
-  letter-spacing: 0.08em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
 `;
 
@@ -196,8 +198,9 @@ const Select = styled.select`
 const Value = styled.span`
   color: ${C.inkTextMute};
   font-size: 0.78rem;
-  font-family: ${FONT_DISPLAY};
-  letter-spacing: 0.05em;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
+  letter-spacing: ${TRACK.meta};
 `;
 
 const PrimaryButton = styled.button`
@@ -207,8 +210,9 @@ const PrimaryButton = styled.button`
   padding: 0.7rem 1.25rem;
   font-size: 0.85rem;
   color: ${C.snowSoft};
-  font-family: ${FONT_DISPLAY};
-  letter-spacing: 0.06em;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
+  letter-spacing: ${TRACK.meta};
   cursor: pointer;
   transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
   width: 100%;
@@ -239,8 +243,9 @@ const SecondaryButton = styled.button`
   padding: 0.65rem 1.25rem;
   font-size: 0.8rem;
   color: ${C.inkTextSoft};
-  font-family: ${FONT_DISPLAY};
-  letter-spacing: 0.06em;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
+  letter-spacing: ${TRACK.meta};
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   width: 100%;
@@ -271,8 +276,9 @@ const ResolutionButton = styled.button`
   padding: 0.55rem;
   font-size: 0.75rem;
   color: ${(props) => (props.selected ? C.iceDeep : C.inkTextSoft)};
-  font-family: ${FONT_DISPLAY};
-  letter-spacing: 0.04em;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
+  letter-spacing: ${TRACK.meta};
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 
@@ -291,9 +297,10 @@ const Divider = styled.div`
 
 const SectionTitle = styled.div`
   color: ${C.inkText};
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: 0.82rem;
-  letter-spacing: 0.08em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   display: flex;
   align-items: center;
@@ -324,8 +331,9 @@ const StatusLine = styled.div`
   align-items: center;
   justify-content: space-between;
   font-size: 0.74rem;
-  font-family: ${FONT_DISPLAY};
-  letter-spacing: 0.04em;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
+  letter-spacing: ${TRACK.meta};
   color: ${({ $ok }) => ($ok ? C.iceDeep : C.inkTextMute)};
   margin-bottom: 0.5rem;
 `;

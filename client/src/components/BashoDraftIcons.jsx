@@ -7,6 +7,7 @@ import {
   getPowerUpTypeColor,
   groupDraftedPowerUps,
 } from "../config/powerUpConfig";
+import { FONT_UI, FONT_WEIGHT } from "./menuTheme";
 
 /*
  * Inline BASHO draft icons — one chip per unique power-up, rendered
@@ -55,7 +56,8 @@ const StackCount = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(6px, 0.62cqw, 8px);
   line-height: 1;
   color: #fff;

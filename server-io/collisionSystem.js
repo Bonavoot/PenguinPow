@@ -1415,9 +1415,10 @@ function processHit(player, otherPlayer, rooms, io) {
   } else {
     // === ROCK-SOLID HIT PROCESSING ===
     // MASTERY Phase 4 (4.2 pocket vs poke): use spacing snapshotted BEFORE
-    // enforceStrikeExtensionSeparation (index.js). Post-sep / post-contact-
-    // correction distance parks every slap at tip-meets-body and made tip
-    // always-on. Quality is relative to pushbox→connect, not absolute px.
+    // MUST use pre-sep spacing (index.js slapSpacingBeforeExtension). Live sep
+    // + on-hit park both snap toward tip-meets-body — measuring after either
+    // makes every slap read as tip and breaks mastery. Quality is relative to
+    // pushbox→connect, not absolute px / post-park Δx.
     const spacingSample =
       typeof player.slapSpacingBeforeExtension === "number"
         ? player.slapSpacingBeforeExtension
@@ -1429,8 +1430,8 @@ function processHit(player, otherPlayer, rooms, io) {
     const isTipSlap = tipQuality >= SLAP_TIP_FEEL_THRESHOLD;
 
     // Contact rails: snap before KB / hitstop so the freeze frame reads solid.
-    // Slaps park slightly inside tip (getHitParkDistance) so mash pressure keeps
-    // a margin; charged/palm still park at full tip-meets-body.
+    // Slap/charged → tip-meets-body; palm → tip+outset. tipQuality already
+    // latched from slapSpacingBeforeExtension (pre-sep) — park is presentation.
     const hitAttackKind = attackKindFromPlayer(player);
     if (isSlapAttack || player.attackType === "charged" || player.isPalmThrust) {
       const parkDist = getHitParkDistance(hitAttackKind, player, otherPlayer);
@@ -1880,14 +1881,11 @@ function processHit(player, otherPlayer, rooms, io) {
         player.isChargedHitRecoil = false;
       }
 
-      // Charged/palm already snapped to tip-connect above; keep a floor so
-      // post-hit physics can't leave them buried inside each other.
-      if (!isSlapAttack && !isLowKick) {
-        const minSepDist = getConnectDistance(
-          attackKindFromPlayer(player),
-          player,
-          otherPlayer
-        );
+      // Keep a floor so post-hit physics can't re-bury the freeze pose.
+      // Slap/charged/palm all park via getHitParkDistance; low kick has no tip rail yet.
+      if (!isLowKick) {
+        const floorKind = attackKindFromPlayer(player);
+        const minSepDist = getHitParkDistance(floorKind, player, otherPlayer);
         const currentDist = Math.abs(player.x - otherPlayer.x);
         if (currentDist < minSepDist) {
           const deficit = minSepDist - currentDist;

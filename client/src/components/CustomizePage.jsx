@@ -19,7 +19,9 @@ import pumo from "../assets/pumo-idle.png";
 import {
   C,
   FONT_BODY,
-  FONT_DISPLAY,
+  FONT_UI,
+  FONT_WEIGHT,
+  TRACK,
   broadcastSlideDown,
   fadeIn,
   clipRevealLeft,
@@ -263,10 +265,10 @@ const BackButton = styled.button`
   align-items: center;
   gap: 8px;
   padding: 0;
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.5rem, 0.8cqw, 0.64rem);
-  letter-spacing: 0.28em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   color: rgba(40, 32, 24, 0.55);
   background: none;
@@ -302,10 +304,10 @@ const TopSlug = styled.div`
 
 const SlugText = styled.span`
   font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.42rem, 0.72cqw, 0.56rem);
   color: ${(p) => (p.$accent ? C.vermillion : "rgba(40, 32, 24, 0.45)")};
-  letter-spacing: 0.3em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
 
   strong {
@@ -463,22 +465,23 @@ const IdentityBlock = styled.div`
 `;
 
 const SideLabel = styled.span`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.42rem, 0.7cqw, 0.55rem);
   color: ${(p) => p.$accent || C.vermillion};
-  letter-spacing: 0.28em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   line-height: 1;
   margin-bottom: clamp(4px, 0.5cqh, 7px);
 `;
 
 const FighterName = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(22px, 3.4cqw, 42px);
   color: #1a1410;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: ${TRACK.meta};
   line-height: 0.92;
   white-space: nowrap;
 `;
@@ -510,10 +513,10 @@ const BrushStroke = styled.div`
 const MetaItem = styled.span`
   margin-top: clamp(6px, 0.85cqh, 10px);
   font-family: ${FONT_BODY};
-  font-weight: 600;
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.4rem, 0.65cqw, 0.5rem);
   color: rgba(40, 32, 24, 0.4);
-  letter-spacing: 0.22em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
 `;
 
@@ -592,11 +595,12 @@ const HeadTitle = styled.h2`
   display: inline-flex;
   align-items: center;
   gap: clamp(8px, 1.1cqw, 12px);
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.68rem, 1.05cqw, 0.88rem);
   color: ${C.cream};
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: ${TRACK.label};
   text-shadow: ${TEXT_SHADOW_DISPLAY};
 
   &::before {
@@ -608,11 +612,11 @@ const HeadTitle = styled.h2`
 `;
 
 const HeadMeta = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.4rem, 0.62cqw, 0.48rem);
   color: ${C.creamMute};
-  letter-spacing: 0.2em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
 `;
 
@@ -670,10 +674,10 @@ const OutfitSlotBody = styled.span`
 `;
 
 const OutfitSlotLabel = styled.span`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.38rem, 0.58cqw, 0.46rem);
-  letter-spacing: 0.16em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   color: ${(p) => (p.$active ? C.cream : C.creamMute)};
   white-space: nowrap;
@@ -699,10 +703,10 @@ const Tab = styled.button`
   min-width: 0;
   min-height: clamp(36px, 4.5cqh, 44px);
   padding: clamp(6px, 0.8cqh, 9px) 4px;
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.48rem, 0.74cqw, 0.6rem);
-  letter-spacing: 0.18em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   color: ${(p) => (p.$active ? C.cream : C.creamMute)};
   background: ${(p) => (p.$active ? D.softHover : D.soft)};
@@ -757,11 +761,11 @@ const GroupLabel = styled.div`
   display: inline-flex;
   align-items: center;
   gap: clamp(7px, 1cqw, 10px);
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.48rem, 0.74cqw, 0.6rem);
   color: ${C.cream};
-  letter-spacing: 0.26em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
 
   &::before {
@@ -829,10 +833,10 @@ const ItemSlot = styled.button`
   box-shadow: ${(p) =>
     p.$selected ? `inset 0 0 0 1px ${C.gold}` : "none"};
   color: ${(p) => (p.$selected ? C.cream : "rgba(245, 236, 217, 0.45)")};
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.42rem, 0.65cqw, 0.52rem);
-  letter-spacing: 0.12em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
@@ -883,7 +887,8 @@ const UnequipSlot = styled(ItemSlot)`
   color: rgba(245, 236, 217, 0.35);
   align-items: center;
   justify-content: center;
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.7rem, 1.1cqw, 0.9rem);
 `;
 
@@ -894,10 +899,10 @@ const HatTunerLink = styled.button`
   border: none;
   background: none;
   cursor: pointer;
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.42rem, 0.68cqw, 0.52rem);
-  letter-spacing: 0.18em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   color: rgba(245, 236, 217, 0.4);
   transition: color 0.15s ease;
@@ -919,21 +924,21 @@ const PickerFooter = styled.footer`
 `;
 
 const FooterHint = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.4rem, 0.62cqw, 0.48rem);
   color: rgba(245, 236, 217, 0.4);
-  letter-spacing: 0.2em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
 `;
 
 const ResetButton = styled.button`
   min-height: 32px;
   padding: 6px 14px;
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.42rem, 0.68cqw, 0.52rem);
-  letter-spacing: 0.22em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   color: ${C.creamMute};
   background: ${D.soft};

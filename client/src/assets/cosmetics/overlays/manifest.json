@@ -1852,5 +1852,397 @@
       },
       "widthPct": 0.22
     }
+  },
+  "ponytail": {
+    "pumo-idle": {
+      "overlay": "overlays/ponytail-pumo-idle.png",
+      "attach": {
+        "x": 579.1,
+        "y": 178.6,
+        "rotationDeg": -30.6
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "pumo-tachiai-position": {
+      "overlay": "overlays/ponytail-pumo-tachiai-position.png",
+      "attach": {
+        "x": 398.9,
+        "y": 307.6,
+        "rotationDeg": -42.7
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "pumo-ready-position": {
+      "overlay": "overlays/ponytail-pumo-ready-position.png",
+      "attach": {
+        "x": 528.5,
+        "y": 232,
+        "rotationDeg": -31.2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "grabbing": {
+      "overlay": "overlays/ponytail-grabbing.png",
+      "attach": {
+        "x": 441.1,
+        "y": 203,
+        "rotationDeg": -31
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "clinch-planting": {
+      "overlay": "overlays/ponytail-clinch-planting.png",
+      "attach": {
+        "x": 467.1,
+        "y": 218,
+        "rotationDeg": -31
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "attempting-grab-throw": {
+      "overlay": "overlays/ponytail-attempting-grab-throw.png",
+      "attach": {
+        "x": 534.4,
+        "y": 247.6,
+        "rotationDeg": -46.5
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.4
+    },
+    "is-attempting-pull": {
+      "overlay": "overlays/ponytail-is-attempting-pull.png",
+      "attach": {
+        "x": 493.9,
+        "y": 102.2,
+        "rotationDeg": 4.5
+      },
+      "canvas": {
+        "w": 600,
+        "h": 600
+      },
+      "widthPct": 0.4
+    },
+    "slapAttack1": {
+      "overlay": "overlays/ponytail-slapAttack1.png",
+      "attach": {
+        "x": 583,
+        "y": 219.9,
+        "rotationDeg": -26.7
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.4
+    },
+    "slapAttack2": {
+      "overlay": "overlays/ponytail-slapAttack2.png",
+      "attach": {
+        "x": 574.9,
+        "y": 216.9,
+        "rotationDeg": 18.12
+      },
+      "canvas": {
+        "w": 1024,
+        "h": 1024
+      },
+      "widthPct": 0.4
+    },
+    "slap-attack-1-blur-frame": {
+      "overlay": "overlays/ponytail-slap-attack-1-blur-frame.png",
+      "attach": {
+        "x": 579.3,
+        "y": 204.2,
+        "rotationDeg": -30.4
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "slap-attack-1-hit-frame": {
+      "overlay": "overlays/ponytail-slap-attack-1-hit-frame.png",
+      "attach": {
+        "x": 579.3,
+        "y": 204.2,
+        "rotationDeg": -30.4
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "slap-attack-2-blur-frame": {
+      "overlay": "overlays/ponytail-slap-attack-2-blur-frame.png",
+      "attach": {
+        "x": 584.3,
+        "y": 211.2,
+        "rotationDeg": -25.4
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "slap-attack-2-hit-frame": {
+      "overlay": "overlays/ponytail-slap-attack-2-hit-frame.png",
+      "attach": {
+        "x": 476.3,
+        "y": 236.7,
+        "rotationDeg": -31.4
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "palm-thrust": {
+      "overlay": "overlays/ponytail-palm-thrust.png",
+      "attach": {
+        "x": 579.3,
+        "y": 217.2,
+        "rotationDeg": -24.4
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "palm-thrust-startup": {
+      "overlay": "overlays/ponytail-palm-thrust-startup.png",
+      "attach": {
+        "x": 585.3,
+        "y": 210.2,
+        "rotationDeg": -22.4
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "palm-thrust-smear": {
+      "overlay": "overlays/ponytail-palm-thrust-smear.png",
+      "attach": {
+        "x": 584.3,
+        "y": 215.2,
+        "rotationDeg": -23.4
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "blocking": {
+      "overlay": "overlays/ponytail-blocking.png",
+      "attach": {
+        "x": 627.6,
+        "y": 212.8,
+        "rotationDeg": -26.6
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "block-parry": {
+      "overlay": "overlays/ponytail-block-parry.png",
+      "attach": {
+        "x": 412.8,
+        "y": 324.1,
+        "rotationDeg": -56.2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "raw-parry-success": {
+      "overlay": "overlays/ponytail-raw-parry-success.png",
+      "attach": {
+        "x": 588.1,
+        "y": 195.7,
+        "rotationDeg": 17.61
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "pumo-flap-1": {
+      "overlay": "overlays/ponytail-pumo-flap-1.png",
+      "attach": {
+        "x": 565.7,
+        "y": 166.8,
+        "rotationDeg": -35.8
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "pumo-flap-2": {
+      "overlay": "overlays/ponytail-pumo-flap-2.png",
+      "attach": {
+        "x": 464,
+        "y": 182.4,
+        "rotationDeg": -51.5
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "recovering": {
+      "overlay": "overlays/ponytail-recovering.png",
+      "attach": {
+        "x": 558.5,
+        "y": 317.6,
+        "rotationDeg": -29.3
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "attack": {
+      "overlay": "overlays/ponytail-attack.png",
+      "attach": {
+        "x": 159,
+        "y": 311.9,
+        "rotationDeg": -89.9
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "dodging": {
+      "overlay": "overlays/ponytail-dodging.png",
+      "attach": {
+        "x": 576.6,
+        "y": 150.7,
+        "rotationDeg": -35.9
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "raw-parry-success-frame-1": {
+      "overlay": "overlays/ponytail-raw-parry-success-frame-1.png",
+      "attach": {
+        "x": 627.6,
+        "y": 212.8,
+        "rotationDeg": -26.6
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "raw-parry-success-frame-2": {
+      "overlay": "overlays/ponytail-raw-parry-success-frame-2.png",
+      "attach": {
+        "x": 627.6,
+        "y": 212.8,
+        "rotationDeg": -26.6
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "main-menu-pumo": {
+      "overlay": "overlays/ponytail-main-menu-pumo.png",
+      "attach": {
+        "x": 586.5,
+        "y": 220,
+        "rotationDeg": -30.2
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "raw-parry-success-frame-3": {
+      "overlay": "overlays/ponytail-raw-parry-success-frame-3.png",
+      "attach": {
+        "x": 588.1,
+        "y": 195.7,
+        "rotationDeg": 17.61
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "sliding": {
+      "overlay": "overlays/ponytail-sliding.png",
+      "attach": {
+        "x": 642.2,
+        "y": 300.7,
+        "rotationDeg": -26.5
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    },
+    "charging": {
+      "overlay": "overlays/ponytail-charging.png",
+      "attach": {
+        "x": 558.5,
+        "y": 317.6,
+        "rotationDeg": -29.3
+      },
+      "canvas": {
+        "w": 960,
+        "h": 960
+      },
+      "widthPct": 0.4
+    }
   }
 }

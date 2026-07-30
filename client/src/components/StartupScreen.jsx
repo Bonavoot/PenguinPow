@@ -6,7 +6,8 @@ import Snowfall from "./Snowfall";
 import {
   C,
   FONT_BODY,
-  FONT_DISPLAY,
+  FONT_WEIGHT,
+  TRACK,
   FONT_KANJI,
   fadeIn,
   fadeUp,
@@ -111,7 +112,7 @@ const TopSlug = styled.div`
 
 const SlugText = styled.span`
   font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.42rem, 0.72cqw, 0.56rem);
   color: ${(p) =>
     p.$warn
@@ -119,7 +120,7 @@ const SlugText = styled.span`
       : p.$accent
         ? C.iceMid
         : C.inkTextMute};
-  letter-spacing: 0.3em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   white-space: nowrap;
 
@@ -204,30 +205,31 @@ const StatusSection = styled.div`
 
 const ConnectingText = styled.p`
   font-family: ${FONT_BODY};
-  font-weight: 500;
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.6rem, 1.15cqw, 0.75rem);
   color: ${C.inkTextMute};
   margin: 0;
-  letter-spacing: 0.28em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
 `;
 
 const ErrorText = styled.p`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_BODY};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.55rem, 1.2cqw, 0.75rem);
   color: ${C.vermillionDeep};
   margin: 0;
-  letter-spacing: 0.16em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
 `;
 
 const PressKeyText = styled.p`
   font-family: ${FONT_BODY};
-  font-weight: 500;
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.65rem, 1.25cqw, 0.82rem);
   color: ${C.inkTextSoft};
   margin: 0;
-  letter-spacing: 0.3em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   animation: ${pressKeyFade} 2.6s ease-in-out infinite;
 `;

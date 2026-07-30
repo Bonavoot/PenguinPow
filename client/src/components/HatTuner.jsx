@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import styled from "styled-components";
+import { FONT_UI, FONT_WEIGHT } from "./menuTheme";
 
 import hatTweaksSeed from "../assets/cosmetics/hat-tweaks.json";
 import topHatSrc from "../assets/cosmetics/top-hat.png";
@@ -19,6 +20,8 @@ import haloSrc from "../assets/cosmetics/halo.png";
 import haloMeta from "../assets/cosmetics/halo.json";
 import plungerSrc from "../assets/cosmetics/plunger.png";
 import plungerMeta from "../assets/cosmetics/plunger.json";
+import ponytailSrc from "../assets/cosmetics/ponytail.png";
+import ponytailMeta from "../assets/cosmetics/ponytail.json";
 
 import pumoIdle from "../assets/pumo-idle.png";
 import mainMenuPumo from "../assets/main-menu-pumo.png";
@@ -94,6 +97,14 @@ const GEAR_ASSETS = {
     src: plungerSrc,
     meta: plungerMeta,
     prefix: "plunger",
+  },
+  ponytail: {
+    id: "ponytail",
+    label: "Ponytail",
+    src: ponytailSrc,
+    meta: ponytailMeta,
+    prefix: "ponytail",
+    underBody: true,
   },
 };
 
@@ -862,7 +873,7 @@ const Shell = styled.div`
   flex-direction: column;
   background: #0e1116;
   color: #f0ebe3;
-  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-family: ${FONT_UI};
 `;
 
 const TopBar = styled.header`
@@ -889,7 +900,7 @@ const BackBtn = styled.button`
 const Title = styled.h1`
   margin: 0;
   font-size: 1.15rem;
-  font-weight: 600;
+  font-weight: ${FONT_WEIGHT.bold};
   flex: 1;
 `;
 
@@ -941,7 +952,7 @@ const ZoomBtn = styled.button`
   min-width: 2.1rem;
   padding: 0.3rem 0.55rem;
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: ${FONT_WEIGHT.bold};
   cursor: pointer;
   border-radius: 4px;
   border: 1px solid
@@ -1015,7 +1026,7 @@ const GearTabs = styled.div`
 const GearTab = styled.button`
   padding: 0.55rem 0.4rem;
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: ${FONT_WEIGHT.bold};
   cursor: pointer;
   border-radius: 6px;
   border: 1px solid
@@ -1036,7 +1047,7 @@ const NavRow = styled.div`
 const NavBtn = styled.button`
   padding: 0.7rem 0.5rem;
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: ${FONT_WEIGHT.bold};
   cursor: pointer;
   border-radius: 6px;
   border: 1px solid
@@ -1163,7 +1174,7 @@ const ActionBtn = styled.button`
   padding: 0.65rem;
   cursor: pointer;
   border-radius: 6px;
-  font-weight: 600;
+  font-weight: ${FONT_WEIGHT.bold};
   border: 1px solid
     ${(p) => (p.$primary ? "rgba(143, 212, 168, 0.55)" : "rgba(240, 235, 227, 0.22)")};
   background: ${(p) => (p.$primary ? "#1e3d2e" : "#1c222c")};

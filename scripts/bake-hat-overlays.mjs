@@ -6,7 +6,7 @@
  *
  * Usage: node scripts/bake-hat-overlays.mjs
  *        node scripts/bake-hat-overlays.mjs crown
- *        node scripts/bake-hat-overlays.mjs top_hat crown halo plunger
+ *        node scripts/bake-hat-overlays.mjs top_hat crown halo plunger ponytail
  */
 import sharp from "sharp";
 import fs from "fs";
@@ -42,6 +42,13 @@ const GEARS = {
     prefix: "plunger",
     // After rotate/resize, pink cup AA can bleed a reddish fringe into the wood handle.
     cleanWoodBleed: true,
+  },
+  ponytail: {
+    file: path.join(ASSETS, "cosmetics/ponytail.png"),
+    meta: path.join(ASSETS, "cosmetics/ponytail.json"),
+    prefix: "ponytail",
+    // recovering pose doubles as charging (same as other gears).
+    copyRecoveringToCharging: true,
   },
 };
 
@@ -312,6 +319,20 @@ for (const gearId of gearIds) {
       widthPct,
     };
     console.log("✓", outName, `x=${x} y=${y} rot=${rotationDeg}`);
+  }
+
+  if (gear.copyRecoveringToCharging && poses.recovering) {
+    const srcName = `${gear.prefix}-recovering.png`;
+    const dstName = `${gear.prefix}-charging.png`;
+    const srcPath = path.join(OUT_DIR, srcName);
+    if (fs.existsSync(srcPath)) {
+      fs.copyFileSync(srcPath, path.join(OUT_DIR, dstName));
+      manifest[gearId].charging = {
+        ...manifest[gearId].recovering,
+        overlay: `overlays/${dstName}`,
+      };
+      console.log("✓", dstName, "(copy of recovering)");
+    }
   }
 }
 

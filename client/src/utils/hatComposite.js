@@ -15,6 +15,7 @@ import {
   HAT_OVERLAY_BY_SRC,
   getEquippedHeadGearId,
   getHatOverlayForSprite,
+  headGearRecolorsWithMawashi,
   isHeadGearUnderBody,
 } from "../config/cosmetics";
 import { getBaldBodySrc, resolveBodyForHeadGear } from "../config/baldSprites";
@@ -258,6 +259,30 @@ function resolveBodySrc(bodySrc, mawashiColor, bodyColor, tint) {
 }
 
 /**
+ * Resolve overlay URL — retints mawashi-blue (e.g. ponytail hair tie) when
+ * the gear opts in. Sync path uses the recolor cache; async warms it.
+ */
+export function resolveHatOverlaySrcSync(overlaySrc, gearId, mawashiColor) {
+  if (!overlaySrc) return null;
+  if (!headGearRecolorsWithMawashi(gearId)) return overlaySrc;
+  const color = mawashiColor || SPRITE_BASE_COLOR;
+  if (color === SPRITE_BASE_COLOR) return overlaySrc;
+  return (
+    getCachedRecoloredImage(overlaySrc, BLUE_COLOR_RANGES, color) || overlaySrc
+  );
+}
+
+export async function resolveHatOverlaySrc(overlaySrc, gearId, mawashiColor) {
+  if (!overlaySrc) return null;
+  if (!headGearRecolorsWithMawashi(gearId)) return overlaySrc;
+  const color = mawashiColor || SPRITE_BASE_COLOR;
+  if (color === SPRITE_BASE_COLOR) return overlaySrc;
+  const cached = getCachedRecoloredImage(overlaySrc, BLUE_COLOR_RANGES, color);
+  if (cached) return cached;
+  return recolorImage(overlaySrc, BLUE_COLOR_RANGES, color);
+}
+
+/**
  * Pre-bake + pin every hat composite for a fighter's colors so combat pose
  * swaps hit the sync cache (no unhatted fallback, no cold data-URL decode).
  */
@@ -282,10 +307,25 @@ export async function warmHatCompositesForFighter({
     [...new Set([...overlayUrls, ...bodyUrls])].map((u) => preDecodeImage(u)),
   );
 
+  // Warm recolored overlays (ponytail hair tie ↔ belt) once up front.
+  const recoloredOverlayByRaw = new Map();
+  if (headGearRecolorsWithMawashi(gearId)) {
+    await Promise.all(
+      [...new Set(overlayUrls)].map(async (raw) => {
+        const tinted = await resolveHatOverlaySrc(raw, gearId, mawashiColor);
+        recoloredOverlayByRaw.set(raw, tinted);
+        if (tinted && tinted !== raw) await preDecodeImage(tinted);
+      }),
+    );
+  }
+
   const out = [];
   for (const hairedSrc of HAT_OVERLAY_BY_SRC.keys()) {
-    const overlaySrc = getHatOverlayForSprite(hairedSrc, gearId);
-    if (!overlaySrc) continue;
+    const rawOverlay = getHatOverlayForSprite(hairedSrc, gearId);
+    if (!rawOverlay) continue;
+    const overlaySrc =
+      recoloredOverlayByRaw.get(rawOverlay) ||
+      resolveHatOverlaySrcSync(rawOverlay, gearId, mawashiColor);
     const bodySrc = getBaldBodySrc(hairedSrc) || hairedSrc;
     for (const tint of TINTS) {
       const base = resolveBodySrc(bodySrc, mawashiColor, bodyColor, tint);
@@ -342,9 +382,14 @@ export async function buildIdlePortraitSrc({
   const gearId = getEquippedHeadGearId(gearIds);
   // Pose-matched overlay only — never glue the idle hat onto a different
   // body (e.g. main-menu-pumo) or it sits wrong on the topknot.
-  const overlay =
+  const rawOverlay =
     hatOverlay || (gearId ? getHatOverlayForSprite(baseSrc, gearId) : null);
-  if (overlay) {
+  if (rawOverlay) {
+    const overlay = await resolveHatOverlaySrc(
+      rawOverlay,
+      gearId,
+      mawashiColor,
+    );
     src = await compositeHatOntoSprite(
       src,
       overlay,

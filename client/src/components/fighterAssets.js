@@ -68,6 +68,7 @@ import hit from "../assets/hit.png"; // APNG
 import bellyLaying from "../assets/pumo-belly-laying.png"; // static — clinch kill PULL victim (eyes closed, settled)
 import bellyLayingEyesOpen from "../assets/pumo-belly-laying-eyes-open.png"; // static — clinch kill PULL victim (eyes open, during the slide)
 import cinematicThrowKillLanding from "../assets/cinematic-throw-kill-landing.png"; // static — clinch kill THROW victim (flat on back after crash)
+import pushDefeatPose from "../assets/push-defeat-pose.png"; // static — FORCE OUT (grabPush) loser after shove
 import snowballThrow from "../assets/snowball-throw.png"; // APNG
 import beingGrabbed from "../assets/is-being-grabbed.gif";
 import atTheRopes from "../assets/at-the-ropes.png"; // APNG
@@ -275,6 +276,7 @@ const initializeImagePreloading = () => {
   preloadImage(bellyLaying);
   preloadImage(bellyLayingEyesOpen);
   preloadImage(cinematicThrowKillLanding);
+  preloadImage(pushDefeatPose);
   preloadImage(dodging);
   preloadImage(sliding);
   preloadImage(crouching);
@@ -481,6 +483,7 @@ export {
   bellyLaying,
   bellyLayingEyesOpen,
   cinematicThrowKillLanding,
+  pushDefeatPose,
   snowballThrow,
   beingGrabbed,
   atTheRopes,

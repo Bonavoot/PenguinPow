@@ -2,6 +2,7 @@ import styled, { keyframes } from "styled-components";
 import { isOutsideDohyo } from "../constants";
 import getImageSrc from "./getImageSrc";
 import { GROUND_LEVEL } from "./fighterAssets";
+import { FONT_DISPLAY, FONT_UI, FONT_WEIGHT, TEXT_SHADOW_COMBAT, TEXT_SHADOW_COMBAT_HEAVY, TEXT_SHADOW_DISPLAY, TEXT_SHADOW_UI, TRACK } from "./menuTheme";
 
 // Painted soles sit ~2.1% above the sprite box bottom (transparent padding
 // under the feet — keep in sync with ICE_REFLECTION_FOOT_NUDGE_PCT).
@@ -133,6 +134,12 @@ export const TintedImage = styled.img
   }))``;
 
 export const getFighterPopFilter = (props) => {
+  // Grab-arm overlay: never take status/rim glows. Body can glow; the arm
+  // stays clean so Deep Grip / danger / push rims don't halo the flipper.
+  if (props.$grabArmLayer) {
+    return "none";
+  }
+
   // Subject separation comes from CLARITY + the DoF behind them, NOT a glow.
   // A warm rim drop-shadow read as a cheesy halo (the cheap-mobile-game tell),
   // so it's gone. Instead: a tight all-around dark contour that cuts the
@@ -148,22 +155,19 @@ export const getFighterPopFilter = (props) => {
   // cut-out shadows on the body in those poses; the oval PlayerShadow still
   // grounds them. Status-color rims can still layer on with an empty base.
   const grabArmComposited =
-    !props.$grabArmLayer &&
-    (props.$inClinch ||
-      props.$isGrabbing ||
-      props.$isClinchPlanting ||
-      props.$isAttemptingGrabThrow ||
-      props.$isAttemptingPull ||
-      props.$isGrabBellyFlopping ||
-      props.$isBeingGrabBellyFlopped ||
-      props.$isGrabFrontalForceOut ||
-      props.$isBeingGrabFrontalForceOut ||
-      (props.$isBeingGrabbed && props.$hasGrip));
+    props.$inClinch ||
+    props.$isGrabbing ||
+    props.$isClinchPlanting ||
+    props.$isAttemptingGrabThrow ||
+    props.$isAttemptingPull ||
+    props.$isGrabBellyFlopping ||
+    props.$isBeingGrabBellyFlopped ||
+    props.$isGrabFrontalForceOut ||
+    props.$isBeingGrabFrontalForceOut ||
+    (props.$isBeingGrabbed && props.$hasGrip);
 
-  // Grab-arm overlay: status glows only (no edge/ground cut-out shadow).
-  // Body under a composited arm also drops dark shadows so they don't seam.
-  const base =
-    props.$grabArmLayer || grabArmComposited ? "" : `${edge} ${ground}`;
+  // Body under a composited arm drops dark cut-out shadows so they don't seam.
+  const base = grabArmComposited ? "" : `${edge} ${ground}`;
 
   // Kill-throw victim: skip the soft ground drop-shadow. On a spinning / prone
   // body it reads as a second translucent penguin (the "ghost frame" in the
@@ -274,6 +278,17 @@ const grabArmNudge = (props) => {
 // M2 without waiting for a React re-render / server delta.
 const GRAB_ARM_SHOULDER_DX_PCT = 6; // 56 - 50
 const GRAB_ARM_SHOULDER_DY_PCT = -58; // 42 - 100
+// Appended after body jolt/motion transforms in arm keyframes so CSS
+// animation doesn't wipe the shoulder pivot (animated `transform` replaces
+// the attrs transform that normally carries grabArmExtra).
+const GRAB_ARM_PIVOT_AFTER_MOTION =
+  ` translate(${GRAB_ARM_SHOULDER_DX_PCT}%, ${GRAB_ARM_SHOULDER_DY_PCT}%)` +
+  ` rotate(var(--grab-arm-body-hold-deg, 0deg))` +
+  ` scale(var(--grab-arm-body-hold-len, 1), 1)` +
+  ` translate(${-GRAB_ARM_SHOULDER_DX_PCT}%, ${-GRAB_ARM_SHOULDER_DY_PCT}%)` +
+  ` translateY(var(--grab-arm-body-hold-y, 0%))` +
+  ` translateX(var(--grab-arm-nudge-x, 0%))` +
+  ` translateY(var(--grab-arm-nudge-y, 0%))`;
 const grabArmBodyHoldMotion = (props) => {
   const dx = GRAB_ARM_SHOULDER_DX_PCT;
   const dy = GRAB_ARM_SHOULDER_DY_PCT;
@@ -545,18 +560,48 @@ export const StyledImage = styled("img")
         : props.$isStrikeExtending
         ? 100
         : 99,
-      // Grab-arm: status glows (Open / Deep Grip / etc.) via getFighterPopFilter
-      // with an empty base — never the body's edge/ground cut-out shadow.
+      // Grab-arm: no rim/status glows (getFighterPopFilter early-outs to none).
       filter: getFighterPopFilter(props),
       // Kill-throw spin only while airborne (pre-landing pose). On true impact
       // (!isBeingThrown) play a heavy ground-plant squash — dead weight into the
       // ice with a short jiggle settle, no bounce arc.
-      // Grab-arm overlay: NEVER transform-animate — shoulder pose is owned by
-      // --grab-arm-* vars. Open only gets a filter-brightness flash so the arm
-      // stays pixel-locked to the body while still reading the vulnerability.
+      // Grab-arm overlay: any body transform anim must be mirrored here (with
+      // shoulder pivot appended) or the flipper detaches mid-wobble / jolt.
       animation: props.$grabArmLayer
-        ? (props.$isClinchOpen || props.$clinchThrowFailStagger)
-          ? "clinchOpenFlashArm 0.42s ease-in-out infinite"
+        ? props.$isGrabBellyFlopping
+          ? "grabBellyFlopLungeArm 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
+          : props.$isBeingGrabBellyFlopped
+          ? "grabBellyFlopVictimArm 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards"
+          : props.$isGrabFrontalForceOut
+          ? "grabFrontalForceOutArm 0.3s ease-out forwards"
+          : props.$isBeingGrabFrontalForceOut
+          ? "grabFrontalForceOutVictimArm 0.3s ease-out forwards"
+          : props.$isGrabSeparating
+          ? "grabSeparatePushArm 0.3s ease-out"
+          : props.$isAttemptingPull || props.$isMatadorSuccess
+          ? "attemptingPullTugArm 0.6s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
+          : props.$isGrabPushing
+          ? "grabPushStrainArm 0.3s ease-in-out infinite"
+          : props.$isBeingGrabPushed
+          ? "grabPushResistArm 0.3s ease-in-out infinite"
+          : props.$isAttemptingGrabThrow
+          ? "attemptingGrabThrowPullArm 1.0s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
+          : props.$isGrabBreaking || props.$isGrabBreakCountered
+          ? "grabBreakShakeArm 0.1s ease-in-out infinite"
+          : props.$isClinchJoltClashing
+          ? "clinchJoltClashArm 0.25s ease-out"
+          : props.$isClinchJolting
+          ? "clinchJoltLungeArm 0.25s ease-out forwards"
+          : props.$isBeingClinchJolted
+          ? "clinchJoltRecoilArm 0.3s ease-out"
+          : props.$isClinchClashing || props.$isGrabTeching
+          ? "grabTechShakeArm 0.25s ease-in-out infinite"
+          : props.$isClinchOpen || props.$clinchThrowFailStagger
+          ? "clinchOpenWobbleArm 0.42s ease-in-out infinite"
+          : props.$inClinch && props.$balanceDanger
+          ? "clinchTeeterHeavyArm 0.95s ease-in-out infinite"
+          : props.$inClinch && props.$balanceWobble
+          ? "clinchTeeterArm 1.5s ease-in-out infinite"
           : "none"
         : props.$isClinchKillThrowVictim
         ? props.$showClinchKillThrowLanding
@@ -866,13 +911,6 @@ export const StyledImage = styled("img")
       filter: brightness(1.08);
     }
   }
-  /* OPEN on grab-arm — filter ONLY. Transform stays on --grab-arm-* pose vars
-     so the flipper never leaves its shoulder anchor. */
-  @keyframes clinchOpenFlashArm {
-    0%, 100% { filter: brightness(1); }
-    35% { filter: brightness(1.18); }
-    70% { filter: brightness(1.08); }
-  }
   @keyframes grabTechShake {
     0% { transform: scaleX(var(--facing, 1)) translateX(0px); }
     12% { transform: scaleX(var(--facing, 1)) translateX(-7px); }
@@ -883,6 +921,94 @@ export const StyledImage = styled("img")
     75% { transform: scaleX(var(--facing, 1)) translateX(4px); }
     87% { transform: scaleX(var(--facing, 1)) translateX(-2px); }
     100% { transform: scaleX(var(--facing, 1)) translateX(0px); }
+  }
+  /* Grab-arm wobble twins — body motion + shoulder pivot; no brightness/glow. */
+  @keyframes clinchOpenWobbleArm {
+    0%, 100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1) skewX(0deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    35% { transform: scaleX(calc(var(--facing, 1) * 1.06)) translateX(calc(var(--facing, 1) * -3px)) scaleY(0.94) skewX(calc(var(--facing, 1) * -2deg))${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    70% { transform: scaleX(calc(var(--facing, 1) * 0.98)) translateX(calc(var(--facing, 1) * 2px)) scaleY(1.02) skewX(calc(var(--facing, 1) * 1.5deg))${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+  }
+  @keyframes clinchTeeterArm {
+    0%, 100% { transform: scaleX(var(--facing, 1)) skewX(0deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    32% { transform: scaleX(var(--facing, 1)) skewX(-1.7deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    68% { transform: scaleX(var(--facing, 1)) skewX(1.2deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+  }
+  @keyframes clinchTeeterHeavyArm {
+    0%, 100% { transform: scaleX(var(--facing, 1)) skewX(0deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    30% { transform: scaleX(var(--facing, 1)) skewX(-4deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    55% { transform: scaleX(var(--facing, 1)) skewX(2.2deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    78% { transform: scaleX(var(--facing, 1)) skewX(-2.4deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+  }
+  @keyframes grabTechShakeArm {
+    0% { transform: scaleX(var(--facing, 1)) translateX(0px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    12% { transform: scaleX(var(--facing, 1)) translateX(-7px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    25% { transform: scaleX(var(--facing, 1)) translateX(7px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    37% { transform: scaleX(var(--facing, 1)) translateX(-6px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    50% { transform: scaleX(var(--facing, 1)) translateX(6px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    62% { transform: scaleX(var(--facing, 1)) translateX(-4px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    75% { transform: scaleX(var(--facing, 1)) translateX(4px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    87% { transform: scaleX(var(--facing, 1)) translateX(-2px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    100% { transform: scaleX(var(--facing, 1)) translateX(0px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+  }
+  @keyframes grabBreakShakeArm {
+    0%   { transform: scaleX(var(--facing, 1)) translateX(0px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    25%  { transform: scaleX(var(--facing, 1)) translateX(-5px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    50%  { transform: scaleX(var(--facing, 1)) translateX(5px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    75%  { transform: scaleX(var(--facing, 1)) translateX(-4px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    100% { transform: scaleX(var(--facing, 1)) translateX(0px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+  }
+  @keyframes attemptingGrabThrowPullArm {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    15% { transform: scaleX(calc(var(--facing, 1) * 0.95)) scaleY(1.08)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    40% { transform: scaleX(calc(var(--facing, 1) * 0.93)) scaleY(1.10)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    70% { transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(1.06)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
+  @keyframes grabPushStrainArm {
+    0%, 100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    50% { transform: scaleX(calc(var(--facing, 1) * 1.03)) translateX(calc(var(--facing, 1) * -2px)) scaleY(0.97)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
+  @keyframes grabPushResistArm {
+    0%, 100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    30% { transform: scaleX(calc(var(--facing, 1) * 0.97)) translateX(calc(var(--facing, 1) * 1px)) scaleY(1.02)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    70% { transform: scaleX(calc(var(--facing, 1) * 0.98)) translateX(calc(var(--facing, 1) * 2px)) scaleY(1.01)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
+  @keyframes attemptingPullTugArm {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    12% { transform: scaleX(var(--facing, 1)) scaleY(0.95)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    28% { transform: scaleX(var(--facing, 1)) scaleY(0.94)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    45% { transform: scaleX(var(--facing, 1)) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    62% { transform: scaleX(var(--facing, 1)) scaleY(0.94)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    78% { transform: scaleX(var(--facing, 1)) scaleY(0.96)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    92% { transform: scaleX(var(--facing, 1)) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(0.97)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
+  @keyframes grabSeparatePushArm {
+    0% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    40% { transform: scaleX(calc(var(--facing, 1) * 1.04)) translateX(calc(var(--facing, 1) * 3px)) scaleY(0.97)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
+  @keyframes grabBellyFlopLungeArm {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    40% { transform: scaleX(calc(var(--facing, 1) * 1.15)) scaleY(0.85) translateY(0)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    70% { transform: scaleX(calc(var(--facing, 1) * 1.2)) scaleY(0.75) translateY(2px)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(calc(var(--facing, 1) * 1.25)) scaleY(0.7) translateY(4px)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
+  @keyframes grabBellyFlopVictimArm {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    30% { transform: scaleX(calc(var(--facing, 1) * 0.85)) scaleY(1.1) translateY(-4px)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    70% { transform: scaleX(calc(var(--facing, 1) * 1.15)) scaleY(0.8) translateY(2px)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(calc(var(--facing, 1) * 1.3)) scaleY(0.65) translateY(5px)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
+  @keyframes grabFrontalForceOutArm {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    50% { transform: scaleX(calc(var(--facing, 1) * 1.1)) scaleY(0.92) translateX(calc(var(--facing, 1) * -3px))${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.95) translateX(calc(var(--facing, 1) * -5px))${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
+  @keyframes grabFrontalForceOutVictimArm {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateY(0)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    40% { transform: scaleX(calc(var(--facing, 1) * 0.9)) scaleY(1.05) translateY(-2px)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(calc(var(--facing, 1) * 0.85)) scaleY(0.9) translateY(3px)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
   /* 250ms telegraphed startup — coil, then lunge into contact as impact resolves */
   @keyframes clinchJoltLunge {
@@ -902,6 +1028,26 @@ export const StyledImage = styled("img")
     20% { transform: scaleX(calc(var(--facing, 1) * 0.88)) translateX(calc(var(--facing, 1) * -10px)) scaleY(0.90); }
     50% { transform: scaleX(calc(var(--facing, 1) * 1.06)) translateX(calc(var(--facing, 1) * 3px)) scaleY(0.96); }
     100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1); }
+  }
+  /* Grab-arm twins — same body motion, then shoulder pivot / nudge so the
+     flipper stays glued through the lunge (plain jolt keyframes would wipe it). */
+  @keyframes clinchJoltLungeArm {
+    0% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    35% { transform: scaleX(calc(var(--facing, 1) * 1.12)) translateX(calc(var(--facing, 1) * -18px)) scaleY(0.88)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    75% { transform: scaleX(calc(var(--facing, 1) * 1.18)) translateX(calc(var(--facing, 1) * 22px)) scaleY(0.92)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    100% { transform: scaleX(calc(var(--facing, 1) * 1.1)) translateX(calc(var(--facing, 1) * 14px)) scaleY(0.96)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+  }
+  @keyframes clinchJoltRecoilArm {
+    0% { transform: scaleX(var(--facing, 1)) translateX(0) skewX(0deg) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    20% { transform: scaleX(var(--facing, 1)) translateX(calc(var(--facing, 1) * 14px)) skewX(calc(var(--facing, 1) * -6deg)) scaleY(0.92)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    50% { transform: scaleX(var(--facing, 1)) translateX(calc(var(--facing, 1) * 8px)) skewX(calc(var(--facing, 1) * -3deg)) scaleY(0.96)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    100% { transform: scaleX(var(--facing, 1)) translateX(0) skewX(0deg) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+  }
+  @keyframes clinchJoltClashArm {
+    0% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    20% { transform: scaleX(calc(var(--facing, 1) * 0.88)) translateX(calc(var(--facing, 1) * -10px)) scaleY(0.90)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    50% { transform: scaleX(calc(var(--facing, 1) * 1.06)) translateX(calc(var(--facing, 1) * 3px)) scaleY(0.96)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
   }
   @keyframes grabBreakShake {
     0%   { transform: scaleX(var(--facing, 1)) translateX(0px); }
@@ -1242,16 +1388,12 @@ export const AnimatedFighterImage = styled.img
 export const CountdownTimer = styled.div`
   position: absolute;
   opacity: 0;
-  font-family: "Bungee";
+  font-family: ${FONT_DISPLAY};
   font-size: clamp(1rem, 3cqw, 2.5rem);
   color: #ffd700;
   -webkit-text-stroke: clamp(1.5px, 0.15cqw, 3px) #1a0a08;
   paint-order: stroke fill;
-  text-shadow:
-    clamp(2px, 0.16cqw, 4px) clamp(2px, 0.16cqw, 4px) 0 #1a0e06,
-    clamp(4px, 0.32cqw, 7px) clamp(4px, 0.32cqw, 7px) 0 rgba(18, 10, 4, 0.6),
-    0 0 8px rgba(255, 215, 0, 0.3),
-    0 clamp(2px, 0.16cqw, 4px) clamp(6px, 0.5cqw, 12px) rgba(0, 0, 0, 0.7);
+  text-shadow: ${TEXT_SHADOW_COMBAT_HEAVY}, 0 0 8px rgba(255, 215, 0, 0.2);
   pointer-events: none;
   bottom: 80.5%;
   left: 50%;
@@ -1305,17 +1447,15 @@ export const YouLabel = styled.div
 
   &::before {
     content: "You";
-    font-family: "Space Grotesk", sans-serif;
-    font-weight: 700;
+    font-family: ${FONT_UI};
+    font-weight: ${FONT_WEIGHT.bold};
     font-size: clamp(12px, 1.2cqw, 18px);
-    letter-spacing: 0.08em;
+    letter-spacing: ${TRACK.label};
     line-height: 1;
     color: #ffffff;
     -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.7);
     paint-order: stroke fill;
-    text-shadow:
-      0 1px 3px rgba(0, 0, 0, 0.9),
-      0 0 8px rgba(0, 0, 0, 0.5);
+    text-shadow: ${TEXT_SHADOW_UI};
   }
 
   &::after {
@@ -1462,17 +1602,18 @@ export const DisconnectedModal = styled.div`
 `;
 
 export const DisconnectedTitle = styled.h2`
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: 1.8rem;
   color: #d4af37;
   margin: 0 0 1rem 0;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
 `;
 
 export const DisconnectedMessage = styled.p`
-  font-family: "Noto Sans JP", sans-serif;
+  font-family: ${FONT_UI};
   font-size: 1.2rem;
   color: #ffffff;
   margin: 0 0 2rem 0;
-  font-weight: 600;
+  font-weight: ${FONT_WEIGHT.medium};
 `;

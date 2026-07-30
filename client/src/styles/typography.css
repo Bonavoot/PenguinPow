@@ -1,0 +1,70 @@
+/*
+ * Global typography contract for Pumo Pumo.
+ * JS tokens in menuTheme.js mirror these CSS custom properties.
+ *
+ * Roles:
+ *   --font-display  Bungee — brand, logo moments, major callouts
+ *   --font-ui       Chillax — interface, HUD info, body, buttons
+ *   --font-kanji    Noto Serif JP — CJK ceremonial accents only
+ *
+ * Crisp type: hard shelves over soft bloom. See menuTheme TEXT_SHADOW_*.
+ */
+
+:root {
+  --font-display: "Bungee", system-ui, sans-serif;
+  --font-ui: "Chillax", system-ui, sans-serif;
+  --font-body: var(--font-ui);
+  --font-kanji: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-black: 700;
+
+  --track-display: 0.04em;
+  --track-display-tight: 0.02em;
+  --track-display-wide: 0.08em;
+  --track-label: 0.12em;
+  --track-meta: 0.08em;
+  --track-body: 0.01em;
+
+  /* Hard-shelf seats — keep glyph edges sharp */
+  --text-shadow-combat: 0 1px 0 rgba(0, 0, 0, 0.9), 0 2px 0 rgba(0, 0, 0, 0.45);
+  --text-shadow-display: 0 1px 0 rgba(0, 0, 0, 0.88), 0 2px 0 rgba(0, 0, 0, 0.5),
+    0 3px 8px rgba(0, 0, 0, 0.38);
+  --text-shadow-display-heavy: 0 1px 0 rgba(0, 0, 0, 0.92),
+    0 2px 0 rgba(0, 0, 0, 0.58), 0 4px 12px rgba(0, 0, 0, 0.42);
+  --text-shadow-ui: 0 1px 0 rgba(0, 0, 0, 0.9), 0 2px 0 rgba(0, 0, 0, 0.45);
+}
+
+html,
+body,
+#root {
+  font-family: var(--font-ui);
+  font-weight: var(--fw-regular);
+  letter-spacing: var(--track-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
+}
+
+/* Utility classes for plain CSS (App.css, effect CSS modules) */
+.font-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+}
+
+.font-ui {
+  font-family: var(--font-ui);
+}
+
+.font-kanji {
+  font-family: var(--font-kanji);
+}
+
+.type-crisp {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
+}

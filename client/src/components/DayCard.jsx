@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import styled, { keyframes, css } from "styled-components";
-import { FONT_DISPLAY, FONT_KANJI, FONT_BODY, C } from "./menuTheme";
+import { FONT_DISPLAY, FONT_KANJI, FONT_BODY, FONT_UI, FONT_WEIGHT, TRACK, C, TEXT_SHADOW_UI } from "./menuTheme";
 import daySound from "../sounds/day-sound.ogg";
 import { playBuffer } from "../utils/audioEngine";
 import { getGlobalVolume } from "./Settings";
@@ -249,11 +249,11 @@ const Kicker = styled.div`
   display: flex;
   align-items: center;
   gap: 0.85rem;
-  font-family: ${FONT_BODY};
-  font-weight: 600;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: 0.72rem;
-  letter-spacing: 0.46em;
-  text-indent: 0.46em;
+  letter-spacing: ${TRACK.label};
+  text-indent: ${TRACK.label};
   text-transform: uppercase;
   color: ${C.creamMute};
   animation: ${fadeUp} 0.5s ease both;
@@ -331,7 +331,7 @@ const DayKanji = styled.div`
   font-weight: 700;
   color: ${C.gold};
   letter-spacing: 0.12em;
-  text-shadow: 0 4px 22px rgba(232, 197, 71, 0.28);
+  text-shadow: ${TEXT_SHADOW_UI}, 0 0 8px rgba(232, 197, 71, 0.22);
   animation: ${dayKanjiIn} 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 `;
 
@@ -355,11 +355,11 @@ const DivisionLine = styled.div`
   position: relative;
   z-index: 1;
   margin-top: 0.15rem;
-  font-family: ${FONT_BODY};
-  font-weight: 600;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: 0.9rem;
-  letter-spacing: 0.3em;
-  text-indent: 0.3em;
+  letter-spacing: ${TRACK.label};
+  text-indent: ${TRACK.label};
   text-transform: uppercase;
   color: ${C.iceBright};
   animation: ${fadeUp} 0.6s ease both 0.16s;
@@ -390,19 +390,22 @@ const Versus = styled.div`
 `;
 
 const VsLabel = styled.span`
-  font-family: ${FONT_BODY};
-  font-weight: 600;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: 0.68rem;
-  letter-spacing: 0.4em;
-  text-indent: 0.4em;
+  letter-spacing: ${TRACK.label};
+  text-indent: ${TRACK.label};
   text-transform: uppercase;
   color: ${C.creamMute};
 `;
 
 const OpponentName = styled.span`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: ${({ $compact }) => ($compact ? "1.6rem" : "2.1rem")};
   line-height: 1.1;
+  letter-spacing: ${TRACK.meta};
+  text-transform: uppercase;
   max-width: 100%;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -411,7 +414,7 @@ const OpponentName = styled.span`
   ${({ $boss }) =>
     $boss &&
     css`
-      text-shadow: 0 0 20px rgba(232, 197, 71, 0.45);
+      text-shadow: ${TEXT_SHADOW_UI}, 0 0 10px rgba(232, 197, 71, 0.24);
     `}
 `;
 
@@ -427,9 +430,10 @@ const OppMeta = styled.div`
 `;
 
 const OpponentRank = styled.span`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: 0.82rem;
-  letter-spacing: 0.2em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   color: ${C.gold};
 `;
@@ -438,10 +442,10 @@ const StyleTag = styled.span`
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  font-family: ${FONT_BODY};
-  font-weight: 600;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: 0.62rem;
-  letter-spacing: 0.22em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   color: ${C.creamMute};
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -457,11 +461,11 @@ const StyleTag = styled.span`
 `;
 
 const BossBadge = styled.span`
-  font-family: ${FONT_BODY};
+  font-family: ${FONT_UI};
   font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.3em;
-  text-indent: 0.3em;
+  font-weight: ${FONT_WEIGHT.bold};
+  letter-spacing: ${TRACK.label};
+  text-indent: ${TRACK.label};
   text-transform: uppercase;
   color: ${C.ink};
   background: linear-gradient(180deg, #f1d061, ${C.gold});
@@ -496,8 +500,10 @@ const RecordCol = styled.div`
 `;
 
 const RecordWho = styled.span`
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.54rem, 1.1vmin, 0.72rem);
-  letter-spacing: 0.26em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   color: ${C.creamMute};
   max-width: 100%;
@@ -507,8 +513,10 @@ const RecordWho = styled.span`
 `;
 
 const RecordVal = styled.span`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: 1.5rem;
+  letter-spacing: ${TRACK.none};
   color: ${C.cream};
 `;
 
@@ -523,11 +531,11 @@ const DraftCol = styled.div`
 `;
 
 const DraftLabel = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 600;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: 0.8rem;
-  letter-spacing: 0.36em;
-  text-indent: 0.36em;
+  letter-spacing: ${TRACK.label};
+  text-indent: ${TRACK.label};
   text-transform: uppercase;
   color: ${C.gold};
   animation: ${fadeUp} 0.6s ease both 0.36s;
@@ -559,7 +567,7 @@ const PowerCard = styled.button`
   background: ${C.cream};
   border: 2px solid rgba(60, 40, 20, 0.55);
   cursor: pointer;
-  font-family: "Space Grotesk", sans-serif;
+  font-family: ${FONT_UI};
   padding: 0;
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.45), 0 2px 0 rgba(60, 40, 20, 0.55);
   opacity: 0;
@@ -669,11 +677,12 @@ const CardBody = styled.div`
 `;
 
 const PowerName = styled.div`
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.66rem, 1vw, 0.9rem);
   color: ${C.inkText};
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: ${TRACK.meta};
   line-height: 1.05;
   text-align: center;
   white-space: nowrap;
@@ -681,20 +690,20 @@ const PowerName = styled.div`
 `;
 
 const PowerDesc = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.48rem, 0.78vw, 0.64rem);
   color: ${C.inkTextSoft};
   text-align: center;
   line-height: 1.25;
-  letter-spacing: 0.03em;
+  letter-spacing: ${TRACK.body};
 `;
 
 const UsageChip = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.4rem, 0.58vw, 0.5rem);
-  letter-spacing: 0.2em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   padding: 2px clamp(6px, 0.8vw, 9px);
   position: absolute;
@@ -726,9 +735,11 @@ const Actions = styled.div`
 `;
 
 const BeginButton = styled.button`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: 1.25rem;
-  letter-spacing: 0.08em;
+  letter-spacing: ${TRACK.meta};
+  text-transform: uppercase;
   color: #1a1205;
   background: linear-gradient(160deg, ${C.gold} 0%, ${C.goldDeep} 100%);
   border: none;
@@ -768,9 +779,11 @@ const BeginButton = styled.button`
 // itself would resize this element and shove the actions/cards around,
 // which the design must never do — nothing moves except by intent.
 const BeginHint = styled.div`
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: 0.72rem;
   line-height: 1.4;
-  letter-spacing: 0.18em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   color: ${C.creamFaint};
   opacity: ${(p) => (p.$visible ? 1 : 0)};
@@ -778,9 +791,10 @@ const BeginHint = styled.div`
 `;
 
 const WithdrawLink = styled.button`
-  font-family: ${FONT_BODY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: 0.74rem;
-  letter-spacing: 0.18em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   color: ${C.creamMute};
   background: none;
@@ -798,9 +812,10 @@ const WithdrawLink = styled.button`
 // hub). Fast-forwards the run to the final day for testing the results screen.
 const DevLink = styled.button`
   margin-top: 0.4rem;
-  font-family: ${FONT_BODY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.55rem, 1.1vmin, 0.72rem);
-  letter-spacing: 0.2em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   color: ${C.iceBright};
   background: none;
@@ -846,9 +861,10 @@ const ConfirmButtons = styled.div`
 `;
 
 const SmallButton = styled.button`
-  font-family: ${FONT_BODY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.7rem, 1.5vmin, 0.92rem);
-  letter-spacing: 0.1em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   padding: 0.55rem 1.4rem;
   border-radius: 8px;

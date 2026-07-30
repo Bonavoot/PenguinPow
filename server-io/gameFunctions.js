@@ -1618,7 +1618,7 @@ function adjustPlayerPositions(player1, player2, delta) {
   // Charged attacks need to reach the opponent to connect — pushbox yields to hit detection.
   // Without this, the pushbox (148px) prevents the lunge from closing distance.
   //
-  // IMPORTANT: this must cover the ENTIRE charged attack, STARTUP included. The
+  // IMPORTANT: this must cover the ENTIRE charged LUNGE, STARTUP included. The
   // forward lunge (index.js) runs during startup too, and because it sets x
   // directly (no movementVelocity), the pushbox would read neither player as
   // "moving toward" and split the overlap 0.5/0.5 — shoving the VICTIM toward the
@@ -1628,9 +1628,19 @@ function adjustPlayerPositions(player1, player2, delta) {
   // their true standing position until the strike connects (the anti-passthrough
   // clamp in index.js still stops the attacker ~30px short, so they never fully
   // overlap; the post-hit min-separation push handles spacing after the hit).
-  const p1Charged = player1.isAttacking && player1.attackType === "charged";
-  const p2Charged = player2.isAttacking && player2.attackType === "charged";
-  if (p1Charged || p2Charged) {
+  //
+  // Palm thrust is rooted (no lunge) but rides attackType "charged" — it must
+  // NOT inherit this yield. Yielding at point-blank lets the arm bury into the
+  // victim through startup; tip-range looks fine, pocket freezes look messy.
+  const p1ChargedLunge =
+    player1.isAttacking &&
+    player1.attackType === "charged" &&
+    !player1.isPalmThrust;
+  const p2ChargedLunge =
+    player2.isAttacking &&
+    player2.attackType === "charged" &&
+    !player2.isPalmThrust;
+  if (p1ChargedLunge || p2ChargedLunge) {
     return;
   }
 

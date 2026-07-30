@@ -84,11 +84,14 @@ import Snowfall from "./Snowfall";
 import {
   C,
   FONT_BODY,
-  FONT_DISPLAY,
+  FONT_UI,
+  FONT_WEIGHT,
+  TRACK,
   fadeIn,
   fadeUp,
   slideInLeft,
   broadcastSlideDown,
+  FONT_RENDER,
   TEXT_SHADOW_DISPLAY,
   TEXT_SHADOW_DISPLAY_SOFT,
 } from "./menuTheme";
@@ -315,14 +318,13 @@ const TopSlug = styled.div`
 
 const SlugText = styled.span`
   font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.48rem, 0.78cqw, 0.62rem);
   color: ${(p) =>
     p.$warn ? C.vermillionBright : p.$accent ? C.ice : C.creamMute};
-  letter-spacing: 0.28em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  ${FONT_RENDER}
   text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
   white-space: nowrap;
   opacity: 0.92;
@@ -426,13 +428,14 @@ const MenuButton = styled.button`
     clamp(2px, 0.4cqh, 5px) clamp(16px, 2cqw, 24px);
   margin: 0;
   cursor: pointer;
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
   font-size: ${(p) =>
     p.$primary
       ? "clamp(1.7rem, 2.9cqw, 2.35rem)"
       : "clamp(1.05rem, 1.7cqw, 1.4rem)"};
-  font-weight: 400;
-  letter-spacing: 0.04em;
+  font-weight: ${(p) =>
+    p.$primary ? FONT_WEIGHT.black : FONT_WEIGHT.bold};
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   text-align: left;
   line-height: 0.95;
@@ -443,8 +446,7 @@ const MenuButton = styled.button`
    * The old 4-way 1px black stroke + hard shelf made Bungee look
    * jagged / "sharpness too high" at these sizes.
    */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  ${FONT_RENDER}
   text-shadow: ${TEXT_SHADOW_DISPLAY};
   transition:
     transform 0.28s cubic-bezier(0.2, 0.85, 0.2, 1),
@@ -499,16 +501,15 @@ const SystemButton = styled.button`
   padding: clamp(2px, 0.4cqh, 5px) clamp(4px, 0.6cqw, 8px)
     clamp(2px, 0.4cqh, 5px) clamp(16px, 2cqw, 24px);
   cursor: pointer;
-  font-family: ${FONT_DISPLAY};
-  font-weight: 400;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.72rem, 1.15cqw, 0.92rem);
-  letter-spacing: 0.08em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   text-align: left;
   line-height: 0.95;
   color: rgba(245, 236, 217, 0.48);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  ${FONT_RENDER}
   text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
   transition:
     color 0.2s ease,
@@ -644,10 +645,11 @@ const ConnectionErrorBanner = styled.div`
   box-shadow:
     0 8px 22px rgba(0, 0, 0, 0.5),
     inset 0 2px 0 ${C.vermillion};
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.55rem, 0.9cqw, 0.72rem);
   color: ${C.cream};
-  letter-spacing: 0.14em;
+  letter-spacing: ${TRACK.label};
   animation: ${fadeIn} 0.4s ease-out;
 
   &::before {

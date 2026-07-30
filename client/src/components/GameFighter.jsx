@@ -183,6 +183,7 @@ import {
   bellyLaying as bellyLayingSprite,
   bellyLayingEyesOpen as bellyLayingEyesOpenSprite,
   cinematicThrowKillLanding as cinematicThrowKillLandingSprite,
+  pushDefeatPose as pushDefeatPoseSprite,
   grabbing as grabbingSprite,
   clinchPlanting as clinchPlantingSprite,
   beltGrabArm as beltGrabArmSprite,
@@ -198,6 +199,7 @@ import {
   compositeHatOntoSprite,
   compositeHatOntoSpriteSync,
   getCachedHatComposite,
+  resolveHatOverlaySrcSync,
 } from "../utils/hatComposite";
 import {
   StyledImage,
@@ -873,6 +875,7 @@ const GameFighter = ({
     isThrowingSnowball: false,
     slapAnimation: 2,
     isBowing: false,
+    isGrabPushDefeat: false,
     isThrowTeching: false,
     isBeingPulled: false,
     isBeingPushed: false,
@@ -2587,7 +2590,7 @@ const GameFighter = ({
           let nudgeX = 0;
           let nudgeY = 0;
           if (p.isClinchPlanting) {
-            nudgeX = 6;
+            nudgeX = 7.5;
             nudgeY = 2;
           } else if (bodyHolding) {
             nudgeX = 4.5;
@@ -3275,6 +3278,7 @@ const GameFighter = ({
           prev.isBeingPushed !== newState.isBeingPushed ||
           prev.isThrowTeching !== newState.isThrowTeching ||
           prev.isBowing !== newState.isBowing ||
+          prev.isGrabPushDefeat !== newState.isGrabPushDefeat ||
           prev.isGrabBreaking !== newState.isGrabBreaking ||
           prev.isGrabBreakCountered !== newState.isGrabBreakCountered ||
           prev.isAttemptingGrabThrow !== newState.isAttemptingGrabThrow ||
@@ -3540,59 +3544,73 @@ const GameFighter = ({
           }, 200);
         }
 
-        // Charged attacker: pin plant X/Y the instant the hit lands.
-        // X: kill lunge extrapolation into hitstop.
-        // Y: appear already at land-settle height (never lerp up from grounded
-        //    — that read as a hop before the arc down).
+        // Contact freeze pin — snap interpolated X to the server park pose so
+        // hitstop doesn't freeze a pre-correction bury (worst on point-blank
+        // palm: arm through belly for the whole 160ms burst freeze).
+        const pinFighterX = (plantX, plantY) => {
+          if (typeof plantX !== "number") return;
+          const y =
+            typeof plantY === "number"
+              ? plantY
+              : interpolatedPositionRef.current?.y ?? 0;
+          interpolatedPositionRef.current = { x: plantX, y };
+          if (previousState.current) {
+            previousState.current = {
+              ...previousState.current,
+              x: plantX,
+              y,
+            };
+          }
+          if (currentState.current) {
+            currentState.current = {
+              ...currentState.current,
+              x: plantX,
+              y,
+            };
+          }
+          const leftPct = `${(plantX / 1280) * 100}%`;
+          const bottomPct = `${(y / 720) * 100}%`;
+          if (fighterImgDomRef.current) {
+            fighterImgDomRef.current.style.left = leftPct;
+            fighterImgDomRef.current.style.bottom = bottomPct;
+          }
+          if (animContainerDomRef.current) {
+            animContainerDomRef.current.style.left = leftPct;
+            animContainerDomRef.current.style.bottom = bottomPct;
+          }
+        };
+
+        // Attacker plant pin — charged / palm / slap. Snap interp to server X so
+        // hitstop freezes the tip park, not a pre-correction bury or coast.
         if (
           data.attackerId &&
           data.attackerId === player.id &&
-          data.attackType === "charged"
+          (data.attackType === "charged" || data.attackType === "slap")
         ) {
-          const plantX =
-            typeof data.attackerX === "number"
-              ? data.attackerX
-              : interpolatedPositionRef.current?.x;
-          const plantY =
-            typeof data.attackerY === "number"
-              ? data.attackerY
-              : interpolatedPositionRef.current?.y;
-          if (typeof plantX === "number" && typeof plantY === "number") {
-            interpolatedPositionRef.current = { x: plantX, y: plantY };
-            if (previousState.current) {
-              previousState.current = {
-                ...previousState.current,
-                x: plantX,
-                y: plantY,
-              };
-            }
-            if (currentState.current) {
-              currentState.current = {
-                ...currentState.current,
-                x: plantX,
-                y: plantY,
-              };
-            }
-            const leftPct = `${(plantX / 1280) * 100}%`;
-            const bottomPct = `${(plantY / 720) * 100}%`;
-            if (fighterImgDomRef.current) {
-              fighterImgDomRef.current.style.left = leftPct;
-              fighterImgDomRef.current.style.bottom = bottomPct;
-            }
-            if (animContainerDomRef.current) {
-              animContainerDomRef.current.style.left = leftPct;
-              animContainerDomRef.current.style.bottom = bottomPct;
-            }
+          pinFighterX(data.attackerX, data.attackerY);
+          // Headbutt drops strike pose on connect — clear local attack predict.
+          // Palm HOLDS the strike through hitstop/recovery; slap keeps its
+          // anim cycle. Clearing isPalmThrust here flickered pocket palm poses.
+          if (data.attackType === "charged" && !data.isPalmThrust) {
+            predictedState.current = {
+              ...predictedState.current,
+              isAttacking: false,
+              isChargingAttack: false,
+              isSlapAttack: false,
+              isPalmThrust: false,
+              timestamp: Date.now(),
+            };
+            isChargedLungingRef.current = false;
           }
-          predictedState.current = {
-            ...predictedState.current,
-            isAttacking: false,
-            isChargingAttack: false,
-            isSlapAttack: false,
-            isPalmThrust: false,
-            timestamp: Date.now(),
-          };
-          isChargedLungingRef.current = false;
+        }
+
+        // Victim park pin — data.x is post-contact-correction (tip/palm park).
+        if (
+          data.victimId &&
+          data.victimId === player.id &&
+          typeof data.x === "number"
+        ) {
+          pinFighterX(data.x, data.y);
         }
 
         // Screen shake — explicit per-hit tiers. Charged attacks get a heavy
@@ -3604,6 +3622,9 @@ const GameFighter = ({
           if (data.isGored) {
             // EXPOSED (matador punish) — heavier crack than a normal slap/charge.
             addShake("slap_parry", { dirX: shakeDir, scale: 0.95 });
+          } else if (data.isPalmThrust) {
+            // Palm is a planted burst — use throw-landing weight, not charged crunch.
+            addShake("throw_landing", { dirX: shakeDir, scale: 1.05 });
           } else if (data.attackType === "charged") {
             const chargeScale =
               0.8 + Math.min((data.chargePercentage || 0) / 100, 1) * 0.45;
@@ -5287,6 +5308,21 @@ const GameFighter = ({
     if (info?.src) preDecodeImage(info.src);
   }, [penguin.isClinchKillThrowVictim, getSpriteRenderInfo]);
 
+  // FORCE OUT: warm push-defeat as soon as the win type is known (before the
+  // delayed idle→defeat swap), so the pose change doesn't decode-flash.
+  useEffect(() => {
+    if (winType !== "grabPush" || !gameOver) return;
+    const info = getSpriteRenderInfo(
+      pushDefeatPoseSprite,
+      false,
+      false,
+      false,
+      true,
+      false
+    );
+    if (info?.src) preDecodeImage(info.src);
+  }, [winType, gameOver, getSpriteRenderInfo]);
+
   // Rope jump — angled liftoff plume on takeoff, smoke puff on touchdown.
   const prevRopeJumpPhase = useRef(null);
   useEffect(() => {
@@ -5747,11 +5783,23 @@ const GameFighter = ({
         const px = pos?.x ?? penguin.x;
         const facing = penguin.facing ?? -1;
         const facingOffsetPx = (facing === 1 ? -8 : -3) * 12.8;
+        // Pocket-range: shrink the force cone so it doesn't bloom through both
+        // bodies. Tip-range keeps the full shove read.
+        const opp =
+          index === 0
+            ? allPlayersDataRef.current?.player2
+            : allPlayersDataRef.current?.player1;
+        const oppX = typeof opp?.x === "number" ? opp.x : null;
+        const spacing = oppX == null ? 999 : Math.abs(px - oppX);
+        // ~pushbox floor ≈ 110; palm connect ≈ 136 @ default size.
+        const pocketScale =
+          spacing < 125 ? 0.55 + Math.max(0, spacing - 95) * 0.015 : 1;
         emitParticles("palmThrust", {
           x: px + 70 + facingOffsetPx,
           y: PLAYER_MID_Y,
           dir: -facing,
           owner: penguin.id,
+          scale: Math.min(1, Math.max(0.5, pocketScale)),
         });
       }
     }
@@ -6883,7 +6931,8 @@ const GameFighter = ({
     !!penguin.isSlideJumping,
     penguin.slideJumpPhase,
     slideJumpUseDodgePose,
-    slideJumpFlapFrame
+    slideJumpFlapFrame,
+    !!penguin.isGrabPushDefeat
   );
 
   // Dash frames: the dodge now has real anticipation + landing poses.
@@ -7164,7 +7213,7 @@ const GameFighter = ({
   // belt arm lands on the white belly — nudge BACK (local +X, symmetric across
   // facing) so the flipper sits on the dark torso. Belt (M2) grabbing pose
   // stays at 0. +X = back, +Y = down.
-  const GRAB_ARM_PLANT_NUDGE_X_PCT = 6; // back
+  const GRAB_ARM_PLANT_NUDGE_X_PCT = 7.5; // back (plant body angles arm onto belly)
   const GRAB_ARM_PLANT_NUDGE_Y_PCT = 2; // down
   const GRAB_ARM_BODY_HOLD_NUDGE_X_PCT = 4.5; // back off white belly
   const GRAB_ARM_BODY_HOLD_NUDGE_Y_PCT = 0.75;
@@ -7206,7 +7255,11 @@ const GameFighter = ({
   // fall back to unhatted when this pose's composite isn't ready yet.
   const hatOverlaySrc =
     !isKillVictim && !isAnimatedSprite && headGearId
-      ? getHatOverlayForSprite(effectiveSpriteSrc, headGearId)
+      ? resolveHatOverlaySrcSync(
+          getHatOverlayForSprite(effectiveSpriteSrc, headGearId),
+          headGearId,
+          targetColor,
+        )
       : null;
   const hatUnderBody = !!(headGearId && isHeadGearUnderBody(headGearId));
 
@@ -7629,6 +7682,7 @@ const GameFighter = ({
             "counter",
             "counterhit",
             "countergrab",
+            "matadorbreak",
             "punish",
             "counterthrow",
             "deepgrip",

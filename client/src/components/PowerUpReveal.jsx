@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { SocketContext } from "../SocketContext";
-import { C } from "./menuTheme";
+import { C, FONT_DISPLAY, FONT_UI, FONT_WEIGHT, TRACK } from "./menuTheme";
 import { ANNOUNCE_Y } from "./SumoGameAnnouncement";
 import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
@@ -337,11 +337,11 @@ const CardIcon = styled.img`
  * cream reads as printed paper rather than as a paint chip.
  */
 const CardName = styled.div`
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_DISPLAY};
   font-size: clamp(0.5rem, 0.78cqw, 0.66rem);
   color: ${C.inkText};
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: ${TRACK.display};
   line-height: 1.1;
   text-align: center;
   padding: clamp(5px, 0.7cqh, 8px) clamp(4px, 0.5cqw, 6px);
@@ -397,9 +397,10 @@ const PlayerTab = styled.span`
      picked, so it earns the loud color treatment. Same tab
      structure on both sides, color does the work. */
   color: ${(p) => (p.$isLocal ? C.cream : C.vermillionBright)};
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.42rem, 0.7cqw, 0.58rem);
-  letter-spacing: 0.08em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   padding: clamp(2px, 0.4cqh, 4px) clamp(5px, 0.7cqw, 8px);
   border: 1px solid rgba(245, 236, 217, 0.18);

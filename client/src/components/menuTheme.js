@@ -37,6 +37,37 @@ export const FONT_DISPLAY = `"Bungee", cursive`;
 /** @deprecated Use FONT_DISPLAY — kept as alias so old imports keep working. */
 export const FONT_COMBAT = FONT_DISPLAY;
 export const FONT_KANJI = `"Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif`;
+/** HUD / menu interface face — matches --font-ui in typography.css */
+export const FONT_UI = `"Chillax", system-ui, sans-serif`;
+
+/*
+ * Chillax tops out at 700 — map black/extrabold onto bold so callers
+ * that ask for "black" don't silently fall back to a synthetic 900.
+ */
+export const FONT_WEIGHT = {
+  regular: 400,
+  medium: 500,
+  semibold: 600,
+  bold: 700,
+  extrabold: 700,
+  black: 700,
+};
+
+export const TRACK = {
+  display: "0.04em",
+  displayTight: "0.02em",
+  displayWide: "0.08em",
+  label: "0.12em",
+  meta: "0.08em",
+  body: "0.01em",
+  none: "0",
+};
+
+export const FONT_RENDER = `
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
+`;
 
 /*
  * Crisp combat type seat — single hard shelf, no fake multi-offset
@@ -47,6 +78,8 @@ export const TEXT_SHADOW_COMBAT =
   "0 1px 0 rgba(0,0,0,0.9), 0 2px 0 rgba(0,0,0,0.45)";
 export const TEXT_SHADOW_COMBAT_HEAVY =
   "0 1px 0 rgba(0,0,0,0.95), 0 2px 0 rgba(0,0,0,0.7), 1px 3px 0 rgba(0,0,0,0.4)";
+export const TEXT_SHADOW_UI =
+  "0 1px 0 rgba(0,0,0,0.9), 0 2px 0 rgba(0,0,0,0.45)";
 
 /*
  * Soft ambient seat for cream/white Bungee (and related display type)

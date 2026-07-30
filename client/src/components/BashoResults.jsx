@@ -7,7 +7,7 @@ import {
 } from "react";
 import PropTypes from "prop-types";
 import styled, { keyframes, css } from "styled-components";
-import { FONT_DISPLAY, FONT_KANJI, FONT_BODY, C } from "./menuTheme";
+import { FONT_DISPLAY, FONT_KANJI, FONT_BODY, FONT_UI, FONT_WEIGHT, TRACK, C, TEXT_SHADOW_DISPLAY, TEXT_SHADOW_UI } from "./menuTheme";
 import { formatRank } from "../config/bashoConfig";
 import envelopeImg from "../assets/envelope.png";
 import {
@@ -52,8 +52,8 @@ const rise = keyframes`
 `;
 
 const glow = keyframes`
-  0%, 100% { text-shadow: 0 0 18px rgba(232, 197, 71, 0.35); }
-  50%      { text-shadow: 0 0 34px rgba(232, 197, 71, 0.7); }
+  0%, 100% { text-shadow: ${TEXT_SHADOW_UI}, 0 0 10px rgba(232, 197, 71, 0.22); }
+  50%      { text-shadow: 0 1px 0 rgba(0, 0, 0, 0.92), 0 2px 0 rgba(0, 0, 0, 0.58), 0 0 14px rgba(232, 197, 71, 0.28); }
 `;
 
 const stampIn = keyframes`
@@ -257,9 +257,11 @@ const Kicker = styled.div`
   display: flex;
   align-items: center;
   gap: 0.85rem;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.7rem, 1.5vh, 0.95rem);
-  letter-spacing: 0.42em;
-  text-indent: 0.42em;
+  letter-spacing: ${TRACK.label};
+  text-indent: ${TRACK.label};
   text-transform: uppercase;
   color: ${C.creamMute};
   white-space: nowrap;
@@ -278,11 +280,12 @@ const Title = styled.h1`
   font-family: ${FONT_DISPLAY};
   font-size: clamp(1.7rem, 5.5vh, 3.2rem);
   margin: 0;
+  letter-spacing: ${TRACK.display};
   color: ${(p) => (p.$kk ? C.gold : C.cream)};
   text-shadow: ${(p) =>
     p.$kk
-      ? "0 0 24px rgba(232, 197, 71, 0.35), 0 2px 6px rgba(0, 0, 0, 0.6)"
-      : "0 2px 8px rgba(0, 0, 0, 0.6)"};
+      ? `${TEXT_SHADOW_UI}, 0 0 10px rgba(232, 197, 71, 0.22)`
+      : TEXT_SHADOW_DISPLAY};
   opacity: 0;
   ${(p) =>
     p.$show &&
@@ -326,8 +329,10 @@ const Record = styled.div`
 `;
 
 const Verdict = styled.div`
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.85rem, 1.9vh, 1.15rem);
-  letter-spacing: 0.28em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   color: ${(p) => (p.$kk ? C.successBright : C.vermillionBright)};
   opacity: 0;
@@ -383,15 +388,20 @@ const RankChip = styled.div`
 `;
 
 const RankWho = styled.span`
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.58rem, 1.2vh, 0.74rem);
-  letter-spacing: 0.26em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   color: ${C.creamMute};
 `;
 
 const RankVal = styled.span`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.95rem, 2.4vh, 1.4rem);
+  letter-spacing: ${TRACK.meta};
+  text-transform: uppercase;
   color: ${C.cream};
 `;
 
@@ -414,9 +424,11 @@ const Arrow = styled.div`
 `;
 
 const Note = styled.div`
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.74rem, 1.6vh, 0.98rem);
   color: ${C.iceBright};
-  letter-spacing: 0.04em;
+  letter-spacing: ${TRACK.body};
   opacity: 0;
   ${(p) =>
     p.$show &&
@@ -468,9 +480,11 @@ const PurseLine = styled.div`
   display: flex;
   justify-content: space-between;
   gap: 1.2rem;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.7rem, 1.5vh, 0.92rem);
   color: ${C.creamMute};
-  letter-spacing: 0.04em;
+  letter-spacing: ${TRACK.body};
   opacity: 0;
   ${(p) =>
     p.$show &&
@@ -480,7 +494,9 @@ const PurseLine = styled.div`
     `}
 
   .amt {
-    font-family: ${FONT_DISPLAY};
+    font-family: ${FONT_UI};
+    font-weight: ${FONT_WEIGHT.black};
+    letter-spacing: ${TRACK.none};
     color: ${C.cream};
   }
 `;
@@ -494,10 +510,11 @@ const PurseTotal = styled.div`
   justify-content: space-between;
   align-items: baseline;
   gap: 1.2rem;
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: clamp(1rem, 2.4vh, 1.4rem);
   color: ${C.gold};
-  letter-spacing: 0.06em;
+  letter-spacing: ${TRACK.none};
   opacity: 0;
   ${(p) =>
     p.$show &&
@@ -506,19 +523,21 @@ const PurseTotal = styled.div`
     `}
 
   .label {
-    font-family: ${FONT_BODY};
+    font-family: ${FONT_UI};
+    font-weight: ${FONT_WEIGHT.bold};
     font-size: 0.6em;
-    letter-spacing: 0.26em;
+    letter-spacing: ${TRACK.label};
     text-transform: uppercase;
     color: ${C.creamMute};
   }
 `;
 
 const StatRow = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.92rem, 2.1vh, 1.25rem);
   color: ${C.iceBright};
-  letter-spacing: 0.05em;
+  letter-spacing: ${TRACK.meta};
   opacity: 0;
   ${(p) =>
     p.$show &&
@@ -528,9 +547,10 @@ const StatRow = styled.div`
 
   .milestone {
     display: block;
-    font-family: ${FONT_BODY};
+    font-family: ${FONT_UI};
+    font-weight: ${FONT_WEIGHT.bold};
     font-size: 0.58em;
-    letter-spacing: 0.24em;
+    letter-spacing: ${TRACK.label};
     text-transform: uppercase;
     color: ${C.gold};
     margin-top: 0.25rem;
@@ -610,10 +630,12 @@ const Pip = styled.span`
 `;
 
 const Outcome = styled.span`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.55rem, 1.15vh, 0.74rem);
   line-height: 1;
-  letter-spacing: 0.08em;
+  letter-spacing: ${TRACK.meta};
+  text-transform: uppercase;
   text-align: center;
   color: ${(p) =>
     p.$won ? "rgba(134, 239, 172, 0.85)" : "rgba(238, 81, 65, 0.8)"};
@@ -638,9 +660,11 @@ const ButtonRow = styled.div`
 `;
 
 const ReturnButton = styled.button`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.95rem, 2.4vh, 1.35rem);
-  letter-spacing: 0.06em;
+  letter-spacing: ${TRACK.meta};
+  text-transform: uppercase;
   color: #1a1205;
   background: linear-gradient(160deg, ${C.gold} 0%, ${C.goldDeep} 100%);
   border: none;
@@ -657,9 +681,11 @@ const ReturnButton = styled.button`
 `;
 
 const SecondaryButton = styled.button`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.78rem, 2vh, 1.1rem);
-  letter-spacing: 0.06em;
+  letter-spacing: ${TRACK.meta};
+  text-transform: uppercase;
   color: ${C.cream};
   background: transparent;
   border: 1px solid ${C.creamFaint};
@@ -681,8 +707,10 @@ const SkipHint = styled.div`
   bottom: clamp(0.6rem, 2vh, 1.2rem);
   left: 50%;
   transform: translateX(-50%);
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.6rem, 1.2vh, 0.78rem);
-  letter-spacing: 0.24em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   color: ${C.creamFaint};
   pointer-events: none;

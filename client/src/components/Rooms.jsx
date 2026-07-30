@@ -13,7 +13,10 @@ import {
 import {
   C,
   FONT_BODY,
+  FONT_UI,
   FONT_DISPLAY,
+  FONT_WEIGHT,
+  TRACK,
   FONT_KANJI,
   fadeIn,
   fadeUp,
@@ -22,6 +25,7 @@ import {
   clipRevealRight,
   TEXT_SHADOW_DISPLAY,
   TEXT_SHADOW_DISPLAY_SOFT,
+  TEXT_SHADOW_UI,
 } from "./menuTheme";
 
 /*
@@ -175,12 +179,12 @@ const TopSlug = styled.div`
 
 const SlugText = styled.span`
   font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.42rem, 0.72cqw, 0.56rem);
   color: ${(p) => (p.$accent ? C.ice : C.creamMute)};
-  letter-spacing: 0.3em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  text-shadow: ${TEXT_SHADOW_UI};
   white-space: nowrap;
 
   strong {
@@ -204,17 +208,17 @@ const GhostButton = styled.button`
   gap: clamp(7px, 1cqw, 11px);
   min-height: 38px;
   padding: clamp(7px, 1cqh, 10px) clamp(13px, 1.8cqw, 20px);
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.52rem, 0.8cqw, 0.64rem);
   text-transform: uppercase;
-  letter-spacing: 0.28em;
+  letter-spacing: ${TRACK.label};
   color: ${C.creamMute};
   background: ${C.sumi};
   border: 1px solid rgba(245, 236, 217, 0.22);
   border-radius: 0;
   cursor: pointer;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  text-shadow: ${TEXT_SHADOW_UI};
   transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease,
     transform 0.18s ease;
   animation: ${fadeIn} 0.35s ease both;
@@ -287,13 +291,13 @@ const PageTitle = styled.h1`
 `;
 
 const PageSubtitle = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.42rem, 0.68cqw, 0.52rem);
   color: ${C.ice};
   text-transform: uppercase;
-  letter-spacing: 0.34em;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  letter-spacing: ${TRACK.label};
+  text-shadow: ${TEXT_SHADOW_UI};
 `;
 
 // ============================================
@@ -389,11 +393,12 @@ const HeadTitle = styled.h2`
   display: inline-flex;
   align-items: center;
   gap: clamp(8px, 1.1cqw, 12px);
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.68rem, 1.05cqw, 0.88rem);
   color: ${C.cream};
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: ${TRACK.label};
   text-shadow: ${TEXT_SHADOW_DISPLAY};
 
   &::before {
@@ -405,12 +410,12 @@ const HeadTitle = styled.h2`
 `;
 
 const HeadMeta = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.42rem, 0.66cqw, 0.52rem);
   color: ${(p) => (p.$accent ? C.ice : C.creamMute)};
   text-transform: uppercase;
-  letter-spacing: 0.22em;
+  letter-spacing: ${TRACK.label};
   text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
 `;
 
@@ -441,10 +446,11 @@ const BriefKanji = styled.div`
 
 const BriefLead = styled.p`
   margin: 0;
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.85rem, 1.35cqw, 1.1rem);
   color: ${C.cream};
-  letter-spacing: 0.08em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   line-height: 1.25;
   text-shadow: ${TEXT_SHADOW_DISPLAY};
@@ -479,22 +485,25 @@ const StatPlaque = styled.div`
 `;
 
 const StatLabel = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.4rem, 0.62cqw, 0.48rem);
   color: ${C.creamMute};
-  letter-spacing: 0.26em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
 `;
 
 const StatValue = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: clamp(1.1rem, 1.9cqw, 1.55rem);
   color: ${(p) => (p.$accent === "gold" ? C.gold : C.cream)};
-  letter-spacing: 0.06em;
+  letter-spacing: ${TRACK.meta};
   line-height: 1;
   text-shadow: ${(p) =>
-    p.$accent === "gold" ? "0 0 10px rgba(232, 197, 71, 0.35)" : "none"};
+    p.$accent === "gold"
+      ? `${TEXT_SHADOW_UI}, 0 0 8px rgba(232, 197, 71, 0.22)`
+      : "none"};
 `;
 
 const BriefTip = styled.div`
@@ -511,8 +520,8 @@ const BriefTip = styled.div`
 
   strong {
     color: ${C.gold};
-    font-weight: 700;
-    letter-spacing: 0.16em;
+    font-weight: ${FONT_WEIGHT.bold};
+    letter-spacing: ${TRACK.label};
     text-transform: uppercase;
     margin-right: 6px;
   }
@@ -538,11 +547,11 @@ const ColumnHeaders = styled.div`
   padding: clamp(8px, 1.1cqh, 11px) clamp(16px, 2.2cqw, 24px);
   border-bottom: 1px solid ${D.borderSoft};
   background: ${D.deep};
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.4rem, 0.62cqw, 0.48rem);
   color: ${C.creamMute};
-  letter-spacing: 0.28em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   flex-shrink: 0;
 `;
@@ -608,11 +617,12 @@ const EmptyHanko = styled.div`
 `;
 
 const EmptyTitle = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(1rem, 1.7cqw, 1.3rem);
   color: ${C.cream};
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: ${TRACK.label};
   margin-bottom: clamp(8px, 1.2cqh, 12px);
   text-shadow: ${TEXT_SHADOW_DISPLAY};
 `;
@@ -629,11 +639,11 @@ const EmptySubtext = styled.div`
 
 const CreateHint = styled.div`
   margin-top: clamp(18px, 2.6cqh, 28px);
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.48rem, 0.75cqw, 0.58rem);
   color: ${C.ice};
-  letter-spacing: 0.22em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
 `;
 

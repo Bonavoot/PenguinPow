@@ -20,6 +20,7 @@ import {
   GOLD_COLOR,
   SPECIAL_COLORS,
 } from "../utils/SpriteRecolorizer";
+import { FONT_UI, FONT_WEIGHT } from "./menuTheme";
 
 // UNIFIED: Both players use BLUE sprite as preview
 import pumo from "../assets/pumo-idle.png";
@@ -37,7 +38,8 @@ const PickerContainer = styled.div`
 const Title = styled.h3`
   color: #fff;
   margin: 0 0 10px 0;
-  font-family: "Bungee", sans-serif;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: 14px;
   text-shadow: 2px 2px 0 #000;
 `;

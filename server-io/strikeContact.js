@@ -130,16 +130,25 @@ function getContactSeamX(attacker, victim, attackKind) {
   return attacker.x + toward * (tip + past);
 }
 
+// Palm freeze parks a few px OUTSIDE tip-meets-body so the strike pose reads
+// palm-on-skin, not limb-through-torso (point-blank bury). Hits still confirm
+// at full connectDist; this only changes the hitstop contact pose.
+const PALM_HIT_PARK_OUTSET_PX = 6;
+
 /**
- * Freeze-frame park distance. Hits still CONFIRM at full connectDist; slap parks
- * a few px inside tip so the on-hit pair slide doesn't leave mash pressure on a
- * knife-edge (equal drift + exact tip park = one tick of desync → soft whiff).
+ * Freeze-frame park distance. Hits still CONFIRM at full connectDist.
+ * Slap / charged park at tip-meets-body; palm parks a few px outside so the
+ * rooted pose reads palm-on-skin. Live extension-sep still uses connect−slack
+ * so ice/mash stay hittable — tipQuality samples spacing BEFORE that sep, so
+ * a tip park freeze never auto-awards the tip mastery buff.
  */
 function getHitParkDistance(attackKind, attacker, victim) {
   const connect = getConnectDistance(attackKind, attacker, victim);
-  if (attackKind === "slap") {
-    return Math.max(connect - EXTENSION_HIT_SLACK_PX, 1);
+  if (attackKind === "palm" || attackKind === "palmThrust") {
+    return connect + PALM_HIT_PARK_OUTSET_PX;
   }
+  // slap / charged / default — exact tip-meets-body (≤ connect+epsilon so
+  // slap re-chains don't soft-whiff the way a park outset would).
   return connect;
 }
 
@@ -191,10 +200,14 @@ function applyContactCorrection(attacker, victim, parkDist) {
  */
 function enforceStrikeExtensionSeparation(attacker, opponent, nowSim) {
   if (!attacker || !opponent) return false;
-  if (!attacker.isAttacking || attacker.isInStartupFrames) return false;
+  if (!attacker.isAttacking) return false;
   // Palm rides attackType "charged" — include via isPalmThrust.
   const kind = attackKindFromPlayer(attacker);
   if (kind !== "slap" && kind !== "palm") return false;
+  // Slap waits for ACTIVE (startup has no limb out). Palm is rooted with a
+  // long strike pose — keep tip-sep through STARTUP too so point-blank doesn't
+  // bury the arm for 90ms before the hit lands.
+  if (attacker.isInStartupFrames && kind !== "palm") return false;
 
   // Same pass-through exemptions as the pushbox — never horizontally pin a
   // flapping / slide-jumping / rope-jumping / dodging / sidestepping / thrown
@@ -235,10 +248,14 @@ function enforceStrikeExtensionSeparation(attacker, opponent, nowSim) {
   // Only when opponent is in front of the strike.
   if (delta * attackDir < 0) return false;
 
-  const minSep = Math.max(
-    getConnectDistance(kind, attacker, opponent) - EXTENSION_HIT_SLACK_PX,
-    1
-  );
+  // LIVE sep must stay INSIDE connect reach — park outset is on-hit only.
+  // Palm used connect+outset here and shoved the opponent past the hitbox
+  // every startup tick (rooted poke → permanent ghost whiff at standing range).
+  // Inward slack matches slap: ice drift across a few ticks won't open a gap
+  // past connectDist before the hit confirms. On connect, getHitParkDistance
+  // still snaps palm to tip+outset for the freeze pose.
+  const connect = getConnectDistance(kind, attacker, opponent);
+  const minSep = Math.max(connect - EXTENSION_HIT_SLACK_PX, 1);
   const current = Math.abs(delta);
   if (current >= minSep - 0.01) return false;
 

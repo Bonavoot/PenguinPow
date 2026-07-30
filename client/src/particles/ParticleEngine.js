@@ -2201,11 +2201,14 @@ const PRESETS = {
   //           -facing (the authoritative forward, see gameFunctions
   //           auto-facing) so the cone ALWAYS fires toward the opponent,
   //           never backward.
-  palmThrust(engine, { x, y, dir = 1, owner = null }) {
+  palmThrust(engine, { x, y, dir = 1, owner = null, scale = 1 }) {
     const cx = x;
     const cy = GAME_H - y;
     const d = dir >= 0 ? 1 : -1;
     const T = engine.textures;
+    // Pocket-range shrinks the whole cone so it doesn't bloom through both
+    // bodies; tip keeps scale 1.
+    const s = Math.max(0.45, Math.min(1, scale));
 
     // No artificial lead: the cone fires when the server confirms the thrust,
     // which already lands ~a network hop into the move — adding a lead on top
@@ -2217,18 +2220,18 @@ const PRESETS = {
     // raised to ~shoulder height (the slap1 pose extends the flipper
     // up-and-forward). Everything anchors here so the effect hugs the
     // player instead of floating out as a giant tunnel.
-    const PALM_FWD = 50; // px forward from body center to the palm
+    const PALM_FWD = 50 * s; // px forward from body center to the palm
     const PALM_UP = -6;  // px up from chest to the raised flipper (negative = lower)
     const palmX = cx + d * PALM_FWD;
     const palmY = cy - PALM_UP;
-    const RING_BACK = 24;  // px back from palm toward player center
+    const RING_BACK = 24 * s;  // px back from palm toward player center
     const ringX = palmX - d * RING_BACK;
     const RING_DOWN = 6;  // px lower on screen for ring + forward streaks
     const ringY = palmY + RING_DOWN;
     const streakCenterY = ringY;
     // Point along thrust — the half behind the anchor extends back into the arm/body.
     const streakRot = d > 0 ? 0 : Math.PI;
-    const streakSpawnX = ringX - d * 56;
+    const streakSpawnX = ringX - d * 56 * s;
     const flashX = ringX - d * 2;
     const palmFx = (cfg) => ({
       ...cfg,
@@ -2250,7 +2253,7 @@ const PRESETS = {
     engine.spawn({
       x: flashX, y: streakCenterY,
       vx: 0, vy: 0, gravity: 0, drag: 0.9,
-      size: 26, sizeEnd: 58,
+      size: 26 * s, sizeEnd: 58 * s,
       alpha: 1, alphaEnd: 0,
       rotation: 0, rotationSpeed: 0,
       ease: "outCubic", easeAlpha: "outCubic",
@@ -2277,8 +2280,8 @@ const PRESETS = {
     for (const w of WAVES) {
       engine.spawn(palmFx({
         x: flashX - d * 6, y: streakCenterY,
-        vx: d * w.spd, vy: 0, gravity: 0, drag: 0.88,
-        size: w.s0, sizeEnd: w.s1,
+        vx: d * w.spd * s, vy: 0, gravity: 0, drag: 0.88,
+        size: w.s0 * s, sizeEnd: w.s1 * s,
         alpha: w.alpha, alphaEnd: 0,
         rotation: streakRot, rotationSpeed: 0,
         ease: "outExpo", easeAlpha: "outCubic",
@@ -2304,17 +2307,17 @@ const PRESETS = {
     for (const slot of FWD_STREAKS) {
       engine.spawn(palmFx({
         x: streakSpawnX + d * rand(-2, 2),
-        y: streakCenterY + slot.yOff + rand(-2, 2),
-        vx: d * slot.spd, vy: 0,
+        y: streakCenterY + slot.yOff * s + rand(-2, 2),
+        vx: d * slot.spd * s, vy: 0,
         gravity: 0, drag: 0.86,
-        size: slot.thick, sizeEnd: slot.thick * 0.7,
+        size: slot.thick * s, sizeEnd: slot.thick * 0.7 * s,
         alpha: slot.alpha, alphaEnd: 0,
         rotation: streakRot, rotationSpeed: 0,
         ease: "outCubic", easeAlpha: "outQuad",
         maxLife: rand(0.12, 0.18),
         delay: LEAD,
         texture: T.palmThrustStreak,
-        stretchX: slot.stretch,
+        stretchX: slot.stretch * (0.7 + 0.3 * s),
         blendMode: "lighter",
         aboveFighters: !slot.behind,
       }));
@@ -2330,10 +2333,11 @@ const PRESETS = {
     // and glide out as they fade — a committed forward push, NOT the
     // lightweight "shove out and instantly stop" (feather) look that heavy
     // drag + gravity + an upward pop was producing.
-    for (let i = 0; i < 11; i++) {
+    const iceCount = s < 0.75 ? 7 : 11;
+    for (let i = 0; i < iceCount; i++) {
       const ang = (d === 1 ? 0 : Math.PI) + rand(-0.26, 0.26);
-      const spd = rand(150, 320);
-      const size = rand(2.5, 5.5);
+      const spd = rand(150, 320) * s;
+      const size = rand(2.5, 5.5) * s;
       engine.spawn({
         x: flashX - d * rand(4, 22), y: streakCenterY + rand(-15, 15),
         vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,

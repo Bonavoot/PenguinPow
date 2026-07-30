@@ -462,6 +462,7 @@ function resetRoomAndPlayers(room, io) {
     player.gassedUntil = 0;
     player.staminaRegenAccum = 0;
     player.isBowing = false;
+    player.isGrabPushDefeat = false;
     player.x = player.fighter === "player 1" ? 440 : 840;
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };

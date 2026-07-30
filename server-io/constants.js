@@ -39,7 +39,7 @@ const DELTA_TRACKED_PROPS = [
   // MATADOR (BACK+SPACE grab-parry): separate from AP so grabs don't CLAMP it.
   'isMatadorParrying', 'isMatadorSuccess', 'isMatadorWhiffRecovering',
   'isThrowing', 'isBeingThrown', 'isThrowTeching', 'isBeingPulled', 'isBeingPushed',
-  'isThrowingSalt', 'isReady', 'isBowing', 'isAtTheRopes',
+  'isThrowingSalt', 'isReady', 'isBowing', 'isGrabPushDefeat', 'isAtTheRopes',
   'isThrowingSnowball', 'isSpawningPumoArmy',
   'isGrabBreaking', 'isGrabBreakCountered', 'isGrabBreakSeparating',
   'isAttemptingGrabThrow', 'isInRitualPhase',
@@ -664,6 +664,8 @@ const RINGOUT_PUSH_IDLE_DELAY_MS = 220; // brief hold after shove, then pumo-idl
 // MUST lag idle so clients commit idle sprites before X moves — otherwise
 // interpolated spacing changes under a still-visible clinch pose.
 const RINGOUT_PUSH_SEPARATE_DELAY_MS = 140;
+// Loser: idle first, then swap to push-defeat pose (still before ~2000ms reset).
+const RINGOUT_PUSH_DEFEAT_DELAY_MS = 280;
 
 // ============================================
 // Parry System
@@ -1861,6 +1863,7 @@ module.exports = {
   RINGOUT_PUSH_DISTANCE,
   RINGOUT_PUSH_IDLE_DELAY_MS,
   RINGOUT_PUSH_SEPARATE_DELAY_MS,
+  RINGOUT_PUSH_DEFEAT_DELAY_MS,
 
   // Parry system
   RAW_PARRY_KNOCKBACK,

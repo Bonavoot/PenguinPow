@@ -39,6 +39,7 @@ import {
   bellyLaying,
   bellyLayingEyesOpen,
   cinematicThrowKillLanding,
+  pushDefeatPose,
   snowballThrow,
   beingGrabbed,
   atTheRopes,
@@ -164,7 +165,9 @@ const getImageSrc = (
   isSlideJumping = false,
   slideJumpPhase = null,
   slideJumpUseDodgePose = false,
-  slideJumpFlapFrame = 1
+  slideJumpFlapFrame = 1,
+  // FORCE OUT (grabPush) loser — held after the shove settles (not idle).
+  isGrabPushDefeat = false
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -177,6 +180,8 @@ const getImageSrc = (
   }
   // Pull kill: eyes open during the slide, then eyes closed once the bow phase begins.
   if (isClinchKillPullVictim) return isBowing ? bellyLaying : bellyLayingEyesOpen;
+  // FORCE OUT loser — distinct defeat pose after the continued push ends.
+  if (isGrabPushDefeat) return pushDefeatPose;
   if (isAttemptingPull) return attemptingPull;
   // Clinch throw-clash / separation placeholder — success-f1 for the whole
   // beat. Not Attack Parry (that still owns f1→f2 via isRawParrySuccess).

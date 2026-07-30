@@ -9,9 +9,14 @@ import {
   C,
   FONT_BODY,
   FONT_DISPLAY,
+  FONT_UI,
+  FONT_WEIGHT,
   broadcastSlideDown,
+  FONT_RENDER,
   TEXT_SHADOW_DISPLAY,
   TEXT_SHADOW_DISPLAY_HEAVY,
+  TEXT_SHADOW_UI,
+  TRACK,
 } from "./menuTheme";
 import { SHADOW_GRADIENT } from "./PlayerShadow";
 
@@ -197,16 +202,16 @@ const TopSlug = styled.div`
 
 const SlugText = styled.span`
   font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.42rem, 0.72cqw, 0.56rem);
   color: ${(p) => (p.$accent ? C.ice : C.creamMute)};
-  letter-spacing: 0.3em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  text-shadow: ${TEXT_SHADOW_UI};
 
   strong {
     color: ${C.cream};
-    letter-spacing: 0.1em;
+    letter-spacing: ${TRACK.meta};
   }
 `;
 
@@ -343,6 +348,7 @@ const VsLetters = styled.div`
   color: #ffffff;
   letter-spacing: 0.04em;
   line-height: 0.82;
+  ${FONT_RENDER}
   text-shadow: ${TEXT_SHADOW_DISPLAY_HEAVY};
 `;
 
@@ -362,10 +368,10 @@ const VsMetaPlate = styled.div`
 
 const VsMode = styled.div`
   font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.45rem, 0.75cqw, 0.6rem);
   color: ${C.cream};
-  letter-spacing: 0.28em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   line-height: 1;
 `;
@@ -441,10 +447,10 @@ const SideTag = styled.div`
 
 const SideLabel = styled.span`
   font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.42rem, 0.7cqw, 0.55rem);
   color: ${(p) => p.$accent};
-  letter-spacing: 0.28em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   line-height: 1;
 `;
@@ -458,7 +464,7 @@ const FighterName = styled.div`
   text-transform: uppercase;
   letter-spacing: 0.04em;
   line-height: 0.9;
-  /* Soft ambient seat — hard 1px stroke read as jagged at these sizes */
+  ${FONT_RENDER}
   text-shadow: ${TEXT_SHADOW_DISPLAY};
   white-space: nowrap;
   min-width: 0;
@@ -471,15 +477,14 @@ const RankLine = styled.div`
   position: relative;
   z-index: 2;
   margin-top: clamp(3px, 0.4cqh, 6px);
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(10px, 1.15cqw, 14px);
   color: ${C.gold};
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: ${TRACK.meta};
   line-height: 1;
-  text-shadow:
-    0 0 10px rgba(232, 197, 71, 0.3),
-    0 1px 3px rgba(0, 0, 0, 0.9);
+  text-shadow: ${TEXT_SHADOW_UI}, 0 0 8px rgba(232, 197, 71, 0.22);
   white-space: nowrap;
 `;
 
@@ -517,7 +522,7 @@ const MetaRow = styled.div`
 
 const MetaItem = styled.span`
   font-family: ${FONT_BODY};
-  font-weight: 600;
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.48rem, 0.78cqw, 0.62rem);
   color: rgba(245, 236, 217, 0.58);
   letter-spacing: 0.2em;
@@ -538,10 +543,11 @@ const RecordText = styled.span`
   display: inline-flex;
   align-items: baseline;
   gap: 2px;
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: clamp(0.55rem, 0.9cqw, 0.75rem);
   color: ${C.cream};
-  letter-spacing: 0.08em;
+  letter-spacing: ${TRACK.meta};
 
   small {
     font-size: 0.75em;

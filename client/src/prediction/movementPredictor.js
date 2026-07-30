@@ -124,6 +124,7 @@ const BLOCKING_FLAGS = [
   "isAtTheRopes",
   "isPowerSliding",
   "isBowing",
+  "isGrabPushDefeat",
   "isBeingPulled",
   "isBeingPushed",
   "isGrabPushing",

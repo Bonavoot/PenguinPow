@@ -836,6 +836,215 @@
           "rotationDeg": 37
         }
       }
+    },
+    "ponytail": {
+      "label": "Ponytail",
+      "widthPct": 0.4,
+      "poses": {
+        "pumo-idle": {
+          "label": "Idle",
+          "file": "pumo-idle.png",
+          "x": 579.1,
+          "y": 178.6,
+          "rotationDeg": -30.6
+        },
+        "pumo-tachiai-position": {
+          "label": "Tachiai",
+          "file": "pumo-tachiai-position.png",
+          "x": 398.9,
+          "y": 307.6,
+          "rotationDeg": -42.7
+        },
+        "pumo-ready-position": {
+          "label": "Ready",
+          "file": "pumo-ready-position.png",
+          "x": 528.5,
+          "y": 232,
+          "rotationDeg": -31.2
+        },
+        "grabbing": {
+          "label": "Grabbing",
+          "file": "grabbing.png",
+          "x": 441.1,
+          "y": 203,
+          "rotationDeg": -31
+        },
+        "clinch-planting": {
+          "label": "Clinch plant",
+          "file": "clinch-planting.png",
+          "x": 467.1,
+          "y": 218,
+          "rotationDeg": -31
+        },
+        "attempting-grab-throw": {
+          "label": "Grab throw attempt",
+          "file": "attempting-grab-throw.png",
+          "x": 534.4,
+          "y": 247.6,
+          "rotationDeg": -46.5
+        },
+        "is-attempting-pull": {
+          "label": "Pull attempt",
+          "file": "is-attempting-pull.png",
+          "x": 493.9,
+          "y": 102.2,
+          "rotationDeg": 4.5
+        },
+        "slapAttack1": {
+          "label": "Slap 1",
+          "file": "slapAttack1.png",
+          "x": 583,
+          "y": 219.9,
+          "rotationDeg": -26.7
+        },
+        "slapAttack2": {
+          "label": "Slap 2",
+          "file": "slapAttack2.png",
+          "x": 574.9,
+          "y": 216.9,
+          "rotationDeg": 18.12
+        },
+        "slap-attack-1-blur-frame": {
+          "label": "Slap 1 blur",
+          "file": "slap-attack-1-blur-frame.png",
+          "x": 579.3,
+          "y": 204.2,
+          "rotationDeg": -30.4
+        },
+        "slap-attack-1-hit-frame": {
+          "label": "Slap 1 hit",
+          "file": "slap-attack-1-hit-frame.png",
+          "x": 579.3,
+          "y": 204.2,
+          "rotationDeg": -30.4
+        },
+        "slap-attack-2-blur-frame": {
+          "label": "Slap 2 blur",
+          "file": "slap-attack-2-blur-frame.png",
+          "x": 584.3,
+          "y": 211.2,
+          "rotationDeg": -25.4
+        },
+        "slap-attack-2-hit-frame": {
+          "label": "Slap 2 hit",
+          "file": "slap-attack-2-hit-frame.png",
+          "x": 476.3,
+          "y": 236.7,
+          "rotationDeg": -31.4
+        },
+        "palm-thrust": {
+          "label": "Palm thrust",
+          "file": "palm-thrust.png",
+          "x": 579.3,
+          "y": 217.2,
+          "rotationDeg": -24.4
+        },
+        "palm-thrust-startup": {
+          "label": "Palm startup",
+          "file": "palm-thrust-startup.png",
+          "x": 585.3,
+          "y": 210.2,
+          "rotationDeg": -22.4
+        },
+        "palm-thrust-smear": {
+          "label": "Palm smear",
+          "file": "palm-thrust-smear.png",
+          "x": 584.3,
+          "y": 215.2,
+          "rotationDeg": -23.4
+        },
+        "blocking": {
+          "label": "Block",
+          "file": "blocking.png",
+          "x": 627.6,
+          "y": 212.8,
+          "rotationDeg": -26.6
+        },
+        "block-parry": {
+          "label": "Block parry",
+          "file": "block-parry.png",
+          "x": 412.8,
+          "y": 324.1,
+          "rotationDeg": -56.2
+        },
+        "raw-parry-success": {
+          "label": "Raw parry",
+          "file": "raw-parry-success.png",
+          "x": 588.1,
+          "y": 195.7,
+          "rotationDeg": 17.61
+        },
+        "pumo-flap-1": {
+          "label": "Flap 1",
+          "file": "pumo-flap-1.png",
+          "x": 565.7,
+          "y": 166.8,
+          "rotationDeg": -35.8
+        },
+        "pumo-flap-2": {
+          "label": "Flap 2",
+          "file": "pumo-flap-2.png",
+          "x": 464,
+          "y": 182.4,
+          "rotationDeg": -51.5
+        },
+        "recovering": {
+          "label": "Recover / charge",
+          "file": "recovering.png",
+          "x": 558.5,
+          "y": 317.6,
+          "rotationDeg": -29.3
+        },
+        "attack": {
+          "label": "Charged attack",
+          "file": "attack.png",
+          "x": 159,
+          "y": 311.9,
+          "rotationDeg": -89.9
+        },
+        "dodging": {
+          "label": "Dodge / flap dive",
+          "file": "dodging.png",
+          "x": 576.6,
+          "y": 150.7,
+          "rotationDeg": -35.9
+        },
+        "raw-parry-success-frame-1": {
+          "label": "Raw parry 1",
+          "file": "raw-parry-success-frame-1.png",
+          "x": 627.6,
+          "y": 212.8,
+          "rotationDeg": -26.6
+        },
+        "raw-parry-success-frame-2": {
+          "label": "Raw parry 2",
+          "file": "raw-parry-success-frame-2.png",
+          "x": 627.6,
+          "y": 212.8,
+          "rotationDeg": -26.6
+        },
+        "main-menu-pumo": {
+          "label": "Main menu",
+          "file": "main-menu-pumo.png",
+          "x": 586.5,
+          "y": 220,
+          "rotationDeg": -30.2
+        },
+        "raw-parry-success-frame-3": {
+          "label": "Raw parry 3",
+          "file": "raw-parry-success-frame-3.png",
+          "x": 588.1,
+          "y": 195.7,
+          "rotationDeg": 17.61
+        },
+        "sliding": {
+          "label": "Ice slide",
+          "file": "sliding.png",
+          "x": 642.2,
+          "y": 300.7,
+          "rotationDeg": -26.5
+        }
+      }
     }
   }
 }

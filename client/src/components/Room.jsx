@@ -9,11 +9,14 @@ import {
 import {
   C,
   FONT_BODY,
-  FONT_DISPLAY,
+  FONT_UI,
+  FONT_WEIGHT,
+  TRACK,
   slideInLeft,
   arrowNudge,
   livePulse,
   TEXT_SHADOW_DISPLAY,
+  TEXT_SHADOW_UI,
 } from "./menuTheme";
 import { loadSave } from "../lib/saveStore";
 import { getActiveOutfit } from "../lib/outfits";
@@ -91,10 +94,11 @@ const RowIndex = styled.span`
 `;
 
 const RoomId = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.82rem, 1.35cqw, 1.05rem);
   color: ${(p) => (p.$isFull ? C.creamMute : C.cream)};
-  letter-spacing: 0.08em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   line-height: 1.05;
   white-space: nowrap;
@@ -126,17 +130,19 @@ const Seat = styled.div`
 `;
 
 const SeatCount = styled.span`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.58rem, 0.95cqw, 0.72rem);
   color: ${(p) => (p.$isFull ? C.creamMute : C.cream)};
-  letter-spacing: 0.06em;
+  letter-spacing: ${TRACK.meta};
 `;
 
 const StatusBadge = styled.div`
   justify-self: start;
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.42rem, 0.68cqw, 0.52rem);
-  letter-spacing: 0.2em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   padding: clamp(4px, 0.55cqh, 6px) clamp(8px, 1.2cqw, 12px);
   border-radius: 0;
@@ -152,7 +158,7 @@ const StatusBadge = styled.div`
           color: ${C.gold};
           background: rgba(232, 197, 71, 0.12);
           border: 1px solid rgba(232, 197, 71, 0.35);
-          text-shadow: 0 0 10px rgba(232, 197, 71, 0.28);
+          text-shadow: ${TEXT_SHADOW_UI}, 0 0 8px rgba(232, 197, 71, 0.22);
         `}
 `;
 
@@ -163,9 +169,10 @@ const JoinButton = styled.button`
   gap: 8px;
   justify-self: end;
   padding: clamp(9px, 1.3cqh, 12px) clamp(16px, 2.2cqw, 24px);
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.62rem, 1cqw, 0.8rem);
-  letter-spacing: 0.16em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   border-radius: 0;
   cursor: ${(p) => (p.$isFull ? "not-allowed" : "pointer")};

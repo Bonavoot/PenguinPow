@@ -7,6 +7,7 @@ import {
   getPowerUpTypeColor,
   groupDraftedPowerUps,
 } from "../config/powerUpConfig";
+import { FONT_UI, FONT_WEIGHT } from "./menuTheme";
 
 /*
  * BashoBoonStrip — compact row of stacked draft picks for the BASHO HUD.
@@ -92,7 +93,8 @@ const StackMark = styled.span`
   position: absolute;
   top: clamp(-5px, -0.45cqw, -3px);
   right: 0;
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(9px, 0.95cqw, 12px);
   line-height: 1;
   color: #fff;

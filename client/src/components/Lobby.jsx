@@ -17,7 +17,10 @@ import { SHADOW_GRADIENT } from "./PlayerShadow";
 import {
   C,
   FONT_BODY,
+  FONT_UI,
   FONT_DISPLAY,
+  FONT_WEIGHT,
+  TRACK,
   FONT_KANJI,
   fadeIn,
   fadeUp,
@@ -27,6 +30,7 @@ import {
   clipRevealUp,
   TEXT_SHADOW_DISPLAY,
   TEXT_SHADOW_DISPLAY_HEAVY,
+  TEXT_SHADOW_UI,
 } from "./menuTheme";
 import { loadSave, patchSave } from "../lib/saveStore";
 import {
@@ -217,12 +221,12 @@ const TopSlug = styled.div`
 
 const SlugText = styled.span`
   font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.42rem, 0.72cqw, 0.56rem);
   color: ${(p) => (p.$accent ? C.ice : C.creamMute)};
-  letter-spacing: 0.3em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  text-shadow: ${TEXT_SHADOW_UI};
   white-space: nowrap;
 
   strong {
@@ -247,17 +251,17 @@ const LeaveButton = styled.button`
   gap: clamp(7px, 1cqw, 11px);
   min-height: 38px;
   padding: clamp(7px, 1cqh, 10px) clamp(13px, 1.8cqw, 20px);
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.52rem, 0.8cqw, 0.64rem);
   text-transform: uppercase;
-  letter-spacing: 0.28em;
+  letter-spacing: ${TRACK.label};
   color: ${C.creamMute};
   background: ${C.sumi};
   border: 1px solid rgba(245, 236, 217, 0.22);
   border-radius: 0;
   cursor: pointer;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  text-shadow: ${TEXT_SHADOW_UI};
   transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease,
     transform 0.18s ease;
   animation: ${fadeIn} 0.35s ease both;
@@ -431,13 +435,13 @@ const WaitingText = styled.div`
   align-items: center;
   gap: clamp(7px, 1cqw, 11px);
   margin-top: clamp(2px, 0.4cqh, 4px);
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.42rem, 0.65cqw, 0.52rem);
   color: ${C.creamMute};
   text-transform: uppercase;
-  letter-spacing: 0.28em;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  letter-spacing: ${TRACK.label};
+  text-shadow: ${TEXT_SHADOW_UI};
   white-space: nowrap;
 `;
 
@@ -487,21 +491,22 @@ const IdentityBlock = styled.div`
 `;
 
 const SideLabel = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.42rem, 0.7cqw, 0.55rem);
   color: ${(p) => (p.$hasFighter ? C.vermillion : C.creamMute)};
-  letter-spacing: 0.28em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  text-shadow: ${TEXT_SHADOW_UI};
 `;
 
 const FighterName = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(1.05rem, 2cqw, 1.55rem);
   color: ${(p) => (p.$hasFighter ? "#ffffff" : C.creamMute)};
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: ${TRACK.meta};
   line-height: 0.95;
   text-shadow: ${TEXT_SHADOW_DISPLAY};
   white-space: nowrap;
@@ -592,11 +597,11 @@ const VsMetaPlate = styled.div`
 `;
 
 const VsMode = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.52rem, 0.9cqw, 0.7rem);
   color: ${C.cream};
-  letter-spacing: 0.28em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   line-height: 1;
   padding-left: 0.28em;
@@ -625,14 +630,14 @@ const StripCaption = styled.div`
   display: flex;
   align-items: center;
   gap: clamp(7px, 0.9cqw, 10px);
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.38rem, 0.58cqw, 0.46rem);
   color: ${C.creamMute};
-  letter-spacing: 0.3em;
+  letter-spacing: ${TRACK.label};
   margin-right: -0.3em;
   text-transform: uppercase;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  text-shadow: ${TEXT_SHADOW_UI};
 
   &::before,
   &::after {
@@ -690,14 +695,15 @@ const StripOption = styled.button`
          0 4px 10px rgba(0, 0, 0, 0.4)`};
   cursor: ${(p) => (p.$taken ? "not-allowed" : "pointer")};
   opacity: ${(p) => (p.$taken ? 0.38 : 1)};
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.5rem, 0.74cqw, 0.62rem);
-  letter-spacing: 0.06em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   line-height: 1;
   color: ${(p) => (p.$selected ? "#ffffff" : C.creamMute)};
   text-shadow: ${(p) =>
-    p.$selected ? TEXT_SHADOW_DISPLAY : "0 1px 2px rgba(0, 0, 0, 0.65)"};
+    p.$selected ? TEXT_SHADOW_DISPLAY : TEXT_SHADOW_UI};
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease,
     box-shadow 0.15s ease, transform 0.12s ease;
 
@@ -790,10 +796,11 @@ const ReadyButton = styled.button`
   gap: clamp(8px, 1.1cqw, 12px);
   height: clamp(44px, 5.2cqh, 52px);
   padding: 0 clamp(28px, 3.6cqw, 52px);
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.82rem, 1.2cqw, 1.05rem);
   text-transform: uppercase;
-  letter-spacing: 0.22em;
+  letter-spacing: ${TRACK.label};
   color: #ffffff;
   background: linear-gradient(
     180deg,
@@ -826,10 +833,11 @@ const CancelButton = styled.button`
   justify-content: center;
   height: clamp(44px, 5.2cqh, 52px);
   padding: 0 clamp(28px, 3.6cqw, 52px);
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.82rem, 1.2cqw, 1.05rem);
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: ${TRACK.label};
   color: ${C.creamMute};
   background: transparent;
   border: 1px solid rgba(245, 236, 217, 0.32);
@@ -863,19 +871,20 @@ const ReadyChip = styled.div`
 `;
 
 const ReadyChipLabel = styled.span`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.38rem, 0.58cqw, 0.46rem);
   color: ${C.creamMute};
   text-transform: uppercase;
-  letter-spacing: 0.26em;
+  letter-spacing: ${TRACK.label};
 `;
 
 const ReadyChipCount = styled.span`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: clamp(0.78rem, 1.2cqw, 1rem);
   color: ${(p) => (p.$ready ? C.gold : C.cream)};
-  letter-spacing: 0.16em;
+  letter-spacing: ${TRACK.meta};
 `;
 
 // ============================================

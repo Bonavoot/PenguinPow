@@ -37,6 +37,9 @@ import {
   FONT_BODY,
   FONT_DISPLAY,
   FONT_KANJI,
+  FONT_UI,
+  FONT_WEIGHT,
+  TRACK,
   fadeIn,
   fadeUp,
   clipRevealLeft,
@@ -44,6 +47,7 @@ import {
   clipRevealUp,
   TEXT_SHADOW_DISPLAY,
   TEXT_SHADOW_DISPLAY_SOFT,
+  TEXT_SHADOW_UI,
 } from "./menuTheme";
 import {
   ATTRIBUTES,
@@ -322,17 +326,17 @@ const GhostButton = styled.button`
   gap: clamp(7px, 1cqw, 11px);
   min-height: 40px;
   padding: clamp(8px, 1.1cqh, 11px) clamp(14px, 1.9cqw, 22px);
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.56rem, 0.84cqw, 0.68rem);
   text-transform: uppercase;
-  letter-spacing: 0.26em;
+  letter-spacing: ${TRACK.label};
   color: ${D.textMute};
   background: linear-gradient(180deg, #1c212a 0%, ${C.sumi} 100%);
   border: 1px solid rgba(245, 236, 217, 0.28);
   border-radius: 0;
   cursor: pointer;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  text-shadow: ${TEXT_SHADOW_UI};
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease,
     transform 0.18s ease;
@@ -386,19 +390,19 @@ const PageTitle = styled.h1`
   font-size: clamp(1.35rem, 2.5cqw, 2rem);
   color: #ffffff;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: ${TRACK.display};
   line-height: 1;
   text-shadow: ${TEXT_SHADOW_DISPLAY};
 `;
 
 const PageSubtitle = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.48rem, 0.74cqw, 0.58rem);
   color: ${C.iceBright};
   text-transform: uppercase;
-  letter-spacing: 0.32em;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
+  letter-spacing: ${TRACK.label};
+  text-shadow: ${TEXT_SHADOW_UI};
 `;
 
 // Currency readout — lacquer wallet plate with gold weight.
@@ -408,16 +412,17 @@ const Currency = styled.div`
   gap: clamp(7px, 1cqw, 11px);
   min-height: 40px;
   padding: 0 clamp(12px, 1.4cqw, 16px);
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.68rem, 1.02cqw, 0.86rem);
   color: ${C.gold};
-  letter-spacing: 0.06em;
+  letter-spacing: ${TRACK.meta};
   background: linear-gradient(180deg, #222836 0%, ${C.sumi} 100%);
   border: 1px solid rgba(232, 197, 71, 0.45);
   box-shadow:
     inset 0 1px 0 rgba(255, 252, 244, 0.08),
     0 4px 14px rgba(0, 0, 0, 0.4);
-  text-shadow: 0 0 12px rgba(232, 197, 71, 0.4);
+  text-shadow: ${TEXT_SHADOW_UI}, 0 0 8px rgba(232, 197, 71, 0.22);
 
   .envelope {
     height: 2.35em;
@@ -432,10 +437,10 @@ const DebugToggle = styled.button`
   align-items: center;
   min-height: 38px;
   padding: clamp(5px, 0.8cqh, 9px) clamp(10px, 1.4cqw, 14px);
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.42rem, 0.68cqw, 0.52rem);
-  letter-spacing: 0.2em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   color: ${(p) => (p.$active ? C.sumi : C.creamMute)};
   background: ${(p) => (p.$active ? C.gold : C.sumi)};
@@ -562,12 +567,13 @@ const HeadTitle = styled.h2`
   display: inline-flex;
   align-items: center;
   gap: clamp(8px, 1.1cqw, 12px);
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: clamp(0.78rem, 1.15cqw, 0.98rem);
   color: #fff8ee;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
-  text-shadow: ${TEXT_SHADOW_DISPLAY};
+  letter-spacing: ${TRACK.meta};
+  text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
 
   &::before {
     content: "";
@@ -579,12 +585,12 @@ const HeadTitle = styled.h2`
 `;
 
 const HeadMeta = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.48rem, 0.72cqw, 0.58rem);
   color: ${(p) => (p.$accent ? C.iceBright : D.textMute)};
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: ${TRACK.meta};
   text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
 `;
 
@@ -594,11 +600,12 @@ const RankChip = styled.button`
   display: inline-flex;
   align-items: center;
   gap: clamp(6px, 0.8cqw, 9px);
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.52rem, 0.8cqw, 0.66rem);
   color: ${C.gold};
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: ${TRACK.meta};
   background: linear-gradient(
     180deg,
     rgba(28, 34, 56, 0.98) 0%,
@@ -611,7 +618,7 @@ const RankChip = styled.button`
   box-shadow:
     inset 0 1px 0 rgba(255, 252, 244, 0.1),
     0 3px 10px rgba(0, 0, 0, 0.4);
-  text-shadow: 0 0 12px rgba(232, 197, 71, 0.4);
+  text-shadow: ${TEXT_SHADOW_UI}, 0 0 8px rgba(232, 197, 71, 0.22);
   transition: border-color 0.15s ease, color 0.15s ease, transform 0.12s ease,
     box-shadow 0.15s ease;
 
@@ -775,12 +782,12 @@ const BlockLabel = styled.div`
   display: inline-flex;
   align-items: center;
   gap: clamp(6px, 0.8cqw, 9px);
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.46rem, 0.7cqw, 0.56rem);
   color: #fff8ee;
   text-transform: uppercase;
-  letter-spacing: 0.22em;
+  letter-spacing: ${TRACK.label};
 
   &::before {
     content: "";
@@ -902,7 +909,8 @@ const StepButton = styled.button`
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.6rem, 0.9cqw, 0.74rem);
   line-height: 1;
   color: ${C.cream};
@@ -928,10 +936,11 @@ const StepButton = styled.button`
 `;
 
 const StatValue = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: clamp(0.48rem, 0.72cqw, 0.6rem);
   color: #ffffff;
-  letter-spacing: 0.02em;
+  letter-spacing: ${TRACK.none};
   min-width: clamp(20px, 2.2cqw, 26px);
   text-align: center;
   text-shadow: ${TEXT_SHADOW_DISPLAY};
@@ -1045,27 +1054,29 @@ const IdentityStack = styled.div`
 `;
 
 const IdentityLabel = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.36rem, 0.54cqw, 0.44rem);
   color: ${D.textMute};
   text-transform: uppercase;
-  letter-spacing: 0.24em;
+  letter-spacing: ${TRACK.label};
 `;
 
 const IdentityRank = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.72rem, 1.05cqw, 0.92rem);
   color: ${C.gold};
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  text-shadow: 0 0 14px rgba(232, 197, 71, 0.42);
+  letter-spacing: ${TRACK.meta};
+  text-shadow: ${TEXT_SHADOW_UI}, 0 0 8px rgba(232, 197, 71, 0.22);
 `;
 
 const IdentityRecord = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: clamp(0.72rem, 1.05cqw, 0.92rem);
-  letter-spacing: 0.04em;
+  letter-spacing: ${TRACK.none};
   display: inline-flex;
   align-items: baseline;
   gap: 0.14em;
@@ -1156,7 +1167,7 @@ const CategoryKanji = styled.div`
   color: #fff8ee;
   line-height: 1;
   flex-shrink: 0;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.88), 0 3px 0 rgba(0, 0, 0, 0.45);
 `;
 
 const CategoryNameStack = styled.div`
@@ -1173,16 +1184,16 @@ const CategoryName = styled.div`
   color: #ffffff;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
+  text-shadow: ${TEXT_SHADOW_UI};
 `;
 
 const CategorySub = styled.div`
-  font-family: ${FONT_BODY};
-  font-weight: 600;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.34rem, 0.5cqw, 0.42rem);
   color: ${D.textMute};
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: ${TRACK.meta};
 `;
 
 /* Slots fill their strip cells; max size grows with board height.
@@ -1432,12 +1443,13 @@ const DetailTopRow = styled.div`
 `;
 
 const DetailName = styled.span`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.62rem, 0.95cqw, 0.8rem);
   color: #ffffff;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  text-shadow: ${TEXT_SHADOW_DISPLAY};
+  letter-spacing: ${TRACK.meta};
+  text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
 `;
 
 const DetailTag = styled.span`
@@ -1530,9 +1542,10 @@ const ActionButton = styled.button`
   gap: 5px;
   min-height: clamp(30px, 3.6cqh, 38px);
   padding: clamp(6px, 0.85cqh, 9px) clamp(12px, 1.5cqw, 16px);
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.48rem, 0.7cqw, 0.58rem);
-  letter-spacing: 0.06em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   white-space: nowrap;
   border-radius: 0;
@@ -1613,7 +1626,7 @@ const StartNote = styled.div`
     font-style: normal;
     color: ${C.gold};
     font-weight: 700;
-    text-shadow: 0 0 10px rgba(232, 197, 71, 0.3);
+    text-shadow: ${TEXT_SHADOW_UI}, 0 0 8px rgba(232, 197, 71, 0.22);
   }
 `;
 
@@ -1638,10 +1651,11 @@ const StartButton = styled.button`
   gap: clamp(8px, 1.1cqw, 12px);
   min-height: clamp(40px, 4.8cqh, 48px);
   padding: clamp(8px, 1.1cqh, 12px) clamp(24px, 3.2cqw, 44px);
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: clamp(0.78rem, 1.1cqw, 0.95rem);
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: ${TRACK.label};
   color: #ffffff;
   background: linear-gradient(
     180deg,
@@ -1708,11 +1722,12 @@ const DevPanel = styled.div`
 `;
 
 const DevTitle = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.55rem, 0.85cqw, 0.68rem);
   color: ${C.gold};
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: ${TRACK.label};
   margin-bottom: 2px;
 `;
 
@@ -1723,11 +1738,11 @@ const DevButton = styled.button`
   width: 100%;
   min-height: 34px;
   padding: clamp(6px, 0.9cqh, 9px) clamp(10px, 1.3cqw, 13px);
-  font-family: ${FONT_BODY};
-  font-weight: 600;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.5rem, 0.75cqw, 0.6rem);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: ${TRACK.meta};
   color: ${C.cream};
   background: ${C.sumiSoft};
   border: 1px solid ${C.sumiBorder};

@@ -61,6 +61,7 @@ function createInitialPlayerState(overrides = {}) {
     isReady: false,
     isDead: false,
     isBowing: false,
+    isGrabPushDefeat: false, // FORCE OUT (grabPush) loser pose after shove
     isInRitualPhase: false,
     canMoveToReady: false,
 

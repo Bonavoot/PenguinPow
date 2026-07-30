@@ -7,7 +7,7 @@ import {
   playButtonPressSound,
   playButtonPressSound2,
 } from "../utils/soundUtils";
-import { C } from "./menuTheme";
+import { C, FONT_UI, FONT_WEIGHT, TRACK } from "./menuTheme";
 
 /*
  * Rematch — printed-program CTAs for the post-match result card.
@@ -124,13 +124,14 @@ const ButtonContainer = styled.div`
  * cornered paper card would re-introduce the software-UI read.
  */
 const buttonBase = css`
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.62rem, 1.25cqw, 0.84rem);
   width: 100%;
   padding: clamp(11px, 1.5cqh, 16px) clamp(16px, 2.4cqw, 28px);
   cursor: pointer;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: ${TRACK.meta};
   position: relative;
   transition: background 0.15s ease, transform 0.12s ease,
     box-shadow 0.15s ease, color 0.15s ease;
@@ -143,7 +144,7 @@ const buttonBase = css`
   @media (max-width: 900px) {
     font-size: clamp(0.52rem, 1.7cqw, 0.7rem);
     padding: clamp(9px, 1.2cqh, 12px) clamp(12px, 2cqw, 20px);
-    letter-spacing: 0.14em;
+    letter-spacing: ${TRACK.label};
   }
 `;
 
@@ -222,7 +223,8 @@ const CancelButton = styled.button`
  */
 const ReadyCount = styled.div`
   position: relative;
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.85rem, 1.7cqw, 1.18rem);
   color: ${(p) => (p.$ready ? C.successDeep : C.inkText)};
   background: rgba(20, 12, 8, 0.04);
@@ -236,7 +238,7 @@ const ReadyCount = styled.div`
     ${(p) =>
       p.$ready ? C.success : "rgba(60, 40, 20, 0.4)"};
   text-align: center;
-  letter-spacing: 0.18em;
+  letter-spacing: ${TRACK.meta};
   align-self: center;
   box-shadow:
     0 4px 14px rgba(50, 30, 10, 0.22),
@@ -275,18 +277,18 @@ const ReadyCount = styled.div`
 `;
 
 const ReadyLabel = styled.span`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.42rem, 0.78cqw, 0.55rem);
   color: ${C.inkTextMute};
   display: block;
   margin-bottom: clamp(3px, 0.45cqh, 5px);
-  letter-spacing: 0.32em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
 
   @media (max-width: 900px) {
     font-size: clamp(0.36rem, 1.2cqw, 0.46rem);
-    letter-spacing: 0.26em;
+    letter-spacing: ${TRACK.meta};
   }
 `;
 
@@ -303,8 +305,8 @@ const ReadyLabel = styled.span`
  * too, even on hover).
  */
 const ExitButton = styled.button`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.46rem, 0.85cqw, 0.6rem);
   background: transparent;
   color: ${C.inkTextMute};
@@ -313,7 +315,7 @@ const ExitButton = styled.button`
   cursor: pointer;
   transition: color 0.15s ease;
   text-transform: uppercase;
-  letter-spacing: 0.28em;
+  letter-spacing: ${TRACK.label};
   margin-top: clamp(2px, 0.4cqh, 6px);
   position: relative;
 
@@ -345,7 +347,7 @@ const ExitButton = styled.button`
 
   @media (max-width: 900px) {
     font-size: clamp(0.4rem, 1.1cqw, 0.52rem);
-    letter-spacing: 0.22em;
+    letter-spacing: ${TRACK.meta};
   }
 `;
 

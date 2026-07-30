@@ -58,7 +58,8 @@
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.3);
   color: rgba(255, 255, 255, 0.7);
-  font-family: "Bungee", cursive;
+  font-family: var(--font-ui);
+  font-weight: var(--fw-bold);
   display: flex;
   align-items: center;
   justify-content: center;

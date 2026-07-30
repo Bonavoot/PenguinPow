@@ -1,7 +1,15 @@
 import PropTypes from "prop-types";
 import React from "react";
 import styled from "styled-components";
-import { C, FONT_DISPLAY } from "./menuTheme";
+import {
+  C,
+  FONT_RENDER,
+  FONT_UI,
+  FONT_WEIGHT,
+  TEXT_SHADOW_COMBAT,
+  TEXT_SHADOW_UI,
+  TRACK,
+} from "./menuTheme";
 
 /*
  * BashoDayHud — bare center numerals for an in-progress honbasho bout.
@@ -17,13 +25,12 @@ const DayStack = styled.div`
 `;
 
 const DayNum = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: clamp(24px, 4cqw, 56px);
   color: ${C.cream};
-  -webkit-text-stroke: clamp(1.4px, 0.18cqw, 2.75px) rgba(0, 0, 0, 0.9);
-  text-shadow:
-    0 0 12px rgba(245, 236, 217, 0.14),
-    0 3px 10px rgba(0, 0, 0, 0.95);
+  ${FONT_RENDER}
+  text-shadow: ${TEXT_SHADOW_COMBAT};
   line-height: 1;
   user-select: none;
   width: 100%;
@@ -31,13 +38,14 @@ const DayNum = styled.div`
 `;
 
 const DayLabel = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(7px, 0.9cqw, 12px);
   color: rgba(232, 197, 71, 0.82);
   text-transform: uppercase;
-  letter-spacing: 0.24em;
-  text-indent: 0.24em;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+  letter-spacing: ${TRACK.label};
+  text-indent: ${TRACK.label};
+  text-shadow: ${TEXT_SHADOW_UI};
   margin-top: clamp(1px, 0.2cqh, 3px);
 `;
 

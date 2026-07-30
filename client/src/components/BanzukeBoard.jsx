@@ -31,7 +31,7 @@ import {
 } from "../utils/soundUtils";
 import pumo from "../assets/pumo-idle.png";
 import { DIVISIONS, getDivision, formatRank } from "../config/bashoConfig";
-import { C, FONT_BODY, FONT_DISPLAY, FONT_KANJI } from "./menuTheme";
+import { C, FONT_BODY, FONT_DISPLAY, FONT_KANJI, FONT_UI, FONT_WEIGHT, TRACK } from "./menuTheme";
 
 const N = DIVISIONS.length;
 
@@ -135,13 +135,15 @@ const HeaderTitle = styled.h1`
   font-family: ${FONT_DISPLAY};
   margin: 0;
   font-size: clamp(1.3rem, 3.6vh, 2.2rem);
-  letter-spacing: 0.06em;
+  letter-spacing: ${TRACK.display};
   color: ${C.cream};
 `;
 
 const HeaderSub = styled.div`
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.6rem, 1.3vh, 0.8rem);
-  letter-spacing: 0.28em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   color: ${C.creamMute};
 `;
@@ -225,19 +227,23 @@ const BandBody = styled.div`
 `;
 
 const BandName = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.7rem, 1.9vh, 1.05rem);
   line-height: 1.1;
   color: ${(p) => (p.$active ? C.cream : C.creamWarm)};
-  letter-spacing: 0.02em;
+  letter-spacing: ${TRACK.meta};
+  text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 `;
 
 const BandSub = styled.div`
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.5rem, 1.1vh, 0.66rem);
-  letter-spacing: 0.18em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   color: ${(p) => p.$accent};
   opacity: 0.85;
@@ -245,7 +251,8 @@ const BandSub = styled.div`
 
 const BandStep = styled.span`
   margin-left: auto;
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.6rem, 1.4vh, 0.85rem);
   color: ${C.creamFaint};
   opacity: 0.7;
@@ -268,14 +275,19 @@ const YouChip = styled.span`
   animation: ${markerPop} 0.35s ease both;
 
   .you {
+    font-family: ${FONT_UI};
+    font-weight: ${FONT_WEIGHT.bold};
     font-size: clamp(0.42rem, 1vh, 0.55rem);
-    letter-spacing: 0.26em;
+    letter-spacing: ${TRACK.label};
     text-transform: uppercase;
     color: ${(p) => (p.$dir === "down" ? C.vermillionBright : C.gold)};
   }
   .rk {
-    font-family: ${FONT_DISPLAY};
+    font-family: ${FONT_UI};
+    font-weight: ${FONT_WEIGHT.bold};
     font-size: clamp(0.62rem, 1.5vh, 0.9rem);
+    letter-spacing: ${TRACK.meta};
+    text-transform: uppercase;
     color: ${C.cream};
   }
 `;
@@ -339,9 +351,11 @@ const Footer = styled.footer`
 `;
 
 const ActionButton = styled.button`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.85rem, 2.1vh, 1.2rem);
-  letter-spacing: 0.06em;
+  letter-spacing: ${TRACK.meta};
+  text-transform: uppercase;
   color: #1a1205;
   background: linear-gradient(160deg, ${C.gold} 0%, ${C.goldDeep} 100%);
   border: none;
@@ -358,8 +372,10 @@ const ActionButton = styled.button`
 `;
 
 const Hint = styled.div`
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.55rem, 1.2vh, 0.72rem);
-  letter-spacing: 0.24em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   color: ${C.creamFaint};
 `;

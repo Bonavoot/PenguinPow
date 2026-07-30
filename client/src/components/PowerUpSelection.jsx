@@ -14,7 +14,7 @@ import {
   playPowerUpSelectionHoverSound,
   playPowerUpSelectionPressSound,
 } from "../utils/soundUtils";
-import { C } from "./menuTheme";
+import { C, FONT_DISPLAY, FONT_UI, FONT_WEIGHT, TEXT_SHADOW_COMBAT, TEXT_SHADOW_UI, TRACK } from "./menuTheme";
 import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
@@ -313,7 +313,7 @@ const PowerCard = styled.button`
   background: ${C.cream};
   border: 2px solid rgba(60, 40, 20, 0.55);
   cursor: pointer;
-  font-family: "Space Grotesk", sans-serif;
+  font-family: ${FONT_UI};
   padding: 0;
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.45),
     0 2px 0 rgba(60, 40, 20, 0.55);
@@ -510,11 +510,12 @@ const CardBody = styled.div`
  * 0.07em letter-spacing the name sat right at the overflow
  * threshold and broke the visual grid across cards. */
 const PowerName = styled.div`
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: clamp(0.7rem, 1.18cqw, 0.92rem);
   color: ${C.inkText};
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: ${TRACK.meta};
   line-height: 1.05;
   text-align: center;
   white-space: nowrap;
@@ -526,13 +527,13 @@ const PowerName = styled.div`
 `;
 
 const PowerDesc = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(0.5rem, 0.88cqw, 0.66rem);
   color: ${C.inkTextSoft};
   text-align: center;
   line-height: 1.25;
-  letter-spacing: 0.03em;
+  letter-spacing: ${TRACK.body};
   position: relative;
 
   @media (max-width: 700px) {
@@ -583,10 +584,10 @@ const PowerDesc = styled.div`
  *             different color families and read as different
  *             materials. */
 const UsageChip = styled.div`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.4rem, 0.66cqw, 0.5rem);
-  letter-spacing: 0.2em;
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   padding: 2px clamp(6px, 0.8cqw, 9px);
   /* Absolute-positioned to the printed inner frame's bottom-right
@@ -616,7 +617,7 @@ const UsageChip = styled.div`
 
   @media (max-width: 700px) {
     font-size: clamp(0.34rem, 1.05cqw, 0.44rem);
-    letter-spacing: 0.16em;
+    letter-spacing: ${TRACK.meta};
   }
 `;
 
@@ -647,44 +648,37 @@ const TimerStack = styled.div`
 `;
 
 const TimerLabel = styled.span`
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 700;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.5rem, 0.85cqw, 0.7rem);
   color: ${C.cream};
   text-transform: uppercase;
-  letter-spacing: 0.32em;
-  text-shadow: -1px 0 0 ${C.sumi}, 1px 0 0 ${C.sumi},
-    0 -1px 0 ${C.sumi}, 0 1px 0 ${C.sumi},
-    0 2px 0 rgba(0, 0, 0, 0.5), 0 0 6px rgba(0, 0, 0, 0.6);
+  letter-spacing: ${TRACK.label};
+  text-shadow: ${TEXT_SHADOW_UI};
 
   @media (max-width: 700px) {
     font-size: clamp(0.42rem, 1.4cqw, 0.6rem);
-    letter-spacing: 0.24em;
+    letter-spacing: ${TRACK.meta};
   }
 `;
 
 const TimerNumber = styled.span`
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_DISPLAY};
   font-size: clamp(1.4rem, 2.6cqw, 2.1rem);
   color: ${(p) => (p.$urgent ? C.vermillionBright : C.cream)};
-  letter-spacing: 0.04em;
+  letter-spacing: ${TRACK.displayTight};
   line-height: 1;
   transition: color 0.2s ease;
-  text-shadow: -1.5px 0 0 ${C.sumi}, 1.5px 0 0 ${C.sumi},
-    0 -1.5px 0 ${C.sumi}, 0 1.5px 0 ${C.sumi},
-    -1.5px -1.5px 0 ${C.sumi}, 1.5px -1.5px 0 ${C.sumi},
-    -1.5px 1.5px 0 ${C.sumi}, 1.5px 1.5px 0 ${C.sumi},
-    0 3px 0 rgba(0, 0, 0, 0.6), 0 0 12px rgba(0, 0, 0, 0.7);
+  text-shadow: ${TEXT_SHADOW_COMBAT};
 
   small {
-    font-family: "Space Grotesk", sans-serif;
-    font-weight: 700;
+    font-family: ${FONT_UI};
+    font-weight: ${FONT_WEIGHT.bold};
     font-size: 0.42em;
     margin-left: 5px;
-    letter-spacing: 0.2em;
+    letter-spacing: ${TRACK.label};
     color: ${(p) => (p.$urgent ? C.vermillionDeep : C.creamMute)};
-    text-shadow: -1px 0 0 ${C.sumi}, 1px 0 0 ${C.sumi},
-      0 -1px 0 ${C.sumi}, 0 1px 0 ${C.sumi};
+    text-shadow: ${TEXT_SHADOW_UI};
   }
 
   @media (max-width: 700px) {

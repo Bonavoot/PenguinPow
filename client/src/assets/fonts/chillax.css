@@ -1,0 +1,37 @@
+/*
+ * Chillax — Fontshare / ITF Free Font License.
+ * Local WOFF2 for Electron / Steam offline use.
+ * Weights: 400 Regular, 500 Medium, 600 Semibold, 700 Bold.
+ */
+
+@font-face {
+  font-family: "Chillax";
+  src: url("./Chillax-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Chillax";
+  src: url("./Chillax-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Chillax";
+  src: url("./Chillax-Semibold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Chillax";
+  src: url("./Chillax-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}

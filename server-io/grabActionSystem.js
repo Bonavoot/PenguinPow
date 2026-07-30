@@ -12,6 +12,7 @@ const {
   RINGOUT_PUSH_DISTANCE,
   RINGOUT_PUSH_IDLE_DELAY_MS,
   RINGOUT_PUSH_SEPARATE_DELAY_MS,
+  RINGOUT_PUSH_DEFEAT_DELAY_MS,
   BALANCE_MAX,
   CLINCH_PUSH_BASE_SPEED,
   CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC,
@@ -1905,6 +1906,7 @@ function triggerRingOut(pusher, victim, room, io, rooms, direction) {
     p.isGrabBellyFlopping = false;
     p.isBeingGrabBellyFlopped = false;
     p.isBowing = false;
+    p.isGrabPushDefeat = false; // set on loser only when clinch poses drop
   };
 
   applyPushCutscene(pusher, pusherStartX);
@@ -1931,9 +1933,9 @@ function triggerRingOut(pusher, victim, room, io, rooms, direction) {
   victim.isClinchBeltHolding = pose.victimBeltHolding;
   victim.clinchAttachDistance = liveAttach;
 
-  // Two-phase end: (1) idle pose at clinch spacing, (2) then pushbox separate.
-  // Never move X in the same beat as clearing clinch — client interpolates X
-  // before React swaps the sprite, which reads as clinch at the wrong distance.
+  // End beats: (1) both idle at clinch spacing, (2) pushbox separate,
+  // (3) loser → push-defeat pose. Never move X in the same beat as clearing
+  // clinch — client interpolates X before React swaps the sprite.
   setPlayerTimeout(
     pusher.id,
     () => {
@@ -1947,6 +1949,15 @@ function triggerRingOut(pusher, victim, room, io, rooms, direction) {
         },
         RINGOUT_PUSH_SEPARATE_DELAY_MS,
         "ringOutPushSeparate"
+      );
+      setPlayerTimeout(
+        victim.id,
+        () => {
+          if (!victim.isRingOutPushCutscene) return;
+          victim.isGrabPushDefeat = true;
+        },
+        RINGOUT_PUSH_DEFEAT_DELAY_MS,
+        "ringOutPushDefeatPose"
       );
     },
     RINGOUT_PUSH_DURATION_MS + RINGOUT_PUSH_IDLE_DELAY_MS,
@@ -1970,8 +1981,9 @@ function clearRingOutPushPoseToIdle(p) {
   p.isClinchBeltHolding = false;
   p.clinchAttachDistance = 0;
   p.isBowing = false;
+  p.isGrabPushDefeat = false; // loser gets this on a later timeout
   // Keep isRingOutPushCutscene + ringOutPushAttachDistance until separate
-  // is allowed — parks them past the rope at clinch spacing under idle poses.
+  // is allowed — parks them past the rope at clinch spacing under idle.
   // Inputs stay dead via room.gameOver.
 }
 

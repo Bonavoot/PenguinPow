@@ -12,7 +12,13 @@ import {
   C,
   FONT_DISPLAY,
   FONT_KANJI,
+  FONT_RENDER,
+  FONT_UI,
+  FONT_WEIGHT,
+  TEXT_SHADOW_COMBAT,
   TEXT_SHADOW_DISPLAY,
+  TEXT_SHADOW_UI,
+  TRACK,
 } from "./menuTheme";
 import BalanceGauge from "./BalanceGauge";
 
@@ -422,11 +428,13 @@ const NameBlock = styled.div`
 `;
 
 const FighterName = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(11px, 1.55cqw, 19px);
   color: ${C.cream};
+  ${FONT_RENDER}
   text-shadow: ${TEXT_SHADOW_DISPLAY};
-  letter-spacing: 0.16em;
+  letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   line-height: 1;
   white-space: nowrap;
@@ -502,16 +510,17 @@ const RankPlaque = styled.div`
 `;
 
 const RankText = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: clamp(10px, 1.2cqw, 14px);
   color: ${C.gold};
   text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.1em;
   line-height: 1;
+  ${FONT_RENDER}
   text-shadow:
-    0 0 10px rgba(232, 197, 71, 0.4),
-    0 0 3px rgba(232, 197, 71, 0.35),
-    0 1px 3px rgba(0, 0, 0, 0.95);
+    ${TEXT_SHADOW_UI},
+    0 0 8px rgba(232, 197, 71, 0.18);
   white-space: nowrap;
 `;
 
@@ -540,9 +549,10 @@ const ShoveLeadTag = styled.div`
   ${(p) => (p.$isRight ? "left: 6px;" : "right: 6px;")}
   transform: translateY(-50%);
   z-index: 4;
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(7px, 0.78cqw, 9px);
-  letter-spacing: 0.12em;
+  letter-spacing: ${TRACK.meta};
   line-height: 1;
   pointer-events: none;
   user-select: none;
@@ -552,9 +562,8 @@ const ShoveLeadTag = styled.div`
       : p.$lead < 0
         ? "rgba(255, 170, 150, 0.92)"
         : "rgba(210, 220, 230, 0.88)"};
-  text-shadow:
-    0 0 6px rgba(0, 0, 0, 0.85),
-    1px 1px 1px rgba(0, 0, 0, 1);
+  ${FONT_RENDER}
+  text-shadow: ${TEXT_SHADOW_UI};
 `;
 
 const BarFrame = styled.div`
@@ -1168,10 +1177,11 @@ const GassedText = styled.span`
   display: inline-flex;
   align-items: baseline;
   gap: clamp(4px, 0.6cqw, 8px);
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_DISPLAY};
   font-size: clamp(9px, 1.3cqh, 16px);
   color: ${C.cream};
   letter-spacing: 0.22em;
+  ${FONT_RENDER}
   /* Sits ABOVE the GassedBackdrop sibling so the stamp stays
      readable while the backdrop strobes underneath it. */
   z-index: 2;
@@ -1242,15 +1252,15 @@ const RecoveryText = styled.span`
   position: absolute;
   top: 50%;
   left: 50%;
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(7px, 1cqh, 13px);
   color: #e6fff2;
+  ${FONT_RENDER}
   text-shadow:
-    0 0 10px rgba(151, 245, 201, 0.9),
-    0 0 20px rgba(25, 201, 119, 0.62),
-    -1px -1px 0 #000, 1px -1px 0 #000,
-    -1px 1px 0 #000, 1px 1px 0 #000;
-  letter-spacing: 0.15em;
+    ${TEXT_SHADOW_UI},
+    0 0 8px rgba(75, 231, 158, 0.28);
+  letter-spacing: ${TRACK.meta};
   white-space: nowrap;
   z-index: 8;
   pointer-events: none;
@@ -1264,22 +1274,21 @@ const BarLabel = styled.div`
   top: 50%;
   transform: translateY(-50%);
   ${(p) => (p.$isRight ? "left: clamp(6px, 1cqw, 14px);" : "right: clamp(6px, 1cqw, 14px);")}
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(8px, 0.95cqw, 12px);
   color: rgba(245, 236, 217, 0.82);
   text-transform: uppercase;
-  letter-spacing: 0.18em;
-  text-shadow:
-    1px 1px 3px rgba(0, 0, 0, 1),
-    0 0 8px rgba(0, 0, 0, 0.8),
-    0 0 2px rgba(0, 0, 0, 1);
+  letter-spacing: ${TRACK.label};
+  ${FONT_RENDER}
+  text-shadow: ${TEXT_SHADOW_UI};
   z-index: 6;
   pointer-events: none;
   user-select: none;
 `;
 
 /* "YOU" — bare in-bar type on the outer end of the local stamina track.
- * No plate, no border: just a stroked label that reads on fill or empty well. */
+ * No plate, no border: hard shelf only (no 4-way stroke + soft bloom). */
 const YouLabel = styled.div`
   position: absolute;
   top: 50%;
@@ -1289,20 +1298,16 @@ const YouLabel = styled.div`
       ? "right: clamp(6px, 0.9cqw, 14px);"
       : "left: clamp(6px, 0.9cqw, 14px);"}
   z-index: 6;
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(8px, 0.95cqw, 12px);
   color: rgba(255, 255, 255, 0.92);
-  letter-spacing: 0.16em;
+  letter-spacing: ${TRACK.meta};
   /* Cancel trailing tracking so the glyph cluster doesn't look right-heavy. */
-  margin-inline-end: -0.16em;
+  margin-inline-end: -0.08em;
   line-height: 1;
-  -webkit-text-stroke: clamp(0.15px, 0.02cqw, 0.3px) rgba(0, 0, 0, 0.8);
-  text-shadow:
-    1px 0 0 #000,
-    -1px 0 0 #000,
-    0 1px 0 #000,
-    0 -1px 0 #000,
-    0 2px 4px rgba(0, 0, 0, 0.75);
+  ${FONT_RENDER}
+  text-shadow: ${TEXT_SHADOW_COMBAT};
   pointer-events: none;
   user-select: none;
 `;
@@ -1472,17 +1477,13 @@ const PowerUpChargeMark = styled.span`
   position: absolute;
   bottom: clamp(-6px, -0.5cqw, -3px);
   right: clamp(-3px, -0.3cqw, -1px);
-  font-family: "Bungee", cursive;
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: clamp(10px, 1.05cqw, 13px);
   line-height: 1;
   color: #fff;
-  -webkit-text-stroke: clamp(0.6px, 0.08cqw, 1px) rgba(0, 0, 0, 0.95);
-  text-shadow:
-    1px 0 0 #000,
-    -1px 0 0 #000,
-    0 1px 0 #000,
-    0 -1px 0 #000,
-    0 2px 4px rgba(0, 0, 0, 0.85);
+  ${FONT_RENDER}
+  text-shadow: ${TEXT_SHADOW_COMBAT};
   pointer-events: none;
   z-index: 3;
 `;
@@ -1711,13 +1712,12 @@ const GoStone = styled.div`
  * actually-distinct glyph shapes and reads at a glance. The
  * "ceremonial enumeration" idea wasn't worth the legibility loss. */
 const RoundNum = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
   font-size: clamp(24px, 4cqw, 56px);
   color: #f3ede2;
-  -webkit-text-stroke: clamp(1.4px, 0.18cqw, 2.75px) rgba(0, 0, 0, 0.9);
-  text-shadow:
-    0 0 12px rgba(243, 237, 226, 0.16),
-    0 3px 10px rgba(0, 0, 0, 0.95);
+  ${FONT_RENDER}
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
   line-height: 1;
   user-select: none;
   width: 100%;
@@ -1725,13 +1725,15 @@ const RoundNum = styled.div`
 `;
 
 const RoundText = styled.div`
-  font-family: ${FONT_DISPLAY};
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.medium};
   font-size: clamp(7px, 0.9cqw, 12px);
   color: rgba(232, 197, 71, 0.78);
   text-transform: uppercase;
-  letter-spacing: 0.24em;
-  text-indent: 0.24em;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+  letter-spacing: ${TRACK.label};
+  text-indent: ${TRACK.label};
+  ${FONT_RENDER}
+  text-shadow: ${TEXT_SHADOW_UI};
   margin-top: clamp(1px, 0.2cqh, 3px);
 `;
 

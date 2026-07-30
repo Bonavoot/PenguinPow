@@ -1,20 +1,22 @@
 import { useEffect, useState, useRef, memo } from "react";
 import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
-import SumoHypeStamp, { HYPE_DURATION_MS } from "./SumoHypeStamp";
+import SumoAnnouncementBanner, {
+  ANNOUNCEMENT_DURATION_MS,
+} from "./SumoAnnouncementBanner";
 
 /**
- * GoredBannerEffect — "MATADOR BREAK" hype stamp when a strike hits someone
- * during a live / whiffed MATADOR (grab-line parry).
+ * GoredBannerEffect — "MATADOR BREAK" side-rail callout when a strike hits
+ * someone during a live / whiffed MATADOR (grab-line parry).
  *
- * Orange hanko (success MATADOR is gold). Same hype band as PERFECT —
- * peer denial callout: you punished their matador.
+ * Orange plaque (success MATADOR is gold stamp). Hero seat — same band as
+ * COUNTER HIT: you punished their matador.
  */
 const GoredBannerEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedRef = useRef(new Set());
   const effectIdCounter = useRef(0);
-  const EFFECT_DURATION = HYPE_DURATION_MS;
+  const EFFECT_DURATION = ANNOUNCEMENT_DURATION_MS;
 
   useEffect(() => {
     if (!position || !position.counterId) return;
@@ -49,10 +51,10 @@ const GoredBannerEffect = ({ position }) => {
       {activeEffects.map((effect) => {
         const isLeftSide = effect.playerNumber === 1;
         return (
-          <SumoHypeStamp
+          <SumoAnnouncementBanner
             key={effect.id}
-            type="matadorbreak"
             text={"MATADOR BREAK"}
+            type="matadorbreak"
             isLeftSide={isLeftSide}
           />
         );
