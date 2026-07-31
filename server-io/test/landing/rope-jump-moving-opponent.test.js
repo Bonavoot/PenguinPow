@@ -37,9 +37,10 @@ describe("rope-jump landing — moving opponent", () => {
     // opponent walks into the cell and triggers bounded safety correction.
     assert.equal(trace.commit.resolvedTargetX, locked);
     assert.ok(trace.maxSingleTickCorrection <= 18 + 1e-6);
+    // Touchdown X must match the locked endpoint (not a post-commit re-home).
     assert.ok(
-      Math.abs(trace.touchdown.x - locked) < 0.5 ||
-        trace.correctionTicks >= 0
+      Math.abs(trace.touchdown.x - locked) < 0.5,
+      `touchdown ${trace.touchdown.x} drifted from locked ${locked}`
     );
   });
 
@@ -68,7 +69,8 @@ describe("rope-jump landing — moving opponent", () => {
   it("opponent crosses target before commitment — side uses commit-time geometry", () => {
     const jumper = makeFighter({ id: "j", x: MAP_LEFT_BOUNDARY });
     const raw = computeRawRopeJumpTargetX(MAP_LEFT_BOUNDARY);
-    // Start right of raw, walk left across it before commit
+    // Start right of raw, walk left across it before late commit.
+    // A.1 may early-lock; endpoint stays locked (no re-home) either way.
     const opponent = makeFighter({ id: "o", x: raw + 60 });
 
     const trace = simulateRopeJump(jumper, opponent, {
@@ -82,13 +84,14 @@ describe("rope-jump landing — moving opponent", () => {
     });
 
     assert.ok(trace.commit);
+    assert.equal(trace.touchdown.x, trace.commit.resolvedTargetX);
+    // Post-commit opponent motion into the cell may need bounded safety —
+    // never an unbounded slide.
+    assert.ok(trace.maxSingleTickCorrection <= 18 + 1e-6);
     assert.ok(
-      Math.abs(trace.touchdown.x - trace.touchdown.opponentX) >=
-        getMinimumCenterDistance(
-          DEFAULT_PLAYER_SIZE_MULTIPLIER,
-          DEFAULT_PLAYER_SIZE_MULTIPLIER
-        ) -
-          1
+      Number.isFinite(trace.touchdown.x) &&
+        trace.touchdown.x >= MAP_LEFT_BOUNDARY &&
+        trace.touchdown.x <= MAP_RIGHT_BOUNDARY
     );
   });
 

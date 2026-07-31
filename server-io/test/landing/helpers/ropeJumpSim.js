@@ -23,12 +23,12 @@ const {
   DEFAULT_PLAYER_SIZE_MULTIPLIER,
 } = require("../../../gameUtils");
 const {
-  initRopeJumpLandingState,
   stepRopeJumpActive,
   clearRopeJumpLandingState,
   getPushboxHalfWidth,
   getMinimumCenterDistance,
 } = require("../../../landingResolution");
+const { startRopeJump } = require("../../../ropeJumpStart");
 const { adjustPlayerPositions } = require("../../../gameFunctions");
 
 const TICK_MS = 1000 / TICK_RATE;
@@ -78,6 +78,7 @@ function makeFighter(overrides = {}) {
     ropeJumpLandingCommitted: false,
     ropeJumpLandingCommitX: 0,
     ropeJumpLandingCommitT: 0,
+    ropeJumpLandingCommitVel: 0,
     ropeJumpLandingDecision: null,
     ropeJumpLandingPath: null,
     ropeJumpPreferredSide: 0,
@@ -89,6 +90,14 @@ function makeFighter(overrides = {}) {
     ropeJumpPreTouchdownX: 0,
     ropeJumpTouchdownX: 0,
     ropeJumpUsedFallback: false,
+    ropeJumpTrajectoryType: null,
+    ropeJumpDecisionClass: null,
+    ropeJumpFallbackReason: null,
+    ropeJumpHorizVel: 0,
+    ropeJumpRawExpectedVel: 0,
+    ropeJumpPeakVel: 0,
+    ropeJumpPeakAccel: 0,
+    ropeJumpReversalDetected: false,
     currentAction: null,
     actionLockUntil: 0,
     stamina: 100,
@@ -110,25 +119,15 @@ function computeRawRopeJumpTargetX(startX) {
 function beginRopeJump(jumper, opts) {
   const now = opts.now != null ? opts.now : 100_000;
   const jumpDirection = opts.jumpDirection;
-  const rawTargetX =
-    opts.rawTargetX != null
-      ? opts.rawTargetX
-      : computeRawRopeJumpTargetX(jumper.x);
-
-  jumper.movementVelocity = 0;
-  jumper.isRopeJumping = true;
-  jumper.ropeJumpPhase = "startup";
-  jumper.ropeJumpStartTime = now;
-  jumper.ropeJumpStartX = jumper.x;
-  jumper.ropeJumpTargetX = rawTargetX;
-  jumper.ropeJumpDirection = jumpDirection;
-  jumper.ropeJumpActiveStartTime = 0;
-  jumper.ropeJumpLandingTime = 0;
-  jumper.ropeJumpBufferedAttackRelease = 0;
-  jumper.currentAction = "ropeJump";
-  jumper.actionLockUntil = now + ROPE_JUMP_STARTUP_MS;
-  jumper.stamina = Math.max(0, jumper.stamina - ROPE_JUMP_STAMINA_COST);
-  initRopeJumpLandingState(jumper, rawTargetX, !!opts.useV2);
+  const { rawTargetX } = startRopeJump(jumper, {
+    now,
+    jumpDirection,
+    mapLeft: MAP_LEFT_BOUNDARY,
+    mapRight: MAP_RIGHT_BOUNDARY,
+    facing: jumper.facing,
+    useV2: !!opts.useV2,
+    rawTargetX: opts.rawTargetX,
+  });
   return { startTime: now, rawTargetX };
 }
 
@@ -192,10 +191,14 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
         trace.commit = {
           t: jumper.ropeJumpLandingCommitT,
           commitX: jumper.ropeJumpLandingCommitX,
+          commitVel: jumper.ropeJumpLandingCommitVel,
           resolvedTargetX: jumper.ropeJumpResolvedTargetX,
           preferredSide: jumper.ropeJumpPreferredSide,
           resolvedSide: jumper.ropeJumpResolvedSide,
           decision: jumper.ropeJumpLandingDecision,
+          decisionClass: jumper.ropeJumpDecisionClass,
+          trajectoryType: jumper.ropeJumpTrajectoryType,
+          fallbackReason: jumper.ropeJumpFallbackReason,
           beforeX,
         };
       }
@@ -217,13 +220,18 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
         };
       }
 
+      const dx = jumper.x - beforeX;
       trace.samples.push({
         phase: "active",
         now,
         x: jumper.x,
         y: jumper.y,
+        dx,
+        vel: dx / (TICK_MS / 1000),
         committed: !!jumper.ropeJumpLandingCommitted,
         opponentX: opponent ? opponent.x : null,
+        rawExpectedVel: jumper.ropeJumpRawExpectedVel,
+        horizVel: jumper.ropeJumpHorizVel,
       });
     } else if (jumper.ropeJumpPhase === "landing") {
       if (opponent) {

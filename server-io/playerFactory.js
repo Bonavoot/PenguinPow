@@ -281,6 +281,7 @@ function createInitialPlayerState(overrides = {}) {
     ropeJumpLandingCommitted: false,
     ropeJumpLandingCommitX: 0,
     ropeJumpLandingCommitT: 0,
+    ropeJumpLandingCommitVel: 0,
     ropeJumpLandingDecision: null,
     ropeJumpLandingPath: null,
     ropeJumpPreferredSide: 0,
@@ -292,6 +293,14 @@ function createInitialPlayerState(overrides = {}) {
     ropeJumpPreTouchdownX: 0,
     ropeJumpTouchdownX: 0,
     ropeJumpUsedFallback: false,
+    ropeJumpTrajectoryType: null,
+    ropeJumpDecisionClass: null,
+    ropeJumpFallbackReason: null,
+    ropeJumpHorizVel: 0,
+    ropeJumpRawExpectedVel: 0,
+    ropeJumpPeakVel: 0,
+    ropeJumpPeakAccel: 0,
+    ropeJumpReversalDetected: false,
 
     // === Flap charges (ride on FLAP-armed slide-jump; standalone liftoff removed) ===
     isFlapping: false, // legacy — always false; cleared for safety

@@ -9,6 +9,7 @@ Companion docs:
 - [`POSE_GEOMETRY_AUDIT.md`](./POSE_GEOMETRY_AUDIT.md)
 - [`COMBAT_FIDELITY_ROADMAP.md`](./COMBAT_FIDELITY_ROADMAP.md)
 - [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md) — rope-jump landing V2 (flagged, default OFF)
+- [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md) — V2 trajectory hardening (Hermite/brake/residual; still default OFF)
 - Pose scan: `tools/audit-pose-geometry.js`, `tools/pose-geometry-report.json`, `tools/pose-geometry-viz/`
 - Dev overlay: `client/src/debug/CombatFidelityDebug.js` (`localStorage pumo_combat_fidelity_debug=1`)
 
@@ -172,7 +173,7 @@ Post-penetration split by who moves toward whom; anchored hit/parry victims take
 
 **Why it looks amateur:** Player sees a grounded pose overlapping the opponent, then a multi-tick slide/snap to legal spacing. Comment at `index.js:2359` explicitly chose gradual correction over one-frame snap — both read as correction if overlap is large (~100px ⇒ ~6 ticks ≈ 94ms).
 
-**Phase A (implemented, default OFF):** `landingResolution.js` commits a valid endpoint at `ROPE_JUMP_LANDING_COMMIT_T` and travels continuously to it. Enable with `ROPE_JUMP_LANDING_V2=1`. Legacy 18px/tick path retained as flag-off + safety. See [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md). Slide-jump/FLAP not integrated yet.
+**Phase A / A.1 (implemented, default OFF):** `landingResolution.js` commits a valid endpoint and travels with a motion-aware curve (A.1 Hermite/brake/hold_settle; Phase A position-only rebase was defective). Enable with `ROPE_JUMP_LANDING_V2=1`. Legacy 18px/tick path retained as flag-off + safety. See [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md). Slide-jump/FLAP not integrated yet.
 
 ---
 

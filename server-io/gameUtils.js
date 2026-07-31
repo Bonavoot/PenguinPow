@@ -1414,6 +1414,7 @@ function clearAllActionStates(player) {
   player.ropeJumpLandingCommitted = false;
   player.ropeJumpLandingCommitX = 0;
   player.ropeJumpLandingCommitT = 0;
+  player.ropeJumpLandingCommitVel = 0;
   player.ropeJumpLandingDecision = null;
   player.ropeJumpLandingPath = null;
   player.ropeJumpPreferredSide = 0;
@@ -1425,6 +1426,14 @@ function clearAllActionStates(player) {
   player.ropeJumpPreTouchdownX = 0;
   player.ropeJumpTouchdownX = 0;
   player.ropeJumpUsedFallback = false;
+  player.ropeJumpTrajectoryType = null;
+  player.ropeJumpDecisionClass = null;
+  player.ropeJumpFallbackReason = null;
+  player.ropeJumpHorizVel = 0;
+  player.ropeJumpRawExpectedVel = 0;
+  player.ropeJumpPeakVel = 0;
+  player.ropeJumpPeakAccel = 0;
+  player.ropeJumpReversalDetected = false;
   player._landingTrace = null;
 
   // Clear flap states. Only reachable while grounded (startup is the only

@@ -3,7 +3,7 @@ const {
   POWER_UP_TYPES, POWER_UP_EFFECTS,
   HITBOX_DISTANCE_VALUE, DOHYO_FALL_DEPTH,
   ICE_SLIDE_REVERSE_BUFFER_MS,
-  ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST, ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_CENTER_FRACTION,
+  ROPE_JUMP_BOUNDARY_ZONE,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS,
   SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, RAW_PARRY_STAMINA_COST, RAW_PARRY_COOLDOWN_MS,
@@ -56,7 +56,7 @@ const {
   executeChargedAttack,
 } = require("./gameFunctions");
 
-const { initRopeJumpLandingState } = require("./landingResolution");
+const { startRopeJump } = require("./ropeJumpStart");
 
 const {
   LOBBY_COLORS,
@@ -1083,29 +1083,14 @@ function processInputPacket(room, player, data, io, rooms) {
     ) {
       clearChargeState(player, true);
 
-      player.movementVelocity = 0;
-      player.isStrafing = false;
-      player.isPowerSliding = false;
-      player.isBraking = false;
-
       const jumpDir = nearLeftBound ? 1 : -1;
-      const mapMidpoint = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
-      const targetX = player.x + (mapMidpoint - player.x) * ROPE_JUMP_CENTER_FRACTION;
-
-      player.facing = nearLeftBound ? -1 : 1;
-      player.isRopeJumping = true;
-      player.ropeJumpPhase = "startup";
-      player.ropeJumpStartTime = simNowForPlayer(player);
-      player.ropeJumpStartX = player.x;
-      player.ropeJumpTargetX = Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
-      player.ropeJumpDirection = jumpDir;
-      player.ropeJumpActiveStartTime = 0;
-      player.ropeJumpLandingTime = 0;
-      player.ropeJumpBufferedAttackRelease = 0;
-      initRopeJumpLandingState(player, player.ropeJumpTargetX);
-      player.currentAction = "ropeJump";
-      player.actionLockUntil = simNowForPlayer(player) + ROPE_JUMP_STARTUP_MS;
-      player.stamina = Math.max(0, player.stamina - ROPE_JUMP_STAMINA_COST);
+      startRopeJump(player, {
+        now: simNowForPlayer(player),
+        jumpDirection: jumpDir,
+        mapLeft: MAP_LEFT_BOUNDARY,
+        mapRight: MAP_RIGHT_BOUNDARY,
+        facing: nearLeftBound ? -1 : 1,
+      });
     }
     // "Not enough stamina" feedback when gassed
     else if (

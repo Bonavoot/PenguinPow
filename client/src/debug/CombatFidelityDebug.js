@@ -10,10 +10,14 @@
  *   localStorage.setItem("pumo_landing_trace", "1")
  *   then trigger a rope jump — dumps one structured record to the console.
  *
- * Does not alter gameplay, balance, networking, or simulation.
+ * Server landing diagnostics are NOT on the production PvP delta wire.
+ * Enable server-side with LANDING_DEBUG_NET=1 (or LANDING_TRACE=1) so
+ * diagnostic fields / `landing_diag` events reach the client for overlays.
+ *
+ * Does not alter gameplay, balance, or simulation authority.
  * Prefer server-authored half-widths / landing fields when present.
  *
- * See COMBAT_FIDELITY_AUDIT.md / AERIAL_LANDING_PHASE_A.md.
+ * See COMBAT_FIDELITY_AUDIT.md / AERIAL_LANDING_PHASE_A1.md.
  */
 
 const FLAG_KEY = "pumo_combat_fidelity_debug";
@@ -26,6 +30,8 @@ let overlayEl = null;
 let lastContact = null;
 let landingTraceArmed = false;
 let lastLandingTraceKey = null;
+/** Latest server `landing_diag` payload (debug-net only). */
+let lastLandingDiag = null;
 
 export function isCombatFidelityDebugEnabled() {
   try {
@@ -53,6 +59,12 @@ export function noteCombatContactEvent(data) {
     attackType: data.attackType || null,
     t: performance.now(),
   };
+}
+
+/** Ingest a server `landing_diag` packet (emitted only when LANDING_DEBUG_NET). */
+export function noteLandingDiag(data) {
+  if (!data) return;
+  lastLandingDiag = { ...data, t: performance.now() };
 }
 
 function ensureOverlay() {
@@ -127,23 +139,35 @@ function maybeEmitLandingTrace(state) {
   lastLandingTraceKey = key;
   landingTraceArmed = false;
 
+  const diag =
+    lastLandingDiag && performance.now() - lastLandingDiag.t < 5000
+      ? lastLandingDiag
+      : null;
   const record = {
-    path: jumper.ropeJumpLandingPath || "unknown",
+    path: jumper.ropeJumpLandingPath || diag?.path || "unknown",
     phase: jumper.ropeJumpPhase,
-    rawTargetX: jumper.ropeJumpRawTargetX,
-    resolvedTargetX: jumper.ropeJumpResolvedTargetX,
-    commitX: jumper.ropeJumpLandingCommitX,
-    commitT: jumper.ropeJumpLandingCommitT,
-    committed: jumper.ropeJumpLandingCommitted,
-    preferredSide: jumper.ropeJumpPreferredSide,
-    resolvedSide: jumper.ropeJumpResolvedSide,
-    minDistance: jumper.ropeJumpMinDistance,
-    centerDistance: jumper.ropeJumpCenterDistance,
-    overlap: jumper.ropeJumpOverlap,
-    preTouchdownX: jumper.ropeJumpPreTouchdownX,
-    touchdownX: jumper.ropeJumpTouchdownX,
-    safetyCorrectionPx: jumper.ropeJumpSafetyCorrectionPx,
-    usedFallback: jumper.ropeJumpUsedFallback,
+    rawTargetX: jumper.ropeJumpRawTargetX ?? diag?.rawTargetX,
+    resolvedTargetX: jumper.ropeJumpResolvedTargetX ?? diag?.resolvedTargetX,
+    commitX: jumper.ropeJumpLandingCommitX ?? diag?.commitX,
+    commitT: jumper.ropeJumpLandingCommitT ?? diag?.commitT,
+    committed: !!jumper.ropeJumpLandingCommitted,
+    preferredSide: jumper.ropeJumpPreferredSide ?? diag?.preferredSide,
+    resolvedSide: jumper.ropeJumpResolvedSide ?? diag?.resolvedSide,
+    minDistance: jumper.ropeJumpMinDistance ?? diag?.minDistance,
+    centerDistance: jumper.ropeJumpCenterDistance ?? diag?.centerDistance,
+    overlap: jumper.ropeJumpOverlap ?? diag?.overlap,
+    preTouchdownX: jumper.ropeJumpPreTouchdownX ?? diag?.preTouchdownX,
+    touchdownX: jumper.ropeJumpTouchdownX ?? diag?.touchdownX,
+    safetyCorrectionPx:
+      jumper.ropeJumpSafetyCorrectionPx ?? diag?.safetyCorrectionPx,
+    usedFallback: jumper.ropeJumpUsedFallback ?? diag?.usedFallback,
+    trajectoryType: jumper.ropeJumpTrajectoryType ?? diag?.trajectoryType,
+    decisionClass: jumper.ropeJumpDecisionClass ?? diag?.decisionClass,
+    fallbackReason: jumper.ropeJumpFallbackReason ?? diag?.fallbackReason,
+    horizVel: jumper.ropeJumpHorizVel ?? diag?.horizVel,
+    rawExpectedVel: jumper.ropeJumpRawExpectedVel ?? diag?.rawExpectedVel,
+    peakVel: jumper.ropeJumpPeakVel ?? diag?.peakVel,
+    reversalDetected: jumper.ropeJumpReversalDetected ?? diag?.reversalDetected,
     jumperX: jumper.x,
     sizeMult: jumper.sizeMult ?? jumper.sizeMultiplier,
   };
@@ -196,28 +220,69 @@ export function renderCombatFidelityOverlay(state) {
 
   const jumper =
     p1.ropeJumpPhase ? p1 : p2.ropeJumpPhase ? p2 : null;
-  const landingLines = jumper
+  const diag =
+    lastLandingDiag && performance.now() - lastLandingDiag.t < 8000
+      ? lastLandingDiag
+      : null;
+  const j = jumper
+    ? {
+        ...jumper,
+        ropeJumpLandingPath: jumper.ropeJumpLandingPath ?? diag?.path,
+        ropeJumpRawTargetX: jumper.ropeJumpRawTargetX ?? diag?.rawTargetX,
+        ropeJumpResolvedTargetX:
+          jumper.ropeJumpResolvedTargetX ?? diag?.resolvedTargetX,
+        ropeJumpLandingCommitX: jumper.ropeJumpLandingCommitX ?? diag?.commitX,
+        ropeJumpLandingCommitT: jumper.ropeJumpLandingCommitT ?? diag?.commitT,
+        ropeJumpPreferredSide: jumper.ropeJumpPreferredSide ?? diag?.preferredSide,
+        ropeJumpResolvedSide: jumper.ropeJumpResolvedSide ?? diag?.resolvedSide,
+        ropeJumpMinDistance: jumper.ropeJumpMinDistance ?? diag?.minDistance,
+        ropeJumpCenterDistance:
+          jumper.ropeJumpCenterDistance ?? diag?.centerDistance,
+        ropeJumpOverlap: jumper.ropeJumpOverlap ?? diag?.overlap,
+        ropeJumpSafetyCorrectionPx:
+          jumper.ropeJumpSafetyCorrectionPx ?? diag?.safetyCorrectionPx,
+        ropeJumpPreTouchdownX:
+          jumper.ropeJumpPreTouchdownX ?? diag?.preTouchdownX,
+        ropeJumpTouchdownX: jumper.ropeJumpTouchdownX ?? diag?.touchdownX,
+        ropeJumpUsedFallback: jumper.ropeJumpUsedFallback ?? diag?.usedFallback,
+        ropeJumpTrajectoryType:
+          jumper.ropeJumpTrajectoryType ?? diag?.trajectoryType,
+        ropeJumpDecisionClass:
+          jumper.ropeJumpDecisionClass ?? diag?.decisionClass,
+        ropeJumpFallbackReason:
+          jumper.ropeJumpFallbackReason ?? diag?.fallbackReason,
+        ropeJumpHorizVel: jumper.ropeJumpHorizVel ?? diag?.horizVel,
+        ropeJumpRawExpectedVel:
+          jumper.ropeJumpRawExpectedVel ?? diag?.rawExpectedVel,
+        ropeJumpPeakVel: jumper.ropeJumpPeakVel ?? diag?.peakVel,
+        ropeJumpReversalDetected:
+          jumper.ropeJumpReversalDetected ?? diag?.reversalDetected,
+      }
+    : null;
+  const landingLines = j
     ? [
-        `path=${jumper.ropeJumpLandingPath || "—"} phase=${jumper.ropeJumpPhase}`,
-        `raw=${fmt(jumper.ropeJumpRawTargetX)} resolved=${fmt(jumper.ropeJumpResolvedTargetX)}`,
-        `commitX=${fmt(jumper.ropeJumpLandingCommitX)} commitT=${fmt(jumper.ropeJumpLandingCommitT, 3)} committed=${!!jumper.ropeJumpLandingCommitted}`,
-        `prefSide=${sideLabel(jumper.ropeJumpPreferredSide)} resolvedSide=${sideLabel(jumper.ropeJumpResolvedSide)}`,
-        `minDist=${fmt(jumper.ropeJumpMinDistance ?? minDist)} centerDist=${fmt(jumper.ropeJumpCenterDistance ?? gap)}`,
-        `overlap(pred)=${fmt(jumper.ropeJumpOverlap ?? overlap)} safetyCorr=${fmt(jumper.ropeJumpSafetyCorrectionPx)}`,
-        `preTouch=${fmt(jumper.ropeJumpPreTouchdownX)} touch=${fmt(jumper.ropeJumpTouchdownX)} fallback=${!!jumper.ropeJumpUsedFallback}`,
+        `path=${j.ropeJumpLandingPath || "—"} phase=${j.ropeJumpPhase} traj=${j.ropeJumpTrajectoryType || "—"}`,
+        `class=${j.ropeJumpDecisionClass || "—"} reason=${j.ropeJumpFallbackReason || "—"}`,
+        `raw=${fmt(j.ropeJumpRawTargetX)} resolved=${fmt(j.ropeJumpResolvedTargetX)}`,
+        `commitX=${fmt(j.ropeJumpLandingCommitX)} commitT=${fmt(j.ropeJumpLandingCommitT, 3)} committed=${!!j.ropeJumpLandingCommitted}`,
+        `prefSide=${sideLabel(j.ropeJumpPreferredSide)} resolvedSide=${sideLabel(j.ropeJumpResolvedSide)}`,
+        `minDist=${fmt(j.ropeJumpMinDistance ?? minDist)} centerDist=${fmt(j.ropeJumpCenterDistance ?? gap)}`,
+        `overlap=${fmt(j.ropeJumpOverlap ?? overlap)} safetyCorr=${fmt(j.ropeJumpSafetyCorrectionPx)}`,
+        `vel=${fmt(j.ropeJumpHorizVel)} rawVel=${fmt(j.ropeJumpRawExpectedVel)} peakVel=${fmt(j.ropeJumpPeakVel)} rev=${!!j.ropeJumpReversalDetected}`,
+        `preTouch=${fmt(j.ropeJumpPreTouchdownX)} touch=${fmt(j.ropeJumpTouchdownX)} fallback=${!!j.ropeJumpUsedFallback}`,
       ].join("<br/>")
     : "ropeJump: idle";
 
   const toPct = (x) => `${(x / DESIGN_W) * 100}%`;
   let targetMarks = "";
-  if (jumper && typeof jumper.ropeJumpRawTargetX === "number" && jumper.ropeJumpRawTargetX) {
-    targetMarks += `<div style="position:absolute;left:${toPct(jumper.ropeJumpRawTargetX)};bottom:30%;transform:translateX(-50%);color:#fff59d">raw▼</div>`;
+  if (j && typeof j.ropeJumpRawTargetX === "number" && j.ropeJumpRawTargetX) {
+    targetMarks += `<div style="position:absolute;left:${toPct(j.ropeJumpRawTargetX)};bottom:30%;transform:translateX(-50%);color:#fff59d">raw▼</div>`;
   }
-  if (jumper && typeof jumper.ropeJumpResolvedTargetX === "number" && jumper.ropeJumpResolvedTargetX) {
-    targetMarks += `<div style="position:absolute;left:${toPct(jumper.ropeJumpResolvedTargetX)};bottom:34%;transform:translateX(-50%);color:#69f0ae">res▼</div>`;
+  if (j && typeof j.ropeJumpResolvedTargetX === "number" && j.ropeJumpResolvedTargetX) {
+    targetMarks += `<div style="position:absolute;left:${toPct(j.ropeJumpResolvedTargetX)};bottom:34%;transform:translateX(-50%);color:#69f0ae">res▼</div>`;
   }
-  if (jumper && jumper.ropeJumpLandingCommitted && typeof jumper.ropeJumpLandingCommitX === "number") {
-    targetMarks += `<div style="position:absolute;left:${toPct(jumper.ropeJumpLandingCommitX)};bottom:38%;transform:translateX(-50%);color:#80cbc4">commit▼</div>`;
+  if (j && j.ropeJumpLandingCommitted && typeof j.ropeJumpLandingCommitX === "number") {
+    targetMarks += `<div style="position:absolute;left:${toPct(j.ropeJumpLandingCommitX)};bottom:38%;transform:translateX(-50%);color:#80cbc4">commit▼</div>`;
   }
 
   let contactHtml = "";
@@ -256,6 +321,7 @@ if (typeof window !== "undefined") {
     enableLandingTrace: () => localStorage.setItem(LANDING_TRACE_KEY, "1"),
     disableLandingTrace: () => localStorage.removeItem(LANDING_TRACE_KEY),
     noteContact: noteCombatContactEvent,
+    noteLandingDiag,
     render: renderCombatFidelityOverlay,
   };
 }

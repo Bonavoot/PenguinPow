@@ -20,7 +20,7 @@ Rules future fidelity work must uphold. Phase 1 audit only — nothing here is n
 2. A registered slap / charged / palm strike must confirm when the art tip meets the victim body surface within the tip-rail epsilon (`isWithinConnectRange`).
 3. On strike confirm, freeze-frame park distance comes from `getHitParkDistance` (slap/charged at connect; palm at connect + outset).
 4. Fast projectiles that can tunnel must use swept checks (snowballs already do).
-5. Aerial landings must not rely on “land inside → multi-tick push out” as the primary landing solution. Rope-jump V2 (`ROPE_JUMP_LANDING_V2`, default off) commits a clear endpoint before touchdown; legacy path still violates this until the flag is enabled by default.
+5. Aerial landings must not rely on “land inside → multi-tick push out” as the primary landing solution. Rope-jump V2 (`ROPE_JUMP_LANDING_V2`, default off) commits a clear (or ≤18 px residual) endpoint before touchdown with continuous, non-reversing horizontal motion (A.1); legacy path still violates this until the flag is enabled by default.
 6. Ring-boundary clamps and fighter separation must compose without fighting each other into jitter.
 7. Tip length must not be scaled by `sizeMultiplier`; victim body half may (matches current `strikeContact.js` contract).
 

@@ -114,6 +114,7 @@ import { getLocalKeyState, isLocalGameActive } from "../prediction/localInput";
 import {
   isCombatFidelityDebugEnabled,
   noteCombatContactEvent,
+  noteLandingDiag,
   renderCombatFidelityOverlay,
 } from "../debug/CombatFidelityDebug";
 
@@ -2571,6 +2572,13 @@ const GameFighter = ({
                     ropeJumpPreTouchdownX: p.ropeJumpPreTouchdownX,
                     ropeJumpTouchdownX: p.ropeJumpTouchdownX,
                     ropeJumpUsedFallback: p.ropeJumpUsedFallback,
+                    ropeJumpTrajectoryType: p.ropeJumpTrajectoryType,
+                    ropeJumpDecisionClass: p.ropeJumpDecisionClass,
+                    ropeJumpFallbackReason: p.ropeJumpFallbackReason,
+                    ropeJumpHorizVel: p.ropeJumpHorizVel,
+                    ropeJumpRawExpectedVel: p.ropeJumpRawExpectedVel,
+                    ropeJumpPeakVel: p.ropeJumpPeakVel,
+                    ropeJumpReversalDetected: p.ropeJumpReversalDetected,
                   }
                 : null;
             renderCombatFidelityOverlay({
@@ -4000,6 +4008,12 @@ const GameFighter = ({
     };
     socket.on("player_hit", handlePlayerHit);
 
+    // Dev-only landing diagnostics (server emits only when LANDING_DEBUG_NET).
+    const handleLandingDiag = (data) => {
+      noteLandingDiag(data);
+    };
+    socket.on("landing_diag", handleLandingDiag);
+
     const handleRawParrySuccess = (data) => {
       lastRawParryTime.current = Date.now();
       // Local parrier: stamp flurry cover for the NEXT rising-edge re-arm only.
@@ -4667,6 +4681,7 @@ const GameFighter = ({
       socket.off("slap_parry", handleSlapParry);
       socket.off("charge_clash", handleChargeClash);
       socket.off("player_hit", handlePlayerHit);
+      socket.off("landing_diag", handleLandingDiag);
       socket.off("raw_parry_success", handleRawParrySuccess);
       socket.off("guard_block", handleGuardBlock);
       socket.off("perfect_parry", handlePerfectParry);

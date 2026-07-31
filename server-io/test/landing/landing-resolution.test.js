@@ -263,6 +263,28 @@ describe("landingResolution pure solver", () => {
     );
   });
 
+  it("15b. tiny boundary residual on preferred side beats alternate cross-up", () => {
+    // Case 3 geometry: preferred near endpoint clamps to map with ~0.5px residual.
+    const { TOLERABLE_TOUCHDOWN_OVERLAP_PX } = require("../../landingResolution");
+    const opp = 450;
+    const raw = 438.175;
+    const d = resolve({
+      rawTargetX: raw,
+      opponentX: opp,
+      jumperStartX: MAP_LEFT_BOUNDARY,
+      jumperCurrentX: 402.82,
+      jumpDirection: 1,
+    });
+    assert.equal(d.preferredSide, -1);
+    assert.equal(d.resolvedSide, -1);
+    assert.equal(d.resolvedTargetX, MAP_LEFT_BOUNDARY);
+    assert.ok(d.residualOverlap <= TOLERABLE_TOUCHDOWN_OVERLAP_PX);
+    assert.ok(d.residualOverlap > 0);
+    assert.equal(d.fallbackReason, "small_residual_preferred_side");
+    // Must NOT force the clear alternate at ~560.
+    assert.ok(d.resolvedTargetX < opp);
+  });
+
   it("16. alternate side possible when preferred blocked", () => {
     const opp = MAP_RIGHT_BOUNDARY;
     const d = resolve({

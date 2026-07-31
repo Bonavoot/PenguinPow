@@ -57,6 +57,7 @@ function classifyWinCategory(winType) {
   }
 }
 const { createInitialKeys } = require("./playerFactory");
+const { getPushboxHalfWidth } = require("./pushboxGeometry");
 
 const {
   GROUND_LEVEL,
@@ -566,6 +567,7 @@ function handleWinCondition(room, loser, winner, io, winType) {
       p.ropeJumpLandingCommitted = false;
       p.ropeJumpLandingCommitX = 0;
       p.ropeJumpLandingCommitT = 0;
+      p.ropeJumpLandingCommitVel = 0;
       p.ropeJumpLandingDecision = null;
       p.ropeJumpLandingPath = null;
       p.ropeJumpPreferredSide = 0;
@@ -577,6 +579,14 @@ function handleWinCondition(room, loser, winner, io, winType) {
       p.ropeJumpPreTouchdownX = 0;
       p.ropeJumpTouchdownX = 0;
       p.ropeJumpUsedFallback = false;
+      p.ropeJumpTrajectoryType = null;
+      p.ropeJumpDecisionClass = null;
+      p.ropeJumpFallbackReason = null;
+      p.ropeJumpHorizVel = 0;
+      p.ropeJumpRawExpectedVel = 0;
+      p.ropeJumpPeakVel = 0;
+      p.ropeJumpPeakAccel = 0;
+      p.ropeJumpReversalDetected = false;
       p._landingTrace = null;
     }
 
@@ -1427,7 +1437,8 @@ function executeChargedAttack(player, chargePercentage, rooms) {
 
 // Add new function to calculate effective hitbox size based on facing direction
 function calculateEffectiveHitboxSize(player) {
-  const baseSize = HITBOX_DISTANCE_VALUE * (player.sizeMultiplier || 1);
+  // Shared source of truth with landing resolution (pushboxGeometry.js).
+  const baseSize = getPushboxHalfWidth(player.sizeMultiplier);
 
   // Only apply asymmetric adjustments if player has size power-up
   // if (player.activePowerUp === POWER_UP_TYPES.SIZE) {

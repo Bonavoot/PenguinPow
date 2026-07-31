@@ -4,6 +4,8 @@
 **Date:** 2026-07-30  
 **Scope stop:** Rope jump only. Slide jump / FLAP / butt slam are **not** integrated.
 
+**Phase A.1 (trajectory hardening):** See [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md). Phase A’s position-only rebase caused measurable midair speed pops, late reverses, and forced cross-ups; A.1 replaces that path model while keeping V2 default OFF.
+
 Companion: [`COMBAT_FIDELITY_AUDIT.md`](./COMBAT_FIDELITY_AUDIT.md), [`COMBAT_FIDELITY_ROADMAP.md`](./COMBAT_FIDELITY_ROADMAP.md) Phase 3.
 
 ---
@@ -185,10 +187,10 @@ Symmetric results for right-rope (resolved left of opponent).
 ## Known limitations
 
 - Commit samples a single opponent X; post-commit opponent motion into the cell can still require the 18 px/tick safety path (bounded, logged via `ropeJumpSafetyCorrectionPx`).
-- Horizontal velocity can kink slightly at commit when the resolved delta differs from the raw remaining travel (position stays continuous).
+- **Superseded by A.1:** Phase A’s “slight kink” understated Case 1 (~4× horizontal speed pop). See A.1 for Hermite / brake / hold_settle.
 - Both-sides-constrained near edges may still leave residual overlap (reported); defender is not shoveled as first choice.
 - Debug overlay still estimates half-width as `65 * sizeMult` when server half is not separately sent (matches server formula).
-- CPU and human share the same resolver only when the flag is on (both call `initRopeJumpLandingState` + `stepRopeJumpActive`).
+- CPU and human share `startRopeJump` + `stepRopeJumpActive` when the flag is on.
 
 ---
 

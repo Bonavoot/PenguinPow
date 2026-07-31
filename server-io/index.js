@@ -2354,6 +2354,11 @@ function tick(delta) {
             useV2: isRopeJumpLandingV2Enabled(),
           });
 
+          // Dev-only diagnostic packet — never part of the normal PvP delta stream.
+          if (landResult.debugPayload && player.socketId) {
+            io.to(player.socketId).emit("landing_diag", landResult.debugPayload);
+          }
+
           if (landResult.touchedDown) {
             player.actionLockUntil = now + ROPE_JUMP_LANDING_RECOVERY_MS;
             // Legacy relies on adjustPlayerPositions (≤18px/tick) after overlap.

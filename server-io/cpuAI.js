@@ -3,8 +3,7 @@
 // Design philosophy: Human-like decision making with strategic reads, commitment,
 // and intelligent grab system usage based on positioning and stamina.
 
-const { ROPE_JUMP_BOUNDARY_ZONE, ROPE_JUMP_STARTUP_MS, ROPE_JUMP_STAMINA_COST,
-        ROPE_JUMP_CENTER_FRACTION,
+const { ROPE_JUMP_BOUNDARY_ZONE,
         SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_TOTAL_MS,
         SIDESTEP_STAMINA_COST,
         DODGE_STAMINA_COST,
@@ -25,7 +24,7 @@ const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
         beginGrabStartup,
         canArmAttackParry, armAttackParry } = require("./gameUtils");
 const { getConnectDistance, attackKindFromPlayer } = require("./strikeContact");
-const { initRopeJumpLandingState } = require("./landingResolution");
+const { startRopeJump } = require("./ropeJumpStart");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum, Phase 2: posture, Phase 3: cadence).
 const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P3_CADENCE } = require("./masteryFlags");
@@ -3827,23 +3826,13 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
         cpu.isBraking = false;
 
         const jumpDir = nearLeftBound ? 1 : -1;
-        const mapMidpoint = (GAME_MAP_LEFT + GAME_MAP_RIGHT) / 2;
-        const targetX = cpu.x + (mapMidpoint - cpu.x) * ROPE_JUMP_CENTER_FRACTION;
-
-        cpu.facing = nearLeftBound ? -1 : 1;
-        cpu.isRopeJumping = true;
-        cpu.ropeJumpPhase = "startup";
-        cpu.ropeJumpStartTime = currentTime;
-        cpu.ropeJumpStartX = cpu.x;
-        cpu.ropeJumpTargetX = Math.max(GAME_MAP_LEFT, Math.min(targetX, GAME_MAP_RIGHT));
-        cpu.ropeJumpDirection = jumpDir;
-        cpu.ropeJumpActiveStartTime = 0;
-        cpu.ropeJumpLandingTime = 0;
-        cpu.ropeJumpBufferedAttackRelease = 0;
-        initRopeJumpLandingState(cpu, cpu.ropeJumpTargetX);
-        cpu.currentAction = "ropeJump";
-        cpu.actionLockUntil = currentTime + ROPE_JUMP_STARTUP_MS;
-        cpu.stamina = Math.max(0, cpu.stamina - ROPE_JUMP_STAMINA_COST);
+        startRopeJump(cpu, {
+          now: currentTime,
+          jumpDirection: jumpDir,
+          mapLeft: GAME_MAP_LEFT,
+          mapRight: GAME_MAP_RIGHT,
+          facing: nearLeftBound ? -1 : 1,
+        });
 
         if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
         else Object.assign(cpu._prevKeys, cpu.keys);

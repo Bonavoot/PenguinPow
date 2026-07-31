@@ -114,12 +114,12 @@ Ground separation stable; charged/palm regression tests green.
 
 ### Phase 3A — Rope jump only *(implemented 2026-07-30, default OFF)*
 
-See [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md).
+See [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md) and [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md).
 
 - Pure `landingResolution.js` + `ROPE_JUMP_LANDING_V2` flag (default **false**)
-- Commit at `ROPE_JUMP_LANDING_COMMIT_T` → continuous travel → clear touchdown
+- A.1: Hermite/brake/hold_settle trajectory + residual-aware fallback + early commit
 - Legacy path preserved; 18px/tick retained as safety
-- Diagnostics + `server-io/test/landing/` suite
+- Diagnostics debug-net only; `server-io/test/landing/` suite including trajectory scan
 - **Stop:** do not enable by default until playtest; do not integrate slide/FLAP here
 
 ### Phase 3B — Slide jump / FLAP *(not started)*
@@ -327,6 +327,6 @@ Steam-release fidelity bar signed off for interaction (not particle count).
 
 ## Recommended next implementation phase
 
-**Phase 3A is code-complete behind a flag.** Next conversation should be: (1) playtest rope V2 and decide default-on, **or** (2) Phase 3B slide-jump/FLAP landing using the same solver, **or** (3) low-risk Phase 2 hygiene (CPU boundary + exemption registry).
+**Phase 3A + A.1 trajectory hardening are code-complete behind a flag (still default OFF).** Next conversation should be: (1) playtest rope V2 (A.1 matrix) and decide default-on, **or** (2) Phase 3B slide-jump/FLAP landing using the same solver, **or** (3) low-risk Phase 2 hygiene (CPU boundary + exemption registry).
 
 Do **not** start Phase 4 tip standardization before landing/pushbox ownership is clear — otherwise tip parks will keep fighting aerial correction snaps.

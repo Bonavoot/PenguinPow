@@ -2,7 +2,23 @@ const {
   ALL_TRACKED_PROPS,
   ALWAYS_SEND_PROPS,
   DELTA_TRACKED_PROPS,
+  LANDING_DIAG_DELTA_PROPS,
 } = require("./constants");
+const { LANDING_DEBUG_NET } = require("./landingFlags");
+
+/**
+ * Effective tracked-prop lists. Landing diagnostics ride the wire only when
+ * LANDING_DEBUG_NET is on — production PvP stays lean.
+ */
+function getDeltaTrackedProps() {
+  if (!LANDING_DEBUG_NET) return DELTA_TRACKED_PROPS;
+  return DELTA_TRACKED_PROPS.concat(LANDING_DIAG_DELTA_PROPS);
+}
+
+function getAllTrackedProps() {
+  if (!LANDING_DEBUG_NET) return ALL_TRACKED_PROPS;
+  return ALL_TRACKED_PROPS.concat(LANDING_DIAG_DELTA_PROPS);
+}
 
 // Shallow-compare two arrays of flat objects without JSON.stringify.
 // Used for snowballs/pumoArmy which are small arrays (~0-5 elements) of flat objects.
@@ -24,10 +40,13 @@ function shallowArrayEquals(a, b) {
 }
 
 function computePlayerDelta(currentState, previousState) {
+  const allProps = getAllTrackedProps();
+  const deltaProps = getDeltaTrackedProps();
+
   if (!previousState) {
     const delta = {};
-    for (let i = 0; i < ALL_TRACKED_PROPS.length; i++) {
-      const prop = ALL_TRACKED_PROPS[i];
+    for (let i = 0; i < allProps.length; i++) {
+      const prop = allProps[i];
       if (currentState[prop] !== undefined) {
         delta[prop] = currentState[prop];
       }
@@ -41,8 +60,8 @@ function computePlayerDelta(currentState, previousState) {
     delta[ALWAYS_SEND_PROPS[i]] = currentState[ALWAYS_SEND_PROPS[i]];
   }
   
-  for (let i = 0; i < DELTA_TRACKED_PROPS.length; i++) {
-    const prop = DELTA_TRACKED_PROPS[i];
+  for (let i = 0; i < deltaProps.length; i++) {
+    const prop = deltaProps[i];
     const current = currentState[prop];
     const previous = previousState[prop];
     
@@ -69,8 +88,9 @@ function computePlayerDelta(currentState, previousState) {
 // Safe because snowballs/pumoArmy elements and knockbackVelocity are flat objects (no nesting).
 function clonePlayerState(player) {
   const clone = {};
-  for (let i = 0; i < ALL_TRACKED_PROPS.length; i++) {
-    const prop = ALL_TRACKED_PROPS[i];
+  const allProps = getAllTrackedProps();
+  for (let i = 0; i < allProps.length; i++) {
+    const prop = allProps[i];
     const value = player[prop];
     if (value !== undefined) {
       if (Array.isArray(value)) {
@@ -86,7 +106,9 @@ function clonePlayerState(player) {
 }
 
 module.exports = {
-  shallowArrayEquals,
   computePlayerDelta,
   clonePlayerState,
+  getDeltaTrackedProps,
+  getAllTrackedProps,
+  LANDING_DIAG_DELTA_PROPS,
 };
