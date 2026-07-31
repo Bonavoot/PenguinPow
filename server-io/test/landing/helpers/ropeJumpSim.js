@@ -7,6 +7,10 @@
  *
  * Phase A.3.1: traces landing-settle ticks and one ordinary grounded tick
  * after rope-jump recovery clears (recovery-exit invariant).
+ *
+ * Phase A.3.2: supports opponent motion during landing recovery via
+ * `landingOpponentStep`, and records production-order cleanup / grounded
+ * displacements (pushbox → recovery clear → movement), matching index.js.
  */
 
 const {
@@ -40,6 +44,9 @@ const {
   getMinimumCenterDistance,
   RECOVERY_EXIT_CORRECTION_TOLERANCE_PX,
   LANDING_SETTLE_OVERLAP_EPS_PX,
+  SETTLE_RECOVERY_CLEAR_MONITORING,
+  SETTLE_LANDING_SETTLE_ACTIVE,
+  isLandingRecoveryMonitoringState,
 } = require("../../../landingResolution");
 const { startRopeJump } = require("../../../ropeJumpStart");
 const { adjustPlayerPositions } = require("../../../gameFunctions");
@@ -137,6 +144,8 @@ function makeFighter(overrides = {}) {
     ropeJumpSettleAccumulatedPx: 0,
     ropeJumpSettleTicksDone: 0,
     ropeJumpSettleTicksTotal: 0,
+    ropeJumpSettleEpisodeCount: 0,
+    ropeJumpSettleReactivated: false,
     ropeJumpOverlapIncreased: false,
     ropeJumpBudgetException: false,
     ropeJumpBudgetExceptionClass: null,
@@ -245,11 +254,22 @@ function createIceMotionController(initialVel = 0) {
  * Simulate rope jump from startup through landing recovery, then one ordinary
  * grounded pushbox tick after rope-jump state clears.
  *
+ * Landing-tick order matches production `index.js`:
+ *   1. shared pushbox (`adjustPlayerPositions`)
+ *   2. rope-jump recovery clear (may clear landing state)
+ *   3. `landingOpponentStep` while still in landing (not on the clear tick)
+ *
+ * Options:
+ * - `opponentStep(opponent, t, now)` — active-arc opponent motion
+ * - `landingOpponentStep(opponent, recoveryT, now, trace)` — recovery motion
+ * - `tickOrder: "production" | "movement_then_pushbox"` — default production
+ *
  * @returns {object} trace metrics
  */
 function simulateRopeJump(jumper, opponent, opts = {}) {
   const useV2 = !!opts.useV2;
   const startNow = opts.now != null ? opts.now : 100_000;
+  const tickOrder = opts.tickOrder || "production";
   const jumpDirection =
     opts.jumpDirection != null
       ? opts.jumpDirection
@@ -266,12 +286,14 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
 
   const trace = {
     useV2,
+    tickOrder,
     rawTargetX: jumper.ropeJumpRawTargetX,
     samples: [],
     commit: null,
     touchdown: null,
     corrections: [],
     settleTicks: [],
+    recoveryTicks: [],
     shakeEmits: 0,
     bufferedAttackFired: false,
     peakVel: 0,
@@ -295,7 +317,12 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
     settleInitialOverlap: 0,
     settleMaxOverlap: 0,
     settleAccumulatedPx: 0,
+    settleReactivated: false,
+    settleEpisodeCount: 0,
+    maxRecoveryOverlap: 0,
+    maxRecoveryCorrection: 0,
     recoveryEnd: null,
+    cleanupTick: null,
     postRecovery: null,
     budgetException: false,
     budgetExceptionClass: null,
@@ -310,6 +337,206 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
     100;
   let shakeEmitted = false;
   let accumulatedDisplacement = 0;
+  let recoveryTickIndex = 0;
+
+  function recordLandingPushbox(label) {
+    if (!opponent) return { moved: 0, overlapBefore: 0, overlapAfter: 0 };
+    const beforeJ = jumper.x;
+    const beforeO = opponent.x;
+    const overlapBefore = overlapOf(jumper, opponent);
+    const sideBefore = sideOrdering(jumper, opponent);
+    const settleBefore = jumper.ropeJumpSettleState;
+    const reactivatedBefore = !!jumper.ropeJumpSettleReactivated;
+    adjustPlayerPositions(jumper, opponent, TICK_MS);
+    const jumperDelta = jumper.x - beforeJ;
+    const opponentDelta = opponent.x - beforeO;
+    const moved = Math.abs(jumperDelta) + Math.abs(opponentDelta);
+    const overlapAfter = overlapOf(jumper, opponent);
+    const sideAfter = sideOrdering(jumper, opponent);
+    const settleAfter = jumper.ropeJumpSettleState;
+    const reactivatedThisTick =
+      !!jumper.ropeJumpSettleReactivated &&
+      (settleBefore !== SETTLE_LANDING_SETTLE_ACTIVE ||
+        settleAfter === SETTLE_LANDING_SETTLE_ACTIVE) &&
+      (isLandingRecoveryMonitoringState(settleBefore) ||
+        settleBefore === SETTLE_LANDING_SETTLE_ACTIVE);
+    if (jumper.ropeJumpSettleReactivated) {
+      trace.settleReactivated = true;
+    }
+    trace.settleEpisodeCount = Math.max(
+      trace.settleEpisodeCount,
+      jumper.ropeJumpSettleEpisodeCount || 0
+    );
+    const correctionDirection =
+      jumperDelta === 0 && opponentDelta === 0
+        ? 0
+        : Math.sign(jumperDelta !== 0 ? jumperDelta : -opponentDelta);
+    accumulatedDisplacement += moved;
+    if (overlapAfter > overlapBefore + 1e-9) {
+      trace.overlapEverIncreased = true;
+    }
+    trace.maxRecoveryOverlap = Math.max(
+      trace.maxRecoveryOverlap,
+      overlapBefore,
+      overlapAfter
+    );
+    trace.maxRecoveryCorrection = Math.max(trace.maxRecoveryCorrection, moved);
+    const settleRecord = {
+      now,
+      phase: label || "landing_settle",
+      overlapBefore,
+      overlapAfter,
+      correctionDirection,
+      jumperDelta,
+      opponentDelta,
+      pairDisplacement: moved,
+      jumperX: jumper.x,
+      opponentX: opponent.x,
+      sideBefore,
+      sideAfter,
+      accumulatedDisplacement,
+      safetyCorrectionPx: jumper.ropeJumpSafetyCorrectionPx,
+      settleStateBefore: settleBefore,
+      settleState: settleAfter,
+      sidePolicy: jumper.ropeJumpSidePolicy,
+      settleReactivated: !!jumper.ropeJumpSettleReactivated,
+      reactivatedThisTick:
+        isLandingRecoveryMonitoringState(settleBefore) &&
+        settleAfter === SETTLE_LANDING_SETTLE_ACTIVE,
+      episodeCount: jumper.ropeJumpSettleEpisodeCount || 0,
+    };
+    if (moved > 0 || overlapBefore > LANDING_SETTLE_OVERLAP_EPS_PX) {
+      trace.settleTicks.push(settleRecord);
+    }
+    if (moved > 0) {
+      trace.corrections.push({
+        now,
+        jumperDelta,
+        opponentDelta,
+        jumperX: jumper.x,
+        opponentX: opponent.x,
+        safetyCorrectionPx: jumper.ropeJumpSafetyCorrectionPx,
+        overlapBefore,
+        overlapAfter,
+        correctionDirection,
+      });
+    }
+    trace.sidePolicy = jumper.ropeJumpSidePolicy;
+    trace.settleState = jumper.ropeJumpSettleState;
+    trace.settleMaxOverlap = Math.max(
+      trace.settleMaxOverlap,
+      jumper.ropeJumpSettleMaxOverlap || 0,
+      overlapBefore
+    );
+    trace.settleAccumulatedPx = jumper.ropeJumpSettleAccumulatedPx || 0;
+    if (jumper.ropeJumpOverlapIncreased) {
+      trace.overlapEverIncreased = true;
+    }
+    return {
+      moved,
+      overlapBefore,
+      overlapAfter,
+      settleBefore,
+      settleAfter,
+      jumperDelta,
+      opponentDelta,
+      sideBefore,
+      sideAfter,
+      reactivatedBefore,
+    };
+  }
+
+  function applyLandingOpponentStep() {
+    if (typeof opts.landingOpponentStep !== "function" || !opponent) return null;
+    if (!jumper.ropeJumpLandingTime) return null;
+    const recoveryElapsed = now - jumper.ropeJumpLandingTime;
+    const recoveryT = Math.min(
+      1,
+      Math.max(0, recoveryElapsed / ROPE_JUMP_LANDING_RECOVERY_MS)
+    );
+    const overlapBeforeMove = overlapOf(jumper, opponent);
+    const settleBeforeMove = jumper.ropeJumpSettleState;
+    const beforeO = opponent.x;
+    opts.landingOpponentStep(opponent, recoveryT, now, trace);
+    opponent.x = Math.max(
+      MAP_LEFT_BOUNDARY,
+      Math.min(MAP_RIGHT_BOUNDARY, opponent.x)
+    );
+    const overlapAfterMove = overlapOf(jumper, opponent);
+    const record = {
+      now,
+      recoveryT,
+      recoveryTickIndex,
+      opponentDelta: opponent.x - beforeO,
+      overlapBeforeMove,
+      overlapAfterMove,
+      settleBeforeMove,
+      settleAfterMove: jumper.ropeJumpSettleState,
+    };
+    trace.recoveryTicks.push(record);
+    trace.maxRecoveryOverlap = Math.max(
+      trace.maxRecoveryOverlap,
+      overlapBeforeMove,
+      overlapAfterMove
+    );
+    recoveryTickIndex += 1;
+    return record;
+  }
+
+  function clearLandingRecovery() {
+    if (jumper.ropeJumpBufferedAttackRelease) {
+      jumper.ropeJumpBufferedAttackRelease = 0;
+      trace.bufferedAttackFired = true;
+    }
+    if (opponent) {
+      jumper.facing = jumper.x < opponent.x ? -1 : 1;
+    }
+
+    trace.recoveryEnd = {
+      now,
+      jumperX: jumper.x,
+      opponentX: opponent ? opponent.x : null,
+      overlap: overlapOf(jumper, opponent),
+      sideOrdering: sideOrdering(jumper, opponent),
+      settleState: jumper.ropeJumpSettleState,
+      sidePolicy: jumper.ropeJumpSidePolicy,
+      settleAccumulatedPx: jumper.ropeJumpSettleAccumulatedPx || 0,
+      settleMaxOverlap: jumper.ropeJumpSettleMaxOverlap || 0,
+      settleEpisodeCount: jumper.ropeJumpSettleEpisodeCount || 0,
+      settleReactivated: !!jumper.ropeJumpSettleReactivated,
+      overlapIncreased: !!jumper.ropeJumpOverlapIncreased,
+      safetyCorrectionPx: jumper.ropeJumpSafetyCorrectionPx || 0,
+      safetyCorrectionTicks: jumper.ropeJumpSafetyCorrectionTicks || 0,
+    };
+    trace.lateIntrusion = !!jumper.ropeJumpLateIntrusion || trace.lateIntrusion;
+    trace.lateIntrusionClass =
+      jumper.ropeJumpLateIntrusionClass || trace.lateIntrusionClass;
+    trace.budgetException =
+      !!jumper.ropeJumpBudgetException || trace.budgetException;
+    trace.budgetExceptionClass =
+      jumper.ropeJumpBudgetExceptionClass || trace.budgetExceptionClass;
+    if (jumper.ropeJumpOverlapIncreased) {
+      trace.overlapEverIncreased = true;
+    }
+    trace.settleReactivated =
+      trace.settleReactivated || !!jumper.ropeJumpSettleReactivated;
+    trace.settleEpisodeCount = Math.max(
+      trace.settleEpisodeCount,
+      jumper.ropeJumpSettleEpisodeCount || 0
+    );
+
+    jumper.isRopeJumping = false;
+    jumper.ropeJumpPhase = null;
+    jumper.ropeJumpStartTime = 0;
+    jumper.ropeJumpStartX = 0;
+    jumper.ropeJumpTargetX = 0;
+    jumper.ropeJumpDirection = 0;
+    jumper.ropeJumpActiveStartTime = 0;
+    jumper.ropeJumpLandingTime = 0;
+    clearRopeJumpLandingState(jumper);
+    jumper.currentAction = null;
+    jumper.actionLockUntil = 0;
+  }
 
   while (now <= endLimit && jumper.isRopeJumping) {
     now += TICK_MS;
@@ -383,6 +610,9 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
           settleState: jumper.ropeJumpSettleState,
           sidePolicy: jumper.ropeJumpSidePolicy,
           sideOrdering: sideOrdering(jumper, opponent),
+          monitoring:
+            jumper.ropeJumpSettleState === SETTLE_RECOVERY_CLEAR_MONITORING ||
+            isLandingRecoveryMonitoringState(jumper.ropeJumpSettleState),
         };
         trace.sidePolicy = jumper.ropeJumpSidePolicy;
         trace.settleState = jumper.ropeJumpSettleState;
@@ -419,123 +649,51 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
       trace.lateIntrusion = !!jumper.ropeJumpLateIntrusion;
       trace.lateIntrusionClass = jumper.ropeJumpLateIntrusionClass;
     } else if (jumper.ropeJumpPhase === "landing") {
-      if (opponent) {
-        const beforeJ = jumper.x;
-        const beforeO = opponent.x;
-        const overlapBefore = overlapOf(jumper, opponent);
-        const sideBefore = sideOrdering(jumper, opponent);
-        adjustPlayerPositions(jumper, opponent, TICK_MS);
-        const jumperDelta = jumper.x - beforeJ;
-        const opponentDelta = opponent.x - beforeO;
-        const moved = Math.abs(jumperDelta) + Math.abs(opponentDelta);
-        const overlapAfter = overlapOf(jumper, opponent);
-        const sideAfter = sideOrdering(jumper, opponent);
-        const correctionDirection =
-          jumperDelta === 0 && opponentDelta === 0
-            ? 0
-            : Math.sign(jumperDelta !== 0 ? jumperDelta : -opponentDelta);
-        accumulatedDisplacement += moved;
-        if (overlapAfter > overlapBefore + 1e-9) {
-          trace.overlapEverIncreased = true;
+      const shouldClear =
+        now >= jumper.ropeJumpLandingTime + ROPE_JUMP_LANDING_RECOVERY_MS;
+
+      if (tickOrder === "movement_then_pushbox") {
+        // Alternate harness: movement → optional clear → pushbox.
+        if (!shouldClear) {
+          applyLandingOpponentStep();
         }
-        const settleRecord = {
-          now,
-          phase: "landing_settle",
-          overlapBefore,
-          overlapAfter,
-          correctionDirection,
-          jumperDelta,
-          opponentDelta,
-          pairDisplacement: moved,
-          jumperX: jumper.x,
-          opponentX: opponent.x,
-          sideBefore,
-          sideAfter,
-          accumulatedDisplacement,
-          safetyCorrectionPx: jumper.ropeJumpSafetyCorrectionPx,
-          settleState: jumper.ropeJumpSettleState,
-          sidePolicy: jumper.ropeJumpSidePolicy,
-        };
-        if (moved > 0 || overlapBefore > LANDING_SETTLE_OVERLAP_EPS_PX) {
-          trace.settleTicks.push(settleRecord);
-        }
-        if (moved > 0) {
-          trace.corrections.push({
-            now,
-            jumperDelta,
-            opponentDelta,
-            jumperX: jumper.x,
-            opponentX: opponent.x,
-            safetyCorrectionPx: jumper.ropeJumpSafetyCorrectionPx,
-            overlapBefore,
-            overlapAfter,
-            correctionDirection,
-          });
-        }
-        trace.sidePolicy = jumper.ropeJumpSidePolicy;
-        trace.settleState = jumper.ropeJumpSettleState;
-        trace.settleMaxOverlap = Math.max(
-          trace.settleMaxOverlap,
-          jumper.ropeJumpSettleMaxOverlap || 0,
-          overlapBefore
+        const push = recordLandingPushbox(
+          shouldClear ? "cleanup_pushbox" : "landing_settle"
         );
-        trace.settleAccumulatedPx = jumper.ropeJumpSettleAccumulatedPx || 0;
-        if (jumper.ropeJumpOverlapIncreased) {
-          trace.overlapEverIncreased = true;
+        if (shouldClear) {
+          trace.cleanupTick = {
+            now,
+            pairDisplacement: push.moved,
+            overlapBefore: push.overlapBefore,
+            overlapAfter: push.overlapAfter,
+            settleStateBefore: push.settleBefore,
+            order: "movement_then_pushbox",
+          };
+          clearLandingRecovery();
         }
-      }
-
-      if (now >= jumper.ropeJumpLandingTime + ROPE_JUMP_LANDING_RECOVERY_MS) {
-        if (jumper.ropeJumpBufferedAttackRelease) {
-          jumper.ropeJumpBufferedAttackRelease = 0;
-          trace.bufferedAttackFired = true;
+      } else {
+        // Production order (index.js): pushbox → recovery clear → movement.
+        const push = recordLandingPushbox(
+          shouldClear ? "cleanup_pushbox" : "landing_settle"
+        );
+        if (shouldClear) {
+          trace.cleanupTick = {
+            now,
+            pairDisplacement: push.moved,
+            overlapBefore: push.overlapBefore,
+            overlapAfter: push.overlapAfter,
+            settleStateBefore: push.settleBefore,
+            order: "production",
+          };
+          clearLandingRecovery();
+        } else {
+          applyLandingOpponentStep();
         }
-        if (opponent) {
-          jumper.facing = jumper.x < opponent.x ? -1 : 1;
-        }
-
-        // Snapshot recovery-end metrics before cleanup clears settle fields.
-        trace.recoveryEnd = {
-          now,
-          jumperX: jumper.x,
-          opponentX: opponent ? opponent.x : null,
-          overlap: overlapOf(jumper, opponent),
-          sideOrdering: sideOrdering(jumper, opponent),
-          settleState: jumper.ropeJumpSettleState,
-          sidePolicy: jumper.ropeJumpSidePolicy,
-          settleAccumulatedPx: jumper.ropeJumpSettleAccumulatedPx || 0,
-          settleMaxOverlap: jumper.ropeJumpSettleMaxOverlap || 0,
-          overlapIncreased: !!jumper.ropeJumpOverlapIncreased,
-          safetyCorrectionPx: jumper.ropeJumpSafetyCorrectionPx || 0,
-          safetyCorrectionTicks: jumper.ropeJumpSafetyCorrectionTicks || 0,
-        };
-        trace.lateIntrusion = !!jumper.ropeJumpLateIntrusion || trace.lateIntrusion;
-        trace.lateIntrusionClass =
-          jumper.ropeJumpLateIntrusionClass || trace.lateIntrusionClass;
-        trace.budgetException =
-          !!jumper.ropeJumpBudgetException || trace.budgetException;
-        trace.budgetExceptionClass =
-          jumper.ropeJumpBudgetExceptionClass || trace.budgetExceptionClass;
-        if (jumper.ropeJumpOverlapIncreased) {
-          trace.overlapEverIncreased = true;
-        }
-
-        jumper.isRopeJumping = false;
-        jumper.ropeJumpPhase = null;
-        jumper.ropeJumpStartTime = 0;
-        jumper.ropeJumpStartX = 0;
-        jumper.ropeJumpTargetX = 0;
-        jumper.ropeJumpDirection = 0;
-        jumper.ropeJumpActiveStartTime = 0;
-        jumper.ropeJumpLandingTime = 0;
-        clearRopeJumpLandingState(jumper);
-        jumper.currentAction = null;
-        jumper.actionLockUntil = 0;
       }
     }
   }
 
-  // Phase A.3.1 recovery-exit: one ordinary grounded pushbox tick after clear.
+  // Phase A.3.1 / A.3.2 recovery-exit: one ordinary grounded pushbox tick.
   if (opponent && opts.skipPostRecoveryTick !== true) {
     const beforeJ = jumper.x;
     const beforeO = opponent.x;
@@ -602,6 +760,10 @@ module.exports = {
   ICE_INITIAL_BURST,
   speedFactor,
   ICE_PX_PER_VEL_UNIT,
+  RECOVERY_EXIT_CORRECTION_TOLERANCE_PX,
+  LANDING_SETTLE_OVERLAP_EPS_PX,
+  SETTLE_RECOVERY_CLEAR_MONITORING,
+  SETTLE_LANDING_SETTLE_ACTIVE,
   makeFighter,
   computeRawRopeJumpTargetX,
   beginRopeJump,
@@ -611,4 +773,5 @@ module.exports = {
   sideOrdering,
   getPushboxHalfWidth,
   getMinimumCenterDistance,
+  isLandingRecoveryMonitoringState,
 };

@@ -39,14 +39,16 @@ const {
 // Phase 4: analog resolutions).
 const { MASTERY_P1_MOMENTUM, MASTERY_P3_CADENCE } = require("./masteryFlags");
 
-// Aerial landing Phase A.3.1 — late-intrusion settle ownership / ordering.
+// Aerial landing Phase A.3.1 / A.3.2 — settle ownership + recovery monitoring.
 const {
   resolveLandingSeparationOrdering,
   computeLandingSettleCorrectionPx,
   updateLandingSettleCompletion,
+  isLandingRecoveryMonitoringState,
+  reactivateLandingSettle,
   LANDING_SETTLE_MAX_PX_PER_TICK,
+  LANDING_SETTLE_OVERLAP_EPS_PX,
   SETTLE_LANDING_SETTLE_ACTIVE,
-  SETTLE_RECOVERY_SAFE_TO_RELEASE,
 } = require("./landingResolution");
 
 // Per-match input audit log (open at first round, close on matchOver)
@@ -622,6 +624,8 @@ function handleWinCondition(room, loser, winner, io, winType) {
       p.ropeJumpSettleAccumulatedPx = 0;
       p.ropeJumpSettleTicksDone = 0;
       p.ropeJumpSettleTicksTotal = 0;
+      p.ropeJumpSettleEpisodeCount = 0;
+      p.ropeJumpSettleReactivated = false;
       p.ropeJumpOverlapIncreased = false;
       p.ropeJumpBudgetException = false;
       p.ropeJumpBudgetExceptionClass = null;
@@ -1823,22 +1827,36 @@ function adjustPlayerPositions(player1, player2, delta) {
   // - Legacy / non-V2 landing: ≤18 px/tick slide (unchanged)
   // - V2 late-intrusion settle (A.3.1): authored multi-tick settle across
   //   recovery, still ≤18 px/tick, monotonic, finishes before release
-  // - V2 clear landing: no correction expected
+  // - V2 clear-but-monitoring (A.3.2): currently clear skips work via the
+  //   distance check above; new overlap reactivates settle ownership — never
+  //   sticky-exempt collision for the rest of recovery
   let effectiveOverlap;
-  const v2SettleActive =
-    ropeJumper &&
-    ropeJumper.ropeJumpLandingPath === "v2" &&
+  const v2Landing =
+    ropeJumper && ropeJumper.ropeJumpLandingPath === "v2";
+  let v2SettleActive =
+    v2Landing &&
     ropeJumper.ropeJumpSettleState === SETTLE_LANDING_SETTLE_ACTIVE;
+
+  if (
+    v2Landing &&
+    !v2SettleActive &&
+    isLandingRecoveryMonitoringState(ropeJumper.ropeJumpSettleState) &&
+    overlap > LANDING_SETTLE_OVERLAP_EPS_PX
+  ) {
+    const settleOpponent = ropeJumper === player1 ? player2 : player1;
+    reactivateLandingSettle(ropeJumper, settleOpponent);
+    v2SettleActive =
+      ropeJumper.ropeJumpSettleState === SETTLE_LANDING_SETTLE_ACTIVE;
+    // Re-resolve ordering with the reactivated settle side lock.
+    p1IsLeft = resolveLandingSeparationOrdering(
+      player1,
+      player2,
+      ropeJumper
+    ).p1IsLeft;
+  }
 
   if (v2SettleActive) {
     effectiveOverlap = computeLandingSettleCorrectionPx(ropeJumper, overlap);
-  } else if (
-    ropeJumper &&
-    ropeJumper.ropeJumpLandingPath === "v2" &&
-    ropeJumper.ropeJumpSettleState === SETTLE_RECOVERY_SAFE_TO_RELEASE
-  ) {
-    // Settle already clear — do not re-open ordinary landing slide.
-    return;
   } else if (ropeJumpLanding) {
     effectiveOverlap = Math.min(overlap, LANDING_SETTLE_MAX_PX_PER_TICK);
   } else {

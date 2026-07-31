@@ -114,14 +114,15 @@ Ground separation stable; charged/palm regression tests green.
 
 ### Phase 3A — Rope jump only *(implemented 2026-07-30…31, default OFF)*
 
-See [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md), [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md), [`AERIAL_LANDING_PHASE_A2.md`](./AERIAL_LANDING_PHASE_A2.md), [`AERIAL_LANDING_PHASE_A3.md`](./AERIAL_LANDING_PHASE_A3.md).
+See [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md), [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md), [`AERIAL_LANDING_PHASE_A2.md`](./AERIAL_LANDING_PHASE_A2.md), [`AERIAL_LANDING_PHASE_A3.md`](./AERIAL_LANDING_PHASE_A3.md), [`AERIAL_LANDING_PHASE_A3_1.md`](./AERIAL_LANDING_PHASE_A3_1.md), [`AERIAL_LANDING_PHASE_A3_2.md`](./AERIAL_LANDING_PHASE_A3_2.md).
 
 - Pure `landingResolution.js` + `ROPE_JUMP_LANDING_V2` flag (default **false**)
 - A.1: Hermite/brake trajectory + residual-aware fallback (not visually approved — decision cliffs remained)
 - A.2: stable side intent + continuous commit + same-side endpoint continuity; fine 0.25px scans
 - A.3: provisional raw-clear + pre-commit dynamic conflict replan; event-level safety budgets; dynamic movement scan
 - Legacy path preserved; 18px/tick retained as late-intrusion / settle per-tick cap (A.3.1 settles residual across recovery; recovery-exit ≈0)
-- Diagnostics debug-net only; `server-io/test/landing/` suite including A.2/A.3/A.3.1 scans
+- A.3.2: recovery collision monitoring + re-intrusion settle; no sticky clear exemption; recovery-movement scan
+- Diagnostics debug-net only; `server-io/test/landing/` suite including A.2/A.3/A.3.1/A.3.2 scans
 - **Stop:** do not enable by default until playtest; do not integrate slide/FLAP here
 
 ### Phase 3B — Slide jump / FLAP *(not started)*
@@ -329,6 +330,6 @@ Steam-release fidelity bar signed off for interaction (not particle count).
 
 ## Recommended next implementation phase
 
-**Phase 3A + A.1 + A.2 + A.3 + A.3.1 are code-complete behind a flag (still default OFF). Not manually playtest-approved.** Next conversation should be: (1) playtest rope V2 (A.3.1 matrix, including late-intrusion settle + budget-exception far-cross) and decide default-on, **or** (2) Phase 3B slide-jump/FLAP landing using the same solver, **or** (3) low-risk Phase 2 hygiene (CPU boundary + exemption registry).
+**Phase 3A + A.1 + A.2 + A.3 + A.3.1 + A.3.2 are code-complete behind a flag (still default OFF). Not manually playtest-approved.** Next conversation should be: (1) playtest rope V2 (A.3.2 matrix, including recovery walk-in + late-intrusion settle + budget-exception far-cross) and decide default-on, **or** (2) Phase 3B slide-jump/FLAP landing using the same solver, **or** (3) low-risk Phase 2 hygiene (CPU boundary + exemption registry).
 
 Do **not** start Phase 4 tip standardization before landing/pushbox ownership is clear — otherwise tip parks will keep fighting aerial correction snaps.

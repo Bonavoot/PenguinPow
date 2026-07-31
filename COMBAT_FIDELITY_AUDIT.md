@@ -12,6 +12,8 @@ Companion docs:
 - [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md) — V2 trajectory hardening (Hermite/brake/residual; still default OFF; not visually approved)
 - [`AERIAL_LANDING_PHASE_A2.md`](./AERIAL_LANDING_PHASE_A2.md) — V2 decision stability (side intent / commit continuity; still default OFF)
 - [`AERIAL_LANDING_PHASE_A3.md`](./AERIAL_LANDING_PHASE_A3.md) — V2 dynamic landing-conflict (provisional raw-clear; still default OFF)
+- [`AERIAL_LANDING_PHASE_A3_1.md`](./AERIAL_LANDING_PHASE_A3_1.md) — V2 late-intrusion settle + recovery-exit (still default OFF; not manually approved)
+- [`AERIAL_LANDING_PHASE_A3_2.md`](./AERIAL_LANDING_PHASE_A3_2.md) — V2 recovery re-intrusion monitoring (still default OFF; not manually approved)
 - Pose scan: `tools/audit-pose-geometry.js`, `tools/pose-geometry-report.json`, `tools/pose-geometry-viz/`
 - Dev overlay: `client/src/debug/CombatFidelityDebug.js` (`localStorage pumo_combat_fidelity_debug=1`)
 
@@ -175,7 +177,7 @@ Post-penetration split by who moves toward whom; anchored hit/parry victims take
 
 **Why it looks amateur:** Player sees a grounded pose overlapping the opponent, then a multi-tick slide/snap to legal spacing. Comment at `index.js:2359` explicitly chose gradual correction over one-frame snap — both read as correction if overlap is large (~100px ⇒ ~6 ticks ≈ 94ms).
 
-**Phase A / A.1 / A.2 / A.3 / A.3.1 (implemented, default OFF):** `landingResolution.js` uses provisional raw-clear, locks `near`/`cross` only on pre-commit conflict (A.3), commits a same-side endpoint at a continuous recommended commit time, and travels with Hermite/brake. A.3.1 owns late-intrusion residual via authored landing-settle across recovery (monotonic separation; recovery-exit ≈0). Enable with `ROPE_JUMP_LANDING_V2=1`. Legacy 18px/tick path retained as flag-off. Slide-jump/FLAP not integrated yet. Not manually playtest-approved.
+**Phase A / A.1 / A.2 / A.3 / A.3.1 / A.3.2 (implemented, default OFF):** `landingResolution.js` uses provisional raw-clear, locks `near`/`cross` only on pre-commit conflict (A.3), commits a same-side endpoint at a continuous recommended commit time, and travels with Hermite/brake. A.3.1 owns late-intrusion residual via authored landing-settle across recovery (monotonic separation; recovery-exit ≈0). A.3.2 keeps collision monitoring through recovery so post-touchdown walk-ins cannot accumulate into a release-tick snap. Enable with `ROPE_JUMP_LANDING_V2=1`. Legacy 18px/tick path retained as flag-off. Slide-jump/FLAP not integrated yet. Not manually playtest-approved.
 
 ---
 

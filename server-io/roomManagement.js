@@ -454,6 +454,8 @@ function resetRoomAndPlayers(room, io) {
     player.ropeJumpSettleAccumulatedPx = 0;
     player.ropeJumpSettleTicksDone = 0;
     player.ropeJumpSettleTicksTotal = 0;
+    player.ropeJumpSettleEpisodeCount = 0;
+    player.ropeJumpSettleReactivated = false;
     player.ropeJumpOverlapIncreased = false;
     player.ropeJumpBudgetException = false;
     player.ropeJumpBudgetExceptionClass = null;

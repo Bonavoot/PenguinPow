@@ -12,6 +12,8 @@
 
 **Phase A.3.1 (late-intrusion settle):** See [`AERIAL_LANDING_PHASE_A3_1.md`](./AERIAL_LANDING_PHASE_A3_1.md). A.3’s one-tick late freeze left residual that snapped after recovery; A.3.1 settles monotonically through recovery-exit. V2 still default OFF.
 
+**Phase A.3.2 (recovery re-intrusion):** See [`AERIAL_LANDING_PHASE_A3_2.md`](./AERIAL_LANDING_PHASE_A3_2.md). A.3.1’s sticky `recovery_safe_to_release` ignored post-touchdown walk-ins; A.3.2 monitors until release. V2 still default OFF.
+
 Companion: [`COMBAT_FIDELITY_AUDIT.md`](./COMBAT_FIDELITY_AUDIT.md), [`COMBAT_FIDELITY_ROADMAP.md`](./COMBAT_FIDELITY_ROADMAP.md) Phase 3.
 
 ---

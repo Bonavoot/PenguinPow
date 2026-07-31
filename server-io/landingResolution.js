@@ -1,5 +1,6 @@
 /**
- * Aerial landing resolution — Phase A / A.1 / A.2 / A.3 / A.3.1 (rope jump only).
+ * Aerial landing resolution — Phase A / A.1 / A.2 / A.3 / A.3.1 / A.3.2
+ * (rope jump only).
  *
  * Phase A: deterministic pushbox-clear endpoint commit (flagged).
  * Phase A.1: motion-aware Hermite/brake trajectories + residual policy.
@@ -11,6 +12,8 @@
  *            using touchdown-extrapolated opponent position.
  * Phase A.3.1: late-intrusion residual is owned by an authored landing-settle
  *              across recovery (monotonic separation, recovery-exit stable).
+ * Phase A.3.2: clear-at-touchdown is monitoring, not a sticky collision
+ *              exemption — recovery re-intrusion reactivates settle ownership.
  *
  * Gated by ROPE_JUMP_LANDING_V2 (see landingFlags.js). Default OFF.
  */
@@ -91,10 +94,19 @@ const LANDING_SETTLE_OVERLAP_EPS_PX = 0.05;
 /** Per-tick settle displacement cap (matches legacy landing safety feel). */
 const LANDING_SETTLE_MAX_PX_PER_TICK = TOLERABLE_TOUCHDOWN_OVERLAP_PX;
 
-/** Phase A.3.1 late-intrusion / settle lifecycle ownership. */
+/**
+ * Phase A.3.1 / A.3.2 late-intrusion / settle lifecycle ownership.
+ *
+ * A.3.2: `recovery_clear_but_monitoring` means currently clear while recovery
+ * still owns collision. It is NOT a permanent exemption — new overlap
+ * reactivates `landing_settle_active`. `recovery_safe_to_release` remains a
+ * diagnostic alias for "currently clear under monitoring" and must never
+ * suppress newly detected overlap.
+ */
 const SETTLE_LATE_INTRUSION_DETECTED = "late_intrusion_detected";
 const SETTLE_LANDING_SETTLE_ACTIVE = "landing_settle_active";
 const SETTLE_LANDING_SETTLE_COMPLETE = "landing_settle_complete";
+const SETTLE_RECOVERY_CLEAR_MONITORING = "recovery_clear_but_monitoring";
 const SETTLE_RECOVERY_SAFE_TO_RELEASE = "recovery_safe_to_release";
 
 /** Explicit side-policy classification for late-intrusion settle. */
@@ -1705,9 +1717,21 @@ function resolveLandingSeparationOrdering(player1, player2, jumper) {
   };
 }
 
+/** True when recovery still owns collision but fighters are currently clear. */
+function isLandingRecoveryMonitoringState(state) {
+  return (
+    state === SETTLE_RECOVERY_CLEAR_MONITORING ||
+    state === SETTLE_RECOVERY_SAFE_TO_RELEASE ||
+    state === SETTLE_LANDING_SETTLE_COMPLETE
+  );
+}
+
 /**
  * Begin authored late-intrusion / residual landing settle at touchdown.
  * Preserves actual spatial side (intent only at coincident centers).
+ *
+ * Phase A.3.2: zero-overlap touchdown enters clear-but-monitoring — collision
+ * ownership continues until recovery ends. It does not exempt later intrusion.
  */
 function beginLandingSettle(jumper, opponent, opts = {}) {
   if (!jumper || !opponent) return null;
@@ -1728,9 +1752,12 @@ function beginLandingSettle(jumper, opponent, opts = {}) {
     1,
     Math.ceil(ROPE_JUMP_LANDING_RECOVERY_MS / TICK_MS)
   );
+  jumper.ropeJumpSettleEpisodeCount = overlap > LANDING_SETTLE_OVERLAP_EPS_PX ? 1 : 0;
+  jumper.ropeJumpSettleReactivated = false;
 
   if (overlap <= LANDING_SETTLE_OVERLAP_EPS_PX) {
-    jumper.ropeJumpSettleState = SETTLE_RECOVERY_SAFE_TO_RELEASE;
+    // A.3.2: monitor until release — do not sticky-exempt collision.
+    jumper.ropeJumpSettleState = SETTLE_RECOVERY_CLEAR_MONITORING;
     jumper.ropeJumpSidePolicy = null;
     jumper.ropeJumpSettleJumperIsLeft = null;
     return {
@@ -1755,6 +1782,73 @@ function beginLandingSettle(jumper, opponent, opts = {}) {
     sidePolicy: jumper.ropeJumpSidePolicy,
     jumperIsLeft: jumper.ropeJumpSettleJumperIsLeft,
     ticksTotal: jumper.ropeJumpSettleTicksTotal,
+  };
+}
+
+/**
+ * Re-enter settle ownership when overlap appears during recovery monitoring.
+ * Does not replan aerial endpoint / side intent. Does not wipe cumulative
+ * contact diagnostics — tracks a new settle episode.
+ */
+function reactivateLandingSettle(jumper, opponent) {
+  if (!jumper || !opponent) return null;
+
+  const minDist = getMinimumCenterDistance(
+    jumper.sizeMultiplier,
+    opponent.sizeMultiplier
+  );
+  const centerDist = Math.abs(jumper.x - opponent.x);
+  const overlap = Math.max(0, minDist - centerDist);
+  if (overlap <= LANDING_SETTLE_OVERLAP_EPS_PX) return null;
+
+  const prevState = jumper.ropeJumpSettleState;
+  jumper.ropeJumpSettleMaxOverlap = Math.max(
+    jumper.ropeJumpSettleMaxOverlap || 0,
+    overlap
+  );
+  jumper.ropeJumpSettleEpisodeCount =
+    (jumper.ropeJumpSettleEpisodeCount || 0) + 1;
+  jumper.ropeJumpSettleReactivated = true;
+
+  const coincident = centerDist <= CENTER_COINCIDENCE_EPS_PX;
+  const actualJumperIsLeft = jumper.x < opponent.x;
+
+  if (jumper.ropeJumpSettleJumperIsLeft == null || coincident) {
+    const ordering = resolveLandingSeparationOrdering(jumper, opponent, jumper);
+    jumper.ropeJumpSettleJumperIsLeft = ordering.jumperIsLeft;
+    jumper.ropeJumpSidePolicy = ordering.sidePolicy;
+  } else if (jumper.ropeJumpSettleJumperIsLeft !== actualJumperIsLeft) {
+    // Centers distinguishable and order disagrees with prior lock — keep
+    // actual side (never choose a pass-through that grows overlap).
+    jumper.ropeJumpSettleJumperIsLeft = actualJumperIsLeft;
+    jumper.ropeJumpSidePolicy = SIDE_POLICY_PRESERVE_ACTUAL;
+  }
+
+  // Fresh per-episode budget sized to clear under the per-tick cap as soon as
+  // possible. Do not re-spread across the full recovery window — a mid/late
+  // re-intrusion would otherwise leave residual at release.
+  const ticksNeeded = Math.max(
+    1,
+    Math.ceil(overlap / LANDING_SETTLE_MAX_PX_PER_TICK)
+  );
+  jumper.ropeJumpSettleTicksDone = 0;
+  jumper.ropeJumpSettleTicksTotal = ticksNeeded;
+
+  if (overlap > LANDING_SETTLE_MAX_PX_PER_TICK + 1e-9) {
+    jumper.ropeJumpLateIntrusionClass =
+      jumper.ropeJumpLateIntrusionClass || "recovery_reintrusion_deep";
+  }
+
+  jumper.ropeJumpSettleState = SETTLE_LANDING_SETTLE_ACTIVE;
+
+  return {
+    overlap,
+    prevState,
+    settleState: jumper.ropeJumpSettleState,
+    sidePolicy: jumper.ropeJumpSidePolicy,
+    jumperIsLeft: jumper.ropeJumpSettleJumperIsLeft,
+    ticksTotal: jumper.ropeJumpSettleTicksTotal,
+    episodeCount: jumper.ropeJumpSettleEpisodeCount,
   };
 }
 
@@ -1784,12 +1878,13 @@ function computeLandingSettleCorrectionPx(jumper, overlap) {
 }
 
 /**
- * Mark settle complete / safe-to-release when residual is negligible.
+ * Mark settle clear-but-monitoring when residual is negligible.
+ * A.3.2: remains collision-owned until recovery ends; re-intrusion reactivates.
  */
 function updateLandingSettleCompletion(jumper, overlapAfter) {
   if (!jumper) return;
   if (overlapAfter <= LANDING_SETTLE_OVERLAP_EPS_PX) {
-    jumper.ropeJumpSettleState = SETTLE_RECOVERY_SAFE_TO_RELEASE;
+    jumper.ropeJumpSettleState = SETTLE_RECOVERY_CLEAR_MONITORING;
   }
 }
 
@@ -1839,7 +1934,7 @@ function clearRopeJumpLandingState(player) {
   player.ropeJumpLateIntrusion = false;
   player.ropeJumpLateIntrusionClass = null;
   player.ropeJumpSafetyCorrectionTicks = 0;
-  // Phase A.3.1 settle lifecycle
+  // Phase A.3.1 / A.3.2 settle lifecycle
   player.ropeJumpSettleState = null;
   player.ropeJumpSidePolicy = null;
   player.ropeJumpSettleJumperIsLeft = null;
@@ -1848,6 +1943,8 @@ function clearRopeJumpLandingState(player) {
   player.ropeJumpSettleAccumulatedPx = 0;
   player.ropeJumpSettleTicksDone = 0;
   player.ropeJumpSettleTicksTotal = 0;
+  player.ropeJumpSettleEpisodeCount = 0;
+  player.ropeJumpSettleReactivated = false;
   player.ropeJumpOverlapIncreased = false;
   player.ropeJumpBudgetException = false;
   player.ropeJumpBudgetExceptionClass = null;
@@ -1922,6 +2019,8 @@ function finalizeLandingTrace(player, extra = {}) {
     settleInitialOverlap: player.ropeJumpSettleInitialOverlap,
     settleMaxOverlap: player.ropeJumpSettleMaxOverlap,
     settleAccumulatedPx: player.ropeJumpSettleAccumulatedPx,
+    settleEpisodeCount: player.ropeJumpSettleEpisodeCount || 0,
+    settleReactivated: !!player.ropeJumpSettleReactivated,
     overlapIncreased: !!player.ropeJumpOverlapIncreased,
     budgetException: !!player.ropeJumpBudgetException,
     budgetExceptionClass: player.ropeJumpBudgetExceptionClass,
@@ -1974,6 +2073,8 @@ function getLandingDebugPayload(player) {
     settleInitialOverlap: player.ropeJumpSettleInitialOverlap,
     settleMaxOverlap: player.ropeJumpSettleMaxOverlap,
     settleAccumulatedPx: player.ropeJumpSettleAccumulatedPx,
+    settleEpisodeCount: player.ropeJumpSettleEpisodeCount || 0,
+    settleReactivated: !!player.ropeJumpSettleReactivated,
     overlapIncreased: !!player.ropeJumpOverlapIncreased,
     budgetException: !!player.ropeJumpBudgetException,
     budgetExceptionClass: player.ropeJumpBudgetExceptionClass,
@@ -2515,7 +2616,7 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
         beginLandingSettle(player, opponent, { mapLeft, mapRight });
       }
     } else if (useV2) {
-      player.ropeJumpSettleState = SETTLE_RECOVERY_SAFE_TO_RELEASE;
+      player.ropeJumpSettleState = SETTLE_RECOVERY_CLEAR_MONITORING;
     }
 
     return {
@@ -2565,6 +2666,7 @@ module.exports = {
   SETTLE_LATE_INTRUSION_DETECTED,
   SETTLE_LANDING_SETTLE_ACTIVE,
   SETTLE_LANDING_SETTLE_COMPLETE,
+  SETTLE_RECOVERY_CLEAR_MONITORING,
   SETTLE_RECOVERY_SAFE_TO_RELEASE,
   SIDE_POLICY_PRESERVE_ACTUAL,
   SIDE_POLICY_INTENT_COINCIDENT,
@@ -2594,7 +2696,9 @@ module.exports = {
   rawFootprintOverlap,
   evaluateHermiteFeasibility,
   resolveLandingSeparationOrdering,
+  isLandingRecoveryMonitoringState,
   beginLandingSettle,
+  reactivateLandingSettle,
   computeLandingSettleCorrectionPx,
   updateLandingSettleCompletion,
   clearRopeJumpLandingState,

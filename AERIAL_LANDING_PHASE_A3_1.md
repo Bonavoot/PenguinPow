@@ -1,8 +1,10 @@
 # Aerial Landing — Phase A.3.1 (Late-Intrusion Resolution & Recovery-Exit Stability)
 
-**Status:** Implemented behind feature flag · **Default: OFF** · **Not manually playtest-approved**  
+**Status:** Implemented behind feature flag · **Default: OFF** · **Not manually playtest-approved** · **Superseded for recovery re-intrusion by A.3.2**  
 **Date:** 2026-07-31  
 **Scope stop:** Rope-jump V2 late-intrusion settle + recovery-exit invariants only. No slide jump / FLAP / butt slam. V2 remains disabled by default. No rebalance of timings, stamina, invuln, or recovery length.
+
+**Phase A.3.2:** A.3.1’s `recovery_safe_to_release` sticky exemption ignored new overlap created during recovery after a clear touchdown, deferring a large grounded snap at release. See [`AERIAL_LANDING_PHASE_A3_2.md`](./AERIAL_LANDING_PHASE_A3_2.md).
 
 Companion: [`AERIAL_LANDING_PHASE_A3.md`](./AERIAL_LANDING_PHASE_A3.md), [`AERIAL_LANDING_PHASE_A2.md`](./AERIAL_LANDING_PHASE_A2.md).
 
@@ -77,9 +79,9 @@ Jump intent never chooses a displacement that decreases current center distance 
 | `late_intrusion_detected` | Planning classified late intrusion (pre-settle) |
 | `landing_settle_active` | Residual debt owned by authored settle |
 | `landing_settle_complete` | (transitional) residual cleared |
-| `recovery_safe_to_release` | Negligible residual; first post-recovery pushbox must be ~0 |
+| `recovery_safe_to_release` | A.3.1: negligible residual. **A.3.2:** replaced as sticky exemption by `recovery_clear_but_monitoring` — clear is not a permanent collision ignore |
 
-At touchdown V2 calls `beginLandingSettle()` which records actual ordering, side policy, initial overlap, and recovery tick budget (`ceil(ROPE_JUMP_LANDING_RECOVERY_MS / TICK_MS)`).
+At touchdown V2 calls `beginLandingSettle()` which records actual ordering, side policy, initial overlap, and recovery tick budget (`ceil(ROPE_JUMP_LANDING_RECOVERY_MS / TICK_MS)`). A.3.2: zero-overlap touchdown enters monitoring, not a sticky safe return.
 
 ---
 

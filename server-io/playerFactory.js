@@ -319,7 +319,7 @@ function createInitialPlayerState(overrides = {}) {
     ropeJumpLateIntrusion: false,
     ropeJumpLateIntrusionClass: null,
     ropeJumpSafetyCorrectionTicks: 0,
-    // Phase A.3.1 late-intrusion settle ownership
+    // Phase A.3.1 / A.3.2 late-intrusion settle + recovery monitoring
     ropeJumpSettleState: null,
     ropeJumpSidePolicy: null,
     ropeJumpSettleJumperIsLeft: null,
@@ -328,6 +328,8 @@ function createInitialPlayerState(overrides = {}) {
     ropeJumpSettleAccumulatedPx: 0,
     ropeJumpSettleTicksDone: 0,
     ropeJumpSettleTicksTotal: 0,
+    ropeJumpSettleEpisodeCount: 0,
+    ropeJumpSettleReactivated: false,
     ropeJumpOverlapIncreased: false,
     ropeJumpBudgetException: false,
     ropeJumpBudgetExceptionClass: null,
