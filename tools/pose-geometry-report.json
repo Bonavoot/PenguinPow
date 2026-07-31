@@ -1,0 +1,1508 @@
+{
+  "generatedAt": "2026-07-31T01:43:10.824Z",
+  "alphaThreshold": 16,
+  "spritePxToWorld": 0.164,
+  "designAssumptions": {
+    "canvas": 960,
+    "displayWidthFrac": 0.123,
+    "designWidth": 1280,
+    "note": "Server strikeContact uses SPRITE_PX_TO_WORLD = (1280*0.123)/960 regardless of actual PNG size."
+  },
+  "tipConstantComparison": {
+    "slap-attack-1-hit-frame.png": {
+      "key": "slap1",
+      "measured": 458.5,
+      "live": 478,
+      "delta": -19.5
+    },
+    "slap-attack-2-hit-frame.png": {
+      "key": "slap2",
+      "measured": 477.5,
+      "live": 478,
+      "delta": -0.5
+    },
+    "attack.png": {
+      "key": "charged",
+      "measured": 424.5,
+      "live": 425,
+      "delta": -0.5
+    },
+    "palm-thrust.png": {
+      "key": "palm",
+      "measured": 437.5,
+      "live": 438,
+      "delta": -0.5
+    }
+  },
+  "summary": {
+    "total": 38,
+    "missing": 1,
+    "non960": 11,
+    "highSoleFloat": 4,
+    "soleOutliers": 4
+  },
+  "sprites": [
+    {
+      "file": "pumo-idle.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 706,
+        "h": 832,
+        "minX": 136,
+        "minY": 96,
+        "maxX": 841,
+        "maxY": 927
+      },
+      "padding": {
+        "left": 136,
+        "right": 118,
+        "top": 96,
+        "bottom": 32
+      },
+      "soleY": 927,
+      "soleFromBottom": 32,
+      "frontX": 136,
+      "rearX": 841,
+      "tipFromCenterPx": 343.5,
+      "rearFromCenterPx": 361.5,
+      "tipWorldGuessPx": 56.3,
+      "centroid": {
+        "x": 493.9,
+        "y": 559.4,
+        "biasX": 14.4,
+        "biasY": 79.9
+      },
+      "alphaPx": 383411,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "pumo-ready-position.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 672,
+        "h": 784,
+        "minX": 153,
+        "minY": 138,
+        "maxX": 824,
+        "maxY": 921
+      },
+      "padding": {
+        "left": 153,
+        "right": 135,
+        "top": 138,
+        "bottom": 38
+      },
+      "soleY": 921,
+      "soleFromBottom": 38,
+      "frontX": 153,
+      "rearX": 824,
+      "tipFromCenterPx": 326.5,
+      "rearFromCenterPx": 344.5,
+      "tipWorldGuessPx": 53.5,
+      "centroid": {
+        "x": 489.6,
+        "y": 580.8,
+        "biasX": 10.1,
+        "biasY": 101.3
+      },
+      "alphaPx": 333657,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "pumo-tachiai-position.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 702,
+        "h": 704,
+        "minX": 119,
+        "minY": 222,
+        "maxX": 820,
+        "maxY": 925
+      },
+      "padding": {
+        "left": 119,
+        "right": 139,
+        "top": 222,
+        "bottom": 34
+      },
+      "soleY": 925,
+      "soleFromBottom": 34,
+      "frontX": 119,
+      "rearX": 820,
+      "tipFromCenterPx": 360.5,
+      "rearFromCenterPx": 340.5,
+      "tipWorldGuessPx": 59.1,
+      "centroid": {
+        "x": 470.2,
+        "y": 626.3,
+        "biasX": -9.3,
+        "biasY": 146.8
+      },
+      "alphaPx": 334941,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "attack.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 859,
+        "h": 557,
+        "minX": 55,
+        "minY": 180,
+        "maxX": 913,
+        "maxY": 736
+      },
+      "padding": {
+        "left": 55,
+        "right": 46,
+        "top": 180,
+        "bottom": 223
+      },
+      "soleY": 736,
+      "soleFromBottom": 223,
+      "frontX": 55,
+      "rearX": 913,
+      "tipFromCenterPx": 424.5,
+      "rearFromCenterPx": 433.5,
+      "tipWorldGuessPx": 69.6,
+      "centroid": {
+        "x": 472.5,
+        "y": 488.6,
+        "biasX": -7,
+        "biasY": 9.1
+      },
+      "alphaPx": 327079,
+      "groundedLikely": false,
+      "flags": [
+        "HIGH_SOLE_FLOAT",
+        "SOLE_OUTLIER_VS_MEDIAN"
+      ]
+    },
+    {
+      "file": "slapAttack1.png",
+      "missing": false,
+      "empty": false,
+      "width": 1024,
+      "height": 1024,
+      "is960": false,
+      "opaque": {
+        "w": 928,
+        "h": 852,
+        "minX": 7,
+        "minY": 143,
+        "maxX": 934,
+        "maxY": 994
+      },
+      "padding": {
+        "left": 7,
+        "right": 89,
+        "top": 143,
+        "bottom": 29
+      },
+      "soleY": 994,
+      "soleFromBottom": 29,
+      "frontX": 7,
+      "rearX": 934,
+      "tipFromCenterPx": 504.5,
+      "rearFromCenterPx": 422.5,
+      "tipWorldGuessPx": 77.6,
+      "centroid": {
+        "x": 517.6,
+        "y": 602.5,
+        "biasX": 6.1,
+        "biasY": 91
+      },
+      "alphaPx": 461848,
+      "groundedLikely": true,
+      "flags": [
+        "NON_960_1024x1024"
+      ]
+    },
+    {
+      "file": "slapAttack2.png",
+      "missing": false,
+      "empty": false,
+      "width": 1024,
+      "height": 1024,
+      "is960": false,
+      "opaque": {
+        "w": 767,
+        "h": 888,
+        "minX": 159,
+        "minY": 107,
+        "maxX": 925,
+        "maxY": 994
+      },
+      "padding": {
+        "left": 159,
+        "right": 98,
+        "top": 107,
+        "bottom": 29
+      },
+      "soleY": 994,
+      "soleFromBottom": 29,
+      "frontX": 159,
+      "rearX": 925,
+      "tipFromCenterPx": 352.5,
+      "rearFromCenterPx": 413.5,
+      "tipWorldGuessPx": 54.2,
+      "centroid": {
+        "x": 539.9,
+        "y": 603.3,
+        "biasX": 28.4,
+        "biasY": 91.8
+      },
+      "alphaPx": 422695,
+      "groundedLikely": true,
+      "flags": [
+        "NON_960_1024x1024"
+      ]
+    },
+    {
+      "file": "slap-attack-1-blur-frame.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 767,
+        "h": 822,
+        "minX": 84,
+        "minY": 113,
+        "maxX": 850,
+        "maxY": 934
+      },
+      "padding": {
+        "left": 84,
+        "right": 109,
+        "top": 113,
+        "bottom": 25
+      },
+      "soleY": 934,
+      "soleFromBottom": 25,
+      "frontX": 84,
+      "rearX": 850,
+      "tipFromCenterPx": 395.5,
+      "rearFromCenterPx": 370.5,
+      "tipWorldGuessPx": 64.9,
+      "centroid": {
+        "x": 483.7,
+        "y": 568.8,
+        "biasX": 4.2,
+        "biasY": 89.3
+      },
+      "alphaPx": 404218,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "slap-attack-1-hit-frame.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 830,
+        "h": 822,
+        "minX": 21,
+        "minY": 113,
+        "maxX": 850,
+        "maxY": 934
+      },
+      "padding": {
+        "left": 21,
+        "right": 109,
+        "top": 113,
+        "bottom": 25
+      },
+      "soleY": 934,
+      "soleFromBottom": 25,
+      "frontX": 21,
+      "rearX": 850,
+      "tipFromCenterPx": 458.5,
+      "rearFromCenterPx": 370.5,
+      "tipWorldGuessPx": 75.2,
+      "centroid": {
+        "x": 475,
+        "y": 567.1,
+        "biasX": -4.5,
+        "biasY": 87.6
+      },
+      "alphaPx": 412101,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "slap-attack-2-blur-frame.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 801,
+        "h": 816,
+        "minX": 114,
+        "minY": 118,
+        "maxX": 914,
+        "maxY": 933
+      },
+      "padding": {
+        "left": 114,
+        "right": 45,
+        "top": 118,
+        "bottom": 26
+      },
+      "soleY": 933,
+      "soleFromBottom": 26,
+      "frontX": 114,
+      "rearX": 914,
+      "tipFromCenterPx": 365.5,
+      "rearFromCenterPx": 434.5,
+      "tipWorldGuessPx": 59.9,
+      "centroid": {
+        "x": 482.9,
+        "y": 577.6,
+        "biasX": 3.4,
+        "biasY": 98.1
+      },
+      "alphaPx": 384472,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "slap-attack-2-hit-frame.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 866,
+        "h": 808,
+        "minX": 2,
+        "minY": 133,
+        "maxX": 867,
+        "maxY": 940
+      },
+      "padding": {
+        "left": 2,
+        "right": 92,
+        "top": 133,
+        "bottom": 19
+      },
+      "soleY": 940,
+      "soleFromBottom": 19,
+      "frontX": 2,
+      "rearX": 867,
+      "tipFromCenterPx": 477.5,
+      "rearFromCenterPx": 387.5,
+      "tipWorldGuessPx": 78.3,
+      "centroid": {
+        "x": 433.5,
+        "y": 588.9,
+        "biasX": -46,
+        "biasY": 109.4
+      },
+      "alphaPx": 393265,
+      "groundedLikely": true,
+      "flags": [
+        "STRONG_H_BIAS",
+        "EDGE_CLIP_RISK"
+      ]
+    },
+    {
+      "file": "palm-thrust.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 806,
+        "h": 820,
+        "minX": 42,
+        "minY": 115,
+        "maxX": 847,
+        "maxY": 934
+      },
+      "padding": {
+        "left": 42,
+        "right": 112,
+        "top": 115,
+        "bottom": 25
+      },
+      "soleY": 934,
+      "soleFromBottom": 25,
+      "frontX": 42,
+      "rearX": 847,
+      "tipFromCenterPx": 437.5,
+      "rearFromCenterPx": 367.5,
+      "tipWorldGuessPx": 71.8,
+      "centroid": {
+        "x": 457.9,
+        "y": 574.8,
+        "biasX": -21.6,
+        "biasY": 95.3
+      },
+      "alphaPx": 389199,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "palm-thrust-startup.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 730,
+        "h": 822,
+        "minX": 121,
+        "minY": 113,
+        "maxX": 850,
+        "maxY": 934
+      },
+      "padding": {
+        "left": 121,
+        "right": 109,
+        "top": 113,
+        "bottom": 25
+      },
+      "soleY": 934,
+      "soleFromBottom": 25,
+      "frontX": 121,
+      "rearX": 850,
+      "tipFromCenterPx": 358.5,
+      "rearFromCenterPx": 370.5,
+      "tipWorldGuessPx": 58.8,
+      "centroid": {
+        "x": 494,
+        "y": 571.5,
+        "biasX": 14.5,
+        "biasY": 92
+      },
+      "alphaPx": 392860,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "palm-thrust-smear.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 905,
+        "h": 816,
+        "minX": 10,
+        "minY": 118,
+        "maxX": 914,
+        "maxY": 933
+      },
+      "padding": {
+        "left": 10,
+        "right": 45,
+        "top": 118,
+        "bottom": 26
+      },
+      "soleY": 933,
+      "soleFromBottom": 26,
+      "frontX": 10,
+      "rearX": 914,
+      "tipFromCenterPx": 469.5,
+      "rearFromCenterPx": 434.5,
+      "tipWorldGuessPx": 77,
+      "centroid": {
+        "x": 470.4,
+        "y": 574.6,
+        "biasX": -9.1,
+        "biasY": 95.1
+      },
+      "alphaPx": 396817,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "kick.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 890,
+        "h": 804,
+        "minX": 43,
+        "minY": 117,
+        "maxX": 932,
+        "maxY": 920
+      },
+      "padding": {
+        "left": 43,
+        "right": 27,
+        "top": 117,
+        "bottom": 39
+      },
+      "soleY": 920,
+      "soleFromBottom": 39,
+      "frontX": 43,
+      "rearX": 932,
+      "tipFromCenterPx": 436.5,
+      "rearFromCenterPx": 452.5,
+      "tipWorldGuessPx": 71.6,
+      "centroid": {
+        "x": 521.2,
+        "y": 548.8,
+        "biasX": 41.7,
+        "biasY": 69.3
+      },
+      "alphaPx": 373390,
+      "groundedLikely": true,
+      "flags": [
+        "STRONG_H_BIAS"
+      ]
+    },
+    {
+      "file": "dodging.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 795,
+        "h": 734,
+        "minX": 51,
+        "minY": 64,
+        "maxX": 845,
+        "maxY": 797
+      },
+      "padding": {
+        "left": 51,
+        "right": 114,
+        "top": 64,
+        "bottom": 162
+      },
+      "soleY": 797,
+      "soleFromBottom": 162,
+      "frontX": 51,
+      "rearX": 845,
+      "tipFromCenterPx": 428.5,
+      "rearFromCenterPx": 365.5,
+      "tipWorldGuessPx": 70.3,
+      "centroid": {
+        "x": 473.9,
+        "y": 505,
+        "biasX": -5.6,
+        "biasY": 25.5
+      },
+      "alphaPx": 367296,
+      "groundedLikely": false,
+      "flags": [
+        "HIGH_SOLE_FLOAT",
+        "SOLE_OUTLIER_VS_MEDIAN"
+      ]
+    },
+    {
+      "file": "sliding.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 896,
+        "h": 733,
+        "minX": 39,
+        "minY": 202,
+        "maxX": 934,
+        "maxY": 934
+      },
+      "padding": {
+        "left": 39,
+        "right": 25,
+        "top": 202,
+        "bottom": 25
+      },
+      "soleY": 934,
+      "soleFromBottom": 25,
+      "frontX": 39,
+      "rearX": 934,
+      "tipFromCenterPx": 440.5,
+      "rearFromCenterPx": 454.5,
+      "tipWorldGuessPx": 72.2,
+      "centroid": {
+        "x": 500.8,
+        "y": 605.8,
+        "biasX": 21.3,
+        "biasY": 126.3
+      },
+      "alphaPx": 366637,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "throwing.png",
+      "missing": false,
+      "empty": false,
+      "width": 1024,
+      "height": 1024,
+      "is960": false,
+      "opaque": {
+        "w": 803,
+        "h": 922,
+        "minX": 35,
+        "minY": 75,
+        "maxX": 837,
+        "maxY": 996
+      },
+      "padding": {
+        "left": 35,
+        "right": 186,
+        "top": 75,
+        "bottom": 27
+      },
+      "soleY": 996,
+      "soleFromBottom": 27,
+      "frontX": 35,
+      "rearX": 837,
+      "tipFromCenterPx": 476.5,
+      "rearFromCenterPx": 325.5,
+      "tipWorldGuessPx": 73.3,
+      "centroid": {
+        "x": 505.4,
+        "y": 548.8,
+        "biasX": -6.1,
+        "biasY": 37.3
+      },
+      "alphaPx": 485061,
+      "groundedLikely": true,
+      "flags": [
+        "NON_960_1024x1024"
+      ]
+    },
+    {
+      "file": "recovering.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 759,
+        "h": 695,
+        "minX": 146,
+        "minY": 227,
+        "maxX": 904,
+        "maxY": 921
+      },
+      "padding": {
+        "left": 146,
+        "right": 55,
+        "top": 227,
+        "bottom": 38
+      },
+      "soleY": 921,
+      "soleFromBottom": 38,
+      "frontX": 146,
+      "rearX": 904,
+      "tipFromCenterPx": 333.5,
+      "rearFromCenterPx": 424.5,
+      "tipWorldGuessPx": 54.7,
+      "centroid": {
+        "x": 506.3,
+        "y": 618.1,
+        "biasX": 26.8,
+        "biasY": 138.6
+      },
+      "alphaPx": 352758,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "charging.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 759,
+        "h": 695,
+        "minX": 146,
+        "minY": 227,
+        "maxX": 904,
+        "maxY": 921
+      },
+      "padding": {
+        "left": 146,
+        "right": 55,
+        "top": 227,
+        "bottom": 38
+      },
+      "soleY": 921,
+      "soleFromBottom": 38,
+      "frontX": 146,
+      "rearX": 904,
+      "tipFromCenterPx": 333.5,
+      "rearFromCenterPx": 424.5,
+      "tipWorldGuessPx": 54.7,
+      "centroid": {
+        "x": 506.3,
+        "y": 618.1,
+        "biasX": 26.8,
+        "biasY": 138.6
+      },
+      "alphaPx": 352758,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "blocking.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 711,
+        "h": 802,
+        "minX": 125,
+        "minY": 125,
+        "maxX": 835,
+        "maxY": 926
+      },
+      "padding": {
+        "left": 125,
+        "right": 124,
+        "top": 125,
+        "bottom": 33
+      },
+      "soleY": 926,
+      "soleFromBottom": 33,
+      "frontX": 125,
+      "rearX": 835,
+      "tipFromCenterPx": 354.5,
+      "rearFromCenterPx": 355.5,
+      "tipWorldGuessPx": 58.1,
+      "centroid": {
+        "x": 506.1,
+        "y": 573.1,
+        "biasX": 26.6,
+        "biasY": 93.6
+      },
+      "alphaPx": 353235,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "block-parry.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 902,
+        "h": 678,
+        "minX": 15,
+        "minY": 257,
+        "maxX": 916,
+        "maxY": 934
+      },
+      "padding": {
+        "left": 15,
+        "right": 43,
+        "top": 257,
+        "bottom": 25
+      },
+      "soleY": 934,
+      "soleFromBottom": 25,
+      "frontX": 15,
+      "rearX": 916,
+      "tipFromCenterPx": 464.5,
+      "rearFromCenterPx": 436.5,
+      "tipWorldGuessPx": 76.2,
+      "centroid": {
+        "x": 464.2,
+        "y": 619.4,
+        "biasX": -15.3,
+        "biasY": 139.9
+      },
+      "alphaPx": 347975,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "grabbing.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 590,
+        "h": 819,
+        "minX": 150,
+        "minY": 122,
+        "maxX": 739,
+        "maxY": 940
+      },
+      "padding": {
+        "left": 150,
+        "right": 220,
+        "top": 122,
+        "bottom": 19
+      },
+      "soleY": 940,
+      "soleFromBottom": 19,
+      "frontX": 150,
+      "rearX": 739,
+      "tipFromCenterPx": 329.5,
+      "rearFromCenterPx": 259.5,
+      "tipWorldGuessPx": 54,
+      "centroid": {
+        "x": 441.5,
+        "y": 577.8,
+        "biasX": -38,
+        "biasY": 98.3
+      },
+      "alphaPx": 332265,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "clinch-planting.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 732,
+        "h": 786,
+        "minX": 169,
+        "minY": 136,
+        "maxX": 900,
+        "maxY": 921
+      },
+      "padding": {
+        "left": 169,
+        "right": 59,
+        "top": 136,
+        "bottom": 38
+      },
+      "soleY": 921,
+      "soleFromBottom": 38,
+      "frontX": 169,
+      "rearX": 900,
+      "tipFromCenterPx": 310.5,
+      "rearFromCenterPx": 420.5,
+      "tipWorldGuessPx": 50.9,
+      "centroid": {
+        "x": 473,
+        "y": 583.3,
+        "biasX": -6.5,
+        "biasY": 103.8
+      },
+      "alphaPx": 343238,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "attempting-grab-throw.png",
+      "missing": false,
+      "empty": false,
+      "width": 1024,
+      "height": 1024,
+      "is960": false,
+      "opaque": {
+        "w": 823,
+        "h": 813,
+        "minX": 33,
+        "minY": 183,
+        "maxX": 855,
+        "maxY": 995
+      },
+      "padding": {
+        "left": 33,
+        "right": 168,
+        "top": 183,
+        "bottom": 28
+      },
+      "soleY": 995,
+      "soleFromBottom": 28,
+      "frontX": 33,
+      "rearX": 855,
+      "tipFromCenterPx": 478.5,
+      "rearFromCenterPx": 343.5,
+      "tipWorldGuessPx": 73.6,
+      "centroid": {
+        "x": 474.8,
+        "y": 648.6,
+        "biasX": -36.7,
+        "biasY": 137.1
+      },
+      "alphaPx": 414883,
+      "groundedLikely": true,
+      "flags": [
+        "NON_960_1024x1024"
+      ]
+    },
+    {
+      "file": "is-attempting-pull.png",
+      "missing": false,
+      "empty": false,
+      "width": 600,
+      "height": 600,
+      "is960": false,
+      "opaque": {
+        "w": 462,
+        "h": 539,
+        "minX": 82,
+        "minY": 51,
+        "maxX": 543,
+        "maxY": 589
+      },
+      "padding": {
+        "left": 82,
+        "right": 56,
+        "top": 51,
+        "bottom": 10
+      },
+      "soleY": 589,
+      "soleFromBottom": 10,
+      "frontX": 82,
+      "rearX": 543,
+      "tipFromCenterPx": 217.5,
+      "rearFromCenterPx": 243.5,
+      "tipWorldGuessPx": 57.1,
+      "centroid": {
+        "x": 340.5,
+        "y": 340.7,
+        "biasX": 41,
+        "biasY": 41.2
+      },
+      "alphaPx": 164528,
+      "groundedLikely": true,
+      "flags": [
+        "NON_960_600x600",
+        "STRONG_H_BIAS"
+      ]
+    },
+    {
+      "file": "hit.png",
+      "missing": false,
+      "empty": false,
+      "width": 480,
+      "height": 480,
+      "is960": false,
+      "opaque": {
+        "w": 406,
+        "h": 420,
+        "minX": 56,
+        "minY": 49,
+        "maxX": 461,
+        "maxY": 468
+      },
+      "padding": {
+        "left": 56,
+        "right": 18,
+        "top": 49,
+        "bottom": 11
+      },
+      "soleY": 468,
+      "soleFromBottom": 11,
+      "frontX": 56,
+      "rearX": 461,
+      "tipFromCenterPx": 183.5,
+      "rearFromCenterPx": 221.5,
+      "tipWorldGuessPx": 60.2,
+      "centroid": {
+        "x": 266.8,
+        "y": 274.3,
+        "biasX": 27.3,
+        "biasY": 34.8
+      },
+      "alphaPx": 105354,
+      "groundedLikely": true,
+      "flags": [
+        "NON_960_480x480"
+      ]
+    },
+    {
+      "file": "at-the-ropes.png",
+      "missing": false,
+      "empty": false,
+      "width": 480,
+      "height": 480,
+      "is960": false,
+      "opaque": {
+        "w": 382,
+        "h": 444,
+        "minX": 0,
+        "minY": 24,
+        "maxX": 381,
+        "maxY": 467
+      },
+      "padding": {
+        "left": 0,
+        "right": 98,
+        "top": 24,
+        "bottom": 12
+      },
+      "soleY": 467,
+      "soleFromBottom": 12,
+      "frontX": 0,
+      "rearX": 381,
+      "tipFromCenterPx": 239.5,
+      "rearFromCenterPx": 141.5,
+      "tipWorldGuessPx": 78.6,
+      "centroid": {
+        "x": 181.8,
+        "y": 265.3,
+        "biasX": -57.7,
+        "biasY": 25.8
+      },
+      "alphaPx": 100010,
+      "groundedLikely": true,
+      "flags": [
+        "NON_960_480x480",
+        "STRONG_H_BIAS",
+        "EDGE_CLIP_RISK"
+      ]
+    },
+    {
+      "file": "pumo-flap-1.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 947,
+        "h": 824,
+        "minX": 3,
+        "minY": 59,
+        "maxX": 949,
+        "maxY": 882
+      },
+      "padding": {
+        "left": 3,
+        "right": 10,
+        "top": 59,
+        "bottom": 77
+      },
+      "soleY": 882,
+      "soleFromBottom": 77,
+      "frontX": 3,
+      "rearX": 949,
+      "tipFromCenterPx": 476.5,
+      "rearFromCenterPx": 469.5,
+      "tipWorldGuessPx": 78.1,
+      "centroid": {
+        "x": 493.4,
+        "y": 493.4,
+        "biasX": 13.9,
+        "biasY": 13.9
+      },
+      "alphaPx": 414771,
+      "groundedLikely": false,
+      "flags": [
+        "HIGH_SOLE_FLOAT",
+        "EDGE_CLIP_RISK",
+        "NEAR_FULL_WIDTH",
+        "SOLE_OUTLIER_VS_MEDIAN"
+      ]
+    },
+    {
+      "file": "pumo-flap-2.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 856,
+        "h": 762,
+        "minX": 37,
+        "minY": 92,
+        "maxX": 892,
+        "maxY": 853
+      },
+      "padding": {
+        "left": 37,
+        "right": 67,
+        "top": 92,
+        "bottom": 106
+      },
+      "soleY": 853,
+      "soleFromBottom": 106,
+      "frontX": 37,
+      "rearX": 892,
+      "tipFromCenterPx": 442.5,
+      "rearFromCenterPx": 412.5,
+      "tipWorldGuessPx": 72.6,
+      "centroid": {
+        "x": 478.2,
+        "y": 512.4,
+        "biasX": -1.3,
+        "biasY": 32.9
+      },
+      "alphaPx": 347965,
+      "groundedLikely": false,
+      "flags": [
+        "HIGH_SOLE_FLOAT",
+        "SOLE_OUTLIER_VS_MEDIAN"
+      ]
+    },
+    {
+      "file": "crouch-stance.png",
+      "missing": false,
+      "empty": false,
+      "width": 600,
+      "height": 600,
+      "is960": false,
+      "opaque": {
+        "w": 461,
+        "h": 480,
+        "minX": 77,
+        "minY": 102,
+        "maxX": 537,
+        "maxY": 581
+      },
+      "padding": {
+        "left": 77,
+        "right": 62,
+        "top": 102,
+        "bottom": 18
+      },
+      "soleY": 581,
+      "soleFromBottom": 18,
+      "frontX": 77,
+      "rearX": 537,
+      "tipFromCenterPx": 222.5,
+      "rearFromCenterPx": 237.5,
+      "tipWorldGuessPx": 58.4,
+      "centroid": {
+        "x": 311.5,
+        "y": 382.7,
+        "biasX": 12,
+        "biasY": 83.2
+      },
+      "alphaPx": 143447,
+      "groundedLikely": true,
+      "flags": [
+        "NON_960_600x600"
+      ]
+    },
+    {
+      "file": "bow.png",
+      "missing": false,
+      "empty": false,
+      "width": 480,
+      "height": 480,
+      "is960": false,
+      "opaque": {
+        "w": 377,
+        "h": 455,
+        "minX": 58,
+        "minY": 13,
+        "maxX": 434,
+        "maxY": 467
+      },
+      "padding": {
+        "left": 58,
+        "right": 45,
+        "top": 13,
+        "bottom": 12
+      },
+      "soleY": 467,
+      "soleFromBottom": 12,
+      "frontX": 58,
+      "rearX": 434,
+      "tipFromCenterPx": 181.5,
+      "rearFromCenterPx": 194.5,
+      "tipWorldGuessPx": 59.5,
+      "centroid": {
+        "x": 248.4,
+        "y": 267.8,
+        "biasX": 8.9,
+        "biasY": 28.3
+      },
+      "alphaPx": 109253,
+      "groundedLikely": true,
+      "flags": [
+        "NON_960_480x480"
+      ]
+    },
+    {
+      "file": "raw-parry-success.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 728,
+        "h": 802,
+        "minX": 99,
+        "minY": 124,
+        "maxX": 826,
+        "maxY": 925
+      },
+      "padding": {
+        "left": 99,
+        "right": 133,
+        "top": 124,
+        "bottom": 34
+      },
+      "soleY": 925,
+      "soleFromBottom": 34,
+      "frontX": 99,
+      "rearX": 826,
+      "tipFromCenterPx": 380.5,
+      "rearFromCenterPx": 346.5,
+      "tipWorldGuessPx": 62.4,
+      "centroid": {
+        "x": 483.4,
+        "y": 563.6,
+        "biasX": 3.9,
+        "biasY": 84.1
+      },
+      "alphaPx": 374375,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "raw-parry-success-frame-1.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 700,
+        "h": 802,
+        "minX": 127,
+        "minY": 124,
+        "maxX": 826,
+        "maxY": 925
+      },
+      "padding": {
+        "left": 127,
+        "right": 133,
+        "top": 124,
+        "bottom": 34
+      },
+      "soleY": 925,
+      "soleFromBottom": 34,
+      "frontX": 127,
+      "rearX": 826,
+      "tipFromCenterPx": 352.5,
+      "rearFromCenterPx": 346.5,
+      "tipWorldGuessPx": 57.8,
+      "centroid": {
+        "x": 508.9,
+        "y": 575.4,
+        "biasX": 29.4,
+        "biasY": 95.9
+      },
+      "alphaPx": 345722,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "raw-parry-success-frame-2.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 731,
+        "h": 802,
+        "minX": 96,
+        "minY": 124,
+        "maxX": 826,
+        "maxY": 925
+      },
+      "padding": {
+        "left": 96,
+        "right": 133,
+        "top": 124,
+        "bottom": 34
+      },
+      "soleY": 925,
+      "soleFromBottom": 34,
+      "frontX": 96,
+      "rearX": 826,
+      "tipFromCenterPx": 383.5,
+      "rearFromCenterPx": 346.5,
+      "tipWorldGuessPx": 62.9,
+      "centroid": {
+        "x": 480.4,
+        "y": 562.6,
+        "biasX": 0.9,
+        "biasY": 83.1
+      },
+      "alphaPx": 377932,
+      "groundedLikely": true,
+      "flags": []
+    },
+    {
+      "file": "cinematic-throw-kill-landing.png",
+      "missing": false,
+      "empty": false,
+      "width": 960,
+      "height": 960,
+      "is960": true,
+      "opaque": {
+        "w": 960,
+        "h": 486,
+        "minX": 0,
+        "minY": 469,
+        "maxX": 959,
+        "maxY": 954
+      },
+      "padding": {
+        "left": 0,
+        "right": 0,
+        "top": 469,
+        "bottom": 5
+      },
+      "soleY": 954,
+      "soleFromBottom": 5,
+      "frontX": 0,
+      "rearX": 959,
+      "tipFromCenterPx": 479.5,
+      "rearFromCenterPx": 479.5,
+      "tipWorldGuessPx": 78.6,
+      "centroid": {
+        "x": 517.8,
+        "y": 708.7,
+        "biasX": 38.3,
+        "biasY": 229.2
+      },
+      "alphaPx": 282010,
+      "groundedLikely": false,
+      "flags": [
+        "SOLE_NEAR_EDGE",
+        "EDGE_CLIP_RISK",
+        "NEAR_FULL_WIDTH"
+      ]
+    },
+    {
+      "file": "grab-attempt.png",
+      "missing": false,
+      "empty": false,
+      "width": 480,
+      "height": 480,
+      "is960": false,
+      "opaque": {
+        "w": 385,
+        "h": 458,
+        "minX": 63,
+        "minY": 10,
+        "maxX": 447,
+        "maxY": 467
+      },
+      "padding": {
+        "left": 63,
+        "right": 32,
+        "top": 10,
+        "bottom": 12
+      },
+      "soleY": 467,
+      "soleFromBottom": 12,
+      "frontX": 63,
+      "rearX": 447,
+      "tipFromCenterPx": 176.5,
+      "rearFromCenterPx": 207.5,
+      "tipWorldGuessPx": 57.9,
+      "centroid": {
+        "x": 255.9,
+        "y": 241.9,
+        "biasX": 16.4,
+        "biasY": 2.4
+      },
+      "alphaPx": 115416,
+      "groundedLikely": true,
+      "flags": [
+        "NON_960_480x480"
+      ]
+    },
+    {
+      "file": "pumo-waddle.png",
+      "missing": false,
+      "empty": false,
+      "width": 1024,
+      "height": 1024,
+      "is960": false,
+      "opaque": {
+        "w": 802,
+        "h": 975,
+        "minX": 144,
+        "minY": 22,
+        "maxX": 945,
+        "maxY": 996
+      },
+      "padding": {
+        "left": 144,
+        "right": 78,
+        "top": 22,
+        "bottom": 27
+      },
+      "soleY": 996,
+      "soleFromBottom": 27,
+      "frontX": 144,
+      "rearX": 945,
+      "tipFromCenterPx": 367.5,
+      "rearFromCenterPx": 433.5,
+      "tipWorldGuessPx": 56.5,
+      "centroid": {
+        "x": 556.1,
+        "y": 558.8,
+        "biasX": 44.6,
+        "biasY": 47.3
+      },
+      "alphaPx": 494234,
+      "groundedLikely": true,
+      "flags": [
+        "NON_960_1024x1024",
+        "STRONG_H_BIAS"
+      ]
+    },
+    {
+      "file": "is-perfect-parried.png",
+      "missing": true,
+      "flags": [
+        "MISSING"
+      ]
+    }
+  ]
+}

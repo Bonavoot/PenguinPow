@@ -111,6 +111,11 @@ import {
   isMovementPredictionEnabled,
 } from "../prediction/movementPredictor";
 import { getLocalKeyState, isLocalGameActive } from "../prediction/localInput";
+import {
+  isCombatFidelityDebugEnabled,
+  noteCombatContactEvent,
+  renderCombatFidelityOverlay,
+} from "../debug/CombatFidelityDebug";
 
 // Eeshi = pre-bout bed; battle BGM sits lower so hits/SFX stay forward in the mix.
 const EESHI_MUSIC_VOL = 0.018;
@@ -2534,6 +2539,20 @@ const GameFighter = ({
           fighterEl.style.left = leftPct;
           fighterEl.style.bottom = bottomPct;
         }
+        // Dev-only pushbox/contact overlay — player1 instance owns the draw.
+        if (
+          isCombatFidelityDebugEnabled() &&
+          penguinRef.current?.fighter === "player 1"
+        ) {
+          const shared = getSharedFighterState();
+          renderCombatFidelityOverlay({
+            p1x: shared?.player1?.x ?? newPos.x,
+            p1y: shared?.player1?.y ?? newPos.y,
+            p2x: shared?.player2?.x ?? 0,
+            p2y: shared?.player2?.y ?? 0,
+            sizeMult: penguinRef.current?.sizeMultiplier || 1,
+          });
+        }
         // Grab-arm overlay shares the body's exact position formula so it stays
         // pixel-locked to the (armless) grab/clinch body as it slides.
         // Deep Grip tip glow is a motion twin — same left/bottom + CSS vars.
@@ -3509,6 +3528,8 @@ const GameFighter = ({
     socket.on("charge_clash", handleChargeClash);
 
     const handlePlayerHit = (data) => {
+      // Dev-only contact overlay ingest (no-op unless localStorage flag set).
+      noteCombatContactEvent(data);
       if (data && typeof data.x === "number" && typeof data.y === "number") {
         lastPlayerHitTime.current = Date.now();
 
