@@ -23,10 +23,13 @@
  */
 
 import { bakeKey, spriteIdFromUrl } from "../config/bakeSources";
+import { hatBakeKey } from "../config/bakeHatSources";
 
 // key -> "/baked/<hash>.png". Empty until the manifest loads (or forever, if no
 // bake has been run — in which case every lookup misses and we fall back).
 let MANIFEST = Object.create(null);
+/** @type {Record<string, string>} hatBakeKey → "/baked/h….webp?v=" */
+let HAT_MANIFEST = Object.create(null);
 let manifestVersion = null;
 let loaded = false;
 
@@ -51,6 +54,7 @@ export const bakedReady = (async () => {
       const json = await res.json();
       if (json && json.sprites) {
         MANIFEST = json.sprites;
+        HAT_MANIFEST = json.hats || Object.create(null);
         manifestVersion = json.bakeTag || json.version || null;
       }
     }
@@ -116,4 +120,46 @@ export function getBakedUrlsForColor(mawashiColor, bodyColor) {
     if (parts[1] === wantM && parts[2] === wantB) out.push(MANIFEST[key]);
   }
   return out;
+}
+
+/**
+ * Resolve a build-time flattened body+topper URL, or null on miss.
+ * `sourceUrl` should be the body URL used for combat (bald when equipped).
+ */
+export function getBakedHattedSprite(
+  sourceUrl,
+  gearId,
+  mawashiColor,
+  bodyColor,
+  tint = "base",
+) {
+  if (!gearId || !sourceUrl) return null;
+  const id = spriteIdFromUrl(sourceUrl);
+  if (!id) return null;
+  return (
+    HAT_MANIFEST[hatBakeKey(gearId, id, mawashiColor, bodyColor, tint)] || null
+  );
+}
+
+/**
+ * All baked hatted URLs for a fighter color + gear (preload / pin).
+ */
+export function getBakedHattedUrlsForFighter(mawashiColor, bodyColor, gearId) {
+  if (!loaded || !gearId) return [];
+  const wantM = (mawashiColor || "none").toLowerCase();
+  const wantB = (bodyColor || "none").toLowerCase();
+  const prefix = `hat|${gearId}|`;
+  const out = [];
+  for (const key in HAT_MANIFEST) {
+    if (!key.startsWith(prefix)) continue;
+    // hat|gear|bodyId|mawashi|body|tint
+    const parts = key.split("|");
+    if (parts.length !== 6) continue;
+    if (parts[3] === wantM && parts[4] === wantB) out.push(HAT_MANIFEST[key]);
+  }
+  return out;
+}
+
+export function getHatManifestSize() {
+  return Object.keys(HAT_MANIFEST).length;
 }

@@ -1,5 +1,9 @@
 import { getGlobalVolume } from "./Settings";
-import { preloadSounds, playBuffer } from "../utils/audioEngine";
+import {
+  preloadSounds,
+  preloadMusicTracks,
+  playBuffer,
+} from "../utils/audioEngine";
 import { ANIMATED_SPRITES } from "../config/spriteConfig";
 import { ALL_HEAD_OVERLAYS } from "../config/cosmetics";
 import { ALL_BALD_BODY_SRCS } from "../config/baldSprites";
@@ -88,9 +92,9 @@ import winnerSound from "../sounds/winner-sound.ogg";
 import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
 import teWoTsuiteSound from "../sounds/tewotsuite.ogg";
 import bellSound from "../sounds/bell-sound.mp3";
-import battleMusic from "../sounds/battle-music-sound.wav";
-import battleMusic2 from "../sounds/battle-music-sound-2.wav";
-import battleMusic3 from "../sounds/battle-music-sound-3.wav";
+import battleMusic from "../sounds/battle-music-sound.ogg";
+import battleMusic2 from "../sounds/battle-music-sound-2.ogg";
+import battleMusic3 from "../sounds/battle-music-sound-3.ogg";
 import eeshiMusic from "../sounds/eeshi.ogg";
 import slapParrySound from "../sounds/slap-parry-sound.mp3";
 import saltSound from "../sounds/salt-sound.mp3";
@@ -142,8 +146,9 @@ const battleMusicTracks = [battleMusic, battleMusic2, battleMusic3];
 // ============================================
 // PRELOAD-ONLY IMPORTS (not exported — consumed internally by preloading)
 // ============================================
-import gameMapBackground from "../assets/game-map-444.png";
-import dohyoOverlay from "../assets/dohyo-style.webp";
+import gameMapBackground from "../assets/game-map-444.webp";
+// In-match dohyo is the flat display bake; style webp is editor-only (--live).
+import dohyoOverlay from "../assets/dohyo-display.webp";
 import gyojiImage from "../assets/gyoji.png";
 import gyojiReady from "../assets/gyoji-ready.png";
 import gyojiPlayer1wins from "../assets/gyoji-player1-wins.png";
@@ -411,8 +416,10 @@ preloadSounds([
   chargeAttackLaunchSound,
   gunLaunchSound,
   eeshiMusic,
-  ...battleMusicTracks,
 ]);
+
+// Battle music: stream (HTMLAudioElement), do not decodeAudioData into RAM.
+preloadMusicTracks(battleMusicTracks);
 
 // ============================================
 // SOUND PLAYBACK HELPER

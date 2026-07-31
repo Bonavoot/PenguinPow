@@ -6,7 +6,7 @@ const sharedsession = require("express-socket.io-session");
 const session = require("express-session");
 const e = require("express");
 const {
-  GRAB_STATES, TICK_RATE, BROADCAST_EVERY_N_TICKS,
+  GRAB_STATES, TICK_RATE, BROADCAST_EVERY_N_TICKS, KEYFRAME_EVERY_N_BROADCASTS,
   ALWAYS_SEND_PROPS, DELTA_TRACKED_PROPS, ALL_TRACKED_PROPS,
   speedFactor, GROUND_LEVEL, HITBOX_DISTANCE_VALUE,
   GRAB_RANGE,
@@ -159,8 +159,8 @@ const {
 // MASTERY OVERHAUL feature flags (Phase 1: momentum inheritance; Phase 2: posture).
 const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P5_ASSISTS } = require("./masteryFlags");
 
-// Import delta state utilities
-const { computePlayerDelta, clonePlayerState } = require("./deltaState");
+// Import fighter_action packet builder (Phase 5 seq/keyframe/resync)
+const { buildFighterActionPacket } = require("./fighterBroadcast");
 
 // Import grab mechanics
 const {
@@ -3897,26 +3897,15 @@ function tick(delta) {
             : 0;
       }
 
-      // PERFORMANCE: Use delta updates - only send changed properties
-      // This significantly reduces network bandwidth and client-side processing
-      const player1Delta = computePlayerDelta(room.players[0], room.previousPlayerStates[0]);
-      const player2Delta = computePlayerDelta(room.players[1], room.previousPlayerStates[1]);
-      
-      // Store current state for next comparison
-      room.previousPlayerStates[0] = clonePlayerState(room.players[0]);
-      room.previousPlayerStates[1] = clonePlayerState(room.players[1]);
-      
-      io.in(room.id).emit("fighter_action", {
-        player1: player1Delta,
-        player2: player2Delta,
-        // Include flag so client knows this is a delta update
-        isDelta: true,
-        // MASTERY Phase 5 (5.2): tells the client whether the assist-removal /
-        // legibility phase is live, so client-only continuous tells (speed
-        // spray + lean, posture-bar pulse, hidden-tech dust) render ONLY when
-        // the flag is on. With the flag off the client shows today's visuals.
+      // PERFORMANCE: Delta updates + Phase 5 seq/simTime/periodic keyframes.
+      // MASTERY Phase 5 (5.2): masteryP5 tells the client whether assist-removal
+      // / legibility phase is live for client-only continuous tells.
+      const { packet, previousPlayerStates } = buildFighterActionPacket(room, {
         masteryP5: MASTERY_P5_ASSISTS,
+        keyframeEveryN: KEYFRAME_EVERY_N_BROADCASTS,
       });
+      room.previousPlayerStates = previousPlayerStates;
+      io.in(room.id).emit("fighter_action", packet);
     }
   }
   

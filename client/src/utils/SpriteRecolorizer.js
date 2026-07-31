@@ -690,12 +690,25 @@ export function clearRecolorCache() {
 // and (2) raise the cap so the pinned set + between-round churn both fit with
 // headroom. The cap now only bounds the NON-pinned (gyoji/ritual) churn.
 const MAX_DECODED_CACHE_SIZE = 800;
+/** Soft decoded-RGBA budget for NON-pinned entries (pinned working set exempt). */
+const MAX_DECODED_BYTES = 384 * 1024 * 1024; // 384 MB
 const decodedImageCache = new Map();
 // Sources pinned here are never evicted from decodedImageCache — their hidden
 // decoded <img> stays in the DOM for the whole session. This is the fighter
 // working set (set via pinDecodedImages after preloadSprites).
 const pinnedDecodedKeys = new Set();
+/** In-flight decode promises — one Image load/decode per src. */
+const inFlightDecodes = new Map();
+/** Srcs that failed decode/load — never treated as ready until cleared. */
+const failedDecodeKeys = new Set();
 let hiddenImageContainer = null;
+let decodedApproxBytes = 0;
+
+function imageByteSize(img) {
+  const w = img?.naturalWidth || 0;
+  const h = img?.naturalHeight || 0;
+  return w > 0 && h > 0 ? w * h * 4 : 0;
+}
 
 function getHiddenContainer() {
   if (!hiddenImageContainer && typeof document !== "undefined") {
@@ -711,23 +724,28 @@ function getHiddenContainer() {
 function addToDecodedCache(key, img) {
   // Delete first so re-insert moves it to the end (most recently used)
   if (decodedImageCache.has(key)) {
+    const prev = decodedImageCache.get(key);
+    decodedApproxBytes -= imageByteSize(prev);
     decodedImageCache.delete(key);
   }
   decodedImageCache.set(key, img);
+  decodedApproxBytes += imageByteSize(img);
 
-  if (decodedImageCache.size <= MAX_DECODED_CACHE_SIZE) return;
+  const overCount = decodedImageCache.size > MAX_DECODED_CACHE_SIZE;
+  const overBytes = decodedApproxBytes > MAX_DECODED_BYTES;
+  if (!overCount && !overBytes) return;
 
-  // Evict oldest NON-PINNED entries first (front of Map iteration order is
-  // oldest). Pinned entries (the fighter working set) are skipped so their
-  // decoded <img> never leaves the DOM — that's what prevents the progressive
-  // ghost-frame regression. Deleting the just-yielded key during for..of over
-  // a Map is spec-safe. If only pinned entries remain the loop simply ends
-  // (the cache may then hold slightly more than the cap — pinned content is
-  // always retained by design).
+  // Evict oldest NON-PINNED entries first (count OR byte budget).
   for (const oldestKey of decodedImageCache.keys()) {
-    if (decodedImageCache.size <= MAX_DECODED_CACHE_SIZE) break;
+    if (
+      decodedImageCache.size <= MAX_DECODED_CACHE_SIZE &&
+      decodedApproxBytes <= MAX_DECODED_BYTES
+    ) {
+      break;
+    }
     if (pinnedDecodedKeys.has(oldestKey)) continue;
     const oldImg = decodedImageCache.get(oldestKey);
+    decodedApproxBytes -= imageByteSize(oldImg);
     if (oldImg && oldImg.parentNode) {
       oldImg.parentNode.removeChild(oldImg);
     }
@@ -736,52 +754,83 @@ function addToDecodedCache(key, img) {
 }
 
 /**
- * Pre-decode an image and KEEP IT IN DOM to prevent invisible frames
- * The image is added to a hidden container so the browser keeps it decoded
- *
- * MEMORY OPTIMIZATION: Skip data URLs (they're already in memory from recoloring)
- * Only pre-decode file URLs that need browser decoding
+ * Pre-decode an image and KEEP IT IN DOM to prevent invisible frames.
+ * Phase 1: explicit states — never mark failed loads as decoded; single-flight
+ * per src so concurrent callers share one Promise.
  *
  * @param {string} imageSrc - Image source (URL or data URL)
- * @returns {Promise<void>} - Resolves when image is fully decoded
+ * @returns {Promise<boolean>} - true if decoded and cached, false on failure
  */
 export async function preDecodeImage(imageSrc) {
-  // Skip if already decoded and cached
-  if (decodedImageCache.has(imageSrc)) {
-    return;
+  if (!imageSrc) return false;
+
+  const warm = decodedImageCache.get(imageSrc);
+  if (warm && warm.complete && warm.naturalWidth > 0) {
+    return true;
+  }
+  // Stale failed entry left in map from older builds — drop it.
+  if (warm && !(warm.complete && warm.naturalWidth > 0)) {
+    if (warm.parentNode) warm.parentNode.removeChild(warm);
+    decodedImageCache.delete(imageSrc);
   }
 
-  return new Promise((resolve) => {
+  if (inFlightDecodes.has(imageSrc)) {
+    return inFlightDecodes.get(imageSrc);
+  }
+
+  const work = new Promise((resolve) => {
     const img = new Image();
     img.src = imageSrc;
 
-    const onComplete = () => {
-      // Add to hidden container to keep in DOM (with LRU eviction)
+    const succeed = () => {
+      failedDecodeKeys.delete(imageSrc);
       const container = getHiddenContainer();
-      if (container && !decodedImageCache.has(imageSrc)) {
+      if (container && img.parentNode !== container) {
         container.appendChild(img);
-        addToDecodedCache(imageSrc, img);
       }
-      resolve();
+      addToDecodedCache(imageSrc, img);
+      resolve(true);
     };
 
-    // Use decode() if available (modern browsers), fallback to onload
+    const fail = (err) => {
+      console.warn("Image decode/load warning:", imageSrc, err);
+      failedDecodeKeys.add(imageSrc);
+      try {
+        const perf = globalThis.__PUMO_PERF;
+        if (perf?.enabled) {
+          perf.count("decode.failed");
+          perf.mark("decode.failed", {
+            srcKind: imageSrc.startsWith("data:")
+              ? "data"
+              : imageSrc.startsWith("blob:")
+                ? "blob"
+                : "file",
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+      // Do NOT insert into decodedImageCache — failed ≠ ready.
+      resolve(false);
+    };
+
     if (img.decode) {
-      img
-        .decode()
-        .then(onComplete)
-        .catch((err) => {
-          console.warn("Image decode warning:", err);
-          onComplete(); // Still add to cache on failure
-        });
+      img.decode().then(succeed).catch(fail);
     } else {
-      img.onload = onComplete;
-      img.onerror = () => {
-        console.warn("Image load warning:", imageSrc);
-        onComplete();
-      };
+      img.onload = succeed;
+      img.onerror = () => fail(new Error("load error"));
     }
+  }).finally(() => {
+    inFlightDecodes.delete(imageSrc);
   });
+
+  inFlightDecodes.set(imageSrc, work);
+  return work;
+}
+
+/** True if src previously failed decode/load (and has not succeeded since). */
+export function isDecodeFailed(imageSrc) {
+  return !!imageSrc && failedDecodeKeys.has(imageSrc);
 }
 
 /**
@@ -799,10 +848,11 @@ export async function preDecodeDataUrl(url) {
  * @returns {Promise<void>} - Resolves when all images are decoded
  */
 export async function preDecodeImages(imageSrcs) {
-  // Filter out already cached images
-  const uncached = imageSrcs.filter(
-    (src) => src && !decodedImageCache.has(src)
-  );
+  const uncached = imageSrcs.filter((src) => {
+    if (!src) return false;
+    const img = decodedImageCache.get(src);
+    return !(img && img.complete && img.naturalWidth > 0);
+  });
   await Promise.all(uncached.map((src) => preDecodeImage(src)));
 }
 
@@ -839,6 +889,7 @@ export async function pinDecodedImages(srcs, replace = false) {
  */
 export function getDecodedImage(src) {
   if (!src) return null;
+  if (failedDecodeKeys.has(src)) return null;
   const img = decodedImageCache.get(src);
   if (img && img.complete && img.naturalWidth > 0) return img;
   return null;
@@ -863,47 +914,98 @@ export async function pinDecodedImagesAppend(srcs) {
  * pre-round window so sprites are hot before play resumes. Batched to avoid a
  * decode thundering-herd.
  */
+// Phase 1: single-flight rewarm — coalesced callers share one Promise.
+let _rewarmInFlight = null;
+let _rewarmGeneration = 0;
+
 export async function rewarmDecodedImages() {
+  const perf = globalThis.__PUMO_PERF;
   const pins = [...pinnedDecodedKeys];
   if (!pins.length) return;
-  const container = getHiddenContainer();
-  const BATCH = 12;
-  for (let i = 0; i < pins.length; i += BATCH) {
-    const batch = pins.slice(i, i + BATCH);
-    await Promise.all(
-      batch.map(
-        (src) =>
-          new Promise((resolve) => {
-            // CRITICAL: use a FRESH Image, not the cached one. Calling
-            // .decode() on the already-cached <img> is a NO-OP after an idle
-            // bitmap purge — the element still reports complete/naturalWidth,
-            // so the browser resolves immediately WITHOUT re-uploading the
-            // decoded bitmap, and the next paint still decodes cold (= the
-            // ghost returns after AFK). A brand-new Image has never been
-            // decoded, so .decode() genuinely re-decodes and the freshly
-            // decoded element is what we keep referenced in the DOM.
-            const img = new Image();
-            img.src = src;
-            const done = () => {
-              const old = decodedImageCache.get(src);
-              if (old && old !== img && old.parentNode) {
-                old.parentNode.removeChild(old);
+
+  if (_rewarmInFlight) {
+    if (perf?.enabled) {
+      perf.count("rewarm.coalesced");
+      perf.mark("rewarm.coalesced", {
+        pinCount: pins.length,
+        generation: _rewarmGeneration,
+      });
+    }
+    return _rewarmInFlight;
+  }
+
+  const generation = ++_rewarmGeneration;
+  if (perf?.enabled) {
+    perf.count("rewarm.calls");
+    perf.mark("rewarm.start", {
+      pinCount: pins.length,
+      generation,
+      visibility:
+        typeof document !== "undefined" ? document.visibilityState : "n/a",
+    });
+  }
+
+  const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
+  const run = (async () => {
+    const container = getHiddenContainer();
+    const BATCH = 12;
+    for (let i = 0; i < pins.length; i += BATCH) {
+      const batch = pins.slice(i, i + BATCH);
+      await Promise.all(
+        batch.map(
+          (src) =>
+            new Promise((resolve) => {
+              // CRITICAL: use a FRESH Image, not the cached one. Calling
+              // .decode() on the already-cached <img> is a NO-OP after an idle
+              // bitmap purge — the element still reports complete/naturalWidth,
+              // so the browser resolves immediately WITHOUT re-uploading the
+              // decoded bitmap, and the next paint still decodes cold (= the
+              // ghost returns after AFK). A brand-new Image has never been
+              // decoded, so .decode() genuinely re-decodes and the freshly
+              // decoded element is what we keep referenced in the DOM.
+              const img = new Image();
+              img.src = src;
+              const done = (ok) => {
+                if (!ok || !(img.complete && img.naturalWidth > 0)) {
+                  failedDecodeKeys.add(src);
+                  resolve(false);
+                  return;
+                }
+                failedDecodeKeys.delete(src);
+                const old = decodedImageCache.get(src);
+                if (old && old !== img && old.parentNode) {
+                  old.parentNode.removeChild(old);
+                }
+                if (container && img.parentNode !== container) {
+                  container.appendChild(img);
+                }
+                decodedImageCache.set(src, img);
+                resolve(true);
+              };
+              if (img.decode) {
+                img.decode().then(() => done(true)).catch(() => done(false));
+              } else {
+                img.onload = () => done(true);
+                img.onerror = () => done(false);
               }
-              if (container && img.parentNode !== container) {
-                container.appendChild(img);
-              }
-              decodedImageCache.set(src, img);
-              resolve();
-            };
-            if (img.decode) {
-              img.decode().then(done).catch(done);
-            } else {
-              img.onload = done;
-              img.onerror = done;
-            }
-          })
-      )
-    );
+            })
+        )
+      );
+    }
+  })();
+
+  _rewarmInFlight = run;
+  try {
+    await run;
+  } finally {
+    if (_rewarmInFlight === run) _rewarmInFlight = null;
+    if (perf?.enabled) {
+      const ms =
+        (typeof performance !== "undefined" ? performance.now() : Date.now()) -
+        t0;
+      perf.gauge("rewarm.lastMs", ms);
+      perf.mark("rewarm.end", { ms, pinCount: pins.length, generation });
+    }
   }
 }
 
@@ -922,6 +1024,9 @@ export function clearDecodedImageCache() {
   }
   decodedImageCache.clear();
   pinnedDecodedKeys.clear();
+  inFlightDecodes.clear();
+  failedDecodeKeys.clear();
+  decodedApproxBytes = 0;
 }
 
 /**
@@ -973,14 +1078,30 @@ export function getCachedRecoloredImage(
  * Get cache statistics for debugging
  */
 export function getCacheStats() {
+  let pinnedDecodedApproxBytes = 0;
+  let recomputed = 0;
+  for (const [src, img] of decodedImageCache.entries()) {
+    const bytes = imageByteSize(img);
+    recomputed += bytes;
+    if (pinnedDecodedKeys.has(src)) pinnedDecodedApproxBytes += bytes;
+  }
+  // Keep running counter honest if natural sizes filled in after insert.
+  decodedApproxBytes = recomputed;
   return {
     size: recoloredImageCache.size,
     maxSize: MAX_CACHE_SIZE,
     decodedSize: decodedImageCache.size,
     maxDecodedSize: MAX_DECODED_CACHE_SIZE,
+    maxDecodedBytes: MAX_DECODED_BYTES,
+    pinnedDecodedSize: pinnedDecodedKeys.size,
+    decodedApproxBytes,
+    pinnedDecodedApproxBytes,
+    failedDecodeSize: failedDecodeKeys.size,
+    inFlightDecodeCount: inFlightDecodes.size,
     workerReady,
     canvasPoolSize: canvasPool.length,
     inFlightCount: inFlightRecolors.size,
+    rewarmInFlight: !!_rewarmInFlight,
   };
 }
 

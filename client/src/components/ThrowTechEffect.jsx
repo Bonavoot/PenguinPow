@@ -1,6 +1,10 @@
 import { useState, useEffect, useContext, useRef, memo } from "react";
 import styled from "styled-components";
 import { SocketContext } from "../SocketContext";
+import {
+  getSharedFighterState,
+  subscribeFighterSnapshot,
+} from "../net/fighterSnapshotBus";
 import "./ThrowTechEffect.css";
 
 const TechEffectContainer = styled.div.attrs((props) => ({
@@ -33,9 +37,11 @@ const ThrowTechEffect = () => {
   const hideTimeout = useRef(null);
 
   useEffect(() => {
-    const handleFighterAction = (data) => {
+    const handleFighterAction = () => {
+      const { player1, player2 } = getSharedFighterState();
+      if (!player1 || !player2) return;
       const isTeching =
-        data.player1.isThrowTeching || data.player2.isThrowTeching;
+        player1.isThrowTeching || player2.isThrowTeching;
       const currentTime = Date.now();
 
       if (
@@ -43,8 +49,8 @@ const ThrowTechEffect = () => {
         !wasTeching.current &&
         currentTime - lastTechTime.current > 500
       ) {
-        const centerX = (data.player1.x + data.player2.x) / 2 + 150;
-        const centerY = (data.player1.y + data.player2.y) / 2 + 120;
+        const centerX = (player1.x + player2.x) / 2 + 150;
+        const centerY = (player1.y + player2.y) / 2 + 120;
 
         setEffectState({
           isVisible: true,
@@ -63,10 +69,10 @@ const ThrowTechEffect = () => {
       wasTeching.current = isTeching;
     };
 
-    socket.on("fighter_action", handleFighterAction);
+    const unsub = subscribeFighterSnapshot(handleFighterAction);
 
     return () => {
-      socket.off("fighter_action", handleFighterAction);
+      unsub();
       if (hideTimeout.current) clearTimeout(hideTimeout.current);
     };
   }, [socket]);

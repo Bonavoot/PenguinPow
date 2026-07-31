@@ -20,7 +20,21 @@
     "test:clinch": "npm run test:clinch --prefix server-io",
     "test:clinch:network": "npm run test:clinch:network --prefix server-io",
     "test:clinch:watch": "npm run test:clinch:watch --prefix server-io",
-    "test:clinch:coverage": "npm run test:clinch:coverage --prefix server-io"
+    "test:clinch:coverage": "npm run test:clinch:coverage --prefix server-io",
+    "perf:baseline": "node client/scripts/perf/runPerfBaseline.mjs",
+    "perf:inventory": "node client/scripts/perf/assetInventory.mjs",
+    "perf:reachability": "node client/scripts/perf/reachabilityReport.mjs",
+    "perf:loops": "node client/scripts/perf/liveLoopInventory.mjs",
+    "perf:cosmetics": "node client/scripts/perf/validateCosmeticMappings.mjs",
+    "perf:phase1": "node client/scripts/perf/phase1Regression.mjs",
+    "perf:phase2": "node client/scripts/perf/phase2Regression.mjs",
+    "perf:phase3": "node client/scripts/perf/phase3Regression.mjs",
+    "perf:phase4": "node client/scripts/perf/phase4Regression.mjs",
+    "perf:phase5": "node client/scripts/perf/phase5Regression.mjs",
+    "perf:server-scaffold": "node server-io/scripts/roomLoadBaseline.mjs",
+    "perf:server-load": "node server-io/scripts/roomLoadBaseline.mjs",
+    "perf:server-soak": "node server-io/scripts/liveRoomSoak.mjs",
+    "encode:display": "node client/scripts/encodeDisplayAssets.mjs"
   },
   "dependencies": {
     "react-player": "^2.15.1",
@@ -54,7 +68,18 @@
       "assets/**/*",
       "server-io/**/*",
       "!server-io/match-logs/**",
-      "!server-io/scripts/**"
+      "!server-io/scripts/**",
+      "!server-io/test/**",
+      "!server-io/**/*.md",
+      "!server-io/package-lock.json",
+      "!server-io/node_modules/**/README*",
+      "!server-io/node_modules/**/readme*",
+      "!server-io/node_modules/**/CHANGELOG*",
+      "!server-io/node_modules/**/LICENSE*",
+      "!server-io/node_modules/**/*.md",
+      "!server-io/node_modules/**/test/**",
+      "!server-io/node_modules/**/tests/**",
+      "!server-io/node_modules/**/docs/**"
     ],
     "extraResources": [
       {

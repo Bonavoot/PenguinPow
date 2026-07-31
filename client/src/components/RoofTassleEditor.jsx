@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
-import gameMapBg from "../assets/game-map-444.png";
+import gameMapBg from "../assets/game-map-444.webp";
 import tassleWhite from "../assets/roof-tassle.png";
 import tassleGreen from "../assets/roof-tassle-green.png";
 import tassleRed from "../assets/roof-tassle-red.png";

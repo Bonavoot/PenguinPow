@@ -19,8 +19,10 @@ import {
   clearDecodedImageCache,
   clearRecolorCache,
   rewarmDecodedImages,
+  getCacheStats,
 } from "../utils/SpriteRecolorizer";
-import { clearHatCompositeCache } from "../utils/hatComposite";
+import { clearHatCompositeCache, getHatCompositeCacheStats } from "../utils/hatComposite";
+import { getPerfRecorder } from "../utils/perf/PerfRecorder";
 import {
   pickRandomGyojiOutfit,
   GYOJI_OUTFIT_PRESETS,
@@ -39,12 +41,51 @@ import {
 } from "../prediction/localInput";
 import { getServerOffset, isServerClockSynced, getEstimatedRtt } from "../lib/serverClock";
 import {
+  requestFighterResync,
+  retainFighterSocket,
+} from "../net/fighterSnapshotBus";
+import {
   applyDohyoOverlayVars,
   loadDohyoOverlay,
   DOHYO_CHANGED_EVENT,
 } from "./dohyoOverlayData";
 // import gameMusic from "../sounds/game-music.mp3";
 import PropTypes from "prop-types";
+
+/** Phase 1: tag rewarm call sites; fire-and-forget but single-flight inside. */
+function rewarmTagged(reason) {
+  const perf = getPerfRecorder();
+  if (perf.enabled) {
+    let cache = null;
+    let hats = null;
+    try {
+      cache = getCacheStats();
+      hats = getHatCompositeCacheStats();
+    } catch {
+      /* ignore */
+    }
+    perf.mark("rewarm.trigger", {
+      reason,
+      visibility: document.visibilityState,
+      cache,
+      hats,
+    });
+  }
+  return rewarmDecodedImages();
+}
+
+/** Coalesce focus + visibilitychange into one rewarm within a short window. */
+let _rewarmCoalesceTimer = null;
+function scheduleRewarmCoalesced(reason) {
+  if (_rewarmCoalesceTimer != null) {
+    getPerfRecorder().count("rewarm.scheduleCoalesced");
+    return;
+  }
+  _rewarmCoalesceTimer = setTimeout(() => {
+    _rewarmCoalesceTimer = null;
+    rewarmTagged(reason);
+  }, 50);
+}
 
 // const gameMusicAudio = new Audio(gameMusic);
 // gameMusicAudio.loop = true;
@@ -96,6 +137,12 @@ const Game = ({
   bashoArmed = false,
 }) => {
   const { socket } = useContext(SocketContext);
+
+  // Phase 5+/soak: one socket listener owns fighter_action merge + fan-out.
+  useEffect(() => {
+    if (!socket) return undefined;
+    return retainFighterSocket(socket);
+  }, [socket]);
   const [isPowerUpSelectionActive, setIsPowerUpSelectionActive] =
     useState(false);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
@@ -191,7 +238,7 @@ const Game = ({
       // rematch screen (the hidden, never-painted preload <img>s don't get
       // re-decoded on their own), which brought the ghost frames back on the
       // next round. This forces them hot again during the rematch transition.
-      rewarmDecodedImages();
+      rewarmTagged("rematch");
     };
     socket.on("rematch", handleRematch);
     return () => socket.off("rematch", handleRematch);
@@ -230,17 +277,27 @@ const Game = ({
   // exact "AFK'd on the rematch screen" case), the browser has very likely
   // purged decoded image bitmaps. Force them hot again on return so the next
   // round/interaction doesn't ghost. Cheap (decode work is off-main-thread).
+  // Phase 5: also request a full fighter snapshot so delta-accumulators cannot
+  // stay stale after a long background pause.
   useEffect(() => {
-    const handleVisible = () => {
-      if (document.visibilityState === "visible") rewarmDecodedImages();
+    const handleVisible = (e) => {
+      if (document.visibilityState === "visible") {
+        // focus + visibilitychange often fire together on return — coalesce.
+        scheduleRewarmCoalesced(`lifecycle:${e.type}`);
+        if (socket) requestFighterResync(socket, `lifecycle:${e.type}`);
+      }
     };
     document.addEventListener("visibilitychange", handleVisible);
     window.addEventListener("focus", handleVisible);
     return () => {
       document.removeEventListener("visibilitychange", handleVisible);
       window.removeEventListener("focus", handleVisible);
+      if (_rewarmCoalesceTimer != null) {
+        clearTimeout(_rewarmCoalesceTimer);
+        _rewarmCoalesceTimer = null;
+      }
     };
-  }, []);
+  }, [socket]);
 
   const handleResetDisconnectState = useCallback(() => {
     setOpponentDisconnected(false);
@@ -734,7 +791,7 @@ const Game = ({
     // unpainted. Re-decode the pinned working set NOW — a dead, no-input window
     // right before the bout — so pose transitions paint warm from the first
     // frame instead of ghosting until the later power_ups_revealed rewarm.
-    rewarmDecodedImages();
+    rewarmTagged("basho_begin_bout");
     // Hold the pre-match card for a brief beat, then start the bout.
     setTimeout(() => {
       setShowPreMatchScreen(false);
@@ -888,7 +945,7 @@ const Game = ({
     // round instead of ghosting — without paying the decode cost on the live
     // round-start frame.
     const handlePowerUpsRevealedRewarm = () => {
-      rewarmDecodedImages();
+      rewarmTagged("power_ups_revealed");
     };
 
     // Perfect-parry screen flash — driven by raw_parry_success (the live emit),

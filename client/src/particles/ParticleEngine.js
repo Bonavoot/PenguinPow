@@ -5575,6 +5575,10 @@ export class ParticleEngine {
     // screen (which is most of the time) instead of paying that cost always.
     this._activeCount = 0;
     this._renderedEmpty = false;
+    // Phase 3: when idle (no active particles, canvases cleared), stop scheduling
+    // rAF entirely. spawn()/emit() call _wake(). Previously the loop ran forever
+    // and scanned the 500-slot pool every frame even with nothing to draw.
+    this._sleeping = false;
     // Rolling cursor for _acquire() so burst spawns don't re-scan from 0.
     this._acquireCursor = 0;
 
@@ -5624,7 +5628,9 @@ export class ParticleEngine {
 
   emit(presetName, opts) {
     const fn = PRESETS[presetName];
-    if (fn) fn(this, opts);
+    if (!fn) return;
+    this._wake();
+    fn(this, opts);
   }
 
   /** Removes in-flight canvas particles from raw-parry hold (space) VFX only. */
@@ -5696,6 +5702,7 @@ export class ParticleEngine {
   }
 
   spawn(cfg) {
+    this._wake();
     const p = this._acquire();
     if (!p) return;
     p.active = true;
@@ -5767,18 +5774,52 @@ export class ParticleEngine {
     return null;
   }
 
-  _start() {
+  _wake() {
+    if (!this.canvas) return; // destroyed
+    if (!this._sleeping && this._rafId != null) return;
+    this._sleeping = false;
     this._lastTime = performance.now();
-    const loop = (now) => {
-      const dt = Math.min((now - this._lastTime) / 1000, 0.05);
-      this._lastTime = now;
-      if (!this.frozen) {
-        this._update(dt);
-      }
-      this._render();
-      this._rafId = requestAnimationFrame(loop);
-    };
-    this._rafId = requestAnimationFrame(loop);
+    if (this._rafId == null) {
+      this._rafId = requestAnimationFrame((now) => this._tick(now));
+    }
+  }
+
+  _goToSleep() {
+    if (this._rafId != null) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
+    this._sleeping = true;
+    try {
+      const perf = globalThis.__PUMO_PERF;
+      if (perf?.enabled) perf.count("particles.sleep");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  _tick(now) {
+    this._rafId = null;
+    if (this._sleeping) return;
+    const dt = Math.min((now - this._lastTime) / 1000, 0.05);
+    this._lastTime = now;
+    if (!this.frozen) {
+      this._update(dt);
+    }
+    this._render();
+    // Sleep only after a committed empty frame. Hitstop (frozen) with
+    // in-flight VFX keeps ticking because _activeCount > 0; emit/spawn wake.
+    if (this._activeCount === 0 && this._renderedEmpty) {
+      this._goToSleep();
+      return;
+    }
+    this._rafId = requestAnimationFrame((t) => this._tick(t));
+  }
+
+  _start() {
+    this._sleeping = false;
+    this._lastTime = performance.now();
+    this._rafId = requestAnimationFrame((now) => this._tick(now));
   }
 
   _update(dt) {
@@ -5911,6 +5952,7 @@ export class ParticleEngine {
   }
 
   destroy() {
+    this._sleeping = true;
     if (this._rafId) {
       cancelAnimationFrame(this._rafId);
       this._rafId = null;

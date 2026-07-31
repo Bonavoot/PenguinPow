@@ -17,11 +17,19 @@ if (!isDev) {
   try { logLocations.push(path.join(app.getPath('userData'), 'penguinpow-debug.log')); } catch (_) {}
 }
 
+// Phase 4: async appends — sync multi-file appendFileSync on the hot path
+// (renderer console mirror, local server stdio) stalled the main process.
+// Set PENGUINPOW_DEBUG=1 to keep verbose packaged logging.
+const VERBOSE_DEBUG =
+  isDev || process.env.PENGUINPOW_DEBUG === "1" || process.env.PENGUINPOW_DEBUG === "true";
+
 function debugLog(msg) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
-  console.log(msg);
+  if (VERBOSE_DEBUG || /ERROR|FAILED|CRASH|UNRESPONSIVE|Error/i.test(msg)) {
+    console.log(msg);
+  }
   for (const p of logLocations) {
-    try { fs.appendFileSync(p, line); } catch (_) {}
+    fs.appendFile(p, line, () => {});
   }
 }
 
@@ -279,7 +287,10 @@ function createWindow() {
     debugLog(`[LOAD FAILED] ${errorDescription} (code: ${errorCode}) URL: ${validatedURL}`);
   });
 
+  // Packaged builds: only mirror renderer errors (level>=2). Full LOG spam was
+  // sync-appending to multiple files every console line (P0-9).
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    if (!VERBOSE_DEBUG && level < 2) return;
     debugLog(`[Renderer ${level >= 2 ? 'ERROR' : 'LOG'}] ${message} (${sourceId}:${line})`);
   });
 

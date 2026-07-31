@@ -2,13 +2,12 @@
  * Composite a transparent hat overlay onto a (possibly recolored) body sprite.
  * Results are cached — ice-slide / breathe must stay on a single <img>.
  *
- * GHOST-FRAME NOTES:
- * Minting a fresh data-/blob-URL per pose and painting it before the browser
- * has decoded it (or falling back to the unhatted body for a frame) is what
- * causes hat-related ghosts. We:
- *  1. Prefer a sync composite when both layers are already in decodedImageCache
- *  2. Pre-decode + pin composite URLs during match preload (warmHatComposites)
- *  3. Never return a URL that hasn't been handed to preDecodeImage
+ * PHASE 1 GHOST-FRAME RULES:
+ *  1. Live/render path may ONLY read the composite cache (no encode).
+ *  2. Generation uses async canvas.toBlob → blob URL (never toDataURL).
+ *  3. Preload warms + pins every pose×tint before combat (warmHatComposites).
+ *  4. Never hand a URL to the fighter until preDecodeImage has succeeded.
+ *  5. In-flight composites for the same tuple share one Promise.
  */
 
 import {
@@ -19,7 +18,11 @@ import {
   isHeadGearUnderBody,
 } from "../config/cosmetics";
 import { getBaldBodySrc, resolveBodyForHeadGear } from "../config/baldSprites";
-import { getBakedSprite } from "./bakedSprites";
+import {
+  getBakedSprite,
+  getBakedHattedSprite,
+  getBakedHattedUrlsForFighter,
+} from "./bakedSprites";
 import {
   recolorImage,
   BLUE_COLOR_RANGES,
@@ -32,9 +35,27 @@ import {
   protectBlobUrl,
   unprotectBlobUrl,
 } from "./SpriteRecolorizer";
+import { getPerfRecorder } from "./perf/PerfRecorder";
+import { recordHatPath } from "./perf/GhostFrameTracer";
 
 const cache = new Map();
 const MAX_CACHE = 512;
+/** @type {Map<string, Promise<string>>} */
+const inFlightComposites = new Map();
+
+/** Phase 0/1 instrumentation. */
+export function getHatCompositeCacheStats() {
+  let dataUrls = 0;
+  let blobUrls = 0;
+  let other = 0;
+  for (const url of cache.values()) {
+    if (typeof url !== "string") continue;
+    if (url.startsWith("data:")) dataUrls++;
+    else if (url.startsWith("blob:")) blobUrls++;
+    else other++;
+  }
+  return { size: cache.size, max: MAX_CACHE, dataUrls, blobUrls, other };
+}
 
 /**
  * Drop every hat composite mapping and revoke their blob URLs.
@@ -56,6 +77,7 @@ export function clearHatCompositeCache() {
     }
   }
   cache.clear();
+  inFlightComposites.clear();
 }
 
 function forgetCachedComposite(baseSrc, overlaySrc, underBody = false) {
@@ -196,7 +218,16 @@ async function storeComposite(baseSrc, overlaySrc, canvas, underBody = false) {
   const url = await canvasToBlobUrl(canvas);
   // Survive clearDecodedImageCache / recolor LRU until clearHatCompositeCache.
   protectBlobUrl(url);
-  await preDecodeImage(url);
+  const decoded = await preDecodeImage(url);
+  if (!decoded) {
+    unprotectBlobUrl(url);
+    try {
+      URL.revokeObjectURL(url);
+    } catch {
+      /* ignore */
+    }
+    throw new Error("Hat composite decode failed");
+  }
   cache.set(key, url);
   while (cache.size > MAX_CACHE) {
     const first = cache.keys().next().value;
@@ -223,21 +254,88 @@ export function getCachedHatComposite(baseSrc, overlaySrc, underBody = false) {
 }
 
 /**
- * Sync composite when both layers are already decoded. Returns null if either
- * image isn't warm yet (caller falls through to async / unhatted briefly).
- * @param {boolean} [underBody] - draw gear under the body (e.g. plunger)
+ * Phase 2 combat resolve: prefer build-time flattened topper, then runtime
+ * composite cache, then warm-layer sync compose (custom-color fallback only).
+ *
+ * @param {object} opts
+ * @param {string} opts.baseSrc - recolored/baked body src (for runtime fallback)
+ * @param {string|null} [opts.bakeSourceUrl] - ORIGINAL body URL (bald/haired
+ *   file), used for hat manifest identity. Required when baseSrc is already a
+ *   hashed `/baked/….png` URL (spriteIdFromUrl cannot recover the stem).
+ * @param {string|null} opts.overlaySrc
+ * @param {boolean} [opts.underBody]
+ * @param {string|null} [opts.gearId]
+ * @param {string|null} [opts.mawashiColor]
+ * @param {string|null} [opts.bodyColor]
+ * @param {string} [opts.tint="base"]
+ */
+export function resolveHattedSpriteSync({
+  baseSrc,
+  bakeSourceUrl = null,
+  overlaySrc,
+  underBody = false,
+  gearId = null,
+  mawashiColor = null,
+  bodyColor = null,
+  tint = "base",
+}) {
+  if (!baseSrc && !bakeSourceUrl) return null;
+  if (gearId) {
+    const baked = getBakedHattedSprite(
+      bakeSourceUrl || baseSrc,
+      gearId,
+      mawashiColor,
+      bodyColor,
+      tint,
+    );
+    if (baked) {
+      recordHatPath("bakedTopper", { gearId, tint });
+      if (!getDecodedImage(baked)) preDecodeImage(baked);
+      return baked;
+    }
+  }
+  if (!baseSrc || !overlaySrc) return null;
+  return compositeHatOntoSpriteSync(baseSrc, overlaySrc, underBody);
+}
+
+/**
+ * Sync path for combat/render (runtime fallback when bake misses).
+ * 1) Cache hit → return immediately.
+ * 2) Cache miss with both layers decoded → compose sync (custom colors only
+ *    on the normal match path once Phase 2 bake covers the catalog).
  */
 export function compositeHatOntoSpriteSync(baseSrc, overlaySrc, underBody = false) {
   if (!baseSrc || !overlaySrc) return null;
   const hit = getCachedHatComposite(baseSrc, overlaySrc, underBody);
-  if (hit) return hit;
+  if (hit) {
+    recordHatPath("cachedTopper", { underBody });
+    if (!getDecodedImage(hit)) {
+      preDecodeImage(hit);
+    }
+    return hit;
+  }
 
   const base = getDecodedImage(baseSrc);
   const overlay = getDecodedImage(overlaySrc);
-  if (!base || !overlay) return null;
+  if (!base || !overlay) {
+    recordHatPath("syncMissColdLayers", { underBody });
+    return null;
+  }
 
   const canvas = drawComposite(base, overlay, underBody);
-  const url = canvas.toDataURL("image/png");
+  const perf = getPerfRecorder();
+  const url = perf.enabled
+    ? perf.timeSync(
+        "hat.toDataURL",
+        () => canvas.toDataURL("image/png"),
+        { w: canvas.width, h: canvas.height, underBody, warmMiss: true },
+      )
+    : canvas.toDataURL("image/png");
+  recordHatPath("syncTopperWarmMiss", {
+    underBody,
+    w: canvas.width,
+    h: canvas.height,
+  });
   const key = cacheKey(baseSrc, overlaySrc, underBody);
   cache.set(key, url);
   preDecodeImage(url);
@@ -249,6 +347,9 @@ export function compositeHatOntoSpriteSync(baseSrc, overlaySrc, underBody = fals
 }
 
 /**
+ * Async composite for preload / portraits / cache-miss recovery.
+ * Uses toBlob (never toDataURL). Single-flight per cache key.
+ *
  * @param {string} baseSrc - body sprite (file URL or data/blob URL)
  * @param {string|null} overlaySrc - hat overlay, or null to pass through
  * @param {boolean} [underBody] - draw gear under the body (e.g. plunger)
@@ -258,34 +359,56 @@ export async function compositeHatOntoSprite(baseSrc, overlaySrc, underBody = fa
   if (!baseSrc) return baseSrc;
   if (!overlaySrc) return baseSrc;
 
+  const key = cacheKey(baseSrc, overlaySrc, underBody);
   const hit = getCachedHatComposite(baseSrc, overlaySrc, underBody);
   if (hit) {
     // Revoked blob URLs still sit in the Map after a partial cache clear —
     // verify before handing them to <img src>.
     try {
       await loadImage(hit);
+      if (!getDecodedImage(hit)) await preDecodeImage(hit);
+      recordHatPath("asyncCachedTopper", { underBody });
       return hit;
     } catch {
       forgetCachedComposite(baseSrc, overlaySrc, underBody);
     }
   }
 
-  const sync = compositeHatOntoSpriteSync(baseSrc, overlaySrc, underBody);
-  if (sync) {
-    try {
-      await loadImage(sync);
-      return sync;
-    } catch {
-      forgetCachedComposite(baseSrc, overlaySrc, underBody);
-    }
+  if (inFlightComposites.has(key)) {
+    recordHatPath("asyncTopperJoined", { underBody });
+    return inFlightComposites.get(key);
   }
 
-  const [base, overlay] = await Promise.all([
-    loadImage(baseSrc),
-    loadImage(overlaySrc),
-  ]);
-  const canvas = drawComposite(base, overlay, underBody);
-  return storeComposite(baseSrc, overlaySrc, canvas, underBody);
+  recordHatPath("asyncTopper", { underBody });
+  const perf = getPerfRecorder();
+  const work = (async () => {
+    const t0 =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+    const [base, overlay] = await Promise.all([
+      loadImage(baseSrc),
+      loadImage(overlaySrc),
+    ]);
+    const canvas = drawComposite(base, overlay, underBody);
+    const url = await storeComposite(baseSrc, overlaySrc, canvas, underBody);
+    if (perf?.enabled) {
+      const ms =
+        (typeof performance !== "undefined" ? performance.now() : Date.now()) -
+        t0;
+      perf.mark("hat.asyncComposite", {
+        ms,
+        w: canvas.width,
+        h: canvas.height,
+        underBody,
+      });
+      if (ms > 16.67) perf.count("hat.asyncComposite.gtFrame");
+    }
+    return url;
+  })().finally(() => {
+    inFlightComposites.delete(key);
+  });
+
+  inFlightComposites.set(key, work);
+  return work;
 }
 
 function tintOptionsFor(tint, bodyColor) {
@@ -347,19 +470,31 @@ export async function warmHatCompositesForFighter({
   if (!gearId) return [];
   const underBody = isHeadGearUnderBody(gearId);
 
+  // Phase 2: prefer build-time flattened toppers — pin stable files, no compose.
+  const bakedHats = getBakedHattedUrlsForFighter(
+    mawashiColor,
+    bodyColor,
+    gearId,
+  );
+  if (bakedHats.length) {
+    await pinDecodedImagesAppend(bakedHats);
+    recordHatPath("warmBakedToppers", { gearId, count: bakedHats.length });
+    // Still warm hit/charge/blubber/armor via runtime for flash tints (not baked).
+    // Those are brief; base combat poses are covered by the bake.
+    return bakedHats;
+  }
+
   const overlayUrls = [];
   const bodyUrls = [];
   for (const hairedSrc of HAT_OVERLAY_BY_SRC.keys()) {
     const overlaySrc = getHatOverlayForSprite(hairedSrc, gearId);
     if (overlaySrc) overlayUrls.push(overlaySrc);
-    // Composite onto bald underlay when available (matches combat path).
     bodyUrls.push(getBaldBodySrc(hairedSrc) || hairedSrc);
   }
   await Promise.all(
     [...new Set([...overlayUrls, ...bodyUrls])].map((u) => preDecodeImage(u)),
   );
 
-  // Warm recolored overlays (ponytail hair tie ↔ belt) once up front.
   const recoloredOverlayByRaw = new Map();
   if (headGearRecolorsWithMawashi(gearId)) {
     await Promise.all(
@@ -381,9 +516,6 @@ export async function warmHatCompositesForFighter({
     const bodySrc = getBaldBodySrc(hairedSrc) || hairedSrc;
     for (const tint of TINTS) {
       let base = resolveBodySrc(bodySrc, mawashiColor, bodyColor, tint);
-      // Baked/skip-recolor preloads often leave tint+bald combos uncached.
-      // Recolor on the spot so we don't skip poses — a skipped warm is a
-      // guaranteed first-use ghost in combat.
       if (!base) {
         try {
           base = await recolorImage(

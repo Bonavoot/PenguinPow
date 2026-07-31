@@ -207,11 +207,25 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
   }, [shouldShowEnvelopes, createParticleData]);
 
   // Animation loop - NO React state updates!
+  // Phase 3: pause rAF while the document is hidden (background tabs still paid
+  // for 62 DOM transform/opacity writes per frame). Resume resets the clock so
+  // the first visible frame does not apply a huge timeFactor jump.
   useEffect(() => {
+    let running = false;
+
+    const stopLoop = () => {
+      running = false;
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+
     const animate = (timestamp) => {
+      if (!running) return;
       if (!lastTimeRef.current) lastTimeRef.current = timestamp;
       const deltaTime = timestamp - lastTimeRef.current;
-      
+
       // Throttle to ~60fps for smooth, premium snowfall.
       if (deltaTime < 16) {
         animationFrameRef.current = requestAnimationFrame(animate);
@@ -274,12 +288,24 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
       animationFrameRef.current = requestAnimationFrame(animate);
     };
 
-    animationFrameRef.current = requestAnimationFrame(animate);
+    const startLoop = () => {
+      if (running || document.hidden) return;
+      running = true;
+      lastTimeRef.current = 0;
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    const onVisibility = () => {
+      if (document.hidden) stopLoop();
+      else startLoop();
+    };
+
+    startLoop();
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      document.removeEventListener("visibilitychange", onVisibility);
+      stopLoop();
     };
   }, [createParticleData]);
 

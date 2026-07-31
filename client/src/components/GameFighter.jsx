@@ -58,6 +58,11 @@ import {
 import { getBakedSprite } from "../utils/bakedSprites";
 import { usePlayerColors } from "../context/PlayerColorContext";
 import { addShake } from "../lib/cameraShake";
+import {
+  getSharedFighterState,
+  isMasteryP5Live,
+  subscribeFighterSnapshot,
+} from "../net/fighterSnapshotBus";
 
 import UiPlayerInfo from "./UiPlayerInfo";
 import UiPlayerInfoBasho from "./UiPlayerInfoBasho";
@@ -198,10 +203,12 @@ import {
 import { resolveBodyForHeadGear } from "../config/baldSprites";
 import {
   compositeHatOntoSprite,
-  compositeHatOntoSpriteSync,
-  getCachedHatComposite,
+  resolveHattedSpriteSync,
   resolveHatOverlaySrcSync,
 } from "../utils/hatComposite";
+import { recordFighterPresent } from "../utils/perf/GhostFrameTracer";
+import { getPerfRecorder } from "../utils/perf/PerfRecorder";
+import { tintFromFlags } from "../utils/bakedSprites";
 import {
   StyledImage,
   DeepGripArmGlow,
@@ -345,23 +352,8 @@ function useRecoloredCloneSrc(baseSrc, ownerColor, ownerBodyColor) {
   return bakedSrc || cachedSrc || asyncSrc || baseSrc;
 }
 
-// =====================================================================
-// SHARED SERVER-STATE ACCUMULATOR (module scope)
-// Both GameFighter instances (and the clinch-tech listener) subscribe to
-// the same "fighter_action" packets. socket.io hands every listener the
-// SAME parsed object, so deltas are merged exactly once per packet here
-// and each listener reads the shared result — previously every listener
-// repeated the full merge for both players on every broadcast.
-// A full (non-delta) packet resets the accumulator, so stale state from
-// a previous match can never leak into a new one.
-// =====================================================================
-const sharedFighterState = { player1: null, player2: null, lastPacket: null };
-
-// MASTERY Phase 5 (5.2): the server stamps `masteryP5` on every state packet so
-// the client knows whether the assist-removal / legibility phase is live. Client
-// ONLY continuous tells (speed-spray + lean, posture-bar pulse, hidden-tech dust)
-// read this so they render nothing with the flag off — today's visuals unchanged.
-let masteryP5Live = false;
+// Shared fighter_action merge lives in net/fighterSnapshotBus (Phase 5+).
+// Game retains one socket listener; fighters/camera/VFX subscribe to fan-out.
 
 // True while the flap power-up owns the player (startup, flight, or landing).
 // Uses flapPhase as a backstop when isFlapping is missing from a delta tick.
@@ -392,27 +384,6 @@ function clearStaleSlapFlagsOnBlockedState(state) {
   if (!isSlapAttackBlocked(state)) return;
   state.isSlapAttack = false;
   state.isAttacking = false;
-}
-
-function mergeFighterPacket(data) {
-  if (data === sharedFighterState.lastPacket) return; // already merged this packet
-  sharedFighterState.lastPacket = data;
-  if (
-    data.isDelta &&
-    sharedFighterState.player1 &&
-    sharedFighterState.player2
-  ) {
-    // Merge in-place (avoids creating new objects 32×/sec → GC pressure)
-    const d1 = data.player1;
-    const d2 = data.player2;
-    const a1 = sharedFighterState.player1;
-    const a2 = sharedFighterState.player2;
-    for (const k in d1) a1[k] = d1[k];
-    for (const k in d2) a2[k] = d2[k];
-  } else {
-    sharedFighterState.player1 = { ...data.player1 };
-    sharedFighterState.player2 = { ...data.player2 };
-  }
 }
 
 const GameFighter = ({
@@ -953,8 +924,8 @@ const GameFighter = ({
   // Bumped by the rAF loop when a time-based visual (hit flash / hit tint /
   // idle sprite hold / dohyo-side flip) needs a re-render to update.
   const [, setVisualTick] = useState(0);
-  // Equipped head gear (top hat): body+hat baked to one data-URL so ice-slide
-  // / breathe CSS can't desync a second layer.
+  // Equipped head gear: body+hat baked to one URL so ice-slide / breathe CSS
+  // can't desync a second layer.
   const [hattedBodySrc, setHattedBodySrc] = useState(null);
   // Tracks which recolored+overlay pair hattedBodySrc belongs to (stale guard).
   const [hattedPairKey, setHattedPairKey] = useState(null);
@@ -3100,16 +3071,12 @@ const GameFighter = ({
     (data) => {
       const currentTime = performance.now();
 
-      // PERFORMANCE: Delta merging is done ONCE per packet in the shared
-      // module-level accumulator (see sharedFighterState) — both GameFighter
-      // instances receive the same parsed packet object from socket.io, so
-      // the second instance reuses the merge instead of repeating it.
-      mergeFighterPacket(data);
-      const player1Data = sharedFighterState.player1;
-      const player2Data = sharedFighterState.player2;
-
-      // MASTERY Phase 5: latch the phase flag from the packet (constant per match).
-      if (typeof data.masteryP5 === "boolean") masteryP5Live = data.masteryP5;
+      // PERFORMANCE: merge happens once in fighterSnapshotBus (retainFighterSocket).
+      // This handler is invoked via subscribeFighterSnapshot fan-out.
+      const shared = getSharedFighterState();
+      const player1Data = shared.player1;
+      const player2Data = shared.player2;
+      if (!player1Data || !player2Data) return;
 
       // Always update ref (read by counter-grab positioning etc.)
       allPlayersDataRef.current.player1 = player1Data;
@@ -3492,7 +3459,9 @@ const GameFighter = ({
   );
 
   useEffect(() => {
-    socket.on("fighter_action", handleFighterAction);
+    const unsubFighterAction = subscribeFighterSnapshot((_state, data) => {
+      handleFighterAction(data);
+    });
 
     const handleSlapParry = (data) => {
       if (
@@ -4167,6 +4136,7 @@ const GameFighter = ({
     };
     socket.on("perfect_parry", handlePerfectParry);
 
+    let unsubClinchTech = null;
     let handleGrabBreak, handleClinchTech, handleCounterGrab,
     handleMatadorSuccess, handleStaminaBlocked, handleClinchCallout,
     handleClinchThrowFail, handleDeepGrip, handlePostureBreak;
@@ -4193,11 +4163,11 @@ const GameFighter = ({
       // GrabTechEffect is still used for clinch throw-clash tumble below.
 
       let wasClinchClashing = false;
-      handleClinchTech = (data) => {
-        // Idempotent — reuses the merge if handleFighterAction ran first.
-        mergeFighterPacket(data);
-        const p1 = sharedFighterState.player1;
-        const p2 = sharedFighterState.player2;
+      handleClinchTech = (_state, data) => {
+        const shared = getSharedFighterState();
+        const p1 = shared.player1;
+        const p2 = shared.player2;
+        if (!p1 || !p2) return;
         const nowClashing = p1.isClinchClashing || p2.isClinchClashing;
         if (nowClashing && !wasClinchClashing) {
           const centerX = (p1.x + p2.x) / 2;
@@ -4211,7 +4181,7 @@ const GameFighter = ({
         }
         wasClinchClashing = nowClashing;
       };
-      socket.on("fighter_action", handleClinchTech);
+      unsubClinchTech = subscribeFighterSnapshot(handleClinchTech);
 
       handleCounterGrab = (data) => {
         if (data?.type !== "counter_grab") return;
@@ -4633,7 +4603,7 @@ const GameFighter = ({
     socket.on("rematch", handleRematch);
 
     return () => {
-      socket.off("fighter_action", handleFighterAction);
+      unsubFighterAction();
       socket.off("slap_parry", handleSlapParry);
       socket.off("charge_clash", handleChargeClash);
       socket.off("player_hit", handlePlayerHit);
@@ -4658,7 +4628,7 @@ const GameFighter = ({
       }
       if (index === 0) {
         socket.off("grab_break", handleGrabBreak);
-        socket.off("fighter_action", handleClinchTech);
+        if (typeof unsubClinchTech === "function") unsubClinchTech();
         socket.off("counter_grab", handleCounterGrab);
         socket.off("matador_success", handleMatadorSuccess);
         socket.off("stamina_blocked", handleStaminaBlocked);
@@ -7313,11 +7283,8 @@ const GameFighter = ({
   // Baking the hat onto the recolored (bald) body keeps motion glued to the head.
   // Only newer pose art has overlays; old sheets (waddle, ritual, salt…) skip.
   //
-  // GHOST-FRAME GUARD: hat composites mint new blob/data URLs. If we paint one
-  // before it's in the decoded/pin cache — or briefly fall back to the unhatted
-  // body after clearing React state — you get ghosts. Prefer sync cache / sync
-  // composite (warmed at preload); never remount via a "|hat" key suffix; only
-  // fall back to unhatted when this pose's composite isn't ready yet.
+  // Phase 2: prefer build-time flattened toppers (resolveHattedSpriteSync).
+  // Runtime compose is fallback for custom colors / tint flashes not in bake.
   const hatOverlaySrc =
     !isKillVictim && !isAnimatedSprite && headGearId
       ? resolveHatOverlaySrcSync(
@@ -7327,63 +7294,111 @@ const GameFighter = ({
         )
       : null;
   const hatUnderBody = !!(headGearId && isHeadGearUnderBody(headGearId));
+  const hatTint = tintFromFlags({
+    hitTintRed: !!renderHitTint,
+    chargeTintWhite: !!showHitFlashThisFrame,
+    blubberTintPurple: !!useBlubberTint,
+    armorTintPink: !!useArmorTint,
+  });
 
   const hatPairKey =
-    hatOverlaySrc && recoloredSpriteSrc
-      ? `${recoloredSpriteSrc}||${hatOverlaySrc}||${hatUnderBody ? "under" : "over"}`
+    headGearId && recoloredSpriteSrc
+      ? `${recoloredSpriteSrc}||${headGearId}||${hatTint}||${hatUnderBody ? "under" : "over"}`
       : null;
-  const cachedHatted = hatPairKey
-    ? getCachedHatComposite(recoloredSpriteSrc, hatOverlaySrc, hatUnderBody) ||
-      compositeHatOntoSpriteSync(
-        recoloredSpriteSrc,
-        hatOverlaySrc,
-        hatUnderBody,
-      )
-    : null;
+  const cachedHatted =
+    headGearId && (recoloredSpriteSrc || bodyForRender)
+      ? resolveHattedSpriteSync({
+          baseSrc: recoloredSpriteSrc,
+          bakeSourceUrl: bodyForRender,
+          overlaySrc: hatOverlaySrc,
+          underBody: hatUnderBody,
+          gearId: headGearId,
+          mawashiColor: targetColor,
+          bodyColor: playerBodyColor,
+          tint: hatTint,
+        })
+      : null;
 
   useEffect(() => {
-    if (!hatOverlaySrc || !recoloredSpriteSrc) {
+    if (!headGearId || !recoloredSpriteSrc) {
       setHattedBodySrc(null);
       setHattedPairKey(null);
       return undefined;
     }
-    const pairKey = `${recoloredSpriteSrc}||${hatOverlaySrc}||${hatUnderBody ? "under" : "over"}`;
-    const ready =
-      getCachedHatComposite(recoloredSpriteSrc, hatOverlaySrc, hatUnderBody) ||
-      compositeHatOntoSpriteSync(
-        recoloredSpriteSrc,
-        hatOverlaySrc,
-        hatUnderBody,
-      );
+    const pairKey = `${recoloredSpriteSrc}||${headGearId}||${hatTint}||${hatUnderBody ? "under" : "over"}`;
+    const ready = resolveHattedSpriteSync({
+      baseSrc: recoloredSpriteSrc,
+      bakeSourceUrl: bodyForRender,
+      overlaySrc: hatOverlaySrc,
+      underBody: hatUnderBody,
+      gearId: headGearId,
+      mawashiColor: targetColor,
+      bodyColor: playerBodyColor,
+      tint: hatTint,
+    });
     if (ready) {
       setHattedBodySrc(ready);
       setHattedPairKey(pairKey);
       return undefined;
     }
+    if (!hatOverlaySrc) return undefined;
     let cancelled = false;
+    // Custom-color / tint-flash recovery only when bake missed.
     compositeHatOntoSprite(recoloredSpriteSrc, hatOverlaySrc, hatUnderBody)
       .then(async (url) => {
-        await preDecodeImage(url);
-        if (!cancelled) {
+        const ok = await preDecodeImage(url);
+        if (!cancelled && ok !== false) {
           setHattedBodySrc(url);
           setHattedPairKey(pairKey);
         }
       })
       .catch(() => {
-        if (!cancelled) {
-          setHattedBodySrc(null);
-          setHattedPairKey(null);
-        }
+        getPerfRecorder().count("hat.asyncCompositeError");
       });
     return () => {
       cancelled = true;
     };
-  }, [hatOverlaySrc, recoloredSpriteSrc, hatUnderBody]);
+  }, [
+    headGearId,
+    hatOverlaySrc,
+    recoloredSpriteSrc,
+    bodyForRender,
+    hatUnderBody,
+    hatTint,
+    targetColor,
+    playerBodyColor,
+  ]);
 
   const validHatted =
     cachedHatted ||
     (hatPairKey && hattedPairKey === hatPairKey ? hattedBodySrc : null);
   const staticBodySrc = validHatted || recoloredSpriteSrc;
+  const presentPath = !headGearId
+    ? "noTopper"
+    : validHatted
+      ? cachedHatted && validHatted === cachedHatted
+        ? "cachedOrSyncTopper"
+        : "asyncTopper"
+      : "fallbackBody";
+
+  // Phase 0/1 ghost-frame diagnostics (no-op unless ?perf=1 / pumo_perf).
+  if (typeof window !== "undefined" && window.__PUMO_PERF?.enabled) {
+    recordFighterPresent({
+      fighterId: penguin?.fighter ?? "unknown",
+      requestedPoseSrc: effectiveSpriteSrc || null,
+      bodySrc: recoloredSpriteSrc || null,
+      displayedSrc: staticBodySrc || null,
+      mawashiColor: targetColor || null,
+      bodyColor: playerBodyColor || null,
+      topperId: headGearId || null,
+      tint: null,
+      underBody: hatUnderBody,
+      path: presentPath,
+      cacheKey: hatPairKey,
+      hattedPairKey: hattedPairKey || null,
+      decodePending: !!(hatOverlaySrc && !validHatted),
+    });
+  }
 
   // Shared style-driving props for the static fighter <img>. Spread into BOTH
   // the body sprite and the grab-arm overlay so the arm inherits the exact same
@@ -7631,7 +7646,7 @@ const GameFighter = ({
               // "openable" tell reads on the HUD too. Gated on the phase flag ⇒
               // no pulse with the flag off (server drives isPostureBroken).
               player1PostureBroken:
-                masteryP5Live && !!allPlayersData.player1?.isPostureBroken,
+                isMasteryP5Live() && !!allPlayersData.player1?.isPostureBroken,
               player2Stamina: allPlayersData.player2?.stamina ?? 100,
               player2ActivePowerUp: isBashoMatch
                 ? bashoOpponentActive
@@ -7655,7 +7670,7 @@ const GameFighter = ({
                 ? (allPlayersData.player2?.clinchShoveLead ?? null)
                 : null,
               player2PostureBroken:
-                masteryP5Live && !!allPlayersData.player2?.isPostureBroken,
+                isMasteryP5Live() && !!allPlayersData.player2?.isPostureBroken,
             };
 
             if (isBashoMatch) {

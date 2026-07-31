@@ -1,4 +1,12 @@
-import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useMemo,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  lazy,
+  Suspense,
+} from "react";
 import styled, { keyframes } from "styled-components";
 import crowdBoyIdle1 from "../assets/crowd-boy-idle-1-graded.png";
 import crowdBoyIdle2 from "../assets/crowd-boy-idle-2-graded.png";
@@ -33,12 +41,15 @@ import crowdSalarymanSideIdle1 from "../assets/crowd-salaryman-side-idle-1-grade
 import crowdSalarymanSideCheering1 from "../assets/crowd-salaryman-side-cheering-1-graded.png";
 import crowdSalarymanSideIdle2 from "../assets/crowd-salaryman-side-idle-2-graded.png";
 import crowdSalarymanSideCheering2 from "../assets/crowd-salaryman-side-cheering-2-graded.png";
-import CrowdEditor from "./CrowdEditor";
 import CROWD_POSITIONS from "./crowdPositionsData";
 import winnerSound from "../sounds/winner-sound.ogg";
 import { playBuffer, preloadSound } from "../utils/audioEngine";
 import { getGlobalVolume } from "./Settings";
 import { bashoCrowdFill } from "../config/bashoConfig";
+
+// Editor (+ dohyo-style.webp) only loads when opened — keeps ~6MB style out of
+// the default player graph.
+const CrowdEditor = lazy(() => import("./CrowdEditor"));
 
 preloadSound(winnerSound);
 
@@ -992,13 +1003,15 @@ const CrowdLayer = ({ crowdEvent = null, bashoRank = null }) => {
         </FlashLayer>
       )}
       {editorMode && (
-        <CrowdEditor
-          // Always edit the FULL unfiltered layout — never the BASHO-thinned
-          // runtime seats (saving those permanently emptied the stands).
-          positions={loadCrowdPositions()}
-          crowdTypes={CROWD_TYPES}
-          onClose={handleEditorClose}
-        />
+        <Suspense fallback={null}>
+          <CrowdEditor
+            // Always edit the FULL unfiltered layout — never the BASHO-thinned
+            // runtime seats (saving those permanently emptied the stands).
+            positions={loadCrowdPositions()}
+            crowdTypes={CROWD_TYPES}
+            onClose={handleEditorClose}
+          />
+        </Suspense>
       )}
     </>
   );

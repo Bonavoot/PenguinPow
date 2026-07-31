@@ -155,7 +155,219 @@ function _play(ctx, buffer, volume, duration, playbackRate = 1.0, loop = false, 
   }
 }
 
-function createCrossfadeLoop(
+/**
+ * Phase 4: warm browser media cache for long music tracks without decoding
+ * full PCM AudioBuffers (~110 MB for the three battle WAVs previously).
+ */
+function preloadMusic(src) {
+  if (!src || typeof Audio === "undefined") return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const el = new Audio();
+      el.preload = "auto";
+      el.src = src;
+      const done = () => resolve(el);
+      el.addEventListener("canplaythrough", done, { once: true });
+      el.addEventListener("error", () => resolve(null), { once: true });
+      // Some Chromium builds never fire canplaythrough for long files; don't hang.
+      setTimeout(done, 8000);
+      el.load();
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+function preloadMusicTracks(sources) {
+  return Promise.all(sources.map((src) => preloadMusic(src)));
+}
+
+function clamp01(v) {
+  return Math.max(0, Math.min(1, v));
+}
+
+function rampHtmlVolume(el, from, to, seconds, onDone) {
+  const start = performance.now();
+  const dur = Math.max(0.05, seconds) * 1000;
+  el.volume = clamp01(from);
+  let raf = 0;
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / dur);
+    // equal-power-ish ease
+    const eased = Math.sin(t * Math.PI * 0.5);
+    el.volume = clamp01(from + (to - from) * eased);
+    if (t < 1) {
+      raf = requestAnimationFrame(step);
+    } else if (onDone) {
+      onDone();
+    }
+  };
+  raf = requestAnimationFrame(step);
+  return () => {
+    if (raf) cancelAnimationFrame(raf);
+  };
+}
+
+/**
+ * Streamed crossfade loop via HTMLAudioElement (no AudioBuffer residency).
+ * Same stop({ fadeOut, hold }) surface as the buffer-based loop.
+ */
+function createStreamedCrossfadeLoop(
+  src,
+  volume = 1.0,
+  crossfadeDuration = 2.0,
+  initialFadeIn = 0
+) {
+  const pool = [new Audio(), new Audio()];
+  for (const el of pool) {
+    el.preload = "auto";
+    el.src = src;
+    el.loop = false;
+  }
+  let poolIdx = 0;
+  let activeEl = null;
+  let durationSec = NaN;
+  let stopped = false;
+  let isFirstPlay = true;
+  let nextTimer = null;
+  let stopHoldTimer = null;
+  const pendingTimers = [];
+  const cancelRamps = [];
+
+  const trackCancel = (fn) => {
+    cancelRamps.push(fn);
+  };
+  const clearRamps = () => {
+    while (cancelRamps.length) {
+      try {
+        cancelRamps.pop()();
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  function scheduleNext() {
+    if (stopped) return;
+    const el = pool[poolIdx++ % 2];
+    try {
+      el.pause();
+      el.currentTime = 0;
+    } catch {
+      /* ignore */
+    }
+
+    const startPlayback = () => {
+      if (stopped) return;
+      if (Number.isFinite(el.duration) && el.duration > 0) {
+        durationSec = el.duration;
+      }
+
+      if (isFirstPlay) {
+        if (initialFadeIn > 0) {
+          el.volume = 0;
+          el.play().catch(() => {});
+          trackCancel(rampHtmlVolume(el, 0, volume, initialFadeIn));
+        } else {
+          el.volume = clamp01(volume);
+          el.play().catch(() => {});
+        }
+        isFirstPlay = false;
+      } else {
+        el.volume = 0;
+        el.play().catch(() => {});
+        trackCancel(rampHtmlVolume(el, 0, volume, crossfadeDuration));
+        if (activeEl && activeEl !== el) {
+          const prev = activeEl;
+          trackCancel(
+            rampHtmlVolume(prev, prev.volume, 0, crossfadeDuration, () => {
+              try {
+                prev.pause();
+              } catch {
+                /* ignore */
+              }
+            })
+          );
+        }
+      }
+      activeEl = el;
+
+      const d = Number.isFinite(durationSec) ? durationSec : el.duration;
+      const lead = Math.max(0.25, (d || 30) - crossfadeDuration);
+      nextTimer = setTimeout(scheduleNext, lead * 1000);
+      pendingTimers.push(nextTimer);
+    };
+
+    if (el.readyState >= 1 && Number.isFinite(el.duration) && el.duration > 0) {
+      startPlayback();
+    } else {
+      el.addEventListener(
+        "loadedmetadata",
+        () => {
+          durationSec = el.duration;
+          startPlayback();
+        },
+        { once: true }
+      );
+      el.load();
+    }
+  }
+
+  scheduleNext();
+
+  return {
+    stop({ fadeOut = 0.5, hold = 0 } = {}) {
+      if (stopHoldTimer) {
+        clearTimeout(stopHoldTimer);
+        stopHoldTimer = null;
+      }
+
+      const beginFade = () => {
+        stopHoldTimer = null;
+        stopped = true;
+        pendingTimers.forEach(clearTimeout);
+        pendingTimers.length = 0;
+        if (nextTimer) clearTimeout(nextTimer);
+        clearRamps();
+        const duration = Math.max(0.05, fadeOut);
+        const targets = pool.filter((el) => !el.paused || el === activeEl);
+        for (const el of targets) {
+          trackCancel(
+            rampHtmlVolume(el, el.volume, 0, duration, () => {
+              try {
+                el.pause();
+              } catch {
+                /* ignore */
+              }
+            })
+          );
+        }
+        const stopTimer = setTimeout(() => {
+          clearRamps();
+          for (const el of pool) {
+            try {
+              el.pause();
+              el.removeAttribute("src");
+              el.load();
+            } catch {
+              /* ignore */
+            }
+          }
+          activeEl = null;
+        }, duration * 1000 + 80);
+        pendingTimers.push(stopTimer);
+      };
+
+      if (hold > 0 && !stopped) {
+        stopHoldTimer = setTimeout(beginFade, hold * 1000);
+      } else {
+        beginFade();
+      }
+    },
+  };
+}
+
+function createBufferCrossfadeLoop(
   src,
   volume = 1.0,
   crossfadeDuration = 2.0,
@@ -181,8 +393,8 @@ function createCrossfadeLoop(
   const fadeOutCurve = new Float32Array(CURVE_STEPS);
   for (let i = 0; i < CURVE_STEPS; i++) {
     const t = i / (CURVE_STEPS - 1);
-    fadeInCurve[i] = Math.sin(t * Math.PI / 2);
-    fadeOutCurve[i] = Math.cos(t * Math.PI / 2);
+    fadeInCurve[i] = Math.sin((t * Math.PI) / 2);
+    fadeOutCurve[i] = Math.cos((t * Math.PI) / 2);
   }
 
   function scheduleNext() {
@@ -199,7 +411,10 @@ function createCrossfadeLoop(
     if (isFirstPlay) {
       if (initialFadeIn > 0) {
         instanceMaster.gain.setValueAtTime(0, startTime);
-        instanceMaster.gain.linearRampToValueAtTime(volume, startTime + initialFadeIn);
+        instanceMaster.gain.linearRampToValueAtTime(
+          volume,
+          startTime + initialFadeIn
+        );
       } else {
         instanceMaster.gain.setValueAtTime(volume, startTime);
       }
@@ -207,17 +422,30 @@ function createCrossfadeLoop(
       isFirstPlay = false;
     } else {
       gainNode.gain.value = 0;
-      gainNode.gain.setValueCurveAtTime(fadeInCurve, startTime, crossfadeDuration);
+      gainNode.gain.setValueCurveAtTime(
+        fadeInCurve,
+        startTime,
+        crossfadeDuration
+      );
     }
 
     if (activeSources.length > 0) {
       const prev = activeSources[activeSources.length - 1];
       prev.gainNode.gain.cancelScheduledValues(startTime);
-      prev.gainNode.gain.setValueCurveAtTime(fadeOutCurve, startTime, crossfadeDuration);
+      prev.gainNode.gain.setValueCurveAtTime(
+        fadeOutCurve,
+        startTime,
+        crossfadeDuration
+      );
       const fadeTimer = setTimeout(() => {
         if (stopped) return;
-        try { prev.source.stop(); } catch (e) {}
-        try { prev.source.disconnect(); prev.gainNode.disconnect(); } catch (e) {}
+        try {
+          prev.source.stop();
+        } catch (e) {}
+        try {
+          prev.source.disconnect();
+          prev.gainNode.disconnect();
+        } catch (e) {}
         const idx = activeSources.indexOf(prev);
         if (idx !== -1) activeSources.splice(idx, 1);
       }, crossfadeDuration * 1000 + 100);
@@ -234,7 +462,9 @@ function createCrossfadeLoop(
 
   function begin() {
     if (ctx.state === "suspended") {
-      ctx.resume().then(() => { if (!stopped) scheduleNext(); });
+      ctx.resume().then(() => {
+        if (!stopped) scheduleNext();
+      });
     } else {
       scheduleNext();
     }
@@ -266,11 +496,18 @@ function createCrossfadeLoop(
         } catch (e) {}
         const stopTimer = setTimeout(() => {
           for (const entry of activeSources) {
-            try { entry.source.stop(); } catch (e) {}
-            try { entry.source.disconnect(); entry.gainNode.disconnect(); } catch (e) {}
+            try {
+              entry.source.stop();
+            } catch (e) {}
+            try {
+              entry.source.disconnect();
+              entry.gainNode.disconnect();
+            } catch (e) {}
           }
           activeSources.length = 0;
-          try { instanceMaster.disconnect(); } catch (e) {}
+          try {
+            instanceMaster.disconnect();
+          } catch (e) {}
         }, duration * 1000 + 50);
         pendingTimers.push(stopTimer);
       };
@@ -284,4 +521,39 @@ function createCrossfadeLoop(
   };
 }
 
-export { preloadSound, preloadSounds, playBuffer, ensureContextResumed, createCrossfadeLoop };
+/**
+ * Prefer decoded AudioBuffer loops for short SFX-style music (eeshi).
+ * Fall back to streamed HTMLAudioElement loops for long battle tracks that
+ * were intentionally not preloadSound()'d.
+ */
+function createCrossfadeLoop(
+  src,
+  volume = 1.0,
+  crossfadeDuration = 2.0,
+  initialFadeIn = 0
+) {
+  if (audioBuffers.has(src)) {
+    return createBufferCrossfadeLoop(
+      src,
+      volume,
+      crossfadeDuration,
+      initialFadeIn
+    );
+  }
+  return createStreamedCrossfadeLoop(
+    src,
+    volume,
+    crossfadeDuration,
+    initialFadeIn
+  );
+}
+
+export {
+  preloadSound,
+  preloadSounds,
+  preloadMusic,
+  preloadMusicTracks,
+  playBuffer,
+  ensureContextResumed,
+  createCrossfadeLoop,
+};

@@ -7,6 +7,10 @@ import {
   getShakeState,
   resetShakeBias,
 } from "../lib/cameraShake";
+import {
+  getSharedFighterState,
+  subscribeFighterSnapshot,
+} from "../net/fighterSnapshotBus";
 
 // ── Tunable constants ──────────────────────────────────────────────
 const GAME_WIDTH = 1280;
@@ -219,9 +223,11 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
   useEffect(() => {
     if (!socket) return;
 
-    const onFighterAction = (data) => {
-      const p1 = data.player1;
-      const p2 = data.player2;
+    const onFighterAction = () => {
+      // Accumulated state from fighterSnapshotBus (single socket owner).
+      const shared = getSharedFighterState();
+      const p1 = shared.player1;
+      const p2 = shared.player2;
 
       // ── Position tracking ──
       // Hit shake is no longer derived here: it's driven explicitly by the
@@ -345,7 +351,7 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
       }
     };
 
-    socket.on("fighter_action", onFighterAction);
+    const unsubFighter = subscribeFighterSnapshot(onFighterAction);
     socket.on("cinematic_kill", onCinematicKill);
     socket.on("game_reset", onGameReset);
     socket.on("game_start", onGameStart);
@@ -601,7 +607,7 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
     rafId.current = requestAnimationFrame(tick);
 
     return () => {
-      socket.off("fighter_action", onFighterAction);
+      unsubFighter();
       socket.off("cinematic_kill", onCinematicKill);
       socket.off("game_reset", onGameReset);
       socket.off("game_start", onGameStart);

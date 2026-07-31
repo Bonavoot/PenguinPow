@@ -1,0 +1,144 @@
+{
+  "version": 1,
+  "description": "Named repeatable Phase 0 performance scenarios for PUMO PUMO !",
+  "targetBuild": "production Electron package (npm run build:electron). Dev/Vite is not a valid FPS baseline.",
+  "enableInstrumentation": "Launch with ?perf=1 or localStorage.setItem('pumo_perf','1') then reload. Overlay: Ctrl+Shift+P. Dump: window.__PUMO_PERF.dump()",
+  "scenarios": [
+    {
+      "id": "idle-match-5m",
+      "name": "Idle match for five minutes",
+      "durationSec": 300,
+      "steps": [
+        "Start a local VS CPU or training match with toppers equipped",
+        "Do not input after Hakkiyoi",
+        "Record frame times, heap, cache bytes, active particles for 5 minutes"
+      ],
+      "metrics": ["frame.p50", "frame.p95", "frame.p99", "heap", "cacheBytes", "longTasks"]
+    },
+    {
+      "id": "continuous-movement",
+      "name": "Continuous movement and dashing",
+      "durationSec": 120,
+      "steps": [
+        "Both fighters move and dash continuously",
+        "Avoid heavy particle spam"
+      ],
+      "metrics": ["frame.p95", "interpolationDepth", "rafCallbacksPerFrame"]
+    },
+    {
+      "id": "flap-slide-jump-torture",
+      "name": "FLAP + slide-jump transition torture",
+      "durationSec": 180,
+      "steps": [
+        "Rapidly repeat: slide → slide jump → FLAP1 → FLAP2 → recovery → idle → hit interrupt → land → FLAP again",
+        "Run with every head gear id and representative mawashi/body/tint combos",
+        "Enable GhostFrameTracer; assert zero pose/cosmetic tuple mismatches"
+      ],
+      "metrics": ["ghostMismatchCount", "syncCompositeCount", "toDataURLMs", "fallbackBaldCount", "frame.p99"]
+    },
+    {
+      "id": "both-toppers",
+      "name": "Both players wearing toppers",
+      "durationSec": 180,
+      "steps": [
+        "Equip distinct toppers on P1 and P2",
+        "Play normal combat including FLAP"
+      ],
+      "metrics": ["hatCacheSize", "pinnedDecodedBytes", "ghostMismatchCount"]
+    },
+    {
+      "id": "hit-parry-charge",
+      "name": "Rapid hit/parry/charge effects",
+      "durationSec": 120,
+      "steps": ["Spam slap/parry/charge interactions"],
+      "metrics": ["frame.p99", "longTasks", "particleActive", "tintCompositeMisses"]
+    },
+    {
+      "id": "particle-stress",
+      "name": "Maximum particle stress",
+      "durationSec": 90,
+      "steps": ["Trigger overlapping impact/kill/trail emitters"],
+      "metrics": ["frame.p95", "particleActive", "canvasBackingBytes"]
+    },
+    {
+      "id": "cinematic-kill",
+      "name": "Cinematic kill",
+      "durationSec": 60,
+      "steps": ["Force charged kill cinematics repeatedly"],
+      "metrics": ["frame.max", "longTasks", "rafCallbacksPerFrame"]
+    },
+    {
+      "id": "rematch-20",
+      "name": "20 rematches",
+      "durationSec": 600,
+      "steps": [
+        "Complete or skip to rematch 20 times",
+        "Snapshot memory/cache after each rematch"
+      ],
+      "metrics": ["heapGrowth", "pinnedDecodedCount", "hatCacheSize", "ghostMismatchCount"]
+    },
+    {
+      "id": "basho-50",
+      "name": "50 BASHO bouts / color changes",
+      "durationSec": 1800,
+      "steps": [
+        "Advance through BASHO with frequent opponent/color changes",
+        "Watch for prior-fighter color ghosts and unbounded pin growth"
+      ],
+      "metrics": ["heapGrowth", "recolorCacheSize", "priorColorGhosts"]
+    },
+    {
+      "id": "visibility-return",
+      "name": "Leave inactive then return",
+      "variants": ["30s", "5m", "20m"],
+      "steps": [
+        "Start match, hide tab or blur window for the variant duration",
+        "Return and immediately fight / FLAP",
+        "Record rewarm overlap, decode storm duration, first-playable-frame readiness"
+      ],
+      "metrics": ["rewarmDurationMs", "rewarmOverlap", "postFocusLongTasks", "ghostMismatchCount"]
+    },
+    {
+      "id": "electron-minimize-restore",
+      "name": "Minimize and restore Electron",
+      "durationSec": 120,
+      "steps": [
+        "Packaged Electron only",
+        "Minimize for 60s, restore, fight immediately"
+      ],
+      "metrics": ["rewarmDurationMs", "frame.p99", "ghostMismatchCount"]
+    },
+    {
+      "id": "network-impairment",
+      "name": "Network latency/jitter/loss",
+      "durationSec": 300,
+      "steps": [
+        "Online 1v1 with 20/50/100/150/250ms latency, jitter, loss, reorder",
+        "Phase 0: capture packet rates/handler times only; structural packet changes are Phase 5"
+      ],
+      "metrics": ["packetsPerSec", "packetHandlerMs", "interpolationDepth", "staleStates"]
+    },
+    {
+      "id": "low-end-hw",
+      "name": "Steam Deck-class / low-mid iGPU",
+      "durationSec": 300,
+      "steps": [
+        "Repeat flap-slide-jump-torture + particle-stress on target hardware",
+        "Document exceptions vs desktop baseline"
+      ],
+      "metrics": ["frame.p95", "frame.p99", "longTasks"]
+    },
+    {
+      "id": "hidden-tab-preload",
+      "name": "Hidden-tab preload deadlock repro",
+      "durationSec": 120,
+      "steps": [
+        "Start prematch preload",
+        "Immediately hide the tab/window before Step 6 completes",
+        "Observe whether spritesReady/isLoading stalls until visible",
+        "PerfRecorder marks preload.step6 visibility + wall clock"
+      ],
+      "metrics": ["preloadStep6Ms", "preloadHiddenDuringBarrier", "preloadCompletedWhileHidden"]
+    }
+  ]
+}

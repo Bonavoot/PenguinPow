@@ -1,6 +1,8 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
-import gameMapBg from "../assets/game-map-444.png";
+import styled from "styled-components";
+import gameMapBg from "../assets/game-map-444.webp";
+import dohyoStyleBg from "../assets/dohyo-style.webp";
 import {
   TASSLE_STORAGE_KEY,
   TASSLE_COLORS,
@@ -33,6 +35,18 @@ const EDITOR_TAB_DOHYO = "dohyo";
 // Same logical stage as .app-container — keeps perspective(px) matching in-game.
 const STAGE_W = 1280;
 const STAGE_H = 720;
+
+/** Editor-only live 3D dohyo (was App.css .dohyo-overlay--live). */
+const LiveDohyoOverlay = styled.div.attrs({ className: "dohyo-overlay" })`
+  background-image: url(${dohyoStyleBg});
+  background-size: var(--dohyo-size-w, 90%) var(--dohyo-size-h, 80%);
+  background-position: var(--dohyo-pos-x, 50%) var(--dohyo-pos-y, 25%);
+  transform-origin: var(--dohyo-origin-x, 48%) var(--dohyo-origin-y, 108%);
+  transform: perspective(var(--dohyo-perspective, 380px))
+    rotateX(var(--dohyo-rotate-x, 5deg))
+    scaleY(var(--dohyo-scale-y, 0.85))
+    translateY(var(--dohyo-translate-y, 7%));
+`;
 
 const CAMERA_PRESET_ORDER = ["ready", "prematch", "fightWide", "flat"];
 const CAMERA_PRESET_LABELS = {
@@ -1153,8 +1167,7 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
             })}
 
         {/* Dohyo — above stands crowd, below foreground (matches live z:1) */}
-        <div
-          className="dohyo-overlay dohyo-overlay--live"
+        <LiveDohyoOverlay
           style={{
             zIndex: 200,
             pointerEvents: isDohyoTab ? "auto" : "none",

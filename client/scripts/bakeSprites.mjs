@@ -1,21 +1,17 @@
 /**
  * bakeSprites — build-time sprite baker.
  *
- * Produces real PNG files for every (sprite, mawashi, body, tint) the game's
- * KNOWN color set needs, plus a manifest mapping each tuple to its file URL.
- * Runtime (utils/bakedSprites.js) resolves these first and only falls back to
- * live canvas recolor for arbitrary custom colors not in the set.
+ * Produces:
+ *  1) Recolored body/spritesheet PNGs for known (sprite, mawashi, body, tint)
+ *  2) Flattened body+topper WebPs for known (gear, pose, mawashi, body, tint)
+ *  3) manifest.json with `sprites` + `hats` maps
  *
- * Pixel parity: this script calls the SAME processImageData() from
- * recolorCore.js that the Web Worker / main-thread path use, and decodes/encodes
- * straight-alpha RGBA via pngjs (matching canvas getImageData), so baked PNGs
- * are pixel-identical to the runtime recolor.
+ * Runtime (utils/bakedSprites.js) resolves these first; arbitrary custom colors
+ * fall back to live recolor / composite outside the normal Steam match path.
  *
- * Usage:  node scripts/bakeSprites.mjs        (from the client/ dir)
- *         npm run bake
+ * Usage:  npm run bake   (from client/)
  *
- * Output: client/public/baked/<hash>.png  +  client/public/baked/manifest.json
- * (both gitignored — regenerate via this script / the build).
+ * Output: client/public/baked/*  +  client/public/baked/manifest.json
  */
 
 import fs from "node:fs";
@@ -25,6 +21,14 @@ import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
 import { BAKE_SOURCES, bakeKey } from "../src/config/bakeSources.js";
+import {
+  HAT_GEAR_IDS,
+  HAT_POSE_SOURCES,
+  HAT_UNDER_BODY,
+  HAT_RECOLOR_OVERLAY,
+  hatBakeKey,
+  overlayFileFor,
+} from "../src/config/bakeHatSources.js";
 import {
   COLOR_PRESETS,
   BODY_COLOR_PRESETS,
@@ -48,7 +52,10 @@ const MANIFEST_PATH = path.join(OUT_DIR, "manifest.json");
 
 // Bump to force a full rebuild after an algorithm change (mirrors the runtime
 // cache-version idea). Stored in the manifest so the runtime can sanity-check.
-const BAKE_VERSION = "v1";
+const BAKE_VERSION = "v2-hats";
+
+/** Skip menu-only topper poses in the match bake (still bake combat/portrait). */
+const BAKE_MENU_HATS = process.env.BAKE_MENU_HATS === "1";
 
 // SCOPE: bake the BASE tint only. The brief hit/charge/blubber/armor flash
 // tints stay on the runtime recolor path (they're momentary overlays and
@@ -273,6 +280,180 @@ async function main() {
     }
   }
 
+  // ── Phase 2: flattened body + topper composites ─────────────────────
+  const hats = {};
+  let hatCount = 0;
+  let hatDeduped = 0;
+  const hatContentToFile = new Map(); // sha1 → filename.webp
+
+  const poseList = HAT_POSE_SOURCES.filter(
+    (p) => BAKE_MENU_HATS || !p.menuOnly,
+  );
+  console.log(
+    `[bake] hats: ${HAT_GEAR_IDS.length} gears × ${poseList.length} poses × ${combos.length} combos…`,
+  );
+
+  // Decode hat bodies + overlays once.
+  const hatBodyDecoded = new Map();
+  const hatOverlayDecoded = new Map();
+  for (const pose of poseList) {
+    const abs = path.join(ASSETS_DIR, pose.bodyFile);
+    if (!fs.existsSync(abs)) {
+      console.warn(`[bake] MISSING hat body, skipping pose: ${pose.bodyFile}`);
+      continue;
+    }
+    hatBodyDecoded.set(pose.bodySpriteId, await decodePng(abs));
+    for (const gearId of HAT_GEAR_IDS) {
+      const ovRel = overlayFileFor(gearId, pose.hairedStem);
+      const ovAbs = path.join(ASSETS_DIR, ovRel);
+      if (!fs.existsSync(ovAbs)) {
+        console.warn(`[bake] MISSING overlay: ${ovRel}`);
+        continue;
+      }
+      const ovKey = `${gearId}|${pose.hairedStem}`;
+      if (!hatOverlayDecoded.has(ovKey)) {
+        hatOverlayDecoded.set(ovKey, await decodePng(ovAbs));
+      }
+    }
+  }
+
+  function compositeRgba(bodyPng, overlayPng, underBody) {
+    const width = bodyPng.width;
+    const height = bodyPng.height;
+    const out = Buffer.alloc(width * height * 4);
+    const srcA = underBody ? overlayPng.data : bodyPng.data;
+    const srcB = underBody ? bodyPng.data : overlayPng.data;
+    // Layer A (full copy), then straight-alpha over with layer B.
+    Buffer.from(srcA).copy(out);
+    for (let i = 0; i < out.length; i += 4) {
+      const ba = srcB[i + 3] / 255;
+      if (ba <= 0) continue;
+      const br = srcB[i];
+      const bg = srcB[i + 1];
+      const bb = srcB[i + 2];
+      if (ba >= 1) {
+        out[i] = br;
+        out[i + 1] = bg;
+        out[i + 2] = bb;
+        out[i + 3] = 255;
+        continue;
+      }
+      const aa = out[i + 3] / 255;
+      const outA = ba + aa * (1 - ba);
+      if (outA <= 0) {
+        out[i + 3] = 0;
+        continue;
+      }
+      out[i] = Math.round((br * ba + out[i] * aa * (1 - ba)) / outA);
+      out[i + 1] = Math.round((bg * ba + out[i + 1] * aa * (1 - ba)) / outA);
+      out[i + 2] = Math.round((bb * ba + out[i + 2] * aa * (1 - ba)) / outA);
+      out[i + 3] = Math.round(outA * 255);
+    }
+    return { width, height, data: out };
+  }
+
+  // Cache recolored hat bodies: (bodySpriteId|mawashi|body|tint) → rgba
+  const recoloredHatBodyCache = new Map();
+
+  async function encodeHatWebp(rgba, absOut) {
+    await sharp(rgba.data, {
+      raw: { width: rgba.width, height: rgba.height, channels: 4 },
+    })
+      .webp({
+        // 70 keeps package size closer to Steam budgets while preserving
+        // transparent edges; override with BAKE_HAT_WEBP_QUALITY=82 etc.
+        quality: Number(process.env.BAKE_HAT_WEBP_QUALITY || 70),
+        alphaQuality: 85,
+        effort: 4,
+      })
+      .toFile(absOut);
+  }
+
+  for (const combo of combos) {
+    for (const gearId of HAT_GEAR_IDS) {
+      const underBody = !!HAT_UNDER_BODY[gearId];
+      const recolorOv = !!HAT_RECOLOR_OVERLAY[gearId];
+      for (const pose of poseList) {
+        const bodySrc = hatBodyDecoded.get(pose.bodySpriteId);
+        const ovKey = `${gearId}|${pose.hairedStem}`;
+        const ovSrc = hatOverlayDecoded.get(ovKey);
+        if (!bodySrc || !ovSrc) continue;
+
+        for (const tint of BAKE_TINTS) {
+          const key = hatBakeKey(
+            gearId,
+            pose.bodySpriteId,
+            combo.mawashi,
+            combo.body,
+            tint,
+          );
+          if (hats[key]) continue;
+
+          const bodyCacheKey = `${pose.bodySpriteId}|${combo.mawashi}|${combo.body}|${tint}`;
+          let bodyRgba = recoloredHatBodyCache.get(bodyCacheKey);
+          if (!bodyRgba) {
+            bodyRgba = isNoOpBase(combo.mawashi, combo.body, tint)
+              ? {
+                  width: bodySrc.width,
+                  height: bodySrc.height,
+                  data: Buffer.from(bodySrc.data),
+                }
+              : recolorBitmap(bodySrc, combo.mawashi, combo.body, tint);
+            recoloredHatBodyCache.set(bodyCacheKey, bodyRgba);
+          }
+
+          let overlayRgba = ovSrc;
+          if (recolorOv && !isNoOpBase(combo.mawashi, null, "base")) {
+            overlayRgba = recolorBitmap(ovSrc, combo.mawashi, null, "base");
+          }
+
+          // Resize overlay if needed (rare)
+          if (
+            overlayRgba.width !== bodyRgba.width ||
+            overlayRgba.height !== bodyRgba.height
+          ) {
+            const { data, info } = await sharp(overlayRgba.data, {
+              raw: {
+                width: overlayRgba.width,
+                height: overlayRgba.height,
+                channels: 4,
+              },
+            })
+              .resize(bodyRgba.width, bodyRgba.height, { fit: "fill" })
+              .raw()
+              .toBuffer({ resolveWithObject: true });
+            overlayRgba = {
+              width: info.width,
+              height: info.height,
+              data,
+            };
+          }
+
+          const flat = compositeRgba(bodyRgba, overlayRgba, underBody);
+          const contentHash = crypto
+            .createHash("sha1")
+            .update(flat.data)
+            .digest("hex")
+            .slice(0, 20);
+          let fileName = hatContentToFile.get(contentHash);
+          if (!fileName) {
+            fileName = `h${contentHash}.webp`;
+            hatContentToFile.set(contentHash, fileName);
+            await encodeHatWebp(flat, path.join(OUT_DIR, fileName));
+            hatCount++;
+          } else {
+            hatDeduped++;
+          }
+          hats[key] = `/baked/${fileName}?v=${bakeTag}`;
+          if (hatCount > 0 && hatCount % 200 === 0) {
+            const secs = ((Date.now() - startedAt) / 1000).toFixed(0);
+            console.log(`[bake]   ${hatCount} hat WebPs written (${secs}s)…`);
+          }
+        }
+      }
+    }
+  }
+
   fs.writeFileSync(
     MANIFEST_PATH,
     JSON.stringify(
@@ -281,6 +462,7 @@ async function main() {
         generatedAt: new Date().toISOString(),
         bakeTag,
         sprites: manifest,
+        hats,
       },
       null,
       0
@@ -288,10 +470,18 @@ async function main() {
   );
 
   const secs = ((Date.now() - startedAt) / 1000).toFixed(0);
+  const hatBytes = [...hatContentToFile.values()].reduce((s, f) => {
+    try {
+      return s + fs.statSync(path.join(OUT_DIR, f)).size;
+    } catch {
+      return s;
+    }
+  }, 0);
   console.log(
-    `[bake] DONE: ${count} PNGs (${skipped} no-op skipped), manifest ${
-      Object.keys(manifest).length
-    } entries, ${secs}s → ${OUT_DIR}`
+    `[bake] DONE: ${count} body PNGs (${skipped} no-op skipped), ` +
+      `${hatCount} hat WebPs (${hatDeduped} deduped refs, ${(hatBytes / 1024 / 1024).toFixed(1)} MB), ` +
+      `manifest sprites=${Object.keys(manifest).length} hats=${Object.keys(hats).length}, ` +
+      `${secs}s → ${OUT_DIR}`,
   );
 }
 

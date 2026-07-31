@@ -19,11 +19,13 @@ import {
   pinDecodedImages,
   getCacheStats,
   flushPersistentCache,
+  getDecodedImage,
 } from "../utils/SpriteRecolorizer";
 import { ANIMATED_SPRITES, STATIC_SPRITES, DEFAULT_COLORS, DEFAULT_BODY_COLORS, COLOR_PRESETS, BODY_COLOR_PRESETS, SPRITE_BASE_COLOR } from "../config/spriteConfig";
 import { bakedReady, getBakedUrlsForColor } from "../utils/bakedSprites";
 import { warmHatCompositesForFighter } from "../utils/hatComposite";
 import { ALL_HEAD_OVERLAYS } from "../config/cosmetics";
+import { awaitDecodedReadiness } from "../utils/assetReadiness";
 import { ALL_BALD_BODY_SRCS } from "../config/baldSprites";
 import { getRosterColorCombos } from "../lib/bashoRun";
 import { SPRITESHEET_CONFIG, SPRITESHEET_CONFIG_BY_NAME } from "../config/animatedSpriteConfig";
@@ -607,17 +609,59 @@ export function PlayerColorProvider({ children }) {
       console.log(`[Preload] Warmed ${hatUrls.length} hat composites`);
     }
     
-    // Step 6: Wait for browser to fully process all decoded images
-    // Multiple RAF cycles + extended timeout ensures GPU textures are uploaded
-    await new Promise(resolve => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            setTimeout(resolve, 100);  // Extended time for browser/GPU to fully process
-          });
+    // Step 6: Logical readiness — verify critical sources are actually decoded.
+    // Must NOT use requestAnimationFrame (hidden tabs pause/throttle rAF and
+    // previously deadlocked preload until the page became visible again).
+    {
+      const step6Start = performance.now();
+      const hiddenAtStart =
+        typeof document !== "undefined" && document.visibilityState !== "visible";
+      const criticalSrcs = [
+        ...recoloredUrls,
+        ...bakedUrls,
+        ...hatUrls,
+      ];
+      const readiness = await awaitDecodedReadiness(
+        criticalSrcs,
+        getDecodedImage,
+        { timeoutMs: 2500, pollMs: 16 },
+      );
+      // Brief timer yield only — never rAF — so GPU/main can settle without
+      // depending on visibility. Completes while hidden.
+      await new Promise((resolve) => setTimeout(resolve, 32));
+      const step6Ms = performance.now() - step6Start;
+      const completedWhileHidden =
+        typeof document !== "undefined" && document.visibilityState !== "visible";
+      const perf = globalThis.__PUMO_PERF;
+      if (perf?.enabled) {
+        perf.gauge("preload.step6Ms", step6Ms);
+        perf.mark("preload.step6", {
+          step6Ms,
+          hiddenAtStart,
+          completedWhileHidden,
+          readinessOk: readiness.ok,
+          missingCount: readiness.missing.length,
+          visibility:
+            typeof document !== "undefined" ? document.visibilityState : "n/a",
+          usedRaf: false,
         });
-      });
-    });
+        if (hiddenAtStart || completedWhileHidden) {
+          perf.count("preload.step6WhileHidden");
+        }
+        if (!readiness.ok) perf.count("preload.readinessTimeout");
+      }
+      if (!readiness.ok) {
+        console.warn(
+          `[Preload] Step 6 readiness timeout after ${step6Ms.toFixed(0)}ms;` +
+            ` ${readiness.missing.length} sources still cold`,
+        );
+      } else if (hiddenAtStart || completedWhileHidden) {
+        console.log(
+          `[Preload] Step 6 completed while hidden in ${step6Ms.toFixed(0)}ms` +
+            ` (visibility-safe; no rAF barrier)`,
+        );
+      }
+    }
     
     const elapsed = performance.now() - startTime;
     const stats = getCacheStats();

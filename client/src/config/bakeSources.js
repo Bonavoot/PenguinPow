@@ -46,6 +46,9 @@ export const BAKE_SOURCES = [
   { id: "belt-grab-arm-only", file: "belt-grab-arm-only.png" },
   { id: "attempting-grab-throw", file: "attempting-grab-throw.png" },
   { id: "is-attempting-pull", file: "is-attempting-pull.png" },
+  // Haired slap frames (no bald underlay — still needed for id resolution / hats)
+  { id: "slapAttack1", file: "slapAttack1.png" },
+  { id: "slapAttack2", file: "slapAttack2.png" },
   { id: "pumo-ready-position", file: "pumo-ready-position.png" },
   { id: "pumo-tachiai-position", file: "pumo-tachiai-position.png" },
   { id: "dodging", file: "dodging.png" },

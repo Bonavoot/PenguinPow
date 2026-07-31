@@ -12,6 +12,10 @@ const GRAB_STATES = {
 const TICK_RATE = 64;
 const BROADCAST_EVERY_N_TICKS = 2; // 2 = 32 Hz broadcast (client interpolation smooths to 60fps)
 
+// Phase 5: full tracked snapshot every N room broadcasts (~2s at 32 Hz remote).
+// Clients use these as gap-recovery anchors; visibility return also requests one.
+const KEYFRAME_EVERY_N_BROADCASTS = 64;
+
 // ============================================
 // PERFORMANCE: Delta State Updates
 // Only send properties that changed since last tick
@@ -1641,6 +1645,7 @@ module.exports = {
   GRAB_STATES,
   TICK_RATE,
   BROADCAST_EVERY_N_TICKS,
+  KEYFRAME_EVERY_N_BROADCASTS,
 
   // Delta state tracking
   ALWAYS_SEND_PROPS,

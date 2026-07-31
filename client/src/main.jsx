@@ -17,6 +17,15 @@ import "./assets/fonts/material-symbols.css";
 import "./styles/typography.css";
 
 import App from "./App.jsx";
+import {
+  ensurePerfRecorder,
+  setupPerfShortcut,
+} from "./utils/perf/PerfRecorder";
+
+// Phase 0: opt-in performance recorder (?perf=1 or localStorage pumo_perf=1).
+// No-op when disabled. Overlay toggle: Ctrl+Shift+P.
+ensurePerfRecorder();
+setupPerfShortcut();
 
 // Warm faces in the background — do not block first paint
 if (document.fonts?.load) {

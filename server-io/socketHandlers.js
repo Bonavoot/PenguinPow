@@ -88,6 +88,8 @@ const { deriveLoadout } = require("./bashoLoadout");
 // Per-match input audit log — appended after rate limit, closed on
 // match-end / disconnect / reset paths below.
 const { appendInput: appendAuditInput, closeLog: closeAuditLog } = require("./inputAuditLog");
+const { buildFighterActionPacket } = require("./fighterBroadcast");
+const { MASTERY_P5_ASSISTS } = require("./masteryFlags");
 
 // ============================================
 // FIGHTER_ACTION INPUT RATE LIMIT (B7 — Phase 3)
@@ -2074,6 +2076,39 @@ function registerSocketHandlers(socket, io, rooms, context) {
     io.in(roomId).emit("lobby", rooms[roomIndex].players); // Update all players in the room
     io.to(roomId).emit("rooms", getCleanedRoomsData(rooms));
     // console.log(rooms[roomIndex].players);
+  });
+
+  // Phase 5: client requests a full tracked snapshot (visibility return / seq gap).
+  // Emits only to the requester — does not reset room delta baselines for others.
+  socket.on("request_fighter_resync", () => {
+    const roomIndex = rooms.findIndex((room) => room.id === socket.roomId);
+    if (roomIndex === -1) return;
+    const room = rooms[roomIndex];
+    if (!room.players || room.players.length < 2) return;
+    if (!room.players.some((p) => p.id === socket.id)) return;
+
+    // Sample prediction lock countdowns the same way the tick broadcast does.
+    const simNowForLocks = room.simTime;
+    for (let li = 0; li < room.players.length && li < 2; li++) {
+      const lockPlayer = room.players[li];
+      const globalLock = lockPlayer.actionLockUntil || 0;
+      const attackLock = lockPlayer.attackCooldownUntil || 0;
+      lockPlayer.actionLockRemainingMs =
+        globalLock > simNowForLocks
+          ? Math.min(Math.ceil(globalLock - simNowForLocks), 2000)
+          : 0;
+      lockPlayer.attackCooldownRemainingMs =
+        attackLock > simNowForLocks
+          ? Math.min(Math.ceil(attackLock - simNowForLocks), 2000)
+          : 0;
+    }
+
+    const { packet } = buildFighterActionPacket(room, {
+      forceKeyframe: true,
+      isResync: true,
+      masteryP5: MASTERY_P5_ASSISTS,
+    });
+    socket.emit("fighter_action", packet);
   });
 
   socket.on("fighter_action", (data) => {
