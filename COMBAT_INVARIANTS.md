@@ -20,7 +20,7 @@ Rules future fidelity work must uphold. Phase 1 audit only — nothing here is n
 2. A registered slap / charged / palm strike must confirm when the art tip meets the victim body surface within the tip-rail epsilon (`isWithinConnectRange`).
 3. On strike confirm, freeze-frame park distance comes from `getHitParkDistance` (slap/charged at connect; palm at connect + outset).
 4. Fast projectiles that can tunnel must use swept checks (snowballs already do).
-5. Aerial landings must not rely on “land inside → multi-tick push out” as the primary landing solution. Rope-jump V2 (`ROPE_JUMP_LANDING_V2`, default off) treats raw-clear as provisional (A.3), locks `near`/`cross` at most once on pre-commit conflict, commits a clear endpoint before touchdown, and travels with continuous, non-reversing horizontal motion; ordinary pre-commit conflicts must not require multi-tick grounded separation. Legacy path still violates this until the flag is enabled by default.
+5. Aerial landings must not rely on “land inside → multi-tick push out” as the primary landing solution. Rope-jump V2 (`ROPE_JUMP_LANDING_V2`, default off) treats raw-clear as provisional (A.3), locks `near`/`cross` at most once on pre-commit conflict, commits a clear endpoint before touchdown, and travels with continuous, non-reversing horizontal motion; ordinary pre-commit conflicts must not require multi-tick grounded separation. Late-intrusion residual is owned by authored landing-settle during recovery (A.3.1): every separation tick must monotonically decrease overlap; recovery must not release with meaningful residual; the first ordinary grounded pushbox tick after recovery clear must correct by ≤0.5 px. Legacy path still violates the primary landing rule until the flag is enabled by default.
 6. Ring-boundary clamps and fighter separation must compose without fighting each other into jitter.
 7. Tip length must not be scaled by `sizeMultiplier`; victim body half may (matches current `strikeContact.js` contract).
 
@@ -66,7 +66,7 @@ Rules future fidelity work must uphold. Phase 1 audit only — nothing here is n
 |-----------|--------|
 | Pushbox disabled during charged **lunge** (not palm) | Otherwise pushbox blocks connect |
 | Pushbox / tip-sep disabled during aerial active arcs | Allows cross-over escapes and body-slam approach |
-| Rope-jump landing overlap capped at 18px/tick | Softens landing separation; V2 makes this safety-only when flag on (see `AERIAL_LANDING_PHASE_A.md`) |
+| Rope-jump landing overlap capped at 18px/tick | Softens landing separation; V2 uses this as settle/safety per-tick cap when flag on (see `AERIAL_LANDING_PHASE_A3_1.md`) |
 | Low kick uses fixed distance, not tip rail | Placeholder until tip art exists |
 | Flap/AP kill `contactX` midpoint | Cinematic path, not tip strike |
 | Clinch own distance system | Grapple composition ≠ strike pushbox |

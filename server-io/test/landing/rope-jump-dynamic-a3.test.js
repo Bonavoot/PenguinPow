@@ -171,11 +171,18 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
         trace.touchdown.overlap <= 2,
         `late-pre-commit overlap ${trace.touchdown.overlap}`
       );
+      // A.3.1: residual ≤18 clears in one settle tick (not N×18 slide).
       assert.ok(
         trace.correctionTicks <= 1,
         `late-pre-commit corrTicks ${trace.correctionTicks}`
       );
+      assert.ok(
+        trace.maxSingleTickCorrection <= TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6
+      );
       assert.ok(!trace.reversalDetected);
+      if (trace.postRecovery) {
+        assert.ok(trace.postRecovery.withinTolerance);
+      }
     } else {
       assert.ok(
         trace.correctionTicks <= LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS
@@ -184,6 +191,10 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
         trace.totalSafetyCorrectionPx <=
           LATE_INTRUSION_MAX_TOTAL_SAFETY_CORRECTION_PX + 1e-6
       );
+      assert.ok(!trace.overlapEverIncreased);
+      if (trace.postRecovery) {
+        assert.ok(trace.postRecovery.withinTolerance);
+      }
     }
   });
 
@@ -234,7 +245,8 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
     assert.ok(trace.commit);
     assert.equal(trace.commit.resolvedTargetX, raw);
     assert.ok(trace.lateIntrusion || trace.firstRawConflictT > trace.commit.t);
-    // Late intrusion: at most one safety tick of the documented cap — not N×18.
+    // A.3.1: late intrusion may settle across recovery (≤18 px/tick), but must
+    // not leave a deferred post-recovery snap.
     assert.ok(
       trace.correctionTicks <= LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS
     );
@@ -245,6 +257,13 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
       trace.totalSafetyCorrectionPx <=
         LATE_INTRUSION_MAX_TOTAL_SAFETY_CORRECTION_PX + 1e-6
     );
+    assert.ok(!trace.overlapEverIncreased);
+    if (trace.recoveryEnd) {
+      assert.ok(trace.recoveryEnd.overlap <= 0.5 + 1e-6);
+    }
+    if (trace.postRecovery) {
+      assert.ok(trace.postRecovery.withinTolerance);
+    }
   });
 
   it("9. opponent crosses near/cross boundary before side lock — locks once", () => {
@@ -389,20 +408,21 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
     assert.ok(trace.commit);
     assert.ok(trace.sidesSeen.length <= 1);
     assert.ok(!trace.reversalDetected);
-    // Accelerating approaches are harder than const-vel; still no multi-tick
-    // ordinary slide and no deep bury.
+    // Accelerating approaches are harder than const-vel; still no deep bury
+    // and no recovery-exit snap (A.3.1 settle may clear tiny residual).
     if (trace.conflictBeforeDeadline) {
       assert.ok(
         trace.touchdown.overlap <= 8,
         `ice-accel overlap ${trace.touchdown.overlap}`
       );
       assert.ok(
-        trace.correctionTicks <= 1,
-        `ice-accel corrTicks ${trace.correctionTicks}`
+        trace.maxSingleTickCorrection <= TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6,
+        `ice-accel maxSingle ${trace.maxSingleTickCorrection}`
       );
-      assert.ok(
-        trace.totalSafetyCorrectionPx <= TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6
-      );
+      assert.ok(!trace.overlapEverIncreased);
+      if (trace.postRecovery) {
+        assert.ok(trace.postRecovery.withinTolerance);
+      }
     }
   });
 
@@ -463,9 +483,10 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
               trace.totalSafetyCorrectionPx || 0
             );
             const ov = trace.touchdown ? trace.touchdown.overlap : 0;
-            if (trace.conflictBeforeDeadline) {
+              if (trace.conflictBeforeDeadline) {
               worstPreOverlap = Math.max(worstPreOverlap, ov);
-              // Ordinary pre-deadline: no deep bury (≪ legacy ~97), no multi-tick slide.
+              // Ordinary pre-deadline: no deep bury (≪ legacy ~97).
+              // Tiny residual may use one ≤18 settle tick (A.3.1); not N×18.
               if (ov > 12.0) {
                 failures.push(
                   `pre-deadline overlap ${ov.toFixed(2)} @opp=${oppX} rate=${signedRate} size=${jSize}/${oSize}`
@@ -477,11 +498,19 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
                 );
               }
               if (
-                trace.totalSafetyCorrectionPx >
+                trace.maxSingleTickCorrection >
                 TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6
               ) {
                 failures.push(
-                  `pre-deadline totalCorr ${trace.totalSafetyCorrectionPx} @opp=${oppX}`
+                  `pre-deadline maxSingle ${trace.maxSingleTickCorrection} @opp=${oppX}`
+                );
+              }
+              if (trace.overlapEverIncreased) {
+                failures.push(`pre-deadline overlap grew @opp=${oppX}`);
+              }
+              if (trace.postRecovery && !trace.postRecovery.withinTolerance) {
+                failures.push(
+                  `pre-deadline postRecovery ${trace.postRecovery.pairDisplacement} @opp=${oppX}`
                 );
               }
             } else if (trace.lateIntrusion) {
@@ -492,6 +521,30 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
               ) {
                 failures.push(
                   `late corrTicks ${trace.correctionTicks} @opp=${oppX}`
+                );
+              }
+              if (
+                trace.maxSingleTickCorrection >
+                TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6
+              ) {
+                failures.push(
+                  `late maxSingle ${trace.maxSingleTickCorrection} @opp=${oppX}`
+                );
+              }
+              if (trace.overlapEverIncreased) {
+                failures.push(`late overlap grew @opp=${oppX}`);
+              }
+              if (
+                trace.recoveryEnd &&
+                trace.recoveryEnd.overlap > 0.5 + 1e-6
+              ) {
+                failures.push(
+                  `late recoveryEnd overlap ${trace.recoveryEnd.overlap} @opp=${oppX}`
+                );
+              }
+              if (trace.postRecovery && !trace.postRecovery.withinTolerance) {
+                failures.push(
+                  `late postRecovery ${trace.postRecovery.pairDisplacement} @opp=${oppX}`
                 );
               }
             }

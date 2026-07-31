@@ -446,6 +446,17 @@ function resetRoomAndPlayers(room, io) {
     player.ropeJumpLateIntrusion = false;
     player.ropeJumpLateIntrusionClass = null;
     player.ropeJumpSafetyCorrectionTicks = 0;
+    player.ropeJumpSettleState = null;
+    player.ropeJumpSidePolicy = null;
+    player.ropeJumpSettleJumperIsLeft = null;
+    player.ropeJumpSettleInitialOverlap = 0;
+    player.ropeJumpSettleMaxOverlap = 0;
+    player.ropeJumpSettleAccumulatedPx = 0;
+    player.ropeJumpSettleTicksDone = 0;
+    player.ropeJumpSettleTicksTotal = 0;
+    player.ropeJumpOverlapIncreased = false;
+    player.ropeJumpBudgetException = false;
+    player.ropeJumpBudgetExceptionClass = null;
     player._landingTrace = null;
     player.isFlapping = false;
     player.flapPhase = null;

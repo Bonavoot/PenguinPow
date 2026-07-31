@@ -287,9 +287,22 @@ describe("rope-jump trajectory quality (Phase A.1)", () => {
                     `${id}: unbounded safety ${trace.maxSingleTickCorrection}`
                   );
                 }
-                if (trace.correctionTicks > 1) {
+                // A.3.1: deep late intrusion may settle across recovery (≤14
+                // ticks × ≤18 px), but must not grow overlap or exit-snap.
+                if (trace.correctionTicks > 14) {
                   failures.push(
-                    `${id}: multi-tick late safety ${trace.correctionTicks}`
+                    `${id}: excessive late settle ticks ${trace.correctionTicks}`
+                  );
+                }
+                if (trace.overlapEverIncreased) {
+                  failures.push(`${id}: late overlap grew`);
+                }
+                if (
+                  trace.postRecovery &&
+                  !trace.postRecovery.withinTolerance
+                ) {
+                  failures.push(
+                    `${id}: late postRecovery ${trace.postRecovery.pairDisplacement}`
                   );
                 }
               }

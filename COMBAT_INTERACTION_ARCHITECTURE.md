@@ -16,7 +16,7 @@ Current-state map of ownership and pipelines. Proposed future boundaries are lab
 | Ground pushbox | Server | `server-io/gameFunctions.js` (`arePlayersColliding`, `adjustPlayerPositions`) |
 | Movement / ice / knockback integrate | Server | `server-io/index.js` movement block |
 | Aerial verbs | Server | `server-io/index.js` (rope jump, slide jump / FLAP), `socketHandlers.js` start triggers |
-| Aerial landing resolve (Phase A/A.1/A.2/A.3) | Server | `server-io/landingResolution.js`, `landingFlags.js`, `ropeJumpStart.js`, `pushboxGeometry.js` (rope jump V2 only) |
+| Aerial landing resolve (Phase A/A.1/A.2/A.3/A.3.1) | Server | `server-io/landingResolution.js`, `landingFlags.js`, `ropeJumpStart.js`, `pushboxGeometry.js` (rope jump V2 only) |
 | Grab / clinch | Server | `server-io/grabActionSystem.js`, `grabMechanics.js`, `combatHelpers.js` |
 | Facing | Server | `server-io/facingSystem.js` |
 | Projectiles | Server | `server-io/projectileUpdates.js` |
@@ -102,7 +102,7 @@ player_hit event
 ### Rope jump
 `startup → active (pass-through arc to fixed/raw targetX) → landing (pushbox returns, 18px/tick sep) → idle`
 
-**Phase A/A.1/A.2/A.3 (flagged):** When `ROPE_JUMP_LANDING_V2` is on, raw-clear is provisional; `near`/`cross` lock once on pre-commit conflict (A.3); endpoint refines on that side until commit; remaining arc uses Hermite / brake. Flag off = legacy fixed target + post-land 18px/tick. See `AERIAL_LANDING_PHASE_A3.md`. Landing diagnostics are debug-net only — not on the production delta wire.
+**Phase A/A.1/A.2/A.3/A.3.1 (flagged):** When `ROPE_JUMP_LANDING_V2` is on, raw-clear is provisional; `near`/`cross` lock once on pre-commit conflict (A.3); endpoint refines on that side until commit; remaining arc uses Hermite / brake; late-intrusion residual is settled across landing recovery with monotonic separation and recovery-exit stability (A.3.1). Flag off = legacy fixed target + post-land 18px/tick. See `AERIAL_LANDING_PHASE_A3_1.md`. Landing diagnostics are debug-net only — not on the production delta wire.
 
 ### Slide jump / FLAP
 `takeoff → flight (pass-through; descending can body-slam) → landing → idle`

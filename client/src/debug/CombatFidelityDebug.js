@@ -182,6 +182,17 @@ function maybeEmitLandingTrace(state) {
       jumper.ropeJumpLateIntrusionClass ?? diag?.lateIntrusionClass,
     safetyCorrectionTicks:
       jumper.ropeJumpSafetyCorrectionTicks ?? diag?.safetyCorrectionTicks,
+    settleState: jumper.ropeJumpSettleState ?? diag?.settleState,
+    sidePolicy: jumper.ropeJumpSidePolicy ?? diag?.sidePolicy,
+    settleInitialOverlap:
+      jumper.ropeJumpSettleInitialOverlap ?? diag?.settleInitialOverlap,
+    settleMaxOverlap: jumper.ropeJumpSettleMaxOverlap ?? diag?.settleMaxOverlap,
+    settleAccumulatedPx:
+      jumper.ropeJumpSettleAccumulatedPx ?? diag?.settleAccumulatedPx,
+    overlapIncreased: jumper.ropeJumpOverlapIncreased ?? diag?.overlapIncreased,
+    budgetException: jumper.ropeJumpBudgetException ?? diag?.budgetException,
+    budgetExceptionClass:
+      jumper.ropeJumpBudgetExceptionClass ?? diag?.budgetExceptionClass,
     jumperX: jumper.x,
     sizeMult: jumper.sizeMult ?? jumper.sizeMultiplier,
   };
@@ -287,6 +298,20 @@ export function renderCombatFidelityOverlay(state) {
           jumper.ropeJumpLateIntrusionClass ?? diag?.lateIntrusionClass,
         ropeJumpSafetyCorrectionTicks:
           jumper.ropeJumpSafetyCorrectionTicks ?? diag?.safetyCorrectionTicks,
+        ropeJumpSettleState: jumper.ropeJumpSettleState ?? diag?.settleState,
+        ropeJumpSidePolicy: jumper.ropeJumpSidePolicy ?? diag?.sidePolicy,
+        ropeJumpSettleInitialOverlap:
+          jumper.ropeJumpSettleInitialOverlap ?? diag?.settleInitialOverlap,
+        ropeJumpSettleMaxOverlap:
+          jumper.ropeJumpSettleMaxOverlap ?? diag?.settleMaxOverlap,
+        ropeJumpSettleAccumulatedPx:
+          jumper.ropeJumpSettleAccumulatedPx ?? diag?.settleAccumulatedPx,
+        ropeJumpOverlapIncreased:
+          jumper.ropeJumpOverlapIncreased ?? diag?.overlapIncreased,
+        ropeJumpBudgetException:
+          jumper.ropeJumpBudgetException ?? diag?.budgetException,
+        ropeJumpBudgetExceptionClass:
+          jumper.ropeJumpBudgetExceptionClass ?? diag?.budgetExceptionClass,
       }
     : null;
   const landingLines = j
@@ -299,6 +324,8 @@ export function renderCombatFidelityOverlay(state) {
         `prefSide=${sideLabel(j.ropeJumpPreferredSide)} resolvedSide=${sideLabel(j.ropeJumpResolvedSide)}`,
         `conflictT=${fmt(j.ropeJumpFirstRawConflictT, 3)} noReturn=${fmt(j.ropeJumpNoReturnDeadlineT, 3)} beforeDeadline=${j.ropeJumpConflictBeforeDeadline ?? "—"}`,
         `late=${!!j.ropeJumpLateIntrusion} (${j.ropeJumpLateIntrusionClass || "—"})`,
+        `settle=${j.ropeJumpSettleState || diag?.settleState || "—"} sidePolicy=${j.ropeJumpSidePolicy || diag?.sidePolicy || "—"}`,
+        `budgetEx=${!!(j.ropeJumpBudgetException ?? diag?.budgetException)} (${j.ropeJumpBudgetExceptionClass || diag?.budgetExceptionClass || "—"})`,
         `minDist=${fmt(j.ropeJumpMinDistance ?? minDist)} centerDist=${fmt(j.ropeJumpCenterDistance ?? gap)}`,
         `overlap=${fmt(j.ropeJumpOverlap ?? overlap)} safetyCorr=${fmt(j.ropeJumpSafetyCorrectionPx)} ticks=${j.ropeJumpSafetyCorrectionTicks ?? "—"}`,
         `vel=${fmt(j.ropeJumpHorizVel)} rawVel=${fmt(j.ropeJumpRawExpectedVel)} peakVel=${fmt(j.ropeJumpPeakVel)} rev=${!!j.ropeJumpReversalDetected}`,

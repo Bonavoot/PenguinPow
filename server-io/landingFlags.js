@@ -12,7 +12,7 @@
 //   LANDING_DEBUG_NET=1   — or implied by LANDING_TRACE=1
 //   LANDING_TRACE=1       — one JSON line per completed jump on the server
 //
-// See AERIAL_LANDING_PHASE_A.md / A.1 / A.2 / A.3.
+// See AERIAL_LANDING_PHASE_A.md / A.1 / A.2 / A.3 / A.3.1.
 
 const ROPE_JUMP_LANDING_V2 =
   process.env.ROPE_JUMP_LANDING_V2 === "1" ||

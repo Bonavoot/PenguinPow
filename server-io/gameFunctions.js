@@ -39,6 +39,16 @@ const {
 // Phase 4: analog resolutions).
 const { MASTERY_P1_MOMENTUM, MASTERY_P3_CADENCE } = require("./masteryFlags");
 
+// Aerial landing Phase A.3.1 — late-intrusion settle ownership / ordering.
+const {
+  resolveLandingSeparationOrdering,
+  computeLandingSettleCorrectionPx,
+  updateLandingSettleCompletion,
+  LANDING_SETTLE_MAX_PX_PER_TICK,
+  SETTLE_LANDING_SETTLE_ACTIVE,
+  SETTLE_RECOVERY_SAFE_TO_RELEASE,
+} = require("./landingResolution");
+
 // Per-match input audit log (open at first round, close on matchOver)
 const { openLog: openAuditLog, closeLog: closeAuditLog, appendWinType } = require("./inputAuditLog");
 
@@ -604,6 +614,17 @@ function handleWinCondition(room, loser, winner, io, winType) {
       p.ropeJumpLateIntrusion = false;
       p.ropeJumpLateIntrusionClass = null;
       p.ropeJumpSafetyCorrectionTicks = 0;
+      p.ropeJumpSettleState = null;
+      p.ropeJumpSidePolicy = null;
+      p.ropeJumpSettleJumperIsLeft = null;
+      p.ropeJumpSettleInitialOverlap = 0;
+      p.ropeJumpSettleMaxOverlap = 0;
+      p.ropeJumpSettleAccumulatedPx = 0;
+      p.ropeJumpSettleTicksDone = 0;
+      p.ropeJumpSettleTicksTotal = 0;
+      p.ropeJumpOverlapIncreased = false;
+      p.ropeJumpBudgetException = false;
+      p.ropeJumpBudgetExceptionClass = null;
       p._landingTrace = null;
     }
 
@@ -1747,15 +1768,24 @@ function adjustPlayerPositions(player1, player2, delta) {
   if (distanceBetweenCenters >= minDistance) return;
 
   const overlap = minDistance - distanceBetweenCenters;
+  const overlapBefore = overlap;
 
-  // Rope jump landing: use jump direction as tiebreaker only when centers are
-  // ambiguously close (genuine crossup zone). Otherwise let positions decide.
+  const ropeJumpLanding = (player1.isRopeJumping && player1.ropeJumpPhase === "landing") ||
+                          (player2.isRopeJumping && player2.ropeJumpPhase === "landing");
+  const ropeJumper =
+    player1.isRopeJumping && player1.ropeJumpPhase === "landing"
+      ? player1
+      : player2.isRopeJumping && player2.ropeJumpPhase === "landing"
+        ? player2
+        : null;
+
+  // Phase A.3.1: separation direction from actual centers (intent only at
+  // coincident centers). Rejects the old half-body jump-direction cross-up
+  // that could move centers closer and grow overlap.
   let p1IsLeft;
-  const halfBody = minDistance * 0.5;
-  if (player1.isRopeJumping && player1.ropeJumpPhase === "landing" && distanceBetweenCenters < halfBody) {
-    p1IsLeft = player1.ropeJumpDirection < 0;
-  } else if (player2.isRopeJumping && player2.ropeJumpPhase === "landing" && distanceBetweenCenters < halfBody) {
-    p1IsLeft = player2.ropeJumpDirection > 0;
+  if (ropeJumper) {
+    p1IsLeft = resolveLandingSeparationOrdering(player1, player2, ropeJumper)
+      .p1IsLeft;
   } else {
     p1IsLeft = player1.x <= player2.x;
   }
@@ -1789,25 +1819,38 @@ function adjustPlayerPositions(player1, player2, delta) {
     }
   }
 
-  // During rope jump landing, cap the push per tick for a smooth slide instead of a snap.
-  // V2 ordinary landings should be clear (0 correction). Phase A.3 late intrusion
-  // may spend at most ONE capped safety tick — never an N×18 grounded slide.
-  const ropeJumpLanding = (player1.isRopeJumping && player1.ropeJumpPhase === "landing") ||
-                          (player2.isRopeJumping && player2.ropeJumpPhase === "landing");
-  const ropeJumper =
-    player1.isRopeJumping && player1.ropeJumpPhase === "landing"
-      ? player1
-      : player2.isRopeJumping && player2.ropeJumpPhase === "landing"
-        ? player2
-        : null;
-  if (
+  // Landing correction budget:
+  // - Legacy / non-V2 landing: ≤18 px/tick slide (unchanged)
+  // - V2 late-intrusion settle (A.3.1): authored multi-tick settle across
+  //   recovery, still ≤18 px/tick, monotonic, finishes before release
+  // - V2 clear landing: no correction expected
+  let effectiveOverlap;
+  const v2SettleActive =
     ropeJumper &&
-    ropeJumper.ropeJumpLateIntrusion &&
-    (ropeJumper.ropeJumpSafetyCorrectionTicks || 0) >= 1
+    ropeJumper.ropeJumpLandingPath === "v2" &&
+    ropeJumper.ropeJumpSettleState === SETTLE_LANDING_SETTLE_ACTIVE;
+
+  if (v2SettleActive) {
+    effectiveOverlap = computeLandingSettleCorrectionPx(ropeJumper, overlap);
+  } else if (
+    ropeJumper &&
+    ropeJumper.ropeJumpLandingPath === "v2" &&
+    ropeJumper.ropeJumpSettleState === SETTLE_RECOVERY_SAFE_TO_RELEASE
   ) {
+    // Settle already clear — do not re-open ordinary landing slide.
+    return;
+  } else if (ropeJumpLanding) {
+    effectiveOverlap = Math.min(overlap, LANDING_SETTLE_MAX_PX_PER_TICK);
+  } else {
+    effectiveOverlap = overlap;
+  }
+
+  if (effectiveOverlap <= 0) {
+    if (v2SettleActive) {
+      updateLandingSettleCompletion(ropeJumper, overlap);
+    }
     return;
   }
-  const effectiveOverlap = ropeJumpLanding ? Math.min(overlap, 18) : overlap;
 
   if (p1IsLeft) {
     player1.x -= effectiveOverlap * p1Share;
@@ -1817,18 +1860,16 @@ function adjustPlayerPositions(player1, player2, delta) {
     player2.x -= effectiveOverlap * p2Share;
   }
 
-  if (ropeJumpLanding && effectiveOverlap > 0) {
-    const jumper =
-      player1.isRopeJumping && player1.ropeJumpPhase === "landing"
-        ? player1
-        : player2.isRopeJumping && player2.ropeJumpPhase === "landing"
-          ? player2
-          : null;
-    if (jumper) {
-      jumper.ropeJumpSafetyCorrectionPx =
-        (jumper.ropeJumpSafetyCorrectionPx || 0) + effectiveOverlap;
-      jumper.ropeJumpSafetyCorrectionTicks =
-        (jumper.ropeJumpSafetyCorrectionTicks || 0) + 1;
+  if (ropeJumpLanding && effectiveOverlap > 0 && ropeJumper) {
+    ropeJumper.ropeJumpSafetyCorrectionPx =
+      (ropeJumper.ropeJumpSafetyCorrectionPx || 0) + effectiveOverlap;
+    ropeJumper.ropeJumpSafetyCorrectionTicks =
+      (ropeJumper.ropeJumpSafetyCorrectionTicks || 0) + 1;
+    if (v2SettleActive) {
+      ropeJumper.ropeJumpSettleTicksDone =
+        (ropeJumper.ropeJumpSettleTicksDone || 0) + 1;
+      ropeJumper.ropeJumpSettleAccumulatedPx =
+        (ropeJumper.ropeJumpSettleAccumulatedPx || 0) + effectiveOverlap;
     }
   }
 
@@ -1880,6 +1921,25 @@ function adjustPlayerPositions(player1, player2, delta) {
     const isToward = (player2.x < player1.x && player2.movementVelocity > 0) ||
                      (player2.x > player1.x && player2.movementVelocity < 0);
     if (isToward) player2.movementVelocity = 0;
+  }
+
+  // Phase A.3.1 invariants: overlap must not grow; settle completes when clear.
+  if (ropeJumper) {
+    const distAfter = Math.abs(player1.x - player2.x);
+    const overlapAfter = Math.max(0, minDistance - distAfter);
+    ropeJumper.ropeJumpCenterDistance = distAfter;
+    ropeJumper.ropeJumpOverlap = overlapAfter;
+    ropeJumper.ropeJumpSettleMaxOverlap = Math.max(
+      ropeJumper.ropeJumpSettleMaxOverlap || 0,
+      overlapBefore,
+      overlapAfter
+    );
+    if (overlapAfter > overlapBefore + 1e-9) {
+      ropeJumper.ropeJumpOverlapIncreased = true;
+    }
+    if (v2SettleActive) {
+      updateLandingSettleCompletion(ropeJumper, overlapAfter);
+    }
   }
 }
 

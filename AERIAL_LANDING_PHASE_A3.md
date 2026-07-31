@@ -1,8 +1,10 @@
 # Aerial Landing — Phase A.3 (Dynamic Landing-Conflict)
 
-**Status:** Implemented behind feature flag · **Default: OFF**  
+**Status:** Implemented behind feature flag · **Default: OFF** · **Late-intrusion settle superseded by A.3.1**  
 **Date:** 2026-07-31  
 **Scope stop:** Rope-jump V2 dynamic conflict planning only. No slide jump / FLAP / butt slam. V2 remains disabled by default. No rebalance of timings, stamina, invuln, or recovery.
+
+**Phase A.3.1:** A.3’s one-tick late-intrusion freeze left residual overlap that snapped on the first grounded tick after recovery, and jump-direction tiebreak could increase overlap. See [`AERIAL_LANDING_PHASE_A3_1.md`](./AERIAL_LANDING_PHASE_A3_1.md).
 
 Companion: [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md), [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md), [`AERIAL_LANDING_PHASE_A2.md`](./AERIAL_LANDING_PHASE_A2.md).
 
@@ -87,10 +89,11 @@ No endpoint changes after `endpoint_committed`.
 
 | Class | Correction ticks | Total correction | Touchdown overlap |
 |-------|------------------|------------------|-------------------|
-| Ordinary pre-commit conflict | **0** (target) | ≈0 | ≈0 (scan worst **≈12** on extreme size/rate) |
-| Late intrusion | ≤**1** | ≤**18** | classified; no N×18 slide |
+| Ordinary pre-commit conflict | **0** (target); ≤1 if tiny residual | ≈0 | ≈0 (scan worst **≈12** on extreme size/rate) |
+| Late intrusion (A.3) | ≤**1** then freeze | ≤**18** | classified — **left residual; superseded by A.3.1** |
+| Late intrusion (A.3.1) | settle across recovery, ≤18/tick | event-level clear | recovery-end ≈0; post-recovery ≈0 |
 
-`adjustPlayerPositions`: V2 late intrusion spends at most one capped tick, then stops (does not hide deep bury as a legal multi-tick slide).
+A.3 `adjustPlayerPositions` froze after one late-intrusion tick. **A.3.1** replaces that freeze with authored landing-settle so residual is not deferred to the first grounded frame after recovery.
 
 ---
 
@@ -116,9 +119,11 @@ Static A.2 fine scan (0.25 px) remains green.
 
 ## Remaining late-intrusion limits
 
-A genuine post-commit dive into the locked cell can still leave residual after one 18px safety tick. That is intentional visibility — not an ordinary resolver path.
+**Superseded by A.3.1 for residual ownership.** A.3 left residual after one 18px safety tick and deferred the rest to post-recovery — that is now treated as a defect, not intentional visibility. See A.3.1 settle + recovery-exit invariant.
 
-Accelerating ice approaches can leave a few pixels of residual (measured ≈5–8) when prediction lags the ramp; still far below the A.2 multi-tick failure mode.
+Accelerating ice approaches can leave a few pixels of residual (measured ≈5–8) when prediction lags the ramp; A.3.1 clears that in one settle tick (≤18).
+
+A.3’s claim of dedicated acceleration/coast/braking/reversal coverage was overstated relative to the suite (mostly constant-velocity scans + one accel test). A.3.1 adds production-faithful ice profiles.
 
 ---
 

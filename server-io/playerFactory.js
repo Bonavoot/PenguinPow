@@ -319,6 +319,18 @@ function createInitialPlayerState(overrides = {}) {
     ropeJumpLateIntrusion: false,
     ropeJumpLateIntrusionClass: null,
     ropeJumpSafetyCorrectionTicks: 0,
+    // Phase A.3.1 late-intrusion settle ownership
+    ropeJumpSettleState: null,
+    ropeJumpSidePolicy: null,
+    ropeJumpSettleJumperIsLeft: null,
+    ropeJumpSettleInitialOverlap: 0,
+    ropeJumpSettleMaxOverlap: 0,
+    ropeJumpSettleAccumulatedPx: 0,
+    ropeJumpSettleTicksDone: 0,
+    ropeJumpSettleTicksTotal: 0,
+    ropeJumpOverlapIncreased: false,
+    ropeJumpBudgetException: false,
+    ropeJumpBudgetExceptionClass: null,
 
     // === Flap charges (ride on FLAP-armed slide-jump; standalone liftoff removed) ===
     isFlapping: false, // legacy — always false; cleared for safety
