@@ -265,16 +265,33 @@ describe("rope-jump trajectory quality (Phase A.1)", () => {
             if (a.maxPosJump > 40) {
               failures.push(`${id}: pos jump ${a.maxPosJump.toFixed(1)}`);
             }
-            if (
-              a.touchdown &&
-              a.touchdown.overlap > TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1
-            ) {
-              // Moving opponent after early lock may exceed tolerable at
-              // touchdown — safety must still be bounded.
-              if (trace.maxSingleTickCorrection > 18 + 1e-6) {
-                failures.push(
-                  `${id}: unbounded safety ${trace.maxSingleTickCorrection}`
-                );
+            if (a.touchdown) {
+              // Phase A.3: event-level safety budget. Pre-deadline conflicts
+              // must not rely on multi-tick grounded separation.
+              if (trace.conflictBeforeDeadline) {
+                if (a.touchdown.overlap > 1.0) {
+                  failures.push(
+                    `${id}: pre-deadline overlap ${a.touchdown.overlap.toFixed(2)}`
+                  );
+                }
+                if (trace.correctionTicks > 0) {
+                  failures.push(
+                    `${id}: ordinary corrTicks ${trace.correctionTicks}`
+                  );
+                }
+              } else if (
+                a.touchdown.overlap > TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1
+              ) {
+                if (trace.maxSingleTickCorrection > 18 + 1e-6) {
+                  failures.push(
+                    `${id}: unbounded safety ${trace.maxSingleTickCorrection}`
+                  );
+                }
+                if (trace.correctionTicks > 1) {
+                  failures.push(
+                    `${id}: multi-tick late safety ${trace.correctionTicks}`
+                  );
+                }
               }
             }
             // Velocity-continuity budget applies to Hermite (matched tangents).

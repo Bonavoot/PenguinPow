@@ -223,17 +223,25 @@ describe("Phase A.2 rope-jump decision stability", () => {
     // Start on cross side of boundary; walk into near side during early active.
     const jumper = makeFighter({ id: "j", x: MAP_LEFT_BOUNDARY });
     const opponent = makeFighter({ id: "o", x: boundary - 5 });
+    const sides = [];
     const trace = simulateRopeJump(jumper, opponent, {
       useV2: true,
       jumpDirection: 1,
       opponentStep: (opp, t) => {
         if (t < 0.2) opp.x = boundary - 5 + t * 50;
+        if (jumper.ropeJumpSideIntentLocked) {
+          sides.push(jumper.ropeJumpSideIntent);
+        }
       },
     });
     assert.ok(trace.commit);
-    // Intent locked at first planning tick from the early opponent X (cross).
-    assert.equal(trace.commit.sideIntent, 1);
-    assert.equal(trace.commit.resolvedSide, 1);
+    // A.3: provisional raw / velocity sample may delay the lock until the
+    // opponent has entered the near region — lock-time geometry wins, once.
+    assert.equal(trace.commit.sideIntent, -1);
+    assert.equal(trace.commit.resolvedSide, -1);
+    assert.equal(trace.commit.intentClass, "near");
+    assert.ok(sides.length > 0);
+    assert.ok(sides.every((s) => s === -1), "side oscillated after lock");
   });
 
   it("opponent moving across boundary after intent lock does not flip side", () => {
@@ -245,7 +253,7 @@ describe("Phase A.2 rope-jump decision stability", () => {
       useV2: true,
       jumpDirection: 1,
       opponentStep: (opp, t) => {
-        // Walk toward rope after intent should already be near.
+        // Walk toward rope after intent should already be locked.
         if (t > 0.1) opp.x = boundary + 30 - (t - 0.1) * 80;
         if (jumper.ropeJumpSideIntentLocked) {
           sides.push(jumper.ropeJumpSideIntent);
@@ -253,10 +261,14 @@ describe("Phase A.2 rope-jump decision stability", () => {
       },
     });
     assert.ok(trace.commit);
-    assert.equal(trace.commit.intentClass, "near");
-    assert.equal(trace.commit.resolvedSide, -1);
+    // A.3 may lock near or cross from predicted lock-time geometry; once
+    // locked, the side must not oscillate as the opponent crosses the boundary.
     assert.ok(sides.length > 0);
-    assert.ok(sides.every((s) => s === -1), "side flipped during jump");
+    assert.ok(
+      sides.every((s) => s === sides[0]),
+      `side flipped during jump: ${[...new Set(sides)]}`
+    );
+    assert.equal(trace.commit.resolvedSide, sides[0]);
   });
 
   it("determinism: identical inputs → identical endpoints", () => {

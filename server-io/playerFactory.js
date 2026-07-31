@@ -301,13 +301,24 @@ function createInitialPlayerState(overrides = {}) {
     ropeJumpPeakVel: 0,
     ropeJumpPeakAccel: 0,
     ropeJumpReversalDetected: false,
-    // Phase A.2 side-intent / commit diagnostics (server-local; not on prod delta)
+    // Phase A.2 / A.3 side-intent / planning diagnostics (server-local; not on prod delta)
     ropeJumpSideIntentLocked: false,
     ropeJumpSideIntent: 0,
     ropeJumpIntentClass: null,
     ropeJumpIntentReason: null,
     ropeJumpRecommendedCommitT: 0,
     ropeJumpSideIntentOpponentX: 0,
+    ropeJumpPlanningState: null,
+    ropeJumpFirstRawConflictTick: 0,
+    ropeJumpFirstRawConflictT: -1,
+    ropeJumpSideLockTick: 0,
+    ropeJumpSideLockReason: null,
+    ropeJumpNoReturnDeadlineT: 0,
+    ropeJumpConflictBeforeDeadline: null,
+    ropeJumpEndpointCommitTick: 0,
+    ropeJumpLateIntrusion: false,
+    ropeJumpLateIntrusionClass: null,
+    ropeJumpSafetyCorrectionTicks: 0,
 
     // === Flap charges (ride on FLAP-armed slide-jump; standalone liftoff removed) ===
     isFlapping: false, // legacy — always false; cleared for safety

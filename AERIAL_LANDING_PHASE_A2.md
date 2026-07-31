@@ -1,8 +1,10 @@
 # Aerial Landing — Phase A.2 (Rope-Jump Decision Stability)
 
-**Status:** Implemented behind feature flag · **Default: OFF**  
+**Status:** Implemented behind feature flag · **Default: OFF** · **Superseded for dynamic conflict by A.3**  
 **Date:** 2026-07-31  
 **Scope stop:** Rope-jump V2 decision continuity only. No slide jump / FLAP / butt slam. V2 remains disabled by default. No rebalance of timings, stamina, invuln, or recovery.
+
+**Phase A.3:** A.2’s first-tick `preserve_raw` lock is not a valid irreversible side decision — see [`AERIAL_LANDING_PHASE_A3.md`](./AERIAL_LANDING_PHASE_A3.md). Static continuity results below remain the A.2 baseline; dynamic approach cases require A.3.
 
 Companion: [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md), [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md).
 
@@ -52,7 +54,7 @@ Not used for side selection: 1px `rawOnCenter` epsilon, object iteration order, 
 
 ## Separated decision architecture
 
-1. **Stable side intent** — locked once at the first active tick with `t ≥ COMMIT_T_MIN` via `resolveSideIntent()`. Never flips for the rest of the jump.
+1. **Stable side intent** — A.2 locked once at first `t ≥ COMMIT_T_MIN` via `resolveSideIntent()` (including `preserve_raw`). **A.3:** raw-clear stays provisional; only `near`/`cross` lock once on conflict.
 2. **Stable commit policy** — `computeRecommendedCommitT()` finds the latest raw-arc time that does not overshoot the planned endpoint and stays inside planner motion budgets (continuous; replaces boolean `requiresEarlyCommit`).
 3. **Same-side endpoint refinement** — endpoint = `opponentX ± (minDistance + pad)` on the locked side (clamped). Score may choose hermite vs brake, never the opposite side.
 4. **Motion-feasible trajectory** — Hermite (default) / brake / emergency hold only.

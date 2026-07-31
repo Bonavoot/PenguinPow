@@ -11,37 +11,62 @@ const {
   getMinimumCenterDistance,
   DEFAULT_PLAYER_SIZE_MULTIPLIER,
 } = require("./helpers/ropeJumpSim");
+const {
+  ORDINARY_MAX_SAFETY_CORRECTION_TICKS,
+  ORDINARY_MAX_TOTAL_SAFETY_CORRECTION_PX,
+  LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS,
+  LATE_INTRUSION_MAX_TOTAL_SAFETY_CORRECTION_PX,
+  TOLERABLE_TOUCHDOWN_OVERLAP_PX,
+} = require("../../landingResolution");
 
 describe("rope-jump landing — moving opponent", () => {
-  it("opponent walks toward raw target — endpoint locks at commit (no home)", () => {
+  it("opponent walks toward raw target — clear→conflict before commit resolves aerially", () => {
     const jumper = makeFighter({ id: "j", x: MAP_LEFT_BOUNDARY });
     const raw = computeRawRopeJumpTargetX(MAP_LEFT_BOUNDARY);
-    const opponent = makeFighter({ id: "o", x: raw - 80 });
+    // Start clear of raw footprint; walk into it before commitment.
+    const opponent = makeFighter({ id: "o", x: raw + 130 });
 
-    const resolvedAtCommit = { x: null };
+    const lockedRef = { x: null };
     const trace = simulateRopeJump(jumper, opponent, {
       useV2: true,
       jumpDirection: 1,
-      opponentStep: (opp, t) => {
-        // Walk toward raw target before/after commit
-        opp.x = Math.min(raw, opp.x + 2.5);
-        if (resolvedAtCommit.x == null && t >= 0.58) {
-          // captured after step in sim — see commit record
+      opponentStep: (opp) => {
+        opp.x -= 2.5;
+        if (jumper.ropeJumpLandingCommitted && lockedRef.x == null) {
+          lockedRef.x = jumper.ropeJumpResolvedTargetX;
         }
       },
     });
 
     assert.ok(trace.commit);
     const locked = trace.commit.resolvedTargetX;
-    // After commit the endpoint must stay locked (no homing), even if the
-    // opponent walks into the cell and triggers bounded safety correction.
     assert.equal(trace.commit.resolvedTargetX, locked);
-    assert.ok(trace.maxSingleTickCorrection <= 18 + 1e-6);
-    // Touchdown X must match the locked endpoint (not a post-commit re-home).
+    // Endpoint must not re-home after commit.
     assert.ok(
       Math.abs(trace.touchdown.x - locked) < 0.5,
       `touchdown ${trace.touchdown.x} drifted from locked ${locked}`
     );
+    if (trace.conflictBeforeDeadline) {
+      assert.ok(trace.touchdown.overlap <= 0.05);
+      assert.ok(
+        trace.correctionTicks <= ORDINARY_MAX_SAFETY_CORRECTION_TICKS
+      );
+      assert.ok(
+        trace.totalSafetyCorrectionPx <=
+          ORDINARY_MAX_TOTAL_SAFETY_CORRECTION_PX + 1e-6
+      );
+    } else {
+      assert.ok(
+        trace.correctionTicks <= LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS
+      );
+      assert.ok(
+        trace.totalSafetyCorrectionPx <=
+          LATE_INTRUSION_MAX_TOTAL_SAFETY_CORRECTION_PX + 1e-6
+      );
+      assert.ok(
+        trace.maxSingleTickCorrection <= TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6
+      );
+    }
   });
 
   it("opponent walks away — may clear conflict; no oscillation", () => {
@@ -85,9 +110,22 @@ describe("rope-jump landing — moving opponent", () => {
 
     assert.ok(trace.commit);
     assert.equal(trace.touchdown.x, trace.commit.resolvedTargetX);
-    // Post-commit opponent motion into the cell may need bounded safety —
-    // never an unbounded slide.
-    assert.ok(trace.maxSingleTickCorrection <= 18 + 1e-6);
+    // Event-level safety budget (not merely per-tick ≤18).
+    assert.ok(
+      trace.maxSingleTickCorrection <= TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6
+    );
+    if (trace.conflictBeforeDeadline) {
+      assert.ok(
+        trace.correctionTicks <= ORDINARY_MAX_SAFETY_CORRECTION_TICKS,
+        `ordinary multi-tick sep ${trace.correctionTicks} overlap=${trace.touchdown.overlap}`
+      );
+      assert.ok(trace.touchdown.overlap <= 1.0);
+    } else {
+      assert.ok(
+        trace.totalSafetyCorrectionPx <=
+          LATE_INTRUSION_MAX_TOTAL_SAFETY_CORRECTION_PX + 1e-6
+      );
+    }
     assert.ok(
       Number.isFinite(trace.touchdown.x) &&
         trace.touchdown.x >= MAP_LEFT_BOUNDARY &&
@@ -98,28 +136,37 @@ describe("rope-jump landing — moving opponent", () => {
   it("opponent crosses after commitment — endpoint stays locked", () => {
     const jumper = makeFighter({ id: "j", x: MAP_LEFT_BOUNDARY });
     const raw = computeRawRopeJumpTargetX(MAP_LEFT_BOUNDARY);
-    const opponent = makeFighter({ id: "o", x: raw - 40 });
+    // Stay clear through commit, then cross the locked cell.
+    const opponent = makeFighter({ id: "o", x: 700 });
 
     let locked = null;
     const postCommitTargets = [];
     const trace = simulateRopeJump(jumper, opponent, {
       useV2: true,
       jumpDirection: 1,
-      opponentStep: (opp, t) => {
+      opponentStep: (opp) => {
         if (jumper.ropeJumpLandingCommitted) {
           if (locked == null) locked = jumper.ropeJumpResolvedTargetX;
           postCommitTargets.push(jumper.ropeJumpResolvedTargetX);
-          opp.x += 5; // cross through landing cell after lock
-        } else {
-          opp.x += 0.5;
+          opp.x = Math.max(raw - 10, opp.x - 25);
         }
       },
     });
 
     assert.ok(trace.commit);
     assert.ok(postCommitTargets.every((x) => x === locked));
-    // Safety correction may fire if opponent entered the cell — bounded, not primary
-    assert.ok(trace.maxSingleTickCorrection <= 18 + 1e-6);
+    assert.equal(locked, raw);
+    // Post-commit intrusion: at most one classified safety event, not N×18.
+    assert.ok(
+      trace.maxSingleTickCorrection <= TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6
+    );
+    assert.ok(
+      trace.correctionTicks <= LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS
+    );
+    assert.ok(
+      trace.totalSafetyCorrectionPx <=
+        LATE_INTRUSION_MAX_TOTAL_SAFETY_CORRECTION_PX + 1e-6
+    );
   });
 
   it("opponent knockback during jump does not re-home after commit", () => {

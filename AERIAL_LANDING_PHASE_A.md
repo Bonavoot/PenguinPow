@@ -8,6 +8,8 @@
 
 **Phase A.2 (decision stability):** See [`AERIAL_LANDING_PHASE_A2.md`](./AERIAL_LANDING_PHASE_A2.md). A.1 left subpixel decision cliffs (~200 px endpoint flips); A.2 separates side intent, commit timing, and same-side endpoint refinement. V2 still default OFF. A.1 was **not** visually approved.
 
+**Phase A.3 (dynamic conflict):** See [`AERIAL_LANDING_PHASE_A3.md`](./AERIAL_LANDING_PHASE_A3.md). A.2 locked `preserve_raw` irreversibly on the first clear planning tick; ordinary ice approach recreated land-inside→multi-tick sep. A.3 makes raw-clear provisional and replans on pre-commit conflict. V2 still default OFF.
+
 Companion: [`COMBAT_FIDELITY_AUDIT.md`](./COMBAT_FIDELITY_AUDIT.md), [`COMBAT_FIDELITY_ROADMAP.md`](./COMBAT_FIDELITY_ROADMAP.md) Phase 3.
 
 ---
@@ -189,7 +191,8 @@ Symmetric results for right-rope (resolved left of opponent).
 
 ## Known limitations
 
-- Commit samples a single opponent X; post-commit opponent motion into the cell can still require the 18 px/tick safety path (bounded, logged via `ropeJumpSafetyCorrectionPx`).
+- **Superseded by A.3:** early `preserve_raw` lock treated clear-at-plan as permanent; ordinary approach into the cell still needed multi-tick sep. See A.3 for provisional raw + pre-commit replan.
+- Post-commit opponent motion into the locked cell is classified late intrusion (≤1×18 px safety), not an ordinary path.
 - **Superseded by A.1:** Phase A’s “slight kink” understated Case 1 (~4× horizontal speed pop). See A.1 for Hermite / brake / hold_settle.
 - Both-sides-constrained near edges may still leave residual overlap (reported); defender is not shoveled as first choice.
 - Debug overlay still estimates half-width as `65 * sizeMult` when server half is not separately sent (matches server formula).

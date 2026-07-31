@@ -6,6 +6,8 @@
 
 **Follow-up:** Phase A.2 decision stability — [`AERIAL_LANDING_PHASE_A2.md`](./AERIAL_LANDING_PHASE_A2.md). A.1’s 15px scan missed 0.25px endpoint cliffs (~200–260 px) and ordinary `hold_settle` rope hops; A.2 corrects decision continuity without enabling V2 by default.
 
+**Follow-up:** Phase A.3 dynamic conflict — [`AERIAL_LANDING_PHASE_A3.md`](./AERIAL_LANDING_PHASE_A3.md). A.2’s irreversible `preserve_raw` lock failed ordinary ice approaches into a previously clear raw cell.
+
 Companion: [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md), [`COMBAT_FIDELITY_AUDIT.md`](./COMBAT_FIDELITY_AUDIT.md).
 
 ---
@@ -176,7 +178,7 @@ localStorage.setItem("pumo_landing_trace", "1")
 | 2 | Left rope, opp ~470 | Early near-side land; **no** reverse toward rope |
 | 3 | Left rope, opp ~450 | Stay near rope with tiny residual; **no** cross-up to ~560 |
 | 4 | Mirror 1–3 from right rope | Symmetric |
-| 5 | Opp walking into cell | Endpoint locked; safety ≤18 if needed |
+| 5 | Opp walking into cell | See A.3: pre-commit replan; not N×18 safety |
 | 6 | Landing punish / buffer / shake / facing | Unchanged vs legacy timings |
 
 ---

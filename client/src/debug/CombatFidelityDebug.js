@@ -168,6 +168,20 @@ function maybeEmitLandingTrace(state) {
     rawExpectedVel: jumper.ropeJumpRawExpectedVel ?? diag?.rawExpectedVel,
     peakVel: jumper.ropeJumpPeakVel ?? diag?.peakVel,
     reversalDetected: jumper.ropeJumpReversalDetected ?? diag?.reversalDetected,
+    planningState: jumper.ropeJumpPlanningState ?? diag?.planningState,
+    firstRawConflictT: jumper.ropeJumpFirstRawConflictT ?? diag?.firstRawConflictT,
+    sideLockTick: jumper.ropeJumpSideLockTick ?? diag?.sideLockTick,
+    sideLockReason: jumper.ropeJumpSideLockReason ?? diag?.sideLockReason,
+    noReturnDeadlineT: jumper.ropeJumpNoReturnDeadlineT ?? diag?.noReturnDeadlineT,
+    conflictBeforeDeadline:
+      jumper.ropeJumpConflictBeforeDeadline ?? diag?.conflictBeforeDeadline,
+    endpointCommitTick:
+      jumper.ropeJumpEndpointCommitTick ?? diag?.endpointCommitTick,
+    lateIntrusion: jumper.ropeJumpLateIntrusion ?? diag?.lateIntrusion,
+    lateIntrusionClass:
+      jumper.ropeJumpLateIntrusionClass ?? diag?.lateIntrusionClass,
+    safetyCorrectionTicks:
+      jumper.ropeJumpSafetyCorrectionTicks ?? diag?.safetyCorrectionTicks,
     jumperX: jumper.x,
     sizeMult: jumper.sizeMult ?? jumper.sizeMultiplier,
   };
@@ -257,18 +271,36 @@ export function renderCombatFidelityOverlay(state) {
         ropeJumpPeakVel: jumper.ropeJumpPeakVel ?? diag?.peakVel,
         ropeJumpReversalDetected:
           jumper.ropeJumpReversalDetected ?? diag?.reversalDetected,
+        ropeJumpPlanningState:
+          jumper.ropeJumpPlanningState ?? diag?.planningState,
+        ropeJumpFirstRawConflictT:
+          jumper.ropeJumpFirstRawConflictT ?? diag?.firstRawConflictT,
+        ropeJumpSideLockReason:
+          jumper.ropeJumpSideLockReason ?? diag?.sideLockReason,
+        ropeJumpNoReturnDeadlineT:
+          jumper.ropeJumpNoReturnDeadlineT ?? diag?.noReturnDeadlineT,
+        ropeJumpConflictBeforeDeadline:
+          jumper.ropeJumpConflictBeforeDeadline ?? diag?.conflictBeforeDeadline,
+        ropeJumpLateIntrusion:
+          jumper.ropeJumpLateIntrusion ?? diag?.lateIntrusion,
+        ropeJumpLateIntrusionClass:
+          jumper.ropeJumpLateIntrusionClass ?? diag?.lateIntrusionClass,
+        ropeJumpSafetyCorrectionTicks:
+          jumper.ropeJumpSafetyCorrectionTicks ?? diag?.safetyCorrectionTicks,
       }
     : null;
   const landingLines = j
     ? [
         `path=${j.ropeJumpLandingPath || "—"} phase=${j.ropeJumpPhase} traj=${j.ropeJumpTrajectoryType || "—"}`,
         `class=${j.ropeJumpDecisionClass || "—"} reason=${j.ropeJumpFallbackReason || "—"}`,
-        `intent=${j.ropeJumpIntentClass || diag?.intentClass || "—"} (${j.ropeJumpIntentReason || diag?.intentReason || "—"})`,
+        `plan=${j.ropeJumpPlanningState || diag?.planningState || "—"} intent=${j.ropeJumpIntentClass || diag?.intentClass || "—"} (${j.ropeJumpIntentReason || diag?.intentReason || j.ropeJumpSideLockReason || "—"})`,
         `raw=${fmt(j.ropeJumpRawTargetX)} resolved=${fmt(j.ropeJumpResolvedTargetX)}`,
         `commitX=${fmt(j.ropeJumpLandingCommitX)} commitT=${fmt(j.ropeJumpLandingCommitT, 3)} committed=${!!j.ropeJumpLandingCommitted}`,
         `prefSide=${sideLabel(j.ropeJumpPreferredSide)} resolvedSide=${sideLabel(j.ropeJumpResolvedSide)}`,
+        `conflictT=${fmt(j.ropeJumpFirstRawConflictT, 3)} noReturn=${fmt(j.ropeJumpNoReturnDeadlineT, 3)} beforeDeadline=${j.ropeJumpConflictBeforeDeadline ?? "—"}`,
+        `late=${!!j.ropeJumpLateIntrusion} (${j.ropeJumpLateIntrusionClass || "—"})`,
         `minDist=${fmt(j.ropeJumpMinDistance ?? minDist)} centerDist=${fmt(j.ropeJumpCenterDistance ?? gap)}`,
-        `overlap=${fmt(j.ropeJumpOverlap ?? overlap)} safetyCorr=${fmt(j.ropeJumpSafetyCorrectionPx)}`,
+        `overlap=${fmt(j.ropeJumpOverlap ?? overlap)} safetyCorr=${fmt(j.ropeJumpSafetyCorrectionPx)} ticks=${j.ropeJumpSafetyCorrectionTicks ?? "—"}`,
         `vel=${fmt(j.ropeJumpHorizVel)} rawVel=${fmt(j.ropeJumpRawExpectedVel)} peakVel=${fmt(j.ropeJumpPeakVel)} rev=${!!j.ropeJumpReversalDetected}`,
         `preTouch=${fmt(j.ropeJumpPreTouchdownX)} touch=${fmt(j.ropeJumpTouchdownX)} fallback=${!!j.ropeJumpUsedFallback}`,
       ].join("<br/>")

@@ -104,6 +104,17 @@ function makeFighter(overrides = {}) {
     ropeJumpIntentReason: null,
     ropeJumpRecommendedCommitT: 0,
     ropeJumpSideIntentOpponentX: 0,
+    ropeJumpPlanningState: null,
+    ropeJumpFirstRawConflictTick: 0,
+    ropeJumpFirstRawConflictT: -1,
+    ropeJumpSideLockTick: 0,
+    ropeJumpSideLockReason: null,
+    ropeJumpNoReturnDeadlineT: 0,
+    ropeJumpConflictBeforeDeadline: null,
+    ropeJumpEndpointCommitTick: 0,
+    ropeJumpLateIntrusion: false,
+    ropeJumpLateIntrusionClass: null,
+    ropeJumpSafetyCorrectionTicks: 0,
     currentAction: null,
     actionLockUntil: 0,
     stamina: 100,
@@ -174,6 +185,16 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
     reversalDetected: false,
     sideIntent: 0,
     intentClass: null,
+    planningState: null,
+    firstRawConflictT: -1,
+    sideLockTick: 0,
+    sideLockReason: null,
+    noReturnDeadlineT: 0,
+    conflictBeforeDeadline: null,
+    endpointCommitTick: 0,
+    lateIntrusion: false,
+    lateIntrusionClass: null,
+    sidesSeen: [],
   };
 
   let now = startNow;
@@ -214,8 +235,18 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
           intentClass: jumper.ropeJumpIntentClass,
           intentReason: jumper.ropeJumpIntentReason,
           recommendedCommitT: jumper.ropeJumpRecommendedCommitT,
+          planningState: jumper.ropeJumpPlanningState,
           beforeX,
         };
+      }
+
+      if (
+        jumper.ropeJumpSideIntentLocked &&
+        (trace.sidesSeen.length === 0 ||
+          trace.sidesSeen[trace.sidesSeen.length - 1] !==
+            jumper.ropeJumpSideIntent)
+      ) {
+        trace.sidesSeen.push(jumper.ropeJumpSideIntent);
       }
 
       if (result.touchedDown) {
@@ -255,6 +286,15 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
         trace.sideIntent = jumper.ropeJumpSideIntent;
         trace.intentClass = jumper.ropeJumpIntentClass;
       }
+      trace.planningState = jumper.ropeJumpPlanningState;
+      trace.firstRawConflictT = jumper.ropeJumpFirstRawConflictT;
+      trace.sideLockTick = jumper.ropeJumpSideLockTick;
+      trace.sideLockReason = jumper.ropeJumpSideLockReason;
+      trace.noReturnDeadlineT = jumper.ropeJumpNoReturnDeadlineT;
+      trace.conflictBeforeDeadline = jumper.ropeJumpConflictBeforeDeadline;
+      trace.endpointCommitTick = jumper.ropeJumpEndpointCommitTick;
+      trace.lateIntrusion = !!jumper.ropeJumpLateIntrusion;
+      trace.lateIntrusionClass = jumper.ropeJumpLateIntrusionClass;
     } else if (jumper.ropeJumpPhase === "landing") {
       if (opponent) {
         const beforeJ = jumper.x;

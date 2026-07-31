@@ -1,11 +1,14 @@
 /**
- * Aerial landing resolution — Phase A / A.1 / A.2 (rope jump only).
+ * Aerial landing resolution — Phase A / A.1 / A.2 / A.3 (rope jump only).
  *
  * Phase A: deterministic pushbox-clear endpoint commit (flagged).
  * Phase A.1: motion-aware Hermite/brake trajectories + residual policy.
  * Phase A.2: separates stable side intent, continuous commit timing, and
  *            same-side endpoint refinement so subpixel opponent motion cannot
  *            flip landing side / commit era / trajectory class together.
+ * Phase A.3: raw-clear is provisional (not an irreversible side lock);
+ *            pre-commit dynamic conflicts replan on a locked near/cross side
+ *            using touchdown-extrapolated opponent position.
  *
  * Gated by ROPE_JUMP_LANDING_V2 (see landingFlags.js). Default OFF.
  */
@@ -17,6 +20,9 @@ const {
   ROPE_JUMP_LANDING_COMMIT_T,
   ROPE_JUMP_LANDING_COMMIT_T_MIN,
   TICK_RATE,
+  speedFactor: DEFAULT_SPEED_FACTOR,
+  ICE_ACCELERATION,
+  ICE_MAX_SPEED,
 } = require("./constants");
 const {
   MAP_LEFT_BOUNDARY,
@@ -49,8 +55,20 @@ const LANDING_SEPARATION_PAD_PX = 0.01;
 /**
  * Tolerable bounded touchdown residual overlap (world px).
  * Equals the existing rope-jump landing safety correction cap.
+ * Phase A.3: still the per-tick safety cap and late-intrusion event budget;
+ * ordinary pre-commit conflicts must not rely on N× this value.
  */
 const TOLERABLE_TOUCHDOWN_OVERLAP_PX = 18;
+
+/**
+ * Ordinary pre-commit conflicts must not use multi-tick grounded separation.
+ * Genuine post-commit late intrusion may use at most one safety tick ≤18px.
+ */
+const ORDINARY_MAX_SAFETY_CORRECTION_TICKS = 0;
+const ORDINARY_MAX_TOTAL_SAFETY_CORRECTION_PX = 0.5;
+const LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS = 1;
+const LATE_INTRUSION_MAX_TOTAL_SAFETY_CORRECTION_PX =
+  TOLERABLE_TOUCHDOWN_OVERLAP_PX;
 
 /**
  * Max ratio of |resolved−commit| to |raw−start| used as a soft cost only
@@ -104,6 +122,18 @@ const HERMITE_SAMPLE_STEPS = 16;
 
 /** Discrete samples when searching budget-feasible commit times. */
 const COMMIT_T_SEARCH_STEPS = 24;
+
+/**
+ * Phase A.3 planning states — ownership is explicit.
+ * preserve_raw is NEVER a locked side; it is provisional_raw until raw commit
+ * or until a near/cross side lock.
+ */
+const PLANNING_PROVISIONAL_RAW = "provisional_raw";
+const PLANNING_SIDE_LOCKED = "side_locked";
+const PLANNING_ENDPOINT_COMMITTED = "endpoint_committed";
+
+/** Quantization for no-return deadline (avoids float thrash). */
+const NO_RETURN_T_QUANTUM = 1 / 64;
 
 const TICK_MS = 1000 / TICK_RATE;
 
@@ -347,6 +377,352 @@ function choosePreferredLandingSide(args) {
   return resolveSideIntent(args).side;
 }
 
+/** Raw landing footprint overlap with opponent pushbox (world px). */
+function rawFootprintOverlap(rawTargetX, opponentX, minimumDistance) {
+  return Math.max(0, minimumDistance - Math.abs(rawTargetX - opponentX));
+}
+
+/**
+ * Extrapolate opponent X at a future time.
+ * Steady motion: opp + vel*rem is stable across ticks.
+ * When a measured acceleration is provided (ice ramp), apply a bounded
+ * half-accel term capped by ICE_MAX_SPEED — never assume accel for
+ * constant-velocity motion (that over-predicts and flips sides).
+ */
+function predictOpponentX(
+  opponentX,
+  oppVelPxPerSec,
+  remainingSec,
+  mapLeft = MAP_LEFT_BOUNDARY,
+  mapRight = MAP_RIGHT_BOUNDARY,
+  oppAccelPxPerSec2 = 0
+) {
+  const vel = Number.isFinite(oppVelPxPerSec) ? oppVelPxPerSec : 0;
+  const rem = Math.max(0, remainingSec);
+  const maxVelPxPerSec = ICE_MAX_SPEED * DEFAULT_SPEED_FACTOR * 1000;
+  let predVel = vel;
+  if (Number.isFinite(oppAccelPxPerSec2) && Math.abs(oppAccelPxPerSec2) > 1) {
+    predVel = vel + oppAccelPxPerSec2 * rem;
+    if (Math.abs(predVel) > maxVelPxPerSec) {
+      predVel = Math.sign(predVel) * maxVelPxPerSec;
+    }
+  }
+  const x = opponentX + 0.5 * (vel + predVel) * rem;
+  return clampToMap(x, mapLeft, mapRight);
+}
+
+/**
+ * Bias the planning opponent away from the locked landing side by a small
+ * clearance so 64 Hz / prediction quantization cannot leave a sub-pixel bury.
+ */
+const DYNAMIC_SIDE_CLEARANCE_PX = 1.25;
+
+function planningOpponentX(
+  predictedOppX,
+  lockedSide,
+  oppVelPxPerSec,
+  mapLeft,
+  mapRight
+) {
+  if (lockedSide !== 1 && lockedSide !== -1) return predictedOppX;
+  // Static opponents keep exact A.2 endpoints; moving ones get clearance bias
+  // of at least one tick of travel + pad.
+  if (!Number.isFinite(oppVelPxPerSec) || Math.abs(oppVelPxPerSec) < 0.5) {
+    return predictedOppX;
+  }
+  const velPxPerTick = Math.abs(oppVelPxPerSec) * (TICK_MS / 1000);
+  // ≥1 tick of travel + pad covers 64 Hz sampling and small size pairs.
+  const clearance = Math.max(DYNAMIC_SIDE_CLEARANCE_PX, velPxPerTick * 2 + 2);
+  return clampToMap(
+    predictedOppX + lockedSide * clearance,
+    mapLeft,
+    mapRight
+  );
+}
+
+/**
+ * Update per-jump opponent velocity estimate from successive samples.
+ * Optionally seeds from ice `movementVelocity` (world px/s = mv * speedFactor * 1000).
+ * @returns {{ vel: number, trusted: boolean }}
+ */
+function updateOpponentVelocityEstimate(
+  player,
+  opponentX,
+  opponentMovementVelocity,
+  speedFactor
+) {
+  let vel = 0;
+  let trusted = false;
+  let accel = 0;
+  if (
+    player._landingOppPrevX != null &&
+    Number.isFinite(player._landingOppPrevX)
+  ) {
+    vel = (opponentX - player._landingOppPrevX) / (TICK_MS / 1000);
+    trusted = true;
+    if (
+      player._landingOppVelPxPerSec != null &&
+      Number.isFinite(player._landingOppVelPxPerSec) &&
+      Math.abs(player._landingOppVelPxPerSec) > 0.5
+    ) {
+      // Ignore 0→vel startup spikes (look like huge accel, break const-vel).
+      accel =
+        (vel - player._landingOppVelPxPerSec) / (TICK_MS / 1000);
+    }
+  } else if (
+    Number.isFinite(opponentMovementVelocity) &&
+    Number.isFinite(speedFactor) &&
+    Math.abs(opponentMovementVelocity) > 1e-6
+  ) {
+    vel = opponentMovementVelocity * speedFactor * 1000;
+    trusted = true;
+  } else if (
+    player._landingOppVelPxPerSec != null &&
+    Number.isFinite(player._landingOppVelPxPerSec)
+  ) {
+    vel = player._landingOppVelPxPerSec;
+    trusted = Math.abs(vel) > 0.5;
+  }
+  player._landingOppPrevX = opponentX;
+  // Quantize tiny noise so deadline / prediction do not chatter.
+  if (Math.abs(vel) < 0.5) vel = 0;
+  if (Math.abs(accel) < 50) accel = 0; // ignore float chatter
+  player._landingOppVelPxPerSec = vel;
+  player._landingOppAccelPxPerSec2 = accel;
+  return { vel, trusted, accel };
+}
+
+/**
+ * True when a conflict at the given planning pose can still be resolved with a
+ * clear (or tolerable-residual) same-side Hermite/brake path from the raw arc.
+ */
+function canResolveConflictAtT({
+  t,
+  jumperStartX,
+  rawTargetX,
+  jumpDirection,
+  opponentX,
+  minimumDistance,
+  mapLeft,
+  mapRight,
+  activeMs,
+  commitTMax,
+  commitTMin,
+}) {
+  const dir = jumpDirection >= 0 ? 1 : -1;
+  const commitX = rawArcX(jumperStartX, rawTargetX, t);
+  const commitVel = rawArcVelocity(jumperStartX, rawTargetX, t, activeMs);
+  const remainingSec = Math.max(0, (1 - t) * (activeMs / 1000));
+  const intent = resolveSideIntent({
+    rawTargetX,
+    jumperStartX,
+    jumpDirection: dir,
+    opponentX,
+    minimumDistance,
+    mapLeft,
+    mapRight,
+  });
+  const sides = [intent.side];
+  const alt = /** @type {1|-1} */ (-intent.side);
+  if (alt !== intent.side) sides.push(alt);
+
+  for (const side of sides) {
+    const endpointX = clampToMap(
+      sideEndpoint(opponentX, side, minimumDistance),
+      mapLeft,
+      mapRight
+    );
+    if (isStrictlyBehind(commitX, endpointX, dir)) continue;
+    const overlap = overlapAt(endpointX, opponentX, minimumDistance);
+    if (overlap > TOLERABLE_TOUCHDOWN_OVERLAP_PX) continue;
+    const hermite = evaluateHermiteFeasibility({
+      commitX,
+      commitVel,
+      endpointX,
+      remainingSec,
+      jumpDirection: dir,
+    });
+    if (hermite.feasible && hermite.withinPlannerBudget) return true;
+    const brake = evaluateBrakeFeasibility({
+      commitX,
+      commitVel,
+      endpointX,
+      remainingSec,
+      jumpDirection: dir,
+    });
+    if (brake.feasible && brake.withinPlannerBudget) return true;
+  }
+  return false;
+}
+
+/**
+ * Latest active-arc fraction where a newly appearing conflict at `opponentX`
+ * can still be resolved aerially. Deterministic; quantized to NO_RETURN_T_QUANTUM.
+ */
+function computeNoReturnDeadlineT({
+  jumperStartX,
+  rawTargetX,
+  jumpDirection,
+  opponentX,
+  minimumDistance,
+  mapLeft = MAP_LEFT_BOUNDARY,
+  mapRight = MAP_RIGHT_BOUNDARY,
+  activeMs = ROPE_JUMP_ACTIVE_MS,
+  commitTMax = ROPE_JUMP_LANDING_COMMIT_T,
+  commitTMin = ROPE_JUMP_LANDING_COMMIT_T_MIN,
+} = {}) {
+  // Walk from late → early; first feasible from the late side is the deadline.
+  let latest = commitTMin;
+  for (let i = COMMIT_T_SEARCH_STEPS; i >= 0; i--) {
+    const t =
+      commitTMin + ((commitTMax - commitTMin) * i) / COMMIT_T_SEARCH_STEPS;
+    if (
+      canResolveConflictAtT({
+        t,
+        jumperStartX,
+        rawTargetX,
+        jumpDirection,
+        opponentX,
+        minimumDistance,
+        mapLeft,
+        mapRight,
+        activeMs,
+        commitTMax,
+        commitTMin,
+      })
+    ) {
+      latest = t;
+      break;
+    }
+  }
+  // If even commitTMin cannot resolve, deadline collapses to commitTMin
+  // (anything later is late intrusion).
+  const q = NO_RETURN_T_QUANTUM;
+  return Math.round(latest / q) * q;
+}
+
+/**
+ * Phase A.3 — select a stable near/cross side for a dynamic conflict.
+ * Uses A.2 geometry on the touchdown-extrapolated opponent so an approaching
+ * body does not lock a near-side cell it will immediately re-invade.
+ *
+ * When the A.2 preferred side's ideal endpoint is off-map or deeply residual
+ * against the predicted cell, take the clear alternate (usually cross).
+ */
+function selectSideForDynamicConflict({
+  rawTargetX,
+  jumperStartX,
+  jumpDirection,
+  opponentX,
+  predictedOpponentX,
+  minimumDistance,
+  jumperHalfWidth,
+  mapLeft,
+  mapRight,
+}) {
+  const dir = jumpDirection >= 0 ? 1 : -1;
+  const planOpp = Number.isFinite(predictedOpponentX)
+    ? predictedOpponentX
+    : opponentX;
+  const intent = resolveSideIntent({
+    rawTargetX,
+    jumperStartX,
+    jumpDirection: dir,
+    opponentX: planOpp,
+    minimumDistance,
+    jumperHalfWidth,
+    mapLeft,
+    mapRight,
+  });
+
+  // preserve_raw on the predicted cell means conflict is transient — still
+  // pick a concrete side from current-conflict A.2 geometry.
+  let chosen = intent;
+  if (intent.intentClass === "preserve_raw") {
+    chosen = resolveSideIntent({
+      rawTargetX,
+      jumperStartX,
+      jumpDirection: dir,
+      opponentX,
+      minimumDistance,
+      jumperHalfWidth,
+      mapLeft,
+      mapRight,
+    });
+  }
+
+  if (chosen.intentClass === "preserve_raw") {
+    const near = originatingSide(jumperStartX, planOpp, dir);
+    chosen = {
+      side: near,
+      intentClass: "near",
+      reason: "dynamic_conflict_force_near",
+    };
+  }
+
+  const scoreSide = (side) => {
+    const ideal = sideEndpoint(planOpp, side, minimumDistance);
+    const end = clampToMap(ideal, mapLeft, mapRight);
+    const ov = overlapAt(end, planOpp, minimumDistance);
+    const onMap = ideal >= mapLeft && ideal <= mapRight;
+    const escape = centerwardTravel(jumperStartX, end, dir);
+    return { side, end, overlap: ov, onMap, escape };
+  };
+
+  const pref = scoreSide(chosen.side);
+  const altSide = /** @type {1|-1} */ (-chosen.side);
+  const alt = scoreSide(altSide);
+
+  const minEscape = minCenterwardEscapePx(
+    jumperHalfWidth,
+    rawTargetX,
+    jumperStartX
+  );
+  // Near endpoints behind late-commit raw X are fine — A.2 early-commits.
+  // Only reject map-unfit / residual / sub-escape near (same as A.2).
+  const prefOk =
+    pref.overlap <= TOLERABLE_TOUCHDOWN_OVERLAP_PX &&
+    pref.onMap &&
+    pref.escape >= minEscape * 0.5;
+  const altOk =
+    alt.overlap <= TOLERABLE_TOUCHDOWN_OVERLAP_PX && alt.onMap;
+
+  if (prefOk) {
+    return {
+      side: chosen.side,
+      intentClass: chosen.intentClass,
+      reason: `dynamic_${chosen.reason || "ok"}`,
+      predictedOpponentX: planOpp,
+    };
+  }
+  if (altOk) {
+    return {
+      side: altSide,
+      intentClass: altSide === dir ? "cross" : "near",
+      reason: "dynamic_preferred_unfit_alternate",
+      predictedOpponentX: planOpp,
+    };
+  }
+  // Both imperfect — pick lower residual overlap; prefer centerward escape.
+  if (
+    alt.overlap < pref.overlap - 1e-9 ||
+    (Math.abs(alt.overlap - pref.overlap) <= 1e-9 && alt.escape > pref.escape)
+  ) {
+    return {
+      side: altSide,
+      intentClass: altSide === dir ? "cross" : "near",
+      reason: "dynamic_both_imperfect_alternate",
+      predictedOpponentX: planOpp,
+    };
+  }
+  return {
+    side: chosen.side,
+    intentClass: chosen.intentClass,
+    reason: `dynamic_${chosen.reason || "ok"}`,
+    predictedOpponentX: planOpp,
+  };
+}
+
 /**
  * Evaluate Hermite path quality for commit → endpoint with terminal vel 0.
  */
@@ -553,9 +929,19 @@ function computeRecommendedCommitT({
   }
 
   if (!found) {
-    // Fall back to latest non-overshoot time (budgets enforced by trajectory
-    // selection / early cross intent — still better than the A.1 boolean cliff).
-    chosen = tLatest;
+    // No planner-budget time exists. Prefer the EARLIEST non-overshoot commit
+    // so Hermite/brake has maximum remaining duration (A.3 far-cross dynamic
+    // cases). Falling back to tLatest here recreated ~2× peak-vel spikes.
+    chosen = commitTMin;
+    for (let i = 0; i <= COMMIT_T_SEARCH_STEPS; i++) {
+      const t =
+        commitTMin + ((tLatest - commitTMin) * i) / COMMIT_T_SEARCH_STEPS;
+      const commitX = rawArcX(jumperStartX, rawTargetX, t);
+      if (!isStrictlyBehind(commitX, endpointX, dir)) {
+        chosen = t;
+        break;
+      }
+    }
   }
   return chosen;
 }
@@ -803,7 +1189,12 @@ function planLandingEndpoint({
   };
 
   // No conflict — keep the intentional raw destination.
-  if (intent.intentClass === "preserve_raw" || rawOverlap <= 0) {
+  // Phase A.3: once a near/cross side is locked, never fall back to raw just
+  // because the opponent later left the raw footprint (rawOverlap ≤ 0).
+  if (
+    !sideIntentLocked &&
+    (intent.intentClass === "preserve_raw" || rawOverlap <= 0)
+  ) {
     const motion = evaluateHermiteFeasibility({
       commitX: safeCurrent,
       commitVel,
@@ -1239,10 +1630,25 @@ function clearRopeJumpLandingState(player) {
   player.ropeJumpIntentReason = null;
   player.ropeJumpRecommendedCommitT = 0;
   player.ropeJumpSideIntentOpponentX = 0;
+  // Phase A.3 planning lifecycle
+  player.ropeJumpPlanningState = null;
+  player.ropeJumpFirstRawConflictTick = 0;
+  player.ropeJumpFirstRawConflictT = -1;
+  player.ropeJumpSideLockTick = 0;
+  player.ropeJumpSideLockReason = null;
+  player.ropeJumpNoReturnDeadlineT = 0;
+  player.ropeJumpConflictBeforeDeadline = null;
+  player.ropeJumpEndpointCommitTick = 0;
+  player.ropeJumpLateIntrusion = false;
+  player.ropeJumpLateIntrusionClass = null;
+  player.ropeJumpSafetyCorrectionTicks = 0;
   player._landingTrace = null;
   player._landingPrevX = null;
   player._landingPrevVel = null;
   player._landingTickIndex = 0;
+  player._landingOppPrevX = null;
+  player._landingOppVelPxPerSec = 0;
+  player._landingOppAccelPxPerSec2 = 0;
 }
 
 /**
@@ -1253,6 +1659,9 @@ function initRopeJumpLandingState(player, rawTargetX, useV2 = ROPE_JUMP_LANDING_
   clearRopeJumpLandingState(player);
   player.ropeJumpRawTargetX = rawTargetX;
   player.ropeJumpLandingPath = useV2 ? "v2" : "legacy";
+  if (useV2) {
+    player.ropeJumpPlanningState = PLANNING_PROVISIONAL_RAW;
+  }
   if (LANDING_TRACE || LANDING_DEBUG_NET) {
     player._landingTrace = {
       path: player.ropeJumpLandingPath,
@@ -1261,6 +1670,7 @@ function initRopeJumpLandingState(player, rawTargetX, useV2 = ROPE_JUMP_LANDING_
       rawTargetX,
       jumpDirection: player.ropeJumpDirection,
       startedAt: player.ropeJumpStartTime,
+      planningState: player.ropeJumpPlanningState,
     };
   }
 }
@@ -1287,6 +1697,17 @@ function finalizeLandingTrace(player, extra = {}) {
     reversalDetected: player.ropeJumpReversalDetected,
     sideIntent: player.ropeJumpSideIntent,
     intentClass: player.ropeJumpIntentClass,
+    planningState: player.ropeJumpPlanningState,
+    firstRawConflictTick: player.ropeJumpFirstRawConflictTick,
+    firstRawConflictT: player.ropeJumpFirstRawConflictT,
+    sideLockTick: player.ropeJumpSideLockTick,
+    sideLockReason: player.ropeJumpSideLockReason,
+    noReturnDeadlineT: player.ropeJumpNoReturnDeadlineT,
+    conflictBeforeDeadline: player.ropeJumpConflictBeforeDeadline,
+    endpointCommitTick: player.ropeJumpEndpointCommitTick,
+    lateIntrusion: player.ropeJumpLateIntrusion,
+    lateIntrusionClass: player.ropeJumpLateIntrusionClass,
+    safetyCorrectionTicks: player.ropeJumpSafetyCorrectionTicks,
   };
   console.log("[LANDING_TRACE]", JSON.stringify(record));
   player._landingTrace = null;
@@ -1316,10 +1737,21 @@ function getLandingDebugPayload(player) {
     intentClass: player.ropeJumpIntentClass,
     intentReason: player.ropeJumpIntentReason,
     recommendedCommitT: player.ropeJumpRecommendedCommitT,
+    planningState: player.ropeJumpPlanningState,
+    firstRawConflictTick: player.ropeJumpFirstRawConflictTick,
+    firstRawConflictT: player.ropeJumpFirstRawConflictT,
+    sideLockTick: player.ropeJumpSideLockTick,
+    sideLockReason: player.ropeJumpSideLockReason,
+    noReturnDeadlineT: player.ropeJumpNoReturnDeadlineT,
+    conflictBeforeDeadline: player.ropeJumpConflictBeforeDeadline,
+    endpointCommitTick: player.ropeJumpEndpointCommitTick,
+    lateIntrusion: player.ropeJumpLateIntrusion,
+    lateIntrusionClass: player.ropeJumpLateIntrusionClass,
     minDistance: player.ropeJumpMinDistance,
     centerDistance: player.ropeJumpCenterDistance,
     overlap: player.ropeJumpOverlap,
     safetyCorrectionPx: player.ropeJumpSafetyCorrectionPx,
+    safetyCorrectionTicks: player.ropeJumpSafetyCorrectionTicks,
     preTouchdownX: player.ropeJumpPreTouchdownX,
     touchdownX: player.ropeJumpTouchdownX,
     usedFallback: player.ropeJumpUsedFallback,
@@ -1350,6 +1782,8 @@ function applyCommitDecision(player, decision, commitX, commitT, commitVel) {
   player.ropeJumpDecisionClass = decision.decisionClass || null;
   player.ropeJumpFallbackReason = decision.fallbackReason || null;
   player.ropeJumpRecommendedCommitT = decision.recommendedCommitT || commitT;
+  player.ropeJumpPlanningState = PLANNING_ENDPOINT_COMMITTED;
+  player.ropeJumpEndpointCommitTick = player._landingTickIndex || 0;
 }
 
 function samplePostCommitX(player, t, activeMs) {
@@ -1376,8 +1810,9 @@ function samplePostCommitX(player, t, activeMs) {
  * Authoritative active-phase step for rope jump.
  * When useV2 is false, reproduces the legacy fixed-target arc.
  *
- * V2 (A.2): lock side intent once → refine endpoint on that side → commit at
- * a continuous recommendedCommitT (budget-aware) → Hermite/brake travel.
+ * V2 (A.3): provisional raw-clear → lock near/cross only on conflict →
+ * refine endpoint on that side (touchdown-extrapolated opp) → commit once →
+ * Hermite/brake travel. No post-commit re-home.
  *
  * @returns {{ touchedDown: boolean, committedThisTick: boolean, decision: object|null }}
  */
@@ -1394,6 +1829,8 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
   const mapLeft = options.mapLeft != null ? options.mapLeft : MAP_LEFT_BOUNDARY;
   const mapRight = options.mapRight != null ? options.mapRight : MAP_RIGHT_BOUNDARY;
   const useV2 = options.useV2 != null ? options.useV2 : ROPE_JUMP_LANDING_V2;
+  const speedFactor =
+    options.speedFactor != null ? options.speedFactor : 0.185;
 
   const elapsed = now - player.ropeJumpActiveStartTime;
   const t = Math.min(1, elapsed / activeMs);
@@ -1418,36 +1855,176 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
     const jHalf = getPushboxHalfWidth(player.sizeMultiplier);
     const oHalf = getPushboxHalfWidth(opponent.sizeMultiplier);
     const minimumDistance = jHalf + oHalf;
+    const dirSign = player.ropeJumpDirection >= 0 ? 1 : -1;
+    const remainingSec = Math.max(0, (1 - t) * (activeMs / 1000));
+    const rawXAtMax = rawArcX(startX, rawTargetX, commitTMax);
 
-    // 1) Lock side intent once — never flip for the rest of this jump.
-    if (!player.ropeJumpSideIntentLocked) {
-      const intent = resolveSideIntent({
-        rawTargetX,
-        jumperStartX: startX,
-        jumpDirection: player.ropeJumpDirection,
-        opponentX: opponent.x,
-        minimumDistance,
-        jumperHalfWidth: jHalf,
-        mapLeft,
-        mapRight,
-      });
-      player.ropeJumpSideIntentLocked = true;
-      player.ropeJumpSideIntent = intent.side;
-      player.ropeJumpIntentClass = intent.intentClass;
-      player.ropeJumpIntentReason = intent.reason;
-      player.ropeJumpPreferredSide = intent.side;
-      player.ropeJumpSideIntentOpponentX = opponent.x;
+    if (!player.ropeJumpPlanningState) {
+      player.ropeJumpPlanningState = PLANNING_PROVISIONAL_RAW;
+    }
+
+    const oppVelEst = updateOpponentVelocityEstimate(
+      player,
+      opponent.x,
+      opponent.movementVelocity,
+      speedFactor
+    );
+    const oppVel = oppVelEst.vel;
+    const oppVelTrusted = oppVelEst.trusted;
+    const oppAccel = oppVelEst.accel || 0;
+    const predictedOppX = predictOpponentX(
+      opponent.x,
+      oppVel,
+      remainingSec,
+      mapLeft,
+      mapRight,
+      oppAccel
+    );
+    const rawOverlapNow = rawFootprintOverlap(
+      rawTargetX,
+      opponent.x,
+      minimumDistance
+    );
+
+    // Dynamic no-return: while raw is still clear, the full commit window
+    // remains available. Once conflict geometry exists, compute the latest t
+    // at which that cell can still be resolved aerially.
+    if (player.ropeJumpPlanningState === PLANNING_PROVISIONAL_RAW) {
+      if (rawOverlapNow <= 0) {
+        player.ropeJumpNoReturnDeadlineT = commitTMax;
+      } else {
+        const noReturn = computeNoReturnDeadlineT({
+          jumperStartX: startX,
+          rawTargetX,
+          jumpDirection: dirSign,
+          opponentX: predictedOppX,
+          minimumDistance,
+          mapLeft,
+          mapRight,
+          activeMs,
+          commitTMax,
+          commitTMin,
+        });
+        // Ratchet later only — never walk earlier from float noise.
+        const prev = player.ropeJumpNoReturnDeadlineT || commitTMin;
+        player.ropeJumpNoReturnDeadlineT = Math.max(prev, noReturn);
+      }
+    }
+
+    // Record first observable raw-footprint conflict.
+    if (rawOverlapNow > 0 && player.ropeJumpFirstRawConflictT < 0) {
+      player.ropeJumpFirstRawConflictTick = player._landingTickIndex;
+      player.ropeJumpFirstRawConflictT = t;
+      player.ropeJumpConflictBeforeDeadline =
+        !player.ropeJumpLandingCommitted &&
+        t <= player.ropeJumpNoReturnDeadlineT + 1e-9;
+    }
+
+    // 1) Side lock — only on near/cross conflict. preserve_raw stays provisional.
+    // Wait one tick for a trusted velocity sample when conflict appears early,
+    // so approach direction can reject a soon-to-be-invaded near side.
+    const canDelayForVelocity =
+      !oppVelTrusted &&
+      t + TICK_MS / activeMs < commitTMax - 1e-9 &&
+      t <= player.ropeJumpNoReturnDeadlineT;
+    if (
+      !player.ropeJumpSideIntentLocked &&
+      player.ropeJumpPlanningState === PLANNING_PROVISIONAL_RAW &&
+      rawOverlapNow > 0 &&
+      !canDelayForVelocity
+    ) {
+      const beforeDeadline =
+        t <= player.ropeJumpNoReturnDeadlineT + 1e-9 &&
+        !player.ropeJumpLandingCommitted;
+      if (beforeDeadline) {
+        const selected = selectSideForDynamicConflict({
+          rawTargetX,
+          jumperStartX: startX,
+          jumpDirection: dirSign,
+          opponentX: opponent.x,
+          predictedOpponentX: predictedOppX,
+          minimumDistance,
+          jumperHalfWidth: jHalf,
+          mapLeft,
+          mapRight,
+        });
+        player.ropeJumpSideIntentLocked = true;
+        player.ropeJumpSideIntent = selected.side;
+        player.ropeJumpIntentClass = selected.intentClass;
+        player.ropeJumpIntentReason = selected.reason;
+        player.ropeJumpSideLockReason = selected.reason;
+        player.ropeJumpPreferredSide = selected.side;
+        player.ropeJumpSideIntentOpponentX = opponent.x;
+        player.ropeJumpSideLockTick = player._landingTickIndex;
+        player.ropeJumpPlanningState = PLANNING_SIDE_LOCKED;
+        player.ropeJumpConflictBeforeDeadline = true;
+      } else if (!player.ropeJumpLandingCommitted) {
+        // Conflict after no-return but before commit — still try to lock a
+        // side if immediately reachable; else mark late intrusion at commit.
+        const selected = selectSideForDynamicConflict({
+          rawTargetX,
+          jumperStartX: startX,
+          jumpDirection: dirSign,
+          opponentX: opponent.x,
+          predictedOpponentX: predictedOppX,
+          minimumDistance,
+          jumperHalfWidth: jHalf,
+          mapLeft,
+          mapRight,
+        });
+        const canStill = canResolveConflictAtT({
+          t,
+          jumperStartX: startX,
+          rawTargetX,
+          jumpDirection: dirSign,
+          opponentX: predictedOppX,
+          minimumDistance,
+          mapLeft,
+          mapRight,
+          activeMs,
+          commitTMax,
+          commitTMin,
+        });
+        if (canStill) {
+          player.ropeJumpSideIntentLocked = true;
+          player.ropeJumpSideIntent = selected.side;
+          player.ropeJumpIntentClass = selected.intentClass;
+          player.ropeJumpIntentReason = selected.reason;
+          player.ropeJumpSideLockReason = selected.reason;
+          player.ropeJumpPreferredSide = selected.side;
+          player.ropeJumpSideIntentOpponentX = opponent.x;
+          player.ropeJumpSideLockTick = player._landingTickIndex;
+          player.ropeJumpPlanningState = PLANNING_SIDE_LOCKED;
+          player.ropeJumpConflictBeforeDeadline = false;
+        } else {
+          player.ropeJumpLateIntrusion = true;
+          player.ropeJumpLateIntrusionClass =
+            "conflict_after_no_return_unresolvable";
+          player.ropeJumpConflictBeforeDeadline = false;
+        }
+      }
     }
 
     if (!player.ropeJumpLandingCommitted) {
-      const remainingSec = Math.max(0, (1 - t) * (activeMs / 1000));
-      const rawXAtMax = rawArcX(startX, rawTargetX, commitTMax);
+      const sideLocked = !!player.ropeJumpSideIntentLocked;
+      // Planning opponent: extrapolate to touchdown while side-locked so
+      // steady approach yields a stable clear endpoint (not a re-invaded near).
+      const planOppX = sideLocked
+        ? planningOpponentX(
+            predictedOppX,
+            player.ropeJumpSideIntent,
+            oppVel,
+            mapLeft,
+            mapRight
+          )
+        : opponent.x;
+
       decision = planLandingEndpoint({
         rawTargetX,
         jumperStartX: startX,
         jumperCurrentX: xAlongRaw,
-        jumpDirection: player.ropeJumpDirection,
-        opponentX: opponent.x,
+        jumpDirection: dirSign,
+        opponentX: planOppX,
         jumperHalfWidth: jHalf,
         opponentHalfWidth: oHalf,
         mapLeft,
@@ -1458,17 +2035,16 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
         activeMs,
         commitTMax,
         commitTMin,
-        sideIntentLocked: true,
-        lockedSide: player.ropeJumpSideIntent,
-        lockedIntentClass: player.ropeJumpIntentClass,
+        sideIntentLocked: sideLocked,
+        lockedSide: sideLocked ? player.ropeJumpSideIntent : null,
+        lockedIntentClass: sideLocked ? player.ropeJumpIntentClass : null,
       });
 
       player.ropeJumpRecommendedCommitT = decision.recommendedCommitT;
-      player.ropeJumpPreferredSide = player.ropeJumpSideIntent;
+      if (sideLocked) {
+        player.ropeJumpPreferredSide = player.ropeJumpSideIntent;
+      }
 
-      // Commit on the last safe raw tick before the arc would pass the
-      // planned endpoint (64 Hz quantization must not overshoot).
-      const dirSign = player.ropeJumpDirection >= 0 ? 1 : -1;
       const nextT = Math.min(1, t + TICK_MS / activeMs);
       const nextX = rawArcX(startX, rawTargetX, nextT);
       const endpoint = decision.resolvedTargetX;
@@ -1479,14 +2055,37 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
         t >= commitTMax ||
         t + 1e-9 >= decision.recommendedCommitT ||
         nextWouldPass;
+
       if (mustLock) {
-        // Re-plan trajectory type at the actual commit pose.
+        // If still provisional at final commit, lock preserve_raw as the
+        // committed raw path — not as a near/cross side intent.
+        if (!sideLocked) {
+          player.ropeJumpIntentClass = "preserve_raw";
+          player.ropeJumpIntentReason = "raw_clear_through_commit";
+          player.ropeJumpPreferredSide =
+            rawTargetX < opponent.x
+              ? -1
+              : rawTargetX > opponent.x
+                ? 1
+                : dirSign;
+          player.ropeJumpResolvedSide = player.ropeJumpPreferredSide;
+        }
+
+        const commitPlanOppX = sideLocked
+          ? planningOpponentX(
+              predictedOppX,
+              player.ropeJumpSideIntent,
+              oppVel,
+              mapLeft,
+              mapRight
+            )
+          : opponent.x;
         const commitPlan = planLandingEndpoint({
           rawTargetX,
           jumperStartX: startX,
           jumperCurrentX: xAlongRaw,
-          jumpDirection: player.ropeJumpDirection,
-          opponentX: opponent.x,
+          jumpDirection: dirSign,
+          opponentX: commitPlanOppX,
           jumperHalfWidth: jHalf,
           opponentHalfWidth: oHalf,
           mapLeft,
@@ -1497,16 +2096,16 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
           activeMs,
           commitTMax,
           commitTMin,
-          sideIntentLocked: true,
-          lockedSide: player.ropeJumpSideIntent,
-          lockedIntentClass: player.ropeJumpIntentClass,
+          sideIntentLocked: sideLocked,
+          lockedSide: sideLocked ? player.ropeJumpSideIntent : null,
+          lockedIntentClass: sideLocked ? player.ropeJumpIntentClass : null,
         });
-        // Never land on the opposite side of the locked intent.
-        commitPlan.resolvedSide = player.ropeJumpSideIntent;
-        commitPlan.preferredSide = player.ropeJumpSideIntent;
-        // Guard against 1-tick quantization putting commit slightly past the
-        // ideal side endpoint — clamp endpoint forward so Hermite/brake never
-        // reverse toward the rope.
+
+        if (sideLocked) {
+          commitPlan.resolvedSide = player.ropeJumpSideIntent;
+          commitPlan.preferredSide = player.ropeJumpSideIntent;
+        }
+
         if (isStrictlyBehind(xAlongRaw, commitPlan.resolvedTargetX, dirSign)) {
           commitPlan.resolvedTargetX = xAlongRaw;
           commitPlan.trajectoryType =
@@ -1531,9 +2130,33 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
         ) {
           commitPlan.trajectoryType = "brake";
         }
+
+        // Post-commit conflict classification: if raw already overlapped before
+        // this commit and we could not side-lock, mark late intrusion.
+        if (
+          !sideLocked &&
+          rawOverlapNow > 0 &&
+          commitPlan.decisionClass === "exact_clear_raw"
+        ) {
+          player.ropeJumpLateIntrusion = true;
+          player.ropeJumpLateIntrusionClass =
+            "raw_commit_with_unresolved_conflict";
+        }
+
         applyCommitDecision(player, commitPlan, xAlongRaw, t, velAlongRaw);
         decision = commitPlan;
         committedThisTick = true;
+      }
+    } else if (player.ropeJumpLandingCommitted && !player.ropeJumpLateIntrusion) {
+      // True late intrusion: first raw-footprint conflict appears only after
+      // the endpoint was already committed (not approach into a planned cross).
+      if (
+        player.ropeJumpFirstRawConflictT >
+        player.ropeJumpLandingCommitT + 1e-9
+      ) {
+        player.ropeJumpLateIntrusion = true;
+        player.ropeJumpLateIntrusionClass = "conflict_after_endpoint_commit";
+        player.ropeJumpConflictBeforeDeadline = false;
       }
     }
   }
@@ -1611,6 +2234,11 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
       decisionClass: player.ropeJumpDecisionClass,
       fallbackReason: player.ropeJumpFallbackReason,
       recommendedCommitT: player.ropeJumpRecommendedCommitT,
+      planningState: player.ropeJumpPlanningState,
+      noReturnDeadlineT: player.ropeJumpNoReturnDeadlineT,
+      firstRawConflictT: player.ropeJumpFirstRawConflictT,
+      lateIntrusion: !!player.ropeJumpLateIntrusion,
+      lateIntrusionClass: player.ropeJumpLateIntrusionClass,
       overlap: player.ropeJumpOverlap,
       committed: !!player.ropeJumpLandingCommitted,
       easedT: Number(easedT.toFixed(4)),
@@ -1683,6 +2311,13 @@ module.exports = {
   MIN_CENTERWARD_ESCAPE_FLOOR_PX,
   MIN_CENTERWARD_ESCAPE_HALF_WIDTH_FRAC,
   MIN_CENTERWARD_ESCAPE_RAW_SPAN_FRAC,
+  ORDINARY_MAX_SAFETY_CORRECTION_TICKS,
+  ORDINARY_MAX_TOTAL_SAFETY_CORRECTION_PX,
+  LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS,
+  LATE_INTRUSION_MAX_TOTAL_SAFETY_CORRECTION_PX,
+  PLANNING_PROVISIONAL_RAW,
+  PLANNING_SIDE_LOCKED,
+  PLANNING_ENDPOINT_COMMITTED,
   getPushboxHalfWidth,
   getMinimumCenterDistance,
   ropeJumpEase,
@@ -1698,6 +2333,10 @@ module.exports = {
   resolveLandingTarget,
   planLandingEndpoint,
   computeRecommendedCommitT,
+  computeNoReturnDeadlineT,
+  selectSideForDynamicConflict,
+  predictOpponentX,
+  rawFootprintOverlap,
   evaluateHermiteFeasibility,
   clearRopeJumpLandingState,
   initRopeJumpLandingState,

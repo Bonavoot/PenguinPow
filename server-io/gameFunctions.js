@@ -593,6 +593,17 @@ function handleWinCondition(room, loser, winner, io, winType) {
       p.ropeJumpIntentReason = null;
       p.ropeJumpRecommendedCommitT = 0;
       p.ropeJumpSideIntentOpponentX = 0;
+      p.ropeJumpPlanningState = null;
+      p.ropeJumpFirstRawConflictTick = 0;
+      p.ropeJumpFirstRawConflictT = -1;
+      p.ropeJumpSideLockTick = 0;
+      p.ropeJumpSideLockReason = null;
+      p.ropeJumpNoReturnDeadlineT = 0;
+      p.ropeJumpConflictBeforeDeadline = null;
+      p.ropeJumpEndpointCommitTick = 0;
+      p.ropeJumpLateIntrusion = false;
+      p.ropeJumpLateIntrusionClass = null;
+      p.ropeJumpSafetyCorrectionTicks = 0;
       p._landingTrace = null;
     }
 
@@ -1779,9 +1790,23 @@ function adjustPlayerPositions(player1, player2, delta) {
   }
 
   // During rope jump landing, cap the push per tick for a smooth slide instead of a snap.
-  // V2 landings should rarely need this; the cap remains as legacy / emergency safety.
+  // V2 ordinary landings should be clear (0 correction). Phase A.3 late intrusion
+  // may spend at most ONE capped safety tick — never an N×18 grounded slide.
   const ropeJumpLanding = (player1.isRopeJumping && player1.ropeJumpPhase === "landing") ||
                           (player2.isRopeJumping && player2.ropeJumpPhase === "landing");
+  const ropeJumper =
+    player1.isRopeJumping && player1.ropeJumpPhase === "landing"
+      ? player1
+      : player2.isRopeJumping && player2.ropeJumpPhase === "landing"
+        ? player2
+        : null;
+  if (
+    ropeJumper &&
+    ropeJumper.ropeJumpLateIntrusion &&
+    (ropeJumper.ropeJumpSafetyCorrectionTicks || 0) >= 1
+  ) {
+    return;
+  }
   const effectiveOverlap = ropeJumpLanding ? Math.min(overlap, 18) : overlap;
 
   if (p1IsLeft) {
@@ -1802,6 +1827,8 @@ function adjustPlayerPositions(player1, player2, delta) {
     if (jumper) {
       jumper.ropeJumpSafetyCorrectionPx =
         (jumper.ropeJumpSafetyCorrectionPx || 0) + effectiveOverlap;
+      jumper.ropeJumpSafetyCorrectionTicks =
+        (jumper.ropeJumpSafetyCorrectionTicks || 0) + 1;
     }
   }
 

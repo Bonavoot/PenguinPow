@@ -1440,6 +1440,17 @@ function clearAllActionStates(player) {
   player.ropeJumpIntentReason = null;
   player.ropeJumpRecommendedCommitT = 0;
   player.ropeJumpSideIntentOpponentX = 0;
+  player.ropeJumpPlanningState = null;
+  player.ropeJumpFirstRawConflictTick = 0;
+  player.ropeJumpFirstRawConflictT = -1;
+  player.ropeJumpSideLockTick = 0;
+  player.ropeJumpSideLockReason = null;
+  player.ropeJumpNoReturnDeadlineT = 0;
+  player.ropeJumpConflictBeforeDeadline = null;
+  player.ropeJumpEndpointCommitTick = 0;
+  player.ropeJumpLateIntrusion = false;
+  player.ropeJumpLateIntrusionClass = null;
+  player.ropeJumpSafetyCorrectionTicks = 0;
   player._landingTrace = null;
 
   // Clear flap states. Only reachable while grounded (startup is the only
