@@ -11,6 +11,10 @@
  * corrects everyone else.
  */
 
+const {
+  getOffensiveAerialFacingLock,
+} = require("./offensiveAerialFacing");
+
 /** Desired facing for `player` so they look at `opponent` from current X. */
 function facingTowardOpponent(player, opponent) {
   if (!player || !opponent) return player?.facing ?? -1;
@@ -87,6 +91,16 @@ function getLockedFacing(player) {
 
   // Sidestep arc: freeze until recovery / end re-faces via enforce
   if (player.isSidestepping) {
+    return player.facing;
+  }
+
+  // Offensive-aerial instance lock (Phase 5A). Frozen locks win over auto-face;
+  // steer-allowed locks still exclude auto-face but air code may update facing.
+  const aerialLock = getOffensiveAerialFacingLock(player);
+  if (aerialLock) {
+    if (!aerialLock.allowSteerUpdate) {
+      return aerialLock.direction;
+    }
     return player.facing;
   }
 

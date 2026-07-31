@@ -1479,6 +1479,32 @@ function updateCPUAI(cpu, human, room, currentTime) {
     return;
   }
 
+  // Playtest dummy: EASY stands still and continuously TAP-parries (no slap/move).
+  // Rising-edge `s` arms AP via processCPUInputs; must fully release between taps
+  // (and clear AP whiff jail) or the next edge cannot re-arm.
+  if (DIFF_KEY === "EASY") {
+    resetAllKeys(cpu);
+    aiState.pendingParry = false;
+    aiState.parryReleaseTime = 0;
+    const PRESS_MS = 160; // live AP window while held
+    const RELEASE_MS = 320; // > AP_WHIFF_RECOVERY_MS so the next tap can arm
+    if (
+      !aiState.easyParryPhase ||
+      currentTime >= (aiState.easyParryPhaseUntil || 0)
+    ) {
+      if (aiState.easyParryPhase === "press") {
+        aiState.easyParryPhase = "release";
+        aiState.easyParryPhaseUntil = currentTime + RELEASE_MS;
+      } else {
+        aiState.easyParryPhase = "press";
+        aiState.easyParryPhaseUntil = currentTime + PRESS_MS;
+      }
+    }
+    cpu.keys.s = aiState.easyParryPhase === "press";
+    aiState.lastActionType = "easy_parry_tap_dummy";
+    return;
+  }
+
   // HIGHEST PRIORITY (FLAP slide-jump): if WE are in a FLAP-armed slide-jump,
   // pilot air charges + dive. Plain slide-jumps fall through to normal logic.
   if (cpu.isSlideJumping && cpu.slideJumpHasFlap) {

@@ -61,6 +61,10 @@ const DELTA_TRACKED_PROPS = [
   // iceSlideDir: +1 right / -1 left — client foot FX wake (dodgeDirection is
   // cleared on the same land tick that arms isIceSliding).
   'isIceSliding', 'iceSlideDir', 'isIceSlideReverseHopping', 'isSlideJumping', 'slideJumpDiveCommitted', 'slideJumpFastFalling', 'slideJumpPhase', 'slideJumpHasFlap',
+  // Phase 4: compact reaction type for client animation ownership (null when idle).
+  'offensiveAerialReactionType',
+  // Phase 5A: compact presentation category (NONE/FLIGHT_ACTIVE/…).
+  'offensiveAerialPresentation',
   'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
   // Aerial landing diagnostics intentionally NOT on the production delta wire.
   // See LANDING_DIAG_DELTA_PROPS + landingFlags.LANDING_DEBUG_NET.

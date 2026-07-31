@@ -197,13 +197,41 @@ const {
 const { updateCPUAI, processCPUInputs } = require("./cpuAI");
 // Import collision system
 const { checkCollision, checkFlapBodySlam } = require("./collisionSystem");
-const { OFFENSIVE_AERIAL_DEBUG } = require("./offensiveAerialFlags");
+const {
+  OFFENSIVE_AERIAL_DEBUG,
+  isOffensiveAerialReactionV2Enabled,
+} = require("./offensiveAerialFlags");
 const {
   beginOffensiveAerialTrace,
   buildOffensiveAerialTickSnapshot,
   recordOffensiveAerialTick,
   flushOffensiveAerialTrace,
 } = require("./offensiveAerialTrace");
+const {
+  OFFENSIVE_AERIAL_MOVE_TYPE,
+  OFFENSIVE_AERIAL_MOVEMENT_OWNER,
+  OFFENSIVE_AERIAL_OUTCOME,
+  beginOffensiveAerialActivation,
+  resolveOffensiveAerialTouchdownTerminal,
+  finalizeOffensiveAerialActivation,
+} = require("./offensiveAerialOutcome");
+const {
+  isParriedRecoilActive,
+  stepParriedRecoil,
+  applyOffensiveAerialTouchdownHandoff,
+  recordTouchdownSpacingMetrics,
+} = require("./offensiveAerialReaction");
+const {
+  FACING_LOCK_REASON,
+  FACING_RELEASE,
+  acquireOffensiveAerialFacingLock,
+  updateOffensiveAerialFacingLockDirection,
+  applyNeutralFacingAfterAerial,
+  aerialFacingAllowsSteer,
+} = require("./offensiveAerialFacing");
+const {
+  syncOffensiveAerialPresentation,
+} = require("./offensiveAerialPresentation");
 const {
   getConnectDistance,
   attackKindFromPlayer,
@@ -2632,6 +2660,32 @@ function tick(delta) {
             // FLAP arms this jump with charges; physics stay plain slide-jump
             // until a charge is spent. Fresh bank every takeoff.
             armSlideJumpFlapCharges(player, now);
+            // Outcome contract: only FLAP-armed takeoffs create an offensive
+            // activation. Plain slide-jump is movement-only until dive/contact.
+            if (player.slideJumpHasFlap) {
+              beginOffensiveAerialActivation(player, {
+                forceNew: true,
+                moveType: OFFENSIVE_AERIAL_MOVE_TYPE.FLAP_SLIDE_JUMP,
+                offensiveArmed: true,
+                movementOwner: OFFENSIVE_AERIAL_MOVEMENT_OWNER.SLIDE_JUMP_FLIGHT,
+                debugReason: "takeoff_flap_armed",
+              });
+            } else {
+              // Ensure no stale activation from a prior jump survives takeoff.
+              finalizeOffensiveAerialActivation(player, {
+                debugReason: "takeoff_plain_clear",
+              });
+              player.offensiveAerial = null;
+            }
+            acquireOffensiveAerialFacingLock(player, {
+              supersede: true,
+              ownerInstanceId: player.offensiveAerial?.attackInstanceId || null,
+              direction: player.facing,
+              reason: FACING_LOCK_REASON.FLIGHT,
+              releaseCondition: FACING_RELEASE.RECOVERY_COMPLETE,
+              allowSteerUpdate: true,
+              acquiredTick: room.tick || 0,
+            });
             clearIceSlideState(player);
             // Consume the edge so rope-jump / other W readers don't also fire.
             player.wJustPressed = false;
@@ -2645,60 +2699,88 @@ function tick(delta) {
 
         if (player.slideJumpPhase === "flight") {
           player.isStrafing = false;
+          const parryRecoil = isParriedRecoilActive(player);
 
-          // FLAP air charges: first spend switches this jump into classic FLAP
-          // flight physics for the rest of the airtime. No spend → plain slide-jump.
-          if (
-            player.wJustPressed &&
-            player.slideJumpHasFlap &&
-            (player.flapCharges || 0) > 0 &&
-            !player.slideJumpHitLanded &&
-            !player.slideJumpDiveCommitted &&
-            now - (player.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS
-          ) {
-            const enteringFlapFlight = !player.slideJumpFlapFlightActive;
-            player.slideJumpFlapFlightActive = true;
-            player.flapCharges -= 1;
-            player.slideJumpVelocityY = FLAP_IMPULSE;
-            // Drop slide carry on first charge — flap air control + H-burst take over.
-            if (enteringFlapFlight) {
+          if (!parryRecoil) {
+            // FLAP air charges: first spend switches this jump into classic FLAP
+            // flight physics for the rest of the airtime. No spend → plain slide-jump.
+            if (
+              player.wJustPressed &&
+              player.slideJumpHasFlap &&
+              (player.flapCharges || 0) > 0 &&
+              !player.slideJumpHitLanded &&
+              !player.slideJumpDiveCommitted &&
+              now - (player.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS
+            ) {
+              const enteringFlapFlight = !player.slideJumpFlapFlightActive;
+              player.slideJumpFlapFlightActive = true;
+              player.flapCharges -= 1;
+              player.slideJumpVelocityY = FLAP_IMPULSE;
+              // Drop slide carry on first charge — flap air control + H-burst take over.
+              if (enteringFlapFlight) {
+                player.slideJumpVelocityX = 0;
+              }
+              // Directional flap = set H burst (same as old air flaps, not additive).
+              if (player.keys.d && !player.keys.a) {
+                player.flapVelocityX = FLAP_FLAP_H_IMPULSE;
+                if (aerialFacingAllowsSteer(player)) {
+                  updateOffensiveAerialFacingLockDirection(player, -1);
+                  player.facing = -1;
+                }
+                player.flapBeatHDir = 1;
+              } else if (player.keys.a && !player.keys.d) {
+                player.flapVelocityX = -FLAP_FLAP_H_IMPULSE;
+                if (aerialFacingAllowsSteer(player)) {
+                  updateOffensiveAerialFacingLockDirection(player, 1);
+                  player.facing = 1;
+                }
+                player.flapBeatHDir = -1;
+              } else {
+                player.flapBeatHDir = 0;
+              }
+              player.flapWingBeatTime = now;
+              player.lastFlapChargeTime = now;
+              player.wJustPressed = false;
+            }
+
+            // S belly-flop — pin X, kill horizontal, heavy plummet; burns charges.
+            if (!player.slideJumpDiveCommitted && player.keys.s) {
+              player.slideJumpDiveCommitted = true;
+              player.slideJumpDiveLockX = player.x;
               player.slideJumpVelocityX = 0;
-            }
-            // Directional flap = set H burst (same as old air flaps, not additive).
-            if (player.keys.d && !player.keys.a) {
-              player.flapVelocityX = FLAP_FLAP_H_IMPULSE;
-              player.facing = -1;
-              player.flapBeatHDir = 1;
-            } else if (player.keys.a && !player.keys.d) {
-              player.flapVelocityX = -FLAP_FLAP_H_IMPULSE;
-              player.facing = 1;
-              player.flapBeatHDir = -1;
-            } else {
-              player.flapBeatHDir = 0;
-            }
-            player.flapWingBeatTime = now;
-            player.lastFlapChargeTime = now;
-            player.wJustPressed = false;
-          }
-
-          // S belly-flop — pin X, kill horizontal, heavy plummet; burns charges.
-          if (!player.slideJumpDiveCommitted && player.keys.s) {
-            player.slideJumpDiveCommitted = true;
-            player.slideJumpDiveLockX = player.x;
-            player.slideJumpVelocityX = 0;
-            player.flapVelocityX = 0;
-            player.flapCharges = 0;
-            if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
-            if (player.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
-              player.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
+              player.flapVelocityX = 0;
+              player.flapCharges = 0;
+              if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
+              if (player.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
+                player.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
+              }
+              // Dive arms offense on plain jumps; upgrades FLAP activation in place.
+              beginOffensiveAerialActivation(player, {
+                moveType: OFFENSIVE_AERIAL_MOVE_TYPE.BODY_SLAM_DIVE,
+                offensiveArmed: true,
+                movementOwner: OFFENSIVE_AERIAL_MOVEMENT_OWNER.DIVE,
+                debugReason: "dive_commit",
+              });
+              acquireOffensiveAerialFacingLock(player, {
+                supersede: true,
+                ownerInstanceId: player.offensiveAerial?.attackInstanceId || null,
+                direction: player.facing,
+                reason: FACING_LOCK_REASON.DIVE,
+                releaseCondition: FACING_RELEASE.RECOVERY_COMPLETE,
+                allowSteerUpdate: false,
+                acquiredTick: room.tick || 0,
+              });
             }
           }
 
-          player.slideJumpFastFalling = player.slideJumpDiveCommitted;
-          const isDiveLocked = player.slideJumpDiveCommitted;
-          const flapFlight = !!player.slideJumpFlapFlightActive;
+          player.slideJumpFastFalling = !parryRecoil && player.slideJumpDiveCommitted;
+          const isDiveLocked = !parryRecoil && player.slideJumpDiveCommitted;
+          const flapFlight = !parryRecoil && !!player.slideJumpFlapFlightActive;
 
-          if (flapFlight) {
+          if (parryRecoil) {
+            // Phase 4: reaction-owned heavy parry recoil (flag ON only).
+            stepParriedRecoil(player, sjOpponent, now);
+          } else if (flapFlight) {
             // ── Classic FLAP flight integrator ──
             const ceiling = GROUND_LEVEL + FLAP_MAX_HEIGHT;
             const cushionStart = ceiling - FLAP_CEILING_CUSHION;
@@ -2737,10 +2819,16 @@ function tick(delta) {
             } else {
               if (player.keys.d && !player.keys.a) {
                 player.x += FLAP_AIR_MOVE_SPEED;
-                player.facing = -1;
+                if (aerialFacingAllowsSteer(player)) {
+                  updateOffensiveAerialFacingLockDirection(player, -1);
+                  player.facing = -1;
+                }
               } else if (player.keys.a && !player.keys.d) {
                 player.x -= FLAP_AIR_MOVE_SPEED;
-                player.facing = 1;
+                if (aerialFacingAllowsSteer(player)) {
+                  updateOffensiveAerialFacingLockDirection(player, 1);
+                  player.facing = 1;
+                }
               }
               if (player.flapVelocityX !== 0) {
                 player.x += player.flapVelocityX;
@@ -2768,11 +2856,17 @@ function tick(delta) {
               if (player.keys.d && !player.keys.a) {
                 player.x += SLIDE_JUMP_AIR_STEER;
                 player.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
-                player.facing = -1;
+                if (aerialFacingAllowsSteer(player)) {
+                  updateOffensiveAerialFacingLockDirection(player, -1);
+                  player.facing = -1;
+                }
               } else if (player.keys.a && !player.keys.d) {
                 player.x -= SLIDE_JUMP_AIR_STEER;
                 player.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
-                player.facing = 1;
+                if (aerialFacingAllowsSteer(player)) {
+                  updateOffensiveAerialFacingLockDirection(player, 1);
+                  player.facing = 1;
+                }
               }
             }
           }
@@ -2792,12 +2886,50 @@ function tick(delta) {
             }
             player.slideJumpPhase = "landing";
             player.slideJumpLandingTime = now;
-            const whiffRecovery = flapFlight
+            player._oaTouchdownPresentation = true;
+            acquireOffensiveAerialFacingLock(player, {
+              supersede: false,
+              ownerInstanceId:
+                player.offensiveAerial?.attackInstanceId ||
+                player.offensiveAerialReaction?.attackInstanceId ||
+                null,
+              direction: player.facing,
+              reason: FACING_LOCK_REASON.LANDING,
+              releaseCondition: FACING_RELEASE.RECOVERY_COMPLETE,
+              allowSteerUpdate: false,
+              acquiredTick: room.tick || 0,
+            });
+            const whiffRecovery = flapFlight || player.slideJumpFlapFlightActive
               ? FLAP_LANDING_RECOVERY_MS
               : SLIDE_JUMP_LANDING_RECOVERY_MS;
-            const recovery = player.slideJumpHitLanded
+            let recovery = player.slideJumpHitLanded
               ? player.slideJumpHitRecoverDuration
               : whiffRecovery;
+            // Outcome contract: WHIFF / LANDED_WITHOUT_CONTACT / preserve HIT|PARRIED.
+            resolveOffensiveAerialTouchdownTerminal(player, {
+              resolvedTime: now,
+              reason: player.slideJumpHitLanded
+                ? "touchdown_after_hit"
+                : "touchdown",
+              debugReason: "slide_jump_touchdown",
+            });
+            if (isOffensiveAerialReactionV2Enabled()) {
+              const handoff = applyOffensiveAerialTouchdownHandoff(
+                player,
+                sjOpponent,
+                now,
+                { recoveryMs: recovery, debugReason: "slide_jump_touchdown" }
+              );
+              if (
+                handoff.ok &&
+                typeof handoff.recoveryMs === "number" &&
+                player.offensiveAerial?.outcome ===
+                  OFFENSIVE_AERIAL_OUTCOME.PARRIED
+              ) {
+                recovery = handoff.recoveryMs;
+                player.slideJumpHitRecoverDuration = recovery;
+              }
+            }
             player.actionLockUntil = now + recovery;
             emitThrottledScreenShake(room, io, { type: "rope_landing" });
           }
@@ -2806,24 +2938,62 @@ function tick(delta) {
           // slideJumpDiveCommitted latched so the land-smoke path can still
           // read that this touchdown was a belly-flop (cleared on exit).
           player.slideJumpFastFalling = false;
+          // One-tick TOUCHDOWN presentation, then LANDING_RECOVERY.
+          if (player._oaTouchdownPresentation) {
+            player._oaTouchdownPresentation = false;
+          }
           const whiffRecovery = player.slideJumpFlapFlightActive
             ? FLAP_LANDING_RECOVERY_MS
             : SLIDE_JUMP_LANDING_RECOVERY_MS;
-          const recovery = player.slideJumpHitLanded
+          let recovery = player.slideJumpHitLanded
             ? player.slideJumpHitRecoverDuration
             : whiffRecovery;
+          if (
+            player._oaParryControlRestoreAt &&
+            player.offensiveAerial?.outcome === OFFENSIVE_AERIAL_OUTCOME.PARRIED
+          ) {
+            recovery = Math.max(
+              0,
+              player._oaParryControlRestoreAt - player.slideJumpLandingTime
+            );
+          }
 
-          if (now >= player.slideJumpLandingTime + recovery) {
+          if (sjOpponent && isOffensiveAerialReactionV2Enabled()) {
+            // Instrument first grounded pushbox correction (Phase 5 input).
+            // Actual separation still uses generic pushbox elsewhere this tick.
+            recordTouchdownSpacingMetrics(player, sjOpponent, null);
+          }
+
+          const landDone =
+            player._oaParryControlRestoreAt > 0
+              ? now >= player._oaParryControlRestoreAt
+              : now >= player.slideJumpLandingTime + recovery;
+
+          if (landDone) {
             player.y = GROUND_LEVEL;
             cancelPendingSlapWork(player);
-            clearSlideJumpState(player);
+            const endingInstanceId =
+              player.offensiveAerial?.attackInstanceId ||
+              player.offensiveAerialReaction?.attackInstanceId ||
+              null;
+            player.isRecovering = false;
+            player.isAlreadyHit = false;
+            player._oaGroundedStagger = false;
+            clearSlideJumpState(player, {
+              expectedInstanceId: endingInstanceId,
+              debugReason: "landing_recovery_complete",
+            });
             player.currentAction = null;
             player.actionLockUntil = 0;
-            if (sjOpponent) {
-              player.facing = player.x < sjOpponent.x ? -1 : 1;
-            }
+            player.inputLockUntil = Math.min(
+              player.inputLockUntil || 0,
+              now
+            );
+            // clearSlideJumpState releases the instance-owned lock; re-face once.
+            applyNeutralFacingAfterAerial(player, sjOpponent);
           }
         }
+        syncOffensiveAerialPresentation(player, { groundLevel: GROUND_LEVEL });
       }
 
       // ── Hit Fall — heavy dump after airborne hit (pairs with full H KB) ──

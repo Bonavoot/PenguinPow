@@ -175,6 +175,32 @@ const {
 // require collisionSystem, so this top-level require introduces no cycle.
 const { handleWinCondition } = require("./gameFunctions");
 
+const {
+  OFFENSIVE_AERIAL_OUTCOME,
+  OFFENSIVE_AERIAL_MOVEMENT_OWNER,
+  ensureOffensiveAerialActivationForContact,
+  resolveOffensiveAerialOutcome,
+} = require("./offensiveAerialOutcome");
+const {
+  computeOffensiveAerialContact,
+  toOutcomeContactFields,
+  toEffectContactPayload,
+} = require("./offensiveAerialContact");
+const {
+  isOffensiveAerialReactionV2Enabled,
+  getOffensiveAerialReactionPreset,
+} = require("./offensiveAerialFlags");
+const {
+  OFFENSIVE_AERIAL_REACTION,
+  beginOffensiveAerialReaction,
+  armParriedRecoilFlight,
+} = require("./offensiveAerialReaction");
+const {
+  FACING_LOCK_REASON,
+  FACING_RELEASE,
+  acquireOffensiveAerialFacingLock,
+} = require("./offensiveAerialFacing");
+
 function playerPalmBreaksGrabArmor(player) {
   return (
     !!player.loadout?.palmBreaksGrabArmor ||
@@ -2210,6 +2236,37 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
     ? currentRoom.players.findIndex((p) => p.id === opponent.id) + 1
     : 1;
 
+  // Contact fidelity + outcome contract BEFORE clearAll tears down flight flags.
+  const slamContact = computeOffensiveAerialContact(flapper, opponent);
+  const contactFields = toOutcomeContactFields(slamContact);
+  const effectContact = toEffectContactPayload(slamContact, flapper);
+  const sideBefore =
+    slamContact.attackerSideAtContact !== 0
+      ? slamContact.attackerSideAtContact
+      : flapper.x === opponent.x
+        ? 0
+        : flapper.x < opponent.x
+          ? -1
+          : 1;
+  ensureOffensiveAerialActivationForContact(flapper, {
+    debugReason: "parry_ensure",
+  });
+  resolveOffensiveAerialOutcome(flapper, OFFENSIVE_AERIAL_OUTCOME.PARRIED, {
+    ensureActivation: true,
+    resolvedTime: currentTime,
+    contactConsumed: true,
+    contactTargetId: opponent.id,
+    ...contactFields,
+    sideBeforeContact: sideBefore,
+    sideAfterContact: sideBefore,
+    movementOwner: OFFENSIVE_AERIAL_MOVEMENT_OWNER.PARRY_STAGGER,
+    debugReason: "resolveFlapRawParry",
+  });
+  // Preserve outcome across clearAllActionStates (which resets other aerials).
+  const parryActivationSnapshot = flapper.offensiveAerial
+    ? { ...flapper.offensiveAerial }
+    : null;
+
   const inParryWindow =
     !opponent.isGuarding && currentTime < (opponent.apActiveUntil || 0);
   const parryDuration = currentTime - (opponent.rawParryStartTime || currentTime);
@@ -2222,12 +2279,36 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
     currentRoom &&
     !currentRoom.gameOver;
 
-  // End the flight and ground the flapper (the parry beats the slam).
-  clearAllActionStates(flapper);
-  flapper.y = GROUND_LEVEL;
-  flapper.cadenceChain = 0;
-  if (!flapper.isAtTheRopes && !flapper.atTheRopesFacingDirection) {
-    flapper.facing = flapper.x < opponent.x ? -1 : 1;
+  // Phase 4 V2: airborne parry recoil (non-lethal). Flag OFF or legacy_snap /
+  // AP kill keep the Phase 3 immediate ground snap.
+  const useV2Recoil =
+    isOffensiveAerialReactionV2Enabled() &&
+    getOffensiveAerialReactionPreset() !== "legacy_snap" &&
+    !isApKill;
+
+  if (!useV2Recoil) {
+    // End the flight and ground the flapper (the parry beats the slam).
+    clearAllActionStates(flapper);
+    // clearAll may reset activation; restore the PARRIED contract record.
+    if (parryActivationSnapshot) {
+      flapper.offensiveAerial = parryActivationSnapshot;
+    }
+    flapper.y = GROUND_LEVEL;
+    flapper.cadenceChain = 0;
+    if (!flapper.isAtTheRopes && !flapper.atTheRopesFacingDirection) {
+      flapper.facing = flapper.x < opponent.x ? -1 : 1;
+    }
+  } else {
+    armParriedRecoilFlight(flapper, opponent, slamContact, {
+      resolvedTime: currentTime,
+      debugReason: "resolveFlapRawParry_v2",
+    });
+    if (parryActivationSnapshot) {
+      flapper.offensiveAerial = {
+        ...parryActivationSnapshot,
+        movementOwner: OFFENSIVE_AERIAL_MOVEMENT_OWNER.PARRY_STAGGER,
+      };
+    }
   }
 
   if (isApKill) {
@@ -2268,8 +2349,8 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
         attackerY: opponent.y,
         knockbackDirection: pullDirection,
         hitstopMs: AP_KILL_HITSTOP_MS,
-        impactX: (opponent.x + flapper.x) / 2,
-        impactY: flapper.y,
+        impactX: effectContact.contactX,
+        impactY: effectContact.contactY,
         apPullKill: true,
         noPan: true,
       });
@@ -2286,8 +2367,7 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
         playerNumber: parryingPlayerNumber,
         parrierId: opponent.id,
         balanceGain: 0,
-        contactX: (flapper.x + opponent.x) / 2,
-        contactY: opponent.y,
+        ...effectContact,
       });
       handleWinCondition(currentRoom, flapper, opponent, io, "clinchKillPull");
       flapper.isClinchKillPullVictim = true;
@@ -2304,27 +2384,37 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
     return;
   }
 
-  // ── NON-LETHAL: grounded + shoved back in RECOVERY (no hit.png) + drain ──
+  // ── NON-LETHAL: drain + defender reward; attacker consequence differs by flag ──
   const drain = isPerfect ? AP_PERFECT_BALANCE_DRAIN : AP_BALANCE_DRAIN;
   const shove = isPerfect ? AP_PERFECT_ATTACKER_KNOCKBACK : AP_ATTACKER_KNOCKBACK;
   flapper.balance = Math.max(0, flapper.balance - drain);
   flapper.knockbackVelocity = { x: 0, y: 0 };
-  flapper.slapParryKnockbackVelocity = shove * knockbackDirection;
   flapper.isHit = false;
   flapper.isParryKnockback = false;
-  flapper.isRecovering = true;
   flapper.lastHitTime = currentTime;
-  flapper.inputLockUntil = Math.max(flapper.inputLockUntil || 0, currentTime + AP_STAGGER_FLAP_MS);
-  timeoutManager.clearPlayerSpecific(flapper.id, "parryStaggerReset");
-  setPlayerTimeout(
-    flapper.id,
-    () => {
-      flapper.isRecovering = false;
-      flapper.isAlreadyHit = false;
-    },
-    AP_STAGGER_FLAP_MS,
-    "parryStaggerReset"
-  );
+
+  if (!useV2Recoil) {
+    flapper.slapParryKnockbackVelocity = shove * knockbackDirection;
+    flapper.isRecovering = true;
+    flapper.inputLockUntil = Math.max(
+      flapper.inputLockUntil || 0,
+      currentTime + AP_STAGGER_FLAP_MS
+    );
+    timeoutManager.clearPlayerSpecific(flapper.id, "parryStaggerReset");
+    setPlayerTimeout(
+      flapper.id,
+      () => {
+        flapper.isRecovering = false;
+        flapper.isAlreadyHit = false;
+      },
+      AP_STAGGER_FLAP_MS,
+      "parryStaggerReset"
+    );
+  } else {
+    // Airborne recoil owns movement; grounded stagger starts at touchdown.
+    // shove unused in air — horizontal rejection comes from contact normal.
+    flapper.slapParryKnockbackVelocity = 0;
+  }
 
   // Parrier reward. Same as slap AP: continued hold after a land → GUARD
   // (one timed window per press). Perfect refunds balance. Chain increments.
@@ -2388,8 +2478,7 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
       playerNumber: parryingPlayerNumber,
       parrierId: opponent.id,
       balanceGain: perfectBalanceGain,
-      contactX: (flapper.x + opponent.x) / 2,
-      contactY: opponent.y,
+      ...effectContact,
     });
   }
 }
@@ -2466,6 +2555,60 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
 
   // Knockback away from the flapper (burst model — no DI).
   const knockbackDirection = opponent.x >= flapper.x ? 1 : -1;
+
+  // Contact fidelity BEFORE defender clearAll (positions still valid).
+  const slamContact = computeOffensiveAerialContact(flapper, opponent);
+  const contactFields = toOutcomeContactFields(slamContact);
+  const effectContact = toEffectContactPayload(slamContact, flapper);
+  const sideBefore =
+    slamContact.attackerSideAtContact !== 0
+      ? slamContact.attackerSideAtContact
+      : flapper.x === opponent.x
+        ? 0
+        : flapper.x < opponent.x
+          ? -1
+          : 1;
+
+  // Outcome contract: HIT + contact consumed (preserves latch / continuation).
+  ensureOffensiveAerialActivationForContact(flapper, {
+    debugReason: "hit_ensure",
+  });
+  resolveOffensiveAerialOutcome(flapper, OFFENSIVE_AERIAL_OUTCOME.HIT, {
+    ensureActivation: true,
+    resolvedTime: currentTime,
+    contactConsumed: true,
+    contactTargetId: opponent.id,
+    ...contactFields,
+    sideBeforeContact: sideBefore,
+    sideAfterContact: sideBefore,
+    movementOwner: OFFENSIVE_AERIAL_MOVEMENT_OWNER.POST_HIT_TRAVEL,
+    debugReason: "checkFlapBodySlam_hit",
+  });
+  if (isOffensiveAerialReactionV2Enabled()) {
+    beginOffensiveAerialReaction(
+      flapper,
+      OFFENSIVE_AERIAL_REACTION.HIT_CONTINUATION,
+      {
+        attackInstanceId: flapper.offensiveAerial?.attackInstanceId,
+        resolvedTime: currentTime,
+        contactAxis: slamContact.contactAxis,
+        contactNormalX: slamContact.contactNormalX,
+        contactNormalY: slamContact.contactNormalY,
+        sideAtContact: sideBefore,
+        defenderXAtContact: opponent.x,
+        debugReason: "hit_continuation",
+      }
+    );
+  }
+  // Freeze travel/contact facing through HIT continuation (no root-cross flicker).
+  acquireOffensiveAerialFacingLock(flapper, {
+    supersede: true,
+    ownerInstanceId: flapper.offensiveAerial?.attackInstanceId || null,
+    direction: flapper.facing,
+    reason: FACING_LOCK_REASON.HIT_CONTINUATION,
+    releaseCondition: FACING_RELEASE.RECOVERY_COMPLETE,
+    allowSteerUpdate: false,
+  });
 
   // MASTERY Phase 1 (1.3): victim-side momentum — capture the victim's velocity
   // BEFORE clearAllActionStates zeroes it. Charging under a descending slam eats
@@ -2588,6 +2731,8 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
       isArmorBreak: false,
       attackerId: flapper.id,
       victimId: opponent.id,
+      // Phase 3: authoritative slam contact (replaces client x+70 fallback).
+      ...effectContact,
       // MASTERY Phase 5 (5.2): braked-knockback "dig-in" tell (false w/ flag off).
       momentumHit: false,
       braked: MASTERY_P5_ASSISTS && flapBraked,

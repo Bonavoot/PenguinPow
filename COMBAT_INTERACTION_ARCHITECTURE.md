@@ -66,7 +66,7 @@ Tick loop (index.js @ 64Hz, paused by hitstop)
 | On-hit park | `applyContactCorrection` | Palm outset; charged plant (no attacker bounce) |
 | Hitstop ladder | `triggerHitstopAndEmit` | Per-tier ms |
 | Defense | AP/guard in `processHit` | Low kick bypasses parry gate; flap has `resolveFlapRawParry` |
-| Effects metadata | `contactX` via `getContactSeamX` | Flap/clinch often midpoint |
+| Effects metadata | Strikes: `contactX` via `getContactSeamX`; flap/slam: `offensiveAerialContact` surface point | Clinch / AP-kill cinematic may still use midpoint |
 
 ---
 
@@ -109,7 +109,7 @@ player_hit event
 ### Slide jump / FLAP
 `takeoff → flight (pass-through; descending can body-slam) → landing → idle`
 
-**Offensive aerial audit (2026-07-31, characterization only):** FLAP is slide-jump air charges (no standalone liftoff). Shared detector `checkFlapBodySlam`; parry `resolveFlapRawParry`; landing owned by `index.js` (not `landingResolution.js`). Dev trace: `offensiveAerialTrace.js` / `OFFENSIVE_AERIAL_DEBUG`. Tests: `server-io/test/aerial/`. See `OFFENSIVE_AERIAL_INTERACTION_AUDIT.md`. Rope Jump V2 must not be copied onto this verb.
+**Offensive aerial (2026-07-31):** FLAP is slide-jump air charges (no standalone liftoff). Shared detector `checkFlapBodySlam`; parry `resolveFlapRawParry`; landing owned by `index.js` (not `landingResolution.js`). **Phase 1–2:** outcome + cleanup. **Phase 3:** surface contact. **Phase 4 approved:** `offensiveAerialReaction.js` — `OFFENSIVE_AERIAL_REACTION_V2` default ON (`heavy_short`); `=0` → Phase 3 legacy snap. Dev trace: `offensiveAerialTrace.js` / `OFFENSIVE_AERIAL_DEBUG`. Tests: `server-io/test/aerial/`. Rope Jump V2 must not be copied onto this verb.
 
 ### Attack Parry
 `Space tap → apActiveUntil window → (perfect|regular) success OR guard floor OR whiff jail`
@@ -180,7 +180,7 @@ Rooted execute (`isPalmThrust`, `attackType:"charged"`) → tip sep through star
 Fixed `LOW_KICK_HITBOX_DISTANCE_VALUE` → beats parry/grab priority quirks → no tip park → slap-tier hitstop.
 
 ### FLAP / butt slam
-Flight pass-through → descending overlap vs `FLAP_BODYSLAM_WIDTH_SCALE` → optional AP raw parry → burst KB → landing recovery; `contactX` often midpoint.
+Flight pass-through → descending overlap vs `FLAP_BODYSLAM_WIDTH_SCALE` → optional AP raw parry → burst KB → landing recovery; Phase 3 `contactX/Y` from AABB surface anchors (`offensiveAerialContact.js`), not root midpoint. Phase 4 approved default: `PARRIED_RECOIL` (`heavy_short`) instead of instant ground snap; HIT uses explicit `HIT_CONTINUATION`. Rollback `OFFENSIVE_AERIAL_REACTION_V2=0`. Eligibility/damage/KB unchanged.
 
 ### Rope jump
 Fixed `ropeJumpTargetX` toward center fraction → active pass-through → snap to target on land → pushbox re-enabled with 18px/tick correction.  

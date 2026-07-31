@@ -146,6 +146,18 @@ Harness mirrors flight/land from `index.js` and calls production collision resol
 |-------|--------|--------------------|
 | Full server | 474 pass | see final report |
 | Landing | 171 pass | unchanged expectation |
-| Aerial | 0 | **57** characterization tests |
+| Aerial (audit) | 0 | **57** characterization tests |
+| Aerial (Phase 1–2) | 57 | **92** (+ outcome + cleanup contract) |
+| Aerial (Phase 3) | 92 | **110** (+ contact-fidelity suite + scan) |
+| Full server (Phase 3) | 566 | **584** |
+| Aerial (Phase 4) | 110 | **127** (+ post-contact reaction suite + scan) |
+| Full server (Phase 4) | 584 | **601** |
+| Aerial (V2 finalization) | 127 | **138** (+ default-on / rollback env tests) |
+
+Reaction V2 is **default ON** (`heavy_short`). Characterization harness opts into legacy via `reactionV2: false` so Phase 0–3 assertions stay stable.
 
 Failures must not be silently “fixed” by retuning moves.
+
+### Phase 3 contact-fidelity coverage (`test/aerial/contact-fidelity.test.js`)
+
+Preservation (hit/parry/miss tick, damage/KB/hitstop/stagger, post-hit / post-parry / land), lateral + downward placement, parry contact before cleanup, outcome immutability, degenerate/fallback finiteness, single effect emit, quantitative midpoint→surface scan.

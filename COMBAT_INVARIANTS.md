@@ -20,7 +20,7 @@ Rules future fidelity work must uphold. Phase 1 audit only — nothing here is n
 2. A registered slap / charged / palm strike must confirm when the art tip meets the victim body surface within the tip-rail epsilon (`isWithinConnectRange`).
 3. On strike confirm, freeze-frame park distance comes from `getHitParkDistance` (slap/charged at connect; palm at connect + outset).
 4. Fast projectiles that can tunnel must use swept checks (snowballs already do).
-5. Aerial landings must not rely on “land inside → multi-tick push out” as the primary landing solution. Rope-jump V2 (`ROPE_JUMP_LANDING_V2`, **default on**, approved preset `reference_contact_9`) uses an authored high-vault path with a single apex crossover lock and capped opponent-driven endpoint correction (`ROPE_JUMP_MOVE_IDENTITY_V2.md`); the opponent must not define the full airborne trajectory. Bounded touchdown settle debt is owned by landing-settle during recovery (A.3.1/A.3.2): monotonic overlap reduction; no sticky clear exemption; recovery-exit / first grounded correction ≤0.5 px. Startup remains punishable; airborne `active` remains protected; landing recovery remains punishable. Legacy path remains available via `ROPE_JUMP_LANDING_V2=0` for emergency rollback only. Offensive aerial (slide-jump / FLAP / dive) must resolve hit/parry/whiff **before** any generalized land settle; do not copy rope vault identity onto offense (`OFFENSIVE_AERIAL_LANDING_ARCHITECTURE.md`).
+5. Aerial landings must not rely on “land inside → multi-tick push out” as the primary landing solution. Rope-jump V2 (`ROPE_JUMP_LANDING_V2`, **default on**, approved preset `reference_contact_9`) uses an authored high-vault path with a single apex crossover lock and capped opponent-driven endpoint correction (`ROPE_JUMP_MOVE_IDENTITY_V2.md`); the opponent must not define the full airborne trajectory. Bounded touchdown settle debt is owned by landing-settle during recovery (A.3.1/A.3.2): monotonic overlap reduction; no sticky clear exemption; recovery-exit / first grounded correction ≤0.5 px. Startup remains punishable; airborne `active` remains protected; landing recovery remains punishable. Legacy path remains available via `ROPE_JUMP_LANDING_V2=0` for emergency rollback only. Offensive aerial (slide-jump / FLAP / dive) must resolve hit/parry/whiff **before** any generalized land settle; do not copy rope vault identity onto offense (`OFFENSIVE_AERIAL_LANDING_ARCHITECTURE.md`). Each offensive-aerial activation has one authoritative outcome record (`offensiveAerialOutcome.js`); terminal contact outcomes are immutable for that instance; stale-instance cleanup must not affect a newer activation (`OFFENSIVE_AERIAL_OUTCOME_CONTRACT.md`).
 6. Ring-boundary clamps and fighter separation must compose without fighting each other into jitter.
 7. Tip length must not be scaled by `sizeMultiplier`; victim body half may (matches current `strikeContact.js` contract).
 
@@ -47,6 +47,7 @@ Rules future fidelity work must uphold. Phase 1 audit only — nothing here is n
 2. Slap / palm multi-frame client timelines must stay aligned with server active windows for contact poses.
 3. Dead positional arguments in `getImageSrc` must not be silently repurposed.
 4. Recovery poses must not be overridden by stale action flags (existing sidestep-recovery-before-sidestep rule).
+5. Offensive-aerial facing locks are instance-owned (`offensiveAerialFacingLock`); stale actions cannot release or overwrite a newer lock, and presentation uses `offensiveAerialPresentation` rather than inferring attack poses from loose booleans after PARRIED / interrupt (`OFFENSIVE_AERIAL_STATE_FACING_PHASE.md`).
 
 ## Existing good reference interactions (must not regress)
 
@@ -68,7 +69,7 @@ Rules future fidelity work must uphold. Phase 1 audit only — nothing here is n
 | Pushbox / tip-sep disabled during aerial active arcs | Allows cross-over escapes and body-slam approach |
 | Rope-jump landing overlap capped at 18px/tick | Softens landing separation; V2 uses this as settle/safety per-tick cap when flag on (see `AERIAL_LANDING_PHASE_A3_2.md`) |
 | Low kick uses fixed distance, not tip rail | Placeholder until tip art exists |
-| Flap/AP kill `contactX` midpoint | Cinematic path, not tip strike |
+| Flap/AP kill cinematic `contactX` midpoint | Pull-kill cinematic path (not live slam FX); live FLAP/slam HIT/PARRIED use surface contact (Phase 3); Phase 4 `heavy_short` recoil is default ON (`OFFENSIVE_AERIAL_REACTION_V2=0` → legacy snap) |
 | Clinch own distance system | Grapple composition ≠ strike pushbox |
 | `sizeMultiplier` scales pushbox but not sprite width | Client fighter width is fixed at 12.30% |
 | CSS sole origin hardcoded 2.1% | Compensates typical transparent foot pad; not per-pose |

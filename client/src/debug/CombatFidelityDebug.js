@@ -60,24 +60,47 @@ function isOffensiveAerialTraceEnabled() {
 }
 
 function classifyOffensiveAerial(fighter) {
-  if (!fighter?.isSlideJumping) return null;
-  const phase = fighter.slideJumpPhase || "flight";
-  let outcome = "in_flight";
-  if (fighter.slideJumpHitLanded) outcome = "hit_latched";
-  else if (phase === "landing") outcome = "whiff_or_post_hit_landing";
-  if (fighter.slideJumpDiveCommitted) outcome = `dive:${outcome}`;
+  if (!fighter?.isSlideJumping && !fighter?.offensiveAerial) return null;
+  const phase = fighter.slideJumpPhase || (fighter.offensiveAerial ? "post" : "flight");
+  const contract = fighter.offensiveAerial || null;
+  let outcome = contract?.outcome || "in_flight";
+  if (!contract) {
+    if (fighter.slideJumpHitLanded) outcome = "hit_latched";
+    else if (phase === "landing") outcome = "whiff_or_post_hit_landing";
+  }
+  if (fighter.slideJumpDiveCommitted && outcome === "in_flight") {
+    outcome = `dive:${outcome}`;
+  }
   return {
-    move: fighter.slideJumpFlapFlightActive ? "flap_flight" : "slide_jump",
+    move: fighter.slideJumpFlapFlightActive
+      ? "flap_flight"
+      : fighter.isSlideJumping
+        ? "slide_jump"
+        : contract?.moveType || "none",
     phase,
     attackActive:
+      !!fighter.isSlideJumping &&
       phase === "flight" &&
       !fighter.slideJumpHitLanded &&
+      !contract?.contactConsumed &&
       ((fighter.slideJumpVelocityY ?? 0) <= 0 || !!fighter.slideJumpDiveCommitted),
     attackLatch: !!fighter.slideJumpHitLanded,
     dive: !!fighter.slideJumpDiveCommitted,
     flapFlight: !!fighter.slideJumpFlapFlightActive,
     flapCharges: fighter.flapCharges ?? 0,
     outcome,
+    attackInstanceId: contract?.attackInstanceId || null,
+    resolved: !!contract?.resolved,
+    contactConsumed: !!contract?.contactConsumed,
+    cleanupStage: contract?.cleanupStage || null,
+    movementOwner: contract?.movementOwner || null,
+    landingHandoffReason: contract?.landingHandoffReason || null,
+    contactX: contract?.contactX ?? null,
+    contactY: contract?.contactY ?? null,
+    contactNormalX: contract?.contactNormalX ?? null,
+    contactNormalY: contract?.contactNormalY ?? null,
+    contactAxis: contract?.contactAxis || null,
+    reactionType: fighter.offensiveAerialReactionType || null,
     recoveryLock: fighter.actionLockUntil || 0,
   };
 }
@@ -376,7 +399,14 @@ export function renderCombatFidelityOverlay(state) {
     .filter(Boolean)
     .map(
       ({ label, a }) =>
-        `${label} ${a.move} phase=${a.phase} active=${a.attackActive} latch=${a.attackLatch} dive=${a.dive} flap=${a.flapFlight} charges=${a.flapCharges} outcome=${a.outcome}`
+        `${label} ${a.move} phase=${a.phase} active=${a.attackActive} latch=${a.attackLatch} dive=${a.dive} flap=${a.flapFlight} charges=${a.flapCharges} outcome=${a.outcome}` +
+        (a.reactionType ? ` reaction=${a.reactionType}` : "") +
+        (a.attackInstanceId
+          ? ` id=${a.attackInstanceId} resolved=${a.resolved} consumed=${a.contactConsumed} cleanup=${a.cleanupStage || "—"} moveOwner=${a.movementOwner || "—"}`
+          : "") +
+        (a.contactAxis
+          ? ` axis=${a.contactAxis} c=(${fmt(a.contactX)},${fmt(a.contactY)}) n=(${fmt(a.contactNormalX, 2)},${fmt(a.contactNormalY, 2)})`
+          : "")
     )
     .join("<br/>") || "offensiveAerial: idle";
 

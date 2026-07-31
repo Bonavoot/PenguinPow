@@ -1,7 +1,9 @@
 # Offensive Aerial Interaction Audit — PUMO PUMO !
 
-**Phase: investigation / characterization only (2026-07-31).**  
-No gameplay retune, Rope Jump redesign, or outcome-architecture implementation.
+**Phase: investigation / characterization (2026-07-31).**  
+**Phase 1–2 implemented:** explicit outcome contract + cleanup hardening (behavior-preserving).  
+See `OFFENSIVE_AERIAL_OUTCOME_CONTRACT.md`, `OFFENSIVE_AERIAL_CLEANUP_CONTRACT.md`, `OFFENSIVE_AERIAL_PHASE_1_2_REPORT.md`.  
+No gameplay retune, Rope Jump redesign, or landing-settle integration yet.
 
 Companion docs:
 - [`OFFENSIVE_AERIAL_OUTCOME_MATRIX.md`](./OFFENSIVE_AERIAL_OUTCOME_MATRIX.md)

@@ -682,6 +682,8 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.slideJumpHitRecoverDuration = 0;
     p.slideJumpLandingTime = 0;
     p.slideJumpStartTime = 0;
+    p.offensiveAerial = null;
+    p._offensiveAerialTrace = null;
 
     // Clear parry states to prevent jiggle/flash animations persisting into round result
     p.isRawParrying = false;

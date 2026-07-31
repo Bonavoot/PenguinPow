@@ -126,17 +126,20 @@ See [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md), [`AERIAL_LANDING
 - Diagnostics debug-net only; `server-io/test/landing/` suite including A.2/A.3/A.3.1/A.3.2 + identity/defaults scans
 - **Stop:** no further rope-jump tuning currently authorized; do not integrate slide/FLAP here
 
-### Phase 3B — Slide jump / FLAP *(audit complete 2026-07-31; implementation not started)*
+### Phase 3B — Slide jump / FLAP
 
-**Audit / characterization shipped:** see `OFFENSIVE_AERIAL_INTERACTION_AUDIT.md` + outcome/lifecycle/landing/test matrix docs; `server-io/test/aerial/`; `offensiveAerialTrace.js`. Rope Jump V2 left untouched.
+**Audit complete 2026-07-31.**  
+**Phase 1–2 complete 2026-07-31:** outcome contract + cleanup hardening (`OFFENSIVE_AERIAL_OUTCOME_CONTRACT.md`, `OFFENSIVE_AERIAL_CLEANUP_CONTRACT.md`, `offensiveAerialOutcome.js`; aerial tests 92).  
+**Phase 3 complete 2026-07-31:** shared slam contact fidelity (`OFFENSIVE_AERIAL_CONTACT_FIDELITY.md`, `offensiveAerialContact.js`; aerial tests 110; server 584). Metadata/FX placement only; Rope Jump untouched; no gameplay retune.  
+**Phase 4 complete + approved 2026-07-31:** post-contact reaction + landing handoff — `OFFENSIVE_AERIAL_REACTION_V2` **default ON**, preset `heavy_short`. Rollback: `=0`. Phase 5 settle deferred (no playtest overlap/snap). See `OFFENSIVE_AERIAL_PHASE_4_REPORT.md`.
 
 ### Scope (remaining — implementation phases)
-1. Explicit offensive-aerial outcome contract (no balance change)
-2. State cleanup / lifecycle hardening (latch, poll, buffer, interrupt)
-3. Shared slam hit/parry resolution polish (contact point; armor policy only with approval)
-4. Dive-specific post-contact / land handoff
-5. Generalized touchdown settle **after** outcome known (reuse rope settle helpers; **do not** copy vault identity)
-6. Animation / FX fidelity to server outcome
+1. ~~Explicit offensive-aerial outcome contract~~ **done**
+2. ~~State cleanup / lifecycle hardening~~ **done**
+3. ~~Shared slam contact fidelity (surface contact + classification)~~ **done** — armor policy still deferred
+4. ~~Post-contact reaction & land handoff~~ **done / approved** (default ON)
+5. Generalized touchdown settle — **deferred** unless future playtests justify it (**do not** copy vault identity)
+6. Animation / FX fidelity to server outcome (dedicated recoil art still deferred)
 
 ### Exclusions
 - No strike tip changes
@@ -336,6 +339,8 @@ Steam-release fidelity bar signed off for interaction (not particle count).
 
 ## Recommended next implementation phase
 
-**Phase 3A + A.1–A.3.2 + high-vault move identity are manually approved and default ON** (`reference_contact_9`). Rounded polish rejected. No further rope-jump tuning currently authorized. Next conversation should be: (1) Phase 3B slide-jump/FLAP landing, **or** (2) Phase 2 hygiene — only after explicit request.
+**Phase 3A + A.1–A.3.2 + high-vault move identity are manually approved and default ON** (`reference_contact_9`). Rounded polish rejected. No further rope-jump tuning currently authorized.
+
+**Phase 3B contact fidelity and Phase 4 reaction/handoff are complete** — V2 **`heavy_short` is default ON** (rollback `OFFENSIVE_AERIAL_REACTION_V2=0`). Phase 5 generalized landing settle is **deferred**; do not auto-start settle/armor without an explicit request.
 
 Do **not** start Phase 4 tip standardization before landing/pushbox ownership is clear — otherwise tip parks will keep fighting aerial correction snaps.

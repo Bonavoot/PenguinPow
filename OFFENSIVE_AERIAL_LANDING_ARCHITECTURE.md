@@ -1,6 +1,10 @@
 # Offensive Aerial Landing Architecture — Proposal
 
-**Status:** Proposal only (2026-07-31). Not implemented.  
+**Status:** Proposal for landing settle / post-contact polish.  
+**Phase 1–2 done:** outcome enum + cleanup stages (`offensiveAerialOutcome.js`).  
+**Phase 3 done:** shared slam contact fidelity (`offensiveAerialContact.js`) — metadata/FX placement only.  
+**Phase 4 done / approved:** post-contact reaction + landing handoff — `OFFENSIVE_AERIAL_REACTION_V2` **default ON**, preset `heavy_short`.  
+Phase 5 generalized settle **deferred** (playtest: no meaningful overlap/snap). Phase 6 anim/FX polish not started.  
 Rope Jump V2 remains approved and untouched.
 
 ---
@@ -138,13 +142,13 @@ Land lock, recovering pose ownership, settle monitoring
 |-------|-------|------------------|-----------|
 | **1** | Outcome enum + set at slam/parry/touchdown; traces assert it | No (mirror flags) | Tests map enum ↔ current flags |
 | **2** | Cleanup contract helper; single clear path; optional single slam poll | No (behavior-identical) | No latch/parry leaks in tests |
-| **3** | Shared slam resolution polish: contact point, armor policy decision (implement only if approved) | Maybe armor — **requires approval** | Playtest |
-| **4** | Dive post-contact / pin-X land handoff | Only if approved | Dive feel intact |
+| **3** | Shared slam contact fidelity (surface contact, classification) | **Done** — metadata only; armor deferred | Contact suite green |
+| **4** | Post-contact reaction & landing handoff | **Done / approved** — default ON (`heavy_short`); `=0` legacy | Manual playtest + reaction suite |
 | **5** | Generalized settle behind feature flag for slide-jump land | Spacing only | Cross-up preserved |
 | **6** | Animation / FX align to outcome | Presentation | Overlay agrees with server |
 
 **Do not** start at Phase 5 — settle without outcome ownership will fight parry/hit cases.
 
-**Highest-risk first target:** Phases 1–2.
+**Highest-risk first target:** Phases 1–2 (done). Phase 3 contact fidelity (done).
 
-**Next prompt scope:** Phase 1 outcome contract + Phase 2 cleanup hardening; keep all characterization tests green; no KB/damage/recovery retune; no Rope Jump edits.
+**Next prompt scope:** Phase 5 only if future playtests show overlap/snap issues; do not auto-start. Keep V2 reactions; no Rope Jump vault copy.

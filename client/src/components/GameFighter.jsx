@@ -7064,6 +7064,8 @@ const GameFighter = ({
     penguin.slideJumpPhase,
     slideJumpUseDodgePose,
     slideJumpFlapFrame,
+    penguin.offensiveAerialReactionType || null,
+    penguin.offensiveAerialPresentation || null,
     !!penguin.isGrabPushDefeat
   );
 

@@ -115,6 +115,23 @@ function createInitialPlayerState(overrides = {}) {
     slideJumpBufferUntil: 0, // W pressed during min flash — consume when jump becomes legal
     slideJumpHasFlap: false, // FLAP-armed takeoff — grants charges; flight still i-frame until S dive
     slideJumpFlapFlightActive: false, // true after first air-charge spend → FLAP flight physics
+    // Offensive-aerial outcome contract (Phase 1–2). Compact server record;
+    // not required on the production delta wire.
+    offensiveAerial: null,
+    // Phase 4 reaction record (server); wire field is offensiveAerialReactionType.
+    offensiveAerialReaction: null,
+    offensiveAerialReactionType: null,
+    // Phase 5A: instance-owned aerial facing lock + presentation projection.
+    offensiveAerialFacingLock: null,
+    offensiveAerialPresentation: null,
+    _oaParryControlRestoreAt: 0,
+    _offensiveAerialSeq: 0,
+    _offensiveAerialIllegalTransitions: 0,
+    _offensiveAerialStaleRejects: 0,
+    _offensiveAerialLastIllegal: null,
+    _offensiveAerialLastStaleReject: null,
+    _offensiveAerialReactionRejects: 0,
+    _offensiveAerialDuplicateTouchdownRejects: 0,
     isCrouchStance: false,
     isCrouchStrafing: false,
     // MASTERY Phase 1: momentum carry window — a dodge landing / active power

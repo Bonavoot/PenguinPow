@@ -64,6 +64,33 @@ const {
 const { appendVerbInit, AUDIT_ENABLED } = require("./inputAuditLog");
 
 const { MASTERY_P1_MOMENTUM } = require("./masteryFlags");
+const {
+  OFFENSIVE_AERIAL_OUTCOME,
+  OFFENSIVE_AERIAL_CLEANUP_STAGE,
+  isTerminalContactOutcome,
+  resetOffensiveAerialActivation,
+  finalizeOffensiveAerialActivation,
+  canCleanupOffensiveAerialInstance,
+  markOffensiveAerialCleanupStage,
+} = require("./offensiveAerialOutcome");
+const {
+  isParriedRecoilActive,
+  completeOffensiveAerialReaction,
+  resetOffensiveAerialReaction,
+  beginOffensiveAerialReaction,
+  OFFENSIVE_AERIAL_REACTION,
+} = require("./offensiveAerialReaction");
+const {
+  isOffensiveAerialReactionV2Enabled,
+} = require("./offensiveAerialFlags");
+const {
+  forceClearOffensiveAerialFacingLock,
+  releaseOffensiveAerialFacingLock,
+  FACING_RELEASE,
+} = require("./offensiveAerialFacing");
+const {
+  clearOffensiveAerialPresentation,
+} = require("./offensiveAerialPresentation");
 
 // ============================================
 // EFFECTIVE MOVEMENT SPEED (single source of truth)
@@ -1165,6 +1192,21 @@ function resetPlayerAttackStates(player) {
 // This ensures only ONE state/animation can be active at a time
 // Called when: isHit, isBeingGrabbed, isBeingThrown, isRawParryStun, isAtTheRopes
 function clearAllActionStates(player) {
+  // Offensive-aerial outcome: preserve already-resolved HIT/PARRIED across the
+  // broad clear; record INTERRUPTED when an armed activation is cancelled mid-air.
+  const priorOa = player?.offensiveAerial || null;
+  const preserveContactOutcome =
+    priorOa &&
+    priorOa.resolved &&
+    isTerminalContactOutcome(priorOa.outcome);
+  const shouldRecordInterrupt =
+    !preserveContactOutcome &&
+    priorOa &&
+    priorOa.attackInstanceId &&
+    !priorOa.resolved &&
+    priorOa.offensiveArmed &&
+    !!(player.isSlideJumping || player.isFlapping);
+
   // Tear down slap-string timers/buffers first so a snowball/projectile hit
   // can't leave a deferred executeSlapAttack that fires once isHit clears.
   cancelPendingSlapWork(player);
@@ -1349,7 +1391,14 @@ function clearAllActionStates(player) {
   player.isPowerSliding = false;
   player.isBraking = false;
   clearIceSlideState(player);
-  clearSlideJumpState(player);
+  // Do not finalize/null the outcome here — handled below for interrupt vs preserve.
+  clearSlideJumpState(player, { finalizeOutcome: false });
+  // Aerial facing owner ends with the action shell; hitstun / other systems
+  // become the facing owner after this clear (full force — not stale-gated).
+  forceClearOffensiveAerialFacingLock(player, {
+    reason: FACING_RELEASE.INTERRUPT,
+  });
+  clearOffensiveAerialPresentation(player);
   player.strafeStartTime = 0;
   player.wasStrafingLeft = false;
   player.wasStrafingRight = false;
@@ -1468,6 +1517,50 @@ function clearAllActionStates(player) {
   player._landingTrace = null;
   player._offensiveAerialTrace = null;
 
+  if (preserveContactOutcome) {
+    player.offensiveAerial = priorOa;
+    if (
+      priorOa.cleanupStage === OFFENSIVE_AERIAL_CLEANUP_STAGE.NONE ||
+      priorOa.cleanupStage === OFFENSIVE_AERIAL_CLEANUP_STAGE.CONTACT_CONSUMED
+    ) {
+      // Parry path grounds immediately; hit path continues flight until land —
+      // clearAll on the attacker for HIT is unusual; keep CONTACT_CONSUMED.
+      markOffensiveAerialCleanupStage(
+        player,
+        priorOa.outcome === OFFENSIVE_AERIAL_OUTCOME.PARRIED
+          ? OFFENSIVE_AERIAL_CLEANUP_STAGE.AIRBORNE_INTERRUPTED
+          : OFFENSIVE_AERIAL_CLEANUP_STAGE.CONTACT_CONSUMED,
+        { debugReason: "clearAllActionStates_preserve" }
+      );
+    }
+    // Legacy parry clearAll grounds; do not keep a live V2 recoil record.
+    resetOffensiveAerialReaction(player);
+  } else if (shouldRecordInterrupt) {
+    player.offensiveAerial = priorOa;
+    const interruptId = priorOa.attackInstanceId;
+    resetOffensiveAerialActivation(player, {
+      recordInterrupted: true,
+      debugReason: "clearAllActionStates_interrupt",
+    });
+    resetOffensiveAerialReaction(player);
+    if (isOffensiveAerialReactionV2Enabled() && interruptId) {
+      beginOffensiveAerialReaction(
+        player,
+        OFFENSIVE_AERIAL_REACTION.INTERRUPTED_FALL,
+        {
+          force: true,
+          attackInstanceId: interruptId,
+          debugReason: "clearAll_interrupted_fall",
+        }
+      );
+    }
+  } else {
+    resetOffensiveAerialActivation(player, {
+      debugReason: "clearAllActionStates",
+    });
+    resetOffensiveAerialReaction(player);
+  }
+
   // Clear flap states. Only reachable while grounded (startup is the only
   // interruptible flap phase — flight is hit-immune), so no airborne Y is
   // stranded here; the hit-fall systems own Y from this point.
@@ -1490,7 +1583,17 @@ function clearAllActionStates(player) {
   player.lastFlapChargeTime = 0;
 }
 
-function clearSlideJumpState(player) {
+function clearSlideJumpState(player, opts = {}) {
+  // Stale-owner: delayed recovery cleanup must not wipe a newer activation.
+  if (
+    opts.expectedInstanceId != null &&
+    !canCleanupOffensiveAerialInstance(player, opts.expectedInstanceId, {
+      reason: "clearSlideJumpState",
+    })
+  ) {
+    return false;
+  }
+
   player.isSlideJumping = false;
   player.slideJumpPhase = null;
   player.slideJumpVelocityY = 0;
@@ -1511,6 +1614,31 @@ function clearSlideJumpState(player) {
   player.flapBeatHDir = 0;
   player.flapVelocityX = 0;
   player.lastFlapChargeTime = 0;
+
+  // Recovery-complete finalizes the outcome record (idempotent).
+  if (opts.finalizeOutcome !== false) {
+    finalizeOffensiveAerialActivation(player, {
+      expectedInstanceId: opts.expectedInstanceId,
+      debugReason: opts.debugReason || "clearSlideJumpState",
+    });
+    completeOffensiveAerialReaction(player, {
+      expectedInstanceId: opts.expectedInstanceId,
+    });
+  }
+
+  // Facing lock release is instance-gated (except force paths).
+  if (opts.forceFacingClear) {
+    forceClearOffensiveAerialFacingLock(player, {
+      reason: opts.debugReason || FACING_RELEASE.FULL_RESET,
+    });
+  } else {
+    releaseOffensiveAerialFacingLock(player, {
+      expectedInstanceId: opts.expectedInstanceId,
+      reason: opts.debugReason || FACING_RELEASE.RECOVERY_COMPLETE,
+    });
+  }
+  clearOffensiveAerialPresentation(player);
+  return true;
 }
 
 function clearIceSlideState(player) {
@@ -1651,6 +1779,8 @@ function clearHitFall(player) {
  * S dive (`slideJumpDiveCommitted`) and landing phase are hittable.
  */
 function isSlideJumpFlightImmune(player) {
+  // Parried recoil is deliberately vulnerable (flight immunity cleared).
+  if (isParriedRecoilActive(player)) return false;
   return !!(
     player &&
     player.isSlideJumping &&

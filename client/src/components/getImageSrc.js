@@ -166,6 +166,10 @@ const getImageSrc = (
   slideJumpPhase = null,
   slideJumpUseDodgePose = false,
   slideJumpFlapFrame = 1,
+  // Phase 4: server reaction ownership (PARRIED_RECOIL / LANDING_RECOVERY / …).
+  offensiveAerialReactionType = null,
+  // Phase 5A: server presentation category (NONE / FLIGHT_ACTIVE / …).
+  offensiveAerialPresentation = null,
   // FORCE OUT (grabPush) loser — held after the shove settles (not idle).
   isGrabPushDefeat = false
 ) => {
@@ -223,10 +227,34 @@ const getImageSrc = (
     return dodging;
   }
   // Slide-jump: flap wing art in the air (no real flaps); dodge pose on butt-slam dive.
+  // Presentation ownership (Phase 5A) wins when the server sends it; reaction
+  // type remains the fallback for older deltas.
   if (isSlideJumping) {
+    const pres = offensiveAerialPresentation;
+    if (
+      pres === "PARRIED_FALL" ||
+      pres === "TOUCHDOWN" ||
+      pres === "LANDING_RECOVERY" ||
+      pres === "GROUNDED_STAGGER" ||
+      offensiveAerialReactionType === "PARRIED_RECOIL" ||
+      offensiveAerialReactionType === "LANDING_RECOVERY"
+    ) {
+      return recovering;
+    }
+    if (pres === "DIVE_ACTIVE" || slideJumpUseDodgePose) return dodging;
     if (slideJumpPhase === "landing") return recovering;
-    if (slideJumpUseDodgePose) return dodging;
+    // FLIGHT_ACTIVE / HIT_CONTINUATION / WHIFF_DESCENT → flap art
     return slideJumpFlapFrame === 2 ? flap2 : flap1;
+  }
+  if (
+    !isSlideJumping &&
+    (offensiveAerialPresentation === "GROUNDED_STAGGER" ||
+      offensiveAerialPresentation === "INTERRUPTED_AIRBORNE")
+  ) {
+    if (offensiveAerialPresentation === "INTERRUPTED_AIRBORNE" && isHit) {
+      return hit;
+    }
+    if (offensiveAerialPresentation === "GROUNDED_STAGGER") return recovering;
   }
   // Grab attempt outranks ice slide — otherwise slide→grab keeps the sliding
   // pose and reads as the slide eating the attempt.

@@ -1,14 +1,18 @@
 # Offensive Aerial State Lifecycle — PUMO PUMO !
 
-Current authoritative lifecycle for slide-jump / FLAP / S-dive body slam (2026-07-31).
+Current authoritative lifecycle for slide-jump / FLAP / S-dive body slam (2026-07-31).  
+Phase 1–2 adds `player.offensiveAerial` outcome + cleanup stages alongside these flags  
+(`OFFENSIVE_AERIAL_OUTCOME_CONTRACT.md`, `OFFENSIVE_AERIAL_CLEANUP_CONTRACT.md`).  
+Phase 4 `offensiveAerialReaction` is **default ON** (`heavy_short`); disable with `OFFENSIVE_AERIAL_REACTION_V2=0`  
+(`OFFENSIVE_AERIAL_POST_CONTACT_REACTIONS.md`).
 
 Repository model (preferred over inventing a parallel SM):
 
 ```
 ice_slide → takeoff → flight → (optional flap_flight / dive)
-         → contact_resolved? (hit latch | parry clear | none)
-         → post_hit_travel? | parried_grounded | whiff_descent
-         → landing → clear → grounded_control
+         → contact_resolved? (hit latch | parry | none)
+         → HIT_CONTINUATION | PARRIED_RECOIL (V2) | parried_grounded (legacy) | whiff
+         → landing handoff → recovery → clear → grounded_control
 ```
 
 ---
@@ -22,7 +26,8 @@ ice_slide → takeoff → flight → (optional flap_flight / dive)
 | Airborne inactive (ascent / high) | flight, `velY>0`, no dive | slide or flap H | gravity integrator | flap1/2 | **off** | immune | buffer blocked | n/a | — |
 | Airborne active | descending or dive, height≤100, !latch | same | same | flap or dodge | **on** (`checkFlapBodySlam`) | dive: vulnerable; else immune until descend only affects offense | same | n/a | latch or parry |
 | Contact resolved — hit | `slideJumpHitLanded` | continues | continues | flap/dive | **off** | still flight immune if !dive | same | pending | — |
-| Contact resolved — parry | cleared; `isRecovering` | AP shove | grounded | recovery/AP | off | grounded vulnerable | `AP_STAGGER_FLAP_MS` | skipped | `clearAllActionStates` |
+| Contact resolved — parry (legacy / flag OFF) | cleared; `isRecovering` | AP shove | grounded | recovery/AP | off | grounded vulnerable | `AP_STAGGER_FLAP_MS` | skipped | `clearAllActionStates` |
+| Contact resolved — parry (V2) | `PARRIED_RECOIL`; still `isSlideJumping` | recoil Hx | recoil+gravity | recovering | off | **vulnerable** | lock until `controlRestoreAt` | after recoil touchdown | reaction integrator |
 | Post-hit travel | latch + flight | continues | continues | flap/dive | off | immune if !dive | same | until Y≤ground | — |
 | Whiff descent | !latch + descending | same | same | flap/dive | on while in band | same | same | until ground | — |
 | Landing approach / touchdown | `y` snap ground; phase→`landing` | zeroed | zeroed | recovering | off | vulnerable | `actionLockUntil` = recovery | **this phase** | timer |

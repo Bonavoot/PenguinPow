@@ -13,8 +13,21 @@
 const {
   OFFENSIVE_AERIAL_TRACE,
   OFFENSIVE_AERIAL_DEBUG,
+  isOffensiveAerialReactionV2Enabled,
 } = require("./offensiveAerialFlags");
 const { GROUND_LEVEL, HITBOX_DISTANCE_VALUE } = require("./constants");
+const {
+  isContactConsumed,
+  snapshotOffensiveAerialDebug,
+} = require("./offensiveAerialOutcome");
+const { rootMidpoint } = require("./offensiveAerialContact");
+const {
+  isParriedRecoilActive,
+  snapshotOffensiveAerialReactionDebug,
+} = require("./offensiveAerialReaction");
+const {
+  snapshotOffensiveAerialFacingDebug,
+} = require("./offensiveAerialFacing");
 
 /** Must match collisionSystem.js local constants (exported there for tests). */
 const FLAP_BODYSLAM_WIDTH_SCALE = 0.7;
@@ -33,7 +46,8 @@ function isBodySlamWindowOpen(attacker) {
   if (!attacker?.isSlideJumping || attacker.slideJumpPhase !== "flight") {
     return false;
   }
-  if (attacker.slideJumpHitLanded) return false;
+  // Latch + outcome contactConsumed both kill the hitbox (same activation).
+  if (attacker.slideJumpHitLanded || isContactConsumed(attacker)) return false;
   const descending =
     (attacker.slideJumpVelocityY ?? 0) <= 0 || !!attacker.slideJumpDiveCommitted;
   if (!descending) return false;
@@ -43,6 +57,14 @@ function isBodySlamWindowOpen(attacker) {
 
 function classifyAerialPhase(player) {
   if (!player) return "none";
+  if (isParriedRecoilActive(player)) return "parried_recoil";
+  if (
+    player.offensiveAerialReactionType === "LANDING_RECOVERY" &&
+    player.isSlideJumping &&
+    player.slideJumpPhase === "landing"
+  ) {
+    return "parried_landing";
+  }
   if (player.isSlideJumping) {
     if (player.slideJumpPhase === "landing") return "landing";
     if (player.slideJumpDiveCommitted) return "airborne_active_dive";
@@ -167,23 +189,31 @@ function buildOffensiveAerialTickSnapshot({
     attacker: capturePlayerAerialSlice(attacker),
     defender: capturePlayerAerialSlice(defender),
     hitboxActive,
-    hurtboxMode: attacker?.slideJumpDiveCommitted
-      ? "dive_vulnerable"
-      : attacker?.isSlideJumping && attacker.slideJumpPhase === "flight"
-        ? "flight_immune"
-        : attacker?.slideJumpPhase === "landing"
-          ? "landing_vulnerable"
-          : "n/a",
+    hurtboxMode: isParriedRecoilActive(attacker)
+      ? "parried_recoil_vulnerable"
+      : attacker?.slideJumpDiveCommitted
+        ? "dive_vulnerable"
+        : attacker?.isSlideJumping && attacker.slideJumpPhase === "flight"
+          ? "flight_immune"
+          : attacker?.slideJumpPhase === "landing"
+            ? "landing_vulnerable"
+            : "n/a",
     parryActive: !!defender?.isRawParrying,
     attackLatch: !!attacker?.slideJumpHitLanded,
     contactCandidate: hitboxActive && overlap > 0,
     contactResult: contactResult || null,
     contactPoint: contactPoint || null,
+    reactionV2: isOffensiveAerialReactionV2Enabled(),
+    reaction: snapshotOffensiveAerialReactionDebug(attacker),
+    presentation: attacker?.offensiveAerialPresentation || null,
+    facingLock: snapshotOffensiveAerialFacingDebug(attacker),
     sideBefore,
     sideAfter: sideOf(attacker, defender),
     bodyOverlapPx: overlap,
     pushboxCorrectionPx,
     outcomeHint: classifyOutcomeHint(attacker, defender, contactResult),
+    outcomeContract: snapshotOffensiveAerialDebug(attacker),
+    previousMidpoint: attacker && defender ? rootMidpoint(attacker, defender) : null,
     fieldsCleared: fieldsCleared || null,
     notes: notes || null,
   };

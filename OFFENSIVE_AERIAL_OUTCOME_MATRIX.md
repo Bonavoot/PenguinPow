@@ -1,6 +1,8 @@
 # Offensive Aerial Outcome Matrix — PUMO PUMO !
 
 Characterization of **current** authoritative behavior (2026-07-31).  
+Phase 1 maps these rows onto `offensiveAerialOutcome.js` without changing feel  
+(`OFFENSIVE_AERIAL_OUTCOME_CONTRACT.md`).  
 Not a redesign. Labels: **I** = intentional, **S** = stable/accidental, **G** = gap, **U** = needs playtest.
 
 Shared detector: `checkFlapBodySlam` (plain slide-jump, FLAP flight, S dive).
@@ -34,16 +36,16 @@ Path: `opponent.isRawParrying` → `resolveFlapRawParry` (before damage).
 
 | # | Scenario | Interrupt? | Hitbox cleared? | Re-hit same anim? | Vel after | Rebound? | Attacker state | Defender | Sides | Touchdown | Land overlap | Anim | Cleanup | Buffer | FX contact | Leak risk | Class |
 |---|----------|------------|-----------------|-------------------|-----------|----------|----------------|----------|-------|-----------|--------------|------|---------|--------|------------|----------|-------|
-| 1 | Grounded parries FLAP/slam | Yes | Yes (`clearAllActionStates`) | No | Zeroed then AP shove (`slapParryKnockbackVelocity`) | Ground shove | Grounded + `isRecovering` + `AP_STAGGER_FLAP_MS` lock | Success frames; chain++; optional guard hold | Facing may retarget | Instant ground (no aerial land phase) | Pushbox immediately | Recovery / AP success — not aerial land | Broad clear then stagger timers | Cleared in `clearAllActionStates` | Midpoint `contactX` | Low if timers fire | **I** |
-| 2 | Parries slide-jump attack | Same path | Same | No | Same | Same | Same | Same | Same | Same | Same | Same | Same | Same | Midpoint | Same | **I** |
-| 3 | Parries body slam dive | Same | Same | No | Same | Same | Same | Same | Same | Same | Same | Same | Same | Same | Midpoint | Same | **I** |
-| 4 | During ascent | Only if dive committed (ascent alone has no hitbox) | If window open | No | Same | Same | Same | Same | Same | Same | Same | Same | Same | Same | Midpoint | — | **I** |
-| 5 | Near apex | If descending into band | Same | No | Same | Same | Same | Same | Same | Same | Same | Same | Same | Same | Midpoint | — | **I** |
-| 6 | During descent | Primary case | Same | No | Same | Same | Same | Same | Same | Same | Same | Same | Same | Same | Midpoint | — | **I** |
-| 7 | Immediately before touchdown | Same | Same | No | Same | Same | Grounded stagger (skips land phase) | Same | Same | Instant | Same | Same | Same | Same | Midpoint | — | **I** |
-| 8 | Near boundary | Same | Same | No | Shove may clamp | Same | Same | Same | Same | Same | Same | Same | Same | Same | Midpoint | — | **I** |
-| 9 | Defender moves under/across | Geometric at poll ticks | Same | No | Same | Same | Same | Same | May change pre-contact | Same | Same | Same | Same | Same | Midpoint | **U** | **U** |
-| 10 | Roots already overlapping | Same | Same | No | Same | Same | Same | Same | Same | Same | Same | Same | Same | Same | Midpoint | — | **I** |
+| 1 | Grounded parries FLAP/slam | Yes | Yes (`clearAllActionStates`) | No | Zeroed then AP shove (`slapParryKnockbackVelocity`) | Ground shove | Grounded + `isRecovering` + `AP_STAGGER_FLAP_MS` lock | Success frames; chain++; optional guard hold | Facing may retarget | Instant ground (no aerial land phase) | Pushbox immediately | Recovery / AP success — not aerial land | Broad clear then stagger timers | Cleared in `clearAllActionStates` | Surface contact; V2 recoil when flagged else ground snap | Low if timers fire | **I** |
+| 2 | Parries slide-jump attack | Same path | Same | No | Same | Same | Same | Same | Same | Same | Same | Same | Same | Same | Surface contact | Same | **I** |
+| 3 | Parries body slam dive | Same | Same | No | Same | Same | Same | Same | Same | Same | Same | Same | Same | Same | Surface / downward contact | Same | **I** |
+| 4 | During ascent | Only if dive committed (ascent alone has no hitbox) | If window open | No | Same | Same | Same | Same | Same | Same | Same | Same | Same | Same | Surface contact | — | **I** |
+| 5 | Near apex | If descending into band | Same | No | Same | Same | Same | Same | Same | Same | Same | Same | Same | Same | Surface contact | — | **I** |
+| 6 | During descent | Primary case | Same | No | Same | Same | Same | Same | Same | Same | Same | Same | Same | Same | Surface contact | — | **I** |
+| 7 | Immediately before touchdown | Same | Same | No | Same | Same | Grounded stagger (skips land phase) | Same | Same | Instant | Same | Same | Same | Same | Surface contact | — | **I** |
+| 8 | Near boundary | Same | Same | No | Shove may clamp | Same | Same | Same | Same | Same | Same | Same | Same | Same | Surface contact | — | **I** |
+| 9 | Defender moves under/across | Geometric at poll ticks | Same | No | Same | Same | Same | Same | May change pre-contact | Same | Same | Same | Same | Same | Surface contact (immutable) | **U** | **U** |
+| 10 | Roots already overlapping | Same | Same | No | Same | Same | Same | Same | Same | Same | Same | Same | Same | Same | Surface / same-center fallback | — | **I** |
 
 **Perfect vs regular:** Live AP window + duration ≤ `PERFECT_PARRY_WINDOW`; guarding floor forces regular tier.  
 **AP kill:** Perfect + flapper balance < threshold → pull-kill cinematic (midpoint impact).  

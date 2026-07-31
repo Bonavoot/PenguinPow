@@ -145,6 +145,12 @@ function cleanupPlayerStates(player) {
   player.ropeJumpBudgetExceptionClass = null;
   player._landingTrace = null;
   player._offensiveAerialTrace = null;
+  player.offensiveAerial = null;
+  player._offensiveAerialSeq = 0;
+  player._offensiveAerialIllegalTransitions = 0;
+  player._offensiveAerialStaleRejects = 0;
+  player._offensiveAerialLastIllegal = null;
+  player._offensiveAerialLastStaleReject = null;
   player.isFlapping = false;
   player.flapPhase = null;
   player.flapCharges = 0;
