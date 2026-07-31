@@ -2545,13 +2545,52 @@ const GameFighter = ({
           penguinRef.current?.fighter === "player 1"
         ) {
           const shared = getSharedFighterState();
-          renderCombatFidelityOverlay({
-            p1x: shared?.player1?.x ?? newPos.x,
-            p1y: shared?.player1?.y ?? newPos.y,
-            p2x: shared?.player2?.x ?? 0,
-            p2y: shared?.player2?.y ?? 0,
-            sizeMult: penguinRef.current?.sizeMultiplier || 1,
-          });
+          {
+            const p1 = shared?.player1;
+            const p2 = shared?.player2;
+            const landingFields = (p, x, y) =>
+              p
+                ? {
+                    x,
+                    y,
+                    sizeMult: p.sizeMultiplier || 1,
+                    sizeMultiplier: p.sizeMultiplier || 1,
+                    ropeJumpPhase: p.ropeJumpPhase,
+                    ropeJumpRawTargetX: p.ropeJumpRawTargetX,
+                    ropeJumpResolvedTargetX: p.ropeJumpResolvedTargetX,
+                    ropeJumpLandingCommitted: p.ropeJumpLandingCommitted,
+                    ropeJumpLandingCommitX: p.ropeJumpLandingCommitX,
+                    ropeJumpLandingCommitT: p.ropeJumpLandingCommitT,
+                    ropeJumpLandingPath: p.ropeJumpLandingPath,
+                    ropeJumpPreferredSide: p.ropeJumpPreferredSide,
+                    ropeJumpResolvedSide: p.ropeJumpResolvedSide,
+                    ropeJumpMinDistance: p.ropeJumpMinDistance,
+                    ropeJumpCenterDistance: p.ropeJumpCenterDistance,
+                    ropeJumpOverlap: p.ropeJumpOverlap,
+                    ropeJumpSafetyCorrectionPx: p.ropeJumpSafetyCorrectionPx,
+                    ropeJumpPreTouchdownX: p.ropeJumpPreTouchdownX,
+                    ropeJumpTouchdownX: p.ropeJumpTouchdownX,
+                    ropeJumpUsedFallback: p.ropeJumpUsedFallback,
+                  }
+                : null;
+            renderCombatFidelityOverlay({
+              // P1 uses this instance's interpolated pose; P2 uses shared server snapshot.
+              p1: landingFields(
+                p1 || penguinRef.current,
+                newPos.x,
+                newPos.y
+              ) || {
+                x: newPos.x,
+                y: newPos.y,
+                sizeMult: penguinRef.current?.sizeMultiplier || 1,
+              },
+              p2: landingFields(p2, p2?.x ?? 0, p2?.y ?? 0) || {
+                x: 0,
+                y: 0,
+                sizeMult: 1,
+              },
+            });
+          }
         }
         // Grab-arm overlay shares the body's exact position formula so it stays
         // pixel-locked to the (armless) grab/clinch body as it slides.

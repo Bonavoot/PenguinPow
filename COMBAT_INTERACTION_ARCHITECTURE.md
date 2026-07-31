@@ -16,6 +16,7 @@ Current-state map of ownership and pipelines. Proposed future boundaries are lab
 | Ground pushbox | Server | `server-io/gameFunctions.js` (`arePlayersColliding`, `adjustPlayerPositions`) |
 | Movement / ice / knockback integrate | Server | `server-io/index.js` movement block |
 | Aerial verbs | Server | `server-io/index.js` (rope jump, slide jump / FLAP), `socketHandlers.js` start triggers |
+| Aerial landing resolve (Phase A) | Server | `server-io/landingResolution.js`, `landingFlags.js` (rope jump V2 only) |
 | Grab / clinch | Server | `server-io/grabActionSystem.js`, `grabMechanics.js`, `combatHelpers.js` |
 | Facing | Server | `server-io/facingSystem.js` |
 | Projectiles | Server | `server-io/projectileUpdates.js` |
@@ -99,7 +100,9 @@ player_hit event
 `idle → startup → active → (hit|whiff) → recovery → idle`
 
 ### Rope jump
-`startup → active (pass-through arc to fixed targetX) → landing (pushbox returns, 18px/tick sep) → idle`
+`startup → active (pass-through arc to fixed/raw targetX) → landing (pushbox returns, 18px/tick sep) → idle`
+
+**Phase A (flagged):** When `ROPE_JUMP_LANDING_V2` is on, mid-arc commit (`ROPE_JUMP_LANDING_COMMIT_T`) locks a pushbox-clear `ropeJumpResolvedTargetX` via `landingResolution.js`; remaining arc travels continuously to that endpoint. Flag off = legacy fixed target + post-land 18px/tick. See `AERIAL_LANDING_PHASE_A.md`.
 
 ### Slide jump / FLAP
 `takeoff → flight (pass-through; descending can body-slam) → landing → idle`
@@ -176,7 +179,8 @@ Fixed `LOW_KICK_HITBOX_DISTANCE_VALUE` → beats parry/grab priority quirks → 
 Flight pass-through → descending overlap vs `FLAP_BODYSLAM_WIDTH_SCALE` → optional AP raw parry → burst KB → landing recovery; `contactX` often midpoint.
 
 ### Rope jump
-Fixed `ropeJumpTargetX` toward center fraction → active pass-through → snap to target on land → pushbox re-enabled with 18px/tick correction.
+Fixed `ropeJumpTargetX` toward center fraction → active pass-through → snap to target on land → pushbox re-enabled with 18px/tick correction.  
+V2 (`ROPE_JUMP_LANDING_V2`): same timings/arc; commit resolved endpoint mid-arc; land already clear when possible.
 
 ### Side switch
 Facing hard-rule (`facingSystem`) + aerial cross + rope-jump landing direction tie-break when centers within half-body.

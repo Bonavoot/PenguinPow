@@ -25,6 +25,7 @@ const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
         beginGrabStartup,
         canArmAttackParry, armAttackParry } = require("./gameUtils");
 const { getConnectDistance, attackKindFromPlayer } = require("./strikeContact");
+const { initRopeJumpLandingState } = require("./landingResolution");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum, Phase 2: posture, Phase 3: cadence).
 const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P3_CADENCE } = require("./masteryFlags");
@@ -3839,6 +3840,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
         cpu.ropeJumpActiveStartTime = 0;
         cpu.ropeJumpLandingTime = 0;
         cpu.ropeJumpBufferedAttackRelease = 0;
+        initRopeJumpLandingState(cpu, cpu.ropeJumpTargetX);
         cpu.currentAction = "ropeJump";
         cpu.actionLockUntil = currentTime + ROPE_JUMP_STARTUP_MS;
         cpu.stamina = Math.max(0, cpu.stamina - ROPE_JUMP_STAMINA_COST);

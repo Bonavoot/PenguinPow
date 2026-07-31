@@ -56,6 +56,8 @@ const {
   executeChargedAttack,
 } = require("./gameFunctions");
 
+const { initRopeJumpLandingState } = require("./landingResolution");
+
 const {
   LOBBY_COLORS,
   LOBBY_BODY_COLORS,
@@ -1100,6 +1102,7 @@ function processInputPacket(room, player, data, io, rooms) {
       player.ropeJumpActiveStartTime = 0;
       player.ropeJumpLandingTime = 0;
       player.ropeJumpBufferedAttackRelease = 0;
+      initRopeJumpLandingState(player, player.ropeJumpTargetX);
       player.currentAction = "ropeJump";
       player.actionLockUntil = simNowForPlayer(player) + ROPE_JUMP_STARTUP_MS;
       player.stamina = Math.max(0, player.stamina - ROPE_JUMP_STAMINA_COST);

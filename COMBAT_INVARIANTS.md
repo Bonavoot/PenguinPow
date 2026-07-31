@@ -20,7 +20,7 @@ Rules future fidelity work must uphold. Phase 1 audit only — nothing here is n
 2. A registered slap / charged / palm strike must confirm when the art tip meets the victim body surface within the tip-rail epsilon (`isWithinConnectRange`).
 3. On strike confirm, freeze-frame park distance comes from `getHitParkDistance` (slap/charged at connect; palm at connect + outset).
 4. Fast projectiles that can tunnel must use swept checks (snowballs already do).
-5. Aerial landings must not rely on “land inside → multi-tick push out” as the primary landing solution (today rope-jump violates this — future fix target).
+5. Aerial landings must not rely on “land inside → multi-tick push out” as the primary landing solution. Rope-jump V2 (`ROPE_JUMP_LANDING_V2`, default off) commits a clear endpoint before touchdown; legacy path still violates this until the flag is enabled by default.
 6. Ring-boundary clamps and fighter separation must compose without fighting each other into jitter.
 7. Tip length must not be scaled by `sizeMultiplier`; victim body half may (matches current `strikeContact.js` contract).
 
@@ -66,7 +66,7 @@ Rules future fidelity work must uphold. Phase 1 audit only — nothing here is n
 |-----------|--------|
 | Pushbox disabled during charged **lunge** (not palm) | Otherwise pushbox blocks connect |
 | Pushbox / tip-sep disabled during aerial active arcs | Allows cross-over escapes and body-slam approach |
-| Rope-jump landing overlap capped at 18px/tick | Softens landing separation (also causes the reported soft snap — future fix) |
+| Rope-jump landing overlap capped at 18px/tick | Softens landing separation; V2 makes this safety-only when flag on (see `AERIAL_LANDING_PHASE_A.md`) |
 | Low kick uses fixed distance, not tip rail | Placeholder until tip art exists |
 | Flap/AP kill `contactX` midpoint | Cinematic path, not tip strike |
 | Clinch own distance system | Grapple composition ≠ strike pushbox |

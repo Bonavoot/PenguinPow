@@ -561,6 +561,23 @@ function handleWinCondition(room, loser, winner, io, winType) {
       p.ropeJumpDirection = 0;
       p.ropeJumpActiveStartTime = 0;
       p.ropeJumpLandingTime = 0;
+      p.ropeJumpRawTargetX = 0;
+      p.ropeJumpResolvedTargetX = 0;
+      p.ropeJumpLandingCommitted = false;
+      p.ropeJumpLandingCommitX = 0;
+      p.ropeJumpLandingCommitT = 0;
+      p.ropeJumpLandingDecision = null;
+      p.ropeJumpLandingPath = null;
+      p.ropeJumpPreferredSide = 0;
+      p.ropeJumpResolvedSide = 0;
+      p.ropeJumpMinDistance = 0;
+      p.ropeJumpCenterDistance = 0;
+      p.ropeJumpOverlap = 0;
+      p.ropeJumpSafetyCorrectionPx = 0;
+      p.ropeJumpPreTouchdownX = 0;
+      p.ropeJumpTouchdownX = 0;
+      p.ropeJumpUsedFallback = false;
+      p._landingTrace = null;
     }
 
     // Clear flap (flight) state when game ends
@@ -1744,7 +1761,8 @@ function adjustPlayerPositions(player1, player2, delta) {
     }
   }
 
-  // During rope jump landing, cap the push per tick for a smooth slide instead of a snap
+  // During rope jump landing, cap the push per tick for a smooth slide instead of a snap.
+  // V2 landings should rarely need this; the cap remains as legacy / emergency safety.
   const ropeJumpLanding = (player1.isRopeJumping && player1.ropeJumpPhase === "landing") ||
                           (player2.isRopeJumping && player2.ropeJumpPhase === "landing");
   const effectiveOverlap = ropeJumpLanding ? Math.min(overlap, 18) : overlap;
@@ -1755,6 +1773,19 @@ function adjustPlayerPositions(player1, player2, delta) {
   } else {
     player1.x += effectiveOverlap * p1Share;
     player2.x -= effectiveOverlap * p2Share;
+  }
+
+  if (ropeJumpLanding && effectiveOverlap > 0) {
+    const jumper =
+      player1.isRopeJumping && player1.ropeJumpPhase === "landing"
+        ? player1
+        : player2.isRopeJumping && player2.ropeJumpPhase === "landing"
+          ? player2
+          : null;
+    if (jumper) {
+      jumper.ropeJumpSafetyCorrectionPx =
+        (jumper.ropeJumpSafetyCorrectionPx || 0) + effectiveOverlap;
+    }
   }
 
   const leftBoundary = MAP_LEFT_BOUNDARY;

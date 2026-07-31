@@ -8,6 +8,7 @@ Companion docs:
 - [`COMBAT_INVARIANTS.md`](./COMBAT_INVARIANTS.md)
 - [`POSE_GEOMETRY_AUDIT.md`](./POSE_GEOMETRY_AUDIT.md)
 - [`COMBAT_FIDELITY_ROADMAP.md`](./COMBAT_FIDELITY_ROADMAP.md)
+- [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md) — rope-jump landing V2 (flagged, default OFF)
 - Pose scan: `tools/audit-pose-geometry.js`, `tools/pose-geometry-report.json`, `tools/pose-geometry-viz/`
 - Dev overlay: `client/src/debug/CombatFidelityDebug.js` (`localStorage pumo_combat_fidelity_debug=1`)
 
@@ -171,7 +172,7 @@ Post-penetration split by who moves toward whom; anchored hit/parry victims take
 
 **Why it looks amateur:** Player sees a grounded pose overlapping the opponent, then a multi-tick slide/snap to legal spacing. Comment at `index.js:2359` explicitly chose gradual correction over one-frame snap — both read as correction if overlap is large (~100px ⇒ ~6 ticks ≈ 94ms).
 
-**Later fix direction (not now):** landing footprint probe to a nearest valid X before/at touchdown; keep 18px cap as safety only.
+**Phase A (implemented, default OFF):** `landingResolution.js` commits a valid endpoint at `ROPE_JUMP_LANDING_COMMIT_T` and travels continuously to it. Enable with `ROPE_JUMP_LANDING_V2=1`. Legacy 18px/tick path retained as flag-off + safety. See [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md). Slide-jump/FLAP not integrated yet.
 
 ---
 
@@ -310,8 +311,10 @@ Slap tip feel, charged plant/lunge connect, palm rooted poke + park outset, ice 
 | JSON report | `tools/pose-geometry-report.json` | generated |
 | Viz sheets | `tools/pose-geometry-viz/*-audit.png` | `--viz` |
 | Combat fidelity overlay | `client/src/debug/CombatFidelityDebug.js` | `localStorage.setItem("pumo_combat_fidelity_debug","1")` or `window.__PUMO_COMBAT_FIDELITY.enable()` |
+| Landing one-jump client dump | same module | `localStorage.setItem("pumo_landing_trace","1")` |
+| Landing server trace | `landingResolution.js` | `LANDING_TRACE=1` |
 
-Overlay is wired into `GameFighter.jsx` only behind the flag (contact ingest + P1-owned draw). No balance or sim changes.
+Overlay is wired into `GameFighter.jsx` only behind the flag (contact ingest + P1-owned draw). Per-fighter size multipliers and server landing diagnostic fields are shown when present. No balance changes when V2 flag is off.
 
 ---
 

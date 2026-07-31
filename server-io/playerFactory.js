@@ -275,6 +275,23 @@ function createInitialPlayerState(overrides = {}) {
     ropeJumpActiveStartTime: 0,
     ropeJumpLandingTime: 0,
     ropeJumpBufferedAttackRelease: 0,
+    // Aerial landing Phase A (rope-jump V2). Cleared on init / interrupt / round end.
+    ropeJumpRawTargetX: 0,
+    ropeJumpResolvedTargetX: 0,
+    ropeJumpLandingCommitted: false,
+    ropeJumpLandingCommitX: 0,
+    ropeJumpLandingCommitT: 0,
+    ropeJumpLandingDecision: null,
+    ropeJumpLandingPath: null,
+    ropeJumpPreferredSide: 0,
+    ropeJumpResolvedSide: 0,
+    ropeJumpMinDistance: 0,
+    ropeJumpCenterDistance: 0,
+    ropeJumpOverlap: 0,
+    ropeJumpSafetyCorrectionPx: 0,
+    ropeJumpPreTouchdownX: 0,
+    ropeJumpTouchdownX: 0,
+    ropeJumpUsedFallback: false,
 
     // === Flap charges (ride on FLAP-armed slide-jump; standalone liftoff removed) ===
     isFlapping: false, // legacy — always false; cleared for safety

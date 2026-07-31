@@ -1408,6 +1408,24 @@ function clearAllActionStates(player) {
   player.ropeJumpActiveStartTime = 0;
   player.ropeJumpLandingTime = 0;
   player.ropeJumpBufferedAttackRelease = 0;
+  // Aerial landing Phase A fields (inline reset — avoid circular require)
+  player.ropeJumpRawTargetX = 0;
+  player.ropeJumpResolvedTargetX = 0;
+  player.ropeJumpLandingCommitted = false;
+  player.ropeJumpLandingCommitX = 0;
+  player.ropeJumpLandingCommitT = 0;
+  player.ropeJumpLandingDecision = null;
+  player.ropeJumpLandingPath = null;
+  player.ropeJumpPreferredSide = 0;
+  player.ropeJumpResolvedSide = 0;
+  player.ropeJumpMinDistance = 0;
+  player.ropeJumpCenterDistance = 0;
+  player.ropeJumpOverlap = 0;
+  player.ropeJumpSafetyCorrectionPx = 0;
+  player.ropeJumpPreTouchdownX = 0;
+  player.ropeJumpTouchdownX = 0;
+  player.ropeJumpUsedFallback = false;
+  player._landingTrace = null;
 
   // Clear flap states. Only reachable while grounded (startup is the only
   // interruptible flap phase — flight is hit-immune), so no airborne Y is

@@ -62,6 +62,12 @@ const DELTA_TRACKED_PROPS = [
   // cleared on the same land tick that arms isIceSliding).
   'isIceSliding', 'iceSlideDir', 'isIceSlideReverseHopping', 'isSlideJumping', 'slideJumpDiveCommitted', 'slideJumpFastFalling', 'slideJumpPhase', 'slideJumpHasFlap',
   'isRopeJumping', 'ropeJumpPhase', 'sizeMultiplier', 'isGassed',
+  // Aerial landing Phase A diagnostics (dev overlay). Zeroed when idle.
+  'ropeJumpRawTargetX', 'ropeJumpResolvedTargetX', 'ropeJumpLandingCommitted',
+  'ropeJumpLandingCommitX', 'ropeJumpLandingCommitT', 'ropeJumpLandingPath',
+  'ropeJumpPreferredSide', 'ropeJumpResolvedSide', 'ropeJumpMinDistance',
+  'ropeJumpCenterDistance', 'ropeJumpOverlap', 'ropeJumpSafetyCorrectionPx',
+  'ropeJumpPreTouchdownX', 'ropeJumpTouchdownX', 'ropeJumpUsedFallback',
   // Flap charges / wing-beat sync ride on slide-jump when FLAP is equipped
   // (standalone isFlapping liftoff was removed). Fields kept for cleanup/deltas.
   'isFlapping', 'flapPhase', 'flapCharges', 'flapWingBeatTime', 'flapFastFalling', 'flapBeatHDir',
@@ -906,6 +912,10 @@ const ROPE_JUMP_BOUNDARY_ZONE = 40;      // Tight to the rope — must be near t
 // way toward center (was an inline 0.52 in socketHandlers + the CPU input path).
 // Still saves your life; no longer refunds the whole positional war.
 const ROPE_JUMP_CENTER_FRACTION = 0.33;
+// Phase A aerial landing: fraction of the active arc at which V2 locks the
+// resolved touchdown X. Must be < 1 so travel to the endpoint stays continuous.
+// See AERIAL_LANDING_PHASE_A.md / landingResolution.js.
+const ROPE_JUMP_LANDING_COMMIT_T = 0.58;
 
 // ============================================
 // FLAP — air charges on slide-jump (power-up / BASHO movement loadout)
@@ -1955,6 +1965,7 @@ module.exports = {
   ROPE_JUMP_SAFE_HEIGHT,
   ROPE_JUMP_BOUNDARY_ZONE,
   ROPE_JUMP_CENTER_FRACTION,
+  ROPE_JUMP_LANDING_COMMIT_T,
 
   // Flap
   FLAP_STARTUP_MS,

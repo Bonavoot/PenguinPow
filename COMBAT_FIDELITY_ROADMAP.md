@@ -112,10 +112,21 @@ Ground separation stable; charged/palm regression tests green.
 
 ## Phase 3 — Aerial movement & landing *(highest player-facing fidelity gap)*
 
-### Scope
-- Rope-jump landing probe: compute valid `targetX` / post-land X that clears opponent footprint + ring clamps **before** or on the landing frame
+### Phase 3A — Rope jump only *(implemented 2026-07-30, default OFF)*
+
+See [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md).
+
+- Pure `landingResolution.js` + `ROPE_JUMP_LANDING_V2` flag (default **false**)
+- Commit at `ROPE_JUMP_LANDING_COMMIT_T` → continuous travel → clear touchdown
+- Legacy path preserved; 18px/tick retained as safety
+- Diagnostics + `server-io/test/landing/` suite
+- **Stop:** do not enable by default until playtest; do not integrate slide/FLAP here
+
+### Phase 3B — Slide jump / FLAP *(not started)*
+
+### Scope (remaining)
 - Slide-jump / FLAP landing: same footprint idea; preserve intentional cross-up rules
-- Replace “land inside → 18px/tick slide” as the primary solution (cap may remain as safety)
+- Replace “land inside → 18px/tick slide” as the primary solution for those verbs (cap may remain as safety)
 - Side prediction using jump direction + relative X
 - Deterministic server resolution (no client authority)
 
@@ -123,6 +134,7 @@ Ground separation stable; charged/palm regression tests green.
 - No strike tip changes
 - No FLAP damage rebalance
 - No new aerial attacks
+- No silent default-on for rope V2 without playtest sign-off
 
 ### Player-visible benefit
 Rope jump / cross-up lands feel intentional; no “teleport after landing inside.”
@@ -131,20 +143,20 @@ Rope jump / cross-up lands feel intentional; no “teleport after landing inside
 **High** — movement tech identity; cross-up fairness; ring edge cases.
 
 ### Dependencies
-Phase 2 exemption clarity; landing footprint from Phase 1 metadata (or temporary default capsule).
+Phase 2 exemption clarity; landing footprint from Phase 1 metadata (or temporary default capsule). Phase 3A solver is the substrate for 3B.
 
 ### Required tests
-- Rope jump over standing opponent mid/near rope both sides
-- Rope jump when opponent moves into landing cell
+- Rope jump over standing opponent mid/near rope both sides *(3A done)*
+- Rope jump when opponent moves into landing cell *(3A done)*
 - Slide jump cross-up + butt slam still hits
 - Landing during hitstop / knockback scenarios
 - Deterministic clinch harness style scenarios for landing
 
 ### Rollback
-Feature-flag landing probe; restore fixed `ropeJumpTargetX` + 18px cap path.
+Feature-flag landing probe; restore fixed `ropeJumpTargetX` + 18px cap path (`ROPE_JUMP_LANDING_V2=0`).
 
 ### Stop when
-Playtest confirms no visible land-inside-then-correct on reference scenarios.
+Playtest confirms no visible land-inside-then-correct on reference scenarios; then consider default-on for rope V2 before 3B.
 
 ---
 
@@ -315,6 +327,6 @@ Steam-release fidelity bar signed off for interaction (not particle count).
 
 ## Recommended next implementation phase
 
-**After this audit conversation is approved: Phase 0 completion + Phase 3 spike design (landing probe) in a dedicated conversation**, optionally with a small Phase 2 hygiene PR (CPU boundary + exemption registry) if low-risk.
+**Phase 3A is code-complete behind a flag.** Next conversation should be: (1) playtest rope V2 and decide default-on, **or** (2) Phase 3B slide-jump/FLAP landing using the same solver, **or** (3) low-risk Phase 2 hygiene (CPU boundary + exemption registry).
 
 Do **not** start Phase 4 tip standardization before landing/pushbox ownership is clear — otherwise tip parks will keep fighting aerial correction snaps.

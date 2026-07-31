@@ -178,6 +178,14 @@ const {
 // Facing hard rule: always face opponent unless purposefully locked
 const { enforcePairFacing } = require("./facingSystem");
 
+// Aerial landing Phase A — rope-jump V2 (flagged; legacy path retained)
+const {
+  stepRopeJumpActive,
+  clearRopeJumpLandingState,
+  finalizeLandingTrace,
+  isRopeJumpLandingV2Enabled,
+} = require("./landingResolution");
+
 // Import combat helpers (shared between tick and socket handlers)
 const {
   isOpponentCloseEnoughForGrab,
@@ -2339,30 +2347,24 @@ function tick(delta) {
             player.ropeJumpActiveStartTime = now;
           }
         } else if (player.ropeJumpPhase === "active") {
-          const elapsed = now - player.ropeJumpActiveStartTime;
-          const t = Math.min(1, elapsed / ROPE_JUMP_ACTIVE_MS);
+          const ropeJumpOpponent = room.players.find(p => p.id !== player.id);
+          // V2: commit a valid endpoint mid-arc and travel continuously to it.
+          // Legacy (flag off): fixed ropeJumpTargetX; pushbox may slide out after land.
+          const landResult = stepRopeJumpActive(player, ropeJumpOpponent, now, {
+            useV2: isRopeJumpLandingV2Enabled(),
+          });
 
-          const easedT = 0.5 - 0.5 * Math.cos(Math.PI * t);
-
-          player.x = player.ropeJumpStartX + (player.ropeJumpTargetX - player.ropeJumpStartX) * easedT;
-          player.y = GROUND_LEVEL + ROPE_JUMP_ARC_HEIGHT * 4 * t * (1 - t);
-
-          player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
-
-          if (t >= 1) {
-            player.ropeJumpPhase = "landing";
-            player.ropeJumpLandingTime = now;
-            player.x = player.ropeJumpTargetX;
-            player.y = GROUND_LEVEL;
+          if (landResult.touchedDown) {
             player.actionLockUntil = now + ROPE_JUMP_LANDING_RECOVERY_MS;
-
-            // No one-frame position snap — adjustPlayerPositions handles the
-            // overlap gradually over several ticks for a smooth visual slide.
-
+            // Legacy relies on adjustPlayerPositions (≤18px/tick) after overlap.
+            // V2 should already be clear; the 18px cap remains as safety only.
             emitThrottledScreenShake(room, io, { type: "rope_landing" });
           }
         } else if (player.ropeJumpPhase === "landing") {
           if (now >= player.ropeJumpLandingTime + ROPE_JUMP_LANDING_RECOVERY_MS) {
+            finalizeLandingTrace(player, {
+              safetyCorrectionPx: player.ropeJumpSafetyCorrectionPx,
+            });
             player.isRopeJumping = false;
             player.ropeJumpPhase = null;
             player.ropeJumpStartTime = 0;
@@ -2371,6 +2373,7 @@ function tick(delta) {
             player.ropeJumpDirection = 0;
             player.ropeJumpActiveStartTime = 0;
             player.ropeJumpLandingTime = 0;
+            clearRopeJumpLandingState(player);
             player.currentAction = null;
             player.actionLockUntil = 0;
 
