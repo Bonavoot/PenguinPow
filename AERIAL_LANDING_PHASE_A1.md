@@ -1,8 +1,10 @@
 # Aerial Landing — Phase A.1 (Rope-Jump Trajectory Hardening)
 
-**Status:** Implemented behind feature flag · **Default: OFF**  
+**Status:** Implemented behind feature flag · **Default: OFF** · **Not visually approved**  
 **Date:** 2026-07-30  
 **Scope stop:** Rope jump V2 trajectory only. No slide jump / FLAP / butt slam. V2 remains disabled by default.
+
+**Follow-up:** Phase A.2 decision stability — [`AERIAL_LANDING_PHASE_A2.md`](./AERIAL_LANDING_PHASE_A2.md). A.1’s 15px scan missed 0.25px endpoint cliffs (~200–260 px) and ordinary `hold_settle` rope hops; A.2 corrects decision continuity without enabling V2 by default.
 
 Companion: [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md), [`COMBAT_FIDELITY_AUDIT.md`](./COMBAT_FIDELITY_AUDIT.md).
 
@@ -85,6 +87,8 @@ Decision classes are recorded on the player (`ropeJumpDecisionClass`, `ropeJumpF
 - **Early lock** (`requiresEarlyCommit`) when waiting until 0.58 would put the preferred/residual endpoint behind the raw path (Cases 2–3).  
 - At most one authoritative commitment; no post-commit re-homing.
 
+**A.2 note:** the boolean `requiresEarlyCommit` + 0.75px behind-epsilon created Cliff 2. Replaced by continuous `recommendedCommitT` (see A.2).
+
 ---
 
 ## Production / debug network separation
@@ -121,6 +125,8 @@ Phase A put ~15 landing diagnostic fields on `DELTA_TRACKED_PROPS`, updating dur
 | **3** | **0.069** early / 341.16 | 341.16 hold_settle | Residual **~1.7 px**; no cross-up to 560 |
 
 Right-rope mirrors match.
+
+**A.2 revises Case 3:** near map-unfit / sub-threshold escape → **cross** (~560) instead of vertical `hold_settle` at the rope. See A.2 playtest matrix.
 
 ---
 

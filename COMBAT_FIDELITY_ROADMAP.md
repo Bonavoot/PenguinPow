@@ -112,14 +112,15 @@ Ground separation stable; charged/palm regression tests green.
 
 ## Phase 3 — Aerial movement & landing *(highest player-facing fidelity gap)*
 
-### Phase 3A — Rope jump only *(implemented 2026-07-30, default OFF)*
+### Phase 3A — Rope jump only *(implemented 2026-07-30…31, default OFF)*
 
-See [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md) and [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md).
+See [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md), [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md), [`AERIAL_LANDING_PHASE_A2.md`](./AERIAL_LANDING_PHASE_A2.md).
 
 - Pure `landingResolution.js` + `ROPE_JUMP_LANDING_V2` flag (default **false**)
-- A.1: Hermite/brake/hold_settle trajectory + residual-aware fallback + early commit
+- A.1: Hermite/brake trajectory + residual-aware fallback (not visually approved — decision cliffs remained)
+- A.2: stable side intent + continuous commit + same-side endpoint continuity; fine 0.25px scans
 - Legacy path preserved; 18px/tick retained as safety
-- Diagnostics debug-net only; `server-io/test/landing/` suite including trajectory scan
+- Diagnostics debug-net only; `server-io/test/landing/` suite including A.2 stability scan
 - **Stop:** do not enable by default until playtest; do not integrate slide/FLAP here
 
 ### Phase 3B — Slide jump / FLAP *(not started)*

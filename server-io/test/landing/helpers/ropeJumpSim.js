@@ -98,6 +98,12 @@ function makeFighter(overrides = {}) {
     ropeJumpPeakVel: 0,
     ropeJumpPeakAccel: 0,
     ropeJumpReversalDetected: false,
+    ropeJumpSideIntentLocked: false,
+    ropeJumpSideIntent: 0,
+    ropeJumpIntentClass: null,
+    ropeJumpIntentReason: null,
+    ropeJumpRecommendedCommitT: 0,
+    ropeJumpSideIntentOpponentX: 0,
     currentAction: null,
     actionLockUntil: 0,
     stamina: 100,
@@ -163,6 +169,11 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
     corrections: [],
     shakeEmits: 0,
     bufferedAttackFired: false,
+    peakVel: 0,
+    peakAccel: 0,
+    reversalDetected: false,
+    sideIntent: 0,
+    intentClass: null,
   };
 
   let now = startNow;
@@ -199,6 +210,10 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
           decisionClass: jumper.ropeJumpDecisionClass,
           trajectoryType: jumper.ropeJumpTrajectoryType,
           fallbackReason: jumper.ropeJumpFallbackReason,
+          sideIntent: jumper.ropeJumpSideIntent,
+          intentClass: jumper.ropeJumpIntentClass,
+          intentReason: jumper.ropeJumpIntentReason,
+          recommendedCommitT: jumper.ropeJumpRecommendedCommitT,
           beforeX,
         };
       }
@@ -233,6 +248,13 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
         rawExpectedVel: jumper.ropeJumpRawExpectedVel,
         horizVel: jumper.ropeJumpHorizVel,
       });
+      trace.peakVel = Math.max(trace.peakVel, jumper.ropeJumpPeakVel || 0);
+      trace.peakAccel = Math.max(trace.peakAccel, jumper.ropeJumpPeakAccel || 0);
+      if (jumper.ropeJumpReversalDetected) trace.reversalDetected = true;
+      if (jumper.ropeJumpSideIntentLocked) {
+        trace.sideIntent = jumper.ropeJumpSideIntent;
+        trace.intentClass = jumper.ropeJumpIntentClass;
+      }
     } else if (jumper.ropeJumpPhase === "landing") {
       if (opponent) {
         const beforeJ = jumper.x;
@@ -284,6 +306,7 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
     (m, c) => Math.max(m, Math.abs(c.jumperDelta) + Math.abs(c.opponentDelta)),
     0
   );
+  // Peaks / intent already captured during active (clear wipes player fields).
   trace.finalJumperX = jumper.x;
   trace.finalOpponentX = opponent ? opponent.x : null;
   trace.shakeEmitted = shakeEmitted;

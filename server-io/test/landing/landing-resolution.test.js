@@ -83,7 +83,9 @@ describe("landingResolution pure solver", () => {
     );
   });
 
-  it("4. deep overlap → lands at min separation on preferred side", () => {
+  it("4. deep overlap on start side → near map-fit side (A.2)", () => {
+    // Raw coincides with opponent but does not cross the center; near-side
+    // clear footprint fits on-map → originating side, not rawOnCenter cross-up.
     const d = resolve({
       rawTargetX: 500,
       opponentX: 500,
@@ -91,9 +93,10 @@ describe("landingResolution pure solver", () => {
       jumpDirection: 1,
     });
     assert.ok(d.rawOverlap > 50);
-    assert.equal(d.resolvedSide, 1);
+    assert.equal(d.resolvedSide, -1);
+    assert.equal(d.intentClass, "near");
     assert.ok(
-      Math.abs(d.resolvedTargetX - (500 + MIN_DEFAULT + LANDING_SEPARATION_PAD_PX)) < 1e-9
+      Math.abs(d.resolvedTargetX - (500 - MIN_DEFAULT - LANDING_SEPARATION_PAD_PX)) < 1e-9
     );
   });
 
@@ -210,8 +213,9 @@ describe("landingResolution pure solver", () => {
       jumpDirection: 1,
     });
     assert.equal(d.minimumDistance, jHalf + oHalf);
+    // A.2: land-short near side when map-fit allows.
     assert.ok(
-      Math.abs(d.resolvedTargetX - (500 + jHalf + oHalf + LANDING_SEPARATION_PAD_PX)) < 1e-9
+      Math.abs(d.resolvedTargetX - (500 - jHalf - oHalf - LANDING_SEPARATION_PAD_PX)) < 1e-9
     );
   });
 
@@ -263,9 +267,9 @@ describe("landingResolution pure solver", () => {
     );
   });
 
-  it("15b. tiny boundary residual on preferred side beats alternate cross-up", () => {
-    // Case 3 geometry: preferred near endpoint clamps to map with ~0.5px residual.
-    const { TOLERABLE_TOUCHDOWN_OVERLAP_PX } = require("../../landingResolution");
+  it("15b. near-side map-unfit → cross escape (A.2, replaces residual hold)", () => {
+    // Near ideal ≈ 339.49 is past the left rope — a residual hold at the rope
+    // would collapse the escape. A.2 crosses instead.
     const opp = 450;
     const raw = 438.175;
     const d = resolve({
@@ -275,14 +279,13 @@ describe("landingResolution pure solver", () => {
       jumperCurrentX: 402.82,
       jumpDirection: 1,
     });
-    assert.equal(d.preferredSide, -1);
-    assert.equal(d.resolvedSide, -1);
-    assert.equal(d.resolvedTargetX, MAP_LEFT_BOUNDARY);
-    assert.ok(d.residualOverlap <= TOLERABLE_TOUCHDOWN_OVERLAP_PX);
-    assert.ok(d.residualOverlap > 0);
-    assert.equal(d.fallbackReason, "small_residual_preferred_side");
-    // Must NOT force the clear alternate at ~560.
-    assert.ok(d.resolvedTargetX < opp);
+    assert.equal(d.preferredSide, 1);
+    assert.equal(d.resolvedSide, 1);
+    assert.equal(d.intentClass, "cross");
+    assert.ok(
+      Math.abs(d.resolvedTargetX - (opp + MIN_DEFAULT + LANDING_SEPARATION_PAD_PX)) < 1e-9
+    );
+    assert.ok(d.resolvedTargetX > opp);
   });
 
   it("16. alternate side possible when preferred blocked", () => {
@@ -388,8 +391,25 @@ describe("landingResolution pure solver", () => {
     assert.equal(d.crossed, false);
   });
 
-  it("side ambiguity epsilon is documented and positive", () => {
+  it("SIDE_AMBIGUITY_EPSILON_PX retained for export but unused by A.2 side intent", () => {
     assert.ok(SIDE_AMBIGUITY_EPSILON_PX > 0);
+    // rawOnCenter ±1px must not flip side — both resolve to cross via map-fit.
+    const a = choosePreferredLandingSide({
+      rawTargetX: 438.175,
+      jumperStartX: MAP_LEFT_BOUNDARY,
+      jumpDirection: 1,
+      opponentX: 439.0,
+      minimumDistance: MIN_DEFAULT,
+    });
+    const b = choosePreferredLandingSide({
+      rawTargetX: 438.175,
+      jumperStartX: MAP_LEFT_BOUNDARY,
+      jumpDirection: 1,
+      opponentX: 439.25,
+      minimumDistance: MIN_DEFAULT,
+    });
+    assert.equal(a, 1);
+    assert.equal(b, 1);
   });
 
   it("player order independence: solver ignores caller identity", () => {

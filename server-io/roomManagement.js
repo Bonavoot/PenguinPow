@@ -429,6 +429,12 @@ function resetRoomAndPlayers(room, io) {
     player.ropeJumpPreTouchdownX = 0;
     player.ropeJumpTouchdownX = 0;
     player.ropeJumpUsedFallback = false;
+    player.ropeJumpSideIntentLocked = false;
+    player.ropeJumpSideIntent = 0;
+    player.ropeJumpIntentClass = null;
+    player.ropeJumpIntentReason = null;
+    player.ropeJumpRecommendedCommitT = 0;
+    player.ropeJumpSideIntentOpponentX = 0;
     player._landingTrace = null;
     player.isFlapping = false;
     player.flapPhase = null;

@@ -587,6 +587,12 @@ function handleWinCondition(room, loser, winner, io, winType) {
       p.ropeJumpPeakVel = 0;
       p.ropeJumpPeakAccel = 0;
       p.ropeJumpReversalDetected = false;
+      p.ropeJumpSideIntentLocked = false;
+      p.ropeJumpSideIntent = 0;
+      p.ropeJumpIntentClass = null;
+      p.ropeJumpIntentReason = null;
+      p.ropeJumpRecommendedCommitT = 0;
+      p.ropeJumpSideIntentOpponentX = 0;
       p._landingTrace = null;
     }
 

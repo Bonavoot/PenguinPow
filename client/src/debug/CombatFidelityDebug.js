@@ -263,6 +263,7 @@ export function renderCombatFidelityOverlay(state) {
     ? [
         `path=${j.ropeJumpLandingPath || "—"} phase=${j.ropeJumpPhase} traj=${j.ropeJumpTrajectoryType || "—"}`,
         `class=${j.ropeJumpDecisionClass || "—"} reason=${j.ropeJumpFallbackReason || "—"}`,
+        `intent=${j.ropeJumpIntentClass || diag?.intentClass || "—"} (${j.ropeJumpIntentReason || diag?.intentReason || "—"})`,
         `raw=${fmt(j.ropeJumpRawTargetX)} resolved=${fmt(j.ropeJumpResolvedTargetX)}`,
         `commitX=${fmt(j.ropeJumpLandingCommitX)} commitT=${fmt(j.ropeJumpLandingCommitT, 3)} committed=${!!j.ropeJumpLandingCommitted}`,
         `prefSide=${sideLabel(j.ropeJumpPreferredSide)} resolvedSide=${sideLabel(j.ropeJumpResolvedSide)}`,

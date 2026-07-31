@@ -113,6 +113,12 @@ function cleanupPlayerStates(player) {
   player.ropeJumpPeakVel = 0;
   player.ropeJumpPeakAccel = 0;
   player.ropeJumpReversalDetected = false;
+  player.ropeJumpSideIntentLocked = false;
+  player.ropeJumpSideIntent = 0;
+  player.ropeJumpIntentClass = null;
+  player.ropeJumpIntentReason = null;
+  player.ropeJumpRecommendedCommitT = 0;
+  player.ropeJumpSideIntentOpponentX = 0;
   player._landingTrace = null;
   player.isFlapping = false;
   player.flapPhase = null;

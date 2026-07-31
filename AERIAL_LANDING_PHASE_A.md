@@ -6,6 +6,8 @@
 
 **Phase A.1 (trajectory hardening):** See [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md). Phase A’s position-only rebase caused measurable midair speed pops, late reverses, and forced cross-ups; A.1 replaces that path model while keeping V2 default OFF.
 
+**Phase A.2 (decision stability):** See [`AERIAL_LANDING_PHASE_A2.md`](./AERIAL_LANDING_PHASE_A2.md). A.1 left subpixel decision cliffs (~200 px endpoint flips); A.2 separates side intent, commit timing, and same-side endpoint refinement. V2 still default OFF. A.1 was **not** visually approved.
+
 Companion: [`COMBAT_FIDELITY_AUDIT.md`](./COMBAT_FIDELITY_AUDIT.md), [`COMBAT_FIDELITY_ROADMAP.md`](./COMBAT_FIDELITY_ROADMAP.md) Phase 3.
 
 ---
@@ -55,15 +57,16 @@ resolveLandingTarget({
 
 ## Cross-up rule (plain language)
 
+**Superseded for live V2 by A.2** (`resolveSideIntent` — see [`AERIAL_LANDING_PHASE_A2.md`](./AERIAL_LANDING_PHASE_A2.md)). Historical Phase A table:
+
 | Situation | Preferred side |
 |-----------|----------------|
-| Raw arc **crosses** opponent center (start and raw on opposite sides) | Jump direction (centerward): left-rope → right of opp; right-rope → left of opp |
-| Raw target **dead-center** on opponent (overlap, no sign cross) | Jump direction (escape intent) |
-| Raw overlaps but stays on the **start side** (land short) | Near / start side — do **not** force a cross-up |
+| Raw arc **crosses** opponent center (start and raw on opposite sides) | Jump direction (centerward) |
+| Raw overlaps but near-side clear footprint has meaningful centerward escape | Near / start side |
+| Raw overlaps but near escape is off-map / below escape threshold | Cross (not a vertical rope hop) |
 | Opponent outside footprint of raw target | Keep raw target |
-| Ambiguous near-equal start centers | Jump direction |
 
-Side is **not** chosen from whichever fighter has the slightly smaller X on the touchdown frame alone.
+Side is locked once early in the jump; it is **not** re-scored from touchdown-frame X or a 1px `rawOnCenter` epsilon.
 
 ---
 

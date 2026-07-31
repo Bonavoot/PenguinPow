@@ -133,7 +133,9 @@ describe("rope-jump trajectory quality (Phase A.1)", () => {
     assert.ok(a.touchdown.overlap <= TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6);
   });
 
-  it("Case 3 — boundary residual preferred over extreme cross-up", () => {
+  it("Case 3 — near map-unfit crosses (no vertical rope hold_settle)", () => {
+    // A.2: opp at 450 makes near ideal past the left rope. Crossing preserves
+    // centerward escape instead of A.1 hold_settle at ~341.
     const jumper = makeFighter({ id: "j", x: MAP_LEFT_BOUNDARY });
     const opponent = makeFighter({ id: "o", x: 450 });
     const raw = computeRawRopeJumpTargetX(MAP_LEFT_BOUNDARY);
@@ -144,20 +146,15 @@ describe("rope-jump trajectory quality (Phase A.1)", () => {
     const a = analyzeTrace(trace, 1);
     assert.ok(a.commit);
     assert.equal(a.reversal, false);
-    // Must not take the Phase A alternate at ~560.
     assert.ok(
-      a.commit.resolvedTargetX < raw + 30,
-      `forced cross-up ${a.commit.resolvedTargetX}`
+      a.commit.resolvedTargetX > raw + 30,
+      `expected cross-up escape, got ${a.commit.resolvedTargetX}`
     );
-    assert.ok(
-      a.touchdown.overlap <= TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6,
-      `overlap ${a.touchdown.overlap}`
-    );
-    assert.ok(
-      a.commit.decisionClass === "small_residual_preferred" ||
-        a.commit.trajectoryType === "hold_settle",
-      a.commit.decisionClass
-    );
+    assert.equal(a.commit.resolvedSide, 1);
+    assert.ok(a.touchdown.overlap <= 1e-6);
+    assert.ok(a.maxVel <= RAW_PEAK_VEL_PX_S * MAX_PEAK_VEL_MULTIPLIER + 1);
+    assert.ok(a.maxAccel <= MAX_PEAK_ACCEL + 1, `peakAccel ${a.maxAccel}`);
+    assert.notEqual(a.commit.trajectoryType, "hold_settle");
   });
 
   it("Case 1/2/3 mirror from right boundary", () => {
@@ -180,11 +177,13 @@ describe("rope-jump trajectory quality (Phase A.1)", () => {
         assert.ok(a.commitVelRatio < MAX_COMMIT_VEL_RATIO, c.label);
       }
       if (c.label === "C3R") {
+        // Mirror of A.2 Case 3: cross leftward, not rope-edge hold.
         assert.ok(
-          a.commit.resolvedTargetX >
+          a.commit.resolvedTargetX <
             computeRawRopeJumpTargetX(MAP_RIGHT_BOUNDARY) - 30,
           c.label
         );
+        assert.equal(a.commit.resolvedSide, -1, c.label);
       }
     }
   });

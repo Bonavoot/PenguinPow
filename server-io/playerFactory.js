@@ -301,6 +301,13 @@ function createInitialPlayerState(overrides = {}) {
     ropeJumpPeakVel: 0,
     ropeJumpPeakAccel: 0,
     ropeJumpReversalDetected: false,
+    // Phase A.2 side-intent / commit diagnostics (server-local; not on prod delta)
+    ropeJumpSideIntentLocked: false,
+    ropeJumpSideIntent: 0,
+    ropeJumpIntentClass: null,
+    ropeJumpIntentReason: null,
+    ropeJumpRecommendedCommitT: 0,
+    ropeJumpSideIntentOpponentX: 0,
 
     // === Flap charges (ride on FLAP-armed slide-jump; standalone liftoff removed) ===
     isFlapping: false, // legacy — always false; cleared for safety
