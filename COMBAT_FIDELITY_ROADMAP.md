@@ -126,41 +126,46 @@ See [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md), [`AERIAL_LANDING
 - Diagnostics debug-net only; `server-io/test/landing/` suite including A.2/A.3/A.3.1/A.3.2 + identity/defaults scans
 - **Stop:** no further rope-jump tuning currently authorized; do not integrate slide/FLAP here
 
-### Phase 3B — Slide jump / FLAP *(not started)*
+### Phase 3B — Slide jump / FLAP *(audit complete 2026-07-31; implementation not started)*
 
-### Scope (remaining)
-- Slide-jump / FLAP landing: same footprint idea; preserve intentional cross-up rules
-- Replace “land inside → 18px/tick slide” as the primary solution for those verbs (cap may remain as safety)
-- Side prediction using jump direction + relative X
-- Deterministic server resolution (no client authority)
+**Audit / characterization shipped:** see `OFFENSIVE_AERIAL_INTERACTION_AUDIT.md` + outcome/lifecycle/landing/test matrix docs; `server-io/test/aerial/`; `offensiveAerialTrace.js`. Rope Jump V2 left untouched.
+
+### Scope (remaining — implementation phases)
+1. Explicit offensive-aerial outcome contract (no balance change)
+2. State cleanup / lifecycle hardening (latch, poll, buffer, interrupt)
+3. Shared slam hit/parry resolution polish (contact point; armor policy only with approval)
+4. Dive-specific post-contact / land handoff
+5. Generalized touchdown settle **after** outcome known (reuse rope settle helpers; **do not** copy vault identity)
+6. Animation / FX fidelity to server outcome
 
 ### Exclusions
 - No strike tip changes
-- No FLAP damage rebalance
+- No FLAP damage / KB / recovery retune without approval
 - No new aerial attacks
-- No silent default-on for rope V2 without playtest sign-off
+- No Rope Jump trajectory / protection / crossover copy onto offense
+- No implementing all recommendations in one pass
 
-### Player-visible benefit
-Rope jump / cross-up lands feel intentional; no “teleport after landing inside.”
+### Player-visible benefit (after implementation)
+Cross-up and slam lands feel intentional; parry/hit/whiff do not share one ambiguous land branch; no stale hitbox after parry.
 
 ### Technical risk
-**High** — movement tech identity; cross-up fairness; ring edge cases.
+**High** — movement tech identity; cross-up fairness; ring edge cases; shared detector couples plain jump / FLAP / dive.
 
 ### Dependencies
-Phase 2 exemption clarity; landing footprint from Phase 1 metadata (or temporary default capsule). Phase 3A solver is the substrate for 3B.
+Phase 3A settle helpers as **optional substrate** only after outcome ownership. Phase 2 exemption clarity still helpful.
 
 ### Required tests
-- Rope jump over standing opponent mid/near rope both sides *(3A done)*
-- Rope jump when opponent moves into landing cell *(3A done)*
-- Slide jump cross-up + butt slam still hits
+- Rope jump suite remains green *(3A done)*
+- `npm run test:aerial` characterization suite stays green while behavior is unchanged
+- Slide jump cross-up + body slam hit/parry/whiff
 - Landing during hitstop / knockback scenarios
-- Deterministic clinch harness style scenarios for landing
+- First grounded tick / cleanup
 
 ### Rollback
-Emergency rollback: restore fixed `ropeJumpTargetX` + 18px cap path (`ROPE_JUMP_LANDING_V2=0`).
+No gameplay flag yet for 3B (audit-only). Rope emergency rollback remains `ROPE_JUMP_LANDING_V2=0`.
 
 ### Stop when
-Playtest confirms no visible land-inside-then-correct on reference scenarios; then consider default-on for rope V2 before 3B.
+Outcome + cleanup phases land with characterization tests still describing intentional behavior; then playtest settle integration before enabling any spacing changes by default.
 
 ---
 

@@ -197,6 +197,13 @@ const {
 const { updateCPUAI, processCPUInputs } = require("./cpuAI");
 // Import collision system
 const { checkCollision, checkFlapBodySlam } = require("./collisionSystem");
+const { OFFENSIVE_AERIAL_DEBUG } = require("./offensiveAerialFlags");
+const {
+  beginOffensiveAerialTrace,
+  buildOffensiveAerialTickSnapshot,
+  recordOffensiveAerialTick,
+  flushOffensiveAerialTrace,
+} = require("./offensiveAerialTrace");
 const {
   getConnectDistance,
   attackKindFromPlayer,
@@ -649,6 +656,57 @@ function tick(delta) {
       }
       if (player2.isSlideJumping) {
         checkFlapBodySlam(player2, player1, rooms, io);
+      }
+
+      // Dev-only offensive-aerial tick snapshots (OFFENSIVE_AERIAL_DEBUG/TRACE).
+      // No gameplay mutation; never rides the production delta wire.
+      if (OFFENSIVE_AERIAL_DEBUG) {
+        if (player1.isSlideJumping) {
+          if (!player1._offensiveAerialTrace) {
+            beginOffensiveAerialTrace(player1, {
+              simTime: room.simTime,
+              source: "index_early_pair",
+            });
+          }
+          recordOffensiveAerialTick(
+            player1,
+            buildOffensiveAerialTickSnapshot({
+              simTime: room.simTime,
+              attacker: player1,
+              defender: player2,
+              contactResult: player1.slideJumpHitLanded
+                ? "hit_latched"
+                : player1.isRecovering && !player1.isSlideJumping
+                  ? "parried_or_cleared"
+                  : null,
+            })
+          );
+        } else if (player1._offensiveAerialTrace) {
+          flushOffensiveAerialTrace(player1, "slide_jump_ended");
+        }
+        if (player2.isSlideJumping) {
+          if (!player2._offensiveAerialTrace) {
+            beginOffensiveAerialTrace(player2, {
+              simTime: room.simTime,
+              source: "index_early_pair",
+            });
+          }
+          recordOffensiveAerialTick(
+            player2,
+            buildOffensiveAerialTickSnapshot({
+              simTime: room.simTime,
+              attacker: player2,
+              defender: player1,
+              contactResult: player2.slideJumpHitLanded
+                ? "hit_latched"
+                : player2.isRecovering && !player2.isSlideJumping
+                  ? "parried_or_cleared"
+                  : null,
+            })
+          );
+        } else if (player2._offensiveAerialTrace) {
+          flushOffensiveAerialTrace(player2, "slide_jump_ended");
+        }
       }
 
       if (

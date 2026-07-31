@@ -2618,4 +2618,13 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   );
 }
 
-module.exports = { checkCollision, processHit, checkFlapBodySlam, resolveSlapTrade, resolveChargeClash };
+module.exports = {
+  checkCollision,
+  processHit,
+  checkFlapBodySlam,
+  resolveSlapTrade,
+  resolveChargeClash,
+  // Geometry constants — exported for characterization / audit tests only.
+  FLAP_BODYSLAM_CONTACT_HEIGHT,
+  FLAP_BODYSLAM_WIDTH_SCALE,
+};

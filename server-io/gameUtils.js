@@ -1466,6 +1466,7 @@ function clearAllActionStates(player) {
   player.ropeJumpBudgetException = false;
   player.ropeJumpBudgetExceptionClass = null;
   player._landingTrace = null;
+  player._offensiveAerialTrace = null;
 
   // Clear flap states. Only reachable while grounded (startup is the only
   // interruptible flap phase — flight is hit-immune), so no airborne Y is

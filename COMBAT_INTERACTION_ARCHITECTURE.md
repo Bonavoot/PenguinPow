@@ -109,6 +109,8 @@ player_hit event
 ### Slide jump / FLAP
 `takeoff → flight (pass-through; descending can body-slam) → landing → idle`
 
+**Offensive aerial audit (2026-07-31, characterization only):** FLAP is slide-jump air charges (no standalone liftoff). Shared detector `checkFlapBodySlam`; parry `resolveFlapRawParry`; landing owned by `index.js` (not `landingResolution.js`). Dev trace: `offensiveAerialTrace.js` / `OFFENSIVE_AERIAL_DEBUG`. Tests: `server-io/test/aerial/`. See `OFFENSIVE_AERIAL_INTERACTION_AUDIT.md`. Rope Jump V2 must not be copied onto this verb.
+
 ### Attack Parry
 `Space tap → apActiveUntil window → (perfect|regular) success OR guard floor OR whiff jail`
 

@@ -16,6 +16,11 @@ Companion docs:
 - [`AERIAL_LANDING_PHASE_A3_2.md`](./AERIAL_LANDING_PHASE_A3_2.md) — V2 recovery re-intrusion (approved with vault identity)
 - [`ROPE_JUMP_MOVE_IDENTITY_V2.md`](./ROPE_JUMP_MOVE_IDENTITY_V2.md) — **approved** high-vault identity; default ON; preset `reference_contact_9`
 - [`ROPE_JUMP_V2_POLISH_TUNING.md`](./ROPE_JUMP_V2_POLISH_TUNING.md) — rounded rejected; `reference_contact_9` approved
+- [`OFFENSIVE_AERIAL_INTERACTION_AUDIT.md`](./OFFENSIVE_AERIAL_INTERACTION_AUDIT.md) — slide-jump / FLAP / S-dive body-slam audit (characterization only; Rope Jump untouched)
+- [`OFFENSIVE_AERIAL_OUTCOME_MATRIX.md`](./OFFENSIVE_AERIAL_OUTCOME_MATRIX.md)
+- [`OFFENSIVE_AERIAL_STATE_LIFECYCLE.md`](./OFFENSIVE_AERIAL_STATE_LIFECYCLE.md)
+- [`OFFENSIVE_AERIAL_LANDING_ARCHITECTURE.md`](./OFFENSIVE_AERIAL_LANDING_ARCHITECTURE.md)
+- [`OFFENSIVE_AERIAL_TEST_MATRIX.md`](./OFFENSIVE_AERIAL_TEST_MATRIX.md)
 - Pose scan: `tools/audit-pose-geometry.js`, `tools/pose-geometry-report.json`, `tools/pose-geometry-viz/`
 - Dev overlay: `client/src/debug/CombatFidelityDebug.js` (`localStorage pumo_combat_fidelity_debug=1`)
 
@@ -27,7 +32,7 @@ PUMO PUMO’s combat stack is **not** a single unified interaction model. It is 
 
 The recent slap / charged / palm work introduced a real professional core: **`strikeContact.js` art-tip → connect distance → live extension separation → on-hit park → `contactX` seam**. That pipeline is why those strikes now feel like bodies meeting. Much of the rest of the game still uses older midpoint effects, fixed distances, or “disable collision then correct later” patterns.
 
-**Coherence verdict:** Grounded tip-rail strikes are structurally strong. Aerial landing, pose grounding metadata, defense composition, and client freeze pinning are the main gaps that still produce “sticker” moments. The system is uneven — professionally tuned islands inside a larger special-case sea — not uniformly amateur and not uniformly AAA.
+**Coherence verdict:** Grounded tip-rail strikes are structurally strong. Rope-jump landing V2 is approved. Offensive aerial (slide-jump / FLAP / S-dive) uses a coherent descending body-slam + latch + dedicated AP path, but still lacks an explicit outcome→landing handoff and uses midpoint contact FX; slide-jump landing settle is not yet generalized from rope infrastructure. Pose grounding metadata, defense composition, and client freeze pinning remain broader gaps. The system is uneven — professionally tuned islands inside a larger special-case sea — not uniformly amateur and not uniformly AAA.
 
 ---
 

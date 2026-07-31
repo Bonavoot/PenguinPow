@@ -144,6 +144,7 @@ function cleanupPlayerStates(player) {
   player.ropeJumpBudgetException = false;
   player.ropeJumpBudgetExceptionClass = null;
   player._landingTrace = null;
+  player._offensiveAerialTrace = null;
   player.isFlapping = false;
   player.flapPhase = null;
   player.flapCharges = 0;

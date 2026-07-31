@@ -22,6 +22,8 @@
 
 const FLAG_KEY = "pumo_combat_fidelity_debug";
 const LANDING_TRACE_KEY = "pumo_landing_trace";
+/** Optional console dump when a slide-jump / FLAP flight ends (client view). */
+const AERIAL_TRACE_KEY = "pumo_offensive_aerial_trace";
 /** Fallback only — must match server-io/constants.js HITBOX_DISTANCE_VALUE */
 const HITBOX_HALF_FALLBACK = 65;
 const DESIGN_W = 1280;
@@ -47,6 +49,37 @@ function isLandingTraceEnabled() {
   } catch {
     return false;
   }
+}
+
+function isOffensiveAerialTraceEnabled() {
+  try {
+    return localStorage.getItem(AERIAL_TRACE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function classifyOffensiveAerial(fighter) {
+  if (!fighter?.isSlideJumping) return null;
+  const phase = fighter.slideJumpPhase || "flight";
+  let outcome = "in_flight";
+  if (fighter.slideJumpHitLanded) outcome = "hit_latched";
+  else if (phase === "landing") outcome = "whiff_or_post_hit_landing";
+  if (fighter.slideJumpDiveCommitted) outcome = `dive:${outcome}`;
+  return {
+    move: fighter.slideJumpFlapFlightActive ? "flap_flight" : "slide_jump",
+    phase,
+    attackActive:
+      phase === "flight" &&
+      !fighter.slideJumpHitLanded &&
+      ((fighter.slideJumpVelocityY ?? 0) <= 0 || !!fighter.slideJumpDiveCommitted),
+    attackLatch: !!fighter.slideJumpHitLanded,
+    dive: !!fighter.slideJumpDiveCommitted,
+    flapFlight: !!fighter.slideJumpFlapFlightActive,
+    flapCharges: fighter.flapCharges ?? 0,
+    outcome,
+    recoveryLock: fighter.actionLockUntil || 0,
+  };
 }
 
 export function noteCombatContactEvent(data) {
@@ -337,6 +370,29 @@ export function renderCombatFidelityOverlay(state) {
       ].join("<br/>")
     : "ropeJump: idle";
 
+  const aerialA = classifyOffensiveAerial(p1);
+  const aerialB = classifyOffensiveAerial(p2);
+  const aerialLines = [aerialA && { label: "P1", a: aerialA }, aerialB && { label: "P2", a: aerialB }]
+    .filter(Boolean)
+    .map(
+      ({ label, a }) =>
+        `${label} ${a.move} phase=${a.phase} active=${a.attackActive} latch=${a.attackLatch} dive=${a.dive} flap=${a.flapFlight} charges=${a.flapCharges} outcome=${a.outcome}`
+    )
+    .join("<br/>") || "offensiveAerial: idle";
+
+  if (isOffensiveAerialTraceEnabled()) {
+    const active = aerialA || aerialB;
+    if (active && typeof console !== "undefined") {
+      // Lightweight per-flight console breadcrumb when explicitly armed.
+      if (!renderCombatFidelityOverlay._aerialArmed) {
+        renderCombatFidelityOverlay._aerialArmed = true;
+      }
+    } else if (renderCombatFidelityOverlay._aerialArmed) {
+      console.log("[PUMO_OFFENSIVE_AERIAL_TRACE]", { p1: aerialA, p2: aerialB, t: performance.now() });
+      renderCombatFidelityOverlay._aerialArmed = false;
+    }
+  }
+
   const toPct = (x) => `${(x / DESIGN_W) * 100}%`;
   let targetMarks = "";
   if (j && typeof j.ropeJumpRawTargetX === "number" && j.ropeJumpRawTargetX) {
@@ -364,7 +420,8 @@ export function renderCombatFidelityOverlay(state) {
       P1 half=${half1.toFixed(1)} (×${Number(p1.sizeMult ?? p1.sizeMultiplier ?? 1).toFixed(2)})
       · P2 half=${half2.toFixed(1)} (×${Number(p2.sizeMult ?? p2.sizeMultiplier ?? 1).toFixed(2)})<br/>
       gap=${Math.round(gap)} minDist=${minDist.toFixed(1)} overlap=${overlap.toFixed(1)}<br/>
-      <span style="color:#ffe082">${landingLines}</span>
+      <span style="color:#ffe082">${landingLines}</span><br/>
+      <span style="color:#80cbc4">${aerialLines}</span>
     </div>
     ${fighterBox(p1, "P1", "#80d8ff")}
     ${fighterBox(p2, "P2", "#ffd180")}
@@ -384,6 +441,10 @@ if (typeof window !== "undefined") {
     disable: () => localStorage.removeItem(FLAG_KEY),
     enableLandingTrace: () => localStorage.setItem(LANDING_TRACE_KEY, "1"),
     disableLandingTrace: () => localStorage.removeItem(LANDING_TRACE_KEY),
+    enableOffensiveAerialTrace: () =>
+      localStorage.setItem(AERIAL_TRACE_KEY, "1"),
+    disableOffensiveAerialTrace: () =>
+      localStorage.removeItem(AERIAL_TRACE_KEY),
     noteContact: noteCombatContactEvent,
     noteLandingDiag,
     render: renderCombatFidelityOverlay,
