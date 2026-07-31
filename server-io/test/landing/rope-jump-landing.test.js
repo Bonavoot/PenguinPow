@@ -12,7 +12,6 @@ const {
   ROPE_JUMP_ACTIVE_MS,
   ROPE_JUMP_LANDING_RECOVERY_MS,
   ROPE_JUMP_STAMINA_COST,
-  ROPE_JUMP_LANDING_COMMIT_T,
   makeFighter,
   computeRawRopeJumpTargetX,
   simulateRopeJump,
@@ -23,7 +22,6 @@ const {
   stepRopeJumpActive,
   clearRopeJumpLandingState,
   ropeJumpEase,
-  initRopeJumpLandingState,
 } = require("../../landingResolution");
 const { createInitialPlayerState } = require("../../playerFactory");
 const { clearAllActionStates } = require("../../gameUtils");
@@ -74,10 +72,12 @@ describe("rope-jump landing lifecycle", () => {
     );
   });
 
-  it("V2 conflicting target: commits before touchdown, no deep overlap, no multi-tick sep", () => {
+  it("V2 conflicting target: apex vault lock, settle debt clears in recovery", () => {
     const jumper = makeFighter({ id: "j", x: MAP_LEFT_BOUNDARY, stamina: 100 });
     const raw = computeRawRopeJumpTargetX(MAP_LEFT_BOUNDARY);
     const opponent = makeFighter({ id: "o", x: raw });
+    const { getVaultProfile } = require("../../ropeJumpVault");
+    const vault = getVaultProfile();
 
     const trace = simulateRopeJump(jumper, opponent, {
       useV2: true,
@@ -86,17 +86,22 @@ describe("rope-jump landing lifecycle", () => {
 
     assert.ok(trace.commit, "must commit before land");
     assert.ok(trace.commit.t < 1);
-    assert.ok(trace.commit.t >= ROPE_JUMP_LANDING_COMMIT_T - TICK_MS / ROPE_JUMP_ACTIVE_MS);
+    // Apex decision (~0.42), not legacy late commit (0.58).
+    assert.ok(
+      Math.abs(trace.commit.t - vault.decisionT) < 0.05,
+      `commit t ${trace.commit.t}`
+    );
+    assert.equal(trace.commit.trajectoryType, "vault_hermite");
     assert.ok(trace.touchdown);
+    // Capped cross may leave settle debt; A.3.2 clears by recovery exit.
+    assert.ok(trace.touchdown.overlap > 0, "expected settle debt on raw conflict");
+    assert.ok(trace.postRecovery && trace.postRecovery.withinTolerance);
     assert.ok(
-      trace.touchdown.overlap <= 0.05,
-      `V2 touchdown overlap should be ~0, got ${trace.touchdown.overlap}`
+      trace.recoveryEnd &&
+        trace.recoveryEnd.overlap <= 0.5 + 1e-6
     );
-    assert.ok(
-      trace.correctionTicks === 0,
-      `V2 should not need multi-tick sep, got ${trace.correctionTicks}`
-    );
-    assert.ok(trace.maxSingleTickCorrection <= 0.05);
+    assert.ok(!trace.overlapEverIncreased);
+    assert.ok(!trace.reversalDetected);
     assert.equal(trace.shakeEmits, 1);
     assert.equal(trace.commit.resolvedSide, 1);
 
@@ -113,7 +118,7 @@ describe("rope-jump landing lifecycle", () => {
         touchdownOverlap: trace.touchdown.overlap,
         safetyCorrection: trace.totalSafetyCorrectionPx,
         resolvedSide: trace.commit.resolvedSide,
-        usedFallback: trace.commit.decision?.usedFallback,
+        trajectoryType: trace.commit.trajectoryType,
       })
     );
   });
@@ -160,7 +165,9 @@ describe("rope-jump landing lifecycle", () => {
     );
   });
 
-  it("vertical arc unchanged at peak (V2 vs legacy)", () => {
+  it("vertical arc: V2 high-vault apex ~156 vs legacy ~120", () => {
+    const { getVaultProfile } = require("../../ropeJumpVault");
+    const vault = getVaultProfile();
     const peakY = (arc) => {
       const j = makeFighter({ id: "j", x: MAP_LEFT_BOUNDARY });
       const o = makeFighter({ id: "o", x: 800 });
@@ -184,8 +191,12 @@ describe("rope-jump landing lifecycle", () => {
 
     const legacyPeak = peakY(false);
     const v2Peak = peakY(true);
-    assert.ok(Math.abs(legacyPeak - v2Peak) < 0.5);
-    assert.ok(legacyPeak > GROUND_LEVEL + 100);
+    assert.ok(Math.abs(legacyPeak - (GROUND_LEVEL + 120)) < 1.0);
+    assert.ok(
+      Math.abs(v2Peak - (GROUND_LEVEL + vault.apexHeight)) < 1.0,
+      `v2 apex ${v2Peak - GROUND_LEVEL}`
+    );
+    assert.ok(v2Peak > legacyPeak + 20);
   });
 
   it("no opponent conflict → no meaningful horizontal change vs raw", () => {
@@ -364,7 +375,13 @@ describe("rope-jump landing lifecycle", () => {
     });
     assert.ok(trace.commit);
     assert.equal(trace.commit.resolvedSide, -1);
-    assert.ok(trace.touchdown.overlap <= 1e-6);
+    assert.equal(trace.commit.trajectoryType, "vault_hermite");
+    // Settle debt OK — recovery exit must be clear.
+    assert.ok(trace.postRecovery && trace.postRecovery.withinTolerance);
+    assert.ok(
+      trace.recoveryEnd &&
+        trace.recoveryEnd.overlap <= 0.5 + 1e-6
+    );
   });
 
   it("ease helper matches cosine ease-in-out", () => {
@@ -391,6 +408,12 @@ describe("rope-jump landing lifecycle", () => {
       jumpDirection: 1,
     });
     assert.ok(trace.touchdown);
-    assert.ok(Math.abs(trace.touchdown.x - opponent.x) >= minDist - 1e-6);
+    // Touchdown may carry settle debt; after recovery, centers meet minDist.
+    assert.ok(trace.postRecovery && trace.postRecovery.withinTolerance);
+    const endDist = Math.abs(
+      (trace.postRecovery.jumperX ?? jumper.x) -
+        (trace.postRecovery.opponentX ?? opponent.x)
+    );
+    assert.ok(endDist >= minDist - 1e-6, `endDist ${endDist} min ${minDist}`);
   });
 });

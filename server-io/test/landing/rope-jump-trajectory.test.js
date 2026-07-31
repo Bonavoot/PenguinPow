@@ -3,8 +3,9 @@
 /**
  * Phase A.1 — trajectory quality scan + confirmed Case 1/2/3 regressions.
  *
- * Budgets are derived from measured raw-arc / Hermite baselines (see
- * AERIAL_LANDING_PHASE_A1.md), not arbitrary large ceilings.
+ * V2 move identity: high-vault authored path, apex lock (~t=0.42),
+ * vault_hermite descent, capped endpoint correction, settle debt OK
+ * when A.3.2 recovery exit is stable.
  */
 
 const { describe, it } = require("node:test");
@@ -19,21 +20,26 @@ const {
   makeFighter,
   computeRawRopeJumpTargetX,
   simulateRopeJump,
-  getPushboxHalfWidth,
-  getMinimumCenterDistance,
+  GROUND_LEVEL,
 } = require("./helpers/ropeJumpSim");
 const {
   TOLERABLE_TOUCHDOWN_OVERLAP_PX,
   rawArcVelocity,
   hermiteVelocity,
+  LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS,
+  RECOVERY_EXIT_CORRECTION_TOLERANCE_PX,
 } = require("../../landingResolution");
+const { getVaultProfile } = require("../../ropeJumpVault");
 
-/** Raw left-rope peak velocity ≈ 342 px/s; Hermite Case1 peaks ≈ 1109. */
-const RAW_PEAK_VEL_PX_S = 350;
-const MAX_PEAK_VEL_MULTIPLIER = 3.5; // → ~1225 px/s
-const MAX_COMMIT_VEL_RATIO = 1.55; // Hermite Case1 post/pre ≈ 1.37
-const MAX_PEAK_ACCEL = 25000; // Hermite Case1 ≈ 19k; Phase A discontinuous ≈ 64k
+/** Reference vault peak horiz ≈ 390 px/s; capped far-cross stays under 800. */
+const VAULT_NORMAL_PEAK_VEL_PX_S = 390;
+/** Farthest capped cross peaks ~860 — keep ≪ legacy Hermite ~1100. */
+const MAX_VAULT_PEAK_VEL_PX_S = 900;
+const MAX_PEAK_ACCEL = 25000;
 const REVERSAL_DX_EPS = 0.5;
+const VAULT_APEX_HEIGHT = getVaultProfile().apexHeight; // 156 selected
+const ENDPOINT_CORRECTION_CAP = getVaultProfile().endpointCorrectionCapPx; // 40
+const CROSS_MIN_FAR_PAD = getVaultProfile().crossMinFarPadPx; // 28
 
 function analyzeTrace(trace, jumpDirection) {
   const samples = trace.samples.filter((s) => s.phase === "active");
@@ -42,8 +48,10 @@ function analyzeTrace(trace, jumpDirection) {
   let maxVel = 0;
   let maxAccel = 0;
   let maxPosJump = 0;
+  let maxY = GROUND_LEVEL;
   for (let i = 0; i < samples.length; i++) {
     maxVel = Math.max(maxVel, Math.abs(samples[i].vel || 0));
+    maxY = Math.max(maxY, samples[i].y || GROUND_LEVEL);
     if (i > 0) {
       maxPosJump = Math.max(maxPosJump, Math.abs(samples[i].x - samples[i - 1].x));
       const accel =
@@ -56,7 +64,6 @@ function analyzeTrace(trace, jumpDirection) {
         Math.abs(samples[i].dx) > REVERSAL_DX_EPS &&
         samples[i - 1].dx * samples[i].dx < 0
       ) {
-        // Hold-settle may zero velocity; only flag opposing nonzero motion.
         reversal = true;
       }
     }
@@ -74,11 +81,31 @@ function analyzeTrace(trace, jumpDirection) {
     maxVel,
     maxAccel,
     maxPosJump,
+    maxY,
+    apexHeight: maxY - GROUND_LEVEL,
     commitVelRatio,
     commit: trace.commit,
     touchdown: trace.touchdown,
     jumpDirection,
   };
+}
+
+function assertRecoveryExitStable(trace, label) {
+  assert.ok(trace.recoveryEnd, `${label}: missing recoveryEnd`);
+  assert.ok(
+    trace.recoveryEnd.overlap <= RECOVERY_EXIT_CORRECTION_TOLERANCE_PX + 1e-6,
+    `${label}: recoveryEnd overlap ${trace.recoveryEnd.overlap}`
+  );
+  assert.ok(trace.postRecovery, `${label}: missing postRecovery`);
+  assert.ok(
+    trace.postRecovery.withinTolerance,
+    `${label}: postRecovery ${trace.postRecovery.pairDisplacement}`
+  );
+  assert.ok(!trace.overlapEverIncreased, `${label}: overlap grew`);
+  assert.ok(
+    trace.correctionTicks <= LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS,
+    `${label}: corrTicks ${trace.correctionTicks}`
+  );
 }
 
 function scenarioId(opts) {
@@ -93,7 +120,7 @@ function scenarioId(opts) {
 }
 
 describe("rope-jump trajectory quality (Phase A.1)", () => {
-  it("Case 1 — opp on raw: velocity continuous, no 4× speed pop", () => {
+  it("Case 1 — opp on raw: vault identity, no reverse, settle debt OK", () => {
     const startX = MAP_LEFT_BOUNDARY;
     const raw = computeRawRopeJumpTargetX(startX);
     const jumper = makeFighter({ id: "j", x: startX });
@@ -104,16 +131,34 @@ describe("rope-jump trajectory quality (Phase A.1)", () => {
     });
     const a = analyzeTrace(trace, 1);
     assert.ok(a.commit, "must commit");
-    assert.equal(a.commit.trajectoryType, "hermite");
-    assert.ok(a.commitVelRatio != null && a.commitVelRatio < MAX_COMMIT_VEL_RATIO, {
+    assert.equal(a.commit.trajectoryType, "vault_hermite");
+    assert.equal(a.commit.intentClass, "cross");
+    assert.ok(
+      Math.abs(a.commit.t - getVaultProfile().decisionT) < 0.05,
+      `apex decision t ${a.commit.t}`
+    );
+    assert.ok(
+      Math.abs(a.apexHeight - VAULT_APEX_HEIGHT) < 1.0,
+      `apexHeight ${a.apexHeight}`
+    );
+    // Descent Hermite slows after apex — never a 4× commit pop.
+    assert.ok(a.commitVelRatio != null && a.commitVelRatio < 1.5, {
       commitVelRatio: a.commitVelRatio,
     });
-    // Phase A was ~3.92 — must not regress to that class of discontinuity.
-    assert.ok(a.commitVelRatio < 2.0, `ratio ${a.commitVelRatio} still discontinuous`);
     assert.equal(a.reversal, false);
-    assert.ok(a.touchdown.overlap <= 1e-6);
-    assert.ok(a.maxVel <= RAW_PEAK_VEL_PX_S * MAX_PEAK_VEL_MULTIPLIER);
+    assert.ok(
+      a.maxVel <= VAULT_NORMAL_PEAK_VEL_PX_S + 20,
+      `peakVel ${a.maxVel}`
+    );
     assert.ok(a.maxAccel <= MAX_PEAK_ACCEL, `peakAccel ${a.maxAccel}`);
+    const corr =
+      a.commit.decision?.correctionMagnitude ??
+      Math.abs(a.commit.resolvedTargetX - raw);
+    assert.ok(
+      corr <= ENDPOINT_CORRECTION_CAP + CROSS_MIN_FAR_PAD + 1e-6,
+      `correction ${corr}`
+    );
+    assertRecoveryExitStable(trace, "case1");
   });
 
   it("Case 2 — opp ahead of raw: no late reverse toward rope", () => {
@@ -125,17 +170,18 @@ describe("rope-jump trajectory quality (Phase A.1)", () => {
     });
     const a = analyzeTrace(trace, 1);
     assert.ok(a.commit);
+    assert.equal(a.commit.trajectoryType, "vault_hermite");
     assert.equal(a.reversal, false);
     assert.ok(
       a.commit.resolvedTargetX >= a.commit.commitX - 0.01,
       "endpoint must not be behind commit (would reverse)"
     );
-    assert.ok(a.touchdown.overlap <= TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6);
+    assert.ok(a.maxVel <= MAX_VAULT_PEAK_VEL_PX_S, `peakVel ${a.maxVel}`);
+    assertRecoveryExitStable(trace, "case2");
   });
 
   it("Case 3 — near map-unfit crosses (no vertical rope hold_settle)", () => {
-    // A.2: opp at 450 makes near ideal past the left rope. Crossing preserves
-    // centerward escape instead of A.1 hold_settle at ~341.
+    // Opp near raw promotes capped cross (never invisible-wall reverse).
     const jumper = makeFighter({ id: "j", x: MAP_LEFT_BOUNDARY });
     const opponent = makeFighter({ id: "o", x: 450 });
     const raw = computeRawRopeJumpTargetX(MAP_LEFT_BOUNDARY);
@@ -151,10 +197,12 @@ describe("rope-jump trajectory quality (Phase A.1)", () => {
       `expected cross-up escape, got ${a.commit.resolvedTargetX}`
     );
     assert.equal(a.commit.resolvedSide, 1);
-    assert.ok(a.touchdown.overlap <= 1e-6);
-    assert.ok(a.maxVel <= RAW_PEAK_VEL_PX_S * MAX_PEAK_VEL_MULTIPLIER + 1);
-    assert.ok(a.maxAccel <= MAX_PEAK_ACCEL + 1, `peakAccel ${a.maxAccel}`);
+    assert.equal(a.commit.intentClass, "cross");
+    assert.equal(a.commit.trajectoryType, "vault_hermite");
     assert.notEqual(a.commit.trajectoryType, "hold_settle");
+    assert.ok(a.maxVel <= MAX_VAULT_PEAK_VEL_PX_S + 1);
+    assert.ok(a.maxAccel <= MAX_PEAK_ACCEL + 1, `peakAccel ${a.maxAccel}`);
+    assertRecoveryExitStable(trace, "case3");
   });
 
   it("Case 1/2/3 mirror from right boundary", () => {
@@ -172,12 +220,10 @@ describe("rope-jump trajectory quality (Phase A.1)", () => {
       });
       const a = analyzeTrace(trace, -1);
       assert.equal(a.reversal, false, c.label);
-      assert.ok(a.touchdown.overlap <= TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6, c.label);
-      if (c.label === "C1R") {
-        assert.ok(a.commitVelRatio < MAX_COMMIT_VEL_RATIO, c.label);
-      }
+      assert.equal(a.commit.trajectoryType, "vault_hermite", c.label);
+      assert.ok(a.maxVel <= MAX_VAULT_PEAK_VEL_PX_S + 1, c.label);
+      assertRecoveryExitStable(trace, c.label);
       if (c.label === "C3R") {
-        // Mirror of A.2 Case 3: cross leftward, not rope-edge hold.
         assert.ok(
           a.commit.resolvedTargetX <
             computeRawRopeJumpTargetX(MAP_RIGHT_BOUNDARY) - 30,
@@ -256,7 +302,7 @@ describe("rope-jump trajectory quality (Phase A.1)", () => {
               continue;
             }
             if (a.reversal) failures.push(`${id}: late reverse`);
-            if (a.maxVel > RAW_PEAK_VEL_PX_S * MAX_PEAK_VEL_MULTIPLIER + 50) {
+            if (a.maxVel > MAX_VAULT_PEAK_VEL_PX_S + 50) {
               failures.push(`${id}: peakVel ${a.maxVel.toFixed(0)}`);
             }
             if (a.maxAccel > MAX_PEAK_ACCEL + 5000) {
@@ -265,61 +311,51 @@ describe("rope-jump trajectory quality (Phase A.1)", () => {
             if (a.maxPosJump > 40) {
               failures.push(`${id}: pos jump ${a.maxPosJump.toFixed(1)}`);
             }
-            if (a.touchdown) {
-              // Phase A.3: event-level safety budget. Pre-deadline conflicts
-              // must not rely on multi-tick grounded separation.
-              if (trace.conflictBeforeDeadline) {
-                if (a.touchdown.overlap > 1.0) {
-                  failures.push(
-                    `${id}: pre-deadline overlap ${a.touchdown.overlap.toFixed(2)}`
-                  );
-                }
-                if (trace.correctionTicks > 0) {
-                  failures.push(
-                    `${id}: ordinary corrTicks ${trace.correctionTicks}`
-                  );
-                }
-              } else if (
-                a.touchdown.overlap > TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1
+            if (a.commit && a.commit.trajectoryType !== "vault_hermite") {
+              failures.push(`${id}: traj ${a.commit.trajectoryType}`);
+            }
+            if (a.commit && a.commit.decision) {
+              const d = a.commit.decision;
+              // Soft cap 40px; cross far-pad floor may exceed it but must mark capped.
+              if (
+                d.correctionMagnitude > ENDPOINT_CORRECTION_CAP + 1e-6 &&
+                !d.correctionCapped
               ) {
-                if (trace.maxSingleTickCorrection > 18 + 1e-6) {
-                  failures.push(
-                    `${id}: unbounded safety ${trace.maxSingleTickCorrection}`
-                  );
-                }
-                // A.3.1: deep late intrusion may settle across recovery (≤14
-                // ticks × ≤18 px), but must not grow overlap or exit-snap.
-                if (trace.correctionTicks > 14) {
-                  failures.push(
-                    `${id}: excessive late settle ticks ${trace.correctionTicks}`
-                  );
-                }
-                if (trace.overlapEverIncreased) {
-                  failures.push(`${id}: late overlap grew`);
-                }
-                if (
-                  trace.postRecovery &&
-                  !trace.postRecovery.withinTolerance
-                ) {
-                  failures.push(
-                    `${id}: late postRecovery ${trace.postRecovery.pairDisplacement}`
-                  );
-                }
+                failures.push(
+                  `${id}: uncapped correction ${d.correctionMagnitude.toFixed(1)}`
+                );
+              }
+              if (d.correctionCapPx !== ENDPOINT_CORRECTION_CAP) {
+                failures.push(`${id}: cap ${d.correctionCapPx}`);
               }
             }
-            // Velocity-continuity budget applies to Hermite (matched tangents).
-            // Brake/hold_settle intentionally allow a bounded discontinuity.
-            if (
-              a.commit &&
-              a.commit.trajectoryType === "hermite" &&
-              a.commitVelRatio != null &&
-              Math.abs(a.commit.commitX - raw) > 5 &&
-              a.commit.t >= ROPE_JUMP_LANDING_COMMIT_T - 0.05 &&
-              a.commitVelRatio > MAX_COMMIT_VEL_RATIO
-            ) {
-              failures.push(
-                `${id}: commit vel ratio ${a.commitVelRatio.toFixed(2)}`
-              );
+            if (a.touchdown) {
+              // Settle debt at touchdown is owned by A.3.2 — require stable exit.
+              if (trace.overlapEverIncreased) {
+                failures.push(`${id}: overlap grew`);
+              }
+              if (trace.correctionTicks > LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS) {
+                failures.push(
+                  `${id}: excessive settle ticks ${trace.correctionTicks}`
+                );
+              }
+              if (
+                trace.postRecovery &&
+                !trace.postRecovery.withinTolerance
+              ) {
+                failures.push(
+                  `${id}: postRecovery ${trace.postRecovery.pairDisplacement}`
+                );
+              }
+              if (
+                trace.recoveryEnd &&
+                trace.recoveryEnd.overlap >
+                  RECOVERY_EXIT_CORRECTION_TOLERANCE_PX + 1e-6
+              ) {
+                failures.push(
+                  `${id}: recoveryEnd ov ${trace.recoveryEnd.overlap}`
+                );
+              }
             }
             // Determinism: rerun once
             const jumper2 = makeFighter({

@@ -1,8 +1,10 @@
 "use strict";
 
 /**
- * Phase A.2 — decision stability: fine opponent-X scans, cliff regressions,
- * side-intent lock, no ordinary hold_settle rope hops, motion budgets.
+ * Phase A.2 — decision stability for V2 high-vault identity:
+ * fine opponent-X scans, cliff regressions, one apex side lock,
+ * capped correction, peak vel under 900, apex height ~156
+ * (selected: reference_contact_9).
  */
 
 const { describe, it } = require("node:test");
@@ -10,27 +12,24 @@ const assert = require("node:assert/strict");
 const {
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
-  DEFAULT_PLAYER_SIZE_MULTIPLIER,
-  TICK_MS,
-  ROPE_JUMP_ACTIVE_MS,
-  ROPE_JUMP_LANDING_COMMIT_T,
   makeFighter,
   computeRawRopeJumpTargetX,
   simulateRopeJump,
   getMinimumCenterDistance,
+  GROUND_LEVEL,
 } = require("./helpers/ropeJumpSim");
 const {
   resolveSideIntent,
-  MAX_TRAJECTORY_PEAK_VEL,
-  MAX_TRAJECTORY_PEAK_ACCEL,
-  TOLERABLE_TOUCHDOWN_OVERLAP_PX,
   HOLD_SETTLE_EPS_PX,
   LANDING_SEPARATION_PAD_PX,
   MIN_CENTERWARD_ESCAPE_FLOOR_PX,
   MIN_CENTERWARD_ESCAPE_HALF_WIDTH_FRAC,
   MIN_CENTERWARD_ESCAPE_RAW_SPAN_FRAC,
   getPushboxHalfWidth,
+  LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS,
+  RECOVERY_EXIT_CORRECTION_TOLERANCE_PX,
 } = require("../../landingResolution");
+const { getVaultProfile } = require("../../ropeJumpVault");
 
 const SIZE_PAIRS = [
   [0.7, 0.7],
@@ -49,6 +48,10 @@ const MAX_SAME_SIDE_ENDPOINT_DELTA = 2.0;
 const MAX_SAME_SIDE_COMMIT_T_DELTA = 0.08;
 const FINE_STEP = 0.25;
 const ZOOM_STEP = 0.1;
+/** Normal vault ≈390; farthest capped cross peaks ~860 — keep ≪ legacy ~1100. */
+const MAX_VAULT_PEAK_VEL = 900;
+const MAX_VAULT_PEAK_ACCEL = 25000;
+const VAULT = getVaultProfile();
 
 function runJump(startX, dir, oppX, jSize, oSize, opponentStep) {
   const jumper = makeFighter({
@@ -66,6 +69,11 @@ function runJump(startX, dir, oppX, jSize, oSize, opponentStep) {
     jumpDirection: dir,
     opponentStep,
   });
+  const active = (trace.samples || []).filter((s) => s.phase === "active");
+  const maxY = active.reduce(
+    (m, s) => Math.max(m, s.y || GROUND_LEVEL),
+    GROUND_LEVEL
+  );
   return {
     oppX,
     preferredSide: trace.commit ? trace.commit.preferredSide : null,
@@ -77,12 +85,21 @@ function runJump(startX, dir, oppX, jSize, oSize, opponentStep) {
     resolvedSide: trace.commit ? trace.commit.resolvedSide : null,
     trajectoryType: trace.commit ? trace.commit.trajectoryType : null,
     decisionClass: trace.commit ? trace.commit.decisionClass : null,
+    correctionMagnitude: trace.commit?.decision?.correctionMagnitude ?? 0,
+    correctionCapped: !!trace.commit?.decision?.correctionCapped,
+    correctionCapPx: trace.commit?.decision?.correctionCapPx,
+    apexHeight: maxY - GROUND_LEVEL,
     peakVel: trace.peakVel || 0,
     peakAccel: trace.peakAccel || 0,
     touchdownOverlap: trace.touchdown ? trace.touchdown.overlap : null,
     safetyCorrection: trace.totalSafetyCorrectionPx || 0,
     correctionTicks: trace.correctionTicks || 0,
     reversal: !!trace.reversalDetected,
+    recoveryEndOverlap: trace.recoveryEnd ? trace.recoveryEnd.overlap : null,
+    postRecoveryOk: trace.postRecovery
+      ? !!trace.postRecovery.withinTolerance
+      : true,
+    overlapGrew: !!trace.overlapEverIncreased,
     startX,
     dir,
     jSize,
@@ -117,52 +134,50 @@ describe("Phase A.2 rope-jump decision stability", () => {
     assert.equal(b.intentClass, "cross");
     assert.equal(a.resolvedSide, 1);
     assert.equal(b.resolvedSide, 1);
+    assert.equal(a.trajectoryType, "vault_hermite");
     assert.ok(Math.abs(a.endpoint - b.endpoint) <= MAX_SAME_SIDE_ENDPOINT_DELTA);
     assert.ok(Math.abs(a.commitT - b.commitT) <= MAX_SAME_SIDE_COMMIT_T_DELTA);
     assert.notEqual(a.trajectoryType, "hold_settle");
     assert.notEqual(b.trajectoryType, "hold_settle");
   });
 
-  it("Cliff 2 — 511.00 vs 511.25 stay near side, no commit-era flip", () => {
-    const a = runJump(MAP_LEFT_BOUNDARY, 1, 511.0, 0.85, 0.85);
-    const b = runJump(MAP_LEFT_BOUNDARY, 1, 511.25, 0.85, 0.85);
-    assert.equal(a.intentClass, "near");
+  it("Cliff 2 — 516.25 vs 516.50 near/cross boundary stays continuous", () => {
+    // reference_contact_9 (allow 9 → contact 101.5) flips cross→near near 516.5.
+    const a = runJump(MAP_LEFT_BOUNDARY, 1, 516.25, 0.85, 0.85);
+    const b = runJump(MAP_LEFT_BOUNDARY, 1, 516.5, 0.85, 0.85);
+    assert.equal(a.intentClass, "cross");
     assert.equal(b.intentClass, "near");
-    assert.equal(a.resolvedSide, -1);
+    assert.equal(a.resolvedSide, 1);
     assert.equal(b.resolvedSide, -1);
-    assert.ok(Math.abs(a.endpoint - b.endpoint) <= MAX_SAME_SIDE_ENDPOINT_DELTA);
-    assert.ok(
-      Math.abs(a.commitT - b.commitT) <= MAX_SAME_SIDE_COMMIT_T_DELTA,
-      `commitT cliff ${a.commitT} vs ${b.commitT}`
-    );
-    assert.ok(a.peakVel <= MAX_TRAJECTORY_PEAK_VEL + 1);
-    assert.ok(b.peakVel <= MAX_TRAJECTORY_PEAK_VEL + 1);
+    assert.ok(a.peakVel <= MAX_VAULT_PEAK_VEL + 1);
+    assert.ok(b.peakVel <= MAX_VAULT_PEAK_VEL + 1);
+    assert.ok(Math.abs(a.apexHeight - VAULT.apexHeight) < 1.0);
   });
 
-  it("Cliff 3 — 514.00 vs 514.25 stay near, under motion budgets", () => {
-    const a = runJump(MAP_LEFT_BOUNDARY, 1, 514.0, 0.85, 0.85);
-    const b = runJump(MAP_LEFT_BOUNDARY, 1, 514.25, 0.85, 0.85);
+  it("Cliff 3 — 539.50 vs 539.75 near→preserve_raw under motion budgets", () => {
+    const a = runJump(MAP_LEFT_BOUNDARY, 1, 539.5, 0.85, 0.85);
+    const b = runJump(MAP_LEFT_BOUNDARY, 1, 539.75, 0.85, 0.85);
     assert.equal(a.intentClass, "near");
-    assert.equal(b.intentClass, "near");
+    assert.equal(b.intentClass, "preserve_raw");
     assert.equal(a.resolvedSide, b.resolvedSide);
     assert.ok(Math.abs(a.endpoint - b.endpoint) <= MAX_SAME_SIDE_ENDPOINT_DELTA);
-    assert.ok(a.peakVel <= MAX_TRAJECTORY_PEAK_VEL + 1, `vel ${a.peakVel}`);
-    assert.ok(b.peakVel <= MAX_TRAJECTORY_PEAK_VEL + 1, `vel ${b.peakVel}`);
-    assert.ok(a.peakAccel <= MAX_TRAJECTORY_PEAK_ACCEL + 1, `acc ${a.peakAccel}`);
-    assert.ok(b.peakAccel <= MAX_TRAJECTORY_PEAK_ACCEL + 1, `acc ${b.peakAccel}`);
+    assert.ok(a.peakVel <= MAX_VAULT_PEAK_VEL + 1, `vel ${a.peakVel}`);
+    assert.ok(b.peakVel <= MAX_VAULT_PEAK_VEL + 1, `vel ${b.peakVel}`);
+    assert.ok(a.peakAccel <= MAX_VAULT_PEAK_ACCEL + 1, `acc ${a.peakAccel}`);
+    assert.ok(b.peakAccel <= MAX_VAULT_PEAK_ACCEL + 1, `acc ${b.peakAccel}`);
   });
 
   it("Mirrored right-rope cliffs", () => {
     const mid = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
+    // Same-side continuity pairs (not discrete intent cliffs).
     const pairs = [
       [439.0, 439.25],
-      [511.0, 511.25],
-      [514.0, 514.25],
+      [500.0, 500.25],
+      [545.0, 545.25],
     ];
     for (const [lo, hi] of pairs) {
       const rLo = mid - (lo - mid);
       const rHi = mid - (hi - mid);
-      // Mirror maps smaller left X to larger right X; order for adjacency:
       const a = runJump(MAP_RIGHT_BOUNDARY, -1, Math.max(rLo, rHi), 0.85, 0.85);
       const b = runJump(MAP_RIGHT_BOUNDARY, -1, Math.min(rLo, rHi), 0.85, 0.85);
       assert.equal(a.intentClass, b.intentClass, `intent ${lo}`);
@@ -188,6 +203,7 @@ describe("Phase A.2 rope-jump decision stability", () => {
         `opp=${oppX} hold_settle`
       );
       assert.equal(r.intentClass, "cross");
+      assert.equal(r.trajectoryType, "vault_hermite");
     }
   });
 
@@ -218,33 +234,36 @@ describe("Phase A.2 rope-jump decision stability", () => {
     assert.equal(above.side, -1);
   });
 
-  it("opponent moving across boundary before intent lock uses lock-time geometry", () => {
+  it("opponent moving across boundary before apex lock uses apex geometry", () => {
     const boundary = nearEscapeBoundary(1, 0.85, 0.85, MAP_LEFT_BOUNDARY);
-    // Start on cross side of boundary; walk into near side during early active.
+    // Start on cross side; walk during ascent — side locks once at apex.
     const jumper = makeFighter({ id: "j", x: MAP_LEFT_BOUNDARY });
     const opponent = makeFighter({ id: "o", x: boundary - 5 });
     const sides = [];
+    const lockTs = [];
     const trace = simulateRopeJump(jumper, opponent, {
       useV2: true,
       jumpDirection: 1,
       opponentStep: (opp, t) => {
-        if (t < 0.2) opp.x = boundary - 5 + t * 50;
+        if (t < VAULT.decisionT) opp.x = boundary - 5 + t * 50;
         if (jumper.ropeJumpSideIntentLocked) {
           sides.push(jumper.ropeJumpSideIntent);
+          lockTs.push(t);
         }
       },
     });
     assert.ok(trace.commit);
-    // A.3: provisional raw / velocity sample may delay the lock until the
-    // opponent has entered the near region — lock-time geometry wins, once.
-    assert.equal(trace.commit.sideIntent, -1);
-    assert.equal(trace.commit.resolvedSide, -1);
-    assert.equal(trace.commit.intentClass, "near");
+    assert.equal(trace.commit.trajectoryType, "vault_hermite");
+    assert.ok(
+      Math.abs(trace.commit.t - VAULT.decisionT) < 0.05,
+      `lock t ${trace.commit.t}`
+    );
     assert.ok(sides.length > 0);
-    assert.ok(sides.every((s) => s === -1), "side oscillated after lock");
+    assert.ok(sides.every((s) => s === sides[0]), "side oscillated after lock");
+    assert.equal(trace.commit.resolvedSide, sides[0]);
   });
 
-  it("opponent moving across boundary after intent lock does not flip side", () => {
+  it("opponent moving across boundary after apex lock does not flip side", () => {
     const boundary = nearEscapeBoundary(1, 0.85, 0.85, MAP_LEFT_BOUNDARY);
     const jumper = makeFighter({ id: "j", x: MAP_LEFT_BOUNDARY });
     const opponent = makeFighter({ id: "o", x: boundary + 30 });
@@ -253,16 +272,13 @@ describe("Phase A.2 rope-jump decision stability", () => {
       useV2: true,
       jumpDirection: 1,
       opponentStep: (opp, t) => {
-        // Walk toward rope after intent should already be locked.
-        if (t > 0.1) opp.x = boundary + 30 - (t - 0.1) * 80;
+        if (t > VAULT.decisionT) opp.x = boundary + 30 - (t - VAULT.decisionT) * 80;
         if (jumper.ropeJumpSideIntentLocked) {
           sides.push(jumper.ropeJumpSideIntent);
         }
       },
     });
     assert.ok(trace.commit);
-    // A.3 may lock near or cross from predicted lock-time geometry; once
-    // locked, the side must not oscillate as the opponent crosses the boundary.
     assert.ok(sides.length > 0);
     assert.ok(
       sides.every((s) => s === sides[0]),
@@ -272,7 +288,7 @@ describe("Phase A.2 rope-jump decision stability", () => {
   });
 
   it("determinism: identical inputs → identical endpoints", () => {
-    for (const oppX of [439, 450, 470, 511.25, 514]) {
+    for (const oppX of [439, 450, 470, 513.5, 536.75]) {
       const a = runJump(MAP_LEFT_BOUNDARY, 1, oppX, 0.85, 0.85);
       const b = runJump(MAP_LEFT_BOUNDARY, 1, oppX, 0.85, 0.85);
       assert.equal(a.endpoint, b.endpoint);
@@ -283,7 +299,7 @@ describe("Phase A.2 rope-jump decision stability", () => {
 
   it("mirror symmetry of endpoints about ring center", () => {
     const mid = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
-    for (const oppX of [439, 450, 470, 511, 514]) {
+    for (const oppX of [439, 450, 470, 513.5, 536.75]) {
       const left = runJump(MAP_LEFT_BOUNDARY, 1, oppX, 0.85, 0.85);
       const rightOpp = mid - (oppX - mid);
       const right = runJump(MAP_RIGHT_BOUNDARY, -1, rightOpp, 0.85, 0.85);
@@ -297,23 +313,18 @@ describe("Phase A.2 rope-jump decision stability", () => {
     }
   });
 
-  it("fine scan 0.25px — continuity, budgets, no repeated flips", () => {
+  it("fine scan 0.25px — vault identity, continuity, no repeated flips", () => {
     const failures = [];
     let maxSameSideDelta = 0;
     let maxPeakVel = 0;
     let maxPeakAccel = 0;
     let intentionalTransitions = 0;
-    const transitionLocations = [];
     let holdSettleNearRope = 0;
-    let safetyUsed = 0;
-    let overlapSamples = 0;
-    let overlapSum = 0;
 
     for (const [jSize, oSize] of SIZE_PAIRS) {
       for (const dir of [1, -1]) {
         const startX = dir > 0 ? MAP_LEFT_BOUNDARY : MAP_RIGHT_BOUNDARY;
         const raw = computeRawRopeJumpTargetX(startX);
-        const escapeBoundary = nearEscapeBoundary(dir, jSize, oSize, startX);
         let prev = null;
         let flipCount = 0;
         const flipXs = [];
@@ -326,16 +337,60 @@ describe("Phase A.2 rope-jump decision stability", () => {
           const r = runJump(startX, dir, oppX, jSize, oSize);
           maxPeakVel = Math.max(maxPeakVel, r.peakVel || 0);
           maxPeakAccel = Math.max(maxPeakAccel, r.peakAccel || 0);
-          if (r.touchdownOverlap != null) {
-            overlapSamples++;
-            overlapSum += r.touchdownOverlap;
-            if (r.touchdownOverlap > TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1) {
-              failures.push(
-                `overlap ${r.touchdownOverlap.toFixed(2)} @${oppX} size ${jSize}/${oSize} dir ${dir}`
-              );
-            }
+
+          if (r.trajectoryType !== "vault_hermite" && r.trajectoryType != null) {
+            failures.push(
+              `traj ${r.trajectoryType} @${oppX} size ${jSize}/${oSize}`
+            );
           }
-          if (r.safetyCorrection > 0) safetyUsed++;
+          if (Math.abs(r.apexHeight - VAULT.apexHeight) > 1.5) {
+            failures.push(
+              `apexH ${r.apexHeight.toFixed(1)} @${oppX} size ${jSize}/${oSize}`
+            );
+          }
+          if (
+            r.correctionMagnitude > VAULT.endpointCorrectionCapPx + 1e-6 &&
+            !r.correctionCapped
+          ) {
+            failures.push(
+              `uncapped corr ${r.correctionMagnitude.toFixed(1)} @${oppX}`
+            );
+          }
+          if (r.peakVel > MAX_VAULT_PEAK_VEL + 1) {
+            failures.push(
+              `peakVel ${r.peakVel.toFixed(0)} @${oppX} size ${jSize}/${oSize} dir ${dir}`
+            );
+          }
+          if (r.peakAccel > MAX_VAULT_PEAK_ACCEL + 1) {
+            failures.push(
+              `peakAccel ${r.peakAccel.toFixed(0)} @${oppX} size ${jSize}/${oSize}`
+            );
+          }
+          if (r.reversal) {
+            failures.push(`reversal @${oppX} size ${jSize}/${oSize} dir ${dir}`);
+          }
+          // Settle debt OK — require A.3.2 exit stability, not zero touchdown overlap.
+          if (r.overlapGrew) {
+            failures.push(`overlap grew @${oppX} size ${jSize}/${oSize}`);
+          }
+          if (
+            r.correctionTicks > LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS
+          ) {
+            failures.push(
+              `corrTicks ${r.correctionTicks} @${oppX} size ${jSize}/${oSize}`
+            );
+          }
+          if (
+            r.recoveryEndOverlap != null &&
+            r.recoveryEndOverlap > RECOVERY_EXIT_CORRECTION_TOLERANCE_PX + 1e-6
+          ) {
+            failures.push(
+              `recoveryEnd ov ${r.recoveryEndOverlap.toFixed(2)} @${oppX}`
+            );
+          }
+          if (!r.postRecoveryOk) {
+            failures.push(`postRecovery @${oppX} size ${jSize}/${oSize}`);
+          }
 
           const escape = Math.abs((r.endpoint || startX) - startX);
           if (
@@ -343,97 +398,48 @@ describe("Phase A.2 rope-jump decision stability", () => {
             escape <= HOLD_SETTLE_EPS_PX + 1
           ) {
             holdSettleNearRope++;
-            if (
-              r.decisionClass !== "emergency_hold_settle" &&
-              r.decisionClass !== "both_sides_constrained" &&
-              r.decisionClass !== "endpoint_forward_clamped_at_commit"
-            ) {
-              failures.push(
-                `ordinary hold_settle rope hop @${oppX} size ${jSize}/${oSize} dir ${dir} class=${r.decisionClass}`
-              );
-            }
-          }
-
-          if (r.peakVel > MAX_TRAJECTORY_PEAK_VEL + 1) {
             failures.push(
-              `peakVel ${r.peakVel.toFixed(0)} @${oppX} [${prev && prev.oppX}->${oppX}] size ${jSize}/${oSize} dir ${dir} end=${r.endpoint} traj=${r.trajectoryType}`
+              `ordinary hold_settle rope hop @${oppX} size ${jSize}/${oSize}`
             );
-          }
-          if (r.peakAccel > MAX_TRAJECTORY_PEAK_ACCEL + 1) {
-            failures.push(
-              `peakAccel ${r.peakAccel.toFixed(0)} @${oppX} size ${jSize}/${oSize} dir ${dir}`
-            );
-          }
-          if (r.reversal) {
-            failures.push(`reversal @${oppX} size ${jSize}/${oSize} dir ${dir}`);
           }
 
           if (prev) {
             if (prev.resolvedSide !== r.resolvedSide) {
               flipCount++;
               flipXs.push([prev.oppX, r.oppX]);
-              // Intentional discrete boundaries only:
-              // 1) near-escape threshold  2) raw-center crossing  3) clear↔conflict
-              const nearEscapeBand =
-                Math.abs(prev.oppX - escapeBoundary) <= 1.0 ||
-                Math.abs(r.oppX - escapeBoundary) <= 1.0;
-              const rawCrossBand =
-                Math.abs(prev.oppX - raw) <= 1.0 ||
-                Math.abs(r.oppX - raw) <= 1.0;
-              const clearBand =
-                prev.intentClass === "preserve_raw" ||
-                r.intentClass === "preserve_raw";
-              if (nearEscapeBand || rawCrossBand || clearBand) {
-                intentionalTransitions++;
-                transitionLocations.push({
-                  jSize,
-                  oSize,
+              intentionalTransitions++;
+              // Discrete vault intent boundaries only — zoom continuity on each side.
+              for (let z = prev.oppX; z <= r.oppX + 1e-9; z += ZOOM_STEP) {
+                const za = runJump(startX, dir, z, jSize, oSize);
+                const zb = runJump(
+                  startX,
                   dir,
-                  from: prev.oppX,
-                  to: r.oppX,
-                  a: prev.intentClass,
-                  b: r.intentClass,
-                });
-                for (
-                  let z = prev.oppX;
-                  z <= r.oppX + 1e-9;
-                  z += ZOOM_STEP
-                ) {
-                  const za = runJump(startX, dir, z, jSize, oSize);
-                  const zb = runJump(
-                    startX,
-                    dir,
-                    Math.min(z + ZOOM_STEP, r.oppX),
-                    jSize,
-                    oSize
-                  );
-                  if (
-                    za.resolvedSide === zb.resolvedSide &&
-                    Math.abs(za.endpoint - zb.endpoint) >
-                      MAX_SAME_SIDE_ENDPOINT_DELTA
-                  ) {
-                    failures.push(
-                      `zoom cliff ${za.endpoint}→${zb.endpoint} @${z} size ${jSize}/${oSize}`
-                    );
-                  }
-                }
-              } else {
-                failures.push(
-                  `unexpected side flip ${prev.resolvedSide}→${r.resolvedSide} @${prev.oppX}→${r.oppX} size ${jSize}/${oSize} dir ${dir} (${prev.intentClass}→${r.intentClass}) escapeB=${escapeBoundary.toFixed(2)} raw=${raw.toFixed(2)}`
+                  Math.min(z + ZOOM_STEP, r.oppX),
+                  jSize,
+                  oSize
                 );
+                if (
+                  za.resolvedSide === zb.resolvedSide &&
+                  Math.abs(za.endpoint - zb.endpoint) >
+                    MAX_SAME_SIDE_ENDPOINT_DELTA
+                ) {
+                  failures.push(
+                    `zoom cliff ${za.endpoint}→${zb.endpoint} @${z} size ${jSize}/${oSize}`
+                  );
+                }
               }
             } else {
               const dEnd = Math.abs(r.endpoint - prev.endpoint);
               maxSameSideDelta = Math.max(maxSameSideDelta, dEnd);
               if (dEnd > MAX_SAME_SIDE_ENDPOINT_DELTA) {
                 failures.push(
-                  `endpoint cliff Δ=${dEnd.toFixed(2)} @${prev.oppX}→${r.oppX} side=${r.resolvedSide} size ${jSize}/${oSize} dir ${dir} (${prev.endpoint.toFixed(2)}→${r.endpoint.toFixed(2)} traj ${prev.trajectoryType}→${r.trajectoryType})`
+                  `endpoint cliff Δ=${dEnd.toFixed(2)} @${prev.oppX}→${r.oppX} side=${r.resolvedSide} size ${jSize}/${oSize} dir ${dir}`
                 );
               }
               const dCommit = Math.abs((r.commitT || 0) - (prev.commitT || 0));
               if (dCommit > MAX_SAME_SIDE_COMMIT_T_DELTA + 0.05) {
                 failures.push(
-                  `commitT cliff Δ=${dCommit.toFixed(3)} @${prev.oppX}→${r.oppX} size ${jSize}/${oSize} dir ${dir}`
+                  `commitT cliff Δ=${dCommit.toFixed(3)} @${prev.oppX}→${r.oppX} size ${jSize}/${oSize}`
                 );
               }
             }
@@ -441,16 +447,16 @@ describe("Phase A.2 rope-jump decision stability", () => {
           prev = r;
         }
 
-        // preserve_raw edges + raw-cross + near-escape ≈ ≤6 expected per sweep.
+        // Vault: cross→near→preserve_raw (and mirrors) ≈ few flips per sweep.
         if (flipCount > 8) {
           failures.push(
             `too many side flips (${flipCount}) size ${jSize}/${oSize} dir ${dir}: ${JSON.stringify(flipXs.slice(0, 8))}`
           );
         }
+        void raw;
       }
     }
 
-    // Stash summary on assert message if anything fails.
     assert.equal(
       failures.length,
       0,
@@ -458,10 +464,9 @@ describe("Phase A.2 rope-jump decision stability", () => {
         failures.slice(0, 25).join("\n")
     );
 
-    // Soft invariants for the report (also asserted).
     assert.ok(maxSameSideDelta <= MAX_SAME_SIDE_ENDPOINT_DELTA);
-    assert.ok(maxPeakVel <= MAX_TRAJECTORY_PEAK_VEL + 1);
-    assert.ok(maxPeakAccel <= MAX_TRAJECTORY_PEAK_ACCEL + 1);
+    assert.ok(maxPeakVel <= MAX_VAULT_PEAK_VEL + 1);
+    assert.ok(maxPeakAccel <= MAX_VAULT_PEAK_ACCEL + 1);
     assert.equal(holdSettleNearRope, 0);
     assert.ok(intentionalTransitions > 0, "expected map-fit transitions");
   });

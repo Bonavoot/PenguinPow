@@ -8,12 +8,14 @@ Companion docs:
 - [`COMBAT_INVARIANTS.md`](./COMBAT_INVARIANTS.md)
 - [`POSE_GEOMETRY_AUDIT.md`](./POSE_GEOMETRY_AUDIT.md)
 - [`COMBAT_FIDELITY_ROADMAP.md`](./COMBAT_FIDELITY_ROADMAP.md)
-- [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md) — rope-jump landing V2 (flagged, default OFF)
-- [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md) — V2 trajectory hardening (Hermite/brake/residual; still default OFF; not visually approved)
-- [`AERIAL_LANDING_PHASE_A2.md`](./AERIAL_LANDING_PHASE_A2.md) — V2 decision stability (side intent / commit continuity; still default OFF)
-- [`AERIAL_LANDING_PHASE_A3.md`](./AERIAL_LANDING_PHASE_A3.md) — V2 dynamic landing-conflict (provisional raw-clear; still default OFF)
-- [`AERIAL_LANDING_PHASE_A3_1.md`](./AERIAL_LANDING_PHASE_A3_1.md) — V2 late-intrusion settle + recovery-exit (still default OFF; not manually approved)
-- [`AERIAL_LANDING_PHASE_A3_2.md`](./AERIAL_LANDING_PHASE_A3_2.md) — V2 recovery re-intrusion monitoring (still default OFF; not manually approved)
+- [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md) — rope-jump landing V2 phase history (now approved / default ON)
+- [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md) — V2 trajectory hardening history
+- [`AERIAL_LANDING_PHASE_A2.md`](./AERIAL_LANDING_PHASE_A2.md) — V2 decision stability history
+- [`AERIAL_LANDING_PHASE_A3.md`](./AERIAL_LANDING_PHASE_A3.md) — V2 dynamic landing-conflict history
+- [`AERIAL_LANDING_PHASE_A3_1.md`](./AERIAL_LANDING_PHASE_A3_1.md) — V2 late-intrusion settle history
+- [`AERIAL_LANDING_PHASE_A3_2.md`](./AERIAL_LANDING_PHASE_A3_2.md) — V2 recovery re-intrusion (approved with vault identity)
+- [`ROPE_JUMP_MOVE_IDENTITY_V2.md`](./ROPE_JUMP_MOVE_IDENTITY_V2.md) — **approved** high-vault identity; default ON; preset `reference_contact_9`
+- [`ROPE_JUMP_V2_POLISH_TUNING.md`](./ROPE_JUMP_V2_POLISH_TUNING.md) — rounded rejected; `reference_contact_9` approved
 - Pose scan: `tools/audit-pose-geometry.js`, `tools/pose-geometry-report.json`, `tools/pose-geometry-viz/`
 - Dev overlay: `client/src/debug/CombatFidelityDebug.js` (`localStorage pumo_combat_fidelity_debug=1`)
 
@@ -177,7 +179,7 @@ Post-penetration split by who moves toward whom; anchored hit/parry victims take
 
 **Why it looks amateur:** Player sees a grounded pose overlapping the opponent, then a multi-tick slide/snap to legal spacing. Comment at `index.js:2359` explicitly chose gradual correction over one-frame snap — both read as correction if overlap is large (~100px ⇒ ~6 ticks ≈ 94ms).
 
-**Phase A / A.1 / A.2 / A.3 / A.3.1 / A.3.2 (implemented, default OFF):** `landingResolution.js` uses provisional raw-clear, locks `near`/`cross` only on pre-commit conflict (A.3), commits a same-side endpoint at a continuous recommended commit time, and travels with Hermite/brake. A.3.1 owns late-intrusion residual via authored landing-settle across recovery (monotonic separation; recovery-exit ≈0). A.3.2 keeps collision monitoring through recovery so post-touchdown walk-ins cannot accumulate into a release-tick snap. Enable with `ROPE_JUMP_LANDING_V2=1`. Legacy 18px/tick path retained as flag-off. Slide-jump/FLAP not integrated yet. Not manually playtest-approved.
+**Phase A…A.3.2 + move-identity vault (approved, default ON):** V2 airborne path is the exact pre-polish reference high vault (`piecewise_linear_sincos`, apex 156, H@apex 75%) with apex crossover lock and capped endpoint correction; approved contact allow **9** (`reference_contact_9`). Rounded C1 polish rejected by playtest (floatier / more triangular). A.3.2 landing settle owns touchdown residual and recovery re-intrusion. Normal `npm run dev:web` uses V2. Legacy rollback: `ROPE_JUMP_LANDING_V2=0`. Slide-jump/FLAP not integrated. No further rope-jump tuning currently authorized.
 
 ---
 

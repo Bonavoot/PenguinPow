@@ -14,6 +14,8 @@
 /** Desired facing for `player` so they look at `opponent` from current X. */
 function facingTowardOpponent(player, opponent) {
   if (!player || !opponent) return player?.facing ?? -1;
+  // Exact overlap: don't force both to facing=1 (same direction). Keep current.
+  if (player.x === opponent.x) return player.facing;
   return player.x < opponent.x ? -1 : 1;
 }
 
@@ -40,6 +42,14 @@ function getLockedFacing(player) {
   // Pull-kill victim slides past the thrower — don't flip mid-slide
   if (player.isClinchKillPullVictim) {
     return player.facing;
+  }
+
+  // Active pull yank: explicit destination lock set at resolve, cleared when the
+  // tween settles. Do NOT key this off isAttemptingPull alone — that flag also
+  // covers pull startup and can outlive the knockback, which feels like a
+  // "timer" blocking correct facing after the yank is done.
+  if (player.pullFacingDirection != null) {
+    return player.pullFacingDirection;
   }
 
   // Slap string commit
@@ -89,6 +99,22 @@ function getLockedFacing(player) {
   return null;
 }
 
+/** Drop pull facing locks once neither fighter is still in the yank tween. */
+function clearOrphanPullFacingLocks(player1, player2) {
+  const pullActive =
+    !!(player1 &&
+      (player1.isBeingPullReversaled || player1.isBoundaryPullSwap)) ||
+    !!(player2 &&
+      (player2.isBeingPullReversaled || player2.isBoundaryPullSwap));
+  if (pullActive) return;
+  if (player1 && player1.pullFacingDirection != null) {
+    player1.pullFacingDirection = null;
+  }
+  if (player2 && player2.pullFacingDirection != null) {
+    player2.pullFacingDirection = null;
+  }
+}
+
 /**
  * Apply the hard rule to one player relative to their opponent.
  * @returns {boolean} true if facing was changed
@@ -110,6 +136,9 @@ function enforcePlayerFacing(player, opponent) {
 function enforcePairFacing(player1, player2) {
   if (!player1 || !player2) return;
 
+  // Safety: never keep pull destination locks after the yank flags are gone.
+  clearOrphanPullFacingLocks(player1, player2);
+
   if (player1.isHit && player2.isHit) {
     return;
   }
@@ -121,6 +150,7 @@ function enforcePairFacing(player1, player2) {
 module.exports = {
   facingTowardOpponent,
   getLockedFacing,
+  clearOrphanPullFacingLocks,
   enforcePlayerFacing,
   enforcePairFacing,
 };

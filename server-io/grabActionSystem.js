@@ -1949,14 +1949,18 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
 
     // Face using post-pull destinations — the victim switches sides during the
     // tween, so correcting from current X leaves both facing away after the yank.
-    // (Tween end also re-corrects once positions have fully settled.)
+    // pullFacingDirection locks that commit until tween settle (facingSystem).
     const pullFacingAnchorX = isBoundaryPull ? actorTweenTargetX : actor.x;
     if (!actor.atTheRopesFacingDirection) {
       actor.facing = pullFacingAnchorX < targetX ? -1 : 1;
+      actor.pullFacingDirection = actor.facing;
     }
     if (!target.atTheRopesFacingDirection) {
       target.facing = targetX < pullFacingAnchorX ? -1 : 1;
+      target.pullFacingDirection = target.facing;
     }
+    // clearClinchThrowState dropped the startup pull pose — re-arm for the yank.
+    actor.isAttemptingPull = true;
 
     if (isKill) {
       target.isClinchKillPullVictim = true;

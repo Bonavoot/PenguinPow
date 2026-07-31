@@ -1,8 +1,14 @@
 # Aerial Landing — Phase A.3.2 (Recovery Re-Intrusion & Release-Tick Stability)
 
-**Status:** Implemented behind feature flag · **Default: OFF** · **Not manually playtest-approved**  
+**Status:** Implemented behind feature flag · **Default: OFF** · **Landing/contact playtest-positive; trajectory superseded by move-identity vault**  
 **Date:** 2026-07-31  
-**Scope stop:** Rope-jump V2 recovery collision monitoring + re-intrusion settle only. No slide jump / FLAP / butt slam. V2 remains disabled by default. No rebalance of timings, stamina, invuln, or recovery length. No aerial trajectory replanning.
+**Scope stop (historical):** Rope-jump V2 recovery collision monitoring + re-intrusion settle only. No slide jump / FLAP / butt slam. No rebalance of timings, stamina, invuln, or recovery length.
+
+**Final outcome (2026-07-31):** Rope Jump V2 with A.3.2 settle is **manually approved** and **default ON** (`reference_contact_9`). Legacy rollback: `ROPE_JUMP_LANDING_V2=0`. See [`ROPE_JUMP_MOVE_IDENTITY_V2.md`](./ROPE_JUMP_MOVE_IDENTITY_V2.md).
+
+**Follow-up:** High-vault move identity — [`ROPE_JUMP_MOVE_IDENTITY_V2.md`](./ROPE_JUMP_MOVE_IDENTITY_V2.md). A.3.2 landing settle is retained; the airborne planner is replaced by an authored vault + capped endpoint correction.
+
+**Polish / approval:** [`ROPE_JUMP_V2_POLISH_TUNING.md`](./ROPE_JUMP_V2_POLISH_TUNING.md) — rounded rejected; `reference_contact_9` approved (reference traj + allow 9). A.3.2 settle/re-intrusion lifecycle unchanged.
 
 Companion: [`AERIAL_LANDING_PHASE_A3_1.md`](./AERIAL_LANDING_PHASE_A3_1.md), [`AERIAL_LANDING_PHASE_A3.md`](./AERIAL_LANDING_PHASE_A3.md).
 
@@ -149,8 +155,11 @@ Updated: `helpers/ropeJumpSim.js` (`landingOpponentStep`, production-order clean
 ## Local playtest matrix
 
 ```bash
-cd server-io
-ROPE_JUMP_LANDING_V2=1 LANDING_DEBUG_NET=1 LANDING_TRACE=1 npm start
+# Normal development (V2 default on):
+npm run dev:web
+
+# Optional diagnostics:
+LANDING_DEBUG_NET=1 LANDING_TRACE=1 npm run dev:web
 ```
 
 Client:
@@ -172,14 +181,18 @@ localStorage.setItem("pumo_landing_trace", "1")
 | 8 | Knockback into recovering jumper | Deep settle; monotonic; no release snap |
 | 9 | Punish / buffer / shake / facing / recovery length | Unchanged vs A.3.1 timings |
 
-**V2 default remains OFF.**
+**Final:** V2 is **default ON** (approved). Historical phase notes above described the pre-approval state.
 
 ---
 
 ## Rollback
 
-Unset `ROPE_JUMP_LANDING_V2`. Legacy path unchanged.
+```bash
+ROPE_JUMP_LANDING_V2=0 npm run dev:web
+```
+
+Legacy path unchanged when explicitly selected.
 
 ---
 
-*Phase A.3.2 stop gate. Do not enable V2 by default or integrate other aerial verbs in this conversation.*
+*A.3.2 implementation history preserved. Final approval recorded in `ROPE_JUMP_MOVE_IDENTITY_V2.md`.*

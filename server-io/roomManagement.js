@@ -636,6 +636,7 @@ function resetRoomAndPlayers(room, io) {
     player.isAttemptingPull = false;
     player.isBeingPullReversaled = false;
     player.pullReversalPullerId = null;
+    player.pullFacingDirection = null;
     player.isGrabSeparating = false;
     player.isGrabBreakSeparating = false;
     player.grabBreakSepStartTime = 0;

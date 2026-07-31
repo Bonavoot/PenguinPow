@@ -30,6 +30,10 @@ function makePlayer(overrides = {}) {
     isThrowing: false,
     isBeingThrown: false,
     isClinchKillPullVictim: false,
+    isBeingPullReversaled: false,
+    isAttemptingPull: false,
+    isBoundaryPullSwap: false,
+    pullFacingDirection: null,
     isRingOutPushCutscene: false,
     ...overrides,
   };
@@ -144,5 +148,62 @@ describe("facingSystem hard rule", () => {
     enforcePairFacing(p1, p2);
     assert.equal(p1.facing, 1);
     assert.equal(p2.facing, -1);
+  });
+
+  it("pull yank locks both sides so mid-cross auto-face cannot thrash destination facing", () => {
+    // Destination facing already set for post-pull sides (victim will land at x=50).
+    const victim = makePlayer({
+      id: "victim",
+      x: 200, // still crossing through puller
+      facing: -1,
+      pullFacingDirection: -1,
+      isBeingPullReversaled: true,
+    });
+    const puller = makePlayer({
+      id: "puller",
+      x: 150,
+      facing: 1,
+      pullFacingDirection: 1,
+      isAttemptingPull: true,
+    });
+
+    enforcePairFacing(victim, puller);
+    assert.equal(victim.facing, -1);
+    assert.equal(puller.facing, 1);
+    assert.equal(victim.pullFacingDirection, -1); // lock held while yank active
+
+    // After settle: yank flags clear → orphan cleanup drops locks → re-face.
+    victim.isBeingPullReversaled = false;
+    puller.isAttemptingPull = false;
+    victim.x = 50;
+    enforcePairFacing(victim, puller);
+    assert.equal(victim.pullFacingDirection, null);
+    assert.equal(puller.pullFacingDirection, null);
+    assert.equal(victim.facing, -1);
+    assert.equal(puller.facing, 1);
+  });
+
+  it("isAttemptingPull alone does not keep facing locked after yank flags are gone", () => {
+    // Startup pose flag left on without an active yank must not block facing.
+    const p1 = makePlayer({
+      id: "p1",
+      x: 300,
+      facing: -1,
+      isAttemptingPull: true,
+      pullFacingDirection: 1, // stale lock
+    });
+    const p2 = makePlayer({ id: "p2", x: 100, facing: -1 });
+    enforcePairFacing(p1, p2);
+    assert.equal(p1.pullFacingDirection, null);
+    assert.equal(p1.facing, 1);
+    assert.equal(p2.facing, -1);
+  });
+
+  it("exact X overlap does not force both players to face the same way", () => {
+    const p1 = makePlayer({ id: "p1", x: 100, facing: -1 });
+    const p2 = makePlayer({ id: "p2", x: 100, facing: 1 });
+    enforcePairFacing(p1, p2);
+    assert.equal(p1.facing, -1);
+    assert.equal(p2.facing, 1);
   });
 });

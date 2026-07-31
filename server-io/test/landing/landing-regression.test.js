@@ -36,14 +36,17 @@ const { getConnectDistance } = require("../../strikeContact");
 const { makeFighter } = require("./helpers/ropeJumpSim");
 
 describe("landing Phase A — regression guards", () => {
-  it("ROPE_JUMP_LANDING_V2 defaults off (release path unchanged)", () => {
-    // Env override would flip this; CI/default must be false.
-    if (process.env.ROPE_JUMP_LANDING_V2) {
+  it("ROPE_JUMP_LANDING_V2 defaults on; explicit 0/false selects legacy", () => {
+    const raw = process.env.ROPE_JUMP_LANDING_V2;
+    if (raw === undefined || raw === "") {
       assert.equal(ROPE_JUMP_LANDING_V2, true);
       assert.equal(isRopeJumpLandingV2Enabled(), true);
-    } else {
+    } else if (raw === "0" || raw === "false") {
       assert.equal(ROPE_JUMP_LANDING_V2, false);
       assert.equal(isRopeJumpLandingV2Enabled(), false);
+    } else if (raw === "1" || raw === "true") {
+      assert.equal(ROPE_JUMP_LANDING_V2, true);
+      assert.equal(isRopeJumpLandingV2Enabled(), true);
     }
   });
 

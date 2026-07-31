@@ -980,6 +980,8 @@ function tick(delta) {
           if (player.isBeingPullReversaled) {
             const wasBoundarySwap = isBoundarySwap;
             player.isBeingPullReversaled = false;
+            player.isBoundaryPullSwap = false;
+            player.pullFacingDirection = null;
             // Release both players' input locks when pull tween ends
             player.inputLockUntil = 0;
             // Find and release the puller too
@@ -989,6 +991,9 @@ function tick(delta) {
               pullerRef = allPlayers.find(p => p.id === player.pullReversalPullerId);
               if (pullerRef) {
                 pullerRef.inputLockUntil = 0;
+                pullerRef.isAttemptingPull = false;
+                pullerRef.isBoundaryPullSwap = false;
+                pullerRef.pullFacingDirection = null;
                 // Boundary swap: also terminate the puller's slide tween for neutral frame advantage
                 if (wasBoundarySwap && pullerRef.isGrabBreakSeparating) {
                   if (pullerRef.grabBreakTargetX !== undefined) {
@@ -999,7 +1004,6 @@ function tick(delta) {
                   pullerRef.grabBreakSepDuration = 0;
                   pullerRef.grabBreakStartX = undefined;
                   pullerRef.grabBreakTargetX = undefined;
-                  pullerRef.isBoundaryPullSwap = false;
                 }
               }
               player.pullReversalPullerId = null;
@@ -1011,10 +1015,8 @@ function tick(delta) {
               player.movementVelocity = 0;
               return;
             }
-            // Side-switch settle: facing was set from pre-pull positions at resolve.
-            // Re-correct now that the victim has landed on their new side (mirrors
-            // throw land). Clear ropes facing locks when still in-bounds so they
-            // don't block the flip.
+            // Side-switch settle: pull facing lock cleared above. Re-correct from
+            // settled X (mirrors throw land). Clear ropes facing locks in-bounds.
             if (player.x > MAP_LEFT_BOUNDARY && player.x < MAP_RIGHT_BOUNDARY) {
               player.atTheRopesFacingDirection = null;
             }

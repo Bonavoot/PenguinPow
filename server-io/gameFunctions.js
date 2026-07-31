@@ -188,6 +188,7 @@ function cleanupGrabStates(player, opponent) {
   player.isAttemptingPull = false;
   player.isBeingPullReversaled = false;
   player.pullReversalPullerId = null;
+  player.pullFacingDirection = null;
   player.isBoundaryPullSwap = false;
   player.isGrabSeparating = false;
   player.isGrabBellyFlopping = false;
@@ -299,6 +300,7 @@ function cleanupGrabStates(player, opponent) {
   opponent.isAttemptingPull = false;
   opponent.isBeingPullReversaled = false;
   opponent.pullReversalPullerId = null;
+  opponent.pullFacingDirection = null;
   opponent.isBoundaryPullSwap = false;
   opponent.isGrabSeparating = false;
   opponent.isGrabBellyFlopping = false;
@@ -2591,10 +2593,19 @@ function resolveMatadorPull(matador, grabber, room, io) {
   matador.matadorSuccessUntil = nowSim + effectiveTweenDur;
   matador.isMatadorParrying = false;
 
-  // Do NOT snap facing to post-pull destinations here — keep current facing and
-  // let the natural mid-tween facing system flip when the victim actually
-  // crosses sides (tween end also re-corrects via correctFacingAfterGrabOrThrow).
-  if (isKill) {
+  // Destination facing for the yank (same as clinch pull). pullFacingDirection
+  // locks it until tween settle; then correctFacingAfterGrabOrThrow re-corrects.
+  const matadorPullAnchorX = isBoundaryPull ? actorTweenTargetX : matador.x;
+  if (!isKill) {
+    if (!matador.atTheRopesFacingDirection) {
+      matador.facing = matadorPullAnchorX < targetX ? -1 : 1;
+      matador.pullFacingDirection = matador.facing;
+    }
+    if (!grabber.atTheRopesFacingDirection) {
+      grabber.facing = targetX < matadorPullAnchorX ? -1 : 1;
+      grabber.pullFacingDirection = grabber.facing;
+    }
+  } else {
     grabber.facing = grabberFacingBeforeKill;
   }
 

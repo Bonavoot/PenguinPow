@@ -1,21 +1,13 @@
 /**
- * Aerial landing resolution — Phase A / A.1 / A.2 / A.3 / A.3.1 / A.3.2
+ * Aerial landing resolution — Phase A / A.1–A.3.2 + high-vault move identity
  * (rope jump only).
  *
- * Phase A: deterministic pushbox-clear endpoint commit (flagged).
- * Phase A.1: motion-aware Hermite/brake trajectories + residual policy.
- * Phase A.2: separates stable side intent, continuous commit timing, and
- *            same-side endpoint refinement so subpixel opponent motion cannot
- *            flip landing side / commit era / trajectory class together.
- * Phase A.3: raw-clear is provisional (not an irreversible side lock);
- *            pre-commit dynamic conflicts replan on a locked near/cross side
- *            using touchdown-extrapolated opponent position.
- * Phase A.3.1: late-intrusion residual is owned by an authored landing-settle
- *              across recovery (monotonic separation, recovery-exit stable).
- * Phase A.3.2: clear-at-touchdown is monitoring, not a sticky collision
- *              exemption — recovery re-intrusion reactivates settle ownership.
+ * Phase A–A.3.2: landing solver / settle / recovery monitoring (retained).
+ * Move identity V2: authored high-vault trajectory, apex crossover lock,
+ * capped endpoint correction (see ropeJumpVault.js / ROPE_JUMP_MOVE_IDENTITY_V2.md).
  *
- * Gated by ROPE_JUMP_LANDING_V2 (see landingFlags.js). Default OFF.
+ * Gated by ROPE_JUMP_LANDING_V2 (see landingFlags.js). Default ON (approved).
+ * Legacy rollback: ROPE_JUMP_LANDING_V2=0.
  */
 
 const {
@@ -42,7 +34,9 @@ const {
   ROPE_JUMP_LANDING_V2,
   LANDING_TRACE,
   LANDING_DEBUG_NET,
+  ROPE_JUMP_VAULT_PRESET,
 } = require("./landingFlags");
+const vault = require("./ropeJumpVault");
 
 /**
  * Legacy Phase A constant — retained for export/compat only.
@@ -1948,8 +1942,25 @@ function clearRopeJumpLandingState(player) {
   player.ropeJumpOverlapIncreased = false;
   player.ropeJumpBudgetException = false;
   player.ropeJumpBudgetExceptionClass = null;
+  // High-vault move-identity diagnostics
+  player.ropeJumpVaultPreset = null;
+  player.ropeJumpVaultApexHeight = 0;
+  player.ropeJumpEndpointCorrectionCap = 0;
+  player.ropeJumpEndpointCorrectionPx = 0;
+  player.ropeJumpEndpointCorrectionCapped = false;
+  player.ropeJumpSettleAllowance = 0;
+  player.ropeJumpLandingContactDist = 0;
+  player.ropeJumpGroundedContactDist = 0;
+  player.ropeJumpPredictedSettleDebt = 0;
+  player.ropeJumpActualSettleDebt = 0;
+  player.ropeJumpAuthoredEndX = 0;
+  player.ropeJumpDesiredEndX = 0;
+  player.ropeJumpCrossoverDecisionT = -1;
+  player.ropeJumpVertVel = 0;
+  player._vaultProfile = null;
   player._landingTrace = null;
   player._landingPrevX = null;
+  player._landingPrevY = null;
   player._landingPrevVel = null;
   player._landingTickIndex = 0;
   player._landingOppPrevX = null;
@@ -2085,10 +2096,35 @@ function getLandingDebugPayload(player) {
     decisionClass: player.ropeJumpDecisionClass,
     trajectoryType: player.ropeJumpTrajectoryType,
     horizVel: player.ropeJumpHorizVel,
+    vertVel: player.ropeJumpVertVel,
     rawExpectedVel: player.ropeJumpRawExpectedVel,
     peakVel: player.ropeJumpPeakVel,
     peakAccel: player.ropeJumpPeakAccel,
     reversalDetected: player.ropeJumpReversalDetected,
+    // High-vault identity / polish diagnostics
+    vaultPreset: player.ropeJumpVaultPreset,
+    apexHeight: player.ropeJumpVaultApexHeight,
+    apexT: player.ropeJumpApexT,
+    curveModel: player.ropeJumpCurveModel,
+    apexCurveClass: player.ropeJumpApexCurveClass,
+    apexDiagnostics: player.ropeJumpApexDiagnostics,
+    horizFracAtApex: player.ropeJumpHorizFracAtApex,
+    horizTravelPct: player.ropeJumpHorizTravelPct,
+    authoredHorizPct: player.ropeJumpAuthoredHorizPct,
+    horizAccel: player.ropeJumpHorizAccel,
+    vertAccel: player.ropeJumpVertAccel,
+    crossoverDecisionT: player.ropeJumpCrossoverDecisionT,
+    authoredEndX: player.ropeJumpAuthoredEndX,
+    desiredEndX: player.ropeJumpDesiredEndX,
+    endpointCorrectionPx: player.ropeJumpEndpointCorrectionPx,
+    endpointCorrectionCap: player.ropeJumpEndpointCorrectionCap,
+    endpointCorrectionCapped: !!player.ropeJumpEndpointCorrectionCapped,
+    landingContactDist: player.ropeJumpLandingContactDist,
+    groundedContactDist: player.ropeJumpGroundedContactDist,
+    settleAllowance: player.ropeJumpSettleAllowance,
+    predictedSettleDebt: player.ropeJumpPredictedSettleDebt,
+    actualSettleDebt: player.ropeJumpActualSettleDebt,
+    ...vault.getRopeJumpVulnerabilityState(player),
   };
 }
 
@@ -2145,27 +2181,20 @@ function samplePostCommitX(player, t, activeMs) {
  * Authoritative active-phase step for rope jump.
  * When useV2 is false, reproduces the legacy fixed-target arc.
  *
- * V2 (A.3): provisional raw-clear → lock near/cross only on conflict →
- * refine endpoint on that side (touchdown-extrapolated opp) → commit once →
- * Hermite/brake travel. No post-commit re-home.
+ * V2 (move identity): authored high-vault path → one apex crossover lock →
+ * capped endpoint correction → Hermite descent. Landing settle remains A.3.2.
+ * No post-decision re-home / no invisible-wall near-side brake.
  *
  * @returns {{ touchedDown: boolean, committedThisTick: boolean, decision: object|null }}
  */
 function stepRopeJumpActive(player, opponent, now, options = {}) {
   const activeMs = options.activeMs != null ? options.activeMs : ROPE_JUMP_ACTIVE_MS;
-  const commitTMax =
-    options.commitT != null ? options.commitT : ROPE_JUMP_LANDING_COMMIT_T;
-  const commitTMin =
-    options.commitTMin != null
-      ? options.commitTMin
-      : ROPE_JUMP_LANDING_COMMIT_T_MIN;
-  const arcHeight = options.arcHeight != null ? options.arcHeight : ROPE_JUMP_ARC_HEIGHT;
   const groundLevel = options.groundLevel != null ? options.groundLevel : GROUND_LEVEL;
   const mapLeft = options.mapLeft != null ? options.mapLeft : MAP_LEFT_BOUNDARY;
   const mapRight = options.mapRight != null ? options.mapRight : MAP_RIGHT_BOUNDARY;
   const useV2 = options.useV2 != null ? options.useV2 : ROPE_JUMP_LANDING_V2;
-  const speedFactor =
-    options.speedFactor != null ? options.speedFactor : 0.185;
+  const legacyArcHeight =
+    options.arcHeight != null ? options.arcHeight : ROPE_JUMP_ARC_HEIGHT;
 
   const elapsed = now - player.ropeJumpActiveStartTime;
   const t = Math.min(1, elapsed / activeMs);
@@ -2176,336 +2205,273 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
       ? player.ropeJumpRawTargetX
       : player.ropeJumpTargetX;
   const startX = player.ropeJumpStartX;
+  const dirSign = player.ropeJumpDirection >= 0 ? 1 : -1;
 
   let committedThisTick = false;
   let decision = null;
 
+  // Legacy ease-arc reference (also used for rawExpected diagnostics).
   const xAlongRaw = rawArcX(startX, rawTargetX, t);
   const velAlongRaw = rawArcVelocity(startX, rawTargetX, t, activeMs);
   player.ropeJumpRawExpectedVel = velAlongRaw;
   player._landingLastT = t;
   player._landingTickIndex = (player._landingTickIndex || 0) + 1;
 
-  if (useV2 && opponent && t >= commitTMin) {
-    const jHalf = getPushboxHalfWidth(player.sizeMultiplier);
-    const oHalf = getPushboxHalfWidth(opponent.sizeMultiplier);
-    const minimumDistance = jHalf + oHalf;
-    const dirSign = player.ropeJumpDirection >= 0 ? 1 : -1;
-    const remainingSec = Math.max(0, (1 - t) * (activeMs / 1000));
-    const rawXAtMax = rawArcX(startX, rawTargetX, commitTMax);
+  const profile =
+    player._vaultProfile ||
+    vault.getVaultProfile(options.vaultPreset || ROPE_JUMP_VAULT_PRESET);
+  if (useV2 && !player._vaultProfile) {
+    player._vaultProfile = profile;
+    player.ropeJumpVaultPreset = profile.name;
+    player.ropeJumpVaultApexHeight = profile.apexHeight;
+    player.ropeJumpEndpointCorrectionCap = profile.endpointCorrectionCapPx;
+    player.ropeJumpSettleAllowance = profile.settleAllowancePx;
+    player.ropeJumpCurveModel = profile.curveModel;
+    player.ropeJumpApexT = profile.apexT;
+    player.ropeJumpHorizFracAtApex = profile.horizFracAtApex;
+  }
 
+  let x;
+  let y;
+
+  if (useV2) {
     if (!player.ropeJumpPlanningState) {
       player.ropeJumpPlanningState = PLANNING_PROVISIONAL_RAW;
     }
 
-    const oppVelEst = updateOpponentVelocityEstimate(
-      player,
-      opponent.x,
-      opponent.movementVelocity,
-      speedFactor
-    );
-    const oppVel = oppVelEst.vel;
-    const oppVelTrusted = oppVelEst.trusted;
-    const oppAccel = oppVelEst.accel || 0;
-    const predictedOppX = predictOpponentX(
-      opponent.x,
-      oppVel,
-      remainingSec,
-      mapLeft,
-      mapRight,
-      oppAccel
-    );
-    const rawOverlapNow = rawFootprintOverlap(
+    const authoredX = vault.sampleAuthoredX(startX, rawTargetX, t, profile);
+    const authoredVel = vault.sampleAuthoredVel(
+      startX,
       rawTargetX,
-      opponent.x,
-      minimumDistance
+      t,
+      profile,
+      activeMs
     );
+    y = vault.sampleVaultY(groundLevel, t, profile);
 
-    // Dynamic no-return: while raw is still clear, the full commit window
-    // remains available. Once conflict geometry exists, compute the latest t
-    // at which that cell can still be resolved aerially.
-    if (player.ropeJumpPlanningState === PLANNING_PROVISIONAL_RAW) {
-      if (rawOverlapNow <= 0) {
-        player.ropeJumpNoReturnDeadlineT = commitTMax;
-      } else {
-        const noReturn = computeNoReturnDeadlineT({
-          jumperStartX: startX,
-          rawTargetX,
-          jumpDirection: dirSign,
-          opponentX: predictedOppX,
-          minimumDistance,
-          mapLeft,
-          mapRight,
-          activeMs,
-          commitTMax,
-          commitTMin,
-        });
-        // Ratchet later only — never walk earlier from float noise.
-        const prev = player.ropeJumpNoReturnDeadlineT || commitTMin;
-        player.ropeJumpNoReturnDeadlineT = Math.max(prev, noReturn);
-      }
-    }
-
-    // Record first observable raw-footprint conflict.
-    if (rawOverlapNow > 0 && player.ropeJumpFirstRawConflictT < 0) {
-      player.ropeJumpFirstRawConflictTick = player._landingTickIndex;
-      player.ropeJumpFirstRawConflictT = t;
-      player.ropeJumpConflictBeforeDeadline =
-        !player.ropeJumpLandingCommitted &&
-        t <= player.ropeJumpNoReturnDeadlineT + 1e-9;
-    }
-
-    // 1) Side lock — only on near/cross conflict. preserve_raw stays provisional.
-    // Wait one tick for a trusted velocity sample when conflict appears early,
-    // so approach direction can reject a soon-to-be-invaded near side.
-    const canDelayForVelocity =
-      !oppVelTrusted &&
-      t + TICK_MS / activeMs < commitTMax - 1e-9 &&
-      t <= player.ropeJumpNoReturnDeadlineT;
+    // One apex decision — never replan side afterward.
     if (
-      !player.ropeJumpSideIntentLocked &&
-      player.ropeJumpPlanningState === PLANNING_PROVISIONAL_RAW &&
-      rawOverlapNow > 0 &&
-      !canDelayForVelocity
+      !player.ropeJumpLandingCommitted &&
+      t + 1e-12 >= profile.decisionT
     ) {
-      const beforeDeadline =
-        t <= player.ropeJumpNoReturnDeadlineT + 1e-9 &&
-        !player.ropeJumpLandingCommitted;
-      if (beforeDeadline) {
-        const selected = selectSideForDynamicConflict({
-          rawTargetX,
-          jumperStartX: startX,
-          jumpDirection: dirSign,
-          opponentX: opponent.x,
-          predictedOpponentX: predictedOppX,
-          minimumDistance,
-          jumperHalfWidth: jHalf,
-          mapLeft,
-          mapRight,
-        });
-        player.ropeJumpSideIntentLocked = true;
-        player.ropeJumpSideIntent = selected.side;
-        player.ropeJumpIntentClass = selected.intentClass;
-        player.ropeJumpIntentReason = selected.reason;
-        player.ropeJumpSideLockReason = selected.reason;
-        player.ropeJumpPreferredSide = selected.side;
-        player.ropeJumpSideIntentOpponentX = opponent.x;
-        player.ropeJumpSideLockTick = player._landingTickIndex;
-        player.ropeJumpPlanningState = PLANNING_SIDE_LOCKED;
-        player.ropeJumpConflictBeforeDeadline = true;
-      } else if (!player.ropeJumpLandingCommitted) {
-        // Conflict after no-return but before commit — still try to lock a
-        // side if immediately reachable; else mark late intrusion at commit.
-        const selected = selectSideForDynamicConflict({
-          rawTargetX,
-          jumperStartX: startX,
-          jumpDirection: dirSign,
-          opponentX: opponent.x,
-          predictedOpponentX: predictedOppX,
-          minimumDistance,
-          jumperHalfWidth: jHalf,
-          mapLeft,
-          mapRight,
-        });
-        const canStill = canResolveConflictAtT({
-          t,
-          jumperStartX: startX,
-          rawTargetX,
-          jumpDirection: dirSign,
-          opponentX: predictedOppX,
-          minimumDistance,
-          mapLeft,
-          mapRight,
-          activeMs,
-          commitTMax,
-          commitTMin,
-        });
-        if (canStill) {
-          player.ropeJumpSideIntentLocked = true;
-          player.ropeJumpSideIntent = selected.side;
-          player.ropeJumpIntentClass = selected.intentClass;
-          player.ropeJumpIntentReason = selected.reason;
-          player.ropeJumpSideLockReason = selected.reason;
-          player.ropeJumpPreferredSide = selected.side;
-          player.ropeJumpSideIntentOpponentX = opponent.x;
-          player.ropeJumpSideLockTick = player._landingTickIndex;
-          player.ropeJumpPlanningState = PLANNING_SIDE_LOCKED;
-          player.ropeJumpConflictBeforeDeadline = false;
-        } else {
-          player.ropeJumpLateIntrusion = true;
-          player.ropeJumpLateIntrusionClass =
-            "conflict_after_no_return_unresolvable";
-          player.ropeJumpConflictBeforeDeadline = false;
-        }
-      }
-    }
-
-    if (!player.ropeJumpLandingCommitted) {
-      const sideLocked = !!player.ropeJumpSideIntentLocked;
-      // Planning opponent: extrapolate to touchdown while side-locked so
-      // steady approach yields a stable clear endpoint (not a re-invaded near).
-      const planOppX = sideLocked
-        ? planningOpponentX(
-            predictedOppX,
-            player.ropeJumpSideIntent,
-            oppVel,
-            mapLeft,
-            mapRight
-          )
-        : opponent.x;
-
-      decision = planLandingEndpoint({
-        rawTargetX,
-        jumperStartX: startX,
-        jumperCurrentX: xAlongRaw,
-        jumpDirection: dirSign,
-        opponentX: planOppX,
-        jumperHalfWidth: jHalf,
-        opponentHalfWidth: oHalf,
-        mapLeft,
-        mapRight,
-        commitVel: velAlongRaw,
-        remainingSec,
-        rawXAtMaxCommit: rawXAtMax,
-        activeMs,
-        commitTMax,
-        commitTMin,
-        sideIntentLocked: sideLocked,
-        lockedSide: sideLocked ? player.ropeJumpSideIntent : null,
-        lockedIntentClass: sideLocked ? player.ropeJumpIntentClass : null,
-      });
-
-      player.ropeJumpRecommendedCommitT = decision.recommendedCommitT;
-      if (sideLocked) {
-        player.ropeJumpPreferredSide = player.ropeJumpSideIntent;
-      }
-
-      const nextT = Math.min(1, t + TICK_MS / activeMs);
-      const nextX = rawArcX(startX, rawTargetX, nextT);
-      const endpoint = decision.resolvedTargetX;
-      const nextWouldPass =
-        !isStrictlyBehind(xAlongRaw, endpoint, dirSign) &&
-        isStrictlyBehind(nextX, endpoint, dirSign);
-      const mustLock =
-        t >= commitTMax ||
-        t + 1e-9 >= decision.recommendedCommitT ||
-        nextWouldPass;
-
-      if (mustLock) {
-        // If still provisional at final commit, lock preserve_raw as the
-        // committed raw path — not as a near/cross side intent.
-        if (!sideLocked) {
-          player.ropeJumpIntentClass = "preserve_raw";
-          player.ropeJumpIntentReason = "raw_clear_through_commit";
-          player.ropeJumpPreferredSide =
-            rawTargetX < opponent.x
-              ? -1
-              : rawTargetX > opponent.x
-                ? 1
-                : dirSign;
-          player.ropeJumpResolvedSide = player.ropeJumpPreferredSide;
-        }
-
-        const commitPlanOppX = sideLocked
-          ? planningOpponentX(
-              predictedOppX,
-              player.ropeJumpSideIntent,
-              oppVel,
-              mapLeft,
-              mapRight
-            )
-          : opponent.x;
-        const commitPlan = planLandingEndpoint({
-          rawTargetX,
-          jumperStartX: startX,
-          jumperCurrentX: xAlongRaw,
-          jumpDirection: dirSign,
-          opponentX: commitPlanOppX,
-          jumperHalfWidth: jHalf,
-          opponentHalfWidth: oHalf,
-          mapLeft,
-          mapRight,
-          commitVel: velAlongRaw,
-          remainingSec,
-          rawXAtMaxCommit: rawXAtMax,
-          activeMs,
-          commitTMax,
-          commitTMin,
-          sideIntentLocked: sideLocked,
-          lockedSide: sideLocked ? player.ropeJumpSideIntent : null,
-          lockedIntentClass: sideLocked ? player.ropeJumpIntentClass : null,
-        });
-
-        if (sideLocked) {
-          commitPlan.resolvedSide = player.ropeJumpSideIntent;
-          commitPlan.preferredSide = player.ropeJumpSideIntent;
-        }
-
-        if (isStrictlyBehind(xAlongRaw, commitPlan.resolvedTargetX, dirSign)) {
-          commitPlan.resolvedTargetX = xAlongRaw;
-          commitPlan.trajectoryType =
-            Math.abs(velAlongRaw) <= HOLD_SETTLE_MAX_COMMIT_VEL
-              ? "hold_settle"
-              : "brake";
-          commitPlan.decisionClass = "endpoint_forward_clamped_at_commit";
-          commitPlan.residualOverlap = overlapAt(
-            xAlongRaw,
-            opponent.x,
-            minimumDistance
-          );
-        } else if (
-          commitPlan.trajectoryType === "hermite" &&
-          evaluateHermiteFeasibility({
-            commitX: xAlongRaw,
-            commitVel: velAlongRaw,
-            endpointX: commitPlan.resolvedTargetX,
-            remainingSec,
+      const decisionX = authoredX;
+      const cross = opponent
+        ? vault.decideApexCrossover({
+            jumperX: decisionX,
+            rawTargetX,
             jumpDirection: dirSign,
-          }).reverse
-        ) {
-          commitPlan.trajectoryType = "brake";
-        }
+            opponentX: opponent.x,
+            jumperSizeMult: player.sizeMultiplier,
+            opponentSizeMult: opponent.sizeMultiplier,
+            profile,
+          })
+        : {
+            side: dirSign,
+            intentClass: "preserve_raw",
+            reason: "no_opponent",
+            centerCrossed: false,
+            contactDist: 0,
+            groundedDist: 0,
+          };
 
-        // Post-commit conflict classification: if raw already overlapped before
-        // this commit and we could not side-lock, mark late intrusion.
-        if (
-          !sideLocked &&
-          rawOverlapNow > 0 &&
-          commitPlan.decisionClass === "exact_clear_raw"
-        ) {
-          player.ropeJumpLateIntrusion = true;
-          player.ropeJumpLateIntrusionClass =
-            "raw_commit_with_unresolved_conflict";
-        }
+      player.ropeJumpSideIntentLocked = true;
+      player.ropeJumpSideIntent = cross.side;
+      player.ropeJumpIntentClass = cross.intentClass;
+      player.ropeJumpIntentReason = cross.reason;
+      player.ropeJumpSideLockReason = cross.reason;
+      player.ropeJumpPreferredSide = cross.side;
+      player.ropeJumpResolvedSide = cross.side;
+      player.ropeJumpSideIntentOpponentX = opponent ? opponent.x : 0;
+      player.ropeJumpSideLockTick = player._landingTickIndex;
+      player.ropeJumpPlanningState = PLANNING_SIDE_LOCKED;
+      player.ropeJumpCrossoverDecisionT = t;
+      player.ropeJumpLandingContactDist = cross.contactDist;
+      player.ropeJumpGroundedContactDist = cross.groundedDist;
 
-        applyCommitDecision(player, commitPlan, xAlongRaw, t, velAlongRaw);
-        decision = commitPlan;
-        committedThisTick = true;
+      const capped = opponent
+        ? vault.resolveCappedEndpoint({
+            authoredEndX: rawTargetX,
+            jumpDirection: dirSign,
+            opponentX: opponent.x,
+            intentClass: cross.intentClass,
+            side: cross.side,
+            contactDist: cross.contactDist,
+            mapLeft,
+            mapRight,
+            correctionCapPx: profile.endpointCorrectionCapPx,
+            decisionX,
+            crossMinFarPadPx: profile.crossMinFarPadPx,
+          })
+        : {
+            authoredEndX: rawTargetX,
+            desiredBeforeCap: rawTargetX,
+            resolvedTargetX: clampToMap(rawTargetX, mapLeft, mapRight),
+            correctionMagnitude: 0,
+            correctionCapPx: profile.endpointCorrectionCapPx,
+            correctionCapped: false,
+          };
+
+      const grounded =
+        cross.groundedDist ||
+        (opponent
+          ? getMinimumCenterDistance(
+              player.sizeMultiplier,
+              opponent.sizeMultiplier
+            )
+          : 0);
+      const predictedSettleDebt = opponent
+        ? Math.max(
+            0,
+            grounded - Math.abs(capped.resolvedTargetX - opponent.x)
+          )
+        : 0;
+
+      player.ropeJumpEndpointCorrectionPx = capped.correctionMagnitude;
+      player.ropeJumpEndpointCorrectionCapped = !!capped.correctionCapped;
+      player.ropeJumpPredictedSettleDebt = predictedSettleDebt;
+      player.ropeJumpAuthoredEndX = rawTargetX;
+      player.ropeJumpDesiredEndX = capped.desiredBeforeCap;
+
+      decision = {
+        rawTargetX,
+        resolvedTargetX: capped.resolvedTargetX,
+        preferredSide: cross.side,
+        resolvedSide: cross.side,
+        minimumDistance: grounded,
+        landingContactDistance: cross.contactDist,
+        rawOverlap: opponent
+          ? Math.max(0, grounded - Math.abs(rawTargetX - opponent.x))
+          : 0,
+        residualOverlap: predictedSettleDebt,
+        boundaryLimited: false,
+        usedFallback: false,
+        fallbackReason: null,
+        decisionClass: `vault_${cross.intentClass}`,
+        trajectoryType: "vault_hermite",
+        intentClass: cross.intentClass,
+        intentReason: cross.reason,
+        recommendedCommitT: profile.decisionT,
+        correctionMagnitude: capped.correctionMagnitude,
+        correctionCapPx: capped.correctionCapPx,
+        correctionCapped: capped.correctionCapped,
+        predictedSettleDebt,
+        vaultPreset: profile.name,
+        apexHeight: profile.apexHeight,
+        feasibility: { withinBudget: true, withinPlannerBudget: true },
+      };
+
+      applyCommitDecision(player, decision, decisionX, t, authoredVel);
+      player.ropeJumpTrajectoryType = "vault_hermite";
+      committedThisTick = true;
+
+      // Apex continuity classification (dev diagnostics) from analytic samples.
+      const apexSamples = [];
+      for (const dt of [-2 / 64, 0, 2 / 64]) {
+        const st = Math.max(0, Math.min(1, profile.apexT + dt));
+        const sx = vault.sampleAuthoredX(startX, rawTargetX, st, profile);
+        const sy = vault.sampleVaultY(groundLevel, st, profile);
+        const sh = vault.sampleAuthoredVel(
+          startX,
+          rawTargetX,
+          st,
+          profile,
+          activeMs
+        );
+        const sv =
+          profile.apexHeight *
+          vault.vaultHeightFracDeriv(
+            st,
+            profile.apexT,
+            activeMs,
+            profile.curveModel
+          );
+        apexSamples.push({
+          t: st,
+          x: sx,
+          y: sy,
+          horizVel: sh,
+          vertVel: sv,
+        });
       }
-    } else if (player.ropeJumpLandingCommitted && !player.ropeJumpLateIntrusion) {
-      // True late intrusion: first raw-footprint conflict appears only after
-      // the endpoint was already committed (not approach into a planned cross).
+      for (let i = 1; i < apexSamples.length; i++) {
+        const dtSec =
+          (apexSamples[i].t - apexSamples[i - 1].t) * (activeMs / 1000);
+        apexSamples[i].horizAccel =
+          dtSec > 1e-9
+            ? (apexSamples[i].horizVel - apexSamples[i - 1].horizVel) / dtSec
+            : 0;
+        apexSamples[i].vertAccel =
+          dtSec > 1e-9
+            ? (apexSamples[i].vertVel - apexSamples[i - 1].vertVel) / dtSec
+            : 0;
+      }
+      const apexClass = vault.classifyApexCurve(apexSamples, profile.apexT);
+      player.ropeJumpApexCurveClass = apexClass.class;
+      player.ropeJumpApexDiagnostics = {
+        ...apexClass,
+        curveModel: profile.curveModel,
+        horizFracAtApex: profile.horizFracAtApex,
+        authoredHorizPctAtApex: vault.authoredHorizProgress(
+          profile.apexT,
+          profile
+        ),
+      };
+      decision.apexCurveClass = apexClass.class;
+      decision.curveModel = profile.curveModel;
+    }
+
+    if (player.ropeJumpLandingCommitted) {
+      x = vault.sampleVaultDescentX({
+        commitX: player.ropeJumpLandingCommitX,
+        commitVel: player.ropeJumpLandingCommitVel || 0,
+        endpointX: player.ropeJumpResolvedTargetX,
+        commitT: player.ropeJumpLandingCommitT,
+        t,
+        activeMs,
+      });
+    } else {
+      x = authoredX;
+    }
+
+    // Late intrusion: opponent enters locked cell after decision.
+    if (
+      opponent &&
+      player.ropeJumpLandingCommitted &&
+      !player.ropeJumpLateIntrusion
+    ) {
+      const contact =
+        player.ropeJumpLandingContactDist ||
+        vault.getRopeJumpLandingContactDistance(
+          player.sizeMultiplier,
+          opponent.sizeMultiplier,
+          profile
+        );
+      const endOverlap = Math.max(
+        0,
+        contact - Math.abs(player.ropeJumpResolvedTargetX - opponent.x)
+      );
       if (
-        player.ropeJumpFirstRawConflictT >
-        player.ropeJumpLandingCommitT + 1e-9
+        endOverlap > LANDING_SETTLE_OVERLAP_EPS_PX &&
+        t > player.ropeJumpLandingCommitT + 1e-9
       ) {
-        player.ropeJumpLateIntrusion = true;
-        player.ropeJumpLateIntrusionClass = "conflict_after_endpoint_commit";
-        player.ropeJumpConflictBeforeDeadline = false;
+        // Opponent moved into the locked footprint after apex lock.
+        const movedIn =
+          Math.abs(opponent.x - (player.ropeJumpSideIntentOpponentX || opponent.x)) >
+          1;
+        if (movedIn) {
+          player.ropeJumpLateIntrusion = true;
+          player.ropeJumpLateIntrusionClass = "opponent_enter_after_apex_lock";
+        }
       }
     }
-  }
-
-  let x;
-  if (useV2 && player.ropeJumpLandingCommitted) {
-    x = samplePostCommitX(player, t, activeMs);
   } else {
+    // Legacy fixed-target ease arc.
     x = xAlongRaw;
+    y = groundLevel + legacyArcHeight * 4 * t * (1 - t);
   }
 
   x = clampToMap(x, mapLeft, mapRight);
 
-  // Motion diagnostics
   const prevX =
     player._landingPrevX != null ? player._landingPrevX : player.x;
   const dx = x - prevX;
@@ -2513,8 +2479,21 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
   const prevVel = player._landingPrevVel != null ? player._landingPrevVel : vel;
   const accel = (vel - prevVel) / (TICK_MS / 1000);
   player.ropeJumpHorizVel = vel;
+  player.ropeJumpHorizAccel = accel;
   player.ropeJumpPeakVel = Math.max(player.ropeJumpPeakVel || 0, Math.abs(vel));
-  player.ropeJumpPeakAccel = Math.max(player.ropeJumpPeakAccel || 0, Math.abs(accel));
+  player.ropeJumpPeakAccel = Math.max(
+    player.ropeJumpPeakAccel || 0,
+    Math.abs(accel)
+  );
+  const authoredSpan = Math.abs(rawTargetX - startX);
+  player.ropeJumpHorizTravelPct =
+    authoredSpan > 1e-6
+      ? (Math.abs(x - startX) / authoredSpan) * 100
+      : 0;
+  if (useV2) {
+    player.ropeJumpAuthoredHorizPct =
+      vault.authoredHorizProgress(t, profile) * 100;
+  }
   if (
     player.ropeJumpLandingCommitted &&
     !committedThisTick &&
@@ -2525,10 +2504,21 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
     player.ropeJumpReversalDetected = true;
   }
 
+  // Vertical velocity / accel diagnostic (V2 vault / legacy parabola).
+  const prevY =
+    player._landingPrevY != null ? player._landingPrevY : player.y;
+  const vertVel = (y - prevY) / (TICK_MS / 1000);
+  const prevVertVel =
+    player._landingPrevVertVel != null ? player._landingPrevVertVel : vertVel;
+  player.ropeJumpVertVel = vertVel;
+  player.ropeJumpVertAccel = (vertVel - prevVertVel) / (TICK_MS / 1000);
+
   player.x = x;
-  player.y = groundLevel + arcHeight * 4 * t * (1 - t);
+  player.y = y;
   player._landingPrevX = x;
+  player._landingPrevY = y;
   player._landingPrevVel = vel;
+  player._landingPrevVertVel = vertVel;
 
   if (opponent) {
     const minDist = getMinimumCenterDistance(
@@ -2537,7 +2527,10 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
     );
     player.ropeJumpMinDistance = minDist;
     player.ropeJumpCenterDistance = Math.abs(player.x - opponent.x);
-    player.ropeJumpOverlap = Math.max(0, minDist - player.ropeJumpCenterDistance);
+    player.ropeJumpOverlap = Math.max(
+      0,
+      minDist - player.ropeJumpCenterDistance
+    );
   }
 
   if (
@@ -2552,10 +2545,19 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
       tick: player._landingTickIndex,
       t: Number(t.toFixed(4)),
       x: player.x,
+      y: player.y,
       prevX,
       dx: Number(dx.toFixed(4)),
       vel: Number(vel.toFixed(2)),
       accel: Number(accel.toFixed(2)),
+      vertVel: Number((player.ropeJumpVertVel || 0).toFixed(2)),
+      horizAccel: Number((player.ropeJumpHorizAccel || 0).toFixed(2)),
+      vertAccel: Number((player.ropeJumpVertAccel || 0).toFixed(2)),
+      horizTravelPct: Number((player.ropeJumpHorizTravelPct || 0).toFixed(2)),
+      authoredHorizPct: Number((player.ropeJumpAuthoredHorizPct || 0).toFixed(2)),
+      apexT: player.ropeJumpApexT,
+      apexCurveClass: player.ropeJumpApexCurveClass,
+      curveModel: player.ropeJumpCurveModel,
       rawExpectedX: Number(xAlongRaw.toFixed(4)),
       rawExpectedVel: Number(velAlongRaw.toFixed(2)),
       commitX: player.ropeJumpLandingCommitX,
@@ -2567,13 +2569,11 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
       sideIntent: player.ropeJumpSideIntent,
       intentClass: player.ropeJumpIntentClass,
       decisionClass: player.ropeJumpDecisionClass,
-      fallbackReason: player.ropeJumpFallbackReason,
-      recommendedCommitT: player.ropeJumpRecommendedCommitT,
+      vaultPreset: player.ropeJumpVaultPreset,
+      apexHeight: player.ropeJumpVaultApexHeight,
+      correctionPx: player.ropeJumpEndpointCorrectionPx,
+      correctionCapped: !!player.ropeJumpEndpointCorrectionCapped,
       planningState: player.ropeJumpPlanningState,
-      noReturnDeadlineT: player.ropeJumpNoReturnDeadlineT,
-      firstRawConflictT: player.ropeJumpFirstRawConflictT,
-      lateIntrusion: !!player.ropeJumpLateIntrusion,
-      lateIntrusionClass: player.ropeJumpLateIntrusionClass,
       overlap: player.ropeJumpOverlap,
       committed: !!player.ropeJumpLandingCommitted,
       easedT: Number(easedT.toFixed(4)),
@@ -2599,6 +2599,7 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
     }
     player.y = groundLevel;
     player.ropeJumpTouchdownX = player.x;
+    player.ropeJumpVertVel = 0;
 
     if (opponent) {
       const minDist = getMinimumCenterDistance(
@@ -2607,11 +2608,12 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
       );
       player.ropeJumpMinDistance = minDist;
       player.ropeJumpCenterDistance = Math.abs(player.x - opponent.x);
-      player.ropeJumpOverlap = Math.max(0, minDist - player.ropeJumpCenterDistance);
+      player.ropeJumpOverlap = Math.max(
+        0,
+        minDist - player.ropeJumpCenterDistance
+      );
+      player.ropeJumpActualSettleDebt = player.ropeJumpOverlap;
 
-      // Phase A.3.1: residual ownership begins at touchdown via settle.
-      // Do not reclassify ordinary prediction residual as late intrusion —
-      // planning classification stays authoritative; settle still clears debt.
       if (useV2) {
         beginLandingSettle(player, opponent, { mapLeft, mapRight });
       }
@@ -2709,4 +2711,26 @@ module.exports = {
   getLandingDebugPayload,
   isRopeJumpLandingV2Enabled,
   clampToMap,
+  // High-vault move identity (ropeJumpVault.js)
+  getVaultProfile: vault.getVaultProfile,
+  VAULT_PRESETS: vault.VAULT_PRESETS,
+  LEGACY_APEX_HEIGHT: vault.LEGACY_APEX_HEIGHT,
+  REFERENCE_APEX_HEIGHT: vault.REFERENCE_APEX_HEIGHT,
+  REFERENCE_TRAJECTORY: vault.REFERENCE_TRAJECTORY,
+  DEFAULT_PRESET_NAME: vault.DEFAULT_PRESET_NAME,
+  getRopeJumpLandingContactDistance: vault.getRopeJumpLandingContactDistance,
+  decideApexCrossover: vault.decideApexCrossover,
+  resolveCappedEndpoint: vault.resolveCappedEndpoint,
+  authoredHorizProgress: vault.authoredHorizProgress,
+  authoredHorizProgressDeriv: vault.authoredHorizProgressDeriv,
+  vaultHeightFrac: vault.vaultHeightFrac,
+  vaultHeightFracDeriv: vault.vaultHeightFracDeriv,
+  sampleAuthoredX: vault.sampleAuthoredX,
+  sampleAuthoredVel: vault.sampleAuthoredVel,
+  sampleVaultY: vault.sampleVaultY,
+  classifyApexCurve: vault.classifyApexCurve,
+  isRopeJumpStartupVulnerable: vault.isRopeJumpStartupVulnerable,
+  isRopeJumpAirborneProtected: vault.isRopeJumpAirborneProtected,
+  isRopeJumpLandingVulnerable: vault.isRopeJumpLandingVulnerable,
+  getRopeJumpVulnerabilityState: vault.getRopeJumpVulnerabilityState,
 };

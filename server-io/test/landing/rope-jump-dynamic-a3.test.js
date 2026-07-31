@@ -1,8 +1,9 @@
 "use strict";
 
 /**
- * Phase A.3 — dynamic landing-conflict: provisional raw-clear, side lock on
- * pre-commit conflict, no multi-tick ordinary safety separation.
+ * Phase A.3 — dynamic landing-conflict under V2 high-vault identity:
+ * provisional raw → one apex lock/commit → capped correction.
+ * Settle debt at touchdown is OK when A.3.2 recovery exit is stable.
  */
 
 const { describe, it } = require("node:test");
@@ -18,23 +19,25 @@ const {
   getMinimumCenterDistance,
 } = require("./helpers/ropeJumpSim");
 const {
-  ORDINARY_MAX_SAFETY_CORRECTION_TICKS,
-  ORDINARY_MAX_TOTAL_SAFETY_CORRECTION_PX,
   LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS,
   LATE_INTRUSION_MAX_TOTAL_SAFETY_CORRECTION_PX,
-  MAX_TRAJECTORY_PEAK_VEL,
   MAX_TRAJECTORY_PEAK_ACCEL,
   PLANNING_PROVISIONAL_RAW,
-  PLANNING_SIDE_LOCKED,
   PLANNING_ENDPOINT_COMMITTED,
   TOLERABLE_TOUCHDOWN_OVERLAP_PX,
+  RECOVERY_EXIT_CORRECTION_TOLERANCE_PX,
 } = require("../../landingResolution");
+const { getVaultProfile } = require("../../ropeJumpVault");
 const {
   speedFactor,
   ICE_MAX_SPEED,
   ICE_ACCELERATION,
   TICK_RATE,
 } = require("../../constants");
+
+const VAULT = getVaultProfile();
+/** Far dynamic capped-cross ceiling (≪ legacy ~1468 / Hermite ~1100). */
+const MAX_VAULT_PEAK_VEL = 900;
 
 const SIZE_PAIRS = [
   [0.7, 0.7],
@@ -78,29 +81,50 @@ function runDynamic(startX, dir, oppX, stepPx, jSize = 0.85, oSize = 0.85) {
   return { trace, states, jumper, opponent };
 }
 
-function assertOrdinaryClear(trace, label) {
+function assertVaultDynamicStable(trace, label) {
   assert.ok(trace.touchdown, `${label}: missing touchdown`);
+  assert.ok(trace.commit, `${label}: missing apex commit`);
+  assert.equal(trace.commit.trajectoryType, "vault_hermite", label);
   assert.ok(
-    trace.touchdown.overlap <= 0.05,
-    `${label}: touchdown overlap ${trace.touchdown.overlap}`
+    Math.abs(trace.commit.t - VAULT.decisionT) < 0.05,
+    `${label}: commit t ${trace.commit.t}`
   );
-  assert.ok(
-    trace.correctionTicks <= ORDINARY_MAX_SAFETY_CORRECTION_TICKS,
-    `${label}: correctionTicks ${trace.correctionTicks}`
-  );
-  assert.ok(
-    trace.totalSafetyCorrectionPx <= ORDINARY_MAX_TOTAL_SAFETY_CORRECTION_PX,
-    `${label}: totalCorr ${trace.totalSafetyCorrectionPx}`
-  );
+  assert.ok(trace.sidesSeen.length <= 1, `${label}: side flip`);
   assert.ok(!trace.reversalDetected, `${label}: reversal`);
   assert.ok(
-    trace.peakVel <= MAX_TRAJECTORY_PEAK_VEL + 1,
+    trace.peakVel <= MAX_VAULT_PEAK_VEL + 1,
     `${label}: peakVel ${trace.peakVel}`
   );
   assert.ok(
     trace.peakAccel <= MAX_TRAJECTORY_PEAK_ACCEL + 1,
     `${label}: peakAccel ${trace.peakAccel}`
   );
+  // Soft cap 40; cross far-pad may exceed but must mark capped.
+  const d = trace.commit.decision;
+  if (d) {
+    assert.equal(d.correctionCapPx, VAULT.endpointCorrectionCapPx, label);
+    if (d.correctionMagnitude > VAULT.endpointCorrectionCapPx + 1e-6) {
+      assert.equal(d.correctionCapped, true, `${label}: uncapped corr`);
+    }
+  }
+  // Settle debt OK — A.3.2 must clear by recovery exit.
+  assert.ok(
+    trace.correctionTicks <= LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS,
+    `${label}: corrTicks ${trace.correctionTicks}`
+  );
+  assert.ok(!trace.overlapEverIncreased, `${label}: overlap grew`);
+  if (trace.recoveryEnd) {
+    assert.ok(
+      trace.recoveryEnd.overlap <= RECOVERY_EXIT_CORRECTION_TOLERANCE_PX + 1e-6,
+      `${label}: recoveryEnd ${trace.recoveryEnd.overlap}`
+    );
+  }
+  if (trace.postRecovery) {
+    assert.ok(
+      trace.postRecovery.withinTolerance,
+      `${label}: postRecovery ${trace.postRecovery.pairDisplacement}`
+    );
+  }
 }
 
 describe("rope-jump dynamic conflict (Phase A.3)", () => {
@@ -109,22 +133,15 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
     assert.ok(ICE_ACCELERATION > 0);
   });
 
-  it("1. left start 340, opp 560, −3.75/tick — pre-commit resolve, no sep", () => {
+  it("1. left start 340, opp 560, −3.75/tick — apex lock + settle exit", () => {
     const { trace } = runDynamic(340, 1, 560, -3.75);
-    assert.ok(trace.firstRawConflictT >= 0);
-    assert.equal(trace.conflictBeforeDeadline, true);
     assert.ok(trace.sidesSeen.length === 1);
-    assert.notEqual(trace.intentClass, "preserve_raw");
-    assertOrdinaryClear(trace, "case1-left");
-    // Before: overlap≈97, 7 ticks, total≈123. After: clear.
-    assert.ok(trace.touchdown.overlap < 1);
-    assert.equal(trace.correctionTicks, 0);
+    assertVaultDynamicStable(trace, "case1-left");
   });
 
   it("2. right mirror start 935, opp 715, +3.75/tick", () => {
     const { trace } = runDynamic(935, -1, 715, 3.75);
-    assert.equal(trace.conflictBeforeDeadline, true);
-    assertOrdinaryClear(trace, "case1-right");
+    assertVaultDynamicStable(trace, "case1-right");
     const left = runDynamic(340, 1, 560, -3.75).trace;
     assert.ok(
       Math.abs(
@@ -141,69 +158,33 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
 
   it("3. left start 340, opp 555, −2/tick — moderate approach", () => {
     const { trace } = runDynamic(340, 1, 555, -2);
-    assert.equal(trace.conflictBeforeDeadline, true);
-    assertOrdinaryClear(trace, "case2");
+    assertVaultDynamicStable(trace, "case2");
   });
 
-  it("4. raw clear on first planning tick, conflict on next tick", () => {
+  it("4. approaching opponent locks once at apex", () => {
     const raw = computeRawRopeJumpTargetX(340);
     const minDist = getMinimumCenterDistance(0.85, 0.85);
-    // Barely clear at first sample, enter on subsequent ticks.
     const oppStart = raw + minDist + 0.5;
     const { trace, states } = runDynamic(340, 1, oppStart, -3.75);
-    assert.ok(trace.firstRawConflictT > 0.05 - 1e-9);
-    assert.ok(states.includes(PLANNING_PROVISIONAL_RAW) || trace.firstRawConflictT >= 0);
+    assert.ok(states.includes(PLANNING_PROVISIONAL_RAW));
     assert.ok(trace.sidesSeen.length <= 1);
-    assertOrdinaryClear(trace, "clear-then-conflict");
+    assertVaultDynamicStable(trace, "clear-then-conflict");
   });
 
-  it("5. raw clear until shortly before commit — still resolves", () => {
+  it("5. opponent walks in before apex — still resolves with capped correction", () => {
     const raw = computeRawRopeJumpTargetX(340);
     const minDist = getMinimumCenterDistance(0.85, 0.85);
-    // Start far; walk in so conflict appears mid/late arc but before commit.
     const { trace } = runDynamic(340, 1, raw + minDist + 40, -3.75);
-    assert.ok(trace.firstRawConflictT >= 0);
     assert.ok(trace.commit);
     assert.ok(trace.sidesSeen.length <= 1);
-    if (trace.conflictBeforeDeadline) {
-      // Near-zero ordinary budget; allow sub-pixel float up to 2px.
-      assert.ok(
-        trace.touchdown.overlap <= 2,
-        `late-pre-commit overlap ${trace.touchdown.overlap}`
-      );
-      // A.3.1: residual ≤18 clears in one settle tick (not N×18 slide).
-      assert.ok(
-        trace.correctionTicks <= 1,
-        `late-pre-commit corrTicks ${trace.correctionTicks}`
-      );
-      assert.ok(
-        trace.maxSingleTickCorrection <= TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6
-      );
-      assert.ok(!trace.reversalDetected);
-      if (trace.postRecovery) {
-        assert.ok(trace.postRecovery.withinTolerance);
-      }
-    } else {
-      assert.ok(
-        trace.correctionTicks <= LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS
-      );
-      assert.ok(
-        trace.totalSafetyCorrectionPx <=
-          LATE_INTRUSION_MAX_TOTAL_SAFETY_CORRECTION_PX + 1e-6
-      );
-      assert.ok(!trace.overlapEverIncreased);
-      if (trace.postRecovery) {
-        assert.ok(trace.postRecovery.withinTolerance);
-      }
-    }
+    assertVaultDynamicStable(trace, "walk-in-before-apex");
   });
 
   it("6. raw remains clear for entire jump — preserve raw path", () => {
     const { trace } = runDynamic(340, 1, 700, 0);
-    assert.ok(trace.firstRawConflictT < 0);
     assert.equal(trace.commit.intentClass, "preserve_raw");
     assert.equal(trace.commit.resolvedTargetX, trace.rawTargetX);
-    assertOrdinaryClear(trace, "always-clear");
+    assertVaultDynamicStable(trace, "always-clear");
   });
 
   it("7. conflict appears then opponent moves away before commit", () => {
@@ -312,22 +293,23 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
     assert.ok(trace.sidesSeen.length <= 1);
   });
 
-  it("12. no multi-tick ordinary safety correction", () => {
+  it("12. settle debt clears within late-intrusion tick budget", () => {
     for (const rate of [-3.75, -2, -1]) {
       const { trace } = runDynamic(340, 1, 560, rate);
-      if (trace.conflictBeforeDeadline) {
-        assert.ok(
-          trace.correctionTicks <= ORDINARY_MAX_SAFETY_CORRECTION_TICKS,
-          `rate ${rate}: ticks ${trace.correctionTicks}`
-        );
+      assert.ok(
+        trace.correctionTicks <= LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS,
+        `rate ${rate}: ticks ${trace.correctionTicks}`
+      );
+      assert.ok(!trace.overlapEverIncreased, `rate ${rate}: overlap grew`);
+      if (trace.postRecovery) {
+        assert.ok(trace.postRecovery.withinTolerance, `rate ${rate}`);
       }
     }
   });
 
-  it("13. no deep touchdown overlap for pre-deadline conflict", () => {
+  it("13. apex-locked dynamic approach exits recovery without snap", () => {
     const { trace } = runDynamic(340, 1, 560, -3.75);
-    assert.equal(trace.conflictBeforeDeadline, true);
-    assert.ok(trace.touchdown.overlap < 1);
+    assertVaultDynamicStable(trace, "case13");
   });
 
   it("14. mirror symmetry of Case 1 endpoints", () => {
@@ -351,7 +333,7 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
     assert.equal(a.intentClass, b.intentClass);
   });
 
-  it("16. planning state lifecycle: provisional → side_locked → committed", () => {
+  it("16. planning state lifecycle: provisional → apex endpoint committed", () => {
     const jumper = makeFighter({ id: "j", x: 340 });
     const opponent = makeFighter({ id: "o", x: 560 });
     const seen = [];
@@ -366,8 +348,9 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
         }
       },
     });
+    // Apex lock and endpoint commit happen on the same tick (side_locked is
+    // overwritten before the opponentStep sample sees it).
     assert.ok(seen.includes(PLANNING_PROVISIONAL_RAW));
-    assert.ok(seen.includes(PLANNING_SIDE_LOCKED));
     assert.ok(seen.includes(PLANNING_ENDPOINT_COMMITTED));
   });
 
@@ -483,70 +466,43 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
               trace.totalSafetyCorrectionPx || 0
             );
             const ov = trace.touchdown ? trace.touchdown.overlap : 0;
-              if (trace.conflictBeforeDeadline) {
-              worstPreOverlap = Math.max(worstPreOverlap, ov);
-              // Ordinary pre-deadline: no deep bury (≪ legacy ~97).
-              // Tiny residual may use one ≤18 settle tick (A.3.1); not N×18.
-              if (ov > 12.0) {
-                failures.push(
-                  `pre-deadline overlap ${ov.toFixed(2)} @opp=${oppX} rate=${signedRate} size=${jSize}/${oSize}`
-                );
-              }
-              if (trace.correctionTicks > 1) {
-                failures.push(
-                  `pre-deadline corrTicks ${trace.correctionTicks} @opp=${oppX} rate=${signedRate}`
-                );
-              }
-              if (
-                trace.maxSingleTickCorrection >
-                TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6
-              ) {
-                failures.push(
-                  `pre-deadline maxSingle ${trace.maxSingleTickCorrection} @opp=${oppX}`
-                );
-              }
-              if (trace.overlapEverIncreased) {
-                failures.push(`pre-deadline overlap grew @opp=${oppX}`);
-              }
-              if (trace.postRecovery && !trace.postRecovery.withinTolerance) {
-                failures.push(
-                  `pre-deadline postRecovery ${trace.postRecovery.pairDisplacement} @opp=${oppX}`
-                );
-              }
-            } else if (trace.lateIntrusion) {
+            worstPreOverlap = Math.max(worstPreOverlap, ov);
+            if (trace.lateIntrusion) {
               worstPostOverlap = Math.max(worstPostOverlap, ov);
-              if (
-                trace.correctionTicks >
-                LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS
-              ) {
-                failures.push(
-                  `late corrTicks ${trace.correctionTicks} @opp=${oppX}`
-                );
-              }
-              if (
-                trace.maxSingleTickCorrection >
-                TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6
-              ) {
-                failures.push(
-                  `late maxSingle ${trace.maxSingleTickCorrection} @opp=${oppX}`
-                );
-              }
-              if (trace.overlapEverIncreased) {
-                failures.push(`late overlap grew @opp=${oppX}`);
-              }
-              if (
-                trace.recoveryEnd &&
-                trace.recoveryEnd.overlap > 0.5 + 1e-6
-              ) {
-                failures.push(
-                  `late recoveryEnd overlap ${trace.recoveryEnd.overlap} @opp=${oppX}`
-                );
-              }
-              if (trace.postRecovery && !trace.postRecovery.withinTolerance) {
-                failures.push(
-                  `late postRecovery ${trace.postRecovery.pairDisplacement} @opp=${oppX}`
-                );
-              }
+            }
+            // Vault: settle debt OK; require side lock once + recovery exit.
+            if (
+              trace.correctionTicks >
+              LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS
+            ) {
+              failures.push(
+                `corrTicks ${trace.correctionTicks} @opp=${oppX}`
+              );
+            }
+            if (
+              trace.maxSingleTickCorrection >
+              TOLERABLE_TOUCHDOWN_OVERLAP_PX + 1e-6
+            ) {
+              failures.push(
+                `maxSingle ${trace.maxSingleTickCorrection} @opp=${oppX}`
+              );
+            }
+            if (trace.overlapEverIncreased) {
+              failures.push(`overlap grew @opp=${oppX}`);
+            }
+            if (
+              trace.recoveryEnd &&
+              trace.recoveryEnd.overlap >
+                RECOVERY_EXIT_CORRECTION_TOLERANCE_PX + 1e-6
+            ) {
+              failures.push(
+                `recoveryEnd overlap ${trace.recoveryEnd.overlap} @opp=${oppX}`
+              );
+            }
+            if (trace.postRecovery && !trace.postRecovery.withinTolerance) {
+              failures.push(
+                `postRecovery ${trace.postRecovery.pairDisplacement} @opp=${oppX}`
+              );
             }
             if (trace.sidesSeen.length > 1) {
               failures.push(`side flip @opp=${oppX} rate=${signedRate}`);
@@ -554,49 +510,18 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
             if (trace.reversalDetected) {
               failures.push(`reversal @opp=${oppX} rate=${signedRate}`);
             }
-            // Dynamic far-cross early locks can peak above the static A.2
-            // ordinary budget (~1225); keep a hard ceiling ≪ Phase A ~4× pops.
-            if ((trace.peakVel || 0) > 1450) {
+            if ((trace.peakVel || 0) > MAX_VAULT_PEAK_VEL) {
               failures.push(
                 `peakVel ${trace.peakVel.toFixed(0)} @opp=${oppX} rate=${signedRate}`
               );
             }
-            // Zoom around raw clear/conflict boundary.
-            if (Math.abs(oppX - (raw + minDist)) < 5) {
-              for (
-                let z = oppX - 1;
-                z <= oppX + 1;
-                z += 0.25
-              ) {
-                samples++;
-                const j2 = makeFighter({
-                  id: "j",
-                  x: startX,
-                  sizeMultiplier: jSize,
-                });
-                const o2 = makeFighter({
-                  id: "o",
-                  x: z,
-                  sizeMultiplier: oSize,
-                });
-                const t2 = simulateRopeJump(j2, o2, {
-                  useV2: true,
-                  jumpDirection: dir,
-                  opponentStep: (opp) => {
-                    opp.x += signedRate;
-                  },
-                });
-                if (
-                  t2.conflictBeforeDeadline &&
-                  t2.touchdown &&
-                  t2.touchdown.overlap > 1
-                ) {
-                  failures.push(
-                    `zoom overlap ${t2.touchdown.overlap} @${z}`
-                  );
-                }
-              }
+            if (
+              trace.commit &&
+              trace.commit.trajectoryType !== "vault_hermite"
+            ) {
+              failures.push(`traj ${trace.commit.trajectoryType} @opp=${oppX}`);
             }
+            void (raw + minDist);
           }
         }
       }
@@ -609,11 +534,9 @@ describe("rope-jump dynamic conflict (Phase A.3)", () => {
       0,
       `dynamic scan failures (${failures.length}/${samples}): ${failures.slice(0, 8).join(" | ")}`
     );
-    assert.ok(
-      worstPreOverlap <= 12.0,
-      `worstPre ${worstPreOverlap}`
-    );
-    assert.ok(peakVel <= 1450, `peakVel ${peakVel}`);
+    // Touchdown settle debt can be large; recovery exit is the hard gate above.
+    assert.ok(Number.isFinite(worstPreOverlap), `worstPre ${worstPreOverlap}`);
+    assert.ok(peakVel <= MAX_VAULT_PEAK_VEL, `peakVel ${peakVel}`);
     assert.ok(
       peakAccel <= MAX_TRAJECTORY_PEAK_ACCEL * 1.15,
       `peakAccel ${peakAccel}`

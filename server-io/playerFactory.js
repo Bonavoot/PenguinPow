@@ -333,6 +333,21 @@ function createInitialPlayerState(overrides = {}) {
     ropeJumpOverlapIncreased: false,
     ropeJumpBudgetException: false,
     ropeJumpBudgetExceptionClass: null,
+    // High-vault move-identity diagnostics (V2)
+    ropeJumpVaultPreset: null,
+    ropeJumpVaultApexHeight: 0,
+    ropeJumpEndpointCorrectionCap: 0,
+    ropeJumpEndpointCorrectionPx: 0,
+    ropeJumpEndpointCorrectionCapped: false,
+    ropeJumpSettleAllowance: 0,
+    ropeJumpLandingContactDist: 0,
+    ropeJumpGroundedContactDist: 0,
+    ropeJumpPredictedSettleDebt: 0,
+    ropeJumpActualSettleDebt: 0,
+    ropeJumpAuthoredEndX: 0,
+    ropeJumpDesiredEndX: 0,
+    ropeJumpCrossoverDecisionT: -1,
+    ropeJumpVertVel: 0,
 
     // === Flap charges (ride on FLAP-armed slide-jump; standalone liftoff removed) ===
     isFlapping: false, // legacy — always false; cleared for safety
@@ -407,6 +422,7 @@ function createInitialPlayerState(overrides = {}) {
     isAttemptingPull: false,
     isBeingPullReversaled: false,
     pullReversalPullerId: null,
+    pullFacingDirection: null, // destination facing lock for active pull yank
     isBoundaryPullSwap: false,
     isGrabSeparating: false,
     isGrabBellyFlopping: false,

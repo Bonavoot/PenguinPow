@@ -314,22 +314,26 @@ export function renderCombatFidelityOverlay(state) {
           jumper.ropeJumpBudgetExceptionClass ?? diag?.budgetExceptionClass,
       }
     : null;
+  const phase = j?.ropeJumpPhase;
+  const startupVuln = phase === "startup";
+  const airProt = phase === "active";
+  const landVuln = phase === "landing";
   const landingLines = j
     ? [
-        `path=${j.ropeJumpLandingPath || "—"} phase=${j.ropeJumpPhase} traj=${j.ropeJumpTrajectoryType || "—"}`,
-        `class=${j.ropeJumpDecisionClass || "—"} reason=${j.ropeJumpFallbackReason || "—"}`,
-        `plan=${j.ropeJumpPlanningState || diag?.planningState || "—"} intent=${j.ropeJumpIntentClass || diag?.intentClass || "—"} (${j.ropeJumpIntentReason || diag?.intentReason || j.ropeJumpSideLockReason || "—"})`,
-        `raw=${fmt(j.ropeJumpRawTargetX)} resolved=${fmt(j.ropeJumpResolvedTargetX)}`,
+        `path=${j.ropeJumpLandingPath || "—"} phase=${phase} traj=${j.ropeJumpTrajectoryType || diag?.trajectoryType || "—"} preset=${j.ropeJumpVaultPreset || diag?.vaultPreset || "—"}`,
+        `vuln: start=${startupVuln} airProt=${airProt} land=${landVuln} | apexH=${fmt(j.ropeJumpVaultApexHeight ?? diag?.apexHeight)} decisionT=${fmt(j.ropeJumpCrossoverDecisionT ?? diag?.crossoverDecisionT, 3)}`,
+        `curve=${j.ropeJumpCurveModel || diag?.curveModel || "—"} apexClass=${j.ropeJumpApexCurveClass || diag?.apexCurveClass || "—"} h@apex=${fmt(j.ropeJumpHorizFracAtApex ?? diag?.horizFracAtApex, 2)}`,
+        `class=${j.ropeJumpDecisionClass || diag?.decisionClass || "—"} reason=${j.ropeJumpIntentReason || diag?.intentReason || j.ropeJumpSideLockReason || "—"}`,
+        `plan=${j.ropeJumpPlanningState || diag?.planningState || "—"} intent=${j.ropeJumpIntentClass || diag?.intentClass || "—"} lockedSide=${sideLabel(j.ropeJumpResolvedSide ?? diag?.resolvedSide)}`,
+        `raw=${fmt(j.ropeJumpRawTargetX)} authoredEnd=${fmt(j.ropeJumpAuthoredEndX ?? diag?.authoredEndX)} desired=${fmt(j.ropeJumpDesiredEndX ?? diag?.desiredEndX)} resolved=${fmt(j.ropeJumpResolvedTargetX)}`,
         `commitX=${fmt(j.ropeJumpLandingCommitX)} commitT=${fmt(j.ropeJumpLandingCommitT, 3)} committed=${!!j.ropeJumpLandingCommitted}`,
-        `prefSide=${sideLabel(j.ropeJumpPreferredSide)} resolvedSide=${sideLabel(j.ropeJumpResolvedSide)}`,
-        `conflictT=${fmt(j.ropeJumpFirstRawConflictT, 3)} noReturn=${fmt(j.ropeJumpNoReturnDeadlineT, 3)} beforeDeadline=${j.ropeJumpConflictBeforeDeadline ?? "—"}`,
-        `late=${!!j.ropeJumpLateIntrusion} (${j.ropeJumpLateIntrusionClass || "—"})`,
-        `settle=${j.ropeJumpSettleState || diag?.settleState || "—"} sidePolicy=${j.ropeJumpSidePolicy || diag?.sidePolicy || "—"}`,
-        `budgetEx=${!!(j.ropeJumpBudgetException ?? diag?.budgetException)} (${j.ropeJumpBudgetExceptionClass || diag?.budgetExceptionClass || "—"})`,
-        `minDist=${fmt(j.ropeJumpMinDistance ?? minDist)} centerDist=${fmt(j.ropeJumpCenterDistance ?? gap)}`,
-        `overlap=${fmt(j.ropeJumpOverlap ?? overlap)} safetyCorr=${fmt(j.ropeJumpSafetyCorrectionPx)} ticks=${j.ropeJumpSafetyCorrectionTicks ?? "—"}`,
-        `vel=${fmt(j.ropeJumpHorizVel)} rawVel=${fmt(j.ropeJumpRawExpectedVel)} peakVel=${fmt(j.ropeJumpPeakVel)} rev=${!!j.ropeJumpReversalDetected}`,
-        `preTouch=${fmt(j.ropeJumpPreTouchdownX)} touch=${fmt(j.ropeJumpTouchdownX)} fallback=${!!j.ropeJumpUsedFallback}`,
+        `corr=${fmt(j.ropeJumpEndpointCorrectionPx ?? diag?.endpointCorrectionPx)} cap=${fmt(j.ropeJumpEndpointCorrectionCap ?? diag?.endpointCorrectionCap)} capped=${!!(j.ropeJumpEndpointCorrectionCapped ?? diag?.endpointCorrectionCapped)}`,
+        `landContact=${fmt(j.ropeJumpLandingContactDist ?? diag?.landingContactDist)} grounded=${fmt(j.ropeJumpGroundedContactDist ?? diag?.groundedContactDist ?? j.ropeJumpMinDistance)} allow=${fmt(j.ropeJumpSettleAllowance ?? diag?.settleAllowance)}`,
+        `predDebt=${fmt(j.ropeJumpPredictedSettleDebt ?? diag?.predictedSettleDebt)} actualDebt=${fmt(j.ropeJumpActualSettleDebt ?? diag?.actualSettleDebt)} settle=${j.ropeJumpSettleState || diag?.settleState || "—"}`,
+        `late=${!!j.ropeJumpLateIntrusion} (${j.ropeJumpLateIntrusionClass || "—"}) budgetEx=${!!(j.ropeJumpBudgetException ?? diag?.budgetException)}`,
+        `hVel=${fmt(j.ropeJumpHorizVel)} vVel=${fmt(j.ropeJumpVertVel ?? diag?.vertVel)} hAcc=${fmt(j.ropeJumpHorizAccel ?? diag?.horizAccel)} vAcc=${fmt(j.ropeJumpVertAccel ?? diag?.vertAccel)}`,
+        `hPct=${fmt(j.ropeJumpHorizTravelPct ?? diag?.horizTravelPct, 1)} authoredHPct=${fmt(j.ropeJumpAuthoredHorizPct ?? diag?.authoredHorizPct, 1)} peakVel=${fmt(j.ropeJumpPeakVel)} rev=${!!j.ropeJumpReversalDetected}`,
+        `y=${fmt(j.y)} preTouch=${fmt(j.ropeJumpPreTouchdownX)} touch=${fmt(j.ropeJumpTouchdownX)} overlap=${fmt(j.ropeJumpOverlap ?? overlap)}`,
       ].join("<br/>")
     : "ropeJump: idle";
 

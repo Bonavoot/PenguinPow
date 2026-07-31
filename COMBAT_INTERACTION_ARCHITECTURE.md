@@ -16,7 +16,7 @@ Current-state map of ownership and pipelines. Proposed future boundaries are lab
 | Ground pushbox | Server | `server-io/gameFunctions.js` (`arePlayersColliding`, `adjustPlayerPositions`) |
 | Movement / ice / knockback integrate | Server | `server-io/index.js` movement block |
 | Aerial verbs | Server | `server-io/index.js` (rope jump, slide jump / FLAP), `socketHandlers.js` start triggers |
-| Aerial landing resolve (Phase A/A.1/A.2/A.3/A.3.1/A.3.2) | Server | `server-io/landingResolution.js`, `landingFlags.js`, `ropeJumpStart.js`, `pushboxGeometry.js` (rope jump V2 only) |
+| Aerial landing resolve + rope-jump vault identity | Server | `server-io/landingResolution.js`, `ropeJumpVault.js`, `landingFlags.js`, `ropeJumpStart.js`, `pushboxGeometry.js` (rope jump V2 only) |
 | Grab / clinch | Server | `server-io/grabActionSystem.js`, `grabMechanics.js`, `combatHelpers.js` |
 | Facing | Server | `server-io/facingSystem.js` |
 | Projectiles | Server | `server-io/projectileUpdates.js` |
@@ -102,9 +102,9 @@ player_hit event
 ### Rope jump
 `startup → active (pass-through arc to fixed/raw targetX) → landing (pushbox returns, 18px/tick sep) → idle`
 
-**Phase A/A.1/A.2/A.3/A.3.1/A.3.2 (flagged):** When `ROPE_JUMP_LANDING_V2` is on, raw-clear is provisional; `near`/`cross` lock once on pre-commit conflict (A.3); endpoint refines on that side until commit; remaining arc uses Hermite / brake; late-intrusion residual is settled across landing recovery with monotonic separation and recovery-exit stability (A.3.1); clear-at-touchdown remains collision-monitored so recovery walk-ins cannot accumulate into a release snap (A.3.2). Flag off = legacy fixed target + post-land 18px/tick. See `AERIAL_LANDING_PHASE_A3_2.md`. Landing diagnostics are debug-net only — not on the production delta wire.
+**Phase A…A.3.2 + high-vault identity (approved, default ON):** Rope-jump airborne path is an authored high vault with one apex crossover decision and capped endpoint correction (`ropeJumpVault.js` / `ROPE_JUMP_MOVE_IDENTITY_V2.md`, preset `reference_contact_9`). Landing residual and recovery re-intrusion remain A.3.2 settle-owned. Explicit `ROPE_JUMP_LANDING_V2=0` = legacy fixed target + post-land 18px/tick. Diagnostics debug-net only. Slide jump / FLAP unchanged.
 
-**Production tick order (landing recovery):** shared `adjustPlayerPositions` runs in the early pair block; rope-jump recovery clear runs later in the per-player loop; ice movement runs after that. Release-tick debt therefore appears on the first grounded pushbox after clear unless recovery monitoring resolves contact continuously (A.3.2).
+**Production tick order (landing recovery):** shared `adjustPlayerPositions` runs in the early pair block; rope-jump recovery clear runs later in the per-player loop; ice movement runs after that.
 
 ### Slide jump / FLAP
 `takeoff → flight (pass-through; descending can body-slam) → landing → idle`

@@ -148,8 +148,10 @@ describe("rope-jump production integration wiring", () => {
     assert.ok(DELTA_TRACKED_PROPS.includes("ropeJumpPhase"));
   });
 
-  it("V2 remains disabled by default", () => {
-    assert.equal(isRopeJumpLandingV2Enabled(), false);
+  it("V2 is enabled by default (approved)", () => {
+    if (!process.env.ROPE_JUMP_LANDING_V2) {
+      assert.equal(isRopeJumpLandingV2Enabled(), true);
+    }
   });
 
   it("active stepping after startRopeJump reaches landing via stepRopeJumpActive", () => {

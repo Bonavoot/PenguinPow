@@ -80,8 +80,10 @@ function assertOrdinaryContactBudget(trace, label, rate) {
 }
 
 describe("Phase A.3.2 recovery re-intrusion", () => {
-  it("V2 remains disabled by default", () => {
-    assert.equal(ROPE_JUMP_LANDING_V2, false);
+  it("V2 is enabled by default (approved); legacy still opt-out", () => {
+    if (!process.env.ROPE_JUMP_LANDING_V2) {
+      assert.equal(ROPE_JUMP_LANDING_V2, true);
+    }
   });
 
   it("Case 1 — clear touchdown, full-speed recovery intrusion (left)", () => {
@@ -509,7 +511,9 @@ describe("Phase A.3.2 recovery re-intrusion", () => {
 describe("Phase A.3.2 recovery-phase dynamic scan", () => {
   const sizes = [0.7, 0.85, 1.0];
   const rates = [-3.75, -3, -2, -1, 0, 1, 2, 3, 3.75];
-  const startOpponentsLeft = [520, 540, 560, 580, 600];
+  // Clear-touchdown band for all size pairs under vault identity (1.0/1.0
+  // first clears ≈568). Cross-with-debt landings are covered by A.1/A.3.
+  const startOpponentsLeft = [580, 600, 620, 640, 660];
 
   function profilesFor(rate) {
     return [

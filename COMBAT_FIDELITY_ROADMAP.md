@@ -112,18 +112,19 @@ Ground separation stable; charged/palm regression tests green.
 
 ## Phase 3 — Aerial movement & landing *(highest player-facing fidelity gap)*
 
-### Phase 3A — Rope jump only *(implemented 2026-07-30…31, default OFF)*
+### Phase 3A — Rope jump only *(approved 2026-07-31, default ON)*
 
 See [`AERIAL_LANDING_PHASE_A.md`](./AERIAL_LANDING_PHASE_A.md), [`AERIAL_LANDING_PHASE_A1.md`](./AERIAL_LANDING_PHASE_A1.md), [`AERIAL_LANDING_PHASE_A2.md`](./AERIAL_LANDING_PHASE_A2.md), [`AERIAL_LANDING_PHASE_A3.md`](./AERIAL_LANDING_PHASE_A3.md), [`AERIAL_LANDING_PHASE_A3_1.md`](./AERIAL_LANDING_PHASE_A3_1.md), [`AERIAL_LANDING_PHASE_A3_2.md`](./AERIAL_LANDING_PHASE_A3_2.md).
 
-- Pure `landingResolution.js` + `ROPE_JUMP_LANDING_V2` flag (default **false**)
+- Pure `landingResolution.js` + `ROPE_JUMP_LANDING_V2` flag (default **true**; legacy via `=0`)
 - A.1: Hermite/brake trajectory + residual-aware fallback (not visually approved — decision cliffs remained)
 - A.2: stable side intent + continuous commit + same-side endpoint continuity; fine 0.25px scans
 - A.3: provisional raw-clear + pre-commit dynamic conflict replan; event-level safety budgets; dynamic movement scan
 - Legacy path preserved; 18px/tick retained as late-intrusion / settle per-tick cap (A.3.1 settles residual across recovery; recovery-exit ≈0)
 - A.3.2: recovery collision monitoring + re-intrusion settle; no sticky clear exemption; recovery-movement scan
-- Diagnostics debug-net only; `server-io/test/landing/` suite including A.2/A.3/A.3.1/A.3.2 scans
-- **Stop:** do not enable by default until playtest; do not integrate slide/FLAP here
+- High-vault identity **approved**: `reference_contact_9` (156 / 75% / allow 9 / cap 40); rounded polish rejected — see `ROPE_JUMP_V2_POLISH_TUNING.md`
+- Diagnostics debug-net only; `server-io/test/landing/` suite including A.2/A.3/A.3.1/A.3.2 + identity/defaults scans
+- **Stop:** no further rope-jump tuning currently authorized; do not integrate slide/FLAP here
 
 ### Phase 3B — Slide jump / FLAP *(not started)*
 
@@ -156,7 +157,7 @@ Phase 2 exemption clarity; landing footprint from Phase 1 metadata (or temporary
 - Deterministic clinch harness style scenarios for landing
 
 ### Rollback
-Feature-flag landing probe; restore fixed `ropeJumpTargetX` + 18px cap path (`ROPE_JUMP_LANDING_V2=0`).
+Emergency rollback: restore fixed `ropeJumpTargetX` + 18px cap path (`ROPE_JUMP_LANDING_V2=0`).
 
 ### Stop when
 Playtest confirms no visible land-inside-then-correct on reference scenarios; then consider default-on for rope V2 before 3B.
@@ -330,6 +331,6 @@ Steam-release fidelity bar signed off for interaction (not particle count).
 
 ## Recommended next implementation phase
 
-**Phase 3A + A.1 + A.2 + A.3 + A.3.1 + A.3.2 are code-complete behind a flag (still default OFF). Not manually playtest-approved.** Next conversation should be: (1) playtest rope V2 (A.3.2 matrix, including recovery walk-in + late-intrusion settle + budget-exception far-cross) and decide default-on, **or** (2) Phase 3B slide-jump/FLAP landing using the same solver, **or** (3) low-risk Phase 2 hygiene (CPU boundary + exemption registry).
+**Phase 3A + A.1–A.3.2 + high-vault move identity are manually approved and default ON** (`reference_contact_9`). Rounded polish rejected. No further rope-jump tuning currently authorized. Next conversation should be: (1) Phase 3B slide-jump/FLAP landing, **or** (2) Phase 2 hygiene — only after explicit request.
 
 Do **not** start Phase 4 tip standardization before landing/pushbox ownership is clear — otherwise tip parks will keep fighting aerial correction snaps.

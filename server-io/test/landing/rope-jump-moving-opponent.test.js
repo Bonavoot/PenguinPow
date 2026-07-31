@@ -206,10 +206,18 @@ describe("rope-jump landing — moving opponent", () => {
       jumpDirection: 1,
     });
 
-    // Resolver itself never moves defender; pushbox safety might if overlap remains.
-    // With V2 clear land, opponent should stay put.
-    assert.ok(trace.touchdown.overlap <= 1e-6);
+    // Anchored defender share is 0 — settle moves the jumper only.
+    assert.ok(trace.commit);
     assert.equal(opponent.x, oppStart);
+    if (trace.settleTicks && trace.settleTicks.length) {
+      for (const s of trace.settleTicks) {
+        assert.ok(
+          Math.abs(s.opponentDelta) < 1e-9,
+          `anchored opp moved ${s.opponentDelta}`
+        );
+      }
+    }
+    assert.ok(trace.postRecovery && trace.postRecovery.withinTolerance);
   });
 
   it("opponent near map boundary uses fallback without NaN", () => {

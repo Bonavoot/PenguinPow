@@ -1282,6 +1282,7 @@ function clearAllActionStates(player) {
   player.isAttemptingPull = false;
   player.isBeingPullReversaled = false;
   player.pullReversalPullerId = null;
+  player.pullFacingDirection = null;
   player.isGrabSeparating = false;
   player.isGrabBellyFlopping = false;
   player.isBeingGrabBellyFlopped = false;

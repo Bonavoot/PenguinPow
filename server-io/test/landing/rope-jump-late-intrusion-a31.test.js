@@ -549,7 +549,9 @@ describe("Phase A.3.1 late-intrusion + recovery-exit", () => {
     }
   });
 
-  it("exact full-speed brake profile — budget exception classified honestly", () => {
+  it("exact full-speed brake profile — vault caps correction, peak vel reduced", () => {
+    const { getVaultProfile } = require("../../ropeJumpVault");
+    const vault = getVaultProfile();
     const jumper = makeFighter({ id: "j", x: 340, sizeMultiplier: 0.85 });
     const opponent = makeFighter({
       id: "o",
@@ -559,6 +561,7 @@ describe("Phase A.3.1 late-intrusion + recovery-exit", () => {
     });
     const ctrl = createIceMotionController(-ICE_MAX_SPEED);
     let tick = 0;
+    let corrAtCommit = null;
     const trace = simulateRopeJump(jumper, opponent, {
       useV2: true,
       jumpDirection: 1,
@@ -567,18 +570,36 @@ describe("Phase A.3.1 late-intrusion + recovery-exit", () => {
         if (tick < 15) ctrl.setVel(-ICE_MAX_SPEED);
         else ctrl.brake();
         ctrl.apply(opp);
+        if (jumper.ropeJumpLandingCommitted && corrAtCommit == null) {
+          corrAtCommit = {
+            mag: jumper.ropeJumpEndpointCorrectionPx,
+            capped: jumper.ropeJumpEndpointCorrectionCapped,
+            cap: jumper.ropeJumpEndpointCorrectionCap,
+            end: jumper.ropeJumpResolvedTargetX,
+            ic: jumper.ropeJumpIntentClass,
+          };
+        }
       },
     });
     assert.ok(trace.commit);
-    assert.ok(Math.abs(trace.commit.resolvedTargetX - 615.09) < 1.0);
-    assert.ok(trace.peakVel > MAX_TRAJECTORY_PEAK_VEL);
-    assert.ok(trace.peakVel < 1600);
-    // Must not silently claim withinBudget when feasibility says otherwise.
-    assert.equal(trace.budgetException, true);
-    assert.equal(trace.budgetExceptionClass, BUDGET_EXCEPTION_DYNAMIC_COMMIT);
-    assert.equal(trace.commit.feasibility.withinBudget, false);
-    assert.equal(trace.commit.feasibility.withinPlannerBudget, false);
-    assert.ok(trace.touchdown.overlap <= LANDING_SETTLE_OVERLAP_EPS_PX + 1e-6);
+    assert.equal(trace.commit.trajectoryType, "vault_hermite");
+    // Legacy far-cross hit ~1468 px/s / endpoint ~615; vault stays slower + capped.
+    assert.ok(
+      trace.peakVel < MAX_TRAJECTORY_PEAK_VEL,
+      `peakVel ${trace.peakVel} should be under ordinary Hermite budget`
+    );
+    assert.ok(trace.peakVel < 900, `peakVel ${trace.peakVel}`);
+    assert.ok(corrAtCommit && corrAtCommit.cap === vault.endpointCorrectionCapPx);
+    assert.ok(
+      corrAtCommit.mag <=
+        vault.endpointCorrectionCapPx + vault.crossMinFarPadPx + 80,
+      `corr ${corrAtCommit.mag}`
+    );
+    if (corrAtCommit.mag > vault.endpointCorrectionCapPx + 1e-6) {
+      assert.equal(corrAtCommit.capped, true);
+    }
+    // No longer a silent/exception far-cross budget blowout.
+    assert.notEqual(trace.budgetExceptionClass, BUDGET_EXCEPTION_DYNAMIC_COMMIT);
     assert.ok(!trace.reversalDetected);
     assert.ok(!trace.overlapEverIncreased);
     if (trace.postRecovery) {
@@ -606,7 +627,8 @@ describe("Phase A.3.1 late-intrusion + recovery-exit", () => {
         ctrlR.apply(opp);
       },
     });
-    assert.ok(mirror.budgetException);
+    assert.ok(mirror.commit);
+    assert.ok(mirror.peakVel < 900);
     assert.ok(
       Math.abs(trace.commit.resolvedTargetX + mirror.commit.resolvedTargetX - 2 * mid) < 3
     );
