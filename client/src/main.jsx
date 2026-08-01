@@ -21,11 +21,17 @@ import {
   ensurePerfRecorder,
   setupPerfShortcut,
 } from "./utils/perf/PerfRecorder";
+import { initGlobalVolumeFromSettings } from "./components/Settings.jsx";
+import { installAudioTraceGlobal } from "./combatAudio/index.js";
 
 // Phase 0: opt-in performance recorder (?perf=1 or localStorage pumo_perf=1).
 // No-op when disabled. Overlay toggle: Ctrl+Shift+P.
 ensurePerfRecorder();
 setupPerfShortcut();
+
+// Apply saved SFX volume before first cue (preserves mute / non-default).
+initGlobalVolumeFromSettings();
+installAudioTraceGlobal();
 
 // Warm faces in the background — do not block first paint
 if (document.fonts?.load) {

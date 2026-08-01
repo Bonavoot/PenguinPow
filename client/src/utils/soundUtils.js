@@ -82,50 +82,50 @@ function stopVolumeSyncInterval() {
 }
 
 const playButtonHoverSound = () => {
-  playBuffer(buttonHoverSound, 0.06 * getGlobalVolume());
+  playBuffer(buttonHoverSound, 0.06);
 };
 
 const playButtonPressSound = () => {
-  playBuffer(buttonPressSound, 0.06 * getGlobalVolume());
+  playBuffer(buttonPressSound, 0.06);
 };
 
 const playButtonPressSound2 = () => {
-  playBuffer(buttonPressSound2, 0.12 * getGlobalVolume());
+  playBuffer(buttonPressSound2, 0.12);
 };
 
 const playPowerUpSelectionHoverSound = () => {
-  playBuffer(powerUpSelectionHoverSound, 0.06 * getGlobalVolume());
+  playBuffer(powerUpSelectionHoverSound, 0.06);
 };
 
 const playPowerUpSelectionPressSound = () => {
-  playBuffer(powerUpSelectionPressSound, 0.09 * getGlobalVolume());
+  playBuffer(powerUpSelectionPressSound, 0.09);
 };
 
 // ── BASHO results-screen ceremony stingers (spec §5.8 / Phase 9) ──
 // Reused combat/menu cues, dialed to tasteful menu volumes. BASHO-only:
 // nothing here is wired into PvP / VS CPU flows.
 const playBashoGong = () => {
-  playBuffer(bellSound, 0.03 * getGlobalVolume());
+  playBuffer(bellSound, 0.03);
 };
 
 const playBashoPurseTick = () => {
-  playBuffer(powerUpSelectionPressSound, 0.05 * getGlobalVolume());
+  playBuffer(powerUpSelectionPressSound, 0.05);
 };
 
 const playBashoFanfare = () => {
-  playBuffer(roundVictorySound, 0.05 * getGlobalVolume());
+  playBuffer(roundVictorySound, 0.05);
 };
 
 const playBashoSomber = () => {
-  playBuffer(roundDefeatSound, 0.2 * getGlobalVolume());
+  playBuffer(roundDefeatSound, 0.2);
 };
 
 const playBashoApplause = () => {
-  playBuffer(clapSound, 0.3 * getGlobalVolume());
+  playBuffer(clapSound, 0.3);
 };
 
 const playBashoYusho = () => {
-  playBuffer(winnerSound, 0.3 * getGlobalVolume());
+  playBuffer(winnerSound, 0.3);
 };
 
 export {

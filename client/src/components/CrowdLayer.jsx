@@ -44,7 +44,6 @@ import crowdSalarymanSideCheering2 from "../assets/crowd-salaryman-side-cheering
 import CROWD_POSITIONS from "./crowdPositionsData";
 import winnerSound from "../sounds/winner-sound.ogg";
 import { playBuffer, preloadSound } from "../utils/audioEngine";
-import { getGlobalVolume } from "./Settings";
 import { bashoCrowdFill } from "../config/bashoConfig";
 
 // Editor (+ dohyo-style.webp) only loads when opened — keeps ~6MB style out of
@@ -933,7 +932,7 @@ const CrowdLayer = ({ crowdEvent = null, bashoRank = null }) => {
       }, CHEER_DURATION_MS);
 
       const pitch = CHEER_PITCH[crowdEvent.intensity] || 1.0;
-      playBuffer(winnerSound, volume * getGlobalVolume(), CHEER_DURATION_MS, pitch);
+      playBuffer(winnerSound, volume, CHEER_DURATION_MS, pitch);
     }
   }, [crowdEvent]);
 

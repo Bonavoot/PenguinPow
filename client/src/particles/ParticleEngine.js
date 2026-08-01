@@ -5155,6 +5155,84 @@ const PRESETS = {
     }
   },
 
+  // ── MATADOR BREAK ───────────────────────────────────────────────────
+  // Smaller/shorter shard burst than grabArmorBreak — same family ("defensive
+  // structure shattered") without reading as full armor destruction.
+  matadorBreak(engine, { x, y, facing }) {
+    const dir = facing || 1;
+    const cx = x;
+    const cy = GAME_H - y;
+    const front = (cfg) => engine.spawn({ ...cfg, aboveFighters: true });
+
+    front({
+      x: cx, y: cy,
+      vx: 0, vy: 0, gravity: 0, drag: 1,
+      size: 14,
+      sizeEnd: 40,
+      alpha: 0.9,
+      alphaEnd: 0,
+      rotation: 0, rotationSpeed: 0,
+      ease: "outExpo", easeAlpha: "outCubic",
+      maxLife: 0.11,
+      texture: engine.textures.circle,
+      blendMode: "lighter",
+    });
+
+    const shardCount = 7;
+    for (let i = 0; i < shardCount; i++) {
+      const angle = (i / shardCount) * Math.PI * 2 + rand(-0.25, 0.25);
+      const spd = rand(160, 300);
+      const shardTex = pick([
+        engine.textures.glassShard1,
+        engine.textures.glassShard2,
+        engine.textures.glassShard3,
+        engine.textures.glassShard4,
+      ]);
+      engine.spawn({
+        x: cx + Math.cos(angle) * 6,
+        y: cy + Math.sin(angle) * 6,
+        vx: Math.cos(angle) * spd + dir * rand(10, 30),
+        vy: Math.sin(angle) * spd * 0.8 - rand(20, 60),
+        gravity: 620,
+        drag: 0.95,
+        size: rand(14, 26),
+        sizeEnd: rand(8, 14),
+        alpha: rand(0.85, 1.0),
+        alphaEnd: 0,
+        rotation: angle,
+        rotationSpeed: rand(-8, 8),
+        ease: "linear",
+        easeAlpha: "inCubic",
+        maxLife: rand(0.28, 0.42),
+        texture: shardTex,
+        blendMode: "lighter",
+      });
+    }
+
+    for (let i = 0; i < 6; i++) {
+      const angle = rand(0, Math.PI * 2);
+      const spd = rand(180, 340);
+      engine.spawn({
+        x: cx + rand(-4, 4),
+        y: cy + rand(-4, 4),
+        vx: Math.cos(angle) * spd,
+        vy: Math.sin(angle) * spd - rand(10, 30),
+        gravity: 560,
+        drag: 0.94,
+        size: rand(2, 4),
+        sizeEnd: 1,
+        alpha: rand(0.85, 1.0),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        rotationSpeed: 0,
+        maxLife: rand(0.14, 0.24),
+        texture: engine.textures.glassFleck,
+        blendMode: "lighter",
+      });
+    }
+  },
+
   // ── GRAB ARMOR BREAK ────────────────────────────────────────────────
   // Charged attack shatters the armor — glass shards + flecks only (no smoke
   // rings; those fought the charged hit-spark sprite). Caller anchors at the

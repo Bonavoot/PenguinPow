@@ -74,8 +74,13 @@ import SumoHypeStamp from "./SumoHypeStamp";
 import PerfectBraceEffect from "./PerfectBraceEffect";
 import HitEffect from "./HitEffect";
 import RawParryEffect from "./RawParryEffect";
-import { getGlobalVolume } from "./Settings";
 import { playBuffer, createCrossfadeLoop } from "../utils/audioEngine";
+import {
+  CUE,
+  SWING_STARTUP_MS as COMBAT_SWING_STARTUP_MS,
+  combatAudioEnabled,
+  getCombatAudioRuntime,
+} from "../combatAudio";
 import SnowEffect from "./SnowEffect";
 import "./theme.css";
 import { SERVER_BROADCAST_HZ, DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY, isOutsideDohyo } from "../constants";
@@ -1025,7 +1030,17 @@ const GameFighter = ({
   // Client mirror of the server's attack startup durations (server-io/
   // constants.js: SLAP_STARTUP_MS etc.) — how long after execution start the
   // hitbox (and the visible swing) actually comes out.
-  const SWING_STARTUP_MS = { slap: 55, palm: 90, lowKick: 95, charged: 150 };
+  const SWING_STARTUP_MS = COMBAT_SWING_STARTUP_MS;
+
+  // Combat-audio V1 runtime (semantic cues). Legacy scheduleSwingSound path
+  // remains when the flag is off.
+  const combatAudioV1 = combatAudioEnabled();
+  const combatAudioRef = useRef(null);
+  if (combatAudioV1 && !combatAudioRef.current) {
+    combatAudioRef.current = getCombatAudioRuntime();
+  }
+  const chargedReleaseActionIdRef = useRef(null);
+  const prevChargingAttackRef = useRef(false);
 
   // Pending scheduled swing sounds (timer ids). Cancelled wholesale when this
   // fighter's attack is interrupted during startup (hit / grabbed / thrown /
@@ -1045,6 +1060,16 @@ const GameFighter = ({
   const cancelPendingSwingSounds = useCallback(() => {
     for (const id of pendingSwingSoundsRef.current) clearTimeout(id);
     pendingSwingSoundsRef.current.clear();
+    if (combatAudioRef.current?.predictor) {
+      combatAudioRef.current.predictor.clearProvisional("swing_cancel");
+    }
+    if (chargedReleaseActionIdRef.current && combatAudioRef.current?.orch) {
+      combatAudioRef.current.orch.cancelCombatAudioForAction(
+        chargedReleaseActionIdRef.current,
+        "swing_cancel"
+      );
+      chargedReleaseActionIdRef.current = null;
+    }
   }, []);
 
   // Swing-sound interruption: if this fighter's attack dies during startup
@@ -1342,15 +1367,23 @@ const GameFighter = ({
             // an interrupt during startup clears it (no phantom whoosh).
             {
               const panX = penguin.x;
-              scheduleSwingSound(SWING_STARTUP_MS.slap, () =>
-                playSound(
-                  pickRandomSound(slapWhiffSounds),
-                  0.02,
-                  null,
-                  1.0,
-                  xToPan(panX)
-                )
-              );
+              if (combatAudioV1 && combatAudioRef.current?.predictor) {
+                combatAudioRef.current.predictor.onStrikePress({
+                  keys: { mouse1: true },
+                  facing: penguin.facing,
+                  pan: xToPan(panX),
+                });
+              } else {
+                scheduleSwingSound(SWING_STARTUP_MS.slap, () =>
+                  playSound(
+                    pickRandomSound(slapWhiffSounds),
+                    0.02,
+                    null,
+                    1.0,
+                    xToPan(panX)
+                  )
+                );
+              }
             }
             predictedSwingSoundAtRef.current.slap =
               now + SWING_STARTUP_MS.slap;
@@ -1389,9 +1422,23 @@ const GameFighter = ({
             // startup); cancellable if the thrust dies in windup.
             {
               const panX = penguin.x;
-              scheduleSwingSound(SWING_STARTUP_MS.palm, () =>
-                playSound(palmThrustWhiffSound, 0.05, null, 1.0, xToPan(panX))
-              );
+              if (combatAudioV1 && combatAudioRef.current?.orch) {
+                combatAudioRef.current.orch.scheduleCombatCue(
+                  CUE.PALM_WHIFF,
+                  {
+                    actorId: player.id,
+                    actionId: `${player.id}:palm:${now}`,
+                    local: true,
+                    predicted: true,
+                    pan: xToPan(panX),
+                  },
+                  { playAt: now + SWING_STARTUP_MS.palm, reason: "palm_predict" }
+                );
+              } else {
+                scheduleSwingSound(SWING_STARTUP_MS.palm, () =>
+                  playSound(palmThrustWhiffSound, 0.05, null, 1.0, xToPan(panX))
+                );
+              }
             }
             predictedSwingSoundAtRef.current.attack =
               now + SWING_STARTUP_MS.palm;
@@ -1445,6 +1492,12 @@ const GameFighter = ({
               timestamp: now,
             };
             predictionChanged = true;
+            // Charge hold must never keep a provisional slap/palm whiff.
+            // This is the primary fix for "swoosh while holding charge".
+            cancelPendingSwingSounds();
+            if (combatAudioV1 && combatAudioRef.current?.predictor) {
+              combatAudioRef.current.predictor.onChargeStart();
+            }
           }
           break;
         case "charge_release":
@@ -1482,9 +1535,17 @@ const GameFighter = ({
             // the whoosh and the visible swing. Skipped while dodging — the
             // server holds the attack as pending until the dodge ends.
             if (!isDodging) {
-              scheduleSwingSound(SWING_STARTUP_MS.charged, () =>
-                playSound(attackSound, 0.05)
-              );
+              if (combatAudioV1 && combatAudioRef.current?.predictor) {
+                const rel = combatAudioRef.current.predictor.onChargeRelease({
+                  pan: xToPan(penguin.x),
+                  dodging: false,
+                });
+                chargedReleaseActionIdRef.current = rel?.actionId || null;
+              } else {
+                scheduleSwingSound(SWING_STARTUP_MS.charged, () =>
+                  playSound(attackSound, 0.05)
+                );
+              }
               predictedSwingSoundAtRef.current.attack =
                 now + SWING_STARTUP_MS.charged;
             }
@@ -1983,6 +2044,16 @@ const GameFighter = ({
     if (prediction.isChargingAttack && !penguin.isChargingAttack) {
       predictedState.current.isChargingAttack = false;
     }
+
+    // Authoritative charge hold — kill any provisional slap/palm whiff that
+    // was scheduled before the chord resolved (Mouse1-before-directions).
+    if (penguin.isChargingAttack && !prevChargingAttackRef.current) {
+      cancelPendingSwingSounds();
+      if (combatAudioV1 && combatAudioRef.current?.predictor) {
+        combatAudioRef.current.predictor.onAuthoritativeCharging();
+      }
+    }
+    prevChargingAttackRef.current = !!penguin.isChargingAttack;
 
     // Parrying: If server says no parrying, trust server
     if (prediction.isRawParrying && !penguin.isRawParrying) {
@@ -3081,7 +3152,7 @@ const GameFighter = ({
     if (!ownsMatchMusic || eeshiMusicRef.current) return;
     eeshiMusicRef.current = createCrossfadeLoop(
       eeshiMusic,
-      EESHI_MUSIC_VOL * getGlobalVolume(),
+      EESHI_MUSIC_VOL,
       EESHI_LOOP_CROSSFADE,
       withFadeIn ? EESHI_ENTRY_FADE : 0
     );
@@ -3129,7 +3200,7 @@ const GameFighter = ({
     const track = battleMusicTracks[trackIndex];
     const loop = createCrossfadeLoop(
       track,
-      BATTLE_MUSIC_VOL * getGlobalVolume(),
+      BATTLE_MUSIC_VOL,
       BATTLE_LOOP_CROSSFADE,
       BATTLE_ENTRY_FADE
     );
@@ -3322,6 +3393,15 @@ const GameFighter = ({
                 "iceSlideRedirect",
                 movementSmokeEmitArgs(smoke)
               );
+              // Same accepted/deduped seam as redirect smoke — not raw Shift.
+              if (combatAudioV1 && combatAudioRef.current?.orch) {
+                combatAudioRef.current.orch.playCombatCue(CUE.SLIDE_REDIRECT, {
+                  eventId: smoke.eventId || `slide_redir:${player.id}:${iceSlideRedirectSeqRef.current}`,
+                  actorId: player.id,
+                  authoritative: true,
+                  pan: xToPan(worldX),
+                });
+              }
             }
           }
         }
@@ -3637,7 +3717,10 @@ const GameFighter = ({
       handleFighterAction(data);
     });
 
+    // Global match event — index 0 owns FX/audio once per client (both
+    // GameFighter instances previously double-fired this listener).
     const handleSlapParry = (data) => {
+      if (index !== 0) return;
       if (
         data &&
         typeof data.x === "number" &&
@@ -3647,19 +3730,19 @@ const GameFighter = ({
           x: data.x + SPRITE_HALF_W,
           y: HIT_EFFECT_Y,
         });
-        playSound(slapParrySound, 0.01);
-        // TEST: the new sprite-sheet SlapParryEffect (white grab-break burst) is
-        // the sole slap-parry visual now — the old particle clash burst is
-        // disabled so we can evaluate the sprite on its own.
-        // if (index === 0) {
-        //   emitParticles("slapParryClash", {
-        //     x: data.x + SPRITE_HALF_W,
-        //     y: HIT_EFFECT_Y,
-        //     p1x: data.p1x,
-        //     p2x: data.p2x,
-        //     intensity: data.intensity || 1,
-        //   });
-        // }
+        const eventId =
+          data.eventId ||
+          data.parryId ||
+          `slap_parry:${Math.round(data.x)}:${Math.round(data.y)}:${data.timestamp || 0}`;
+        if (combatAudioV1 && combatAudioRef.current?.orch) {
+          combatAudioRef.current.orch.playCombatCue(CUE.SLAP_PARRY, {
+            eventId,
+            authoritative: true,
+            pan: xToPan(data.x),
+          });
+        } else {
+          playSound(slapParrySound, 0.01);
+        }
       }
     };
     socket.on("slap_parry", handleSlapParry);
@@ -4025,6 +4108,29 @@ const GameFighter = ({
               counterId: `punish-${data.hitId || Date.now()}`,
               grabberPlayerNumber: data.attackerPlayerNumber || 1,
             });
+          }
+          // Matador Break — shatter accent once per authoritative gored hit.
+          // Distinct from grab-armor break (smaller particle preset + cropped glass).
+          if (data.isGored && combatAudioV1 && combatAudioRef.current?.orch) {
+            const breakEventId =
+              (data.hitId != null ? `matador_break:${data.hitId}` : null) ||
+              `matador_break:${data.victimId || "v"}:${data.timestamp || Date.now()}`;
+            const played = combatAudioRef.current.orch.playCombatCue(
+              CUE.MATADOR_BREAK,
+              {
+                eventId: breakEventId,
+                actorId: data.victimId || "victim",
+                authoritative: true,
+                pan: xToPan(typeof data.x === "number" ? data.x : 0),
+              }
+            );
+            if (played.played) {
+              emitParticles("matadorBreak", {
+                x: contactFxX(data),
+                y: HIT_EFFECT_Y,
+                facing: data.facing || 1,
+              });
+            }
           }
         }
 
@@ -4753,6 +4859,7 @@ const GameFighter = ({
         const pres = readCombatPresentation(data);
         if (pres && !claimPresentationEvent(pres.eventId)) return;
         if (data.perfectBrace) {
+          // Perfect Brace stays distinct — no ordinary RESISTED tech cue.
           setPerfectBraceStampPosition({
             braceId: data.failId || pres?.eventId || `perfect-brace-${Date.now()}`,
             playerNumber: data.playerNumber || 1,
@@ -4764,6 +4871,18 @@ const GameFighter = ({
           playerNumber: data.playerNumber || 1,
           calloutId: data.failId || pres?.eventId || `clinch-fail-${Date.now()}`,
         });
+        if (combatAudioV1 && combatAudioRef.current?.orch) {
+          const eventId =
+            pres?.eventId ||
+            data.failId ||
+            `clinch_throw_fail:${data.playerNumber || 0}:${data.timestamp || Date.now()}`;
+          combatAudioRef.current.orch.playCombatCue(CUE.CLINCH_THROW_RESISTED, {
+            eventId,
+            actorId: data.defenderId || data.playerId || `p${data.playerNumber || 1}`,
+            authoritative: true,
+            pan: xToPan(typeof data.x === "number" ? data.x : penguin.x),
+          });
+        }
       };
       socket.on("clinch_throw_fail", handleClinchThrowFail);
 
@@ -4928,6 +5047,10 @@ const GameFighter = ({
       clearPresentationEvents();
       clearPlacementDebug();
       clearPoseGeometryDebug();
+      cancelPendingSwingSounds();
+      if (combatAudioV1 && combatAudioRef.current?.orch) {
+        combatAudioRef.current.orch.clearCombatAudioForRound("game_reset");
+      }
       setBlockingEffectPosition(null);
       setGuardBlockSuccess(false);
       if (guardBlockSuccessTimeoutRef.current) {
@@ -5293,13 +5416,40 @@ const GameFighter = ({
         );
         const isPalm = penguin.isPalmThrust;
         const panX = penguin.x;
-        scheduleSwingSound(delay, () => {
-          if (isPalm) {
-            playSound(palmThrustWhiffSound, 0.05, null, 1.0, xToPan(panX));
-          } else {
-            playSound(attackSound, 0.05);
-          }
-        });
+        // Only reached when local prediction did not recently own the whoosh
+        // (PREDICTED_SOUND_SUPPRESS_MS gate above) — remote / buffered releases.
+        if (
+          combatAudioV1 &&
+          combatAudioRef.current?.orch &&
+          !isPalm &&
+          !penguin.isLowKick
+        ) {
+          const actionId = `${penguin.id || player.id}:charged_auth:${
+            penguin.attackStartTime || performance.now()
+          }`;
+          combatAudioRef.current.orch.scheduleCombatCue(
+            CUE.CHARGED_ATTACK_RELEASE,
+            {
+              actorId: penguin.id || player.id,
+              actionId,
+              eventId: `${penguin.id || player.id}:charged_swing:${
+                penguin.attackStartTime || 0
+              }`,
+              authoritative: true,
+              local: isLocalPlayer,
+              pan: xToPan(panX),
+            },
+            { delayMs: delay, reason: "auth_charged_startup" }
+          );
+        } else {
+          scheduleSwingSound(delay, () => {
+            if (isPalm) {
+              playSound(palmThrustWhiffSound, 0.05, null, 1.0, xToPan(panX));
+            } else {
+              playSound(attackSound, 0.05);
+            }
+          });
+        }
       }
     }
     // Update the last attack state
@@ -5994,11 +6144,13 @@ const GameFighter = ({
 
   // Rope jump — angled liftoff plume on takeoff, smoke puff on touchdown.
   const prevRopeJumpPhase = useRef(null);
+  const ropeJumpLaunchSeqRef = useRef(0);
   useEffect(() => {
     // Liftoff: entering the "active" (airborne) phase.
     if (prevRopeJumpPhase.current !== "active" && penguin.ropeJumpPhase === "active") {
+      const lx = interpolatedPositionRef.current.x || penguin.x;
       emitParticles("liftoffSmoke", {
-        x: interpolatedPositionRef.current.x || penguin.x,
+        x: lx,
         y: penguin.y,
         tilted: true,
         // facing's sign is opposite to the plume-tilt convention the flap uses
@@ -6006,6 +6158,18 @@ const GameFighter = ({
         dir: -(penguin.facing ?? 1),
         maxLife: 0.4, // rope jump plume plays a bit quicker than the flap's
       });
+      if (combatAudioV1 && combatAudioRef.current?.orch) {
+        ropeJumpLaunchSeqRef.current += 1;
+        const eventId = `${penguin.id || player.id}:ROPE_JUMP_LAUNCH:${ropeJumpLaunchSeqRef.current}`;
+        if (claimPresentationEvent(eventId)) {
+          combatAudioRef.current.orch.playCombatCue(CUE.ROPE_JUMP_LAUNCH, {
+            eventId,
+            actorId: penguin.id || player.id,
+            authoritative: true,
+            pan: xToPan(lx),
+          });
+        }
+      }
     }
     if (prevRopeJumpPhase.current === "active" && penguin.ropeJumpPhase === "landing") {
       emitParticles("throwLand", {
@@ -6066,6 +6230,7 @@ const GameFighter = ({
   // plume sits on sliding.png's crouch (pads sit above the img bottom gutter).
   const prevSlideJumpPhase = useRef(null);
   const oaTouchdownSeqRef = useRef(0);
+  const slideJumpLaunchSeqRef = useRef(0);
   useEffect(() => {
     const x = interpolatedPositionRef.current.x || penguin.x;
     const y = interpolatedPositionRef.current.y || penguin.y;
@@ -6082,6 +6247,18 @@ const GameFighter = ({
         dir: travelDir,
         lift: 16,
       });
+      if (combatAudioV1 && combatAudioRef.current?.orch) {
+        slideJumpLaunchSeqRef.current += 1;
+        const eventId = `${penguin.id || player.id}:SLIDE_JUMP_LAUNCH:${slideJumpLaunchSeqRef.current}`;
+        if (claimPresentationEvent(eventId)) {
+          combatAudioRef.current.orch.playCombatCue(CUE.SLIDE_JUMP_LAUNCH, {
+            eventId,
+            actorId: penguin.id || player.id,
+            authoritative: true,
+            pan: xToPan(x),
+          });
+        }
+      }
     }
 
     if (
@@ -6524,12 +6701,30 @@ const GameFighter = ({
   }, [penguin.isHit, penguin.id, clearPalmThrust]);
 
   useEffect(() => {
-    const STRAFE_VOL = 0.015 * getGlobalVolume();
+    // Authored loop level — master SFX gain carries user volume.
+    const STRAFE_VOL = 0.015;
     const FADE_MS = 0.08;
+    const stopStrafeHandle = (handle) => {
+      if (!handle) return;
+      if (typeof handle.stop === "function" && !handle.source) {
+        try {
+          handle.stop();
+        } catch (_) {
+          /* pending loop */
+        }
+        return;
+      }
+      try {
+        handle.source?.stop();
+      } catch (_) {
+        /* AudioNode may already be stopped */
+      }
+    };
     if (penguin.isStrafing) {
       if (!strafingSoundRef.current) {
-        const result = playBuffer(strafingSound, 0, null, 1.0, true);
-        if (result) {
+        // Request STRAFE_VOL so a pending (not-yet-decoded) loop does not start silent.
+        const result = playBuffer(strafingSound, STRAFE_VOL, null, 1.0, true);
+        if (result?.gainNode) {
           result.gainNode.gain.setValueAtTime(
             0,
             result.gainNode.context.currentTime
@@ -6538,27 +6733,28 @@ const GameFighter = ({
             STRAFE_VOL,
             result.gainNode.context.currentTime + FADE_MS
           );
+          strafingSoundRef.current = result;
+        } else if (result && typeof result.stop === "function") {
+          // Buffer still decoding — cancelable pending loop (no orphan after stop).
+          strafingSoundRef.current = result;
         }
-        strafingSoundRef.current = result;
       }
     } else if (strafingSoundRef.current) {
-      const { gainNode } = strafingSoundRef.current;
-      const ctx = gainNode.context;
-      gainNode.gain.setValueAtTime(gainNode.gain.value, ctx.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + FADE_MS);
       const ref = strafingSoundRef.current;
       strafingSoundRef.current = null;
-      setTimeout(() => {
-        try {
-          ref.source.stop();
-        } catch (_) { /* AudioNode may already be stopped */ }
-      }, FADE_MS * 1000 + 20);
+      if (ref.gainNode) {
+        const { gainNode } = ref;
+        const ctx = gainNode.context;
+        gainNode.gain.setValueAtTime(gainNode.gain.value, ctx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + FADE_MS);
+        setTimeout(() => stopStrafeHandle(ref), FADE_MS * 1000 + 20);
+      } else {
+        stopStrafeHandle(ref);
+      }
     }
     return () => {
       if (strafingSoundRef.current) {
-        try {
-          strafingSoundRef.current.source.stop();
-        } catch (_) { /* AudioNode may already be stopped */ }
+        stopStrafeHandle(strafingSoundRef.current);
         strafingSoundRef.current = null;
       }
     };
@@ -6594,7 +6790,7 @@ const GameFighter = ({
     const scheduleBeat = () => {
       if (!heartbeatActiveRef.current) return;
       const { rate, gap } = getBeatParams();
-      const result = playBuffer(heartbeatSound, BEAT_VOL * getGlobalVolume(), null, rate);
+      const result = playBuffer(heartbeatSound, BEAT_VOL, null, rate);
       const duration = (result?.source?.buffer?.duration ?? 0.4) / rate;
       const delay = (duration * 1000) + gap;
       heartbeatTimeoutRef.current = setTimeout(scheduleBeat, delay);

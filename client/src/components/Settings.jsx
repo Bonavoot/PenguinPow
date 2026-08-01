@@ -9,10 +9,50 @@ import {
   isPersistentCacheAvailable,
 } from "../utils/SpriteRecolorizer";
 import { clearHatCompositeCache } from "../utils/hatComposite";
+import { setMasterSfxGain } from "../utils/audioEngine";
+import {
+  BASE_VOLUME_MULTIPLIER,
+  DEFAULT_VOLUME_PERCENT,
+  parseVolumeSetting,
+  volumePercentToGain,
+} from "./volumeSettings";
 
-// Global volume state preserved across mounts so audio code outside this
-// component (see getGlobalVolume below) can read the user's last setting.
+// User scale 0–1 preserved across mounts. Buffer SFX route through the
+// master SFX gain (BASE_VOLUME_MULTIPLIER * globalVolume). HTMLAudio paths
+// that do not hit the Web Audio graph still multiply getGlobalVolume().
 let globalVolume = 1.0;
+let volumeInitStarted = false;
+
+function applyMasterFromUserScale() {
+  try {
+    setMasterSfxGain(globalVolume * BASE_VOLUME_MULTIPLIER);
+  } catch {
+    /* AudioContext may be unavailable in non-browser tests */
+  }
+}
+
+/**
+ * Load saved volume once at app startup (not only when Settings modal opens).
+ * Preserves explicit 0. Safe to call multiple times — only the first load runs.
+ */
+export function initGlobalVolumeFromSettings() {
+  if (volumeInitStarted) return;
+  volumeInitStarted = true;
+  applyMasterFromUserScale();
+  if (typeof window === "undefined" || !window.electron?.settings?.get) {
+    return;
+  }
+  window.electron.settings
+    .get()
+    .then((settings) => {
+      const pct = parseVolumeSetting(settings?.volume);
+      globalVolume = volumePercentToGain(pct);
+      applyMasterFromUserScale();
+    })
+    .catch((err) => {
+      console.error("Error loading audio volume settings:", err);
+    });
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // SETTINGS — snow palette refresh.
@@ -441,9 +481,10 @@ const Settings = ({ onClose }) => {
       if (window.electron && window.electron.settings) {
         try {
           const settings = await window.electron.settings.get();
-          setBrightness(settings.brightness || 100);
-          setContrast(settings.contrast || 100);
-          setVolume(settings.volume || 100);
+          setBrightness(settings.brightness ?? 100);
+          setContrast(settings.contrast ?? 100);
+          // Preserve saved 0 — never use truthy fallback (0 || 100 → 100).
+          setVolume(parseVolumeSetting(settings.volume));
           setDisplayMode(settings.displayMode || "fullscreen");
           setSelectedResolution({
             width: settings.windowWidth || 1920,
@@ -477,7 +518,8 @@ const Settings = ({ onClose }) => {
   }, [brightness, contrast]);
 
   useEffect(() => {
-    globalVolume = volume / 100;
+    globalVolume = volumePercentToGain(parseVolumeSetting(volume));
+    applyMasterFromUserScale();
   }, [volume]);
 
   const handleDisplayModeChange = async (newMode) => {
@@ -708,8 +750,13 @@ Settings.propTypes = {
   onClose: PropTypes.func.isRequired,
 };
 
-const BASE_VOLUME_MULTIPLIER = 2.5;
+export { BASE_VOLUME_MULTIPLIER, DEFAULT_VOLUME_PERCENT };
 
+/**
+ * Effective gain for non-master destinations (HTMLAudioElement, etc.).
+ * Buffer SFX should use authored volumes only — master SFX gain carries
+ * BASE_VOLUME_MULTIPLIER * userScale so live slider changes affect playing voices.
+ */
 export const getGlobalVolume = () => globalVolume * BASE_VOLUME_MULTIPLIER;
 
 export default Settings;

@@ -4,7 +4,6 @@ import styled, { keyframes, css } from "styled-components";
 import { FONT_DISPLAY, FONT_KANJI, FONT_BODY, FONT_UI, FONT_WEIGHT, TRACK, C, TEXT_SHADOW_UI } from "./menuTheme";
 import daySound from "../sounds/day-sound.ogg";
 import { playBuffer } from "../utils/audioEngine";
-import { getGlobalVolume } from "./Settings";
 import {
   playPowerUpSelectionHoverSound,
   playPowerUpSelectionPressSound,
@@ -972,7 +971,7 @@ function DayCard({
     if (playedRef.current) return;
     playedRef.current = true;
     try {
-      playBuffer(daySound, 0.18 * getGlobalVolume());
+      playBuffer(daySound, 0.18);
     } catch {
       /* sound is non-critical */
     }

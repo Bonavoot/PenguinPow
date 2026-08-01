@@ -1,4 +1,3 @@
-import { getGlobalVolume } from "./Settings";
 import {
   preloadSounds,
   preloadMusicTracks,
@@ -431,13 +430,15 @@ preloadMusicTracks(battleMusicTracks);
 // ============================================
 const PITCH_VARIATION = 0.06;
 
+// Authored volumes only — master SFX gain (Settings) carries the user scale
+// so changing the slider affects currently playing buffer voices.
 export const playSound = (audioFile, volume = 1.0, duration = null, playbackRate = 1.0, pan = 0) => {
-  playBuffer(audioFile, volume * getGlobalVolume(), duration, playbackRate, false, pan);
+  playBuffer(audioFile, volume, duration, playbackRate, false, pan);
 };
 
 export const playSoundVaried = (audioFile, volume = 1.0, duration = null, playbackRate = 1.0, pan = 0) => {
   const pitchShift = 1 + (Math.random() * 2 - 1) * PITCH_VARIATION;
-  playBuffer(audioFile, volume * getGlobalVolume(), duration, playbackRate * pitchShift, false, pan);
+  playBuffer(audioFile, volume, duration, playbackRate * pitchShift, false, pan);
 };
 
 export const xToPan = (x, screenWidth = 1100) => {

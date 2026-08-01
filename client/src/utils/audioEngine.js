@@ -1,5 +1,8 @@
 let audioContext = null;
+/** Master SFX gain stage (historically named masterEQ — GainNode, not an EQ). */
 let masterEQ = null;
+/** Pending async loop starts keyed for cancel-before-decode safety. */
+let pendingLoopSeq = 0;
 const audioBuffers = new Map();
 const loadingPromises = new Map();
 
@@ -18,6 +21,23 @@ function getMasterEQ() {
     masterEQ.connect(ctx.destination);
   }
   return masterEQ;
+}
+
+/** Live master SFX gain — changes affect currently playing SFX through this node. */
+function setMasterSfxGain(gain) {
+  const g = typeof gain === "number" && Number.isFinite(gain) ? Math.max(0, gain) : 1;
+  const node = getMasterEQ();
+  try {
+    node.gain.value = g;
+  } catch {
+    /* ignore */
+  }
+  return g;
+}
+
+function getMasterSfxGain() {
+  if (!masterEQ) return 1;
+  return masterEQ.gain.value;
 }
 
 function ensureContextResumed() {
@@ -97,12 +117,62 @@ function preloadSounds(sources) {
  * @param {number|null} duration - Optional max duration in milliseconds
  * @returns {{ source: AudioBufferSourceNode, gainNode: GainNode } | null}
  */
+/**
+ * Play a decoded buffer. When the buffer is not yet loaded:
+ * - one-shots: fire-and-forget preload (legacy) — returns null
+ * - loops: return a cancelable pending handle so stop() before decode
+ *   prevents an orphaned loop from starting
+ */
 function playBuffer(src, volume = 1.0, duration = null, playbackRate = 1.0, loop = false, pan = 0) {
   const ctx = getContext();
   ensureContextResumed();
 
   const buffer = audioBuffers.get(src);
   if (!buffer) {
+    if (loop) {
+      const pendingId = ++pendingLoopSeq;
+      const handle = {
+        _pendingId: pendingId,
+        _stopped: false,
+        _inner: null,
+        stop(opts) {
+          if (this._stopped) return;
+          this._stopped = true;
+          if (this._inner && typeof this._inner.stop === "function") {
+            try {
+              this._inner.stop(opts);
+            } catch {
+              /* ignore */
+            }
+          }
+        },
+      };
+      preloadSound(src).then((buf) => {
+        if (!buf || handle._stopped) return;
+        const started = _play(ctx, buf, volume, duration, playbackRate, loop, pan);
+        if (!started) return;
+        handle._inner = {
+          stop() {
+            try {
+              started.source.stop();
+            } catch {
+              /* ignore */
+            }
+            try {
+              started.source.disconnect();
+              started.gainNode.disconnect();
+            } catch {
+              /* ignore */
+            }
+          },
+        };
+        // Race: stop() during the tick between decode resolve and assign.
+        if (handle._stopped) {
+          handle._inner.stop();
+        }
+      });
+      return handle;
+    }
     preloadSound(src).then((buf) => {
       if (buf) _play(ctx, buf, volume, duration, playbackRate, loop, pan);
     });
@@ -556,4 +626,7 @@ export {
   playBuffer,
   ensureContextResumed,
   createCrossfadeLoop,
+  setMasterSfxGain,
+  getMasterSfxGain,
+  getMasterEQ,
 };

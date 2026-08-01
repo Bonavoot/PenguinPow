@@ -529,6 +529,32 @@ const Game = ({
         applyPrediction("matador_release");
         applyPrediction("parry_release");
       }
+      // Charged-attack release parity with keyboard/mouse Mouse1-up prediction.
+      if (
+        !gamepadKeyState.mouse1 &&
+        keyState.mouse1 &&
+        !cp?.isBeingGrabbed &&
+        !cp?.inClinch &&
+        !cp?.isThrowingSnowball
+      ) {
+        applyPrediction("charge_release");
+      }
+      // Continuous charge chord while Mouse1 held (mirrors server + keyboard path).
+      if (
+        gamepadKeyState.mouse1 &&
+        !cp?.isBeingGrabbed &&
+        !cp?.inClinch &&
+        cp?.facing != null
+      ) {
+        const forwardKey = cp.facing === -1 ? "d" : "a";
+        if (
+          gamepadKeyState.s &&
+          gamepadKeyState[forwardKey] &&
+          (!keyState.s || !keyState[forwardKey])
+        ) {
+          applyPrediction("charge_start");
+        }
+      }
       // ICE PHYSICS: Power slide predictions for gamepad
       // Diff each tracked key against keyState BEFORE the bulk assign so we
       // can emit per-key edge events for the gamepad path (the keyboard/mouse
@@ -597,6 +623,20 @@ const Game = ({
               }
             } else {
               applyPrediction("parry_start");
+            }
+          }
+          // Mouse1 already held + S/forward completes the charge chord — mirror
+          // the server's continuous charge check so provisional slap audio is
+          // canceled via charge_start (combat-audio fidelity).
+          else if (
+            keyState.mouse1 &&
+            !cp?.inClinch &&
+            cp?.facing != null &&
+            (key === "s" || key === "a" || key === "d")
+          ) {
+            const forwardKey = cp.facing === -1 ? "d" : "a";
+            if (keyState.s && keyState[forwardKey]) {
+              applyPrediction("charge_start");
             }
           }
         }
