@@ -12,8 +12,8 @@ dist
 dist-ssr
 *.local
 
-# Build-time baked sprite PNGs + manifest (regenerate via `npm run bake`)
-public/baked/
+# Baked sprites are committed so Netlify can skip the long bake step.
+# Regenerate locally with `npm run bake` when colors/sprites/hats change.
 
 # Editor directories and files
 .vscode/*
