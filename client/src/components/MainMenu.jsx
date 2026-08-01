@@ -68,7 +68,6 @@ import pumo from "../assets/pumo-idle.png";
  * dedicated main-menu-pumo pose (recolored + head-gear when overlays exist).
  */
 import mainMenuPumo from "../assets/main-menu-pumo.png";
-import pumoLogo from "../assets/pumo-logo.png";
 /*
  * Single locked-in hero scene — the two-penguins-fighting sketch reads as
  * "this is what the game IS." Static hero image; no slideshow.
@@ -81,6 +80,7 @@ import {
   stopBackgroundMusic,
 } from "../utils/soundUtils";
 import Snowfall from "./Snowfall";
+import PumoLogo from "./PumoLogo";
 
 import {
   C,
@@ -389,16 +389,6 @@ const BrandBlock = styled.div`
   gap: clamp(12px, 1.8cqh, 18px);
   /* Same left rail as MenuButton cursor gutter */
   padding-left: clamp(16px, 2cqw, 24px);
-`;
-
-const LogoImage = styled.img`
-  display: block;
-  width: clamp(12.5rem, 27cqw, 19.5rem);
-  height: auto;
-  object-fit: contain;
-  /* Soft lift — hard 2px shelf made the logo mark read as aliased. */
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.65))
-    drop-shadow(0 18px 32px rgba(0, 0, 0, 0.45));
 `;
 
 /* Structural accent under logo — short vermillion underline with soft seat. */
@@ -1276,7 +1266,7 @@ const MainMenu = ({
         <HeroStage>
           <LeftColumn>
             <BrandBlock>
-              <LogoImage src={pumoLogo} alt="Pumo Pumo!" />
+              <PumoLogo size="menu" />
               <BrandRule aria-hidden />
             </BrandBlock>
 

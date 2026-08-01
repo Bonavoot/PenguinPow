@@ -13,7 +13,7 @@ import {
   fadeUp,
   broadcastSlideDown,
 } from "./menuTheme";
-import pumoLogo from "../assets/pumo-logo.png";
+import PumoLogo from "./PumoLogo";
 
 // ============================================
 // ANIMATIONS
@@ -168,20 +168,6 @@ const BrandBlock = styled.div`
   animation: ${fadeUp} 0.75s cubic-bezier(0.2, 0.7, 0.2, 1) 0.15s backwards;
 `;
 
-const LogoImage = styled.img`
-  display: block;
-  width: clamp(13rem, 36cqw, 24rem);
-  height: auto;
-  margin: 0;
-  object-fit: contain;
-  filter: drop-shadow(0 4px 0 rgba(15, 29, 46, 0.22))
-    drop-shadow(0 10px 22px ${C.snowShadowStrong});
-
-  @media (max-width: 600px) {
-    width: clamp(10rem, 55cqw, 18rem);
-  }
-`;
-
 const BrandRule = styled.div`
   width: clamp(48px, 7cqw, 72px);
   height: 2px;
@@ -317,7 +303,7 @@ const StartupScreen = ({ onContinue, connectionError, steamDeckMode }) => {
 
       <Content>
         <BrandBlock>
-          <LogoImage src={pumoLogo} alt="Pumo Pumo!" />
+          <PumoLogo size="startup" />
           <BrandRule aria-hidden />
         </BrandBlock>
 
