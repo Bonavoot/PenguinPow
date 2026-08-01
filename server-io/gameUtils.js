@@ -105,6 +105,13 @@ const {
 const {
   clearCombatContactState,
 } = require("./combatContactResolution");
+const {
+  isActionLifecycleOwnershipV2Enabled,
+} = require("./actionLifecycleFlags");
+const {
+  LIFECYCLE_TIMEOUT_NAMES,
+  forceClearLifecycleOwners,
+} = require("./actionLifecycleOwnership");
 
 // ============================================
 // EFFECTIVE MOVEMENT SPEED (single source of truth)
@@ -933,6 +940,14 @@ function setPlayerTimeout(playerId, callback, delay, name = null) {
   return timeoutManager.set(playerId, callback, delay, name);
 }
 
+/** Cancel named lifecycle timeouts. V2 full-clear uses the full list. */
+function clearLifecycleNamedTimeouts(player, names = LIFECYCLE_TIMEOUT_NAMES) {
+  if (!player?.id) return;
+  for (let i = 0; i < names.length; i++) {
+    timeoutManager.clearPlayerSpecific(player.id, names[i]);
+  }
+}
+
 // Helper functions to reduce code duplication
 // CRITICAL: This is the SINGLE SOURCE OF TRUTH for blocking new actions
 // Any state where the player is "doing something" must be included here
@@ -1285,6 +1300,13 @@ function clearAllActionStates(player) {
     reason: ACTION_FACING_RELEASE.INTERRUPT,
   });
   clearCombatContactState(player);
+  // Phase 15 — under V2, cancel every named lifecycle timeout so stale
+  // chargedEndlag / hitStateReset / parryStagger / slapStartup / etc. cannot
+  // mutate a newer action after this interrupt clear.
+  if (isActionLifecycleOwnershipV2Enabled()) {
+    clearLifecycleNamedTimeouts(player);
+    forceClearLifecycleOwners(player, { reason: "CLEAR_ALL_ACTION_STATES" });
+  }
   player.isSlapAttack = false;
   player.isPalmThrust = false;
   player.isLowKick = false;
@@ -2105,6 +2127,10 @@ function clearChargeState(player, isCancelled = false) {
 // of slap-hands VFX bleeding into / after flap).
 function cancelPendingSlapWork(player) {
   timeoutManager.clearPlayerSpecific(player.id, "slapCycle");
+  // Phase 15 — named slap startup (legacy path leaves it unnamed / uncleared).
+  if (isActionLifecycleOwnershipV2Enabled()) {
+    timeoutManager.clearPlayerSpecific(player.id, "slapStartupEnd");
+  }
   player.slapCycleEndCallback = null;
 
   player.pendingSlapCount = 0;
@@ -2486,4 +2512,5 @@ module.exports = {
   clearIceSlideState,
   tryIceSlideReverse,
   beginGrabStartup,
+  clearLifecycleNamedTimeouts,
 };

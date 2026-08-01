@@ -554,7 +554,19 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
       }
 
       const beforeX = jumper.x;
-      const result = stepRopeJumpActive(jumper, opponent, now, { useV2 });
+      const result = stepRopeJumpActive(jumper, opponent, now, {
+        useV2,
+        flightPreset: opts.flightPreset,
+        vaultPreset: opts.vaultPreset,
+      });
+
+      if (jumper.ropeJumpFlightMode && !trace.flightMode) {
+        trace.flightMode = jumper.ropeJumpFlightMode;
+        trace.flightPreset = jumper.ropeJumpFlightPreset;
+        trace.plannedEndpointX = jumper.ropeJumpPlannedEndpointX;
+        trace.rangeConstraintReason = jumper.ropeJumpRangeConstraintReason;
+        trace.opponentInfluence = !!jumper.ropeJumpOpponentInfluence;
+      }
 
       if (result.committedThisTick) {
         trace.commit = {
@@ -579,6 +591,9 @@ function simulateRopeJump(jumper, opponent, opts = {}) {
             jumper.ropeJumpLandingDecision &&
             jumper.ropeJumpLandingDecision.feasibility,
           beforeX,
+          flightMode: jumper.ropeJumpFlightMode,
+          flightPreset: jumper.ropeJumpFlightPreset,
+          plannedEndpointX: jumper.ropeJumpPlannedEndpointX,
         };
         trace.budgetException = !!jumper.ropeJumpBudgetException;
         trace.budgetExceptionClass = jumper.ropeJumpBudgetExceptionClass;

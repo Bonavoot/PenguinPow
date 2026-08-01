@@ -173,6 +173,34 @@ const {
   resolveSlapVersusChargedPhysical,
   isChargedHeadbuttActive,
 } = require("./chargedHeadbuttContact");
+const {
+  isActionLifecycleOwnershipV2Enabled,
+} = require("./actionLifecycleFlags");
+const {
+  LIFECYCLE_DOMAIN,
+  LIFECYCLE_OWNER,
+  LIFECYCLE_PHASE,
+  beginLifecycleOwner,
+  assertLifecycleCallback,
+  completeLifecycleOwner,
+  markLifecycleControlRestore,
+  consumeLifecycleOwner,
+} = require("./actionLifecycleOwnership");
+
+function beginHitstunLifecycle(victim) {
+  if (!victim || !isActionLifecycleOwnershipV2Enabled()) return null;
+  // Hitstun owns REACTION; incompatible primary action is force-cleared by
+  // clearAllActionStates before this schedules (timeouts + owners).
+  const rec = beginLifecycleOwner(
+    victim,
+    LIFECYCLE_DOMAIN.REACTION,
+    LIFECYCLE_OWNER.HITSTUN,
+    { phase: LIFECYCLE_PHASE.ACTIVE, reason: "HITSTUN_BEGIN" }
+  );
+  const id = rec?.ownerInstanceId || null;
+  victim.hitstunLifecycleInstanceId = id;
+  return id;
+}
 
 function acquireHitstunFacingOwner(victim, direction) {
   if (!victim || !isActionFacingOwnershipV2Enabled()) return;
@@ -890,9 +918,21 @@ function applyTradeHit(victim, attacker, room, io) {
   victim.inputLockUntil = Math.max(victim.inputLockUntil || 0, currentTime + SLAP_MIN_HITSTUN_MS);
 
   timeoutManager.clearPlayerSpecific(victim.id, "hitStateReset");
+  const tradeHitstunId = beginHitstunLifecycle(victim);
   setPlayerTimeout(
     victim.id,
     () => {
+      if (
+        isActionLifecycleOwnershipV2Enabled() &&
+        !assertLifecycleCallback(
+          victim,
+          LIFECYCLE_DOMAIN.REACTION,
+          tradeHitstunId,
+          "trade_hitStateReset"
+        )
+      ) {
+        return;
+      }
       // Hand the leftover knockback off to the ice coast (movementVelocity) so
       // the shove flows into a smooth slide-to-stop — exactly like a normal slap
       // victim. Without this the trade slide hard-stopped and read as "no slide".
@@ -912,6 +952,20 @@ function applyTradeHit(victim, attacker, room, io) {
           clearLegacy: false,
         });
         victim.hitstunFacingInstanceId = null;
+      }
+      if (isActionLifecycleOwnershipV2Enabled()) {
+        completeLifecycleOwner(
+          victim,
+          LIFECYCLE_DOMAIN.REACTION,
+          tradeHitstunId,
+          { reason: "TRADE_HITSTUN_COMPLETE" }
+        );
+        markLifecycleControlRestore(
+          victim,
+          LIFECYCLE_DOMAIN.REACTION,
+          tradeHitstunId
+        );
+        victim.hitstunLifecycleInstanceId = null;
       }
     },
     SLAP_MIN_HITSTUN_MS + 60,
@@ -1054,9 +1108,21 @@ function resolveSlapChargedTrade(slapper, charged, rooms, io, meta = {}) {
   );
 
   timeoutManager.clearPlayerSpecific(slapper.id, "hitStateReset");
+  const slapperHitstunId = beginHitstunLifecycle(slapper);
   setPlayerTimeout(
     slapper.id,
     () => {
+      if (
+        isActionLifecycleOwnershipV2Enabled() &&
+        !assertLifecycleCallback(
+          slapper,
+          LIFECYCLE_DOMAIN.REACTION,
+          slapperHitstunId,
+          "trade_slapper_hitStateReset"
+        )
+      ) {
+        return;
+      }
       if (Math.abs(slapper.knockbackVelocity.x) > 0.01) {
         slapper.movementVelocity = slapper.knockbackVelocity.x;
       }
@@ -1072,6 +1138,20 @@ function resolveSlapChargedTrade(slapper, charged, rooms, io, meta = {}) {
           clearLegacy: false,
         });
         slapper.hitstunFacingInstanceId = null;
+      }
+      if (isActionLifecycleOwnershipV2Enabled()) {
+        completeLifecycleOwner(
+          slapper,
+          LIFECYCLE_DOMAIN.REACTION,
+          slapperHitstunId,
+          { reason: "TRADE_HITSTUN_COMPLETE" }
+        );
+        markLifecycleControlRestore(
+          slapper,
+          LIFECYCLE_DOMAIN.REACTION,
+          slapperHitstunId
+        );
+        slapper.hitstunLifecycleInstanceId = null;
       }
     },
     SLAP_MIN_HITSTUN_MS + 60,
@@ -1781,9 +1861,44 @@ function processHit(player, otherPlayer, rooms, io) {
       // After the freeze (~1 tick past the sim-frozen hitstop): drop the attack
       // pose into recovery and apply the shove slide.
       const shoveVel = shove * knockbackDirection;
+      let parryStaggerId = null;
+      if (isActionLifecycleOwnershipV2Enabled()) {
+        // Consume primary attack owner if still present; stagger owns REACTION.
+        const attackOwnerId =
+          attacker.slapLifecycleInstanceId ||
+          attacker.chargedLifecycleInstanceId ||
+          null;
+        if (attackOwnerId) {
+          consumeLifecycleOwner(
+            attacker,
+            LIFECYCLE_DOMAIN.PRIMARY_ACTION,
+            attackOwnerId,
+            { reason: "PARRY_CONSUME_ATTACK", keepActive: false }
+          );
+        }
+        const staggerRec = beginLifecycleOwner(
+          attacker,
+          LIFECYCLE_DOMAIN.REACTION,
+          LIFECYCLE_OWNER.PARRY_STAGGER,
+          { phase: LIFECYCLE_PHASE.RECOVERY, reason: "PARRY_STAGGER_BEGIN" }
+        );
+        parryStaggerId = staggerRec?.ownerInstanceId || null;
+        attacker.parryStaggerLifecycleInstanceId = parryStaggerId;
+      }
       setPlayerTimeout(
         attacker.id,
         () => {
+          if (
+            isActionLifecycleOwnershipV2Enabled() &&
+            !assertLifecycleCallback(
+              attacker,
+              LIFECYCLE_DOMAIN.REACTION,
+              parryStaggerId,
+              "parry_stagger_begin"
+            )
+          ) {
+            return;
+          }
           attacker.isSlapAttack = false;
           attacker.isPalmThrust = false;
           attacker.attackType = null;
@@ -1793,7 +1908,34 @@ function processHit(player, otherPlayer, rooms, io) {
           timeoutManager.clearPlayerSpecific(attacker.id, "parryStaggerReset");
           setPlayerTimeout(
             attacker.id,
-            () => { attacker.isRecovering = false; },
+            () => {
+              if (
+                isActionLifecycleOwnershipV2Enabled() &&
+                !assertLifecycleCallback(
+                  attacker,
+                  LIFECYCLE_DOMAIN.REACTION,
+                  parryStaggerId,
+                  "parry_stagger_reset"
+                )
+              ) {
+                return;
+              }
+              attacker.isRecovering = false;
+              if (isActionLifecycleOwnershipV2Enabled()) {
+                completeLifecycleOwner(
+                  attacker,
+                  LIFECYCLE_DOMAIN.REACTION,
+                  parryStaggerId,
+                  { reason: "PARRY_STAGGER_COMPLETE" }
+                );
+                markLifecycleControlRestore(
+                  attacker,
+                  LIFECYCLE_DOMAIN.REACTION,
+                  parryStaggerId
+                );
+                attacker.parryStaggerLifecycleInstanceId = null;
+              }
+            },
             staggerMs,
             "parryStaggerReset"
           );
@@ -2689,9 +2831,21 @@ function processHit(player, otherPlayer, rooms, io) {
         ? BURST_STUN_MS
         : hitStateDuration;
 
+    const processHitstunId = beginHitstunLifecycle(otherPlayer);
     setPlayerTimeout(
       otherPlayer.id,
       () => {
+        if (
+          isActionLifecycleOwnershipV2Enabled() &&
+          !assertLifecycleCallback(
+            otherPlayer,
+            LIFECYCLE_DOMAIN.REACTION,
+            processHitstunId,
+            "processHit_hitStateReset"
+          )
+        ) {
+          return;
+        }
         endHitKnockback(otherPlayer);
 
         if (isSlapAttack && SLAP_CHAIN_HIT_GAP_MS > 0) {
@@ -2703,6 +2857,20 @@ function processHit(player, otherPlayer, rooms, io) {
           );
         } else {
           otherPlayer.isAlreadyHit = false;
+        }
+        if (isActionLifecycleOwnershipV2Enabled()) {
+          completeLifecycleOwner(
+            otherPlayer,
+            LIFECYCLE_DOMAIN.REACTION,
+            processHitstunId,
+            { reason: "HITSTUN_COMPLETE" }
+          );
+          markLifecycleControlRestore(
+            otherPlayer,
+            LIFECYCLE_DOMAIN.REACTION,
+            processHitstunId
+          );
+          otherPlayer.hitstunLifecycleInstanceId = null;
         }
       },
       stunDuration,
@@ -3322,11 +3490,37 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   }
 
   // Burst stun → hand residual KB to ice coast (or keep it if still air-dumping).
+  const flapHitstunId = beginHitstunLifecycle(opponent);
   setPlayerTimeout(
     opponent.id,
     () => {
+      if (
+        isActionLifecycleOwnershipV2Enabled() &&
+        !assertLifecycleCallback(
+          opponent,
+          LIFECYCLE_DOMAIN.REACTION,
+          flapHitstunId,
+          "flap_hitStateReset"
+        )
+      ) {
+        return;
+      }
       endHitKnockback(opponent);
       opponent.isAlreadyHit = false;
+      if (isActionLifecycleOwnershipV2Enabled()) {
+        completeLifecycleOwner(
+          opponent,
+          LIFECYCLE_DOMAIN.REACTION,
+          flapHitstunId,
+          { reason: "FLAP_HITSTUN_COMPLETE" }
+        );
+        markLifecycleControlRestore(
+          opponent,
+          LIFECYCLE_DOMAIN.REACTION,
+          flapHitstunId
+        );
+        opponent.hitstunLifecycleInstanceId = null;
+      }
     },
     stunDuration,
     "hitStateReset"

@@ -16,6 +16,8 @@ Current-state map of ownership and pipelines. Proposed future boundaries are lab
 | Outcome-aware contact interrupt (Phase 13) | Server | `server-io/combatContactResolution.js`, `combatContactFidelityFlags.js` (`COMBAT_CONTACT_FIDELITY_V2`, **default ON**) — consumes losing attack instances at resolution |
 | Slap↔flying-headbutt first-contact (Phase 13A) | Server | `server-io/chargedHeadbuttContact.js` — physical surface timing under the same V2 flag; palm keeps legacy threshold |
 | Slap pose director | Client | `client/src/config/combatTiming.js` (`SLAP_ANIM`) + `GameFighter.jsx` — original ~37 ms smear retained; Phase 14 timing experiment rejected |
+| Non-aerial action lifecycle ownership (Phase 15) | Server | `server-io/actionLifecycleOwnership.js`, `actionLifecycleFlags.js` (`ACTION_LIFECYCLE_OWNERSHIP_V2`, **default ON**) — instance-gates delayed cleanup; see `ACTION_LIFECYCLE_OWNERSHIP_PHASE.md` |
+| Input command reliability (Phase 16, finalized) | Server (+ client trace) | `server-io/inputCommandReliability*.js`, `socketHandlers.js` (`INPUT_COMMAND_RELIABILITY_V2`, **default ON**; `=0` legacy) — palm chord 50ms + packet-safe dodge reject; see `INPUT_COMMAND_RELIABILITY_PHASE.md` |
 | Ground pushbox | Server | `server-io/gameFunctions.js` (`arePlayersColliding`, `adjustPlayerPositions`) |
 | Movement / ice / knockback integrate | Server | `server-io/index.js` movement block |
 | Aerial verbs | Server | `server-io/index.js` (rope jump, slide jump / FLAP), `socketHandlers.js` start triggers |
@@ -106,6 +108,8 @@ player_hit event
 `startup → active (pass-through arc to fixed/raw targetX) → landing (pushbox returns, 18px/tick sep) → idle`
 
 **Phase A…A.3.2 + high-vault identity (approved, default ON):** Rope-jump airborne path is an authored high vault with one apex crossover decision and capped endpoint correction (`ropeJumpVault.js` / `ROPE_JUMP_MOVE_IDENTITY_V2.md`, preset `reference_contact_9`). Landing residual and recovery re-intrusion remain A.3.2 settle-owned. Explicit `ROPE_JUMP_LANDING_V2=0` = legacy fixed target + post-land 18px/tick. Diagnostics debug-net only. Slide jump / FLAP unchanged.
+
+**Phase 17 free-flight curve (finalized, default ON):** `ROPE_JUMP_FLIGHT_CURVE_V3` splits `OPPONENT_INFLUENCED_REFERENCE` (frozen nearby path) vs `FREE_FLIGHT` (`ballistic_c1`, preset **`smooth_long_20`**). Rollback: `ROPE_JUMP_FLIGHT_CURVE_V3=0`. See `ROPE_JUMP_FREE_FLIGHT_TRAJECTORY_PHASE.md`.
 
 **Production tick order (landing recovery):** shared `adjustPlayerPositions` runs in the early pair block; rope-jump recovery clear runs later in the per-player loop; ice movement runs after that.
 

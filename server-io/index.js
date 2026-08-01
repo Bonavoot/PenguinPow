@@ -187,6 +187,18 @@ const {
   ACTION_FACING_REASON,
   ACTION_FACING_RELEASE,
 } = require("./actionFacingOwnership");
+const {
+  isActionLifecycleOwnershipV2Enabled,
+} = require("./actionLifecycleFlags");
+const {
+  LIFECYCLE_DOMAIN,
+  LIFECYCLE_OWNER,
+  LIFECYCLE_PHASE,
+  beginLifecycleOwner,
+  assertLifecycleCallback,
+  completeLifecycleOwner,
+  markLifecycleControlRestore,
+} = require("./actionLifecycleOwnership");
 
 // Aerial landing Phase A — rope-jump V2 (flagged; legacy path retained)
 const {
@@ -4090,9 +4102,30 @@ function tick(delta) {
           }
 
           // Set timeout to end the at-the-ropes state
+          let ropesLifecycleId = null;
+          if (isActionLifecycleOwnershipV2Enabled()) {
+            const ropesRec = beginLifecycleOwner(
+              player,
+              LIFECYCLE_DOMAIN.REACTION,
+              LIFECYCLE_OWNER.ROPES,
+              { phase: LIFECYCLE_PHASE.ACTIVE, reason: "ROPES_BEGIN" }
+            );
+            ropesLifecycleId = ropesRec?.ownerInstanceId || null;
+          }
           setPlayerTimeout(
             player.id,
             () => {
+              if (
+                isActionLifecycleOwnershipV2Enabled() &&
+                !assertLifecycleCallback(
+                  player,
+                  LIFECYCLE_DOMAIN.REACTION,
+                  ropesLifecycleId,
+                  "at_the_ropes_timeout"
+                )
+              ) {
+                return;
+              }
               player.isAtTheRopes = false;
               player.atTheRopesStartTime = 0;
               if (isActionFacingOwnershipV2Enabled()) {
@@ -4105,6 +4138,19 @@ function tick(delta) {
                 player.ropesFacingInstanceId = null;
               }
               player.atTheRopesFacingDirection = null;
+              if (isActionLifecycleOwnershipV2Enabled()) {
+                completeLifecycleOwner(
+                  player,
+                  LIFECYCLE_DOMAIN.REACTION,
+                  ropesLifecycleId,
+                  { reason: "ROPES_COMPLETE" }
+                );
+                markLifecycleControlRestore(
+                  player,
+                  LIFECYCLE_DOMAIN.REACTION,
+                  ropesLifecycleId
+                );
+              }
             },
             AT_THE_ROPES_DURATION,
             "atTheRopesTimeout" // Named timeout for cleanup

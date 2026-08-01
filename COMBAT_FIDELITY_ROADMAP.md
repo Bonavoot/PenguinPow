@@ -343,6 +343,8 @@ Steam-release fidelity bar signed off for interaction (not particle count).
 
 **Phase 13 / 13A** contact fidelity is **default ON** (`COMBAT_CONTACT_FIDELITY_PHASE.md`, `CHARGED_HEADBUTT_CONTACT_PHASE.md`). Rollback: `COMBAT_CONTACT_FIDELITY_V2=0`. **Phase 14** slap presentation timing was **manually rejected** and removed — original `SLAP_ANIM` playback retained (`SLAP_PRESENTATION_TIMING_PHASE.md`).
 
+**Phase 15** action lifecycle ownership is **default ON** (`ACTION_LIFECYCLE_OWNERSHIP_PHASE.md`). Rollback: `ACTION_LIFECYCLE_OWNERSHIP_V2=0`.
+
 **Phase 3A + A.1–A.3.2 + high-vault move identity are manually approved and default ON** (`reference_contact_9`). No further rope-jump tuning currently authorized.
 
 **Offensive-aerial Phase 3B/4** — V2 **`heavy_short` is default ON** (rollback `OFFENSIVE_AERIAL_REACTION_V2=0`). Generalized landing settle remains deferred.

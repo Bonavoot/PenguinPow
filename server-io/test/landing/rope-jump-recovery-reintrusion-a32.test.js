@@ -7,7 +7,7 @@
  * during landing recovery. Production order: pushbox → clear → movement.
  */
 
-const { describe, it } = require("node:test");
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   MAP_LEFT_BOUNDARY,
@@ -32,7 +32,14 @@ const {
   LATE_INTRUSION_MAX_SAFETY_CORRECTION_TICKS,
 } = require("../../landingResolution");
 const { adjustPlayerPositions } = require("../../gameFunctions");
-const { ROPE_JUMP_LANDING_V2 } = require("../../landingFlags");
+const {
+  ROPE_JUMP_LANDING_V2,
+  setRopeJumpFlightCurveV3ForTests,
+} = require("../../landingFlags");
+
+// A.3.2 fixtures assert pre-V3 base-raw free-flight endpoints.
+beforeEach(() => setRopeJumpFlightCurveV3ForTests(false));
+afterEach(() => setRopeJumpFlightCurveV3ForTests(null));
 
 const ORDINARY_FULL_SPEED = 3.75;
 const ORDINARY_CORR_SLACK = 0.05;

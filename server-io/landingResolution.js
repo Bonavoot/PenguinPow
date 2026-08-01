@@ -35,6 +35,8 @@ const {
   LANDING_TRACE,
   LANDING_DEBUG_NET,
   ROPE_JUMP_VAULT_PRESET,
+  isRopeJumpFlightCurveV3Enabled,
+  resolveFlightPresetName,
 } = require("./landingFlags");
 const vault = require("./ropeJumpVault");
 
@@ -1957,6 +1959,16 @@ function clearRopeJumpLandingState(player) {
   player.ropeJumpDesiredEndX = 0;
   player.ropeJumpCrossoverDecisionT = -1;
   player.ropeJumpVertVel = 0;
+  // Phase 17 — free-flight trajectory classification (per jump instance)
+  player.ropeJumpBaseRawTargetX = 0;
+  player.ropeJumpFlightMode = null;
+  player.ropeJumpFlightPreset = null;
+  player.ropeJumpOpponentInfluence = false;
+  player.ropeJumpInfluenceReason = null;
+  player.ropeJumpInfluenceIntentClass = null;
+  player.ropeJumpRangeConstraintReason = null;
+  player.ropeJumpPlannedEndpointX = 0;
+  player.ropeJumpMaxReferencePathDelta = 0;
   player._vaultProfile = null;
   player._landingTrace = null;
   player._landingPrevX = null;
@@ -1975,6 +1987,7 @@ function clearRopeJumpLandingState(player) {
 function initRopeJumpLandingState(player, rawTargetX, useV2 = ROPE_JUMP_LANDING_V2) {
   clearRopeJumpLandingState(player);
   player.ropeJumpRawTargetX = rawTargetX;
+  player.ropeJumpBaseRawTargetX = rawTargetX;
   player.ropeJumpLandingPath = useV2 ? "v2" : "legacy";
   if (useV2) {
     player.ropeJumpPlanningState = PLANNING_PROVISIONAL_RAW;
@@ -1985,6 +1998,7 @@ function initRopeJumpLandingState(player, rawTargetX, useV2 = ROPE_JUMP_LANDING_
       samples: [],
       startX: player.ropeJumpStartX,
       rawTargetX,
+      baseRawTargetX: rawTargetX,
       jumpDirection: player.ropeJumpDirection,
       startedAt: player.ropeJumpStartTime,
       planningState: player.ropeJumpPlanningState,
@@ -2124,6 +2138,18 @@ function getLandingDebugPayload(player) {
     settleAllowance: player.ropeJumpSettleAllowance,
     predictedSettleDebt: player.ropeJumpPredictedSettleDebt,
     actualSettleDebt: player.ropeJumpActualSettleDebt,
+    // Phase 17 free-flight diagnostics
+    flightMode: player.ropeJumpFlightMode,
+    flightPreset: player.ropeJumpFlightPreset,
+    startX: player.ropeJumpStartX,
+    plannedEndpointX: player.ropeJumpPlannedEndpointX,
+    actualEndpointX: player.ropeJumpTouchdownX || player.ropeJumpResolvedTargetX,
+    baseRawTargetX: player.ropeJumpBaseRawTargetX,
+    opponentInfluence: !!player.ropeJumpOpponentInfluence,
+    influenceReason: player.ropeJumpInfluenceReason,
+    influenceIntentClass: player.ropeJumpInfluenceIntentClass,
+    rangeConstraintReason: player.ropeJumpRangeConstraintReason,
+    maxReferencePathDelta: player.ropeJumpMaxReferencePathDelta,
     ...vault.getRopeJumpVulnerabilityState(player),
   };
 }
@@ -2217,11 +2243,95 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
   player._landingLastT = t;
   player._landingTickIndex = (player._landingTickIndex || 0) + 1;
 
+  // Phase 17: lock FREE_FLIGHT vs REFERENCE on first active tick (V3 only).
+  // Influence uses base raw so longer free-flight range cannot expand the
+  // approved nearby envelope or flip mode after takeoff.
+  if (
+    useV2 &&
+    isRopeJumpFlightCurveV3Enabled() &&
+    !player.ropeJumpFlightMode
+  ) {
+    const baseRaw =
+      Number.isFinite(player.ropeJumpBaseRawTargetX) &&
+      player.ropeJumpBaseRawTargetX !== 0
+        ? player.ropeJumpBaseRawTargetX
+        : rawTargetX;
+    player.ropeJumpBaseRawTargetX = baseRaw;
+    const refProfile = vault.getVaultProfile(
+      options.vaultPreset || ROPE_JUMP_VAULT_PRESET
+    );
+    const classified = vault.classifyRopeJumpFlightMode({
+      startX,
+      baseRawTargetX: baseRaw,
+      jumpDirection: dirSign,
+      opponentX: opponent ? opponent.x : null,
+      jumperSizeMult: player.sizeMultiplier,
+      opponentSizeMult: opponent ? opponent.sizeMultiplier : 1,
+      profile: refProfile,
+    });
+    player.ropeJumpFlightMode = classified.mode;
+    player.ropeJumpOpponentInfluence = !!classified.influence.influences;
+    player.ropeJumpInfluenceReason = classified.influence.reason;
+    player.ropeJumpInfluenceIntentClass = classified.influence.intentClass;
+
+    if (classified.mode === vault.TRAJECTORY_MODE.FREE_FLIGHT) {
+      const flightName = resolveFlightPresetName(
+        options.flightPreset || undefined
+      );
+      const flightPreset = vault.getFlightPreset(flightName);
+      player.ropeJumpFlightPreset = flightPreset.name;
+      // Pass unclamped desired so boundary shortening is reported honestly.
+      const unclampedDesired =
+        startX + (baseRaw - startX) * flightPreset.rangeMult;
+      const constrained = vault.constrainFreeFlightRawTargetX({
+        startX,
+        baseRawTargetX: baseRaw,
+        desiredRawTargetX: unclampedDesired,
+        jumpDirection: dirSign,
+        opponentX: opponent ? opponent.x : null,
+        jumperSizeMult: player.sizeMultiplier,
+        opponentSizeMult: opponent ? opponent.sizeMultiplier : 1,
+        profile: refProfile,
+        mapLeft,
+        mapRight,
+      });
+      player.ropeJumpRawTargetX = constrained.rawTargetX;
+      player.ropeJumpTargetX = constrained.rawTargetX;
+      player.ropeJumpPlannedEndpointX = constrained.rawTargetX;
+      player.ropeJumpRangeConstraintReason = constrained.reason;
+      player._vaultProfile = vault.getFreeFlightProfile(
+        refProfile,
+        flightPreset.name
+      );
+    } else {
+      player.ropeJumpFlightPreset = null;
+      player.ropeJumpPlannedEndpointX = baseRaw;
+      player.ropeJumpRangeConstraintReason = "opponent_influenced_reference";
+      player.ropeJumpRawTargetX = baseRaw;
+      player.ropeJumpTargetX = baseRaw;
+      player._vaultProfile = refProfile;
+    }
+  }
+
+  // Re-read raw after possible free-flight remap.
+  const flightRawTargetX =
+    Number.isFinite(player.ropeJumpRawTargetX) && player.ropeJumpRawTargetX !== 0
+      ? player.ropeJumpRawTargetX
+      : player.ropeJumpTargetX;
+
   const profile =
     player._vaultProfile ||
     vault.getVaultProfile(options.vaultPreset || ROPE_JUMP_VAULT_PRESET);
   if (useV2 && !player._vaultProfile) {
     player._vaultProfile = profile;
+    player.ropeJumpVaultPreset = profile.name;
+    player.ropeJumpVaultApexHeight = profile.apexHeight;
+    player.ropeJumpEndpointCorrectionCap = profile.endpointCorrectionCapPx;
+    player.ropeJumpSettleAllowance = profile.settleAllowancePx;
+    player.ropeJumpCurveModel = profile.curveModel;
+    player.ropeJumpApexT = profile.apexT;
+    player.ropeJumpHorizFracAtApex = profile.horizFracAtApex;
+  } else if (useV2 && player._vaultProfile && !player.ropeJumpVaultPreset) {
     player.ropeJumpVaultPreset = profile.name;
     player.ropeJumpVaultApexHeight = profile.apexHeight;
     player.ropeJumpEndpointCorrectionCap = profile.endpointCorrectionCapPx;
@@ -2239,15 +2349,39 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
       player.ropeJumpPlanningState = PLANNING_PROVISIONAL_RAW;
     }
 
-    const authoredX = vault.sampleAuthoredX(startX, rawTargetX, t, profile);
+    // Prefer flight-remapped raw for authored sampling.
+    const pathRaw = flightRawTargetX;
+    const authoredX = vault.sampleAuthoredX(startX, pathRaw, t, profile);
     const authoredVel = vault.sampleAuthoredVel(
       startX,
-      rawTargetX,
+      pathRaw,
       t,
       profile,
       activeMs
     );
     y = vault.sampleVaultY(groundLevel, t, profile);
+
+    // Dev diagnostic: max delta vs reference piecewise path (base raw).
+    if (
+      player.ropeJumpFlightMode === vault.TRAJECTORY_MODE.FREE_FLIGHT &&
+      (LANDING_TRACE || LANDING_DEBUG_NET)
+    ) {
+      const refProf = vault.getVaultProfile(
+        options.vaultPreset || ROPE_JUMP_VAULT_PRESET
+      );
+      const baseRaw =
+        Number.isFinite(player.ropeJumpBaseRawTargetX) &&
+        player.ropeJumpBaseRawTargetX !== 0
+          ? player.ropeJumpBaseRawTargetX
+          : pathRaw;
+      const refX = vault.sampleAuthoredX(startX, baseRaw, t, refProf);
+      const refY = vault.sampleVaultY(groundLevel, t, refProf);
+      const d = Math.hypot(authoredX - refX, y - refY);
+      player.ropeJumpMaxReferencePathDelta = Math.max(
+        player.ropeJumpMaxReferencePathDelta || 0,
+        d
+      );
+    }
 
     // One apex decision — never replan side afterward.
     if (
@@ -2255,24 +2389,52 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
       t + 1e-12 >= profile.decisionT
     ) {
       const decisionX = authoredX;
-      const cross = opponent
-        ? vault.decideApexCrossover({
-            jumperX: decisionX,
-            rawTargetX,
-            jumpDirection: dirSign,
-            opponentX: opponent.x,
-            jumperSizeMult: player.sizeMultiplier,
-            opponentSizeMult: opponent.sizeMultiplier,
-            profile,
-          })
-        : {
-            side: dirSign,
-            intentClass: "preserve_raw",
-            reason: "no_opponent",
-            centerCrossed: false,
-            contactDist: 0,
-            groundedDist: 0,
-          };
+      // FREE_FLIGHT: never promote a late cross-up if the opponent walks into
+      // the path after classification — keep the locked safe endpoint.
+      const cross =
+        player.ropeJumpFlightMode === vault.TRAJECTORY_MODE.FREE_FLIGHT
+          ? {
+              side:
+                pathRaw < (opponent ? opponent.x : pathRaw)
+                  ? -1
+                  : pathRaw > (opponent ? opponent.x : pathRaw)
+                    ? 1
+                    : dirSign,
+              intentClass: "preserve_raw",
+              reason: "free_flight_locked_endpoint",
+              centerCrossed: false,
+              contactDist: opponent
+                ? vault.getRopeJumpLandingContactDistance(
+                    player.sizeMultiplier,
+                    opponent.sizeMultiplier,
+                    profile
+                  )
+                : 0,
+              groundedDist: opponent
+                ? getMinimumCenterDistance(
+                    player.sizeMultiplier,
+                    opponent.sizeMultiplier
+                  )
+                : 0,
+            }
+          : opponent
+            ? vault.decideApexCrossover({
+                jumperX: decisionX,
+                rawTargetX: pathRaw,
+                jumpDirection: dirSign,
+                opponentX: opponent.x,
+                jumperSizeMult: player.sizeMultiplier,
+                opponentSizeMult: opponent.sizeMultiplier,
+                profile,
+              })
+            : {
+                side: dirSign,
+                intentClass: "preserve_raw",
+                reason: "no_opponent",
+                centerCrossed: false,
+                contactDist: 0,
+                groundedDist: 0,
+              };
 
       player.ropeJumpSideIntentLocked = true;
       player.ropeJumpSideIntent = cross.side;
@@ -2290,7 +2452,7 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
 
       const capped = opponent
         ? vault.resolveCappedEndpoint({
-            authoredEndX: rawTargetX,
+            authoredEndX: pathRaw,
             jumpDirection: dirSign,
             opponentX: opponent.x,
             intentClass: cross.intentClass,
@@ -2303,9 +2465,9 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
             crossMinFarPadPx: profile.crossMinFarPadPx,
           })
         : {
-            authoredEndX: rawTargetX,
-            desiredBeforeCap: rawTargetX,
-            resolvedTargetX: clampToMap(rawTargetX, mapLeft, mapRight),
+            authoredEndX: pathRaw,
+            desiredBeforeCap: pathRaw,
+            resolvedTargetX: clampToMap(pathRaw, mapLeft, mapRight),
             correctionMagnitude: 0,
             correctionCapPx: profile.endpointCorrectionCapPx,
             correctionCapped: false,
@@ -2329,18 +2491,18 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
       player.ropeJumpEndpointCorrectionPx = capped.correctionMagnitude;
       player.ropeJumpEndpointCorrectionCapped = !!capped.correctionCapped;
       player.ropeJumpPredictedSettleDebt = predictedSettleDebt;
-      player.ropeJumpAuthoredEndX = rawTargetX;
+      player.ropeJumpAuthoredEndX = pathRaw;
       player.ropeJumpDesiredEndX = capped.desiredBeforeCap;
 
       decision = {
-        rawTargetX,
+        rawTargetX: pathRaw,
         resolvedTargetX: capped.resolvedTargetX,
         preferredSide: cross.side,
         resolvedSide: cross.side,
         minimumDistance: grounded,
         landingContactDistance: cross.contactDist,
         rawOverlap: opponent
-          ? Math.max(0, grounded - Math.abs(rawTargetX - opponent.x))
+          ? Math.max(0, grounded - Math.abs(pathRaw - opponent.x))
           : 0,
         residualOverlap: predictedSettleDebt,
         boundaryLimited: false,
@@ -2368,11 +2530,11 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
       const apexSamples = [];
       for (const dt of [-2 / 64, 0, 2 / 64]) {
         const st = Math.max(0, Math.min(1, profile.apexT + dt));
-        const sx = vault.sampleAuthoredX(startX, rawTargetX, st, profile);
+        const sx = vault.sampleAuthoredX(startX, pathRaw, st, profile);
         const sy = vault.sampleVaultY(groundLevel, st, profile);
         const sh = vault.sampleAuthoredVel(
           startX,
-          rawTargetX,
+          pathRaw,
           st,
           profile,
           activeMs
@@ -2485,7 +2647,7 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
     player.ropeJumpPeakAccel || 0,
     Math.abs(accel)
   );
-  const authoredSpan = Math.abs(rawTargetX - startX);
+  const authoredSpan = Math.abs(flightRawTargetX - startX);
   player.ropeJumpHorizTravelPct =
     authoredSpan > 1e-6
       ? (Math.abs(x - startX) / authoredSpan) * 100
@@ -2577,6 +2739,10 @@ function stepRopeJumpActive(player, opponent, now, options = {}) {
       overlap: player.ropeJumpOverlap,
       committed: !!player.ropeJumpLandingCommitted,
       easedT: Number(easedT.toFixed(4)),
+      flightMode: player.ropeJumpFlightMode,
+      flightPreset: player.ropeJumpFlightPreset,
+      rangeConstraintReason: player.ropeJumpRangeConstraintReason,
+      opponentInfluence: !!player.ropeJumpOpponentInfluence,
     });
   }
 
@@ -2714,10 +2880,19 @@ module.exports = {
   // High-vault move identity (ropeJumpVault.js)
   getVaultProfile: vault.getVaultProfile,
   VAULT_PRESETS: vault.VAULT_PRESETS,
+  TRAJECTORY_MODE: vault.TRAJECTORY_MODE,
+  FLIGHT_PRESETS: vault.FLIGHT_PRESETS,
   LEGACY_APEX_HEIGHT: vault.LEGACY_APEX_HEIGHT,
   REFERENCE_APEX_HEIGHT: vault.REFERENCE_APEX_HEIGHT,
   REFERENCE_TRAJECTORY: vault.REFERENCE_TRAJECTORY,
   DEFAULT_PRESET_NAME: vault.DEFAULT_PRESET_NAME,
+  getFlightPreset: vault.getFlightPreset,
+  getFreeFlightProfile: vault.getFreeFlightProfile,
+  classifyOpponentInfluence: vault.classifyOpponentInfluence,
+  classifyRopeJumpFlightMode: vault.classifyRopeJumpFlightMode,
+  constrainFreeFlightRawTargetX: vault.constrainFreeFlightRawTargetX,
+  extendRawTargetX: vault.extendRawTargetX,
+  computeBaseRawTargetX: vault.computeBaseRawTargetX,
   getRopeJumpLandingContactDistance: vault.getRopeJumpLandingContactDistance,
   decideApexCrossover: vault.decideApexCrossover,
   resolveCappedEndpoint: vault.resolveCappedEndpoint,

@@ -22,11 +22,13 @@
 
 import { getLastPlacementDebug } from "../combatPresentation/placement";
 import { getPoseGeometryDebugSnapshot } from "../poseGeometry";
+import { getLastClientInputCommandResult } from "./inputCommandTrace";
 
 const FLAG_KEY = "pumo_combat_fidelity_debug";
 const LANDING_TRACE_KEY = "pumo_landing_trace";
 /** Optional console dump when a slide-jump / FLAP flight ends (client view). */
 const AERIAL_TRACE_KEY = "pumo_offensive_aerial_trace";
+const INPUT_TRACE_KEY = "pumo_input_command_trace";
 /** Fallback only — must match server-io/constants.js HITBOX_DISTANCE_VALUE */
 const HITBOX_HALF_FALLBACK = 65;
 const DESIGN_W = 1280;
@@ -46,6 +48,7 @@ let lastOverlayHtml = "";
 let cachedFidelityEnabled = null;
 let cachedLandingTraceEnabled = null;
 let cachedAerialTraceEnabled = null;
+let cachedInputTraceEnabled = null;
 
 function readFlag(key) {
   try {
@@ -59,6 +62,7 @@ function refreshCachedFlags() {
   cachedFidelityEnabled = readFlag(FLAG_KEY);
   cachedLandingTraceEnabled = readFlag(LANDING_TRACE_KEY);
   cachedAerialTraceEnabled = readFlag(AERIAL_TRACE_KEY);
+  cachedInputTraceEnabled = readFlag(INPUT_TRACE_KEY);
 }
 
 if (typeof window !== "undefined") {
@@ -68,7 +72,8 @@ if (typeof window !== "undefined") {
       !e.key ||
       e.key === FLAG_KEY ||
       e.key === LANDING_TRACE_KEY ||
-      e.key === AERIAL_TRACE_KEY
+      e.key === AERIAL_TRACE_KEY ||
+      e.key === INPUT_TRACE_KEY
     ) {
       refreshCachedFlags();
     }
@@ -519,6 +524,43 @@ export function renderCombatFidelityOverlay(state) {
   };
   const contactLines = `contact P1=${contactPresence(p1)} atk=${p1.isAttacking ? p1.attackType || "Y" : "—"} hit=${p1.isHit ? "Y" : "N"} · P2=${contactPresence(p2)} atk=${p2.isAttacking ? p2.attackType || "Y" : "—"} hit=${p2.isHit ? "Y" : "N"} (COMBAT_CONTACT_FIDELITY_V2 default ON)`;
 
+  // Lifecycle ownership: infer domains from authoritative gameplay flags.
+  // Instance IDs / reject counts stay server-side (no debug-only wire fields).
+  const lifecycleOwnerFor = (p) => {
+    if (!p) return { primary: "—", loco: "—", reaction: "—", clinch: "—" };
+    let primary = "—";
+    if (p.isAttacking && p.isSlapAttack) primary = "SLAP";
+    else if (p.isAttacking && p.isPalmThrust) primary = "PALM";
+    else if (p.isAttacking || p.isChargingAttack) primary = "CHARGED/HOLD";
+    else if (p.isInEndlag) primary = "ENDLAG";
+    else if (p.isGrabStartup) primary = "GRAB_STARTUP";
+    let loco = "—";
+    if (p.isDodging) loco = "DODGE";
+    else if (p.isPowerSliding || p.isIceSliding) loco = "SLIDE";
+    else if (p.isSidestepping) loco = "SIDESTEP";
+    let reaction = "—";
+    if (p.isHit) reaction = "HITSTUN";
+    else if (p.isRecovering) reaction = "RECOVERY";
+    else if (p.isAtTheRopes) reaction = "ROPES";
+    else if (p.isRawParryStun) reaction = "PARRY_STUN";
+    let clinch = "—";
+    if (p.isThrowing || p.isClinchThrowing) clinch = "THROW";
+    else if (p.isBeingThrown) clinch = "THROW_VICTIM";
+    else if (p.inClinch || p.isGrabbing || p.isBeingGrabbed) clinch = "CLINCH";
+    return { primary, loco, reaction, clinch };
+  };
+  const lc1 = lifecycleOwnerFor(p1);
+  const lc2 = lifecycleOwnerFor(p2);
+  const lifecycleLines = `life P1 pri=${lc1.primary} loco=${lc1.loco} rx=${lc1.reaction} clinch=${lc1.clinch} · P2 pri=${lc2.primary} loco=${lc2.loco} rx=${lc2.reaction} clinch=${lc2.clinch} (ACTION_LIFECYCLE_OWNERSHIP_V2 default ON; inferred)`;
+
+  const lastCmd = getLastClientInputCommandResult();
+  const inputCmdLines =
+    cachedInputTraceEnabled && lastCmd
+      ? `cmd ${lastCmd.command || "—"} stage=${lastCmd.stage || "—"} dir=${lastCmd.relativeDir || "—"} reject=${lastCmd.reason || "—"}`
+      : cachedInputTraceEnabled
+        ? "cmd: — (pumo_input_command_trace)"
+        : null;
+
   if (isOffensiveAerialTraceEnabled()) {
     const active = aerialA || aerialB;
     if (active && typeof console !== "undefined") {
@@ -564,7 +606,13 @@ export function renderCombatFidelityOverlay(state) {
       <span style="color:#ce93d8">${presentationLines}</span><br/>
       <span style="color:#a5d6a7">${poseLines}</span><br/>
       <span style="color:#fff59d">${facingLines}</span><br/>
-      <span style="color:#90caf9">${contactLines}</span>
+      <span style="color:#90caf9">${contactLines}</span><br/>
+      <span style="color:#b0bec5">${lifecycleLines}</span>
+      ${
+        inputCmdLines
+          ? `<br/><span style="color:#ffcc80">${inputCmdLines}</span>`
+          : ""
+      }
     </div>
     ${fighterBox(p1, "P1", "#80d8ff")}
     ${fighterBox(p2, "P2", "#ffd180")}

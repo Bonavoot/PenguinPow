@@ -4,8 +4,13 @@
  * Phase A.3.1 — late-intrusion resolution + recovery-exit stability.
  */
 
-const { describe, it } = require("node:test");
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
+const { setRopeJumpFlightCurveV3ForTests } = require("../../landingFlags");
+
+// A.3.1 fixtures assert pre-V3 base-raw free-flight endpoints.
+beforeEach(() => setRopeJumpFlightCurveV3ForTests(false));
+afterEach(() => setRopeJumpFlightCurveV3ForTests(null));
 const {
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,

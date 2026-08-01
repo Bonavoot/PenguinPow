@@ -47,6 +47,7 @@ const {
   beginPlayerDodge,
   beginGrabStartup,
   emitStaminaBlocked,
+  cancelPendingSlapWork,
 } = require("./gameUtils");
 
 const {
@@ -65,6 +66,27 @@ const {
   ACTION_FACING_REASON,
   ACTION_FACING_RELEASE,
 } = require("./actionFacingOwnership");
+const {
+  isInputCommandReliabilityV2Enabled,
+  isInputCommandTraceEnabled,
+} = require("./inputCommandReliabilityFlags");
+const {
+  stampDirectionTaps,
+  resolveStrikeRelativeDirection,
+  tryConvertSlapToPalmChord,
+  RELATIVE_DIR,
+  PALM_DIR_CHORD_MS,
+} = require("./inputCommandReliability");
+const {
+  INPUT_REJECT,
+  noteCommandReject,
+  noteCommandAccept,
+} = require("./inputCommandRejection");
+const {
+  INPUT_COMMAND_STAGE,
+  pushInputCommandTrace,
+  clearInputCommandTrace,
+} = require("./inputCommandTrace");
 
 const { startRopeJump } = require("./ropeJumpStart");
 
@@ -475,6 +497,9 @@ function processInputPacket(room, player, data, io, rooms) {
     return false;
   };
 
+  // Captured for V2 same-packet palm chord ordering (Mouse1 vs A/D events).
+  let packetPrevKeys = null;
+
   if (data.keys) {
     // Edge detection across the entire packet window. When `data.events`
     // is present, walks each per-event transition AND reconciles against
@@ -483,6 +508,7 @@ function processInputPacket(room, player, data, io, rooms) {
     // `data.events` is absent, this reduces to the classic snapshot diff
     // and behavior is bit-for-bit identical to the pre-events path.
     const previousKeys = { ...player.keys };
+    packetPrevKeys = previousKeys;
     const { rising, falling } = detectEdges(previousKeys, data.events, data.keys);
     player.keys = data.keys;
 
@@ -527,6 +553,15 @@ function processInputPacket(room, player, data, io, rooms) {
     player.aJustPressed = !!rising.a;
     player.dJustPressed = !!rising.d;
     player.sJustPressed = !!rising.s;
+
+    // Phase 16 — stamp A/D taps for short palm chord window (V2 + diagnostics).
+    stampDirectionTaps(player, simNowForPlayer(player));
+    if (isInputCommandTraceEnabled() && (rising.a || rising.d || rising.mouse1 || rising.mouse2 || rising.shift || rising.w)) {
+      pushInputCommandTrace(player.id, INPUT_COMMAND_STAGE.PHYSICAL_EDGE, {
+        rising: Object.keys(rising).filter((k) => rising[k]),
+        sim: simNowForPlayer(player),
+      });
+    }
     player.fJustPressed = !!rising.f;
     player.spaceJustPressed = !!rising[" "];
 
@@ -621,16 +656,42 @@ function processInputPacket(room, player, data, io, rooms) {
   // MOUSE1 PRESS: S+FORWARD+MOUSE1 = charged, S+MOUSE1 = low kick,
   // BACK+MOUSE1 = open-palm thrust, else fire slap.
   if (player.mouse1JustPressed && !shouldBlockAction()) {
-    const forwardKey = player.facing === -1 ? 'd' : 'a';
-    const backKey = player.facing === -1 ? 'a' : 'd';
-    const wantsChargedAttack = player.keys.s && player.keys[forwardKey];
+    const nowSimM1 = simNowForPlayer(player);
+    // Phase 16 — facing snapshot at acquisition (V2); legacy uses live facing.
+    const facingSnap =
+      player.facing === 1 || player.facing === -1 ? player.facing : -1;
+    player._strikeFacingSnap = facingSnap;
+    const dirInfo = resolveStrikeRelativeDirection(player, data, {
+      facingSnap,
+      nowSim: nowSimM1,
+      prevKeys: packetPrevKeys,
+    });
+    const forwardKey = dirInfo.forwardKey || (facingSnap === -1 ? "d" : "a");
+    const backKey = dirInfo.backKey || (facingSnap === -1 ? "a" : "d");
+    // Charged still keys off held S+forward (legacy), so A+D overlap keeps
+    // charge priority over palm — palm requires an unambiguous BACK resolve.
+    const wantsChargedAttack = player.keys.s && !!player.keys[forwardKey];
     // S held without forward — rooted trip (disabled while LOW_KICK_ENABLED is false).
     const wantsLowKick =
       LOW_KICK_ENABLED && player.keys.s && !player.keys[forwardKey];
-    // Back (away from opponent) held, WITHOUT forward — a deliberate back input.
-    const wantsPalmThrust = player.keys[backKey] && !player.keys[forwardKey];
+    // Back without forward — deliberate palm. Ambiguous A+D is never palm.
+    const wantsPalmThrust = dirInfo.relativeDir === RELATIVE_DIR.BACK;
+
+    if (isInputCommandTraceEnabled()) {
+      pushInputCommandTrace(player.id, INPUT_COMMAND_STAGE.AUTHORITATIVE_DIRECTION_RESOLVED, {
+        command: "mouse1_strike",
+        relativeDir: dirInfo.relativeDir,
+        facingSnap,
+        source: dirInfo.source,
+        attemptId: `${player.id}:m1:${nowSimM1}`,
+      });
+    }
 
     if (wantsChargedAttack && canPlayerSlap(player, { ignoreCooldown: true })) {
+      noteCommandAccept(player, "charge_hold", {
+        relativeDir: RELATIVE_DIR.FORWARD,
+        facingSnap,
+      });
       player.chargeAttackPower = 0;
       player.chargeStartTime = 0;
       startCharging(player);
@@ -667,8 +728,45 @@ function processInputPacket(room, player, data, io, rooms) {
       // Rooted "hold your ground" strike — only from neutral (executePalmThrust
       // itself guards !isAttacking so it can never eat a slap string).
       executePalmThrust(player, rooms);
+      if (player.isPalmThrust) {
+        noteCommandAccept(player, "palm_thrust", {
+          relativeDir: RELATIVE_DIR.BACK,
+          facingSnap,
+        });
+        if (isInputCommandTraceEnabled()) {
+          pushInputCommandTrace(player.id, INPUT_COMMAND_STAGE.ACTION_STARTED, {
+            command: "palm_thrust",
+            facingSnap,
+            relativeDir: RELATIVE_DIR.BACK,
+          });
+        }
+      } else {
+        noteCommandReject(player, INPUT_REJECT.PRIMARY_ACTION_BUSY, {
+          command: "palm_thrust",
+          facingSnap,
+        });
+      }
     } else if (canPlayerSlap(player)) {
+      if (
+        isInputCommandReliabilityV2Enabled() &&
+        dirInfo.relativeDir === RELATIVE_DIR.AMBIGUOUS
+      ) {
+        noteCommandReject(player, INPUT_REJECT.AMBIGUOUS_DIRECTION, {
+          command: "palm_thrust",
+          facingSnap,
+          relativeDir: RELATIVE_DIR.AMBIGUOUS,
+        });
+      }
       executeSlapAttack(player, rooms);
+      // V2: mark slap start so a Back edge arriving within the chord window
+      // can convert during startup (Mouse1 narrowly before Back).
+      if (isInputCommandReliabilityV2Enabled() && player.isSlapAttack) {
+        player._pendingPalmChordUntil = nowSimM1 + PALM_DIR_CHORD_MS;
+      }
+      noteCommandAccept(player, "slap", {
+        relativeDir: dirInfo.relativeDir,
+        facingSnap,
+      });
     } else if (player.isAttacking && player.attackType === "slap") {
       // Back held (without forward) mid-slap → the queued follow-up should be
       // the rooted palm thrust, not another slap. This is what lets a player
@@ -685,6 +783,61 @@ function processInputPacket(room, player, data, io, rooms) {
         // MASTERY Phase 3: stamp the queue moment (sim clock) — endSlapCycle
         // reads it to grade cadence. Late & precise ⇒ enhanced follow-up.
         player.pendingSlapPressTime = simNowForPlayer(player);
+      }
+    } else {
+      noteCommandReject(player, INPUT_REJECT.ELIGIBILITY_FAILED, {
+        command: "mouse1_strike",
+        facingSnap,
+      });
+    }
+  } else if (player.mouse1JustPressed && shouldBlockAction()) {
+    noteCommandReject(player, INPUT_REJECT.ACTION_BLOCKED, {
+      command: "mouse1_strike",
+    });
+  }
+
+  // Phase 16 V2 — Back arrives just after Mouse1: convert slap-startup → palm.
+  if (
+    isInputCommandReliabilityV2Enabled() &&
+    (player.aJustPressed || player.dJustPressed) &&
+    player._pendingPalmChordUntil &&
+    simNowForPlayer(player) <= player._pendingPalmChordUntil
+  ) {
+    const snap =
+      player._strikeFacingSnap === 1 || player._strikeFacingSnap === -1
+        ? player._strikeFacingSnap
+        : player.facing;
+    const backKey = snap === -1 ? "a" : "d";
+    const forwardKey = snap === -1 ? "d" : "a";
+    const backEdge =
+      (backKey === "a" && player.aJustPressed) ||
+      (backKey === "d" && player.dJustPressed);
+    if (backEdge && !player.keys[forwardKey]) {
+      const converted = tryConvertSlapToPalmChord(
+        player,
+        rooms,
+        executePalmThrust,
+        {
+          nowSim: simNowForPlayer(player),
+          backJustPressed: true,
+          cancelPendingSlapWork,
+          timeoutManager,
+        }
+      );
+      if (converted) {
+        player._pendingPalmChordUntil = 0;
+        noteCommandAccept(player, "palm_thrust", {
+          relativeDir: RELATIVE_DIR.BACK,
+          facingSnap: snap,
+          stage: "ACTION_STARTED",
+        });
+        if (isInputCommandTraceEnabled()) {
+          pushInputCommandTrace(player.id, INPUT_COMMAND_STAGE.ACTION_STARTED, {
+            command: "palm_thrust",
+            reason: "chord_convert_from_slap",
+            facingSnap: snap,
+          });
+        }
       }
     }
   }
@@ -1013,11 +1166,23 @@ function processInputPacket(room, player, data, io, rooms) {
         player.movementVelocity = 0;
         player.recoveryDirection = null;
       } else {
-        return; // Don't execute dodge if recovery is too fresh
+        // Phase 16 V2: do NOT return from the whole packet — that silently
+        // dropped later clinch throw/pull recognition in the same process.
+        // Legacy keeps the early return for exact rollback.
+        noteCommandReject(player, INPUT_REJECT.DODGE_RECOVERY_FRESH, {
+          command: "dodge",
+        });
+        if (!isInputCommandReliabilityV2Enabled()) {
+          return; // Legacy: Don't execute dodge if recovery is too fresh
+        }
+        // V2: skip dodge only; continue processing the rest of the packet.
       }
     }
 
-    beginPlayerDodge(player, { nowSim: simNowForPlayer(player) });
+    if (!(player.isRecovering && isInputCommandReliabilityV2Enabled())) {
+      beginPlayerDodge(player, { nowSim: simNowForPlayer(player) });
+      noteCommandAccept(player, "dodge", {});
+    }
 
     // Dodge lifecycle (landing, recovery, cooldown) is handled entirely by the tick
     // loop in index.js. Pending charge attacks are executed when recovery ends.
@@ -1323,65 +1488,108 @@ function processInputPacket(room, player, data, io, rooms) {
     player.clinchMouse2BufferTime = simNowForPlayer(player);
   }
 
-  if (
-    player.hasGrip && player.inClinch &&
-    !player.isArmClamped &&
-    !player.clinchThrowActive && !player.isClinchClashing &&
-    !player.clinchThrowRequest &&
-    !player.clinchThrowFailStagger && !player.isClinchOpen &&
-    !player.isResistingThrow && !player.isResistingPull &&
-    !player.clinchJoltRecovery
-  ) {
-    const otherPlayer = room.players.find((p) => p.id !== player.id);
-    if (otherPlayer) {
-      const nowSim = simNowForPlayer(player);
-      const chord = CLINCH_THROW_CHORD_WINDOW_MS;
-      const awayKey = player.x < otherPlayer.x ? "a" : "d";
-      const awayEdge = awayKey === "a" ? player.aJustPressed : player.dJustPressed;
-      const awayHeld = !!player.keys[awayKey];
-      const wHeld = !!player.keys.w;
-      const m2Down = !!player.keys.mouse2;
-      const m2TapRecent =
-        !!player.clinchMouse2BufferTime && nowSim - player.clinchMouse2BufferTime < chord;
-      const wTapRecent =
-        !!player.clinchWTapTime && nowSim - player.clinchWTapTime < chord;
-      const awayTapRecent =
-        !!player.clinchAwayTapTime && nowSim - player.clinchAwayTapTime < chord;
-      const m2Ready = m2Down || m2TapRecent;
-      // Direction is "ready" if rising now, tapped recently, OR currently held
-      // (so M2 can complete a chord that started from a held dir).
-      const wReady = player.wJustPressed || wTapRecent || wHeld;
-      const awayReady = awayEdge || awayTapRecent || awayHeld;
+  {
+    // Only count attempts that involve M2 or W (not bare Plant A/D taps).
+    const clinchChordAttempt =
+      player.inClinch &&
+      (player.mouse2JustPressed ||
+        player.wJustPressed ||
+        ((player.aJustPressed || player.dJustPressed) &&
+          (!!player.keys.mouse2 || !!player.clinchMouse2BufferTime)));
+    if (
+      player.hasGrip && player.inClinch &&
+      !player.isArmClamped &&
+      !player.clinchThrowActive && !player.isClinchClashing &&
+      !player.clinchThrowRequest &&
+      !player.clinchThrowFailStagger && !player.isClinchOpen &&
+      !player.isResistingThrow && !player.isResistingPull &&
+      !player.clinchJoltRecovery
+    ) {
+      const otherPlayer = room.players.find((p) => p.id !== player.id);
+      if (otherPlayer) {
+        const nowSim = simNowForPlayer(player);
+        const chord = CLINCH_THROW_CHORD_WINDOW_MS;
+        const awayKey = player.x < otherPlayer.x ? "a" : "d";
+        const awayEdge = awayKey === "a" ? player.aJustPressed : player.dJustPressed;
+        const awayHeld = !!player.keys[awayKey];
+        const wHeld = !!player.keys.w;
+        const m2Down = !!player.keys.mouse2;
+        const m2TapRecent =
+          !!player.clinchMouse2BufferTime && nowSim - player.clinchMouse2BufferTime < chord;
+        const wTapRecent =
+          !!player.clinchWTapTime && nowSim - player.clinchWTapTime < chord;
+        const awayTapRecent =
+          !!player.clinchAwayTapTime && nowSim - player.clinchAwayTapTime < chord;
+        const m2Ready = m2Down || m2TapRecent;
+        // Direction is "ready" if rising now, tapped recently, OR currently held
+        // (so M2 can complete a chord that started from a held dir).
+        const wReady = player.wJustPressed || wTapRecent || wHeld;
+        const awayReady = awayEdge || awayTapRecent || awayHeld;
 
-      let request = null;
-      let completingKey = null;
-      // Prefer the input that just edged as the completing key (fairer lag-comp).
-      if (m2Ready && player.wJustPressed) {
-        request = "throw";
-        completingKey = "w";
-      } else if (m2Ready && awayEdge) {
-        request = "pull";
-        completingKey = awayKey;
-      } else if (player.mouse2JustPressed && wReady) {
-        request = "throw";
-        completingKey = "mouse2";
-      } else if (player.mouse2JustPressed && awayReady) {
-        request = "pull";
-        completingKey = "mouse2";
-      }
-
-      if (request) {
-        const pressGameTime = pressGameTimeFromEvents(player, data, completingKey);
-        if (pressGameTime) {
-          player.clinchTechniquePressGameTime = pressGameTime;
-          player.clinchTechniquePressReceiptGameNow = data._receiptGameNow || gameNow();
+        let request = null;
+        let completingKey = null;
+        // Prefer the input that just edged as the completing key (fairer lag-comp).
+        if (m2Ready && player.wJustPressed) {
+          request = "throw";
+          completingKey = "w";
+        } else if (m2Ready && awayEdge) {
+          request = "pull";
+          completingKey = awayKey;
+        } else if (player.mouse2JustPressed && wReady) {
+          request = "throw";
+          completingKey = "mouse2";
+        } else if (player.mouse2JustPressed && awayReady) {
+          request = "pull";
+          completingKey = "mouse2";
         }
 
-        player.clinchThrowRequest = request;
-        player.clinchThrowRequestTime = lagCompensatedClinchInputStart(player, nowSim);
-        player.clinchMouse2BufferTime = 0;
-        player.clinchWTapTime = 0;
-        player.clinchAwayTapTime = 0;
+        if (request) {
+          const pressGameTime = pressGameTimeFromEvents(player, data, completingKey);
+          if (pressGameTime) {
+            player.clinchTechniquePressGameTime = pressGameTime;
+            player.clinchTechniquePressReceiptGameNow = data._receiptGameNow || gameNow();
+          }
+
+          player.clinchThrowRequest = request;
+          player.clinchThrowRequestTime = lagCompensatedClinchInputStart(player, nowSim);
+          player.clinchMouse2BufferTime = 0;
+          player.clinchWTapTime = 0;
+          player.clinchAwayTapTime = 0;
+          noteCommandAccept(player, request === "throw" ? "clinch_throw" : "clinch_pull", {
+            relativeDir: request === "pull" ? RELATIVE_DIR.BACK : RELATIVE_DIR.FORWARD,
+          });
+          if (isInputCommandTraceEnabled()) {
+            pushInputCommandTrace(player.id, INPUT_COMMAND_STAGE.COMMAND_ACCEPTED, {
+              command: request,
+              hasDeepGrip: !!player.hasDeepGrip,
+              clinchInstanceId: player.clinchInstanceId || null,
+            });
+          }
+        } else if (clinchChordAttempt && (player.mouse2JustPressed || m2Ready)) {
+          noteCommandReject(player, INPUT_REJECT.COMMAND_NOT_RECOGNIZED, {
+            command: "clinch_technique",
+          });
+        }
+      }
+    } else if (clinchChordAttempt) {
+      // Distinguish ineligibility from silent loss (Deep Grip does not bypass these).
+      let reason = INPUT_REJECT.ELIGIBILITY_FAILED;
+      if (!player.inClinch || !player.hasGrip) reason = INPUT_REJECT.NOT_IN_CLINCH;
+      else if (player.isArmClamped) reason = INPUT_REJECT.ARM_CLAMPED;
+      else if (player.isClinchOpen || player.clinchThrowFailStagger) {
+        reason = INPUT_REJECT.THROW_RECOVERY_ACTIVE;
+      } else if (player.clinchThrowActive || player.isClinchClashing) {
+        reason = INPUT_REJECT.TECHNIQUE_ACTIVE;
+      } else if (player.clinchJoltRecovery) reason = INPUT_REJECT.JOLT_RECOVERY;
+      else if (player.clinchThrowRequest) reason = INPUT_REJECT.DUPLICATE_COMMAND;
+      noteCommandReject(player, reason, { command: "clinch_technique" });
+      if (isInputCommandTraceEnabled()) {
+        pushInputCommandTrace(player.id, INPUT_COMMAND_STAGE.COMMAND_REJECTED, {
+          command: "clinch_technique",
+          reason,
+          hasDeepGrip: !!player.hasDeepGrip,
+          concept: "COMMAND_RECOGNIZED_BUT_INELIGIBLE",
+        });
       }
     }
   }

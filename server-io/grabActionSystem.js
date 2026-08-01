@@ -1998,6 +1998,20 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
   // --- PERFECT BRACE: timed Plant in the final startup window beats Deep Grip ---
   if (perfectBrace) {
     applyResistedCosts();
+    try {
+      const { noteCommandReject, INPUT_REJECT } = require("./inputCommandRejection");
+      const { pushInputCommandTrace, INPUT_COMMAND_STAGE } = require("./inputCommandTrace");
+      noteCommandReject(actor, INPUT_REJECT.DEFENDER_PERFECT_BRACE, {
+        command: actionType === "pull" ? "clinch_pull" : "clinch_throw",
+        stage: "RESOLVED_AND_DEFENDED",
+      });
+      pushInputCommandTrace(actor.id, INPUT_COMMAND_STAGE.COMMAND_REJECTED, {
+        command: actionType,
+        reason: INPUT_REJECT.DEFENDER_PERFECT_BRACE,
+        concept: "THROW_ATTEMPT_RESOLVED_AND_DEFENDED",
+        hasDeepGripUsed: !!usedDeepGrip,
+      });
+    } catch (_) { /* diagnostics optional */ }
 
     applyClinchOpen(actor, CLINCH_PERFECT_BRACE_OPEN_MS, room);
     grantDeepGrip(target, actor, room, io, "perfect_brace");

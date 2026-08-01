@@ -31,6 +31,7 @@ const {
   endHitKnockback,
   hasHitAbsorption,
   consumeHitAbsorption,
+  timeoutManager,
 } = require("./gameUtils");
 const {
   DEFENSE_TYPE,
@@ -40,6 +41,31 @@ const {
   buildProjectilePresentation,
   attachCombatPresentation,
 } = require("./combatPresentationEvent");
+const {
+  isActionLifecycleOwnershipV2Enabled,
+} = require("./actionLifecycleFlags");
+const {
+  LIFECYCLE_DOMAIN,
+  LIFECYCLE_OWNER,
+  LIFECYCLE_PHASE,
+  beginLifecycleOwner,
+  assertLifecycleCallback,
+  completeLifecycleOwner,
+  markLifecycleControlRestore,
+} = require("./actionLifecycleOwnership");
+
+function beginProjectileHitstunLifecycle(victim) {
+  if (!victim || !isActionLifecycleOwnershipV2Enabled()) return null;
+  const rec = beginLifecycleOwner(
+    victim,
+    LIFECYCLE_DOMAIN.REACTION,
+    LIFECYCLE_OWNER.HITSTUN,
+    { phase: LIFECYCLE_PHASE.ACTIVE, reason: "PROJECTILE_HITSTUN_BEGIN" }
+  );
+  const id = rec?.ownerInstanceId || null;
+  victim.hitstunLifecycleInstanceId = id;
+  return id;
+}
 
 // Swept 1D collision: horizontal distance from targetX to the segment the
 // projectile traversed this tick. Fast projectiles (reflected snowballs move
@@ -281,13 +307,43 @@ function updateProjectiles(room, io, delta) {
             setKnockbackImmunity(targetPlayer);
           }
 
+          const snowballHitstunId = beginProjectileHitstunLifecycle(targetPlayer);
+          timeoutManager.clearPlayerSpecific(targetPlayer.id, "projectileHitStateReset");
           setPlayerTimeout(
             targetPlayer.id,
             () => {
+              if (
+                isActionLifecycleOwnershipV2Enabled() &&
+                !assertLifecycleCallback(
+                  targetPlayer,
+                  LIFECYCLE_DOMAIN.REACTION,
+                  snowballHitstunId,
+                  "snowball_hitStateReset"
+                )
+              ) {
+                return;
+              }
               endHitKnockback(targetPlayer);
               targetPlayer.isAlreadyHit = false;
+              if (isActionLifecycleOwnershipV2Enabled()) {
+                completeLifecycleOwner(
+                  targetPlayer,
+                  LIFECYCLE_DOMAIN.REACTION,
+                  snowballHitstunId,
+                  { reason: "SNOWBALL_HITSTUN_COMPLETE" }
+                );
+                markLifecycleControlRestore(
+                  targetPlayer,
+                  LIFECYCLE_DOMAIN.REACTION,
+                  snowballHitstunId
+                );
+                targetPlayer.hitstunLifecycleInstanceId = null;
+              }
             },
-            300
+            300,
+            isActionLifecycleOwnershipV2Enabled()
+              ? "projectileHitStateReset"
+              : null
           );
 
           return false; // Remove snowball after hit
@@ -676,13 +732,43 @@ function updateProjectiles(room, io, delta) {
             setKnockbackImmunity(opponent);
           }
 
+          const cloneHitstunId = beginProjectileHitstunLifecycle(opponent);
+          timeoutManager.clearPlayerSpecific(opponent.id, "projectileHitStateReset");
           setPlayerTimeout(
             opponent.id,
             () => {
+              if (
+                isActionLifecycleOwnershipV2Enabled() &&
+                !assertLifecycleCallback(
+                  opponent,
+                  LIFECYCLE_DOMAIN.REACTION,
+                  cloneHitstunId,
+                  "pumo_hitStateReset"
+                )
+              ) {
+                return;
+              }
               endHitKnockback(opponent);
               opponent.isAlreadyHit = false;
+              if (isActionLifecycleOwnershipV2Enabled()) {
+                completeLifecycleOwner(
+                  opponent,
+                  LIFECYCLE_DOMAIN.REACTION,
+                  cloneHitstunId,
+                  { reason: "PUMO_HITSTUN_COMPLETE" }
+                );
+                markLifecycleControlRestore(
+                  opponent,
+                  LIFECYCLE_DOMAIN.REACTION,
+                  cloneHitstunId
+                );
+                opponent.hitstunLifecycleInstanceId = null;
+              }
             },
-            200
+            200,
+            isActionLifecycleOwnershipV2Enabled()
+              ? "projectileHitStateReset"
+              : null
           );
 
           return false; // Remove clone after hit

@@ -84,6 +84,18 @@ const {
   ACTION_FACING_REASON,
   ACTION_FACING_RELEASE,
 } = require("./actionFacingOwnership");
+const {
+  isActionLifecycleOwnershipV2Enabled,
+} = require("./actionLifecycleFlags");
+const {
+  LIFECYCLE_DOMAIN,
+  LIFECYCLE_OWNER,
+  LIFECYCLE_PHASE,
+  beginLifecycleOwner,
+  assertLifecycleCallback,
+  completeLifecycleOwner,
+  markLifecycleControlRestore,
+} = require("./actionLifecycleOwnership");
 
 const {
   GROUND_LEVEL,
@@ -1061,17 +1073,67 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
   player.isInStartupFrames = true;
   player.startupEndTime = now + SLAP_STARTUP_MS;
 
+  // Phase 15 — mint slap lifecycle instance so delayed cycle/startup cannot
+  // clear a newer slap (or post-interrupt action) when V2 is on.
+  let slapLifecycleId = null;
+  if (isActionLifecycleOwnershipV2Enabled()) {
+    const slapRec = beginLifecycleOwner(
+      player,
+      LIFECYCLE_DOMAIN.PRIMARY_ACTION,
+      LIFECYCLE_OWNER.SLAP,
+      { phase: LIFECYCLE_PHASE.STARTUP, reason: "SLAP_BEGIN" }
+    );
+    slapLifecycleId = slapRec?.ownerInstanceId || null;
+    player.slapLifecycleInstanceId = slapLifecycleId;
+  }
+
   setPlayerTimeout(
     player.id,
     () => {
+      if (
+        isActionLifecycleOwnershipV2Enabled() &&
+        !assertLifecycleCallback(
+          player,
+          LIFECYCLE_DOMAIN.PRIMARY_ACTION,
+          slapLifecycleId,
+          "slap_startup_end"
+        )
+      ) {
+        return;
+      }
       player.isInStartupFrames = false;
     },
-    SLAP_STARTUP_MS
+    SLAP_STARTUP_MS,
+    isActionLifecycleOwnershipV2Enabled() ? "slapStartupEnd" : null
   );
 
   // Ends the slap and fires a buffered press if one is queued. Runs at cycle
   // end on hit, or after the whiff-cooldown extension on whiff.
   const endSlapCycle = () => {
+      if (
+        isActionLifecycleOwnershipV2Enabled() &&
+        !assertLifecycleCallback(
+          player,
+          LIFECYCLE_DOMAIN.PRIMARY_ACTION,
+          slapLifecycleId,
+          "slap_cycle_end"
+        )
+      ) {
+        return;
+      }
+      if (isActionLifecycleOwnershipV2Enabled()) {
+        completeLifecycleOwner(
+          player,
+          LIFECYCLE_DOMAIN.PRIMARY_ACTION,
+          slapLifecycleId,
+          { reason: "SLAP_CYCLE_END" }
+        );
+        markLifecycleControlRestore(
+          player,
+          LIFECYCLE_DOMAIN.PRIMARY_ACTION,
+          slapLifecycleId
+        );
+      }
       player.isAttacking = false;
       player.isSlapAttack = false;
       player.attackType = null;
@@ -1090,6 +1152,9 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
       player.slapActiveEndTime = 0;
       player.slapOpenHitPending = false;
       player.currentAction = null;
+      if (isActionLifecycleOwnershipV2Enabled()) {
+        player.slapLifecycleInstanceId = null;
+      }
 
       const isPlayerValid = () => (
         !player.isDodging && !player.isThrowing && !player.isBeingThrown &&
@@ -1276,9 +1341,31 @@ function executePalmThrust(player, rooms) {
   // Startup telegraph — no hitbox until it ends (checkCollision gates on this).
   player.isInStartupFrames = true;
   player.startupEndTime = now + PALM_THRUST_STARTUP_MS;
+  let palmLifecycleId = null;
+  if (isActionLifecycleOwnershipV2Enabled()) {
+    const palmRec = beginLifecycleOwner(
+      player,
+      LIFECYCLE_DOMAIN.PRIMARY_ACTION,
+      LIFECYCLE_OWNER.PALM,
+      { phase: LIFECYCLE_PHASE.STARTUP, reason: "PALM_BEGIN" }
+    );
+    palmLifecycleId = palmRec?.ownerInstanceId || null;
+    player.chargedLifecycleInstanceId = palmLifecycleId;
+  }
   setPlayerTimeout(
     player.id,
     () => {
+      if (
+        isActionLifecycleOwnershipV2Enabled() &&
+        !assertLifecycleCallback(
+          player,
+          LIFECYCLE_DOMAIN.PRIMARY_ACTION,
+          palmLifecycleId,
+          "palm_startup_end"
+        )
+      ) {
+        return;
+      }
       player.isInStartupFrames = false;
     },
     PALM_THRUST_STARTUP_MS,
@@ -2189,9 +2276,45 @@ function safelyEndChargedAttack(player, rooms) {
       player.attackCooldownUntil = simNowForPlayer(player) + CHARGED_ENDLAG_DURATION + 150;
 
       // Clear endlag after duration via timeout
+      let chargedEndlagId = null;
+      if (isActionLifecycleOwnershipV2Enabled()) {
+        const endlagRec = beginLifecycleOwner(
+          player,
+          LIFECYCLE_DOMAIN.PRIMARY_ACTION,
+          LIFECYCLE_OWNER.ENDLAG,
+          { phase: LIFECYCLE_PHASE.ENDLAG, reason: "CHARGED_ENDLAG_BEGIN" }
+        );
+        chargedEndlagId = endlagRec?.ownerInstanceId || null;
+        player.chargedEndlagInstanceId = chargedEndlagId;
+      }
       setPlayerTimeout(
         player.id,
         () => {
+          if (
+            isActionLifecycleOwnershipV2Enabled() &&
+            !assertLifecycleCallback(
+              player,
+              LIFECYCLE_DOMAIN.PRIMARY_ACTION,
+              chargedEndlagId,
+              "charged_endlag_reset"
+            )
+          ) {
+            return;
+          }
+          if (isActionLifecycleOwnershipV2Enabled()) {
+            completeLifecycleOwner(
+              player,
+              LIFECYCLE_DOMAIN.PRIMARY_ACTION,
+              chargedEndlagId,
+              { reason: "CHARGED_ENDLAG_COMPLETE" }
+            );
+            markLifecycleControlRestore(
+              player,
+              LIFECYCLE_DOMAIN.PRIMARY_ACTION,
+              chargedEndlagId
+            );
+            player.chargedEndlagInstanceId = null;
+          }
           player.isInEndlag = false;
           player.endlagEndTime = 0;
           if (player.currentAction === "endlag" || player.currentAction === "charged") {

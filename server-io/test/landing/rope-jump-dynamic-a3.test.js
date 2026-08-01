@@ -6,8 +6,13 @@
  * Settle debt at touchdown is OK when A.3.2 recovery exit is stable.
  */
 
-const { describe, it } = require("node:test");
+const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
+const { setRopeJumpFlightCurveV3ForTests } = require("../../landingFlags");
+
+// A.3 asserts pre-V3 base-raw free-flight endpoints; pin exact reference path.
+beforeEach(() => setRopeJumpFlightCurveV3ForTests(false));
+afterEach(() => setRopeJumpFlightCurveV3ForTests(null));
 const {
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,

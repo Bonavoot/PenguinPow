@@ -45,6 +45,11 @@ import {
   retainFighterSocket,
 } from "../net/fighterSnapshotBus";
 import {
+  pushClientInputCommandTrace,
+  clearClientInputCommandTrace,
+  isInputCommandTraceEnabled,
+} from "../debug/inputCommandTrace";
+import {
   applyDohyoOverlayVars,
   loadDohyoOverlay,
   DOHYO_CHANGED_EVENT,
@@ -415,6 +420,19 @@ const Game = ({
         clientOffset: clientSynced ? getServerOffset() : 0,
         clientRtt: clientSynced ? getEstimatedRtt() : 0,
       });
+      if (isInputCommandTraceEnabled() && events.length > 0) {
+        pushClientInputCommandTrace("COMMAND_EMITTED", {
+          eventCount: events.length,
+          keys: {
+            a: !!keyState.a,
+            d: !!keyState.d,
+            w: !!keyState.w,
+            shift: !!keyState.shift,
+            mouse1: !!keyState.mouse1,
+            mouse2: !!keyState.mouse2,
+          },
+        });
+      }
     };
 
     const scheduleEmit = () => {
@@ -652,10 +670,25 @@ const Game = ({
             const backKey = cp.facing === -1 ? 'a' : 'd';
             if (keyState.s && keyState[forwardKey]) {
               applyPrediction("charge_start");
+              pushClientInputCommandTrace("COMMAND_SELECTED", {
+                command: "charge_start",
+                relativeDir: "forward",
+                facing: cp.facing,
+              });
             } else if (keyState[backKey] && !keyState[forwardKey]) {
               applyPrediction("palm_thrust");
+              pushClientInputCommandTrace("COMMAND_SELECTED", {
+                command: "palm_thrust",
+                relativeDir: "back",
+                facing: cp.facing,
+              });
             } else {
               applyPrediction("slap");
+              pushClientInputCommandTrace("COMMAND_SELECTED", {
+                command: "slap",
+                relativeDir: keyState[forwardKey] ? "forward" : "neutral",
+                facing: cp.facing,
+              });
             }
           } else {
             applyPrediction("slap");
@@ -738,6 +771,9 @@ const Game = ({
           if (keyState[key]) pushEvent(key, "up");
           keyState[key] = false;
         }
+        pushClientInputCommandTrace("HELD_STATE_UPDATED", {
+          reason: "visibility_blur_clear",
+        });
         emitInputNow();
       }
     };
@@ -756,6 +792,7 @@ const Game = ({
       window.removeEventListener("mouseup", handleMouseUp);
       window.removeEventListener("contextmenu", handleContextMenu);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearClientInputCommandTrace();
 
       // Remove gamepad input callback
       gamepadHandler.removeInputCallback(handleGamepadInput);

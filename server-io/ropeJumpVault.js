@@ -13,11 +13,49 @@
  * See ROPE_JUMP_MOVE_IDENTITY_V2.md / ROPE_JUMP_V2_POLISH_TUNING.md
  */
 
-const { ROPE_JUMP_ARC_HEIGHT } = require("./constants");
+const {
+  ROPE_JUMP_ARC_HEIGHT,
+  ROPE_JUMP_CENTER_FRACTION,
+} = require("./constants");
 const {
   getPushboxHalfWidth,
   getMinimumCenterDistance,
 } = require("./pushboxGeometry");
+const {
+  resolveFlightPresetName,
+  DEFAULT_FLIGHT_PRESET_NAME,
+} = require("./landingFlags");
+
+/** Phase 17 trajectory classification. */
+const TRAJECTORY_MODE = Object.freeze({
+  OPPONENT_INFLUENCED_REFERENCE: "OPPONENT_INFLUENCED_REFERENCE",
+  FREE_FLIGHT: "FREE_FLIGHT",
+});
+
+/**
+ * Free-flight development presets (V3 only). Do not alter reference branch.
+ * rangeMult applies to the authored base span (CENTER_FRACTION path).
+ */
+const FLIGHT_PRESETS = Object.freeze({
+  smooth_same_range: {
+    name: "smooth_same_range",
+    rangeMult: 1.0,
+    curveModel: "ballistic_c1",
+    horizCurveModel: "smooth_hermite_c1",
+  },
+  smooth_long_20: {
+    name: "smooth_long_20",
+    rangeMult: 1.2,
+    curveModel: "ballistic_c1",
+    horizCurveModel: "smooth_hermite_c1",
+  },
+  smooth_long_30: {
+    name: "smooth_long_30",
+    rangeMult: 1.3,
+    curveModel: "ballistic_c1",
+    horizCurveModel: "smooth_hermite_c1",
+  },
+});
 
 const LEGACY_APEX_HEIGHT = ROPE_JUMP_ARC_HEIGHT; // 120
 
@@ -189,13 +227,23 @@ function smoothstepDeriv(s) {
  *
  * piecewise_linear_sincos: legacy reference (velocity kink at apex).
  */
+function horizCurveModelOf(profile) {
+  return (
+    profile.horizCurveModel ||
+    (profile.curveModel === "ballistic_c1"
+      ? "smooth_hermite_c1"
+      : profile.curveModel)
+  );
+}
+
 function authoredHorizProgress(t, profile) {
   const apexT = profile.apexT;
   const frac = profile.horizFracAtApex;
   if (t <= 0) return 0;
   if (t >= 1) return 1;
 
-  if (profile.curveModel === "piecewise_linear_sincos") {
+  const horizModel = horizCurveModelOf(profile);
+  if (horizModel === "piecewise_linear_sincos") {
     if (t <= apexT) return frac * (t / apexT);
     return frac + (1 - frac) * ((t - apexT) / (1 - apexT));
   }
@@ -219,7 +267,8 @@ function authoredHorizProgressDeriv(t, profile, activeMs) {
   const frac = profile.horizFracAtApex;
   if (t <= 0 || t >= 1) return 0;
 
-  if (profile.curveModel === "piecewise_linear_sincos") {
+  const horizModel = horizCurveModelOf(profile);
+  if (horizModel === "piecewise_linear_sincos") {
     if (t <= apexT) return (frac / apexT) * invSec;
     return ((1 - frac) / (1 - apexT)) * invSec;
   }
@@ -254,6 +303,15 @@ function vaultHeightFrac(t, apexT, curveModel = "smooth_hermite_c1") {
     const s = (t - apexT) / (1 - apexT);
     return Math.cos((Math.PI / 2) * s);
   }
+  // Phase 17 free-flight: asymmetric ballistic halves with vy=0 at apex (C1).
+  if (curveModel === "ballistic_c1") {
+    if (t <= apexT) {
+      const u = 1 - t / apexT;
+      return 1 - u * u;
+    }
+    const u = (t - apexT) / (1 - apexT);
+    return 1 - u * u;
+  }
   if (t <= apexT) {
     return smoothstep(t / apexT);
   }
@@ -275,6 +333,15 @@ function vaultHeightFracDeriv(t, apexT, activeMs, curveModel = "smooth_hermite_c
       (-(Math.PI / 2) * Math.sin((Math.PI / 2) * s) * (1 / (1 - apexT))) *
       invSec
     );
+  }
+  if (curveModel === "ballistic_c1") {
+    if (t <= apexT) {
+      // d/dt [1 - (1 - t/a)^2] = 2(1 - t/a)/a
+      return ((2 * (1 - t / apexT)) / apexT) * invSec;
+    }
+    const u = (t - apexT) / (1 - apexT);
+    // d/dt [1 - u^2] = -2u/(1-a)
+    return ((-2 * u) / (1 - apexT)) * invSec;
   }
   if (t <= apexT) {
     return (smoothstepDeriv(t / apexT) / apexT) * invSec;
@@ -589,12 +656,221 @@ function getRopeJumpVulnerabilityState(player) {
   };
 }
 
+/**
+ * Authored base raw from CENTER_FRACTION (same as startRopeJump).
+ */
+function computeBaseRawTargetX(startX, mapLeft, mapRight) {
+  const mapMidpoint = (mapLeft + mapRight) / 2;
+  return Math.max(
+    mapLeft,
+    Math.min(startX + (mapMidpoint - startX) * ROPE_JUMP_CENTER_FRACTION, mapRight)
+  );
+}
+
+/**
+ * Extend base raw span by rangeMult, then map-clamp.
+ * Boundary shortening preserves the clamped endpoint as the curve target
+ * (no long-curve-then-snap).
+ */
+function extendRawTargetX(startX, baseRawTargetX, rangeMult, mapLeft, mapRight) {
+  const mult = rangeMult != null ? rangeMult : 1;
+  const extended = startX + (baseRawTargetX - startX) * mult;
+  return Math.max(mapLeft, Math.min(extended, mapRight));
+}
+
+function getFlightPreset(name) {
+  const key = resolveFlightPresetName(name);
+  return FLIGHT_PRESETS[key] || FLIGHT_PRESETS[DEFAULT_FLIGHT_PRESET_NAME];
+}
+
+/**
+ * Free-flight profile: same apex/decision/settle contract as reference,
+ * ballistic vertical + smooth Hermite horizontal only.
+ */
+function getFreeFlightProfile(baseProfile, flightPresetName) {
+  const base = baseProfile || getVaultProfile();
+  const fp = getFlightPreset(flightPresetName);
+  return {
+    ...base,
+    curveModel: fp.curveModel,
+    horizCurveModel: fp.horizCurveModel,
+    flightPreset: fp.name,
+    rangeMult: fp.rangeMult,
+  };
+}
+
+/**
+ * Opponent-influence probe using the approved apex crossover predicate on the
+ * **base** raw footprint (never the free-flight-extended endpoint).
+ * Classification locks on first active tick — no late mode flip / no new
+ * long-range cross-up from extended range alone.
+ */
+function classifyOpponentInfluence({
+  startX,
+  baseRawTargetX,
+  jumpDirection,
+  opponentX,
+  jumperSizeMult,
+  opponentSizeMult,
+  profile,
+}) {
+  const ref = profile || getVaultProfile();
+  const decisionX = sampleAuthoredX(
+    startX,
+    baseRawTargetX,
+    ref.decisionT,
+    ref
+  );
+  if (opponentX == null || !Number.isFinite(opponentX)) {
+    return {
+      influences: false,
+      intentClass: "preserve_raw",
+      reason: "no_opponent",
+      decisionX,
+      contactDist: 0,
+      groundedDist: 0,
+    };
+  }
+  const cross = decideApexCrossover({
+    jumperX: decisionX,
+    rawTargetX: baseRawTargetX,
+    jumpDirection,
+    opponentX,
+    jumperSizeMult,
+    opponentSizeMult,
+    profile: ref,
+  });
+  return {
+    influences: cross.intentClass !== "preserve_raw",
+    intentClass: cross.intentClass,
+    reason: cross.reason,
+    decisionX,
+    contactDist: cross.contactDist,
+    groundedDist: cross.groundedDist,
+  };
+}
+
+/**
+ * Safe free-flight destination: may lengthen vs base raw, but must not create
+ * a new cross-up or enter the approved contact footprint against a
+ * non-influencing opponent.
+ */
+function constrainFreeFlightRawTargetX({
+  startX,
+  baseRawTargetX,
+  desiredRawTargetX,
+  jumpDirection,
+  opponentX,
+  jumperSizeMult,
+  opponentSizeMult,
+  profile,
+  mapLeft,
+  mapRight,
+}) {
+  const dir = jumpDirection >= 0 ? 1 : -1;
+  const unclamped = desiredRawTargetX;
+  let desired = Math.max(mapLeft, Math.min(desiredRawTargetX, mapRight));
+  const boundaryShortened = Math.abs(desired - unclamped) > 1e-6;
+
+  if (opponentX == null || !Number.isFinite(opponentX)) {
+    return {
+      rawTargetX: desired,
+      reason: boundaryShortened ? "boundary_shortened" : "full_selected_range",
+      constrained: false,
+      boundaryShortened,
+    };
+  }
+
+  const contactDist = getRopeJumpLandingContactDistance(
+    jumperSizeMult,
+    opponentSizeMult,
+    profile
+  );
+
+  // Opponent behind jump origin relative to jump direction → full range.
+  if ((opponentX - startX) * dir <= 1e-9) {
+    return {
+      rawTargetX: desired,
+      reason: boundaryShortened ? "boundary_shortened" : "opponent_behind",
+      constrained: false,
+      boundaryShortened,
+    };
+  }
+
+  // Would the extended raw cross past the opponent center?
+  const startAheadOfOpp = (startX - opponentX) * dir;
+  const endPastOpp = (desired - opponentX) * dir;
+  const wouldCross = startAheadOfOpp <= 1e-9 && endPastOpp > 1e-9;
+  const endClear = Math.abs(desired - opponentX) >= contactDist - 1e-9;
+
+  if (!wouldCross && endClear) {
+    if ((opponentX - desired) * dir >= contactDist - 1e-9) {
+      return {
+        rawTargetX: desired,
+        reason: boundaryShortened
+          ? "boundary_shortened"
+          : "opponent_beyond_destination",
+        constrained: false,
+        boundaryShortened,
+      };
+    }
+    return {
+      rawTargetX: desired,
+      reason: boundaryShortened ? "boundary_shortened" : "authored_clear",
+      constrained: false,
+      boundaryShortened,
+    };
+  }
+
+  // Pull back to near-side contact — never grant a new cross.
+  let safe = opponentX - dir * contactDist;
+  if ((safe - startX) * dir < 0) safe = startX;
+  if ((safe - desired) * dir > 0) safe = desired;
+  // Base raw was clear (FREE_FLIGHT classification); never land shorter than base
+  // unless the safety point itself is shorter (should not happen for preserve_raw).
+  if (
+    (safe - baseRawTargetX) * dir < -1e-9 &&
+    Math.abs(baseRawTargetX - opponentX) >= contactDist - 1e-9
+  ) {
+    safe = baseRawTargetX;
+  }
+  safe = Math.max(mapLeft, Math.min(safe, mapRight));
+
+  return {
+    rawTargetX: safe,
+    reason: wouldCross
+      ? "safety_near_contact_no_new_cross"
+      : "safety_margin_contact",
+    constrained: Math.abs(safe - desired) > 1e-9,
+    boundaryShortened: boundaryShortened || safe === mapLeft || safe === mapRight,
+  };
+}
+
+/**
+ * Lock trajectory mode for this jump instance (first active tick).
+ */
+function classifyRopeJumpFlightMode(args) {
+  const influence = classifyOpponentInfluence(args);
+  if (influence.influences) {
+    return {
+      mode: TRAJECTORY_MODE.OPPONENT_INFLUENCED_REFERENCE,
+      influence,
+    };
+  }
+  return {
+    mode: TRAJECTORY_MODE.FREE_FLIGHT,
+    influence,
+  };
+}
+
 module.exports = {
   LEGACY_APEX_HEIGHT,
   REFERENCE_APEX_HEIGHT,
   REFERENCE_TRAJECTORY,
   VAULT_PRESETS,
   DEFAULT_PRESET_NAME,
+  TRAJECTORY_MODE,
+  FLIGHT_PRESETS,
   resolveVaultPresetName,
   getVaultProfile,
   referenceContactPreset,
@@ -619,4 +895,11 @@ module.exports = {
   getPushboxHalfWidth,
   getMinimumCenterDistance,
   smoothstep,
+  computeBaseRawTargetX,
+  extendRawTargetX,
+  getFlightPreset,
+  getFreeFlightProfile,
+  classifyOpponentInfluence,
+  constrainFreeFlightRawTargetX,
+  classifyRopeJumpFlightMode,
 };

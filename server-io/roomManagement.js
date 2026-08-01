@@ -17,6 +17,9 @@ const {
 
 const { deriveBashoDraft, normalizeBashoDraftList } = require("./bashoDraft");
 const { deriveStatMods } = require("./bashoStatMods");
+const { clearInputCommandTrace } = require("./inputCommandTrace");
+const { clearInputCommandNotes } = require("./inputCommandRejection");
+const { clearDirectionTapState } = require("./inputCommandReliability");
 
 const LOBBY_COLORS = [
   "#4169E1", "#4F4F4F", "#F0E4C4", "#DA1B44", "#E98520", "#E6BD37",
@@ -351,8 +354,12 @@ function resetRoomAndPlayers(room, io) {
   }
 
   room.players.forEach((p) => timeoutManager.clearPlayer(p.id));
+  clearInputCommandTrace();
 
   room.players.forEach((player) => {
+    clearInputCommandTrace(player.id);
+    clearInputCommandNotes(player);
+    clearDirectionTapState(player);
     player.keys = {
       w: false, a: false, s: false, d: false,
       " ": false, shift: false, e: false, f: false,
@@ -486,6 +493,19 @@ function resetRoomAndPlayers(room, io) {
     player._afFacingLastRelease = null;
     player._afFacingLastReject = null;
     player._afFacingStaleRejects = 0;
+    player.lifecycleOwners = Object.create(null);
+    player.slapLifecycleInstanceId = null;
+    player.chargedLifecycleInstanceId = null;
+    player.chargedEndlagInstanceId = null;
+    player.hitstunLifecycleInstanceId = null;
+    player.parryStaggerLifecycleInstanceId = null;
+    player.dodgeLifecycleInstanceId = null;
+    player._lifecycleSeq = 0;
+    player._lifecycleStaleRejects = 0;
+    player._lifecycleLastTransition = null;
+    player._lifecycleLastCompletion = null;
+    player._lifecycleLastControlRestore = null;
+    player._lifecycleLastReject = null;
     player._combatContactConsumed = false;
     player._combatContactConsumedAt = 0;
     player._combatContactActionInstanceId = null;
