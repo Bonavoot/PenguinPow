@@ -12,8 +12,10 @@ dist
 dist-ssr
 *.local
 
-# Baked sprites are committed so Netlify can skip the long bake step.
-# Regenerate locally with `npm run bake` when colors/sprites/hats change.
+# Build-time baked sprites (too large for git). Pack + upload as a GitHub
+# Release asset; Netlify downloads via BAKE_ARCHIVE_URL. See npm run bake:pack.
+public/baked/
+dist-bake/
 
 # Editor directories and files
 .vscode/*

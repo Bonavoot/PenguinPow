@@ -5,5 +5,6 @@
 
 [build.environment]
   NODE_VERSION = "20"
-  # Use committed public/baked/ — regenerating hat WebPs exceeds build time limits.
-  SKIP_BAKE = "1" 
+  # Skip local bake; download prebuilt sprites (hat WebP bake exceeds build time limits).
+  SKIP_BAKE = "1"
+  BAKE_ARCHIVE_URL = "https://github.com/Bonavoot/PenguinPow/releases/download/bake-v2-hats/baked.tar.gz" 
