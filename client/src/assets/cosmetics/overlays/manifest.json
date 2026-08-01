@@ -1865,7 +1865,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "pumo-tachiai-position": {
       "overlay": "overlays/ponytail-pumo-tachiai-position.png",
@@ -1878,7 +1878,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "pumo-ready-position": {
       "overlay": "overlays/ponytail-pumo-ready-position.png",
@@ -1891,7 +1891,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "grabbing": {
       "overlay": "overlays/ponytail-grabbing.png",
@@ -1904,7 +1904,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "clinch-planting": {
       "overlay": "overlays/ponytail-clinch-planting.png",
@@ -1917,7 +1917,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "attempting-grab-throw": {
       "overlay": "overlays/ponytail-attempting-grab-throw.png",
@@ -1930,7 +1930,7 @@
         "w": 1024,
         "h": 1024
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "is-attempting-pull": {
       "overlay": "overlays/ponytail-is-attempting-pull.png",
@@ -1943,7 +1943,7 @@
         "w": 600,
         "h": 600
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "slapAttack1": {
       "overlay": "overlays/ponytail-slapAttack1.png",
@@ -1956,7 +1956,7 @@
         "w": 1024,
         "h": 1024
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "slapAttack2": {
       "overlay": "overlays/ponytail-slapAttack2.png",
@@ -1969,7 +1969,7 @@
         "w": 1024,
         "h": 1024
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "slap-attack-1-blur-frame": {
       "overlay": "overlays/ponytail-slap-attack-1-blur-frame.png",
@@ -1982,7 +1982,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "slap-attack-1-hit-frame": {
       "overlay": "overlays/ponytail-slap-attack-1-hit-frame.png",
@@ -1995,7 +1995,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "slap-attack-2-blur-frame": {
       "overlay": "overlays/ponytail-slap-attack-2-blur-frame.png",
@@ -2008,7 +2008,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "slap-attack-2-hit-frame": {
       "overlay": "overlays/ponytail-slap-attack-2-hit-frame.png",
@@ -2021,7 +2021,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "palm-thrust": {
       "overlay": "overlays/ponytail-palm-thrust.png",
@@ -2034,7 +2034,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "palm-thrust-startup": {
       "overlay": "overlays/ponytail-palm-thrust-startup.png",
@@ -2047,7 +2047,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "palm-thrust-smear": {
       "overlay": "overlays/ponytail-palm-thrust-smear.png",
@@ -2060,7 +2060,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "blocking": {
       "overlay": "overlays/ponytail-blocking.png",
@@ -2073,7 +2073,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "block-parry": {
       "overlay": "overlays/ponytail-block-parry.png",
@@ -2086,7 +2086,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "raw-parry-success": {
       "overlay": "overlays/ponytail-raw-parry-success.png",
@@ -2099,7 +2099,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "pumo-flap-1": {
       "overlay": "overlays/ponytail-pumo-flap-1.png",
@@ -2112,7 +2112,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "pumo-flap-2": {
       "overlay": "overlays/ponytail-pumo-flap-2.png",
@@ -2125,7 +2125,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "recovering": {
       "overlay": "overlays/ponytail-recovering.png",
@@ -2138,7 +2138,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "attack": {
       "overlay": "overlays/ponytail-attack.png",
@@ -2151,7 +2151,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "dodging": {
       "overlay": "overlays/ponytail-dodging.png",
@@ -2164,7 +2164,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "raw-parry-success-frame-1": {
       "overlay": "overlays/ponytail-raw-parry-success-frame-1.png",
@@ -2177,7 +2177,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "raw-parry-success-frame-2": {
       "overlay": "overlays/ponytail-raw-parry-success-frame-2.png",
@@ -2190,7 +2190,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "main-menu-pumo": {
       "overlay": "overlays/ponytail-main-menu-pumo.png",
@@ -2203,7 +2203,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "raw-parry-success-frame-3": {
       "overlay": "overlays/ponytail-raw-parry-success-frame-3.png",
@@ -2216,7 +2216,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "sliding": {
       "overlay": "overlays/ponytail-sliding.png",
@@ -2229,7 +2229,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     },
     "charging": {
       "overlay": "overlays/ponytail-charging.png",
@@ -2242,7 +2242,7 @@
         "w": 960,
         "h": 960
       },
-      "widthPct": 0.4
+      "widthPct": 0.28
     }
   }
 }

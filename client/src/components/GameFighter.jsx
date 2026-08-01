@@ -1375,10 +1375,12 @@ const GameFighter = ({
             {
               const panX = penguin.x;
               if (combatAudioV1 && combatAudioRef.current?.predictor) {
-                combatAudioRef.current.predictor.onStrikePress({
-                  keys: { mouse1: true },
-                  facing: penguin.facing,
+                // Command already classified at the Game input seam — arm
+                // provisional slap via the owned lifecycle (not reclassify).
+                combatAudioRef.current.predictor.onPredictedStrike({
+                  command: "slap",
                   pan: xToPan(panX),
+                  reason: "slap_predict",
                 });
               } else {
                 scheduleSwingSound(SWING_STARTUP_MS.slap, () =>
@@ -1429,18 +1431,14 @@ const GameFighter = ({
             // startup); cancellable if the thrust dies in windup.
             {
               const panX = penguin.x;
-              if (combatAudioV1 && combatAudioRef.current?.orch) {
-                combatAudioRef.current.orch.scheduleCombatCue(
-                  CUE.PALM_WHIFF,
-                  {
-                    actorId: player.id,
-                    actionId: `${player.id}:palm:${now}`,
-                    local: true,
-                    predicted: true,
-                    pan: xToPan(panX),
-                  },
-                  { playAt: now + SWING_STARTUP_MS.palm, reason: "palm_predict" }
-                );
+              if (combatAudioV1 && combatAudioRef.current?.predictor) {
+                // Owned provisional palm — cancelable by charge_start /
+                // auth charge reconcile via exact actionId (never orphan).
+                combatAudioRef.current.predictor.onPredictedStrike({
+                  command: "palm_thrust",
+                  pan: xToPan(panX),
+                  reason: "palm_predict",
+                });
               } else {
                 scheduleSwingSound(SWING_STARTUP_MS.palm, () =>
                   playSound(palmThrustWhiffSound, 0.05, null, 1.0, xToPan(panX))
@@ -5441,6 +5439,10 @@ const GameFighter = ({
     // Non-slap attack rising edge. Charged lunge whoosh plays IMMEDIATELY when
     // charged execution begins (locomotion), not after hitbox startup (~150ms).
     // Palm / low kick keep startup-aligned scheduling.
+    //
+    // Edge triggers stay in the dep list. Event-time fields (x, actionLock,
+    // attackStartTime, id) are read from penguinRef so per-tick combat
+    // updates cannot re-enter scheduling/reconcile.
     if (
       penguin.isAttacking &&
       !penguin.isSlapAttack &&
@@ -5449,41 +5451,67 @@ const GameFighter = ({
       const sincePredicted =
         performance.now() - predictedSwingSoundAtRef.current.attack;
       if (sincePredicted >= PREDICTED_SOUND_SUPPRESS_MS) {
-        const isPalm = penguin.isPalmThrust;
-        const isLow = penguin.isLowKick;
-        const panX = penguin.x;
+        // Event-time snapshot (synced each render); not an effect trigger.
+        const p = penguinRef.current;
+        const isPalm = !!p?.isPalmThrust;
+        const isLow = !!p?.isLowKick;
+        const panX = p.x;
+        const actorId = p.id || player.id;
+        const attackStart = p.attackStartTime || 0;
         if (combatAudioV1 && combatAudioRef.current?.orch && !isPalm && !isLow) {
           // Charged lunge begin — immediate on first observation.
           const actionId =
             chargedReleaseActionIdRef.current ||
-            `${penguin.id || player.id}:charged_lunge:${
-              penguin.attackStartTime || performance.now()
-            }`;
+            `${actorId}:charged_lunge:${attackStart || performance.now()}`;
           combatAudioRef.current.orch.confirmCombatCue(CUE.CHARGED_LUNGE_BEGIN, {
-            actorId: penguin.id || player.id,
+            actorId,
             actionId,
-            eventId: `${penguin.id || player.id}:charged_lunge:${
-              penguin.attackStartTime || 0
-            }`,
+            eventId: `${actorId}:charged_lunge:${attackStart}`,
             authoritative: true,
             local: isLocalPlayer,
             pan: xToPan(panX),
           });
         } else if (isPalm || isLow) {
-          const startupCap = isPalm
-            ? SWING_STARTUP_MS.palm
-            : SWING_STARTUP_MS.lowKick;
-          const delay = Math.max(
-            0,
-            Math.min(penguin.actionLockRemainingMs || 0, startupCap)
-          );
-          scheduleSwingSound(delay, () => {
-            if (isPalm) {
-              playSound(palmThrustWhiffSound, 0.05, null, 1.0, xToPan(panX));
-            } else {
-              playSound(attackSound, 0.05);
+          // V1 local palm with owned provisional → confirm (exactly once).
+          // Otherwise cancellable startup-aligned timer (remote / missed predict).
+          let palmReconciled = false;
+          if (
+            combatAudioV1 &&
+            isPalm &&
+            isLocalPlayer &&
+            combatAudioRef.current?.orch &&
+            combatAudioRef.current?.predictor
+          ) {
+            const prov = combatAudioRef.current.predictor.getProvisional();
+            if (prov?.kind === "palm" && prov.actionId) {
+              combatAudioRef.current.orch.confirmCombatCue(CUE.PALM_WHIFF, {
+                actorId,
+                actionId: prov.actionId,
+                eventId: `${actorId}:palm_auth:${attackStart}`,
+                authoritative: true,
+                local: true,
+                pan: xToPan(panX),
+              });
+              combatAudioRef.current.predictor.releaseProvisional();
+              palmReconciled = true;
             }
-          });
+          }
+          if (!palmReconciled) {
+            const startupCap = isPalm
+              ? COMBAT_SWING_STARTUP_MS.palm
+              : COMBAT_SWING_STARTUP_MS.lowKick;
+            const delay = Math.max(
+              0,
+              Math.min(p.actionLockRemainingMs || 0, startupCap)
+            );
+            scheduleSwingSound(delay, () => {
+              if (isPalm) {
+                playSound(palmThrustWhiffSound, 0.05, null, 1.0, xToPan(panX));
+              } else {
+                playSound(attackSound, 0.05);
+              }
+            });
+          }
         } else {
           // Legacy non-V1 charged — also immediate at lunge begin.
           playSound(attackSound, 0.05);
@@ -5492,7 +5520,16 @@ const GameFighter = ({
     }
     // Update the last attack state
     lastAttackState.current = penguin.isAttacking && !penguin.isSlapAttack;
-  }, [penguin.isAttacking, penguin.isSlapAttack, penguin.isPalmThrust, penguin.isLowKick]);
+  }, [
+    penguin.isAttacking,
+    penguin.isSlapAttack,
+    penguin.isPalmThrust,
+    penguin.isLowKick,
+    combatAudioV1,
+    isLocalPlayer,
+    scheduleSwingSound,
+    player.id,
+  ]);
 
   // Separate effect for slap attack sounds based on slapAnimation changes.
   // Gated against the predicted-audio path: the local player's slap whoosh

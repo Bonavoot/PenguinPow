@@ -2,6 +2,10 @@
  * Provisional strike-audio classification aligned with the 50ms command chord
  * window. Charge lunge whoosh is immediate at CHARGED_LUNGE_BEGIN — never
  * release+150ms.
+ *
+ * All provisional slap/palm cues are owned here with a stable actionId so
+ * charge reclass / auth reconcile can cancel by exact attempt — never orphan
+ * a standalone schedule outside this lifecycle.
  */
 
 import { CUE, STRIKE_CHORD_MS, SWING_STARTUP_MS } from "./cueRegistry.js";
@@ -40,44 +44,56 @@ export function createStrikeAudioPredictor({
   now = () => performance.now(),
   actorId = "local",
 }) {
-  /** @type {null | { actionId: string, inputTs: number, kind: string, handleId: string|null }} */
+  /** @type {null | { actionId: string, inputTs: number, kind: "slap"|"palm", handleId: string|null }} */
   let provisional = null;
   let lungeActionId = null;
 
-  function clearProvisional(reason) {
-    if (!provisional) return;
-    if (provisional.actionId) {
-      orchestrator.cancelCombatAudioForAction(provisional.actionId, reason);
-    }
-    pushAudioTrace({
-      cue: CUE.SLAP_WHIFF,
-      actorId,
-      actionId: provisional.actionId,
-      status: "PROVISIONAL_SLAP_CANCELED",
-      reason,
-    });
-    provisional = null;
+  function provisionalCue(kind) {
+    return kind === "palm" ? CUE.PALM_WHIFF : CUE.SLAP_WHIFF;
   }
 
-  function onStrikePress({ keys, facing, pan = 0 }) {
-    const classified = classifyMouse1Strike(keys, facing);
+  function clearProvisional(reason) {
+    if (!provisional) return false;
+    const { actionId, kind } = provisional;
+    const cue = provisionalCue(kind);
+    if (actionId) {
+      orchestrator.cancelCombatAudioForAction(actionId, reason);
+    }
+    pushAudioTrace({
+      cue,
+      actorId,
+      actionId,
+      status: "canceled",
+      reason,
+      kind,
+    });
+    provisional = null;
+    return true;
+  }
+
+  /**
+   * Arm provisional audio for a command already selected at the input seam.
+   * Prefer this over re-classifying with potentially stale facing.
+   */
+  function onPredictedStrike({ command, pan = 0, reason = null } = {}) {
     const inputTs = now();
 
-    if (classified.command === "charge_start") {
-      clearProvisional("reclass_charge_immediate");
+    if (command === "charge_start") {
+      clearProvisional("reclass_charge_local");
       pushAudioTrace({
         cue: "*",
         actorId,
         status: "CHARGE_HOLD_BEGIN",
-        reason: "immediate_chord",
+        reason: reason || "reclass_charge_local",
       });
       return { command: "charge_start", actionId: null, inputTs };
     }
 
-    if (classified.command === "palm_thrust") {
-      clearProvisional("reclass_palm");
+    if (command === "palm_thrust") {
+      clearProvisional("replace_provisional");
       const actionId = mintStrikeActionId(actorId, "palm");
       const playAt = inputTs + SWING_STARTUP_MS.palm;
+      const scheduleReason = reason || "palm_predict";
       const { handleId } = orchestrator.scheduleCombatCue(
         CUE.PALM_WHIFF,
         {
@@ -87,14 +103,25 @@ export function createStrikeAudioPredictor({
           predicted: true,
           pan,
         },
-        { playAt, reason: "palm_press" }
+        { playAt, reason: scheduleReason }
       );
       provisional = { actionId, inputTs, kind: "palm", handleId };
+      pushAudioTrace({
+        cue: CUE.PALM_WHIFF,
+        actorId,
+        actionId,
+        status: "scheduled",
+        reason: scheduleReason,
+        playAt,
+      });
       return { command: "palm_thrust", actionId, inputTs };
     }
 
+    // slap (default)
+    clearProvisional("replace_provisional");
     const actionId = mintStrikeActionId(actorId, "slap");
     const playAt = inputTs + SWING_STARTUP_MS.slap;
+    const scheduleReason = reason || "provisional_slap";
     const { handleId } = orchestrator.scheduleCombatCue(
       CUE.SLAP_WHIFF,
       {
@@ -104,47 +131,63 @@ export function createStrikeAudioPredictor({
         predicted: true,
         pan,
       },
-      { playAt, reason: "provisional_slap" }
+      { playAt, reason: scheduleReason }
     );
     provisional = { actionId, inputTs, kind: "slap", handleId };
     pushAudioTrace({
       cue: CUE.SLAP_WHIFF,
       actorId,
       actionId,
-      status: "PROVISIONAL_SLAP_SCHEDULED",
+      status: "scheduled",
+      reason: scheduleReason,
       playAt,
     });
     return { command: "slap", actionId, inputTs };
   }
 
+  function onStrikePress({ keys, facing, pan = 0 }) {
+    const classified = classifyMouse1Strike(keys, facing);
+    return onPredictedStrike({
+      command: classified.command,
+      pan,
+      reason:
+        classified.command === "palm_thrust"
+          ? "palm_predict"
+          : classified.command === "charge_start"
+            ? "immediate_chord"
+            : "provisional_slap",
+    });
+  }
+
   function onKeysWhileMouse1Held({ keys, facing }) {
-    if (!provisional || provisional.kind !== "slap") return null;
+    if (!provisional) return null;
+    if (provisional.kind !== "slap" && provisional.kind !== "palm") return null;
     const age = now() - provisional.inputTs;
     if (age > STRIKE_CHORD_MS) return null;
     const classified = classifyMouse1Strike(keys, facing);
     if (classified.command !== "charge_start") return null;
-    clearProvisional("reclass_charge_chord");
+    clearProvisional("reclass_charge_local");
     pushAudioTrace({
       cue: "*",
       actorId,
-      status: "PROVISIONAL_SLAP_RECLASSIFIED",
+      status: "CHARGE_HOLD_BEGIN",
       reason: "chord_window",
     });
     return { command: "charge_start", actionId: null };
   }
 
   function onChargeStart() {
-    clearProvisional("charge_start");
+    clearProvisional("reclass_charge_local");
     pushAudioTrace({
       cue: "*",
       actorId,
       status: "CHARGE_HOLD_BEGIN",
-      reason: "charge_start",
+      reason: "reclass_charge_local",
     });
   }
 
   function onAuthoritativeCharging() {
-    clearProvisional("auth_charging");
+    clearProvisional("auth_charge_reconcile");
   }
 
   /**
@@ -195,12 +238,18 @@ export function createStrikeAudioPredictor({
     return provisional;
   }
 
+  /** Drop ownership without canceling — auth confirm / seam already owns the cue. */
+  function releaseProvisional() {
+    provisional = null;
+  }
+
   function getLungeActionId() {
     return lungeActionId;
   }
 
   return {
     onStrikePress,
+    onPredictedStrike,
     onKeysWhileMouse1Held,
     onChargeStart,
     onAuthoritativeCharging,
@@ -209,6 +258,7 @@ export function createStrikeAudioPredictor({
     onChargeInterrupted,
     cancelAction,
     clearProvisional,
+    releaseProvisional,
     getProvisional,
     getLungeActionId,
   };

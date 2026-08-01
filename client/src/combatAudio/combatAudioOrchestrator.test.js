@@ -1,5 +1,5 @@
 /**
- * Combat Audio Fidelity V1 — corrective-pass tests.
+ * Combat Audio Fidelity V1 — corrective / finalized suite helpers.
  * Run: node --test client/src/combatAudio/*.test.js
  */
 

@@ -839,7 +839,7 @@
     },
     "ponytail": {
       "label": "Ponytail",
-      "widthPct": 0.4,
+      "widthPct": 0.28,
       "poses": {
         "pumo-idle": {
           "label": "Idle",

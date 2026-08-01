@@ -10,6 +10,7 @@
  * fall back to live recolor / composite outside the normal Steam match path.
  *
  * Usage:  npm run bake   (from client/)
+ *         BAKE_GEARS=ponytail npm run bake:hats   # merge one topper into existing bake
  *
  * Output: client/public/baked/*  +  client/public/baked/manifest.json
  */
@@ -56,6 +57,23 @@ const BAKE_VERSION = "v2-hats";
 
 /** Skip menu-only topper poses in the match bake (still bake combat/portrait). */
 const BAKE_MENU_HATS = process.env.BAKE_MENU_HATS === "1";
+
+/**
+ * Optional gear filter for hat rebakes, e.g. BAKE_GEARS=ponytail
+ * (comma-separated). Empty = all HAT_GEAR_IDS.
+ */
+const BAKE_GEARS = (process.env.BAKE_GEARS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+/**
+ * Merge into an existing public/baked/manifest.json instead of wiping the
+ * output dir. Pair with BAKE_HATS_ONLY=1 + BAKE_GEARS=… to refresh one topper
+ * after overlay art changes (basho/combat resolve flattened hats first).
+ */
+const BAKE_MERGE = process.env.BAKE_MERGE === "1";
+const BAKE_HATS_ONLY = process.env.BAKE_HATS_ONLY === "1";
 
 // SCOPE: bake the BASE tint only. The brief hit/charge/blubber/armor flash
 // tints stay on the runtime recolor path (they're momentary overlays and
@@ -216,72 +234,134 @@ function sourceContentTag(absPath) {
 
 async function main() {
   const combos = buildCombos();
+  const gearIds = BAKE_GEARS.length
+    ? HAT_GEAR_IDS.filter((id) => BAKE_GEARS.includes(id))
+    : HAT_GEAR_IDS;
+  if (BAKE_GEARS.length && gearIds.length === 0) {
+    throw new Error(
+      `[bake] BAKE_GEARS=${BAKE_GEARS.join(",")} matched no HAT_GEAR_IDS`,
+    );
+  }
+
+  let existing = null;
+  if (BAKE_MERGE || BAKE_HATS_ONLY) {
+    if (!fs.existsSync(MANIFEST_PATH)) {
+      throw new Error(
+        "[bake] BAKE_MERGE/BAKE_HATS_ONLY requires an existing public/baked/manifest.json",
+      );
+    }
+    existing = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
+  }
+
   console.log(
-    `[bake] ${combos.length} color combos × ${BAKE_SOURCES.length} sources × ${BAKE_TINTS.length} tint → baking…`
+    BAKE_HATS_ONLY
+      ? `[bake] hats-only merge: ${gearIds.join(",")} × ${combos.length} combos`
+      : `[bake] ${combos.length} color combos × ${BAKE_SOURCES.length} sources × ${BAKE_TINTS.length} tint → baking…`,
   );
 
-  // Fresh output dir.
-  fs.rmSync(OUT_DIR, { recursive: true, force: true });
+  if (!BAKE_MERGE && !BAKE_HATS_ONLY) {
+    // Fresh output dir.
+    fs.rmSync(OUT_DIR, { recursive: true, force: true });
+  }
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
   // Decode each source once; reuse across all combos.
   const decoded = new Map();
   const sourceTagById = new Map();
-  for (const src of BAKE_SOURCES) {
-    const abs = path.join(ASSETS_DIR, src.file);
-    if (!fs.existsSync(abs)) {
-      console.warn(`[bake] MISSING source, skipping: ${src.file}`);
-      continue;
+  if (!BAKE_HATS_ONLY) {
+    for (const src of BAKE_SOURCES) {
+      const abs = path.join(ASSETS_DIR, src.file);
+      if (!fs.existsSync(abs)) {
+        console.warn(`[bake] MISSING source, skipping: ${src.file}`);
+        continue;
+      }
+      decoded.set(src.id, await decodePng(abs));
+      sourceTagById.set(src.id, sourceContentTag(abs));
     }
-    decoded.set(src.id, await decodePng(abs));
-    sourceTagById.set(src.id, sourceContentTag(abs));
   }
 
   // Bake-wide cache buster: changes whenever ANY source PNG changes so every
   // manifest URL invalidates browser/Electron image caches (filenames alone are
-  // keyed by color tuple, not pixel content).
-  const bakeTag = crypto
-    .createHash("sha1")
-    .update([...sourceTagById.entries()].sort().join("|"))
-    .digest("hex")
-    .slice(0, 10);
+  // keyed by color tuple, not pixel content). For hats-only merges, also fold
+  // in overlay bytes so a topper art update busts ?v= without a full rebake.
+  let bakeTag;
+  if (BAKE_HATS_ONLY) {
+    const overlayTag = crypto.createHash("sha1");
+    for (const gearId of gearIds) {
+      for (const pose of HAT_POSE_SOURCES) {
+        const ovAbs = path.join(ASSETS_DIR, overlayFileFor(gearId, pose.hairedStem));
+        if (fs.existsSync(ovAbs)) {
+          overlayTag.update(gearId);
+          overlayTag.update(fs.readFileSync(ovAbs));
+        }
+      }
+    }
+    bakeTag = crypto
+      .createHash("sha1")
+      .update(String(existing?.bakeTag || ""))
+      .update(overlayTag.digest("hex"))
+      .digest("hex")
+      .slice(0, 10);
+  } else {
+    bakeTag = crypto
+      .createHash("sha1")
+      .update([...sourceTagById.entries()].sort().join("|"))
+      .digest("hex")
+      .slice(0, 10);
+  }
 
-  const manifest = {};
+  const manifest = existing?.sprites ? { ...existing.sprites } : {};
   let count = 0;
   let skipped = 0;
   const startedAt = Date.now();
 
-  for (const combo of combos) {
-    const special = SPECIAL_COLORS.has(combo.mawashi);
-    for (const src of BAKE_SOURCES) {
-      const srcPng = decoded.get(src.id);
-      if (!srcPng) continue;
-      for (const tint of BAKE_TINTS) {
-        if (isNoOpBase(combo.mawashi, combo.body, tint)) {
-          skipped++;
-          continue;
-        }
-        const key = bakeKey(src.id, combo.mawashi, combo.body, tint);
-        if (manifest[key]) continue; // already produced (dedup safety)
+  if (!BAKE_HATS_ONLY) {
+    // Full / body bake replaces sprite map entries (merge keeps prior keys for
+    // sources we skip; wipe mode starts empty above when not merging).
+    if (!BAKE_MERGE) {
+      for (const k of Object.keys(manifest)) delete manifest[k];
+    }
+    for (const combo of combos) {
+      const special = SPECIAL_COLORS.has(combo.mawashi);
+      for (const src of BAKE_SOURCES) {
+        const srcPng = decoded.get(src.id);
+        if (!srcPng) continue;
+        for (const tint of BAKE_TINTS) {
+          if (isNoOpBase(combo.mawashi, combo.body, tint)) {
+            skipped++;
+            continue;
+          }
+          const key = bakeKey(src.id, combo.mawashi, combo.body, tint);
+          if (manifest[key] && BAKE_MERGE) continue;
 
-        const out = recolorBitmap(srcPng, combo.mawashi, combo.body, tint);
-        const sourceTag = sourceTagById.get(src.id) || "";
-        const fileName = fileNameForKey(key, sourceTag);
-        const absOut = path.join(OUT_DIR, fileName);
-        await encodePng(out, absOut, special);
-        // Path changes when source pixels change; ?v= still busts manifest clients.
-        manifest[key] = `/baked/${fileName}?v=${bakeTag}`;
-        count++;
-        if (count % 200 === 0) {
-          const secs = ((Date.now() - startedAt) / 1000).toFixed(0);
-          console.log(`[bake]   ${count} PNGs written (${secs}s)…`);
+          const out = recolorBitmap(srcPng, combo.mawashi, combo.body, tint);
+          const sourceTag = sourceTagById.get(src.id) || "";
+          const fileName = fileNameForKey(key, sourceTag);
+          const absOut = path.join(OUT_DIR, fileName);
+          await encodePng(out, absOut, special);
+          // Path changes when source pixels change; ?v= still busts manifest clients.
+          manifest[key] = `/baked/${fileName}?v=${bakeTag}`;
+          count++;
+          if (count % 200 === 0) {
+            const secs = ((Date.now() - startedAt) / 1000).toFixed(0);
+            console.log(`[bake]   ${count} PNGs written (${secs}s)…`);
+          }
         }
       }
     }
   }
 
   // ── Phase 2: flattened body + topper composites ─────────────────────
-  const hats = {};
+  const hats = existing?.hats ? { ...existing.hats } : {};
+  // Drop stale keys for gears we're rebaking so removed poses can't linger.
+  if (BAKE_HATS_ONLY || BAKE_GEARS.length) {
+    for (const key of Object.keys(hats)) {
+      const gearId = key.split("|")[1];
+      if (gearIds.includes(gearId)) delete hats[key];
+    }
+  } else if (!BAKE_MERGE) {
+    for (const key of Object.keys(hats)) delete hats[key];
+  }
   let hatCount = 0;
   let hatDeduped = 0;
   const hatContentToFile = new Map(); // sha1 → filename.webp
@@ -290,7 +370,7 @@ async function main() {
     (p) => BAKE_MENU_HATS || !p.menuOnly,
   );
   console.log(
-    `[bake] hats: ${HAT_GEAR_IDS.length} gears × ${poseList.length} poses × ${combos.length} combos…`,
+    `[bake] hats: ${gearIds.length} gears × ${poseList.length} poses × ${combos.length} combos…`,
   );
 
   // Decode hat bodies + overlays once.
@@ -303,7 +383,7 @@ async function main() {
       continue;
     }
     hatBodyDecoded.set(pose.bodySpriteId, await decodePng(abs));
-    for (const gearId of HAT_GEAR_IDS) {
+    for (const gearId of gearIds) {
       const ovRel = overlayFileFor(gearId, pose.hairedStem);
       const ovAbs = path.join(ASSETS_DIR, ovRel);
       if (!fs.existsSync(ovAbs)) {
@@ -370,7 +450,7 @@ async function main() {
   }
 
   for (const combo of combos) {
-    for (const gearId of HAT_GEAR_IDS) {
+    for (const gearId of gearIds) {
       const underBody = !!HAT_UNDER_BODY[gearId];
       const recolorOv = !!HAT_RECOLOR_OVERLAY[gearId];
       for (const pose of poseList) {

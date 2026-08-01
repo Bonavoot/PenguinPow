@@ -10,18 +10,20 @@
 export const PROVISIONAL_SLAP_SUPERSEDE_MS = 150;
 
 /**
- * True when local prediction is a fresh provisional slap/attack that charge
+ * True when local prediction is a fresh provisional slap/palm/attack that charge
  * chord completion is allowed to replace (audio always; pose when this is true).
+ * Palm is included so a false palm_predict from stale facing can be superseded
+ * by charge_start the same way a provisional slap is.
  */
 export function isFreshProvisionalSlapPrediction(pred, now, timeoutMs = PROVISIONAL_SLAP_SUPERSEDE_MS) {
   if (!pred) return false;
   if (typeof pred.timestamp !== "number") return false;
   if (now - pred.timestamp >= timeoutMs) return false;
   if (pred.isChargingAttack) return false;
-  if (pred.isPalmThrust || pred.isLowKick || pred.isDodging || pred.isGrabbing) {
+  if (pred.isLowKick || pred.isDodging || pred.isGrabbing) {
     return false;
   }
-  return !!(pred.isSlapAttack || pred.isAttacking);
+  return !!(pred.isSlapAttack || pred.isPalmThrust || pred.isAttacking);
 }
 
 /**

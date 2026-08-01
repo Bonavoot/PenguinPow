@@ -27,7 +27,7 @@ export default defineConfig({
   plugins: [stripWoffFallbacks(), react()],
   base: './',
   // FIGHTER_POSE_GEOMETRY_V2 default ON (approved). Rollback: =0 for legacy.
-  // COMBAT_AUDIO_FIDELITY_V1 default OFF — see COMBAT_AUDIO_FIDELITY_PHASE.md.
+  // COMBAT_AUDIO_FIDELITY_V1 default ON (finalized). Rollback: =0 — see COMBAT_AUDIO_FIDELITY_PHASE.md.
   envPrefix: ['VITE_', 'FIGHTER_', 'COMBAT_'],
   server: {
     port: 5173,

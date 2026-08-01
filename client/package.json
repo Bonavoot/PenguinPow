@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "bake": "node --no-warnings --loader ./scripts/extResolve.mjs scripts/bakeSprites.mjs",
+    "bake:hats": "BAKE_HATS_ONLY=1 BAKE_MERGE=1 node --no-warnings --loader ./scripts/extResolve.mjs scripts/bakeSprites.mjs",
     "bake:pack": "node scripts/packBaked.mjs",
     "enhance:dohyo": "node scripts/enhance-dohyo.mjs",
     "bake:dohyo-display": "node scripts/bake-dohyo-display.mjs",

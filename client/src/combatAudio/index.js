@@ -1,5 +1,6 @@
 export {
   isCombatAudioFidelityV1Enabled,
+  parseCombatAudioFidelityV1Flag,
 } from "./combatAudioFidelityFlags.js";
 
 export {
@@ -43,11 +44,14 @@ export {
   mintStrikeActionId,
 } from "./strikeAudioPrediction.js";
 
+export { selectMouse1StrikeCommand } from "./mouse1CommandSelection.js";
+
 export { playCueLayers, resolveSample } from "./playbackAdapter.js";
 
 export {
   pushAudioTrace,
   dumpAudioTrace,
+  dumpChargePalmTrace,
   summarizeAudioTrace,
   clearAudioTrace,
   installAudioTraceGlobal,

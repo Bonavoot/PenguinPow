@@ -44,6 +44,9 @@ import {
   requestFighterResync,
   retainFighterSocket,
 } from "../net/fighterSnapshotBus";
+import { selectLiveLocalFighter } from "../prediction/liveLocalFighter";
+import { facingKeys } from "../combatAudio/strikeAudioPrediction";
+import { selectMouse1StrikeCommand } from "../combatAudio/mouse1CommandSelection";
 import {
   pushClientInputCommandTrace,
   clearClientInputCommandTrace,
@@ -183,12 +186,23 @@ const Game = ({
   // Get the current room with null safety
   const currentRoom = index !== -1 ? rooms[index] : null;
 
-  // Find current player for input blocking checks
+  // Find current player for input blocking checks.
+  // Facing for Mouse1 classification must NOT trust this alone — rooms[] is a
+  // sanitized lobby/summary and can lag live fighter_action facing after cross-ups.
   const currentPlayer = currentRoom?.players?.find(
     (player) => player.id === localId
   );
   const currentPlayerRef = useRef(null);
   currentPlayerRef.current = currentPlayer;
+  const localIdRef = useRef(localId);
+  localIdRef.current = localId;
+  // Diagnostic mode label only — never branches combat/audio behavior.
+  const modeLabelRef = useRef("custom_pvp");
+  modeLabelRef.current = isBashoMatch
+    ? "basho"
+    : isCPUMatch
+      ? "vs_cpu"
+      : "custom_pvp";
 
   // ============================================
   // GAME STATE TRACKING FOR PREDICTIONS
@@ -396,6 +410,44 @@ const Game = ({
       pendingEvents.push({ k, a: action, t: performance.now() });
     };
 
+    /** Live combat fighter at the physical input seam (event-time read). */
+    const resolveLocalInputFighter = () =>
+      selectLiveLocalFighter({
+        localId: localIdRef.current,
+        roomPlayer: currentPlayerRef.current,
+      });
+
+    /**
+     * Canonical Mouse1 open-game strike classification for keyboard + gamepad.
+     * Uses live-snapshot facing when available; room summary only as fallback.
+     */
+    const applyMouse1StrikeFromKeys = (keys) => {
+      const sel = resolveLocalInputFighter();
+      const result = selectMouse1StrikeCommand({
+        keys,
+        facing: sel.facing,
+        roomFacing: sel.roomFacing,
+        liveFacing: sel.liveFacing,
+        facingSource: sel.facingSource,
+        modeLabel: modeLabelRef.current,
+      });
+      applyPrediction(result.command);
+      pushClientInputCommandTrace("COMMAND_SELECTED", {
+        command: result.command,
+        relativeDir: result.relativeDir,
+        facing: result.facing,
+        roomFacing: result.roomFacing,
+        liveFacing: result.liveFacing,
+        facingSource: result.facingSource,
+      });
+      return result;
+    };
+
+    const liveFacingOrRoom = () => {
+      const sel = resolveLocalInputFighter();
+      return sel.facing;
+    };
+
     const emitInputNow = () => {
       if (emitTimerId !== null) {
         clearTimeout(emitTimerId);
@@ -483,20 +535,7 @@ const Game = ({
         !cp?.isBeingGrabbed &&
         !cp?.inClinch
       ) {
-        // Mirror the server's mouse1 branch (charged / low kick / palm / slap).
-        if (cp?.facing != null) {
-          const forwardKey = cp.facing === -1 ? 'd' : 'a';
-          const backKey = cp.facing === -1 ? 'a' : 'd';
-          if (gamepadKeyState.s && gamepadKeyState[forwardKey]) {
-            applyPrediction("charge_start");
-          } else if (gamepadKeyState[backKey] && !gamepadKeyState[forwardKey]) {
-            applyPrediction("palm_thrust");
-          } else {
-            applyPrediction("slap");
-          }
-        } else {
-          applyPrediction("slap");
-        }
+        applyMouse1StrikeFromKeys(gamepadKeyState);
       }
       if (
         gamepadKeyState.mouse2 &&
@@ -513,9 +552,9 @@ const Game = ({
         applyPrediction("dash", direction);
       }
       if (gamepadKeyState[" "] && !keyState[" "]) {
-        if (cp?.facing != null) {
-          const forwardKey = cp.facing === -1 ? "d" : "a";
-          const backKey = cp.facing === -1 ? "a" : "d";
+        const facing = liveFacingOrRoom();
+        if (facing != null) {
+          const { forwardKey, backKey } = facingKeys(facing);
           if (gamepadKeyState[backKey] && !gamepadKeyState[forwardKey]) {
             applyPrediction("matador_start");
           } else {
@@ -540,19 +579,22 @@ const Game = ({
         applyPrediction("charge_release");
       }
       // Continuous charge chord while Mouse1 held (mirrors server + keyboard path).
-      if (
-        gamepadKeyState.mouse1 &&
-        !cp?.isBeingGrabbed &&
-        !cp?.inClinch &&
-        cp?.facing != null
-      ) {
-        const forwardKey = cp.facing === -1 ? "d" : "a";
+      {
+        const facing = liveFacingOrRoom();
         if (
-          gamepadKeyState.s &&
-          gamepadKeyState[forwardKey] &&
-          (!keyState.s || !keyState[forwardKey])
+          gamepadKeyState.mouse1 &&
+          !cp?.isBeingGrabbed &&
+          !cp?.inClinch &&
+          facing != null
         ) {
-          applyPrediction("charge_start");
+          const { forwardKey } = facingKeys(facing);
+          if (
+            gamepadKeyState.s &&
+            gamepadKeyState[forwardKey] &&
+            (!keyState.s || !keyState[forwardKey])
+          ) {
+            applyPrediction("charge_start");
+          }
         }
       }
       // ICE PHYSICS: Power slide predictions for gamepad
@@ -613,9 +655,9 @@ const Game = ({
           }
           // Space: BACK+SPACE → MATADOR, else ATTACK PARRY.
           else if (key === " ") {
-            if (cp?.facing != null) {
-              const forwardKey = cp.facing === -1 ? "d" : "a";
-              const backKey = cp.facing === -1 ? "a" : "d";
+            const facing = liveFacingOrRoom();
+            if (facing != null) {
+              const { forwardKey, backKey } = facingKeys(facing);
               if (keyState[backKey] && !keyState[forwardKey]) {
                 applyPrediction("matador_start");
               } else {
@@ -626,17 +668,19 @@ const Game = ({
             }
           }
           // Mouse1 already held + S/forward completes the charge chord — mirror
-          // the server's continuous charge check so provisional slap audio is
+          // the server's continuous charge check so provisional slap/palm audio is
           // canceled via charge_start (combat-audio fidelity).
           else if (
             keyState.mouse1 &&
             !cp?.inClinch &&
-            cp?.facing != null &&
             (key === "s" || key === "a" || key === "d")
           ) {
-            const forwardKey = cp.facing === -1 ? "d" : "a";
-            if (keyState.s && keyState[forwardKey]) {
-              applyPrediction("charge_start");
+            const facing = liveFacingOrRoom();
+            if (facing != null) {
+              const { forwardKey } = facingKeys(facing);
+              if (keyState.s && keyState[forwardKey]) {
+                applyPrediction("charge_start");
+              }
             }
           }
         }
@@ -700,39 +744,9 @@ const Game = ({
         // Skip strike prediction in clinch — M1 is jolt there, and predicting
         // a slap/charge against the clinch pose causes flicker.
         if (!cp?.isBeingGrabbed && !cp?.inClinch) {
-          // Mirror the server's mouse1 branch (see server-io/socketHandlers.js):
-          //   S + forward  → charged attack
-          //   back only    → rooted palm thrust
-          //   otherwise    → slap
-          // (Low kick / S+mouse1 is gated off via LOW_KICK_ENABLED on the server.)
-          if (cp?.facing != null) {
-            const forwardKey = cp.facing === -1 ? 'd' : 'a';
-            const backKey = cp.facing === -1 ? 'a' : 'd';
-            if (keyState.s && keyState[forwardKey]) {
-              applyPrediction("charge_start");
-              pushClientInputCommandTrace("COMMAND_SELECTED", {
-                command: "charge_start",
-                relativeDir: "forward",
-                facing: cp.facing,
-              });
-            } else if (keyState[backKey] && !keyState[forwardKey]) {
-              applyPrediction("palm_thrust");
-              pushClientInputCommandTrace("COMMAND_SELECTED", {
-                command: "palm_thrust",
-                relativeDir: "back",
-                facing: cp.facing,
-              });
-            } else {
-              applyPrediction("slap");
-              pushClientInputCommandTrace("COMMAND_SELECTED", {
-                command: "slap",
-                relativeDir: keyState[forwardKey] ? "forward" : "neutral",
-                facing: cp.facing,
-              });
-            }
-          } else {
-            applyPrediction("slap");
-          }
+          // Canonical classifier: live fighter_action facing preferred over
+          // rooms[] summary (stale facing after cross-ups caused false palm).
+          applyMouse1StrikeFromKeys(keyState);
         }
         scheduleEmit();
       } else if (e.button === 2) {
@@ -841,7 +855,7 @@ const Game = ({
       }
       unregisterLocalKeyState(keyState);
     };
-  }, [isPowerUpSelectionActive, socket, applyPrediction]);
+  }, [isPowerUpSelectionActive, socket, applyPrediction, localId]);
 
   useEffect(() => {
     const preventDefault = (e) => e.preventDefault();

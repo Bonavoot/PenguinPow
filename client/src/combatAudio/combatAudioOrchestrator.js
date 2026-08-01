@@ -46,12 +46,17 @@ export function createCombatAudioOrchestrator(opts = {}) {
   const claimedEventIds = new Set();
   /** @type {Map<string, number>} */
   const lastPlayByVoiceKey = new Map();
-  /** @type {Map<string, Array<{ handleId: string, startedAt: number, stopAll?: Function }>>} */
+  /** @type {Map<string, Array<{ handleId: string, startedAt: number, stopAll?: Function, actionId?: string|null }>>} */
   const activeVoices = new Map();
+  /** Exact-action active voices for late reconciliation (fade-stop one attempt). */
+  /** @type {Map<string, { stopAll: Function, handleId: string, cueName: string, startedAt: number }>} */
+  const activeByAction = new Map();
   /** @type {Map<string, string>} */
   const predictedByAction = new Map();
   /** Test/observability: count of real stopAll invocations from voice steal */
   let voiceStops = 0;
+  const ACTIVE_ACTION_FADE_MS = 28;
+  const ACTIVE_BY_ACTION_MAX = 48;
 
   let roundToken = 0;
 
@@ -144,15 +149,35 @@ export function createCombatAudioOrchestrator(opts = {}) {
     return true;
   }
 
-  function registerActiveVoice(vKey, handleId, stopAll) {
+  function pruneActiveByAction() {
+    if (activeByAction.size <= ACTIVE_BY_ACTION_MAX) return;
+    const entries = [...activeByAction.entries()].sort(
+      (a, b) => a[1].startedAt - b[1].startedAt
+    );
+    const drop = activeByAction.size - ACTIVE_BY_ACTION_MAX;
+    for (let i = 0; i < drop; i += 1) {
+      activeByAction.delete(entries[i][0]);
+    }
+  }
+
+  function registerActiveVoice(vKey, handleId, stopAll, actionId = null, cueName = null) {
     let list = activeVoices.get(vKey);
     if (!list) {
       list = [];
       activeVoices.set(vKey, list);
     }
-    list.push({ handleId, startedAt: nowFn(), stopAll });
+    list.push({ handleId, startedAt: nowFn(), stopAll, actionId });
     const cutoff = nowFn() - 2000;
     while (list.length && list[0].startedAt < cutoff) list.shift();
+    if (actionId && typeof stopAll === "function") {
+      activeByAction.set(actionId, {
+        stopAll,
+        handleId,
+        cueName: cueName || "*",
+        startedAt: nowFn(),
+      });
+      pruneActiveByAction();
+    }
   }
 
   function applyVoicePolicy(cueName, ctx) {
@@ -277,7 +302,13 @@ export function createCombatAudioOrchestrator(opts = {}) {
     });
     const stopAll =
       played && typeof played.stopAll === "function" ? played.stopAll : null;
-    registerActiveVoice(policy.vKey, handleId, stopAll);
+    registerActiveVoice(
+      policy.vKey,
+      handleId,
+      stopAll,
+      ctx.actionId || null,
+      cueName
+    );
 
     const statusTag =
       cueName === "SLIDE_REDIRECT"
@@ -406,18 +437,45 @@ export function createCombatAudioOrchestrator(opts = {}) {
     return cancelHandle(id, reason);
   }
 
+  function stopActiveCombatAudioForAction(actionId, reason = "action_cancel") {
+    if (!actionId) return false;
+    const active = activeByAction.get(actionId);
+    if (!active) return false;
+    if (typeof active.stopAll === "function") {
+      try {
+        active.stopAll(ACTIVE_ACTION_FADE_MS);
+        voiceStops += 1;
+      } catch {
+        /* ignore adapter errors */
+      }
+    }
+    activeByAction.delete(actionId);
+    // Drop matching entries from per-voice lists so counts stay coherent.
+    for (const [vKey, list] of activeVoices.entries()) {
+      const next = list.filter((v) => v.actionId !== actionId);
+      if (next.length) activeVoices.set(vKey, next);
+      else activeVoices.delete(vKey);
+    }
+    pushAudioTrace({
+      cue: active.cueName,
+      actionId,
+      status: "ACTIVE_ACTION_STOPPED",
+      reason,
+    });
+    return true;
+  }
+
   function cancelCombatAudioForAction(actionId, reason = "action_cancel") {
     if (!actionId) return 0;
-    const set = pendingByAction.get(actionId);
-    if (!set) {
-      predictedByAction.delete(actionId);
-      return 0;
-    }
-    const ids = [...set];
     let n = 0;
-    for (const id of ids) {
-      if (cancelHandle(id, reason)) n += 1;
+    const set = pendingByAction.get(actionId);
+    if (set) {
+      const ids = [...set];
+      for (const id of ids) {
+        if (cancelHandle(id, reason)) n += 1;
+      }
     }
+    if (stopActiveCombatAudioForAction(actionId, reason)) n += 1;
     predictedByAction.delete(actionId);
     return n;
   }
@@ -429,6 +487,7 @@ export function createCombatAudioOrchestrator(opts = {}) {
     claimedEventIds.clear();
     lastPlayByVoiceKey.clear();
     activeVoices.clear();
+    activeByAction.clear();
     roundToken += 1;
     pushAudioTrace({
       cue: "*",
@@ -498,10 +557,15 @@ export function createCombatAudioOrchestrator(opts = {}) {
       pending: pendingByHandle.size,
       claimedEvents: claimedEventIds.size,
       predictedActions: predictedByAction.size,
+      activeByAction: activeByAction.size,
       roundToken,
       voiceStops,
       cues: Object.keys(CUE_DEFINITIONS),
     };
+  }
+
+  function getActiveActionCount() {
+    return activeByAction.size;
   }
 
   return {
@@ -509,11 +573,13 @@ export function createCombatAudioOrchestrator(opts = {}) {
     scheduleCombatCue,
     cancelCombatCue,
     cancelCombatAudioForAction,
+    stopActiveCombatAudioForAction,
     clearCombatAudioForRound,
     confirmCombatCue,
     getPendingCount,
     getVoiceStopCount,
     getActiveVoiceCount,
+    getActiveActionCount,
     getDebugState,
     claimEvent,
   };
