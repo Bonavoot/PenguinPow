@@ -9,11 +9,21 @@
  * integration so relative X is final for the frame. Action systems may still
  * snapshot locks (slapFacingDirection, etc.); this module re-applies them and
  * corrects everyone else.
+ *
+ * Phase 12: when ACTION_FACING_OWNERSHIP_V2 is on, instance-owned
+ * actionFacingLock wins over soft *FacingDirection fields.
  */
 
 const {
   getOffensiveAerialFacingLock,
 } = require("./offensiveAerialFacing");
+const {
+  isActionFacingOwnershipV2Enabled,
+  getActionFacingLock,
+  releaseActionFacingLock,
+  ACTION_FACING_OWNER,
+  ACTION_FACING_RELEASE,
+} = require("./actionFacingOwnership");
 
 /** Desired facing for `player` so they look at `opponent` from current X. */
 function facingTowardOpponent(player, opponent) {
@@ -29,6 +39,17 @@ function facingTowardOpponent(player, opponent) {
  */
 function getLockedFacing(player) {
   if (!player) return null;
+
+  // Phase 12 — instance-owned non-aerial lock (when flag enabled).
+  if (isActionFacingOwnershipV2Enabled()) {
+    const actionLock = getActionFacingLock(player);
+    if (actionLock) {
+      if (!actionLock.allowDirectionUpdate) {
+        return actionLock.direction;
+      }
+      return player.facing;
+    }
+  }
 
   // Cinematic / ring-out: explicit stored facing
   if (player.atTheRopesFacingDirection != null) {
@@ -121,11 +142,18 @@ function clearOrphanPullFacingLocks(player1, player2) {
     !!(player2 &&
       (player2.isBeingPullReversaled || player2.isBoundaryPullSwap));
   if (pullActive) return;
-  if (player1 && player1.pullFacingDirection != null) {
-    player1.pullFacingDirection = null;
-  }
-  if (player2 && player2.pullFacingDirection != null) {
-    player2.pullFacingDirection = null;
+  for (const p of [player1, player2]) {
+    if (!p || p.pullFacingDirection == null) continue;
+    if (isActionFacingOwnershipV2Enabled()) {
+      releaseActionFacingLock(p, {
+        expectedInstanceId: p.pullFacingInstanceId,
+        expectedOwnerType: ACTION_FACING_OWNER.PULL,
+        reason: ACTION_FACING_RELEASE.ACTION_END,
+        clearLegacy: false,
+      });
+      p.pullFacingInstanceId = null;
+    }
+    p.pullFacingDirection = null;
   }
 }
 

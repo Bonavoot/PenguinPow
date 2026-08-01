@@ -70,6 +70,20 @@ function classifyWinCategory(winType) {
 }
 const { createInitialKeys } = require("./playerFactory");
 const { getPushboxHalfWidth } = require("./pushboxGeometry");
+const {
+  DEFENSE_TYPE,
+  buildDefensivePresentation,
+  attachCombatPresentation,
+} = require("./combatPresentationEvent");
+const {
+  isActionFacingOwnershipV2Enabled,
+  acquireActionFacingLock,
+  releaseActionFacingLock,
+  mintActionFacingInstanceId,
+  ACTION_FACING_OWNER,
+  ACTION_FACING_REASON,
+  ACTION_FACING_RELEASE,
+} = require("./actionFacingOwnership");
 
 const {
   GROUND_LEVEL,
@@ -221,6 +235,7 @@ function cleanupGrabStates(player, opponent) {
   player.clinchBeltRequiresM2Release = false;
   player.clinchAttachDistance = 0;
   player.inClinch = false;
+  player.clinchInstanceId = null;
   player.clinchAction = null;
   player.clinchOpponent = null;
   player.clinchStalemateStart = 0;
@@ -333,6 +348,7 @@ function cleanupGrabStates(player, opponent) {
   opponent.clinchBeltRequiresM2Release = false;
   opponent.clinchAttachDistance = 0;
   opponent.inClinch = false;
+  opponent.clinchInstanceId = null;
   opponent.clinchAction = null;
   opponent.clinchOpponent = null;
   opponent.clinchStalemateStart = 0;
@@ -754,6 +770,7 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.clinchBeltRequiresM2Release = false;
     p.clinchAttachDistance = 0;
     p.inClinch = false;
+    p.clinchInstanceId = null;
     p.clinchAction = null;
     // Push-war HUD must clear on win — updateGrabActions won't run again
     // (isGrabbing is cleared above), so a shove-lead of ±1 would otherwise
@@ -911,6 +928,24 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
         player.slapFacingDirection = player.x < opponent.x ? -1 : 1;
       }
       player.facing = player.slapFacingDirection;
+      // Phase 12 — instance-owned slap commit (chain stages share direction;
+      // new slap mints a new id so an old endSlap cannot clear a newer stage).
+      if (isActionFacingOwnershipV2Enabled()) {
+        const slapId = mintActionFacingInstanceId(
+          player,
+          ACTION_FACING_OWNER.SLAP
+        );
+        player.slapFacingInstanceId = slapId;
+        acquireActionFacingLock(player, {
+          ownerType: ACTION_FACING_OWNER.SLAP,
+          ownerInstanceId: slapId,
+          direction: player.slapFacingDirection,
+          reason: ACTION_FACING_REASON.COMMIT,
+          allowDirectionUpdate: false,
+          supersede: true,
+          syncLegacy: false,
+        });
+      }
 
       const slideDirection = player.facing === 1 ? -1 : 1;
 
@@ -1041,6 +1076,15 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
       player.isSlapAttack = false;
       player.attackType = null;
       player.isSlapSliding = false;
+      if (isActionFacingOwnershipV2Enabled()) {
+        releaseActionFacingLock(player, {
+          expectedInstanceId: player.slapFacingInstanceId,
+          expectedOwnerType: ACTION_FACING_OWNER.SLAP,
+          reason: ACTION_FACING_RELEASE.ACTION_END,
+          clearLegacy: false,
+        });
+        player.slapFacingInstanceId = null;
+      }
       player.slapFacingDirection = null;
       player.isInStartupFrames = false;
       player.slapActiveEndTime = 0;
@@ -1170,6 +1214,19 @@ function executePalmThrust(player, rooms) {
   }
   logVerbInitiation(currentRoom, player, "palm", palmEntryVelocity);
   player.chargingFacingDirection = player.facing;
+  if (isActionFacingOwnershipV2Enabled()) {
+    const palmId = mintActionFacingInstanceId(player, ACTION_FACING_OWNER.PALM);
+    player.chargeFacingInstanceId = palmId;
+    acquireActionFacingLock(player, {
+      ownerType: ACTION_FACING_OWNER.PALM,
+      ownerInstanceId: palmId,
+      direction: player.chargingFacingDirection,
+      reason: ACTION_FACING_REASON.COMMIT,
+      allowDirectionUpdate: false,
+      supersede: true,
+      syncLegacy: false,
+    });
+  }
 
   // Rooted: no forward slide, ever.
   player.movementVelocity = 0;
@@ -1471,6 +1528,23 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   player.chargingFacingDirection = player.facing;
   if (player.chargingFacingDirection !== null) {
     player.facing = player.chargingFacingDirection;
+  }
+  // Phase 12 — flying headbutt travel facing (instance-owned when V2).
+  if (isActionFacingOwnershipV2Enabled()) {
+    const chargedId = mintActionFacingInstanceId(
+      player,
+      ACTION_FACING_OWNER.CHARGED_ATTACK
+    );
+    player.chargeFacingInstanceId = chargedId;
+    acquireActionFacingLock(player, {
+      ownerType: ACTION_FACING_OWNER.CHARGED_ATTACK,
+      ownerInstanceId: chargedId,
+      direction: player.chargingFacingDirection,
+      reason: ACTION_FACING_REASON.TRAVEL,
+      allowDirectionUpdate: false,
+      supersede: true,
+      syncLegacy: false,
+    });
   }
 
   // Reset charging state but keep the charge power for knockback
@@ -2023,6 +2097,27 @@ function safelyEndChargedAttack(player, rooms) {
   // Save whether the attack connected before clearing the flag
   const attackConnected = player.chargedAttackHit;
 
+  // Phase 12 — end this attack's facing ownership once (instance-gated).
+  if (isActionFacingOwnershipV2Enabled()) {
+    const chargeFacingId = player.chargeFacingInstanceId;
+    const chargeOwnerType = isPalm
+      ? ACTION_FACING_OWNER.PALM
+      : ACTION_FACING_OWNER.CHARGED_ATTACK;
+    releaseActionFacingLock(player, {
+      expectedInstanceId: chargeFacingId,
+      expectedOwnerType: chargeOwnerType,
+      reason: ACTION_FACING_RELEASE.ACTION_END,
+      clearLegacy: false,
+    });
+    releaseActionFacingLock(player, {
+      expectedInstanceId: chargeFacingId,
+      expectedOwnerType: ACTION_FACING_OWNER.CHARGE_HOLD,
+      reason: ACTION_FACING_RELEASE.ACTION_END,
+      clearLegacy: false,
+    });
+    player.chargeFacingInstanceId = null;
+  }
+
   // Palm thrust on-hit: active window just ended — strike pose through recovery.
   if (isPalm && attackConnected) {
     player.isAttacking = false;
@@ -2277,6 +2372,22 @@ function activateBufferedInputAfterGrab(player, rooms) {
       player.chargeStartTime = 0;
       startCharging(player);
       player.chargingFacingDirection = player.facing;
+      if (isActionFacingOwnershipV2Enabled()) {
+        const holdId = mintActionFacingInstanceId(
+          player,
+          ACTION_FACING_OWNER.CHARGE_HOLD
+        );
+        player.chargeFacingInstanceId = holdId;
+        acquireActionFacingLock(player, {
+          ownerType: ACTION_FACING_OWNER.CHARGE_HOLD,
+          ownerInstanceId: holdId,
+          direction: player.chargingFacingDirection,
+          reason: ACTION_FACING_REASON.CHARGE,
+          allowDirectionUpdate: false,
+          supersede: true,
+          syncLegacy: false,
+        });
+      }
       player.movementVelocity = 0;
       player.isStrafing = false;
       player.isPowerSliding = false;
@@ -2451,6 +2562,22 @@ function executeInputBuffer(player, rooms) {
         player.chargeStartTime = 0;
         startCharging(player);
         player.chargingFacingDirection = player.facing;
+        if (isActionFacingOwnershipV2Enabled()) {
+          const holdId = mintActionFacingInstanceId(
+            player,
+            ACTION_FACING_OWNER.CHARGE_HOLD
+          );
+          player.chargeFacingInstanceId = holdId;
+          acquireActionFacingLock(player, {
+            ownerType: ACTION_FACING_OWNER.CHARGE_HOLD,
+            ownerInstanceId: holdId,
+            direction: player.chargingFacingDirection,
+            reason: ACTION_FACING_REASON.CHARGE,
+            allowDirectionUpdate: false,
+            supersede: true,
+            syncLegacy: false,
+          });
+        }
         player.movementVelocity = 0;
         player.isStrafing = false;
         player.isPowerSliding = false;
@@ -2616,19 +2743,37 @@ function resolveMatadorPull(matador, grabber, room, io) {
   const centerY = (matador.y + grabber.y) / 2;
 
   triggerHitstopAndEmit(io, room, MATADOR_HITSTOP_MS, "matador");
-  io.in(room.id).emit("matador_success", {
-    type: "matador_success",
-    matadorId: matador.id,
-    grabberId: grabber.id,
-    matadorX: matador.x,
-    grabberX: grabber.x,
-    x: centerX,
-    y: centerY,
-    matadorPlayerNumber,
-    isKill,
-    hitstopMs: MATADOR_HITSTOP_MS,
-    matadorId_token: `matador-${nowSim}-${matador.id}`,
+  const matadorToken = `matador-${nowSim}-${matador.id}`;
+  const matadorPresentation = buildDefensivePresentation({
+    defenseType: DEFENSE_TYPE.MATADOR,
+    defenseInstanceId: matadorToken,
+    incomingActionInstanceId: `grab:${grabber.id}:${nowSim}`,
+    attacker: grabber,
+    defender: matador,
+    contactX: centerX,
+    contactY: centerY,
+    attackFamily: "grab",
+    salt: "matador",
   });
+  io.in(room.id).emit(
+    "matador_success",
+    attachCombatPresentation(
+      {
+        type: "matador_success",
+        matadorId: matador.id,
+        grabberId: grabber.id,
+        matadorX: matador.x,
+        grabberX: grabber.x,
+        x: centerX,
+        y: centerY,
+        matadorPlayerNumber,
+        isKill,
+        hitstopMs: MATADOR_HITSTOP_MS,
+        matadorId_token: matadorToken,
+      },
+      matadorPresentation
+    )
+  );
 
   if (isKill) {
     grabber.isClinchKillPullVictim = true;

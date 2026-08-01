@@ -177,6 +177,16 @@ const {
 
 // Facing hard rule: always face opponent unless purposefully locked
 const { enforcePairFacing } = require("./facingSystem");
+const {
+  isActionFacingOwnershipV2Enabled,
+  acquireActionFacingLock,
+  releaseActionFacingLock,
+  forceClearActionFacingLock,
+  mintActionFacingInstanceId,
+  ACTION_FACING_OWNER,
+  ACTION_FACING_REASON,
+  ACTION_FACING_RELEASE,
+} = require("./actionFacingOwnership");
 
 // Aerial landing Phase A — rope-jump V2 (flagged; legacy path retained)
 const {
@@ -196,7 +206,14 @@ const {
 // Import CPU AI
 const { updateCPUAI, processCPUInputs } = require("./cpuAI");
 // Import collision system
-const { checkCollision, checkFlapBodySlam } = require("./collisionSystem");
+const {
+  checkCollision,
+  checkFlapBodySlam,
+  resolveSlapChargedFromLunge,
+} = require("./collisionSystem");
+const {
+  isCombatContactFidelityV2Enabled,
+} = require("./combatContactFidelityFlags");
 const {
   OFFENSIVE_AERIAL_DEBUG,
   isOffensiveAerialReactionV2Enabled,
@@ -227,6 +244,7 @@ const {
   acquireOffensiveAerialFacingLock,
   updateOffensiveAerialFacingLockDirection,
   applyNeutralFacingAfterAerial,
+  handoffOffensiveAerialFacingAtTouchdown,
   aerialFacingAllowsSteer,
 } = require("./offensiveAerialFacing");
 const {
@@ -237,6 +255,13 @@ const {
   attackKindFromPlayer,
   enforceStrikeExtensionSeparation,
 } = require("./strikeContact");
+const {
+  CLINCH_INTERACTION,
+  CLINCH_EFFECT_MID_Y,
+  ensureClinchInstanceId,
+  buildClinchPresentation,
+  attachCombatPresentation,
+} = require("./combatPresentationEvent");
 
 // Import projectile updates (snowballs + pumo army)
 const { updateProjectiles } = require("./projectileUpdates");
@@ -1461,6 +1486,15 @@ function tick(delta) {
 
               // SUCCESSFUL GRAB — same connect logic as before
               player.isGrabStartup = false;
+              if (isActionFacingOwnershipV2Enabled()) {
+                releaseActionFacingLock(player, {
+                  expectedInstanceId: player.grabFacingInstanceId,
+                  expectedOwnerType: ACTION_FACING_OWNER.GRAB_STARTUP,
+                  reason: ACTION_FACING_RELEASE.TRANSFER,
+                  clearLegacy: false,
+                });
+                player.grabFacingInstanceId = null;
+              }
               player.y = GROUND_LEVEL;
               player.grabMovementVelocity = 0;
               player.movementVelocity = 0;
@@ -1538,17 +1572,37 @@ function tick(delta) {
                 const grabberPlayerNumber = room.players.indexOf(player) === 0 ? 1 : 2;
                 const centerX = (player.x + opponent.x) / 2;
                 const centerY = (player.y + opponent.y) / 2;
-                io.in(room.id).emit("counter_grab", {
-                  type: "counter_grab",
-                  grabberId: player.id,
-                  grabbedId: opponent.id,
-                  grabberX: player.x,
-                  grabbedX: opponent.x,
-                  x: centerX,
-                  y: centerY,
-                  grabberPlayerNumber,
-                  counterId: `counter-grab-${now}-${Math.random().toString(36).substr(2, 9)}`,
-                });
+                {
+                  const counterId = `counter-grab-${now}-${Math.random().toString(36).substr(2, 9)}`;
+                  const clinchId = ensureClinchInstanceId(player, opponent, now);
+                  io.in(room.id).emit(
+                    "counter_grab",
+                    attachCombatPresentation(
+                      {
+                        type: "counter_grab",
+                        grabberId: player.id,
+                        grabbedId: opponent.id,
+                        grabberX: player.x,
+                        grabbedX: opponent.x,
+                        x: centerX,
+                        y: centerY,
+                        grabberPlayerNumber,
+                        counterId,
+                      },
+                      buildClinchPresentation({
+                        interactionType: CLINCH_INTERACTION.COUNTER_GRAB,
+                        clinchInstanceId: clinchId,
+                        actionInstanceId: counterId,
+                        initiator: player,
+                        responder: opponent,
+                        outcome: "COUNTER_GRAB",
+                        contactX: opponent.x,
+                        contactY: CLINCH_EFFECT_MID_Y,
+                        salt: "counter_grab",
+                      })
+                    )
+                  );
+                }
               }
 
               player.isRawParrySuccess = false;
@@ -1947,7 +2001,33 @@ function tick(delta) {
             if (wasKillThrow) {
               handleWinCondition(room, opponent, player, io, "clinchKillThrow");
               opponent.isClinchKillThrowVictim = true;
-              emitThrottledScreenShake(room, io, { type: "kill_throw_land" });
+              {
+                const landId = `kill-land-${currentTime}-${opponent.id}`;
+                const clinchId = ensureClinchInstanceId(
+                  player,
+                  opponent,
+                  currentTime
+                );
+                emitThrottledScreenShake(
+                  room,
+                  io,
+                  attachCombatPresentation(
+                    { type: "kill_throw_land", victimId: opponent.id, x: opponent.x, y: opponent.y },
+                    buildClinchPresentation({
+                      interactionType: CLINCH_INTERACTION.KILL_THROW_LAND,
+                      clinchInstanceId: clinchId,
+                      actionInstanceId: landId,
+                      initiator: player,
+                      responder: opponent,
+                      outcome: "KILL_LAND",
+                      throwType: "throw",
+                      contactX: opponent.x,
+                      contactY: opponent.y,
+                      salt: "kill_land",
+                    })
+                  )
+                );
+              }
               // No landing hitstop for kill throw: room + client hitstop freeze the
               // sim and pin interpolated Y for ~100ms, which reads as a hitch right
               // as the victim touches down. Screen shake + particles sell the impact.
@@ -1963,13 +2043,55 @@ function tick(delta) {
               ) {
                 handleWinCondition(room, opponent, player, io, "grabThrow");
               } else {
-                emitThrottledScreenShake(room, io, { type: "throw_landing" });
+                {
+                  const landId = `throw-land-${currentTime}-${opponent.id}`;
+                  const clinchId = ensureClinchInstanceId(
+                    player,
+                    opponent,
+                    currentTime
+                  );
+                  emitThrottledScreenShake(
+                    room,
+                    io,
+                    attachCombatPresentation(
+                      { type: "throw_landing", victimId: opponent.id, x: opponent.x, y: opponent.y },
+                      buildClinchPresentation({
+                        interactionType: CLINCH_INTERACTION.THROW_LAND,
+                        clinchInstanceId: clinchId,
+                        actionInstanceId: landId,
+                        initiator: player,
+                        responder: opponent,
+                        outcome: "LAND",
+                        throwType: "throw",
+                        contactX: opponent.x,
+                        contactY: opponent.y,
+                        salt: "throw_land",
+                      })
+                    )
+                  );
+                }
                 triggerHitstopAndEmit(io, room, HITSTOP_THROW_MS, "throw");
               }
             }
 
             player.isThrowing = false;
             player.throwOpponent = null;
+            if (isActionFacingOwnershipV2Enabled()) {
+              releaseActionFacingLock(player, {
+                expectedInstanceId: player.throwFacingInstanceId,
+                expectedOwnerType: ACTION_FACING_OWNER.THROWER,
+                reason: ACTION_FACING_RELEASE.ACTION_END,
+                clearLegacy: false,
+              });
+              player.throwFacingInstanceId = null;
+              releaseActionFacingLock(opponent, {
+                expectedInstanceId: opponent.throwVictimFacingInstanceId,
+                expectedOwnerType: ACTION_FACING_OWNER.THROW_VICTIM,
+                reason: ACTION_FACING_RELEASE.ACTION_END,
+                clearLegacy: false,
+              });
+              opponent.throwVictimFacingInstanceId = null;
+            }
             player.throwingFacingDirection = null;
             player.throwStartTime = 0;
             player.throwEndTime = 0;
@@ -2069,6 +2191,15 @@ function tick(delta) {
         player.isDodging = false;
         player.isDodgeStartup = false;
         player.dodgeDirection = null;
+        if (isActionFacingOwnershipV2Enabled()) {
+          releaseActionFacingLock(player, {
+            expectedInstanceId: player.dodgeFacingInstanceId,
+            expectedOwnerType: ACTION_FACING_OWNER.DODGE,
+            reason: ACTION_FACING_RELEASE.ACTION_END,
+            clearLegacy: false,
+          });
+          player.dodgeFacingInstanceId = null;
+        }
         player.y = GROUND_LEVEL;
       }
       // S-key dodge cancel — stops the dash immediately
@@ -2076,6 +2207,15 @@ function tick(delta) {
         player.isDodging = false;
         player.isDodgeStartup = false;
         player.dodgeDirection = null;
+        if (isActionFacingOwnershipV2Enabled()) {
+          releaseActionFacingLock(player, {
+            expectedInstanceId: player.dodgeFacingInstanceId,
+            expectedOwnerType: ACTION_FACING_OWNER.DODGE,
+            reason: ACTION_FACING_RELEASE.ACTION_END,
+            clearLegacy: false,
+          });
+          player.dodgeFacingInstanceId = null;
+        }
         player.y = GROUND_LEVEL;
         player.movementVelocity = 0;
         player.isStrafing = false;
@@ -2169,6 +2309,15 @@ function tick(delta) {
           player.isDodging = false;
           player.isDodgeStartup = false;
           player.dodgeDirection = null;
+          if (isActionFacingOwnershipV2Enabled()) {
+            releaseActionFacingLock(player, {
+              expectedInstanceId: player.dodgeFacingInstanceId,
+              expectedOwnerType: ACTION_FACING_OWNER.DODGE,
+              reason: ACTION_FACING_RELEASE.ACTION_END,
+              clearLegacy: false,
+            });
+            player.dodgeFacingInstanceId = null;
+          }
           player.y = GROUND_LEVEL;
           player.isStrafing = false;
           player.isBraking = false;
@@ -2887,16 +3036,8 @@ function tick(delta) {
             player.slideJumpPhase = "landing";
             player.slideJumpLandingTime = now;
             player._oaTouchdownPresentation = true;
-            acquireOffensiveAerialFacingLock(player, {
-              supersede: false,
-              ownerInstanceId:
-                player.offensiveAerial?.attackInstanceId ||
-                player.offensiveAerialReaction?.attackInstanceId ||
-                null,
-              direction: player.facing,
-              reason: FACING_LOCK_REASON.LANDING,
-              releaseCondition: FACING_RELEASE.RECOVERY_COMPLETE,
-              allowSteerUpdate: false,
+            // One opponent-facing handoff at touchdown (not travel-facing carry).
+            handoffOffensiveAerialFacingAtTouchdown(player, sjOpponent, {
               acquiredTick: room.tick || 0,
             });
             const whiffRecovery = flapFlight || player.slideJumpFlapFlightActive
@@ -3177,17 +3318,35 @@ function tick(delta) {
             const grabberPlayerNumber = room.players.indexOf(player) === 0 ? 1 : 2;
             const centerX = (player.x + opponent.x) / 2;
             const centerY = (player.y + opponent.y) / 2;
-            io.in(room.id).emit("counter_grab", {
-              type: "counter_grab",
-              grabberId: player.id,
-              grabbedId: opponent.id,
-              grabberX: player.x,
-              grabbedX: opponent.x,
-              x: centerX,
-              y: centerY,
-              grabberPlayerNumber,
-              counterId: `counter-grab-${now}-${Math.random().toString(36).substr(2, 9)}`,
-            });
+            const counterId = `counter-grab-${now}-${Math.random().toString(36).substr(2, 9)}`;
+            const clinchId = ensureClinchInstanceId(player, opponent, now);
+            io.in(room.id).emit(
+              "counter_grab",
+              attachCombatPresentation(
+                {
+                  type: "counter_grab",
+                  grabberId: player.id,
+                  grabbedId: opponent.id,
+                  grabberX: player.x,
+                  grabbedX: opponent.x,
+                  x: centerX,
+                  y: centerY,
+                  grabberPlayerNumber,
+                  counterId,
+                },
+                buildClinchPresentation({
+                  interactionType: CLINCH_INTERACTION.COUNTER_GRAB,
+                  clinchInstanceId: clinchId,
+                  actionInstanceId: counterId,
+                  initiator: player,
+                  responder: opponent,
+                  outcome: "COUNTER_GRAB",
+                  contactX: opponent.x,
+                  contactY: CLINCH_EFFECT_MID_Y,
+                  salt: "counter_grab",
+                })
+              )
+            );
           }
           
           // Clear parry success state when starting a grab
@@ -3844,7 +4003,39 @@ function tick(delta) {
         const attackDirection = player.facing === 1 ? -1 : 1;
         const chargePower = player.chargeAttackPower || 0;
         const lungeSpeed = 1.5 + (chargePower / 100) * 5.5;
+        const lungeStartX = player.x;
         const newX = player.x + attackDirection * delta * speedFactor * lungeSpeed;
+
+        // Phase 13A (V2): earliest slap↔headbutt contact inside this step —
+        // advance to contact and resolve before committing the full lunge.
+        let chargedContactResolved = false;
+        if (isCombatContactFidelityV2Enabled() && !player.isInStartupFrames) {
+          const opponent = room.players.find(
+            (p) => p.id !== player.id && !p.isDead
+          );
+          if (
+            opponent &&
+            opponent.isAttacking &&
+            opponent.attackType === "slap" &&
+            !opponent.isInStartupFrames
+          ) {
+            chargedContactResolved = !!resolveSlapChargedFromLunge(
+              player,
+              opponent,
+              rooms,
+              io,
+              {
+                delta,
+                speedFactor,
+                proposedX: newX,
+                simTime: room.simTime,
+              }
+            );
+          }
+        }
+        player._combatPrevX = lungeStartX;
+        // Contact resolution already advanced to the hit and consumed the step.
+        if (!chargedContactResolved) {
 
         // Check if this movement would put player at the ropes
         const leftCheck = newX <= MAP_LEFT_BOUNDARY && attackDirection === -1;
@@ -3871,6 +4062,22 @@ function tick(delta) {
           // This direction should persist through hits and ring-out until round reset
           player.atTheRopesFacingDirection = savedFacing;
           player.facing = savedFacing;
+          if (isActionFacingOwnershipV2Enabled()) {
+            const ropesId = mintActionFacingInstanceId(
+              player,
+              ACTION_FACING_OWNER.ROPES
+            );
+            player.ropesFacingInstanceId = ropesId;
+            acquireActionFacingLock(player, {
+              ownerType: ACTION_FACING_OWNER.ROPES,
+              ownerInstanceId: ropesId,
+              direction: savedFacing,
+              reason: ACTION_FACING_REASON.BOUNDARY,
+              allowDirectionUpdate: false,
+              supersede: true,
+              syncLegacy: false,
+            });
+          }
 
           // Clear knockback (clearAllActionStates doesn't clear this)
           player.knockbackVelocity = { x: 0, y: 0 };
@@ -3888,6 +4095,15 @@ function tick(delta) {
             () => {
               player.isAtTheRopes = false;
               player.atTheRopesStartTime = 0;
+              if (isActionFacingOwnershipV2Enabled()) {
+                releaseActionFacingLock(player, {
+                  expectedInstanceId: player.ropesFacingInstanceId,
+                  expectedOwnerType: ACTION_FACING_OWNER.ROPES,
+                  reason: ACTION_FACING_RELEASE.ACTION_END,
+                  clearLegacy: false,
+                });
+                player.ropesFacingInstanceId = null;
+              }
               player.atTheRopesFacingDirection = null;
             },
             AT_THE_ROPES_DURATION,
@@ -3942,6 +4158,7 @@ function tick(delta) {
             }
           }
         }
+        } // end !chargedContactResolved travel
         } // end !isPalmThrust lunge guard
 
         if (room.simTime >= player.attackEndTime) {

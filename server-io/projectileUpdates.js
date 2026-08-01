@@ -32,6 +32,14 @@ const {
   hasHitAbsorption,
   consumeHitAbsorption,
 } = require("./gameUtils");
+const {
+  DEFENSE_TYPE,
+  PROJECTILE_TYPE,
+  PROJECTILE_LIFECYCLE,
+  buildDefensivePresentation,
+  buildProjectilePresentation,
+  attachCombatPresentation,
+} = require("./combatPresentationEvent");
 
 // Swept 1D collision: horizontal distance from targetX to the segment the
 // projectile traversed this tick. Fast projectiles (reflected snowballs move
@@ -111,13 +119,36 @@ function updateProjectiles(room, io, delta) {
             // instead of lingering at its last sampled spot for a frame.
             room.forceBroadcast = true;
 
-            // Absorb VFX: the pink Thick Blubber ring.
-            io.in(room.id).emit("grab_armor_absorb", {
-              defenderId: targetPlayer.id,
-              x: targetPlayer.x,
-              y: targetPlayer.y,
-              facing: targetPlayer.facing,
-            });
+            // Absorb VFX: the pink Thick Blubber ring (Phase 8/9 presentation).
+            // Identity from snowball instance — not Date.now().
+            {
+              const absorbId = `${snowball.id}:absorb`;
+              const absorbPres = buildDefensivePresentation({
+                defenseType: DEFENSE_TYPE.GRAB_ARMOR_ABSORB,
+                defenseInstanceId: absorbId,
+                incomingActionInstanceId: snowball.id,
+                defender: targetPlayer,
+                attacker: room.players.find((p) => p.id === snowball.ownerId) || null,
+                contactX: snowball.x,
+                contactY: snowball.y,
+                attackFamily: PROJECTILE_TYPE.SNOWBALL,
+                salt: "absorb",
+              });
+              io.in(room.id).emit(
+                "grab_armor_absorb",
+                attachCombatPresentation(
+                  {
+                    defenderId: targetPlayer.id,
+                    x: targetPlayer.x,
+                    y: targetPlayer.y,
+                    facing: targetPlayer.facing,
+                    projectileInstanceId: snowball.id,
+                    projectileType: PROJECTILE_TYPE.SNOWBALL,
+                  },
+                  absorbPres
+                )
+              );
+            }
 
             return false; // Remove snowball after absorption
           }
@@ -130,14 +161,44 @@ function updateProjectiles(room, io, delta) {
           // lands instead of freezing at its last sampled spot for a frame.
           room.forceBroadcast = true;
 
-          // Emit snowball hit effect for visual clarity (facing = hit player's facing for effect offset)
-          io.in(room.id).emit("snowball_hit", {
-            x: targetPlayer.x,
-            y: targetPlayer.y,
-            facing: targetPlayer.facing,
-            hitId: `snowball-hit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          });
-          
+          // Snowball impact — discrete presentation at projectile contact.
+          // Legacy client used victim.x+70 (always +X); pin X to snowball.x.
+          {
+            const approach =
+              snowball.velocityX > 0 ? 1 : snowball.velocityX < 0 ? -1 : 1;
+            const hitId = `${snowball.id}:hit`;
+            const hitPres = buildProjectilePresentation({
+              projectileType: PROJECTILE_TYPE.SNOWBALL,
+              lifecycleStage: PROJECTILE_LIFECYCLE.HIT,
+              projectileInstanceId: snowball.id,
+              ownerId: snowball.ownerId || player.id,
+              targetId: targetPlayer.id,
+              contactX: snowball.x,
+              contactY: targetPlayer.y + 50,
+              approachDirection: approach,
+              terminalX: snowball.x,
+              terminalY: snowball.y,
+              attackerFacing: targetPlayer.facing,
+              salt: "hit",
+            });
+            io.in(room.id).emit(
+              "snowball_hit",
+              attachCombatPresentation(
+                {
+                  x: snowball.x,
+                  y: targetPlayer.y,
+                  facing: targetPlayer.facing,
+                  hitId,
+                  projectileInstanceId: snowball.id,
+                  ownerId: snowball.ownerId || player.id,
+                  targetId: targetPlayer.id,
+                },
+                hitPres
+              )
+            );
+          }
+
+         
           // If target was grabbing someone, clear the grabbed player's state first
           if (targetPlayer.isGrabbing && targetPlayer.grabbedOpponent) {
             const grabbedPlayer = room.players.find(p => p.id === targetPlayer.grabbedOpponent);
@@ -310,17 +371,43 @@ function updateProjectiles(room, io, delta) {
           
           // Emit raw parry success event for visual effect and sound
           const parryingPlayerNumber = room.players.findIndex(p => p.id === opponent.id) + 1;
-          io.in(room.id).emit("raw_parry_success", {
-            attackerX: thrower ? thrower.x : snowball.x,
-            parrierX: opponent.x,
-            facing: thrower ? thrower.facing : -opponent.facing,
+          // Stable identity from snowball instance (Phase 9 placement unchanged).
+          const snowballParryId = `${snowball.id}:raw_parry`;
+          // Side the ball occupies at contact (not thrower facing / +150 world bias).
+          const snowballIncomingDir =
+            snowball.x < opponent.x ? -1 : snowball.x > opponent.x ? 1 : 0;
+          const snowballEffectFacing =
+            snowballIncomingDir < 0 ? 1 : snowballIncomingDir > 0 ? -1 : -opponent.facing;
+          const snowballParryPres = buildDefensivePresentation({
+            defenseType: DEFENSE_TYPE.PROJECTILE_PARRY,
+            defenseInstanceId: snowballParryId,
+            incomingActionInstanceId: snowball.id || null,
+            attacker: thrower || { x: snowball.x },
+            defender: opponent,
+            incomingDirection: snowballIncomingDir || undefined,
             isPerfect: isPerfectParry,
-            timestamp: Date.now(),
-            parryId: `${opponent.id}_snowball_parry_${Date.now()}`,
-            playerNumber: parryingPlayerNumber,
-            parrierId: opponent.id,
-            balanceGain: perfectParryBalanceGain, // 0 for non-perfect; drives client balance gain anim
+            attackFamily: PROJECTILE_TYPE.SNOWBALL,
+            salt: "raw-parry",
           });
+          io.in(room.id).emit(
+            "raw_parry_success",
+            attachCombatPresentation(
+              {
+                attackerX: snowball.x,
+                parrierX: opponent.x,
+                facing: snowballParryPres?.facingHint ?? snowballEffectFacing,
+                isPerfect: isPerfectParry,
+                timestamp: Date.now(),
+                parryId: snowballParryId,
+                playerNumber: parryingPlayerNumber,
+                parrierId: opponent.id,
+                balanceGain: perfectParryBalanceGain,
+                projectileInstanceId: snowball.id,
+                projectileType: PROJECTILE_TYPE.SNOWBALL,
+              },
+              snowballParryPres
+            )
+          );
           
           // Clear parry success state after duration
           if (canReflect) {
@@ -475,13 +562,35 @@ function updateProjectiles(room, io, delta) {
             // Remove clone but don't hit the player
             clone.hasHit = true;
 
-            // Absorb VFX: the pink Thick Blubber ring.
-            io.in(room.id).emit("grab_armor_absorb", {
-              defenderId: opponent.id,
-              x: opponent.x,
-              y: opponent.y,
-              facing: opponent.facing,
-            });
+            // Absorb VFX: pink Thick Blubber ring (parity with snowball attach).
+            {
+              const absorbId = `${clone.id}:absorb`;
+              const absorbPres = buildDefensivePresentation({
+                defenseType: DEFENSE_TYPE.GRAB_ARMOR_ABSORB,
+                defenseInstanceId: absorbId,
+                incomingActionInstanceId: clone.id,
+                defender: opponent,
+                attacker: room.players.find((p) => p.id === clone.ownerId) || player,
+                contactX: clone.x,
+                contactY: clone.y,
+                attackFamily: PROJECTILE_TYPE.PUMO_ARMY,
+                salt: "absorb",
+              });
+              io.in(room.id).emit(
+                "grab_armor_absorb",
+                attachCombatPresentation(
+                  {
+                    defenderId: opponent.id,
+                    x: opponent.x,
+                    y: opponent.y,
+                    facing: opponent.facing,
+                    projectileInstanceId: clone.id,
+                    projectileType: PROJECTILE_TYPE.PUMO_ARMY,
+                  },
+                  absorbPres
+                )
+              );
+            }
 
             return false; // Remove clone after absorption
           }
@@ -606,15 +715,41 @@ function updateProjectiles(room, io, delta) {
           // Send both positions so client can calculate center
           const parryingPlayerNumber = room.players.findIndex(p => p.id === opponent.id) + 1;
           const spawner = room.players.find(p => p.id === player.id);
-          io.in(room.id).emit("raw_parry_success", {
-            attackerX: spawner ? spawner.x : clone.x,
-            parrierX: opponent.x,
-            facing: spawner ? spawner.facing : -opponent.facing, // Use attacker's facing for consistency with melee
+          // Per-clone stable identity — one clone cannot dedupe another.
+          const pumoParryId = `${clone.id}:raw_parry`;
+          // Side the clone occupies at contact (incoming face of the parrier).
+          const pumoIncomingDir =
+            clone.x < opponent.x ? -1 : clone.x > opponent.x ? 1 : 0;
+          const pumoEffectFacing =
+            pumoIncomingDir < 0 ? 1 : pumoIncomingDir > 0 ? -1 : -opponent.facing;
+          const pumoParryPres = buildDefensivePresentation({
+            defenseType: DEFENSE_TYPE.PROJECTILE_PARRY,
+            defenseInstanceId: pumoParryId,
+            incomingActionInstanceId: clone.id || null,
+            attacker: spawner || { x: clone.x },
+            defender: opponent,
+            incomingDirection: pumoIncomingDir || undefined,
             isPerfect: false,
-            timestamp: Date.now(),
-            parryId: `${opponent.id}_pumo_parry_${Date.now()}`,
-            playerNumber: parryingPlayerNumber,
+            attackFamily: PROJECTILE_TYPE.PUMO_ARMY,
+            salt: "raw-parry",
           });
+          io.in(room.id).emit(
+            "raw_parry_success",
+            attachCombatPresentation(
+              {
+                attackerX: clone.x,
+                parrierX: opponent.x,
+                facing: pumoParryPres?.facingHint ?? pumoEffectFacing,
+                isPerfect: false,
+                timestamp: Date.now(),
+                parryId: pumoParryId,
+                playerNumber: parryingPlayerNumber,
+                projectileInstanceId: clone.id,
+                projectileType: PROJECTILE_TYPE.PUMO_ARMY,
+              },
+              pumoParryPres
+            )
+          );
           
           // Clear parry success state after duration
           setPlayerTimeout(

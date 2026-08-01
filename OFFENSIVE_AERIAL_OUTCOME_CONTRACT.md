@@ -4,7 +4,8 @@
 Module: `server-io/offensiveAerialOutcome.js`  
 Contact geometry: `server-io/offensiveAerialContact.js` (Phase 3 — metadata only).  
 Post-contact reaction: `server-io/offensiveAerialReaction.js` (Phase 4 — `OFFENSIVE_AERIAL_REACTION_V2` default ON, approved `heavy_short`; `=0` → Phase 3 legacy).  
-Facing / presentation ownership: `server-io/offensiveAerialFacing.js` + `offensiveAerialPresentation.js` (Phase 5A — instance-tied facing locks; see `OFFENSIVE_AERIAL_STATE_FACING_PHASE.md`).
+Facing / presentation ownership: `server-io/offensiveAerialFacing.js` + `offensiveAerialPresentation.js` (Phase 5A — instance-tied facing locks; see `OFFENSIVE_AERIAL_STATE_FACING_PHASE.md`).  
+Combat FX events: `server-io/combatPresentationEvent.js` (Phase 6 — compact `combatPresentation` on existing hit/parry sockets; see `OFFENSIVE_AERIAL_PRESENTATION_EVENTS_PHASE.md`).
 
 ---
 

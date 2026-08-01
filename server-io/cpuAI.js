@@ -36,9 +36,10 @@ const MAP_CENTER = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
 const MAP_WIDTH = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
 
 // ── TRAINING LAB (TEMP) ──────────────────────────────────────────────────────
-// When true, Easy VS CPU is a grab-only dummy with infinite posture so you can
-// isolate MATADOR feel. Flip to false to restore normal Easy behavior.
-// (Was slap-only for Attack Parry lab — same pattern, grab verb instead.)
+// When true, Easy VS CPU only mashes mouse1 (slap). Flip to false for normal Easy.
+const EASY_SLAP_ONLY_DUMMY = true;
+// When true, Easy VS CPU is a grab-only dummy with infinite posture (MATADOR).
+// Mutually exclusive with EASY_SLAP_ONLY_DUMMY — slap flag wins if both true.
 const EASY_GRAB_MATADOR_DUMMY = false;
 
 // AI Configuration - Tuned for expert sumo gameplay
@@ -366,8 +367,43 @@ const DIFFICULTY_PROFILES = {
 
 // Cache resolved profiles so we don't rebuild the object every tick.
 const _diffCache = {};
+function isEasySlapOnlyDummy() {
+  return EASY_SLAP_ONLY_DUMMY && DIFF_KEY === "EASY";
+}
 function isEasyGrabMatadorDummy() {
-  return EASY_GRAB_MATADOR_DUMMY && DIFF_KEY === "EASY";
+  return !EASY_SLAP_ONLY_DUMMY && EASY_GRAB_MATADOR_DUMMY && DIFF_KEY === "EASY";
+}
+
+// Slap-only training dummy (Easy only, gated by flag above).
+// Stand still and mash mouse1. Nothing else.
+function runEasySlapOnlyDummy(cpu, human, aiState, currentTime, distance) {
+  cpu.palmThrustQueued = false;
+  aiState.pendingParry = false;
+  aiState.parryReleaseTime = 0;
+  aiState.reactionTarget = null;
+  aiState.commitAction = null;
+  aiState.commitCount = 0;
+  aiState.grabApproachIntent = false;
+
+  resetAllKeys(cpu);
+
+  // Tap mouse1 on a short press/release cycle so slap sees rising edges.
+  const PRESS_MS = 50;
+  const RELEASE_MS = 50;
+  if (
+    !aiState.easySlapPhase ||
+    currentTime >= (aiState.easySlapPhaseUntil || 0)
+  ) {
+    if (aiState.easySlapPhase === "press") {
+      aiState.easySlapPhase = "release";
+      aiState.easySlapPhaseUntil = currentTime + RELEASE_MS;
+    } else {
+      aiState.easySlapPhase = "press";
+      aiState.easySlapPhaseUntil = currentTime + PRESS_MS;
+    }
+  }
+  cpu.keys.mouse1 = aiState.easySlapPhase === "press";
+  aiState.lastActionType = "slap_dummy_mash";
 }
 
 function topUpEasyGrabDummy(cpu) {
@@ -1472,36 +1508,16 @@ function updateCPUAI(cpu, human, room, currentTime) {
   // Handle pending key releases
   handlePendingKeyReleases(cpu, aiState, currentTime);
 
+  // Slap lab: Easy = mash mouse1 only.
+  if (isEasySlapOnlyDummy()) {
+    runEasySlapOnlyDummy(cpu, human, aiState, currentTime, distance);
+    return;
+  }
+
   // Matador lab: Easy = grab-only dummy (no slap/parry/dodge/charge).
   // Clinch connect → instant grab-break path inside the dummy (never push/throw).
   if (isEasyGrabMatadorDummy()) {
     runEasyGrabMatadorDummy(cpu, human, aiState, currentTime, distance);
-    return;
-  }
-
-  // Playtest dummy: EASY stands still and continuously TAP-parries (no slap/move).
-  // Rising-edge `s` arms AP via processCPUInputs; must fully release between taps
-  // (and clear AP whiff jail) or the next edge cannot re-arm.
-  if (DIFF_KEY === "EASY") {
-    resetAllKeys(cpu);
-    aiState.pendingParry = false;
-    aiState.parryReleaseTime = 0;
-    const PRESS_MS = 160; // live AP window while held
-    const RELEASE_MS = 320; // > AP_WHIFF_RECOVERY_MS so the next tap can arm
-    if (
-      !aiState.easyParryPhase ||
-      currentTime >= (aiState.easyParryPhaseUntil || 0)
-    ) {
-      if (aiState.easyParryPhase === "press") {
-        aiState.easyParryPhase = "release";
-        aiState.easyParryPhaseUntil = currentTime + RELEASE_MS;
-      } else {
-        aiState.easyParryPhase = "press";
-        aiState.easyParryPhaseUntil = currentTime + PRESS_MS;
-      }
-    }
-    cpu.keys.s = aiState.easyParryPhase === "press";
-    aiState.lastActionType = "easy_parry_tap_dummy";
     return;
   }
 

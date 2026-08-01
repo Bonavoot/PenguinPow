@@ -34,6 +34,7 @@ const {
   FACING_LOCK_REASON,
   FACING_RELEASE,
   acquireOffensiveAerialFacingLock,
+  handoffOffensiveAerialFacingAtTouchdown,
 } = require("./offensiveAerialFacing");
 
 const OFFENSIVE_AERIAL_REACTION = Object.freeze({
@@ -607,13 +608,10 @@ function applyOffensiveAerialTouchdownHandoff(player, opponent, now, meta = {}) 
   r.animationOwner = ANIMATION_OWNER.LANDING;
   r.cleanupStage = OFFENSIVE_AERIAL_CLEANUP_STAGE.TOUCHDOWN_HANDOFF;
 
-  // Transfer facing ownership to landing (same attack instance).
-  acquireOffensiveAerialFacingLock(player, {
-    ownerInstanceId: r.attackInstanceId || player.offensiveAerial?.attackInstanceId,
-    direction: player.facing,
-    reason: FACING_LOCK_REASON.LANDING,
-    releaseCondition: FACING_RELEASE.RECOVERY_COMPLETE,
-    allowSteerUpdate: false,
+  // Transfer facing ownership to landing with opponent-facing (not travel face).
+  handoffOffensiveAerialFacingAtTouchdown(player, opponent, {
+    ownerInstanceId:
+      r.attackInstanceId || player.offensiveAerial?.attackInstanceId || null,
   });
 
   markOffensiveAerialLandingHandoff(player, reason, {

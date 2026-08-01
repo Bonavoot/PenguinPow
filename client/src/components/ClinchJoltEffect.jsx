@@ -3,6 +3,16 @@ import styled from "styled-components";
 import PropTypes from "prop-types";
 import "./ClinchJoltEffect.css";
 
+/**
+ * TEMPORARY CSS FALLBACK for clinch Jolt.
+ *
+ * Do not redesign this ring. It remains only until an authored clinch-compression
+ * sprite sheet is supplied (see JOLT_AND_MOVEMENT_SMOKE_PHASE.md). Placement is
+ * driven by combatPresentation CLINCH_GRIP_CONTACT (forearm / upper-waist seam).
+ * Remove this component/CSS when the authored sheet lands.
+ */
+export const CLINCH_JOLT_CSS_TEMPORARY_FALLBACK = true;
+
 const LINE_INDICES = [0, 1, 2, 3, 4];
 const SPARK_INDICES = [0, 1, 2, 3, 4];
 const PARTICLE_INDICES = [0, 1, 2, 3];

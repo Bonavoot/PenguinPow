@@ -55,12 +55,12 @@ Typical grounded 960 poses: `padB` (transparent under feet) ≈ **19–38px** (~
 | Pose | padB | Issue |
 |------|------|-------|
 | Most idle/ready/slap-hit/palm/block | 19–38 | OK |
-| **`attack.png` (charged)** | **223** | Feet ~223px above canvas bottom → ~36 world-px float at display scale |
-| **`dodging.png`** | **162** | Same class of sole float (aerial/dodge lean) |
+| **`attack.png` (charged flight)** | **223** | **Intentional flying headbutt** — elevated feet are flight art, not a grounding defect. Do **not** sole-correct. |
+| **`dodging.png`** | **162** | Aerial/dodge lean — not ground-snapped |
 | **`pumo-flap-1/2.png`** | **77 / 106** | Air poses; sole not ground-glued (expected if airborne) |
 | `cinematic-throw-kill-landing.png` | 5 | Sole near edge; full-bleed belly |
 
-**Confirmed visual risk (high):** Charged active pose (`getImageSrc` → `attack` when `isAttacking && !isSlapAttack`) has extreme bottom padding. Horizontal tip contact can feel excellent while the body still reads vertically ungrounded. This is **pose metadata / art grounding**, not tip-rail failure.
+**Charged headbutt note:** Extreme bottom padding on `attack.png` is expected for the flying headbutt. Phase 11 initially misclassified this as a sole-float defect (~33px correction); that correction was **removed**. Tip rails remain the contact source of truth; vertical separation from the dohyo during flight is intentional.
 
 ---
 
@@ -90,7 +90,8 @@ Typical grounded 960 poses: `padB` (transparent under feet) ≈ **19–38px** (~
 
 ## 6. Poses requiring manual overrides (candidates)
 
-1. `attack.png` — sole float + is the charged tip source of truth  
+1. `attack.png` — flying headbutt (airborne); tip source of truth; **no** sole correction  
+
 2. `slap-attack-1-hit-frame.png` — tip constant slack vs alpha  
 3. `dodging.png` / flap frames — aerial sole  
 4. All 480/600 assets — normalize to 960 before trusting pixel math  
@@ -154,3 +155,9 @@ Server would convert tip px → world via shared scale; client sole % would read
 ---
 
 *Generated artifacts: `tools/pose-geometry-report.json`, `tools/pose-geometry-viz/`.*
+
+---
+
+## Phase 11 status
+
+Client pose registration is implemented behind **`FIGHTER_POSE_GEOMETRY_V2` (default ON — manually approved)**. Rollback: `FIGHTER_POSE_GEOMETRY_V2=0`. See `CHARACTER_POSE_GEOMETRY_PHASE.md`. Alpha bounds remain diagnostic only; V2 does not rewrite assets. **No active sole corrections** — charged headbutt padB must not drive grounding.

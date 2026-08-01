@@ -13,6 +13,7 @@ Rules future fidelity work must uphold. Phase 1 audit only — nothing here is n
 5. Intentional pass-through states (dodge, sidestep, rope-jump **active**, slide-jump **flight**, throw arcs, grab locks) remain pass-through unless a design change explicitly removes them.
 6. Thick Blubber / armor absorb remains grabs-oriented as currently implemented.
 7. Competitive outcomes (damage, knockback magnitudes, active/recovery windows, input rules) must not change unless a later phase explicitly authorizes balance work.
+8. **Body presence ≠ offensive immunity** (Phase 13): priority suppression, grab catch, or damage immunity must not erase a fighter’s physical body unless the state is on the explicit intangibility allowlist (`COMBAT_CONTACT_FIDELITY_PHASE.md`). `COMBAT_CONTACT_FIDELITY_V2` is **default ON**; explicit `0`/`false` = legacy. A losing attack’s hitbox/pose is consumed on the authoritative resolution tick (0 survival ticks). Phase 13A: slap↔flying-headbutt under V2 is decided by earliest authored-surface contact (not `CHARGE_PRIORITY_THRESHOLD`); see `CHARGED_HEADBUTT_CONTACT_PHASE.md`. Slap presentation uses the original `SLAP_ANIM` director (Phase 14 timing experiment rejected — `SLAP_PRESENTATION_TIMING_PHASE.md`).
 
 ## Physical invariants
 

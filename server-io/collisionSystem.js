@@ -151,6 +151,47 @@ const {
   isInDodgeStrikeIFrames,
 } = require("./gameUtils");
 
+const {
+  isActionFacingOwnershipV2Enabled,
+  acquireActionFacingLock,
+  releaseActionFacingLock,
+  mintActionFacingInstanceId,
+  ACTION_FACING_OWNER,
+  ACTION_FACING_REASON,
+  ACTION_FACING_RELEASE,
+} = require("./actionFacingOwnership");
+const {
+  isCombatContactFidelityV2Enabled,
+} = require("./combatContactFidelityFlags");
+const {
+  consumeLosingAttackInstance,
+  noteWinnerContactResolution,
+  CONTACT_OUTCOME,
+  mintInteractionId,
+} = require("./combatContactResolution");
+const {
+  resolveSlapVersusChargedPhysical,
+  isChargedHeadbuttActive,
+} = require("./chargedHeadbuttContact");
+
+function acquireHitstunFacingOwner(victim, direction) {
+  if (!victim || !isActionFacingOwnershipV2Enabled()) return;
+  if (victim.atTheRopesFacingDirection != null || victim.isAtTheRopes) return;
+  const dir = direction === 1 || direction === -1 ? direction : victim.facing;
+  const id = mintActionFacingInstanceId(victim, ACTION_FACING_OWNER.HITSTUN);
+  victim.hitstunFacingInstanceId = id;
+  acquireActionFacingLock(victim, {
+    ownerType: ACTION_FACING_OWNER.HITSTUN,
+    ownerInstanceId: id,
+    direction: dir,
+    reason: ACTION_FACING_REASON.IMPACT,
+    allowDirectionUpdate: false,
+    supersede: true,
+    syncLegacy: false,
+  });
+}
+
+
 // MASTERY OVERHAUL feature flags (Phase 1: momentum; Phase 2: posture;
 // Phase 3: cadence; Phase 4: analog resolutions & risk dials).
 const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P3_CADENCE, MASTERY_P4_ANALOG, MASTERY_P5_ASSISTS } = require("./masteryFlags");
@@ -200,6 +241,19 @@ const {
   FACING_RELEASE,
   acquireOffensiveAerialFacingLock,
 } = require("./offensiveAerialFacing");
+const {
+  PRESENTATION_EVENT_TYPE,
+  CLINCH_INTERACTION,
+  CLINCH_EFFECT_MID_Y,
+  GROUND_STRIKE_HIT_SPARK_Y,
+  DEFENSE_TYPE,
+  buildOffensiveAerialContactPresentation,
+  buildGroundStrikeContactPresentation,
+  buildClinchPresentation,
+  buildDefensivePresentation,
+  annotateAttackParryDefense,
+  attachCombatPresentation,
+} = require("./combatPresentationEvent");
 
 function playerPalmBreaksGrabArmor(player) {
   return (
@@ -526,33 +580,89 @@ function checkCollision(player, otherPlayer, rooms, io) {
         if (diff > 0) {
           // player pressed LATER → the earlier otherPlayer wins; this slap is
           // stuffed. otherPlayer's own checkCollision call lands their hit.
+          // Phase 13: end loser hitbox/pose on this tick (0 survival ticks).
+          if (isCombatContactFidelityV2Enabled()) {
+            consumeLosingAttackInstance(player, {
+              winner: otherPlayer,
+              winnerMove: "slap",
+              loserMove: "slap",
+              outcome: CONTACT_OUTCOME.PRIORITY_LOSS,
+              interactionType: "SLAP_VS_SLAP",
+              interruptionReason: "LATER_SLAP_STUFFED",
+              strikeKind: "slap",
+            });
+          }
           return;
         }
         // diff < 0 → player pressed EARLIER → fall through to processHit (wins clean).
       }
 
-      // Slap vs Charged: if opponent is executing a charged attack above the
-      // priority threshold AND their charged hitbox reaches us, defer to the
-      // charged branch (charged attack wins through with a graze penalty).
+      // Slap vs Charged / palm.
       if (
         otherPlayer.isAttacking &&
         otherPlayer.attackType === "charged" &&
-        !otherPlayer.isInStartupFrames &&
-        (otherPlayer.chargeAttackPower || 0) >= CHARGE_PRIORITY_THRESHOLD
+        !otherPlayer.isInStartupFrames
       ) {
-        const chargedHitboxDist = getConnectDistance(
-          otherPlayer.isPalmThrust ? "palm" : "charged",
-          otherPlayer,
-          player
-        );
-        const dxFromCharged = player.x - otherPlayer.x;
-        const chargedAtkDir = otherPlayer.facing === 1 ? -1 : 1;
-        const inFrontOfCharged = dxFromCharged * chargedAtkDir >= 0;
+        // Phase 13A (V2): flying headbutt uses physical first-contact (not
+        // CHARGE_PRIORITY_THRESHOLD). Palm keeps the legacy threshold path.
         if (
-          inFrontOfCharged &&
-          isWithinConnectRange(Math.abs(dxFromCharged), chargedHitboxDist)
+          isCombatContactFidelityV2Enabled() &&
+          isChargedHeadbuttActive(otherPlayer)
         ) {
-          return; // Charged attack has priority — that branch will process the hit
+          resolveSlapVersusChargedPhysical(
+            player,
+            otherPlayer,
+            rooms,
+            io,
+            {
+              slapPrevX:
+                player._combatPrevX != null ? player._combatPrevX : player.x,
+              slapCurrX: player.x,
+              chargedPrevX:
+                otherPlayer._combatPrevX != null
+                  ? otherPlayer._combatPrevX
+                  : otherPlayer.x,
+              chargedCurrX: otherPlayer.x,
+              processHit,
+              resolveSlapChargedTrade,
+              simTime: now,
+            }
+          );
+          // Resolved, or both active but no surface contact yet — do not let
+          // the slap tip ghost through the forehead via legacy processHit.
+          return;
+        }
+
+        // Legacy / palm: charge-power threshold defer.
+        if (
+          (otherPlayer.chargeAttackPower || 0) >= CHARGE_PRIORITY_THRESHOLD
+        ) {
+          const chargedHitboxDist = getConnectDistance(
+            otherPlayer.isPalmThrust ? "palm" : "charged",
+            otherPlayer,
+            player
+          );
+          const dxFromCharged = player.x - otherPlayer.x;
+          const chargedAtkDir = otherPlayer.facing === 1 ? -1 : 1;
+          const inFrontOfCharged = dxFromCharged * chargedAtkDir >= 0;
+          if (
+            inFrontOfCharged &&
+            isWithinConnectRange(Math.abs(dxFromCharged), chargedHitboxDist)
+          ) {
+            if (isCombatContactFidelityV2Enabled()) {
+              consumeLosingAttackInstance(player, {
+                winner: otherPlayer,
+                winnerMove: otherPlayer.isPalmThrust ? "palm" : "charged",
+                loserMove: "slap",
+                outcome: CONTACT_OUTCOME.PRIORITY_LOSS,
+                interactionType: "SLAP_VS_CHARGED",
+                interruptionReason: "CHARGED_PRIORITY",
+                strikeKind: otherPlayer.isPalmThrust ? "palm" : "charged",
+                winnerIsAttacker: true,
+              });
+            }
+            return; // Charged/palm priority — that branch will process the hit
+          }
         }
       }
 
@@ -560,6 +670,21 @@ function checkCollision(player, otherPlayer, rooms, io) {
       // range. Suppress the slap this tick so grab connect clinches same tick
       // (takes the active frame). Early grab startup is still stuffed by slap.
       if (grabCatchesSlap(otherPlayer, player, now)) {
+        // Phase 13: end slap hitbox/pose at catch resolution (limb-capture
+        // remains grab connect; this only stops ghosting through the grabber).
+        if (isCombatContactFidelityV2Enabled()) {
+          consumeLosingAttackInstance(player, {
+            winner: otherPlayer,
+            winnerMove: "grab",
+            loserMove: "slap",
+            outcome: CONTACT_OUTCOME.GRAB_CATCH,
+            interactionType: "GRAB_VS_SLAP",
+            interruptionReason: "GRAB_THROW_CATCH",
+            loserSurface: "attack_limb",
+            winnerSurface: "grab_capture",
+            strikeKind: "slap",
+          });
+        }
         return; // Throw catch — grab connect will clinch this tick
       }
 
@@ -661,12 +786,49 @@ function checkCollision(player, otherPlayer, rooms, io) {
         }
       } else if (otherPlayer.attackType === "slap") {
         // === CHARGED vs SLAP ===
+        // Phase 13A (V2): flying headbutt → physical first-contact. Palm keeps
+        // the legacy charge-power threshold.
+        if (
+          isCombatContactFidelityV2Enabled() &&
+          isChargedHeadbuttActive(player)
+        ) {
+          resolveSlapVersusChargedPhysical(
+            otherPlayer,
+            player,
+            rooms,
+            io,
+            {
+              slapPrevX:
+                otherPlayer._combatPrevX != null
+                  ? otherPlayer._combatPrevX
+                  : otherPlayer.x,
+              slapCurrX: otherPlayer.x,
+              chargedPrevX:
+                player._combatPrevX != null ? player._combatPrevX : player.x,
+              chargedCurrX: player.x,
+              processHit,
+              resolveSlapChargedTrade,
+              simTime: now,
+            }
+          );
+          return;
+        }
         const chargeLevel = player.chargeAttackPower || 0;
         if (chargeLevel >= CHARGE_PRIORITY_THRESHOLD) {
-          // Charged attack has priority — hit the slap player.
-          // (Legacy slap-graze KB amplify removed: charged hits plant with
-          // zero attacker knockback, so the multiply was a no-op.)
+          // Legacy / palm: charged priority — hit the slap player.
           processHit(player, otherPlayer, rooms, io);
+        } else if (isCombatContactFidelityV2Enabled()) {
+          // Slap wins (below threshold / palm path) — end charged hitbox/pose.
+          consumeLosingAttackInstance(player, {
+            winner: otherPlayer,
+            winnerMove: "slap",
+            loserMove: player.isPalmThrust ? "palm" : "charged",
+            outcome: CONTACT_OUTCOME.PRIORITY_LOSS,
+            interactionType: "SLAP_VS_CHARGED",
+            interruptionReason: "SLAP_BEATS_CHARGED",
+            strikeKind: "slap",
+            winnerIsAttacker: true,
+          });
         }
         // Below threshold: skip — the slap branch handles it (slap wins)
       } else {
@@ -700,6 +862,7 @@ function applyTradeHit(victim, attacker, room, io) {
   if (!victim.isAtTheRopes && !victim.atTheRopesFacingDirection) {
     victim.facing = attacker.x < victim.x ? 1 : -1; // face the attacker
   }
+  acquireHitstunFacingOwner(victim, victim.facing);
 
   // Trades apply two reciprocal hits — don't snap positions here (the second
   // correction would fight the first). Seam VFX uses the geometric tip.
@@ -741,39 +904,64 @@ function applyTradeHit(victim, attacker, room, io) {
       victim.isAlreadyHit = false;
       victim.isSlapKnockback = false;
       victim.slapKnockbackCanRingOut = false;
+      if (isActionFacingOwnershipV2Enabled()) {
+        releaseActionFacingLock(victim, {
+          expectedInstanceId: victim.hitstunFacingInstanceId,
+          expectedOwnerType: ACTION_FACING_OWNER.HITSTUN,
+          reason: ACTION_FACING_RELEASE.RECOVERY_COMPLETE,
+          clearLegacy: false,
+        });
+        victim.hitstunFacingInstanceId = null;
+      }
     },
     SLAP_MIN_HITSTUN_MS + 60,
     "hitStateReset"
   );
 
   const attackerPlayerNumber = room.players.findIndex((p) => p.id === attacker.id) + 1;
-  io.in(room.id).emit("player_hit", {
-    x: victim.x,
-    y: victim.y,
-    facing: victim.facing,
-    attackType: "slap",
-    isPalmThrust: false,
-    chargePercentage: 0,
-    timestamp: Date.now(),
-    hitId: Math.random().toString(36).substr(2, 9),
-    isCounterHit: false,
-    isPunish: false,
-    showCounterBanner: false,
-    showPunishBanner: false,
-    attackerPlayerNumber,
-    cinematicKill: false,
-    knockbackDirection,
-    isArmorBreak: false,
-    isPowered: false,
-    attackerId: attacker.id,
-    victimId: victim.id,
-    isCadence: false,
-    cadenceChain: 0,
-    momentumHit: false,
-    braked: false,
+  const tradeHitId = Math.random().toString(36).substr(2, 9);
+  const tradePresentation = buildGroundStrikeContactPresentation({
+    eventType: PRESENTATION_EVENT_TYPE.GS_HIT,
+    attacker,
+    defender: victim,
     contactX: tradeContactX,
-    contactY: victim.y,
+    isSlapAttack: true,
+    hitId: tradeHitId,
+    salt: "hit",
   });
+  io.in(room.id).emit(
+    "player_hit",
+    attachCombatPresentation(
+      {
+        x: victim.x,
+        y: victim.y,
+        facing: victim.facing,
+        attackType: "slap",
+        isPalmThrust: false,
+        chargePercentage: 0,
+        timestamp: Date.now(),
+        hitId: tradeHitId,
+        isCounterHit: false,
+        isPunish: false,
+        showCounterBanner: false,
+        showPunishBanner: false,
+        attackerPlayerNumber,
+        cinematicKill: false,
+        knockbackDirection,
+        isArmorBreak: false,
+        isPowered: false,
+        attackerId: attacker.id,
+        victimId: victim.id,
+        isCadence: false,
+        cadenceChain: 0,
+        momentumHit: false,
+        braked: false,
+        contactX: tradeContactX,
+        contactY: victim.y,
+      },
+      tradePresentation
+    )
+  );
 }
 
 // Genuine same-tick slap tie → both take a hit. Clears both attacks (so the
@@ -786,6 +974,175 @@ function resolveSlapTrade(player1, player2, rooms, io) {
   applyTradeHit(player2, player1, room, io); // player2 struck by player1's slap
   // One symmetric freeze (the sim clock pauses for both).
   triggerHitstopAndEmit(io, room, HITSTOP_SLAP_MS, "slap");
+}
+
+/**
+ * Phase 13A — simultaneous slap ↔ flying-headbutt trade.
+ * Extends the existing trade path (no new clash system): slap trade hit on the
+ * charged fighter + charged drain/shove on the slapper; one hitstop.
+ */
+function resolveSlapChargedTrade(slapper, charged, rooms, io, meta = {}) {
+  const room = rooms.find((r) => r.players.some((p) => p.id === slapper.id));
+  if (!room) return;
+
+  const interactionId = meta.interactionId || mintInteractionId("sct");
+  const contactX =
+    meta.contactX != null
+      ? meta.contactX
+      : getContactSeamX(charged, slapper, "charged");
+
+  consumeLosingAttackInstance(slapper, {
+    winner: charged,
+    winnerMove: "charged",
+    loserMove: "slap",
+    outcome: CONTACT_OUTCOME.TRADE,
+    interactionType: "SLAP_VS_CHARGED",
+    interruptionReason: "SIMULTANEOUS_CONTACT",
+    interactionId,
+    contactPoint: contactX,
+    stopVelocity: true,
+  });
+  consumeLosingAttackInstance(charged, {
+    winner: slapper,
+    winnerMove: "slap",
+    loserMove: "charged",
+    outcome: CONTACT_OUTCOME.TRADE,
+    interactionType: "SLAP_VS_CHARGED",
+    interruptionReason: "SIMULTANEOUS_CONTACT",
+    interactionId,
+    contactPoint: contactX,
+    stopVelocity: true,
+  });
+
+  // Slap values → charged
+  applyTradeHit(charged, slapper, room, io);
+
+  // Charged drains → slapper (existing charged balance/stamina constants) +
+  // slap-trade shove magnitude for mutual spacing (existing trade feel).
+  const currentTime = simNow(room);
+  const knockbackDirection = charged.x < slapper.x ? 1 : -1;
+  const chargedDrain = MASTERY_P2_POSTURE
+    ? BALANCE_CHARGED_HIT_DRAIN_P2
+    : BALANCE_CHARGED_HIT_DRAIN;
+  slapper.balance = Math.max(0, slapper.balance - chargedDrain);
+  slapper.stamina = Math.max(
+    0,
+    slapper.stamina - CHARGED_HIT_VICTIM_STAMINA_DRAIN
+  );
+  clearAllActionStates(slapper);
+  slapper.y = GROUND_LEVEL;
+  if (!slapper.isAtTheRopes && !slapper.atTheRopesFacingDirection) {
+    slapper.facing = charged.x < slapper.x ? 1 : -1;
+  }
+  acquireHitstunFacingOwner(slapper, slapper.facing);
+  slapper.isHit = true;
+  slapper.isAlreadyHit = true;
+  slapper.lastHitType = "charged";
+  slapper.hitCounter = (slapper.hitCounter || 0) + 1;
+  slapper.isSlapKnockback = false;
+  slapper.isChargedKnockback = true;
+  slapper.isBurstKnockback = false;
+  slapper.knockbackVelocity = {
+    x: knockbackDirection * SLAP_TRADE_KNOCKBACK,
+    y: 0,
+  };
+  slapper.movementVelocity = 0;
+  slapper.lastHitTime = currentTime;
+  slapper.inputLockUntil = Math.max(
+    slapper.inputLockUntil || 0,
+    currentTime + SLAP_MIN_HITSTUN_MS
+  );
+
+  timeoutManager.clearPlayerSpecific(slapper.id, "hitStateReset");
+  setPlayerTimeout(
+    slapper.id,
+    () => {
+      if (Math.abs(slapper.knockbackVelocity.x) > 0.01) {
+        slapper.movementVelocity = slapper.knockbackVelocity.x;
+      }
+      slapper.knockbackVelocity.x = 0;
+      slapper.isHit = false;
+      slapper.isAlreadyHit = false;
+      slapper.isChargedKnockback = false;
+      if (isActionFacingOwnershipV2Enabled()) {
+        releaseActionFacingLock(slapper, {
+          expectedInstanceId: slapper.hitstunFacingInstanceId,
+          expectedOwnerType: ACTION_FACING_OWNER.HITSTUN,
+          reason: ACTION_FACING_RELEASE.RECOVERY_COMPLETE,
+          clearLegacy: false,
+        });
+        slapper.hitstunFacingInstanceId = null;
+      }
+    },
+    SLAP_MIN_HITSTUN_MS + 60,
+    "hitStateReset"
+  );
+
+  const attackerPlayerNumber =
+    room.players.findIndex((p) => p.id === charged.id) + 1;
+  const tradeHitId = Math.random().toString(36).substr(2, 9);
+  const chargePercentage = charged.chargeAttackPower || 0;
+  const tradePresentation = buildGroundStrikeContactPresentation({
+    eventType: PRESENTATION_EVENT_TYPE.GS_HIT,
+    attacker: charged,
+    defender: slapper,
+    contactX,
+    isSlapAttack: false,
+    hitId: tradeHitId,
+    salt: "hit",
+  });
+  io.in(room.id).emit(
+    "player_hit",
+    attachCombatPresentation(
+      {
+        x: slapper.x,
+        y: slapper.y,
+        facing: slapper.facing,
+        attackType: "charged",
+        isPalmThrust: false,
+        chargePercentage,
+        timestamp: Date.now(),
+        hitId: tradeHitId,
+        isCounterHit: false,
+        isPunish: false,
+        showCounterBanner: false,
+        showPunishBanner: false,
+        attackerPlayerNumber,
+        cinematicKill: false,
+        knockbackDirection,
+        isArmorBreak: false,
+        isPowered: false,
+        attackerId: charged.id,
+        victimId: slapper.id,
+        isCadence: false,
+        cadenceChain: 0,
+        momentumHit: false,
+        braked: false,
+        contactX,
+        contactY: slapper.y,
+        attackerX: charged.x,
+        attackerY: charged.y,
+      },
+      tradePresentation
+    )
+  );
+
+  const chargedStop = getChargedHitstop((chargePercentage || 0) / 100);
+  triggerHitstopAndEmit(
+    io,
+    room,
+    Math.max(HITSTOP_SLAP_MS, chargedStop),
+    "charged"
+  );
+
+  noteWinnerContactResolution(slapper, charged, {
+    outcome: CONTACT_OUTCOME.TRADE,
+    winnerMove: "slap",
+    loserMove: "charged",
+    interactionType: "SLAP_VS_CHARGED",
+    interactionId,
+    contactPoint: contactX,
+  });
 }
 
 function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
@@ -908,20 +1265,37 @@ function processHit(player, otherPlayer, rooms, io) {
     !hasHitAbsorption(otherPlayer)
   ) {
     if (currentRoom) {
-      io.in(currentRoom.id).emit("grab_armor_break", {
-        defenderId: otherPlayer.id,
-        attackerId: player.id,
-        x: otherPlayer.x,
-        y: otherPlayer.y,
-        facing: otherPlayer.facing,
-        breakId: `armor-break-${currentTime}-${otherPlayer.id}`,
-        contactX: getContactSeamX(
-          player,
-          otherPlayer,
-          attackKindFromPlayer(player)
-        ),
-        contactY: otherPlayer.y,
-      });
+      const breakId = `armor-break-${currentTime}-${otherPlayer.id}`;
+      const seamX = getContactSeamX(
+        player,
+        otherPlayer,
+        attackKindFromPlayer(player)
+      );
+      io.in(currentRoom.id).emit(
+        "grab_armor_break",
+        attachCombatPresentation(
+          {
+            defenderId: otherPlayer.id,
+            attackerId: player.id,
+            x: otherPlayer.x,
+            y: otherPlayer.y,
+            facing: otherPlayer.facing,
+            breakId,
+            contactX: seamX,
+            contactY: otherPlayer.y,
+          },
+          buildClinchPresentation({
+            interactionType: CLINCH_INTERACTION.GRAB_ARMOR_BREAK,
+            actionInstanceId: breakId,
+            initiator: player,
+            responder: otherPlayer,
+            outcome: "ARMOR_BREAK",
+            contactX: seamX,
+            contactY: GROUND_STRIKE_HIT_SPARK_Y,
+            salt: "armor_break",
+          })
+        )
+      );
     }
   }
 
@@ -994,13 +1368,30 @@ function processHit(player, otherPlayer, rooms, io) {
     // the Thick Blubber animation. Payload matches the ring handler (defender-
     // gated, facing-aware).
     if (currentRoom) {
-      io.in(currentRoom.id).emit("grab_armor_absorb", {
-        defenderId: otherPlayer.id,
-        attackerId: player.id,
-        x: otherPlayer.x,
-        y: otherPlayer.y,
-        facing: otherPlayer.facing,
-      });
+      const absorbId = `armor-absorb-${currentTime}-${otherPlayer.id}`;
+      io.in(currentRoom.id).emit(
+        "grab_armor_absorb",
+        attachCombatPresentation(
+          {
+            defenderId: otherPlayer.id,
+            attackerId: player.id,
+            x: otherPlayer.x,
+            y: otherPlayer.y,
+            facing: otherPlayer.facing,
+            absorbId,
+          },
+          buildClinchPresentation({
+            interactionType: CLINCH_INTERACTION.GRAB_ARMOR_ABSORB,
+            actionInstanceId: absorbId,
+            initiator: player,
+            responder: otherPlayer,
+            outcome: "ABSORB",
+            contactX: otherPlayer.x,
+            contactY: CLINCH_EFFECT_MID_Y,
+            salt: "armor_absorb",
+          })
+        )
+      );
     }
 
     // Early return - no further hit processing for the defender
@@ -1180,22 +1571,39 @@ function processHit(player, otherPlayer, rooms, io) {
       if (currentRoom) {
         triggerHitstopAndEmit(io, currentRoom, GUARD_HITSTOP_MS, "guard_block");
         const guardKind = attackKindFromPlayer(attacker);
-        io.in(currentRoom.id).emit("guard_block", {
-          attackerX: attacker.x,
-          parrierX: parrier.x,
-          // ATTACKER facing — RawParryEffect's world/CSS front offsets are
-          // calibrated for this (same as snowball/pumo-clone parry emits).
-          // Parrier facing inverts the "in front" nudge on one side.
-          facing: attacker.facing,
-          isPalm,
-          guardCrushed,
-          timestamp: Date.now(),
-          blockId: `${parrier.id}_guard_${Date.now()}`,
-          playerNumber: parryingPlayerNumber,
-          parrierId: parrier.id,
-          contactX: getContactSeamX(attacker, parrier, guardKind),
-          contactY: parrier.y,
+        const blockId = `${parrier.id}_guard_${Date.now()}`;
+        const contactX = getContactSeamX(attacker, parrier, guardKind);
+        const blockPresentation = buildDefensivePresentation({
+          defenseType: DEFENSE_TYPE.GUARD_BLOCK,
+          defenseInstanceId: blockId,
+          incomingActionInstanceId: `${attacker.id}_${attacker.attackStartTime || 0}`,
+          attacker,
+          defender: parrier,
+          contactX,
+          contactY: GROUND_STRIKE_HIT_SPARK_Y,
+          attackFamily: isPalm ? "palm" : "slap",
+          salt: "block",
         });
+        io.in(currentRoom.id).emit(
+          "guard_block",
+          attachCombatPresentation(
+            {
+              attackerX: attacker.x,
+              parrierX: parrier.x,
+              // ATTACKER facing — BlockingEffect front offsets calibrated for this.
+              facing: attacker.facing,
+              isPalm,
+              guardCrushed,
+              timestamp: Date.now(),
+              blockId,
+              playerNumber: parryingPlayerNumber,
+              parrierId: parrier.id,
+              contactX,
+              contactY: parrier.y,
+            },
+            blockPresentation
+          )
+        );
       }
       return; // guard handled — never fall through to the normal-hit path
     }
@@ -1268,22 +1676,52 @@ function processHit(player, otherPlayer, rooms, io) {
           apPullKill: true,
           noPan: true,
         });
-        io.in(currentRoom.id).emit("raw_parry_success", {
-          attackerX: attacker.x,
-          parrierX: parrier.x,
-          facing: parrier.facing,
-          isPerfect,
-          isAttackParry: true,
-          isKill: true,
-          chainCount: parrier.apChainCount,
-          timestamp: Date.now(),
-          parryId: `${parrier.id}_apkill_${Date.now()}`,
-          playerNumber: parryingPlayerNumber,
-          parrierId: parrier.id,
-          balanceGain: 0,
-          contactX: getContactSeamX(attacker, parrier, attackKindFromPlayer(attacker)),
-          contactY: parrier.y,
-        });
+        {
+          const apKillContactX = getContactSeamX(
+            attacker,
+            parrier,
+            attackKindFromPlayer(attacker)
+          );
+          const apKillParryId = `${parrier.id}_apkill_${Date.now()}`;
+          const apKillPresentation = annotateAttackParryDefense(
+            buildGroundStrikeContactPresentation({
+              eventType: PRESENTATION_EVENT_TYPE.GS_PARRY,
+              attacker,
+              defender: parrier,
+              contactX: apKillContactX,
+              isSlapAttack: !!attacker.isSlapAttack,
+              isPalmThrust: !!attacker.isPalmThrust,
+              isLowKick: !!attacker.isLowKick || attacker.attackType === "lowKick",
+              attackType: attacker.attackType,
+              chargePercentage: attacker.chargePercentage || 0,
+              parryId: apKillParryId,
+              salt: "parry",
+            }),
+            { isPerfect: true, defenseInstanceId: apKillParryId }
+          );
+          io.in(currentRoom.id).emit(
+            "raw_parry_success",
+            attachCombatPresentation(
+              {
+                attackerX: attacker.x,
+                parrierX: parrier.x,
+                facing: parrier.facing,
+                isPerfect,
+                isAttackParry: true,
+                isKill: true,
+                chainCount: parrier.apChainCount,
+                timestamp: Date.now(),
+                parryId: apKillParryId,
+                playerNumber: parryingPlayerNumber,
+                parrierId: parrier.id,
+                balanceGain: 0,
+                contactX: apKillContactX,
+                contactY: parrier.y,
+              },
+              apKillPresentation
+            )
+          );
+        }
         handleWinCondition(currentRoom, attacker, parrier, io, "clinchKillPull");
         // Re-assert after win cleanup — same flags clinch kill pull relies on so
         // the grab-break tween may cross MAP_* into the dohyo apron / fall-off.
@@ -1432,22 +1870,52 @@ function processHit(player, otherPlayer, rooms, io) {
         const hitstop = isPerfect ? AP_PERFECT_HITSTOP_MS : AP_HITSTOP_MS;
         triggerHitstopAndEmit(io, currentRoom, hitstop, isPerfect ? "perfect_parry" : "slap_parry");
         emitThrottledScreenShake(currentRoom, io, { type: isPerfect ? "perfect_parry" : "parry" });
-        io.in(currentRoom.id).emit("raw_parry_success", {
-          attackerX: attacker.x,
-          parrierX: parrier.x,
-          facing: parrier.facing,
-          isPerfect,
-          isAttackParry: true,
-          isKill: false,
-          chainCount: parrier.apChainCount,
-          timestamp: Date.now(),
-          parryId: `${parrier.id}_ap_${Date.now()}`,
-          playerNumber: parryingPlayerNumber,
-          parrierId: parrier.id,
-          balanceGain: perfectBalanceGain,
-          contactX: getContactSeamX(attacker, parrier, attackKindFromPlayer(attacker)),
-          contactY: parrier.y,
-        });
+        {
+          const apContactX = getContactSeamX(
+            attacker,
+            parrier,
+            attackKindFromPlayer(attacker)
+          );
+          const apParryId = `${parrier.id}_ap_${Date.now()}`;
+          const apPresentation = annotateAttackParryDefense(
+            buildGroundStrikeContactPresentation({
+              eventType: PRESENTATION_EVENT_TYPE.GS_PARRY,
+              attacker,
+              defender: parrier,
+              contactX: apContactX,
+              isSlapAttack: !!attacker.isSlapAttack,
+              isPalmThrust: !!attacker.isPalmThrust,
+              isLowKick: !!attacker.isLowKick || attacker.attackType === "lowKick",
+              attackType: attacker.attackType,
+              chargePercentage: attacker.chargePercentage || 0,
+              parryId: apParryId,
+              salt: "parry",
+            }),
+            { isPerfect, defenseInstanceId: apParryId }
+          );
+          io.in(currentRoom.id).emit(
+            "raw_parry_success",
+            attachCombatPresentation(
+              {
+                attackerX: attacker.x,
+                parrierX: parrier.x,
+                facing: parrier.facing,
+                isPerfect,
+                isAttackParry: true,
+                isKill: false,
+                chainCount: parrier.apChainCount,
+                timestamp: Date.now(),
+                parryId: apParryId,
+                playerNumber: parryingPlayerNumber,
+                parrierId: parrier.id,
+                balanceGain: perfectBalanceGain,
+                contactX: apContactX,
+                contactY: parrier.y,
+              },
+              apPresentation
+            )
+          );
+        }
       }
     }
   } else {
@@ -1521,6 +1989,31 @@ function processHit(player, otherPlayer, rooms, io) {
     otherPlayer.isRawParrySuccess = false;
     otherPlayer.isPerfectRawParrySuccess = false;
 
+    // Phase 13 — record coherent contact identity (outcome already decided).
+    if (isCombatContactFidelityV2Enabled()) {
+      noteWinnerContactResolution(player, otherPlayer, {
+        outcome: CONTACT_OUTCOME.HIT,
+        interactionType: isSlapAttack
+          ? "SLAP_HIT"
+          : player.isPalmThrust
+            ? "PALM_HIT"
+            : "CHARGED_HIT",
+        winnerMove: isSlapAttack
+          ? "slap"
+          : player.isPalmThrust
+            ? "palm"
+            : isLowKick
+              ? "lowKick"
+              : "charged",
+        loserMove: otherPlayer._lastCombatContactResolution?.loserMove || null,
+        strikeKind: attackKindFromPlayer(player),
+        reactionType: "HITSTUN",
+        interruptionReason: "HIT",
+      });
+      // Ensure residual charged lunge / attack slide cannot continue after loss.
+      otherPlayer.movementVelocity = 0;
+    }
+
     otherPlayer.isHit = true;
     otherPlayer.lastHitType = isSlapAttack ? "slap" : isLowKick ? "lowKick" : "charged";
     // MASTERY Phase 3: taking a hit breaks the victim's tsuppari rhythm.
@@ -1585,6 +2078,7 @@ function processHit(player, otherPlayer, rooms, io) {
     if (!otherPlayer.isAtTheRopes && !otherPlayer.atTheRopesFacingDirection) {
       otherPlayer.facing = player.x < otherPlayer.x ? 1 : -1;
     }
+    acquireHitstunFacingOwner(otherPlayer, otherPlayer.facing);
 
     // Calculate knockback direction
     // For both slap and charged attacks, use the attacker's facing direction to ensure consistent knockback
@@ -1960,79 +2454,105 @@ function processHit(player, otherPlayer, rooms, io) {
           ? "slap"
           : attackKindFromPlayer(player);
         const contactX = getContactSeamX(player, otherPlayer, emitAttackKind);
-        io.in(currentRoom.id).emit("player_hit", {
-          x: otherPlayer.x,
-          y: otherPlayer.y,
-          facing: otherPlayer.facing,
-          attackType: isSlapAttack ? "slap" : isLowKick ? "lowKick" : "charged",
-          // Palm thrust rides the charged hit path but uses the big burst
-          // spark on the client (not the charged sheet).
+        const hitId = Math.random().toString(36).substr(2, 9);
+        const hitAttackType = isSlapAttack
+          ? "slap"
+          : isLowKick
+            ? "lowKick"
+            : "charged";
+        const groundPresentation = buildGroundStrikeContactPresentation({
+          eventType: PRESENTATION_EVENT_TYPE.GS_HIT,
+          attacker: player,
+          defender: otherPlayer,
+          contactX,
+          isSlapAttack,
           isPalmThrust: !!player.isPalmThrust,
           isLowKick: !!isLowKick,
-          // Drives the client charged-hit shake scaling (heavier charge = bigger crunch).
-          chargePercentage: isSlapAttack ? 0 : chargePercentage,
-          timestamp: Date.now(),
-          hitId: Math.random().toString(36).substr(2, 9),
-          // Drives hit VFX styling (counter = special color, punish = label
-          // styling only — no mechanical bonus behind it).
-          isCounterHit: isCounterHit,
-          isPunish: isPunish,
-          isGored: isGored,
-          // Attacker side: client triggers the COUNTER HIT / PUNISH / GORED side
-          // banner off these (folded in from the old separate events).
-          showCounterBanner: isCounterHit,
-          showPunishBanner: isPunish,
-          showGoredBanner: isGored,
-          attackerPlayerNumber,
-          cinematicKill: isCinematicKill || false,
-          knockbackDirection: knockbackDirection,
-          // Charged attack shattering grab armor — client recolors the
-          // charged hit VFX from orange to white/yellow to visually match
-          // the glass-shard armor break (instead of looking like a normal
-          // counter/charged confirm).
           isArmorBreak: isChargedArmorBreak === true,
-          // POWER power-up active on the attacker → client recolors the normal
-          // (non-counter / non-punish) white hit VFX to red, signalling the
-          // boosted knockback. Counter/punish keep their own special colors.
-          isPowered:
-            player.activePowerUp === POWER_UP_TYPES.POWER ||
-            (player.bashoDraft?.powerMult ?? 1) > 1,
-          // attackerId lets the client trigger an attacker-side hit-confirm flash
-          // on the attacker's sprite only — distinct from the victim's hit VFX.
-          // Without this the attacker has no proprioceptive cue that they "landed it",
-          // which is the AAA-feel detail every premium fighting game has.
-          attackerId: player.id,
-          // Plant pose at connect — client pins charged-attacker interp here so
-          // lunge extrapolation can't flash them forward into hitstop.
-          // attackerY is grounded impact Y (land-settle lift waits until after
-          // hitstop so the freeze doesn't read as a high hit).
-          attackerX: player.x,
-          attackerY: player.y,
-          victimId: otherPlayer.id,
-          // MASTERY Phase 3 (tsuppari cadence): flag an enhanced slap so the
-          // client layers a sharper, rising-pitch "crack" (pitch climbs with the
-          // consecutive-enhanced chain) + hand-flash. 0 / false with the flag off.
-          isCadence: MASTERY_P3_CADENCE && isSlapAttack && !!player.isEnhancedSlap,
-          cadenceChain: player.cadenceChain || 0,
-          // MASTERY Phase 5 (5.2) legibility tells (client-only presentation):
-          //  • momentumHit — a dash-in / carried-momentum slap: heavier hitspark
-          //    variant + deeper SFX so a big-momentum hit reads across the room.
-          //  • braked — the victim BRACED into the hit (their brace reduction
-          //    applied): a "dig-in" ice-chip puff + skid SFX rewards the read.
-          // Both false with the flag off ⇒ the client renders today's VFX.
-          momentumHit: momentumHitTell,
-          braked: MASTERY_P5_ASSISTS && MASTERY_P1_MOMENTUM && victimIntoHit < 0,
-          // MASTERY Phase 4 (4.2): tip spacing tell. tipQuality is continuous
-          // (0–1 across the band); tipSlap is the discrete "you feel it" gate
-          // for crack SFX / cooler spark / posture-HUD flinch. Flag off ⇒ 0/false.
-          tipQuality,
-          tipSlap: isTipSlap,
-          victimPlayerNumber:
-            currentRoom.players.findIndex((p) => p.id === otherPlayer.id) + 1,
-          // Art-tip contact seam for sparks / banners (replaces magic x+70).
-          contactX,
-          contactY: otherPlayer.y,
+          attackType: hitAttackType,
+          chargePercentage: isSlapAttack ? 0 : chargePercentage,
+          hitId,
+          salt: "hit",
         });
+        io.in(currentRoom.id).emit(
+          "player_hit",
+          attachCombatPresentation(
+            {
+              x: otherPlayer.x,
+              y: otherPlayer.y,
+              facing: otherPlayer.facing,
+              attackType: hitAttackType,
+              // Palm thrust rides the charged hit path but uses the big burst
+              // spark on the client (not the charged sheet).
+              isPalmThrust: !!player.isPalmThrust,
+              isLowKick: !!isLowKick,
+              // Drives the client charged-hit shake scaling (heavier charge = bigger crunch).
+              chargePercentage: isSlapAttack ? 0 : chargePercentage,
+              timestamp: Date.now(),
+              hitId,
+              // Drives hit VFX styling (counter = special color, punish = label
+              // styling only — no mechanical bonus behind it).
+              isCounterHit: isCounterHit,
+              isPunish: isPunish,
+              isGored: isGored,
+              // Attacker side: client triggers the COUNTER HIT / PUNISH / GORED side
+              // banner off these (folded in from the old separate events).
+              showCounterBanner: isCounterHit,
+              showPunishBanner: isPunish,
+              showGoredBanner: isGored,
+              attackerPlayerNumber,
+              cinematicKill: isCinematicKill || false,
+              knockbackDirection: knockbackDirection,
+              // Charged attack shattering grab armor — client recolors the
+              // charged hit VFX from orange to white/yellow to visually match
+              // the glass-shard armor break (instead of looking like a normal
+              // counter/charged confirm).
+              isArmorBreak: isChargedArmorBreak === true,
+              // POWER power-up active on the attacker → client recolors the normal
+              // (non-counter / non-punish) white hit VFX to red, signalling the
+              // boosted knockback. Counter/punish keep their own special colors.
+              isPowered:
+                player.activePowerUp === POWER_UP_TYPES.POWER ||
+                (player.bashoDraft?.powerMult ?? 1) > 1,
+              // attackerId lets the client trigger an attacker-side hit-confirm flash
+              // on the attacker's sprite only — distinct from the victim's hit VFX.
+              // Without this the attacker has no proprioceptive cue that they "landed it",
+              // which is the AAA-feel detail every premium fighting game has.
+              attackerId: player.id,
+              // Plant pose at connect — client pins charged-attacker interp here so
+              // lunge extrapolation can't flash them forward into hitstop.
+              // attackerY is grounded impact Y (land-settle lift waits until after
+              // hitstop so the freeze doesn't read as a high hit).
+              attackerX: player.x,
+              attackerY: player.y,
+              victimId: otherPlayer.id,
+              // MASTERY Phase 3 (tsuppari cadence): flag an enhanced slap so the
+              // client layers a sharper, rising-pitch "crack" (pitch climbs with the
+              // consecutive-enhanced chain) + hand-flash. 0 / false with the flag off.
+              isCadence: MASTERY_P3_CADENCE && isSlapAttack && !!player.isEnhancedSlap,
+              cadenceChain: player.cadenceChain || 0,
+              // MASTERY Phase 5 (5.2) legibility tells (client-only presentation):
+              //  • momentumHit — a dash-in / carried-momentum slap: heavier hitspark
+              //    variant + deeper SFX so a big-momentum hit reads across the room.
+              //  • braked — the victim BRACED into the hit (their brace reduction
+              //    applied): a "dig-in" ice-chip puff + skid SFX rewards the read.
+              // Both false with the flag off ⇒ the client renders today's VFX.
+              momentumHit: momentumHitTell,
+              braked: MASTERY_P5_ASSISTS && MASTERY_P1_MOMENTUM && victimIntoHit < 0,
+              // MASTERY Phase 4 (4.2): tip spacing tell. tipQuality is continuous
+              // (0–1 across the band); tipSlap is the discrete "you feel it" gate
+              // for crack SFX / cooler spark / posture-HUD flinch. Flag off ⇒ 0/false.
+              tipQuality,
+              tipSlap: isTipSlap,
+              victimPlayerNumber:
+                currentRoom.players.findIndex((p) => p.id === otherPlayer.id) + 1,
+              // Art-tip contact seam for sparks / banners (replaces magic x+70).
+              contactX,
+              contactY: otherPlayer.y,
+            },
+            groundPresentation
+          )
+        );
         
         // ============================================
         // FG HITSTOP LADDER + SCREEN SHAKE
@@ -2354,21 +2874,42 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
         apPullKill: true,
         noPan: true,
       });
-      io.in(currentRoom.id).emit("raw_parry_success", {
-        attackerX: flapper.x,
-        parrierX: opponent.x,
-        facing: opponent.facing,
-        isPerfect,
-        isAttackParry: true,
-        isKill: true,
-        chainCount: opponent.apChainCount,
-        timestamp: Date.now(),
-        parryId: `${opponent.id}_apkill_${Date.now()}`,
-        playerNumber: parryingPlayerNumber,
-        parrierId: opponent.id,
-        balanceGain: 0,
-        ...effectContact,
-      });
+      {
+        const apKillParryId = `${opponent.id}_apkill_${Date.now()}`;
+        const apKillPresentation = annotateAttackParryDefense(
+          buildOffensiveAerialContactPresentation({
+            eventType: PRESENTATION_EVENT_TYPE.OA_PARRY,
+            attacker: flapper,
+            defender: opponent,
+            contact: slamContact,
+            approachX: flapper.slideJumpVelocityX || 0,
+            approachY: flapper.slideJumpVelocityY || 0,
+            salt: "parry-kill",
+          }),
+          { isPerfect: true, defenseInstanceId: apKillParryId }
+        );
+        io.in(currentRoom.id).emit(
+          "raw_parry_success",
+          attachCombatPresentation(
+            {
+              attackerX: flapper.x,
+              parrierX: opponent.x,
+              facing: opponent.facing,
+              isPerfect,
+              isAttackParry: true,
+              isKill: true,
+              chainCount: opponent.apChainCount,
+              timestamp: Date.now(),
+              parryId: apKillParryId,
+              playerNumber: parryingPlayerNumber,
+              parrierId: opponent.id,
+              balanceGain: 0,
+              ...effectContact,
+            },
+            apKillPresentation
+          )
+        );
+      }
       handleWinCondition(currentRoom, flapper, opponent, io, "clinchKillPull");
       flapper.isClinchKillPullVictim = true;
       flapper.isBeingPullReversaled = true;
@@ -2465,21 +3006,40 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
     const hitstop = isPerfect ? AP_PERFECT_HITSTOP_MS : AP_HITSTOP_MS;
     triggerHitstopAndEmit(io, currentRoom, hitstop, isPerfect ? "perfect_parry" : "slap_parry");
     emitThrottledScreenShake(currentRoom, io, { type: isPerfect ? "perfect_parry" : "parry" });
-    io.in(currentRoom.id).emit("raw_parry_success", {
-      attackerX: flapper.x,
-      parrierX: opponent.x,
-      facing: opponent.facing,
-      isPerfect,
-      isAttackParry: true,
-      isKill: false,
-      chainCount: opponent.apChainCount,
-      timestamp: Date.now(),
-      parryId: `${opponent.id}_ap_${Date.now()}`,
-      playerNumber: parryingPlayerNumber,
-      parrierId: opponent.id,
-      balanceGain: perfectBalanceGain,
-      ...effectContact,
-    });
+    const apParryId = `${opponent.id}_ap_${Date.now()}`;
+    const parryPresentation = annotateAttackParryDefense(
+      buildOffensiveAerialContactPresentation({
+        eventType: PRESENTATION_EVENT_TYPE.OA_PARRY,
+        attacker: flapper,
+        defender: opponent,
+        contact: slamContact,
+        approachX: flapper.slideJumpVelocityX || 0,
+        approachY: flapper.slideJumpVelocityY || 0,
+        salt: "parry",
+      }),
+      { isPerfect, defenseInstanceId: apParryId }
+    );
+    io.in(currentRoom.id).emit(
+      "raw_parry_success",
+      attachCombatPresentation(
+        {
+          attackerX: flapper.x,
+          parrierX: opponent.x,
+          facing: opponent.facing,
+          isPerfect,
+          isAttackParry: true,
+          isKill: false,
+          chainCount: opponent.apChainCount,
+          timestamp: Date.now(),
+          parryId: apParryId,
+          playerNumber: parryingPlayerNumber,
+          parrierId: opponent.id,
+          balanceGain: perfectBalanceGain,
+          ...effectContact,
+        },
+        parryPresentation
+      )
+    );
   }
 }
 
@@ -2711,32 +3271,47 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   if (currentRoom) {
     const attackerPlayerNumber =
       currentRoom.players.findIndex((p) => p.id === flapper.id) + 1;
-    io.in(currentRoom.id).emit("player_hit", {
-      x: opponent.x,
-      y: opponent.y,
-      facing: opponent.facing,
-      attackType: "flap",
-      chargePercentage: 0,
-      timestamp: Date.now(),
-      hitId: Math.random().toString(36).substr(2, 9),
-      isCounterHit,
-      isPunish,
-      isGored,
-      showCounterBanner: isCounterHit,
-      showPunishBanner: isPunish,
-      showGoredBanner: isGored,
-      attackerPlayerNumber,
-      cinematicKill: false,
-      knockbackDirection: knockbackDirection,
-      isArmorBreak: false,
-      attackerId: flapper.id,
-      victimId: opponent.id,
-      // Phase 3: authoritative slam contact (replaces client x+70 fallback).
-      ...effectContact,
-      // MASTERY Phase 5 (5.2): braked-knockback "dig-in" tell (false w/ flag off).
-      momentumHit: false,
-      braked: MASTERY_P5_ASSISTS && flapBraked,
+    const hitPresentation = buildOffensiveAerialContactPresentation({
+      eventType: PRESENTATION_EVENT_TYPE.OA_HIT,
+      attacker: flapper,
+      defender: opponent,
+      contact: slamContact,
+      approachX: flapper.slideJumpVelocityX || flapper.flapVelocityX || 0,
+      approachY: flapper.slideJumpVelocityY || 0,
+      salt: "hit",
     });
+    io.in(currentRoom.id).emit(
+      "player_hit",
+      attachCombatPresentation(
+        {
+          x: opponent.x,
+          y: opponent.y,
+          facing: opponent.facing,
+          attackType: "flap",
+          chargePercentage: 0,
+          timestamp: Date.now(),
+          hitId: Math.random().toString(36).substr(2, 9),
+          isCounterHit,
+          isPunish,
+          isGored,
+          showCounterBanner: isCounterHit,
+          showPunishBanner: isPunish,
+          showGoredBanner: isGored,
+          attackerPlayerNumber,
+          cinematicKill: false,
+          knockbackDirection: knockbackDirection,
+          isArmorBreak: false,
+          attackerId: flapper.id,
+          victimId: opponent.id,
+          // Phase 3: authoritative slam contact (replaces client x+70 fallback).
+          ...effectContact,
+          // MASTERY Phase 5 (5.2): braked-knockback "dig-in" tell (false w/ flag off).
+          momentumHit: false,
+          braked: MASTERY_P5_ASSISTS && flapBraked,
+        },
+        hitPresentation
+      )
+    );
 
     triggerHitstopAndEmit(
       io,
@@ -2763,11 +3338,28 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   );
 }
 
+/**
+ * Charged-lunge integration hook (Phase 13A): resolve slap↔headbutt at the
+ * earliest contact inside the pending step before committing full travel.
+ */
+function resolveSlapChargedFromLunge(charged, opponent, rooms, io, opts = {}) {
+  const {
+    tryResolveChargedLungeAgainstSlap,
+  } = require("./chargedHeadbuttContact");
+  return tryResolveChargedLungeAgainstSlap(charged, opponent, rooms, io, {
+    ...opts,
+    processHit,
+    resolveSlapChargedTrade,
+  });
+}
+
 module.exports = {
   checkCollision,
   processHit,
   checkFlapBodySlam,
   resolveSlapTrade,
+  resolveSlapChargedTrade,
+  resolveSlapChargedFromLunge,
   resolveChargeClash,
   // Geometry constants — exported for characterization / audit tests only.
   FLAP_BODYSLAM_CONTACT_HEIGHT,

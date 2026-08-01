@@ -13,6 +13,9 @@ Current-state map of ownership and pipelines. Proposed future boundaries are lab
 | Attack creation / timing | Server | `server-io/gameFunctions.js` (`executeSlapAttack`, `executeChargedAttack`, `executePalmThrust`, `executeLowKick`) |
 | Hit detection / resolution | Server | `server-io/collisionSystem.js` (`checkCollision`, `processHit`, `checkFlapBodySlam`, clash/parry resolvers) |
 | Strike contact geometry | Server | `server-io/strikeContact.js` |
+| Outcome-aware contact interrupt (Phase 13) | Server | `server-io/combatContactResolution.js`, `combatContactFidelityFlags.js` (`COMBAT_CONTACT_FIDELITY_V2`, **default ON**) — consumes losing attack instances at resolution |
+| Slap↔flying-headbutt first-contact (Phase 13A) | Server | `server-io/chargedHeadbuttContact.js` — physical surface timing under the same V2 flag; palm keeps legacy threshold |
+| Slap pose director | Client | `client/src/config/combatTiming.js` (`SLAP_ANIM`) + `GameFighter.jsx` — original ~37 ms smear retained; Phase 14 timing experiment rejected |
 | Ground pushbox | Server | `server-io/gameFunctions.js` (`arePlayersColliding`, `adjustPlayerPositions`) |
 | Movement / ice / knockback integrate | Server | `server-io/index.js` movement block |
 | Aerial verbs | Server | `server-io/index.js` (rope jump, slide jump / FLAP), `socketHandlers.js` start triggers |

@@ -20,6 +20,9 @@
  * See COMBAT_FIDELITY_AUDIT.md / AERIAL_LANDING_PHASE_A1.md.
  */
 
+import { getLastPlacementDebug } from "../combatPresentation/placement";
+import { getPoseGeometryDebugSnapshot } from "../poseGeometry";
+
 const FLAG_KEY = "pumo_combat_fidelity_debug";
 const LANDING_TRACE_KEY = "pumo_landing_trace";
 /** Optional console dump when a slide-jump / FLAP flight ends (client view). */
@@ -27,6 +30,8 @@ const AERIAL_TRACE_KEY = "pumo_offensive_aerial_trace";
 /** Fallback only — must match server-io/constants.js HITBOX_DISTANCE_VALUE */
 const HITBOX_HALF_FALLBACK = 65;
 const DESIGN_W = 1280;
+/** Cap overlay DOM rebuilds — full innerHTML every RAF was a major jank source. */
+const OVERLAY_MIN_INTERVAL_MS = 100;
 
 let overlayEl = null;
 let lastContact = null;
@@ -34,29 +39,72 @@ let landingTraceArmed = false;
 let lastLandingTraceKey = null;
 /** Latest server `landing_diag` payload (debug-net only). */
 let lastLandingDiag = null;
+let lastOverlayPaintMs = 0;
+let lastOverlayHtml = "";
 
-export function isCombatFidelityDebugEnabled() {
+// Cache localStorage flags — getItem every RAF (60Hz+) is measurable main-thread cost.
+let cachedFidelityEnabled = null;
+let cachedLandingTraceEnabled = null;
+let cachedAerialTraceEnabled = null;
+
+function readFlag(key) {
   try {
-    return localStorage.getItem(FLAG_KEY) === "1";
+    return localStorage.getItem(key) === "1";
   } catch {
     return false;
   }
+}
+
+function refreshCachedFlags() {
+  cachedFidelityEnabled = readFlag(FLAG_KEY);
+  cachedLandingTraceEnabled = readFlag(LANDING_TRACE_KEY);
+  cachedAerialTraceEnabled = readFlag(AERIAL_TRACE_KEY);
+}
+
+if (typeof window !== "undefined") {
+  refreshCachedFlags();
+  window.addEventListener("storage", (e) => {
+    if (
+      !e.key ||
+      e.key === FLAG_KEY ||
+      e.key === LANDING_TRACE_KEY ||
+      e.key === AERIAL_TRACE_KEY
+    ) {
+      refreshCachedFlags();
+    }
+  });
+}
+
+export function isCombatFidelityDebugEnabled() {
+  if (cachedFidelityEnabled == null) refreshCachedFlags();
+  return !!cachedFidelityEnabled;
+}
+
+/** Cheap gate for RAF callers — avoid building overlay payloads every frame. */
+export function shouldUpdateCombatFidelityOverlay() {
+  if (!isCombatFidelityDebugEnabled()) return false;
+  if (typeof document !== "undefined" && document.hidden) return false;
+  return performance.now() - lastOverlayPaintMs >= OVERLAY_MIN_INTERVAL_MS;
 }
 
 function isLandingTraceEnabled() {
-  try {
-    return localStorage.getItem(LANDING_TRACE_KEY) === "1";
-  } catch {
-    return false;
-  }
+  if (cachedLandingTraceEnabled == null) refreshCachedFlags();
+  return !!cachedLandingTraceEnabled;
 }
 
 function isOffensiveAerialTraceEnabled() {
+  if (cachedAerialTraceEnabled == null) refreshCachedFlags();
+  return !!cachedAerialTraceEnabled;
+}
+
+function setCachedFlag(key, enabled) {
   try {
-    return localStorage.getItem(AERIAL_TRACE_KEY) === "1";
+    if (enabled) localStorage.setItem(key, "1");
+    else localStorage.removeItem(key);
   } catch {
-    return false;
+    /* ignore */
   }
+  refreshCachedFlags();
 }
 
 function classifyOffensiveAerial(fighter) {
@@ -274,9 +322,17 @@ export function renderCombatFidelityOverlay(state) {
     if (overlayEl) {
       overlayEl.remove();
       overlayEl = null;
+      lastOverlayHtml = "";
+      lastOverlayPaintMs = 0;
     }
     return;
   }
+  // Never do expensive overlay work in a background tab.
+  if (typeof document !== "undefined" && document.hidden) return;
+
+  const nowMs = performance.now();
+  if (nowMs - lastOverlayPaintMs < OVERLAY_MIN_INTERVAL_MS) return;
+
   const el = ensureOverlay();
   if (!el || !state) return;
 
@@ -410,6 +466,59 @@ export function renderCombatFidelityOverlay(state) {
     )
     .join("<br/>") || "offensiveAerial: idle";
 
+  const placeDbg = getLastPlacementDebug();
+  const presentationLines =
+    placeDbg && performance.now() - (placeDbg.t || 0) < 4000
+      ? `pres id=${placeDbg.eventId || "—"} clinch=${placeDbg.clinchInstanceId || "—"} inst=${placeDbg.attackInstance || "—"} proj=${placeDbg.projectileInstanceId || "—"} ptype=${placeDbg.projectileType || "—"} life=${placeDbg.lifecycleStage || "—"} interact=${placeDbg.interactionType || placeDbg.moveType || "—"} init=${placeDbg.initiatorId || placeDbg.ownerId || "—"} resp=${placeDbg.responderId || placeDbg.targetId || "—"} profile=${placeDbg.profileId || "—"} out=${placeDbg.outcome || "—"} stage=${placeDbg.slapStage ?? "—"} charge=${placeDbg.chargeTier || "—"} anchor=${placeDbg.anchorType || "—"} world=(${fmt(placeDbg.worldX)},${fmt(placeDbg.worldY)}) term=(${fmt(placeDbg.terminalX)},${fmt(placeDbg.terminalY)}) n=(${fmt(placeDbg.nx, 2)},${fmt(placeDbg.ny, 2)}) ap=${fmt(placeDbg.approachX, 0)} face=${placeDbg.facingHint ?? "—"} fb=${placeDbg.fallback ?? "—"} ori=${placeDbg.orientationSource || "—"} dedupe=${placeDbg.deduped ? "skip" : "ok"} clean=${placeDbg.cleanupOwner || "—"}`
+      : "pres: —";
+
+  const poseDbg = getPoseGeometryDebugSnapshot();
+  const poseLast = poseDbg.last;
+  const poseLines = poseLast
+    ? `pose v2=${poseDbg.enabled ? "ON" : "OFF"} key=${poseLast.poseKey || "—"} gnd=${poseLast.grounded ? "Y" : "N"} game=(${fmt(poseLast.gameplayX)},${fmt(poseLast.gameplayY)}) rend=(${fmt(poseLast.renderX)},${fmt(poseLast.renderY)}) off=(${fmt(poseLast.ox)},${fmt(poseLast.oy)}) sole=${poseLast.sole != null ? Number(poseLast.sole).toFixed(3) : "—"} fb=${poseLast.fallback ? "Y" : "N"} hist=${poseDbg.historySize}`
+    : `pose v2=${poseDbg.enabled ? "ON" : "OFF"}: —`;
+
+  // Facing ownership: client infers from authoritative gameplay flags + facing
+  // (no debug-only network fields). Server instance IDs stay server-side.
+  const facingOwnerFor = (p) => {
+    if (!p) return "—";
+    if (p.isAtTheRopes) return "ROPES";
+    if (p.isBeingThrown) return "THROW_VICTIM";
+    if (p.isThrowing || p.isClinchThrowing) return "THROWER";
+    if (p.isAttemptingPull || p.isBeingPullReversaled) return "PULL";
+    if (p.isHit) return "HITSTUN";
+    if (p.isDodging) return "DODGE";
+    if (p.isSidestepping) return "SIDESTEP";
+    if (p.isAttacking && p.isSlapAttack) return "SLAP";
+    if (p.isAttacking && p.isPalmThrust) return "PALM";
+    if (p.isAttacking || p.isChargingAttack) return "CHARGED/HOLD";
+    if (p.isGrabStartup) return "GRAB_STARTUP";
+    if (p.inClinch) return "CLINCH(neutral-inward)";
+    if (p.isRecovering) return "RECOVERY";
+    return "NEUTRAL";
+  };
+  const facingLines = `face P1=${p1.facing ?? "—"} owner=${facingOwnerFor(p1)} · P2=${p2.facing ?? "—"} owner=${facingOwnerFor(p2)} (inferred; ACTION_FACING_OWNERSHIP_V2 server-side)`;
+
+  // Contact fidelity: infer body/attack presence from authoritative flags.
+  // Full interaction IDs stay server-side (no debug-only wire fields).
+  const contactPresence = (p) => {
+    if (!p) return "—";
+    if (p.isBeingThrown) return "throw-travel";
+    if (p.isRopeJumping && p.ropeJumpPhase === "active") return "intangible-rope";
+    if (p.isSlideJumping && p.slideJumpPhase === "flight" && !p.slideJumpDiveCommitted) {
+      return "intangible-flight";
+    }
+    if (p.isDodging) return "dodge";
+    if (p.isSidestepping) return "sidestep";
+    if (p.isAttacking && p.attackType === "charged" && !p.isPalmThrust) {
+      return "body+charged(pushbox-yield)";
+    }
+    if (p.isAttacking) return "body+attack";
+    if (p.isHit) return "body+hitstun";
+    return "body";
+  };
+  const contactLines = `contact P1=${contactPresence(p1)} atk=${p1.isAttacking ? p1.attackType || "Y" : "—"} hit=${p1.isHit ? "Y" : "N"} · P2=${contactPresence(p2)} atk=${p2.isAttacking ? p2.attackType || "Y" : "—"} hit=${p2.isHit ? "Y" : "N"} (COMBAT_CONTACT_FIDELITY_V2 default ON)`;
+
   if (isOffensiveAerialTraceEnabled()) {
     const active = aerialA || aerialB;
     if (active && typeof console !== "undefined") {
@@ -444,20 +553,32 @@ export function renderCombatFidelityOverlay(state) {
       </div>`;
   }
 
-  el.innerHTML = `
+  const html = `
     <div style="position:absolute;left:8px;top:8px;background:rgba(0,0,0,0.62);padding:8px 10px;border-radius:4px;max-width:420px">
       pumo_combat_fidelity_debug<br/>
       P1 half=${half1.toFixed(1)} (×${Number(p1.sizeMult ?? p1.sizeMultiplier ?? 1).toFixed(2)})
       · P2 half=${half2.toFixed(1)} (×${Number(p2.sizeMult ?? p2.sizeMultiplier ?? 1).toFixed(2)})<br/>
       gap=${Math.round(gap)} minDist=${minDist.toFixed(1)} overlap=${overlap.toFixed(1)}<br/>
       <span style="color:#ffe082">${landingLines}</span><br/>
-      <span style="color:#80cbc4">${aerialLines}</span>
+      <span style="color:#80cbc4">${aerialLines}</span><br/>
+      <span style="color:#ce93d8">${presentationLines}</span><br/>
+      <span style="color:#a5d6a7">${poseLines}</span><br/>
+      <span style="color:#fff59d">${facingLines}</span><br/>
+      <span style="color:#90caf9">${contactLines}</span>
     </div>
     ${fighterBox(p1, "P1", "#80d8ff")}
     ${fighterBox(p2, "P2", "#ffd180")}
     ${targetMarks}
     ${contactHtml}
   `;
+  // Skip identical DOM writes (still pays string build, but avoids layout thrash).
+  if (html === lastOverlayHtml) {
+    lastOverlayPaintMs = nowMs;
+    return;
+  }
+  lastOverlayHtml = html;
+  lastOverlayPaintMs = nowMs;
+  el.innerHTML = html;
 }
 
 function fmt(n, digits = 1) {
@@ -467,14 +588,13 @@ function fmt(n, digits = 1) {
 
 if (typeof window !== "undefined") {
   window.__PUMO_COMBAT_FIDELITY = {
-    enable: () => localStorage.setItem(FLAG_KEY, "1"),
-    disable: () => localStorage.removeItem(FLAG_KEY),
-    enableLandingTrace: () => localStorage.setItem(LANDING_TRACE_KEY, "1"),
-    disableLandingTrace: () => localStorage.removeItem(LANDING_TRACE_KEY),
-    enableOffensiveAerialTrace: () =>
-      localStorage.setItem(AERIAL_TRACE_KEY, "1"),
-    disableOffensiveAerialTrace: () =>
-      localStorage.removeItem(AERIAL_TRACE_KEY),
+    enable: () => setCachedFlag(FLAG_KEY, true),
+    disable: () => setCachedFlag(FLAG_KEY, false),
+    enableLandingTrace: () => setCachedFlag(LANDING_TRACE_KEY, true),
+    disableLandingTrace: () => setCachedFlag(LANDING_TRACE_KEY, false),
+    enableOffensiveAerialTrace: () => setCachedFlag(AERIAL_TRACE_KEY, true),
+    disableOffensiveAerialTrace: () => setCachedFlag(AERIAL_TRACE_KEY, false),
+    refreshFlags: refreshCachedFlags,
     noteContact: noteCombatContactEvent,
     noteLandingDiag,
     render: renderCombatFidelityOverlay,

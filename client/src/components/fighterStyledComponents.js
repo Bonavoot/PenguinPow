@@ -1021,7 +1021,7 @@ export const StyledImage = styled("img")
       transformOrigin:
         props.$isClinchKillThrowVictim && !props.$showClinchKillThrowLanding
           ? "center center"
-          : FIGHTER_SOLE_TRANSFORM_ORIGIN,
+          : props.$poseSoleOrigin || FIGHTER_SOLE_TRANSFORM_ORIGIN,
       transition: "none",
     },
   }))`

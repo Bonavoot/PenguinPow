@@ -73,7 +73,30 @@ const GAMEPLAY_SPRITES = [
   "grab-attempt.png",
   "pumo-waddle.png",
   "is_perfect_parried.png",
+  "is-perfect-parried.png",
 ];
+
+/** Emit pose-key suggestions for Phase 11 registry (read-only diagnostics). */
+function emitRegistryHints(sprites) {
+  if (WANT_JSON) return;
+  console.log("\n── Phase 11 registry hints (diagnostic only) ──");
+  console.log(
+    "  NOTE: attack.png HIGH_SOLE_FLOAT is intentional flying-headbutt art — do not sole-correct."
+  );
+  for (const s of sprites) {
+    if (s.missing || s.empty) continue;
+    const solePct = s.height ? s.soleFromBottom / s.height : 0;
+    const floatWorld =
+      (solePct - 0.021) * (1280 * 0.123);
+    if (Math.abs(floatWorld) > 8 || (s.flags || []).includes("HIGH_SOLE_FLOAT")) {
+      const intentional =
+        s.file === "attack.png" ? " [INTENTIONAL_AIRBORNE]" : "";
+      console.log(
+        `  ${s.file}: sole%=${(solePct * 100).toFixed(1)} estFloatWorld=${floatWorld.toFixed(1)} flags=${(s.flags || []).join("|") || "—"}${intentional}`
+      );
+    }
+  }
+}
 
 const WANT_JSON = process.argv.includes("--json");
 const WANT_VIZ = process.argv.includes("--viz");
@@ -315,6 +338,7 @@ async function main() {
       ].join(" | ")
     );
   }
+  emitRegistryHints(rows);
   if (WANT_VIZ) {
     console.log("\nVisualization sheets written to tools/pose-geometry-viz/");
   }

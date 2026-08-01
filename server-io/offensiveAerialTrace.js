@@ -230,6 +230,9 @@ function beginOffensiveAerialTrace(player, meta = {}) {
   };
 }
 
+/** Bound debug samples so long flights/sessions cannot grow without limit. */
+const MAX_OFFENSIVE_AERIAL_TRACE_SAMPLES = 256;
+
 function recordOffensiveAerialTick(player, snapshot) {
   if (!player || !snapshot) return;
   // Append only when a trace session is already open (harness or debug flag).
@@ -237,7 +240,11 @@ function recordOffensiveAerialTick(player, snapshot) {
     if (!OFFENSIVE_AERIAL_DEBUG) return;
     beginOffensiveAerialTrace(player, { simTime: snapshot.simTime });
   }
-  player._offensiveAerialTrace.samples.push(snapshot);
+  const samples = player._offensiveAerialTrace.samples;
+  samples.push(snapshot);
+  if (samples.length > MAX_OFFENSIVE_AERIAL_TRACE_SAMPLES) {
+    samples.splice(0, samples.length - MAX_OFFENSIVE_AERIAL_TRACE_SAMPLES);
+  }
 }
 
 function flushOffensiveAerialTrace(player, reason = "complete") {

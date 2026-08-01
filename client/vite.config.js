@@ -1,5 +1,9 @@
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // Electron (Chromium) and every modern browser load the woff2 source, so the
 // legacy .woff fallbacks referenced by fontsource CSS only bloat the build
@@ -22,10 +26,16 @@ const stripWoffFallbacks = () => ({
 export default defineConfig({
   plugins: [stripWoffFallbacks(), react()],
   base: './',
+  // FIGHTER_POSE_GEOMETRY_V2 default ON (approved). Rollback: =0 for legacy.
+  envPrefix: ['VITE_', 'FIGHTER_'],
   server: {
     port: 5173,
     host: 'localhost',
-    strictPort: true
+    strictPort: true,
+    // Allow importing presentation registry from sibling server-io/.
+    fs: {
+      allow: [path.resolve(__dirname, '..')],
+    },
   },
   // The game ships in Electron (Steam) and modern browsers; both support
   // es2020 natively, so we avoid the legacy down-leveling that would inflate

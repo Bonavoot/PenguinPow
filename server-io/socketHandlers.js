@@ -56,6 +56,16 @@ const {
   executeChargedAttack,
 } = require("./gameFunctions");
 
+const {
+  isActionFacingOwnershipV2Enabled,
+  acquireActionFacingLock,
+  releaseActionFacingLock,
+  mintActionFacingInstanceId,
+  ACTION_FACING_OWNER,
+  ACTION_FACING_REASON,
+  ACTION_FACING_RELEASE,
+} = require("./actionFacingOwnership");
+
 const { startRopeJump } = require("./ropeJumpStart");
 
 const {
@@ -625,6 +635,22 @@ function processInputPacket(room, player, data, io, rooms) {
       player.chargeStartTime = 0;
       startCharging(player);
       player.chargingFacingDirection = player.facing;
+      if (isActionFacingOwnershipV2Enabled()) {
+        const holdId = mintActionFacingInstanceId(
+          player,
+          ACTION_FACING_OWNER.CHARGE_HOLD
+        );
+        player.chargeFacingInstanceId = holdId;
+        acquireActionFacingLock(player, {
+          ownerType: ACTION_FACING_OWNER.CHARGE_HOLD,
+          ownerInstanceId: holdId,
+          direction: player.chargingFacingDirection,
+          reason: ACTION_FACING_REASON.CHARGE,
+          allowDirectionUpdate: false,
+          supersede: true,
+          syncLegacy: false,
+        });
+      }
       player.movementVelocity = 0;
       player.isStrafing = false;
       player.isPowerSliding = false;
@@ -1122,6 +1148,22 @@ function processInputPacket(room, player, data, io, rooms) {
       player.chargeStartTime = 0;
       startCharging(player);
       player.chargingFacingDirection = player.facing;
+      if (isActionFacingOwnershipV2Enabled()) {
+        const holdId = mintActionFacingInstanceId(
+          player,
+          ACTION_FACING_OWNER.CHARGE_HOLD
+        );
+        player.chargeFacingInstanceId = holdId;
+        acquireActionFacingLock(player, {
+          ownerType: ACTION_FACING_OWNER.CHARGE_HOLD,
+          ownerInstanceId: holdId,
+          direction: player.chargingFacingDirection,
+          reason: ACTION_FACING_REASON.CHARGE,
+          allowDirectionUpdate: false,
+          supersede: true,
+          syncLegacy: false,
+        });
+      }
       player.movementVelocity = 0;
       player.isStrafing = false;
       player.isPowerSliding = false;
@@ -1138,6 +1180,15 @@ function processInputPacket(room, player, data, io, rooms) {
     player.isChargingAttack = false;
     player.chargeStartTime = 0;
     player.chargeAttackPower = 0;
+    if (isActionFacingOwnershipV2Enabled()) {
+      releaseActionFacingLock(player, {
+        expectedInstanceId: player.chargeFacingInstanceId,
+        expectedOwnerType: ACTION_FACING_OWNER.CHARGE_HOLD,
+        reason: ACTION_FACING_RELEASE.ACTION_END,
+        clearLegacy: false,
+      });
+      player.chargeFacingInstanceId = null;
+    }
     player.chargingFacingDirection = null;
     player.attackType = null;
   }

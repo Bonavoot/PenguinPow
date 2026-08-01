@@ -91,6 +91,20 @@ const {
 const {
   clearOffensiveAerialPresentation,
 } = require("./offensiveAerialPresentation");
+const {
+  isActionFacingOwnershipV2Enabled,
+  acquireActionFacingLock,
+  releaseActionFacingLock,
+  forceClearActionFacingLock,
+  getActionFacingLock,
+  mintActionFacingInstanceId,
+  ACTION_FACING_OWNER,
+  ACTION_FACING_REASON,
+  ACTION_FACING_RELEASE,
+} = require("./actionFacingOwnership");
+const {
+  clearCombatContactState,
+} = require("./combatContactResolution");
 
 // ============================================
 // EFFECTIVE MOVEMENT SPEED (single source of truth)
@@ -1085,6 +1099,24 @@ function beginPlayerDodge(player, options = {}) {
   player.actionLockUntil = nowSim + 100;
   player.justLandedFromDodge = false;
 
+  // Phase 12 — freeze facing for the hop (travel remains dodgeDirection).
+  if (isActionFacingOwnershipV2Enabled()) {
+    const dodgeFacingId = mintActionFacingInstanceId(
+      player,
+      ACTION_FACING_OWNER.DODGE
+    );
+    player.dodgeFacingInstanceId = dodgeFacingId;
+    acquireActionFacingLock(player, {
+      ownerType: ACTION_FACING_OWNER.DODGE,
+      ownerInstanceId: dodgeFacingId,
+      direction: player.facing,
+      reason: ACTION_FACING_REASON.TRAVEL,
+      allowDirectionUpdate: false,
+      supersede: true,
+      syncLegacy: false,
+    });
+  }
+
   player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
   return true;
 }
@@ -1164,6 +1196,13 @@ function resetPlayerAttackStates(player) {
   player.chargeAttackPower = 0;
   player.chargingFacingDirection = null;
   player.slapFacingDirection = null;
+  player.slapFacingInstanceId = null;
+  player.chargeFacingInstanceId = null;
+  if (isActionFacingOwnershipV2Enabled()) {
+    forceClearActionFacingLock(player, {
+      reason: ACTION_FACING_RELEASE.INTERRUPT,
+    });
+  }
   player.isSlapAttack = false;
   player.isPalmThrust = false;
   player.isLowKick = false;
@@ -1231,6 +1270,21 @@ function clearAllActionStates(player) {
   }
   player.chargingFacingDirection = null;
   player.slapFacingDirection = null;
+  player.slapFacingInstanceId = null;
+  player.chargeFacingInstanceId = null;
+  player.dodgeFacingInstanceId = null;
+  player.hitstunFacingInstanceId = null;
+  player.grabFacingInstanceId = null;
+  player.pullFacingInstanceId = null;
+  player.throwFacingInstanceId = null;
+  player.throwVictimFacingInstanceId = null;
+  // Ropes facing may intentionally outlive this clear (soft field preserved);
+  // drop only a non-ropes V2 owner. Ropes re-acquire after clear when needed.
+  // Phase 12 — non-aerial facing owner ends with the action shell (like OA).
+  forceClearActionFacingLock(player, {
+    reason: ACTION_FACING_RELEASE.INTERRUPT,
+  });
+  clearCombatContactState(player);
   player.isSlapAttack = false;
   player.isPalmThrust = false;
   player.isLowKick = false;
@@ -1704,6 +1758,22 @@ function beginGrabStartup(player, room) {
       player.facing = player.x < opponent.x ? -1 : 1;
     }
   }
+  if (isActionFacingOwnershipV2Enabled()) {
+    const grabId = mintActionFacingInstanceId(
+      player,
+      ACTION_FACING_OWNER.GRAB_STARTUP
+    );
+    player.grabFacingInstanceId = grabId;
+    acquireActionFacingLock(player, {
+      ownerType: ACTION_FACING_OWNER.GRAB_STARTUP,
+      ownerInstanceId: grabId,
+      direction: player.facing,
+      reason: ACTION_FACING_REASON.COMMIT,
+      allowDirectionUpdate: false,
+      supersede: true,
+      syncLegacy: false,
+    });
+  }
 
   // Inherit slide/dodge speed for clinch burst only — not for attempt range.
   let approachVel = entryVel;
@@ -1884,6 +1954,15 @@ function endHitKnockback(player) {
   if (!player) return;
   if (player.isHitFalling && Math.abs(player.knockbackVelocity?.x || 0) > 0.01) {
     player.isHit = false;
+    if (isActionFacingOwnershipV2Enabled()) {
+      releaseActionFacingLock(player, {
+        expectedInstanceId: player.hitstunFacingInstanceId,
+        expectedOwnerType: ACTION_FACING_OWNER.HITSTUN,
+        reason: ACTION_FACING_RELEASE.RECOVERY_COMPLETE,
+        clearLegacy: false,
+      });
+      player.hitstunFacingInstanceId = null;
+    }
     return;
   }
   if (Math.abs(player.knockbackVelocity?.x || 0) > 0.01) {
@@ -1897,6 +1976,15 @@ function endHitKnockback(player) {
   player.burstKnockbackStartTime = 0;
   player.isChargedKnockback = false;
   player.chargedKnockbackCanRingOut = false;
+  if (isActionFacingOwnershipV2Enabled()) {
+    releaseActionFacingLock(player, {
+      expectedInstanceId: player.hitstunFacingInstanceId,
+      expectedOwnerType: ACTION_FACING_OWNER.HITSTUN,
+      reason: ACTION_FACING_RELEASE.RECOVERY_COMPLETE,
+      clearLegacy: false,
+    });
+    player.hitstunFacingInstanceId = null;
+  }
 }
 
 /** Touchdown from air-hit dump — hand residual KB to ice coast. */
@@ -1982,6 +2070,20 @@ function clearChargeState(player, isCancelled = false) {
   player.chargeStartTime = 0;
   if (isCancelled || !(player.keys && player.keys.mouse1)) {
     player.chargeAttackPower = 0;
+  }
+  if (isActionFacingOwnershipV2Enabled()) {
+    const lock = getActionFacingLock(player);
+    if (lock && lock.ownerType === ACTION_FACING_OWNER.CHARGE_HOLD) {
+      releaseActionFacingLock(player, {
+        expectedInstanceId: player.chargeFacingInstanceId,
+        expectedOwnerType: ACTION_FACING_OWNER.CHARGE_HOLD,
+        reason: isCancelled
+          ? ACTION_FACING_RELEASE.INTERRUPT
+          : ACTION_FACING_RELEASE.ACTION_END,
+        clearLegacy: false,
+      });
+      player.chargeFacingInstanceId = null;
+    }
   }
   player.chargingFacingDirection = null;
   player.spacebarReleasedDuringDodge = false;
@@ -2258,7 +2360,14 @@ function emitThrottledScreenShake(room, io, shakeData) {
   if (room.lastScreenShakeTime === undefined) {
     room.lastScreenShakeTime = 0;
   }
-  if (now - room.lastScreenShakeTime < SCREEN_SHAKE_MIN_INTERVAL) {
+  // Presentation-bearing throws must not lose their land event to shake throttle.
+  const force =
+    !!shakeData?.force ||
+    !!(shakeData && shakeData.combatPresentation);
+  if (
+    !force &&
+    now - room.lastScreenShakeTime < SCREEN_SHAKE_MIN_INTERVAL
+  ) {
     return;
   }
   room.lastScreenShakeTime = now;

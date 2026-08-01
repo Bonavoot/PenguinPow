@@ -1,4 +1,13 @@
 const { MASTERY_P1_MOMENTUM } = require("./masteryFlags");
+const {
+  isActionFacingOwnershipV2Enabled,
+  acquireActionFacingLock,
+  releaseActionFacingLock,
+  mintActionFacingInstanceId,
+  ACTION_FACING_OWNER,
+  ACTION_FACING_REASON,
+  ACTION_FACING_RELEASE,
+} = require("./actionFacingOwnership");
 
 const {
   GRAB_PUSH_BURST_BASE, GRAB_PUSH_MOMENTUM_TRANSFER,
@@ -144,6 +153,14 @@ const {
 
 const { correctFacingAfterGrabOrThrow, executeClinchSeparation } = require("./grabMechanics");
 const { cleanupGrabStates, handleWinCondition } = require("./gameFunctions");
+const {
+  CLINCH_INTERACTION,
+  CLINCH_EFFECT_MID_Y,
+  CLINCH_GRIP_CONTACT_Y,
+  ensureClinchInstanceId,
+  buildClinchPresentation,
+  attachCombatPresentation,
+} = require("./combatPresentationEvent");
 
 // Continuous fatigue: push force lerps from 1.0 (full stamina) to the floor
 // (0 stamina). Gassed overrides with the hard cliff — the arc is
@@ -200,12 +217,31 @@ function grantDeepGrip(holder, other, room, io, source) {
   holder.hasDeepGrip = true;
   other.hasDeepGrip = false;
   other.deepGripPushStart = 0;
-  io.in(room.id).emit("deep_grip", {
-    playerId: holder.id,
-    playerNumber: room.players.indexOf(holder) === 0 ? 1 : 2,
-    source,
-    gripId: `deep-grip-${simNow(room)}-${holder.id}`,
-  });
+  const gripId = `deep-grip-${simNow(room)}-${holder.id}`;
+  const clinchId = ensureClinchInstanceId(holder, other, simNow(room));
+  io.in(room.id).emit(
+    "deep_grip",
+    attachCombatPresentation(
+      {
+        playerId: holder.id,
+        playerNumber: room.players.indexOf(holder) === 0 ? 1 : 2,
+        source,
+        gripId,
+      },
+      buildClinchPresentation({
+        interactionType: CLINCH_INTERACTION.DEEP_GRIP,
+        clinchInstanceId: clinchId,
+        actionInstanceId: gripId,
+        initiator: holder,
+        responder: other,
+        outcome: "GRANTED",
+        gripState: "deep",
+        contactX: holder.x,
+        contactY: CLINCH_EFFECT_MID_Y,
+        salt: source || "deep_grip",
+      })
+    )
+  );
 }
 
 // OPEN — punishable vulnerability. Blocks clinch offense / stance until clear.
@@ -895,16 +931,39 @@ function updateGrabActions(player, room, io, delta, rooms) {
 
     triggerHitstopAndEmit(io, room, CLINCH_JOLT_MUTUAL_HITSTOP_MS, "clinch_jolt_mutual");
     emitThrottledScreenShake(room, io, { type: "clinch_jolt", scale: 1.1 });
-    io.in(room.id).emit("clinch_jolt", {
-      jolterId: player.id,
-      targetId: opponent.id,
-      jolterX: player.x,
-      targetX: opponent.x,
-      type: "mutual",
-      direction: 0,
-      contactX: (player.x + opponent.x) / 2,
-      contactY: player.y,
-    });
+    {
+      const contactX = (player.x + opponent.x) / 2;
+      const joltActionId = `jolt-mutual-${now}-${player.id}`;
+      const clinchId = ensureClinchInstanceId(player, opponent, now);
+      io.in(room.id).emit(
+        "clinch_jolt",
+        attachCombatPresentation(
+          {
+            jolterId: player.id,
+            targetId: opponent.id,
+            jolterX: player.x,
+            targetX: opponent.x,
+            type: "mutual",
+            direction: 0,
+            contactX,
+            contactY: CLINCH_GRIP_CONTACT_Y,
+            joltId: joltActionId,
+          },
+          buildClinchPresentation({
+            interactionType: CLINCH_INTERACTION.CLINCH_JOLT_MUTUAL,
+            clinchInstanceId: clinchId,
+            actionInstanceId: joltActionId,
+            initiator: player,
+            responder: opponent,
+            outcome: "MUTUAL",
+            contactX,
+            contactY: CLINCH_GRIP_CONTACT_Y,
+            movementX: 0,
+            salt: "jolt_mutual",
+          })
+        )
+      );
+    }
 
     player.clinchStalemateStart = now;
     opponent.clinchStalemateStart = now;
@@ -1011,17 +1070,40 @@ function updateGrabActions(player, room, io, delta, rooms) {
 
       triggerHitstopAndEmit(io, room, CLINCH_JOLT_HITSTOP_MS, "clinch_jolt");
       emitThrottledScreenShake(room, io, { type: "clinch_jolt" });
-      io.in(room.id).emit("clinch_jolt", {
-        jolterId: jolter.id,
-        targetId: target.id,
-        jolterX: jolter.x,
-        targetX: target.x,
-        type: "single",
-        direction: pushDir,
-        intoCommittedDrive: targetCommitted,
-        contactX: (jolter.x + target.x) / 2,
-        contactY: jolter.y,
-      });
+      {
+        const contactX = (jolter.x + target.x) / 2;
+        const joltActionId = `jolt-${now}-${jolter.id}`;
+        const clinchId = ensureClinchInstanceId(jolter, target, now);
+        io.in(room.id).emit(
+          "clinch_jolt",
+          attachCombatPresentation(
+            {
+              jolterId: jolter.id,
+              targetId: target.id,
+              jolterX: jolter.x,
+              targetX: target.x,
+              type: "single",
+              direction: pushDir,
+              intoCommittedDrive: targetCommitted,
+              contactX,
+              contactY: CLINCH_GRIP_CONTACT_Y,
+              joltId: joltActionId,
+            },
+            buildClinchPresentation({
+              interactionType: CLINCH_INTERACTION.CLINCH_JOLT,
+              clinchInstanceId: clinchId,
+              actionInstanceId: joltActionId,
+              initiator: jolter,
+              responder: target,
+              outcome: targetCommitted ? "INTO_DRIVE" : "HIT",
+              contactX,
+              contactY: CLINCH_GRIP_CONTACT_Y,
+              movementX: pushDir,
+              salt: "jolt",
+            })
+          )
+        );
+      }
 
       jolter.clinchStalemateStart = now;
       target.clinchStalemateStart = now;
@@ -1111,6 +1193,39 @@ function updateGrabActions(player, room, io, delta, rooms) {
         opponent.stamina = Math.max(0, opponent.stamina - CLINCH_TUMBLE_STAMINA_COST);
         player.balance = Math.max(0, player.balance - CLINCH_TUMBLE_BALANCE_DRAIN);
         opponent.balance = Math.max(0, opponent.balance - CLINCH_TUMBLE_BALANCE_DRAIN);
+        // Discrete TECH presentation at clash start (not per-tick). Reuses
+        // clinch_callout transport with type grab_tech — HUD handler ignores it.
+        {
+          const techId = `clinch-tech-${now}-${player.id}`;
+          const seamX = (player.x + opponent.x) / 2;
+          const clinchId = ensureClinchInstanceId(player, opponent, now);
+          const nx = player.x < opponent.x ? 1 : -1;
+          io.in(room.id).emit(
+            "clinch_callout",
+            attachCombatPresentation(
+              {
+                type: "grab_tech",
+                actorId: player.id,
+                targetId: opponent.id,
+                calloutId: techId,
+                x: seamX,
+                techId,
+              },
+              buildClinchPresentation({
+                interactionType: CLINCH_INTERACTION.CLINCH_TECH,
+                clinchInstanceId: clinchId,
+                actionInstanceId: techId,
+                initiator: player,
+                responder: opponent,
+                outcome: "TECH",
+                contactX: seamX,
+                contactY: CLINCH_EFFECT_MID_Y,
+                movementX: nx,
+                salt: "tech",
+              })
+            )
+          );
+        }
       }
     }
   }
@@ -1123,12 +1238,35 @@ function updateGrabActions(player, room, io, delta, rooms) {
       opponent.isClinchClashing = false;
       player.clinchClashStartTime = 0;
       opponent.clinchClashStartTime = 0;
-      io.in(room.id).emit("clinch_tumble", {
-        player1Id: player.id,
-        player2Id: opponent.id,
-        x: (player.x + opponent.x) / 2,
-        tumbleId: `clinch-tumble-${now}-${player.id}`,
-      });
+      {
+        const tumbleId = `clinch-tumble-${now}-${player.id}`;
+        const seamX = (player.x + opponent.x) / 2;
+        const clinchId = ensureClinchInstanceId(player, opponent, now);
+        // Tech rings already fired on clash rising edge (client). Tumble carries
+        // identity for shake/cleanup — not a second TECH spawn.
+        io.in(room.id).emit(
+          "clinch_tumble",
+          attachCombatPresentation(
+            {
+              player1Id: player.id,
+              player2Id: opponent.id,
+              x: seamX,
+              tumbleId,
+            },
+            buildClinchPresentation({
+              interactionType: CLINCH_INTERACTION.CLINCH_TUMBLE,
+              clinchInstanceId: clinchId,
+              actionInstanceId: tumbleId,
+              initiator: player,
+              responder: opponent,
+              outcome: "SEPARATE",
+              contactX: seamX,
+              contactY: CLINCH_EFFECT_MID_Y,
+              salt: "tumble",
+            })
+          )
+        );
+      }
       emitThrottledScreenShake(room, io, { type: "clinch_tumble" });
       executeClinchSeparation(player, opponent, room, io);
       // Separation already reads as "can't act" — skip stun stars for this Open.
@@ -1744,14 +1882,33 @@ function executeClinchBreak(breaker, opponent, room, io) {
 
   // Emit visual/audio event. breakerPlayerNumber: room.players[0] = 1, [1] = 2.
   const breakerPlayerNumber = room.players.indexOf(breaker) === 0 ? 1 : 2;
-  io.in(room.id).emit("grab_break", {
-    breakerId: breaker.id,
-    grabberId: opponent.id,
-    breakerX: breaker.x,
-    grabberX: opponent.x,
-    breakId: `break-${now}-${breaker.id}`,
-    breakerPlayerNumber,
-  });
+  const breakId = `break-${now}-${breaker.id}`;
+  const seamX = (breaker.x + opponent.x) / 2;
+  const clinchId = ensureClinchInstanceId(breaker, opponent, now);
+  io.in(room.id).emit(
+    "grab_break",
+    attachCombatPresentation(
+      {
+        breakerId: breaker.id,
+        grabberId: opponent.id,
+        breakerX: breaker.x,
+        grabberX: opponent.x,
+        breakId,
+        breakerPlayerNumber,
+      },
+      buildClinchPresentation({
+        interactionType: CLINCH_INTERACTION.GRAB_BREAK,
+        clinchInstanceId: clinchId,
+        actionInstanceId: breakId,
+        initiator: breaker,
+        responder: opponent,
+        outcome: "BREAK",
+        contactX: seamX,
+        contactY: CLINCH_EFFECT_MID_Y,
+        salt: "break",
+      })
+    )
+  );
 }
 
 // Resolve throw/pull after startup. Both techniques share the same matrix:
@@ -1789,15 +1946,35 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
 
   const emitCounterThrowCallout = () => {
     if (!wasCounter) return;
-    io.in(room.id).emit("clinch_callout", {
-      type: "counter_throw",
-      actorId: actor.id,
-      targetId: target.id,
-      actionType,
-      playerNumber: room.players.indexOf(actor) === 0 ? 1 : 2,
-      calloutId: `clinch-callout-${simNow(room)}-${actor.id}`,
-      x: (actor.x + target.x) / 2,
-    });
+    const calloutId = `clinch-callout-${simNow(room)}-${actor.id}`;
+    const seamX = (actor.x + target.x) / 2;
+    const clinchId = ensureClinchInstanceId(actor, target, simNow(room));
+    io.in(room.id).emit(
+      "clinch_callout",
+      attachCombatPresentation(
+        {
+          type: "counter_throw",
+          actorId: actor.id,
+          targetId: target.id,
+          actionType,
+          playerNumber: room.players.indexOf(actor) === 0 ? 1 : 2,
+          calloutId,
+          x: seamX,
+        },
+        buildClinchPresentation({
+          interactionType: CLINCH_INTERACTION.COUNTER_THROW_CALLOUT,
+          clinchInstanceId: clinchId,
+          actionInstanceId: calloutId,
+          initiator: actor,
+          responder: target,
+          outcome: "COUNTER_THROW",
+          throwType: actionType,
+          contactX: seamX,
+          contactY: CLINCH_EFFECT_MID_Y,
+          salt: "counter_throw",
+        })
+      )
+    );
   };
 
   const applyResistedCosts = () => {
@@ -1830,17 +2007,39 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
       target.isClinchPerfectBracing = false;
     }, CLINCH_PERFECT_BRACE_FLASH_MS, "clinchPerfectBraceFlash");
 
-    io.in(room.id).emit("clinch_throw_fail", {
-      actorId: actor.id,
-      targetId: target.id,
-      actionType,
-      actorX: actor.x,
-      targetX: target.x,
-      resistedByPlant: true,
-      perfectBrace: true,
-      playerNumber: room.players.indexOf(target) === 0 ? 1 : 2,
-      failId: `perfect-brace-${simNow(room)}-${target.id}`,
-    });
+    {
+      const failId = `perfect-brace-${simNow(room)}-${target.id}`;
+      const seamX = (actor.x + target.x) / 2;
+      const clinchId = ensureClinchInstanceId(actor, target, simNow(room));
+      io.in(room.id).emit(
+        "clinch_throw_fail",
+        attachCombatPresentation(
+          {
+            actorId: actor.id,
+            targetId: target.id,
+            actionType,
+            actorX: actor.x,
+            targetX: target.x,
+            resistedByPlant: true,
+            perfectBrace: true,
+            playerNumber: room.players.indexOf(target) === 0 ? 1 : 2,
+            failId,
+          },
+          buildClinchPresentation({
+            interactionType: CLINCH_INTERACTION.PERFECT_BRACE,
+            clinchInstanceId: clinchId,
+            actionInstanceId: failId,
+            initiator: target,
+            responder: actor,
+            outcome: "PERFECT_BRACE",
+            throwType: actionType,
+            contactX: seamX,
+            contactY: CLINCH_EFFECT_MID_Y,
+            salt: "perfect_brace",
+          })
+        )
+      );
+    }
     target.clinchBraceSimTime = 0;
     target.clinchBraceLatchUntil = 0;
     return;
@@ -1852,16 +2051,38 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
 
     applyClinchOpen(actor, CLINCH_THROW_FAIL_STAGGER_MS, room);
 
-    io.in(room.id).emit("clinch_throw_fail", {
-      actorId: actor.id,
-      targetId: target.id,
-      actionType,
-      actorX: actor.x,
-      targetX: target.x,
-      resistedByPlant: true,
-      playerNumber: room.players.indexOf(target) === 0 ? 1 : 2,
-      failId: `clinch-fail-${simNow(room)}-${actor.id}`,
-    });
+    {
+      const failId = `clinch-fail-${simNow(room)}-${actor.id}`;
+      const seamX = (actor.x + target.x) / 2;
+      const clinchId = ensureClinchInstanceId(actor, target, simNow(room));
+      io.in(room.id).emit(
+        "clinch_throw_fail",
+        attachCombatPresentation(
+          {
+            actorId: actor.id,
+            targetId: target.id,
+            actionType,
+            actorX: actor.x,
+            targetX: target.x,
+            resistedByPlant: true,
+            playerNumber: room.players.indexOf(target) === 0 ? 1 : 2,
+            failId,
+          },
+          buildClinchPresentation({
+            interactionType: CLINCH_INTERACTION.THROW_FAIL,
+            clinchInstanceId: clinchId,
+            actionInstanceId: failId,
+            initiator: actor,
+            responder: target,
+            outcome: "DEFENDED",
+            throwType: actionType,
+            contactX: seamX,
+            contactY: CLINCH_EFFECT_MID_Y,
+            salt: "throw_fail",
+          })
+        )
+      );
+    }
     target.clinchBraceSimTime = 0;
     target.clinchBraceLatchUntil = 0;
     return;
@@ -1959,6 +2180,22 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
       target.facing = targetX < pullFacingAnchorX ? -1 : 1;
       target.pullFacingDirection = target.facing;
     }
+    if (isActionFacingOwnershipV2Enabled()) {
+      for (const p of [actor, target]) {
+        if (p.atTheRopesFacingDirection) continue;
+        const id = mintActionFacingInstanceId(p, ACTION_FACING_OWNER.PULL);
+        p.pullFacingInstanceId = id;
+        acquireActionFacingLock(p, {
+          ownerType: ACTION_FACING_OWNER.PULL,
+          ownerInstanceId: id,
+          direction: p.facing,
+          reason: ACTION_FACING_REASON.SIDE_SWITCH,
+          allowDirectionUpdate: false,
+          supersede: true,
+          syncLegacy: false,
+        });
+      }
+    }
     // clearClinchThrowState dropped the startup pull pose — re-arm for the yank.
     actor.isAttemptingPull = true;
 
@@ -1983,8 +2220,17 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     setPlayerTimeout(actor.id, () => { actor.grabCooldown = false; }, 300, "pullCooldown");
   } else {
     // Throw lands: forward arc throw — pushes opponent away from thrower
+    //
+    // IMPORTANT: `throwDir` / `throwingFacingDirection` are WORLD TRAVEL signs
+    // (+1 = +X, −1 = −X) for victim trajectory — NOT sprite facing.
+    // Facing convention is inverted (facing −1 faces +X / right). Legacy
+    // presentation freezes via `isThrowing → player.facing` and never applies
+    // throwDir to the thrower’s sprite. An old over-the-head throw once used
+    // throwDir as facing; forward W+Mouse2 must not revive that flip under V2.
     const throwDir = actor.x < target.x ? 1 : -1;
     const throwDuration = isKill ? CLINCH_KILL_THROW_DURATION_MS : CLINCH_THROW_DURATION_MS;
+    const throwerPresentationFacing =
+      actor.facing === 1 || actor.facing === -1 ? actor.facing : -1;
 
     cleanupGrabStates(actor, target);
     actor.isThrowing = true;
@@ -2004,6 +2250,23 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     actor.throwEndTime = simNow(room) + throwDuration;
     actor.throwOpponent = target.id;
     actor.throwingFacingDirection = throwDir;
+    if (isActionFacingOwnershipV2Enabled()) {
+      const throwerId = mintActionFacingInstanceId(
+        actor,
+        ACTION_FACING_OWNER.THROWER
+      );
+      actor.throwFacingInstanceId = throwerId;
+      acquireActionFacingLock(actor, {
+        ownerType: ACTION_FACING_OWNER.THROWER,
+        ownerInstanceId: throwerId,
+        // Match flag-off: committed clinch/forward presentation facing.
+        direction: throwerPresentationFacing,
+        reason: ACTION_FACING_REASON.THROW,
+        allowDirectionUpdate: false,
+        supersede: true,
+        syncLegacy: false,
+      });
+    }
     // Non-kill throws are repositioning tools — keep victim inside the margin so
     // the tick-order win check can't ring them out while still pinned at the edge.
     if (!isKill) {
@@ -2015,17 +2278,54 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     target.isBeingThrown = true;
     target.isHit = true;
     target.beingThrownFacingDirection = target.facing;
+    if (isActionFacingOwnershipV2Enabled()) {
+      const victimId = mintActionFacingInstanceId(
+        target,
+        ACTION_FACING_OWNER.THROW_VICTIM
+      );
+      target.throwVictimFacingInstanceId = victimId;
+      acquireActionFacingLock(target, {
+        ownerType: ACTION_FACING_OWNER.THROW_VICTIM,
+        ownerInstanceId: victimId,
+        direction: target.facing,
+        reason: ACTION_FACING_REASON.THROW,
+        allowDirectionUpdate: false,
+        supersede: true,
+        syncLegacy: false,
+      });
+    }
     target.inputLockUntil = Math.max(target.inputLockUntil || 0, simNow(room) + throwDuration + 100);
     if (isKill) {
       target.isClinchKillThrowVictim = true;
-      io.in(room.id).emit("clinch_kill_throw", {
-        victimId: target.id,
-        throwerId: actor.id,
-        victimX: target.x,
-        hitstopMs: 0,
-        durationMs: throwDuration,
-        throwDir,
-      });
+      const launchId = `kill-throw-${simNow(room)}-${actor.id}`;
+      const clinchId = ensureClinchInstanceId(actor, target, simNow(room));
+      io.in(room.id).emit(
+        "clinch_kill_throw",
+        attachCombatPresentation(
+          {
+            victimId: target.id,
+            throwerId: actor.id,
+            victimX: target.x,
+            hitstopMs: 0,
+            durationMs: throwDuration,
+            throwDir,
+            launchId,
+          },
+          buildClinchPresentation({
+            interactionType: CLINCH_INTERACTION.KILL_THROW_LAUNCH,
+            clinchInstanceId: clinchId,
+            actionInstanceId: launchId,
+            initiator: actor,
+            responder: target,
+            outcome: "LAUNCH",
+            throwType: "throw",
+            contactX: target.x,
+            contactY: target.y,
+            movementX: throwDir,
+            salt: "kill_launch",
+          })
+        )
+      );
     }
     if (hitstopMs > 0) triggerHitstopAndEmit(io, room, hitstopMs, "clinch_throw");
   }

@@ -1,4 +1,5 @@
 import { DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY } from "../constants";
+import { DASH_SMOKE_SHEET_BASELINE_Y } from "../combatPresentation/movementSmoke";
 import landingSmokeSheet from "../assets/landing-smoke-effect.png";
 import straightUpSmokeSheet from "../assets/straight-up-smoke-effect.png";
 import tiltedUpSmokeSheet from "../assets/tilted-up-smoke-effect.png";
@@ -362,8 +363,21 @@ function spawnSwooshSmoke(
   return true;
 }
 
-function spawnDashSmoke(engine, footX, footY, opts) {
-  return spawnSwooshSmoke(engine, dashSmokeImg, SWOOSH_SMOKE_CFG.dash, footX, footY, opts);
+function spawnDashSmoke(engine, footX, footY, opts = {}) {
+  // Sheet-only visual registration: PNG pad sits under the plume, so nudge the
+  // draw center down in GAME-space for full dodge dashStart. Slide-redirect
+  // can opt out (applySheetBaseline: false) to keep its prior registration.
+  // Does not touch charged swoosh, ice-slide frost, or streak emitters.
+  const baseline =
+    opts.applySheetBaseline === false ? 0 : DASH_SMOKE_SHEET_BASELINE_Y;
+  return spawnSwooshSmoke(
+    engine,
+    dashSmokeImg,
+    SWOOSH_SMOKE_CFG.dash,
+    footX,
+    footY + baseline,
+    opts
+  );
 }
 
 function spawnChargedSmoke(engine, footX, footY, opts) {
@@ -2458,7 +2472,13 @@ const PRESETS = {
   // opposite facing uses the same sprite-relative layout via wakeDir = facing.
 
   // One-shot commitment burst when the slide locks in after dodge land.
-  iceSlideStart(engine, { x, y, direction, facing }) {
+  // variant: "redirect" → tighter dig-reversal burst (see iceSlideRedirect).
+  iceSlideStart(engine, opts = {}) {
+    if (opts.variant === "redirect") {
+      PRESETS.iceSlideRedirect(engine, opts);
+      return;
+    }
+    const { x, y, direction, facing } = opts;
     const footY = GAME_H - y - SLIDE_FOOT_Y_LIFT;
     const { wakeDir, artLeftX, artRightX } = slideArtFeet(x, facing);
 
@@ -2560,6 +2580,23 @@ const PRESETS = {
         ]),
       });
     }
+  },
+
+  // Accepted ice-slide bunny-hop redirect — same dashStart swoosh sheet as a
+  // grounded dodge, at ~60% scale / shorter life. Orient from NEW travel dir
+  // (not facing). Keeps pre-baseline sheet registration (no DASH_SMOKE nudge).
+  iceSlideRedirect(engine, { x, y, direction, facing }) {
+    const travel = direction || facing || 1;
+    const dir = travel > 0 ? 1 : -1;
+    const footX = x;
+    const footY = GAME_H - y;
+    spawnDashSmoke(engine, footX, footY, {
+      dir,
+      scale: 0.6,
+      alpha: 0.85,
+      maxLife: 0.26,
+      applySheetBaseline: false,
+    });
   },
 
   // Continuous emission (~36ms) while ice-sliding. Dual-foot blade grind;

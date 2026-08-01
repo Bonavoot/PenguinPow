@@ -19,6 +19,7 @@ export const AP_WHIFF_RECOVERY_MS = 300;
  * Hit pose starts with the active window (SMEAR_END) so parry hitstop freezes
  * on the strike frame — not the blur. (Holding smear through AP_LATE_PARRY_MS
  * made late parries look like they clanged the smear.)
+ * Authored ~37ms smear (18→55) is production — Phase 14 compression was rejected.
  */
 export const SLAP_ANIM = {
   WINDUP_END: 18,

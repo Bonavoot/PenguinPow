@@ -232,6 +232,34 @@ function applyNeutralFacingAfterAerial(player, opponent) {
   return dir;
 }
 
+/**
+ * Touchdown facing handoff (Phase 5A hotfix).
+ *
+ * Flight / HIT / PARRIED / WHIFF owners freeze travel-facing. At first
+ * grounded tick, transfer ownership to LANDING with one opponent-facing
+ * resolve — matching Rope Jump's "face opponent once grounded" contract
+ * without unlocking into per-tick flicker during recovery.
+ */
+function handoffOffensiveAerialFacingAtTouchdown(player, opponent, meta = {}) {
+  if (!player) return null;
+  const dir = resolveNeutralFacingAfterAerial(player, opponent);
+  const instanceId =
+    meta.ownerInstanceId != null
+      ? meta.ownerInstanceId
+      : player.offensiveAerial?.attackInstanceId ||
+        player.offensiveAerialReaction?.attackInstanceId ||
+        null;
+  return acquireOffensiveAerialFacingLock(player, {
+    supersede: true,
+    ownerInstanceId: instanceId,
+    direction: dir,
+    reason: FACING_LOCK_REASON.LANDING,
+    releaseCondition: FACING_RELEASE.RECOVERY_COMPLETE,
+    allowSteerUpdate: false,
+    acquiredTick: meta.acquiredTick || 0,
+  });
+}
+
 function snapshotOffensiveAerialFacingDebug(player) {
   const lock = player?.offensiveAerialFacingLock;
   return {
@@ -265,5 +293,6 @@ module.exports = {
   forceClearOffensiveAerialFacingLock,
   resolveNeutralFacingAfterAerial,
   applyNeutralFacingAfterAerial,
+  handoffOffensiveAerialFacingAtTouchdown,
   snapshotOffensiveAerialFacingDebug,
 };

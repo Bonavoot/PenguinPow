@@ -81,6 +81,7 @@ const {
   acquireOffensiveAerialFacingLock,
   updateOffensiveAerialFacingLockDirection,
   applyNeutralFacingAfterAerial,
+  handoffOffensiveAerialFacingAtTouchdown,
   aerialFacingAllowsSteer,
 } = require("../../../offensiveAerialFacing");
 const {
@@ -536,16 +537,7 @@ function stepSlideJumpTick(scenario, options = {}) {
       attacker.slideJumpPhase = "landing";
       attacker.slideJumpLandingTime = now;
       attacker._oaTouchdownPresentation = true;
-      acquireOffensiveAerialFacingLock(attacker, {
-        ownerInstanceId:
-          attacker.offensiveAerial?.attackInstanceId ||
-          attacker.offensiveAerialReaction?.attackInstanceId ||
-          null,
-        direction: attacker.facing,
-        reason: FACING_LOCK_REASON.LANDING,
-        releaseCondition: FACING_RELEASE.RECOVERY_COMPLETE,
-        allowSteerUpdate: false,
-      });
+      handoffOffensiveAerialFacingAtTouchdown(attacker, defender);
       const whiffRecovery = attacker.slideJumpFlapFlightActive
         ? FLAP_LANDING_RECOVERY_MS
         : SLIDE_JUMP_LANDING_RECOVERY_MS;

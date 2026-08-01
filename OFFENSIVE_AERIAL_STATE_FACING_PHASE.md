@@ -67,7 +67,7 @@ Operations: acquire (with supersede), update direction (steer-gated), release (i
 | PARRIED recoil | Aerial lock `PARRIED_RECOIL` | Frozen | Touchdown → `LANDING` |
 | WHIFF descent | Flight lock (or explicit `WHIFF_DESCENT`) | As armed | Touchdown → `LANDING` |
 | Interruption | Force-clear aerial lock; hitstun owns | — | Hit system |
-| Touchdown / landing | Aerial lock `LANDING` | Frozen | Recovery complete |
+| Touchdown / landing | Aerial lock `LANDING` — **opponent-facing handoff once** (not travel-facing carry) | Frozen | Recovery complete |
 | Neutral | No aerial lock | Auto-face | — |
 | Round reset | Force-clear | — | — |
 

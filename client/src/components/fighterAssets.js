@@ -180,6 +180,11 @@ export const SPRITE_HALF_W = 0;
 export const PLAYER_MID_Y = 376;
 /** Game-Y anchor for slap/charged/burst hit rings (HitEffect) + canvas impact sparks. */
 export const HIT_EFFECT_Y = PLAYER_MID_Y - 10;
+/**
+ * Clinch Jolt grip / forearm / upper-waist seam (matches server
+ * CLINCH_GRIP_CONTACT_Y). Temporary CSS Jolt fallback registration.
+ */
+export const CLINCH_GRIP_CONTACT_Y = 338;
 /** Belly-slam / flap drop spark — higher on the body than a slap chest hit. */
 export const FLAP_HIT_EFFECT_Y = PLAYER_MID_Y + 36;
 /** Low kick / trip spark — same slap sheet, just above the feet (ground = 286). */

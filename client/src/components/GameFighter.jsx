@@ -112,11 +112,33 @@ import {
 } from "../prediction/movementPredictor";
 import { getLocalKeyState, isLocalGameActive } from "../prediction/localInput";
 import {
-  isCombatFidelityDebugEnabled,
+  shouldUpdateCombatFidelityOverlay,
   noteCombatContactEvent,
   noteLandingDiag,
   renderCombatFidelityOverlay,
 } from "../debug/CombatFidelityDebug";
+import {
+  claimPresentationEvent,
+  clearPresentationEvents,
+  clearPlacementDebug,
+  readCombatPresentation,
+  worldPlacementFromPresentation,
+  notePlacementDebug,
+  MOVEMENT_SMOKE_TRANSITION,
+  MOVEMENT_SMOKE_GROUND_Y,
+  isAirborneForMovementSmoke,
+  claimMovementSmoke,
+  movementSmokeEmitArgs,
+  isSlideRedirectDirFlip,
+  normalizeMoveDir,
+} from "../combatPresentation";
+import {
+  resolvePoseRender,
+  soleTransformOriginCss,
+  notePoseGeometryDebug,
+  clearPoseGeometryDebug,
+  isPoseGeometryV2Enabled,
+} from "../poseGeometry";
 
 // Eeshi = pre-bout bed; battle BGM sits lower so hits/SFX stay forward in the mix.
 const EESHI_MUSIC_VOL = 0.018;
@@ -174,6 +196,7 @@ import {
   SPRITE_HALF_W,
   PLAYER_MID_Y,
   HIT_EFFECT_Y,
+  CLINCH_GRIP_CONTACT_Y,
   FLAP_HIT_EFFECT_Y,
   LOW_KICK_HIT_EFFECT_Y,
   CLAP_SOUND_OFFSET,
@@ -908,6 +931,8 @@ const GameFighter = ({
   const grabArmImgDomRef = useRef(null); // grab/clinch arm overlay (static)
   const deepGripGlowDomRef = useRef(null); // Deep Grip tip glow (arm motion twin)
   const animContainerDomRef = useRef(null); // AnimatedFighterContainer
+  /** Phase 11 V2 — presentation offsets only; never written to gameplay. */
+  const poseRenderOffsetRef = useRef({ ox: 0, oy: 0, v2: false });
   const shadowDomRef = useRef(null); // PlayerShadow root div
   const reflectionDomRef = useRef(null); // IceReflection root div
   // Round-result loser: hide ice reflection / show oval even if x is still
@@ -919,6 +944,11 @@ const GameFighter = ({
   // Mirror of the latest rendered penguin state for the rAF loop (flags used
   // in position formulas: at-the-ropes nudge, shadow ground-pinning).
   const penguinRef = useRef(penguin);
+  // Ice-slide redirect smoke — declared early; snapshot handler claims these.
+  const iceSlideDirRef = useRef(1);
+  const lastDodgeDirRef = useRef(1);
+  const prevIceSlideReverseHop = useRef(false);
+  const iceSlideRedirectSeqRef = useRef(0);
   // Last value of isOutsideDohyo(x, y) committed by a React render. The rAF
   // loop watches for position-driven flips (ring-out slides) and forces a
   // re-render so all zIndex formulas update consistently.
@@ -1219,6 +1249,12 @@ const GameFighter = ({
         return false;
       }
 
+      // Match server canPlayerDash aerial / engagement gates so predicted
+      // dashStart smoke cannot appear in FLAP / slide-jump / dive / air.
+      if (isAirborneForMovementSmoke(penguin)) return false;
+      if (penguin.isIceSliding) return false;
+      if (penguin.isGassed) return false;
+
       return (
         !penguin.isAttacking &&
         !penguin.isDodging &&
@@ -1474,15 +1510,23 @@ const GameFighter = ({
             };
             predictionChanged = true;
             // Predicted dash audio + launch dust — same frame as the press.
-            // The server-edge effect below is gated so it won't re-fire these
-            // when the confirmation broadcast arrives.
-            playSound(dodgeSound, 0.02);
-            emitParticles("dashStart", {
-              x: penguin.x,
-              y: penguin.y,
-              direction: action.direction || penguin.facing || 1,
-              facing: penguin.facing ?? 1,
+            // Confirm path claims the same movement-smoke event id so it
+            // cannot double-spawn. Ground Y only (never airborne player Y).
+            // Movement dir (not facing): facing 1 = look left = travel -X default.
+            const moveDir = normalizeMoveDir(
+              action.direction,
+              penguin.facing === 1 ? -1 : 1
+            );
+            const smoke = claimMovementSmoke({
+              fighterId: player.id,
+              transitionType: MOVEMENT_SMOKE_TRANSITION.DODGE_START,
+              moveDir,
+              worldX: penguin.x,
             });
+            playSound(dodgeSound, 0.02);
+            if (smoke) {
+              emitParticles("dashStart", movementSmokeEmitArgs(smoke));
+            }
             predictedSwingSoundAtRef.current.dodge = now;
           }
           break;
@@ -2531,9 +2575,13 @@ const GameFighter = ({
               ? -5
               : 5
             : 0;
-        const leftPct = `${((newPos.x + atRopesNudge) / 1280) * 100}%`;
+        // Pose-geometry V2 adjusts fighter CSS only (not sim / shadow / labels).
+        const poseOff = poseRenderOffsetRef.current;
+        const renderX = newPos.x + (poseOff.v2 ? poseOff.ox : 0);
+        const renderY = newPos.y + (poseOff.v2 ? poseOff.oy : 0);
+        const leftPct = `${((renderX + atRopesNudge) / 1280) * 100}%`;
         const plainLeftPct = `${(newPos.x / 1280) * 100}%`;
-        const bottomPct = `${(newPos.y / 720) * 100}%`;
+        const bottomPct = `${(renderY / 720) * 100}%`;
 
         const fighterEl = fighterImgDomRef.current;
         if (fighterEl) {
@@ -2541,64 +2589,74 @@ const GameFighter = ({
           fighterEl.style.bottom = bottomPct;
         }
         // Dev-only pushbox/contact overlay — player1 instance owns the draw.
+        // Gated + throttled: never allocate overlay payloads when disabled or
+        // between paint windows (was a major RAF cost with debug ON).
         if (
-          isCombatFidelityDebugEnabled() &&
-          penguinRef.current?.fighter === "player 1"
+          penguinRef.current?.fighter === "player 1" &&
+          shouldUpdateCombatFidelityOverlay()
         ) {
           const shared = getSharedFighterState();
-          {
-            const p1 = shared?.player1;
-            const p2 = shared?.player2;
-            const landingFields = (p, x, y) =>
-              p
-                ? {
-                    x,
-                    y,
-                    sizeMult: p.sizeMultiplier || 1,
-                    sizeMultiplier: p.sizeMultiplier || 1,
-                    ropeJumpPhase: p.ropeJumpPhase,
-                    ropeJumpRawTargetX: p.ropeJumpRawTargetX,
-                    ropeJumpResolvedTargetX: p.ropeJumpResolvedTargetX,
-                    ropeJumpLandingCommitted: p.ropeJumpLandingCommitted,
-                    ropeJumpLandingCommitX: p.ropeJumpLandingCommitX,
-                    ropeJumpLandingCommitT: p.ropeJumpLandingCommitT,
-                    ropeJumpLandingPath: p.ropeJumpLandingPath,
-                    ropeJumpPreferredSide: p.ropeJumpPreferredSide,
-                    ropeJumpResolvedSide: p.ropeJumpResolvedSide,
-                    ropeJumpMinDistance: p.ropeJumpMinDistance,
-                    ropeJumpCenterDistance: p.ropeJumpCenterDistance,
-                    ropeJumpOverlap: p.ropeJumpOverlap,
-                    ropeJumpSafetyCorrectionPx: p.ropeJumpSafetyCorrectionPx,
-                    ropeJumpPreTouchdownX: p.ropeJumpPreTouchdownX,
-                    ropeJumpTouchdownX: p.ropeJumpTouchdownX,
-                    ropeJumpUsedFallback: p.ropeJumpUsedFallback,
-                    ropeJumpTrajectoryType: p.ropeJumpTrajectoryType,
-                    ropeJumpDecisionClass: p.ropeJumpDecisionClass,
-                    ropeJumpFallbackReason: p.ropeJumpFallbackReason,
-                    ropeJumpHorizVel: p.ropeJumpHorizVel,
-                    ropeJumpRawExpectedVel: p.ropeJumpRawExpectedVel,
-                    ropeJumpPeakVel: p.ropeJumpPeakVel,
-                    ropeJumpReversalDetected: p.ropeJumpReversalDetected,
-                  }
-                : null;
-            renderCombatFidelityOverlay({
-              // P1 uses this instance's interpolated pose; P2 uses shared server snapshot.
-              p1: landingFields(
-                p1 || penguinRef.current,
-                newPos.x,
-                newPos.y
-              ) || {
-                x: newPos.x,
-                y: newPos.y,
-                sizeMult: penguinRef.current?.sizeMultiplier || 1,
-              },
-              p2: landingFields(p2, p2?.x ?? 0, p2?.y ?? 0) || {
-                x: 0,
-                y: 0,
-                sizeMult: 1,
-              },
-            });
-          }
+          const p1 = shared?.player1;
+          const p2 = shared?.player2;
+          const landingFields = (p, x, y) =>
+            p
+              ? {
+                  x,
+                  y,
+                  sizeMult: p.sizeMultiplier || 1,
+                  sizeMultiplier: p.sizeMultiplier || 1,
+                  ropeJumpPhase: p.ropeJumpPhase,
+                  ropeJumpRawTargetX: p.ropeJumpRawTargetX,
+                  ropeJumpResolvedTargetX: p.ropeJumpResolvedTargetX,
+                  ropeJumpLandingCommitted: p.ropeJumpLandingCommitted,
+                  ropeJumpLandingCommitX: p.ropeJumpLandingCommitX,
+                  ropeJumpLandingCommitT: p.ropeJumpLandingCommitT,
+                  ropeJumpLandingPath: p.ropeJumpLandingPath,
+                  ropeJumpPreferredSide: p.ropeJumpPreferredSide,
+                  ropeJumpResolvedSide: p.ropeJumpResolvedSide,
+                  ropeJumpMinDistance: p.ropeJumpMinDistance,
+                  ropeJumpCenterDistance: p.ropeJumpCenterDistance,
+                  ropeJumpOverlap: p.ropeJumpOverlap,
+                  ropeJumpSafetyCorrectionPx: p.ropeJumpSafetyCorrectionPx,
+                  ropeJumpPreTouchdownX: p.ropeJumpPreTouchdownX,
+                  ropeJumpTouchdownX: p.ropeJumpTouchdownX,
+                  ropeJumpUsedFallback: p.ropeJumpUsedFallback,
+                  ropeJumpTrajectoryType: p.ropeJumpTrajectoryType,
+                  ropeJumpDecisionClass: p.ropeJumpDecisionClass,
+                  ropeJumpFallbackReason: p.ropeJumpFallbackReason,
+                  ropeJumpHorizVel: p.ropeJumpHorizVel,
+                  ropeJumpRawExpectedVel: p.ropeJumpRawExpectedVel,
+                  ropeJumpPeakVel: p.ropeJumpPeakVel,
+                  ropeJumpReversalDetected: p.ropeJumpReversalDetected,
+                  isSlideJumping: p.isSlideJumping,
+                  slideJumpPhase: p.slideJumpPhase,
+                  slideJumpDiveCommitted: p.slideJumpDiveCommitted,
+                  slideJumpFastFalling: p.slideJumpFastFalling,
+                  slideJumpHitLanded: p.slideJumpHitLanded,
+                  slideJumpFlapFlightActive: p.slideJumpFlapFlightActive,
+                  slideJumpHasFlap: p.slideJumpHasFlap,
+                  flapCharges: p.flapCharges,
+                  offensiveAerialReactionType: p.offensiveAerialReactionType,
+                  offensiveAerialPresentation: p.offensiveAerialPresentation,
+                }
+              : null;
+          renderCombatFidelityOverlay({
+            // P1 uses this instance's interpolated pose; P2 uses shared server snapshot.
+            p1: landingFields(
+              p1 || penguinRef.current,
+              newPos.x,
+              newPos.y
+            ) || {
+              x: newPos.x,
+              y: newPos.y,
+              sizeMult: penguinRef.current?.sizeMultiplier || 1,
+            },
+            p2: landingFields(p2, p2?.x ?? 0, p2?.y ?? 0) || {
+              x: 0,
+              y: 0,
+              sizeMult: 1,
+            },
+          });
         }
         // Grab-arm overlay shares the body's exact position formula so it stays
         // pixel-locked to the (armless) grab/clinch body as it slides.
@@ -3219,6 +3277,56 @@ const GameFighter = ({
       // Get the relevant player data based on index
       const playerData = index === 0 ? player1Data : player2Data;
 
+      // Accepted ice-slide redirect smoke — snapshot edge only (hop is ~85ms;
+      // iceSlideDir sign-flip is the durable signal). Do not also spawn from the
+      // React hop useEffect or two bursts stack and read as full slide-start.
+      {
+        const prevF = penguinRef.current;
+        const hopRise =
+          !!playerData.isIceSlideReverseHopping &&
+          !prevF?.isIceSlideReverseHopping;
+        const dirFlip = isSlideRedirectDirFlip(prevF, playerData);
+        const slidingNow =
+          !!playerData.isIceSliding &&
+          !playerData.isDodging &&
+          !playerData.isSlideJumping;
+        if ((hopRise || dirFlip) && slidingNow) {
+          const gateFighter = {
+            ...prevF,
+            ...playerData,
+            isIceSlideReverseHopping:
+              !!playerData.isIceSlideReverseHopping || hopRise,
+          };
+          if (!isAirborneForMovementSmoke(gateFighter)) {
+            const commitDir = normalizeMoveDir(
+              playerData.iceSlideDir,
+              lastDodgeDirRef.current || iceSlideDirRef.current || 1
+            );
+            iceSlideDirRef.current = commitDir;
+            iceSlideRedirectSeqRef.current += 1;
+            prevIceSlideReverseHop.current = !!playerData.isIceSlideReverseHopping;
+            const worldX =
+              interpolatedPositionRef.current?.x ??
+              playerData.x ??
+              prevF?.x ??
+              0;
+            const smoke = claimMovementSmoke({
+              fighterId: player.id,
+              transitionType: MOVEMENT_SMOKE_TRANSITION.SLIDE_REDIRECT,
+              moveDir: commitDir,
+              worldX,
+              sequence: iceSlideRedirectSeqRef.current,
+            });
+            if (smoke) {
+              emitParticles(
+                "iceSlideRedirect",
+                movementSmokeEmitArgs(smoke)
+              );
+            }
+          }
+        }
+      }
+
       // Store previous state for interpolation (mutate in-place to avoid GC)
       if (currentState.current) {
         if (!previousState.current) {
@@ -3652,8 +3760,11 @@ const GameFighter = ({
               y,
             };
           }
-          const leftPct = `${(plantX / 1280) * 100}%`;
-          const bottomPct = `${(y / 720) * 100}%`;
+          const poseOff = poseRenderOffsetRef.current;
+          const rx = plantX + (poseOff.v2 ? poseOff.ox : 0);
+          const ry = y + (poseOff.v2 ? poseOff.oy : 0);
+          const leftPct = `${(rx / 1280) * 100}%`;
+          const bottomPct = `${(ry / 720) * 100}%`;
           if (fighterImgDomRef.current) {
             fighterImgDomRef.current.style.left = leftPct;
             fighterImgDomRef.current.style.bottom = bottomPct;
@@ -3806,32 +3917,80 @@ const GameFighter = ({
           const isLowKickHit =
             data.isLowKick || data.attackType === "lowKick";
           const isFlapSlamHit = data.attackType === "flap";
-          const seamX = contactFxX(data);
-          setHitEffectPosition({
-            x: seamX,
-            // Low kick → ankles; belly-slam → high on the body; else chest.
-            y: isLowKickHit
-              ? LOW_KICK_HIT_EFFECT_Y
-              : isFlapSlamHit
-              ? FLAP_HIT_EFFECT_Y
-              : HIT_EFFECT_Y,
-            facing: data.facing || 1,
-            // Absolute server tip seam — skip legacy victim.x+70 % offsets in
-            // SlapHitSpriteEffect (those were shoving sparks behind P1).
-            seamAnchored: hasContactSeam(data),
-            timestamp: data.timestamp,
-            hitId: data.hitId,
-            attackType: data.attackType || "slap",
-            isPalmThrust: data.isPalmThrust || false,
-            isLowKick: isLowKickHit,
-            isCounterHit: data.isCounterHit || false,
-            isPunish: data.isPunish || false,
-            isArmorBreak: data.isArmorBreak || false,
-            isPowered: data.isPowered || false,
-            isTipSlap: !!data.tipSlap,
-            cinematicKill: data.cinematicKill || false,
-            cinematicHitstopMs: data.cinematicKill ? 550 : 0,
-          });
+          // Phase 6–7: aerial + ground-strike (slap/palm/charged) use unified
+          // presentation placement. Low kick stays on legacy Y path.
+          const isGroundStrikePres =
+            !isLowKickHit &&
+            (data.attackType === "slap" ||
+              data.attackType === "charged" ||
+              !!data.isPalmThrust);
+          const usePres = isFlapSlamHit || isGroundStrikePres;
+          const hitPres = usePres ? readCombatPresentation(data) : null;
+          const hitPlace = hitPres
+            ? worldPlacementFromPresentation(hitPres)
+            : null;
+          if (hitPres && !claimPresentationEvent(hitPres.eventId)) {
+            // Retransmit / duplicate handler — skip second spark.
+            notePlacementDebug({
+              eventId: hitPres.eventId,
+              profileId: hitPres.profileId,
+              moveType: hitPres.moveType,
+              outcome: hitPres.outcome,
+              slapStage: hitPres.slapStage,
+              chargeTier: hitPres.chargeTier,
+              attackInstance: hitPres.actionInstanceId,
+              deduped: true,
+            });
+          } else {
+            const seamX = hitPlace ? hitPlace.x : contactFxX(data);
+            const seamY = hitPlace
+              ? hitPlace.y
+              : isLowKickHit
+                ? LOW_KICK_HIT_EFFECT_Y
+                : isFlapSlamHit
+                  ? FLAP_HIT_EFFECT_Y
+                  : HIT_EFFECT_Y;
+            if (hitPlace) {
+              notePlacementDebug({
+                eventId: hitPres.eventId,
+                profileId: hitPres.profileId,
+                moveType: hitPres.moveType,
+                outcome: hitPres.outcome,
+                slapStage: hitPres.slapStage,
+                chargeTier: hitPres.chargeTier,
+                attackInstance: hitPres.actionInstanceId,
+                anchorType: hitPres.anchorType,
+                worldX: hitPlace.x,
+                worldY: hitPlace.y,
+                nx: hitPlace.nx,
+                ny: hitPlace.ny,
+                fallback: hitPlace.fallback,
+                orientationSource: hitPlace.orientationSource,
+                facingHint: hitPlace.facingHint,
+                deduped: false,
+              });
+            }
+            setHitEffectPosition({
+              x: seamX,
+              y: seamY,
+              facing: hitPlace?.facingHint || data.facing || 1,
+              // Absolute server tip / contact seam — skip legacy victim.x+70 %.
+              seamAnchored: !!hitPlace || hasContactSeam(data),
+              timestamp: data.timestamp,
+              hitId: data.hitId,
+              attackType: data.attackType || "slap",
+              isPalmThrust: data.isPalmThrust || false,
+              isLowKick: isLowKickHit,
+              isCounterHit: data.isCounterHit || false,
+              isPunish: data.isPunish || false,
+              isArmorBreak: data.isArmorBreak || false,
+              isPowered: data.isPowered || false,
+              isTipSlap: !!data.tipSlap,
+              cinematicKill: data.cinematicKill || false,
+              cinematicHitstopMs: data.cinematicKill ? 550 : 0,
+              presentationEventId: hitPres?.eventId || null,
+            });
+          }
         }
 
         // Tip posture HUD flinch — victim's gauge flashes so the spacing reward
@@ -4057,8 +4216,6 @@ const GameFighter = ({
         if (index !== 0) return;
         // Position effect in front of the parrying player (where a hit effect would appear)
         const facing = data.facing || 1;
-        // Front offset — regular snowball/raw parry sits ahead of the body.
-        const frontOffset = facing === 1 ? 55 : -55;
         const parryPan = xToPan(data.parrierX);
 
         // ── ATTACK PARRY (AP) ──────────────────────────────────────────────
@@ -4084,22 +4241,64 @@ const GameFighter = ({
           const PARRY_EFFECT_OUTWARD_PX = 28;
           const PARRY_HAND_Y = HIT_EFFECT_Y + 22;
           const chain = data.chainCount || 1;
-          // Contact pin on F2 deflect hand (success anim: block → f1 → f2).
-          const parrySeamX =
-            (typeof data.contactX === "number"
-              ? data.contactX
-              : data.parrierX + towardAttacker * PARRY_HAND_FORWARD_PX) +
-            towardAttacker * PARRY_EFFECT_OUTWARD_PX;
+          // Phase 6–7: attack parry (aerial + ground strike) uses unified placement.
+          const parryPres = readCombatPresentation(data);
+          const parryPlace = parryPres
+            ? worldPlacementFromPresentation(parryPres)
+            : null;
+          if (parryPres && !claimPresentationEvent(parryPres.eventId)) {
+            notePlacementDebug({
+              eventId: parryPres.eventId,
+              profileId: parryPres.profileId,
+              moveType: parryPres.moveType,
+              outcome: parryPres.outcome,
+              attackInstance: parryPres.actionInstanceId,
+              deduped: true,
+            });
+          } else {
+            const parrySeamX = parryPlace
+              ? parryPlace.x
+              : (typeof data.contactX === "number"
+                  ? data.contactX
+                  : data.parrierX + towardAttacker * PARRY_HAND_FORWARD_PX) +
+                towardAttacker * PARRY_EFFECT_OUTWARD_PX;
+            const parrySeamY = parryPlace ? parryPlace.y : PARRY_HAND_Y;
+            if (parryPlace) {
+            notePlacementDebug({
+              eventId: parryPres.eventId,
+              profileId: parryPres.profileId,
+              moveType: parryPres.moveType,
+              outcome: parryPres.outcome,
+              slapStage: parryPres.slapStage,
+              chargeTier: parryPres.chargeTier,
+              attackInstance: parryPres.actionInstanceId,
+              defenseType: parryPres.defenseType,
+              defenseInstanceId: parryPres.defenseInstanceId,
+              timingGrade: parryPres.timingGrade,
+              incomingActionInstanceId: parryPres.incomingActionInstanceId,
+              anchorType: parryPres.anchorType,
+              worldX: parryPlace.x,
+              worldY: parryPlace.y,
+              nx: parryPlace.nx,
+              ny: parryPlace.ny,
+              fallback: parryPlace.fallback,
+              orientationSource: parryPlace.orientationSource,
+              facingHint: parryPlace.facingHint,
+              deduped: false,
+            });
+          }
           setParryEffectPosition({
             x: parrySeamX,
-            y: PARRY_HAND_Y,
-            facing,
+            y: parrySeamY,
+            facing: parryPlace?.facingHint || facing,
             parryId: data.parryId,
             variant: isPerfect ? "perfect" : "parry",
             chain,
             isPerfect,
             playerNumber: data.playerNumber || 1,
+            presentationEventId: parryPres?.eventId || null,
           });
+          }
           // Chain crescendo: each consecutive deflect rises in pitch so a flurry
           // of parries builds musically instead of flatly repeating.
           const chainRate = Math.min(1.0 + (chain - 1) * 0.06, 1.6);
@@ -4114,15 +4313,66 @@ const GameFighter = ({
         }
 
         // ── Snowball / pumo-clone parry (still the blue ring + refund cues) ──
+        const rawPres = readCombatPresentation(data);
+        const rawPlace = rawPres
+          ? worldPlacementFromPresentation(rawPres)
+          : null;
+        if (rawPres && !claimPresentationEvent(rawPres.eventId)) {
+          notePlacementDebug({
+            eventId: rawPres.eventId,
+            profileId: rawPres.profileId,
+            defenseType: rawPres.defenseType,
+            outcome: rawPres.outcome,
+            timingGrade: rawPres.timingGrade,
+            defenseInstanceId: rawPres.defenseInstanceId,
+            deduped: true,
+          });
+          return;
+        }
+        // Place on the incoming side (toward projectile / thrower), not a
+        // fixed +150 world bias which always put the burst on +X.
+        const RAW_PARRY_FRONT_PX = 55;
+        const towardIncoming =
+          typeof data.attackerX === "number"
+            ? data.attackerX < data.parrierX
+              ? -1
+              : 1
+            : facing === 1
+              ? -1
+              : 1;
+        const rawFacing =
+          rawPlace?.facingHint ||
+          (towardIncoming < 0 ? 1 : -1);
+        const rawX = rawPlace
+          ? rawPlace.x
+          : data.parrierX + towardIncoming * RAW_PARRY_FRONT_PX;
+        const rawY = rawPlace ? rawPlace.y : HIT_EFFECT_Y;
+        if (rawPres && rawPlace) {
+          notePlacementDebug({
+            eventId: rawPres.eventId,
+            profileId: rawPres.profileId,
+            defenseType: rawPres.defenseType,
+            outcome: rawPres.outcome,
+            timingGrade: rawPres.timingGrade,
+            defenseInstanceId: rawPres.defenseInstanceId,
+            incomingActionInstanceId: rawPres.incomingActionInstanceId,
+            attackFamily: rawPres.attackFamily,
+            worldX: rawPlace.x,
+            worldY: rawPlace.y,
+            fallback: rawPlace.fallback,
+            orientationSource: rawPlace.orientationSource,
+            deduped: false,
+          });
+        }
         const effectData = {
-          x: data.parrierX + 150 + frontOffset,
-          // Match the hit-spark height so parry sits inline with where hits land.
-          y: HIT_EFFECT_Y,
-          facing: facing,
+          x: rawX,
+          y: rawY,
+          facing: rawFacing,
           timestamp: data.timestamp,
           parryId: data.parryId,
           isPerfect: data.isPerfect || false,
           playerNumber: data.playerNumber || 1,
+          presentationEventId: rawPres?.eventId || null,
         };
         setRawParryEffectPosition(effectData);
         if (data.playerNumber === 1) {
@@ -4172,20 +4422,56 @@ const GameFighter = ({
         });
       }
       if (index !== 0) return;
-      // Prefer server tip-seam; fall back to a short front offset from parrier.
+      // Phase 9: snapshotted contact from combatPresentation; claim once.
+      const blockPres = readCombatPresentation(data);
+      const blockPlace = blockPres
+        ? worldPlacementFromPresentation(blockPres)
+        : null;
+      if (blockPres && !claimPresentationEvent(blockPres.eventId)) {
+        notePlacementDebug({
+          eventId: blockPres.eventId,
+          profileId: blockPres.profileId,
+          defenseType: blockPres.defenseType,
+          outcome: blockPres.outcome,
+          defenseInstanceId: blockPres.defenseInstanceId,
+          deduped: true,
+        });
+        return;
+      }
       const facing = data.facing || 1;
       const FRONT_PX = 16;
-      const blockX =
-        typeof data.contactX === "number"
+      const blockX = blockPlace
+        ? blockPlace.x
+        : typeof data.contactX === "number"
           ? data.contactX
           : data.parrierX + facing * FRONT_PX;
+      const blockY = blockPlace ? blockPlace.y : HIT_EFFECT_Y;
+      if (blockPres && blockPlace) {
+        notePlacementDebug({
+          eventId: blockPres.eventId,
+          profileId: blockPres.profileId,
+          defenseType: blockPres.defenseType,
+          outcome: blockPres.outcome,
+          timingGrade: blockPres.timingGrade,
+          defenseInstanceId: blockPres.defenseInstanceId,
+          incomingActionInstanceId: blockPres.incomingActionInstanceId,
+          attackFamily: blockPres.attackFamily,
+          worldX: blockPlace.x,
+          worldY: blockPlace.y,
+          nx: blockPlace.nx,
+          fallback: blockPlace.fallback,
+          orientationSource: blockPlace.orientationSource,
+          deduped: false,
+        });
+      }
       const blockPan = xToPan(blockX);
       setBlockingEffectPosition({
         x: blockX,
-        y: HIT_EFFECT_Y,
-        facing,
+        y: blockY,
+        facing: blockPlace?.facingHint || facing,
         blockId: data.blockId,
         timestamp: data.timestamp,
+        presentationEventId: blockPres?.eventId || null,
       });
       // Same cue as a regular (non-perfect) raw parry — block is the lesser
       // outcome so it plays a hair quieter. A guard-crush adds a sharper snap.
@@ -4221,11 +4507,48 @@ const GameFighter = ({
           typeof data.breakerX === "number" &&
           typeof data.grabberX === "number"
         ) {
-          const centerX = (data.breakerX + data.grabberX) / 2;
+          const pres = readCombatPresentation(data);
+          const place = pres ? worldPlacementFromPresentation(pres) : null;
+          if (pres && !claimPresentationEvent(pres.eventId)) {
+            notePlacementDebug({
+              eventId: pres.eventId,
+              clinchInstanceId: pres.clinchInstanceId,
+              attackInstance: pres.actionInstanceId,
+              interactionType: pres.interactionType,
+              profileId: pres.profileId,
+              outcome: pres.outcome,
+              deduped: true,
+            });
+            return;
+          }
+          const centerX = place
+            ? place.x
+            : (data.breakerX + data.grabberX) / 2 + SPRITE_HALF_W;
+          const centerY = place ? place.y : PLAYER_MID_Y;
+          if (place) {
+            notePlacementDebug({
+              eventId: pres.eventId,
+              clinchInstanceId: pres.clinchInstanceId,
+              attackInstance: pres.actionInstanceId,
+              interactionType: pres.interactionType,
+              initiatorId: pres.initiatorId,
+              responderId: pres.responderId,
+              profileId: pres.profileId,
+              outcome: pres.outcome,
+              anchorType: place.anchorType,
+              worldX: place.x,
+              worldY: place.y,
+              nx: place.nx,
+              ny: place.ny,
+              fallback: place.fallback,
+              orientationSource: place.orientationSource,
+              deduped: false,
+            });
+          }
           setGrabBreakEffectPosition({
-            x: centerX + SPRITE_HALF_W,
-            y: PLAYER_MID_Y,
-            breakId: data.breakId || `break-${Date.now()}`,
+            x: centerX,
+            y: centerY,
+            breakId: data.breakId || pres?.eventId || `break-${Date.now()}`,
             breakerPlayerNumber: data.breakerPlayerNumber || 1,
           });
           playSound(grabBreakSound, 0.01);
@@ -4234,43 +4557,115 @@ const GameFighter = ({
       socket.on("grab_break", handleGrabBreak);
 
       // Mutual grab-at-once is a quiet clinch (no TECH rings / pose).
-      // GrabTechEffect is still used for clinch throw-clash tumble below.
+      // GrabTechEffect: prefer authoritative clinch_callout type=grab_tech;
+      // keep rising-edge backup for older payloads / missed sockets.
 
-      let wasClinchClashing = false;
-      handleClinchTech = (_state, data) => {
+      const spawnClinchTechFx = (data) => {
+        const pres = readCombatPresentation(data);
+        const place = pres ? worldPlacementFromPresentation(pres) : null;
+        if (pres && !claimPresentationEvent(pres.eventId)) {
+          notePlacementDebug({
+            eventId: pres.eventId,
+            clinchInstanceId: pres.clinchInstanceId,
+            interactionType: pres.interactionType,
+            profileId: pres.profileId,
+            deduped: true,
+          });
+          return;
+        }
         const shared = getSharedFighterState();
         const p1 = shared.player1;
         const p2 = shared.player2;
-        if (!p1 || !p2) return;
-        const nowClashing = p1.isClinchClashing || p2.isClinchClashing;
-        if (nowClashing && !wasClinchClashing) {
-          const centerX = (p1.x + p2.x) / 2;
-          setGrabTechEffectPosition({
-            x: centerX + SPRITE_HALF_W,
-            y: PLAYER_MID_Y,
-            techId: `clinch-tech-${Date.now()}`,
-            facing: p1.x < p2.x ? 1 : -1,
+        const fallbackX =
+          p1 && p2 ? (p1.x + p2.x) / 2 + SPRITE_HALF_W : PLAYER_MID_Y;
+        const x = place
+          ? place.x
+          : typeof data?.x === "number"
+            ? data.x + SPRITE_HALF_W
+            : fallbackX;
+        const y = place ? place.y : PLAYER_MID_Y;
+        const facing =
+          place?.facingHint ||
+          (p1 && p2 ? (p1.x < p2.x ? 1 : -1) : 1);
+        if (place) {
+          notePlacementDebug({
+            eventId: pres.eventId,
+            clinchInstanceId: pres.clinchInstanceId,
+            attackInstance: pres.actionInstanceId,
+            interactionType: pres.interactionType,
+            profileId: pres.profileId,
+            outcome: pres.outcome,
+            anchorType: place.anchorType,
+            worldX: place.x,
+            worldY: place.y,
+            nx: place.nx,
+            ny: place.ny,
+            fallback: place.fallback,
+            orientationSource: place.orientationSource,
+            facingHint: place.facingHint,
+            deduped: false,
           });
-          playSound(isTechingSound, 0.04);
         }
-        wasClinchClashing = nowClashing;
+        setGrabTechEffectPosition({
+          x,
+          y,
+          techId: data?.techId || data?.calloutId || pres?.eventId || `clinch-tech-${Date.now()}`,
+          facing,
+        });
+        playSound(isTechingSound, 0.04);
       };
-      unsubClinchTech = subscribeFighterSnapshot(handleClinchTech);
+
+      // Clash TECH rings are owned by clinch_callout type=grab_tech (Phase 8).
+      // No per-tick / snapshot rising-edge spawn — prevents double TECH.
+      handleClinchTech = null;
+      unsubClinchTech = null;
 
       handleCounterGrab = (data) => {
         if (data?.type !== "counter_grab") return;
-        const x =
-          typeof data.grabbedX === "number"
+        const pres = readCombatPresentation(data);
+        const place = pres ? worldPlacementFromPresentation(pres) : null;
+        if (pres && !claimPresentationEvent(pres.eventId)) {
+          notePlacementDebug({
+            eventId: pres.eventId,
+            interactionType: pres.interactionType,
+            profileId: pres.profileId,
+            deduped: true,
+          });
+          return;
+        }
+        const x = place
+          ? place.x
+          : typeof data.grabbedX === "number"
             ? data.grabbedX + SPRITE_HALF_W
             : (data.grabberX + data.grabbedX) / 2 + SPRITE_HALF_W;
-        const y = PLAYER_MID_Y;
+        const y = place ? place.y : PLAYER_MID_Y;
+        if (place) {
+          notePlacementDebug({
+            eventId: pres.eventId,
+            clinchInstanceId: pres.clinchInstanceId,
+            attackInstance: pres.actionInstanceId,
+            interactionType: pres.interactionType,
+            initiatorId: pres.initiatorId,
+            responderId: pres.responderId,
+            profileId: pres.profileId,
+            outcome: pres.outcome,
+            anchorType: place.anchorType,
+            worldX: place.x,
+            worldY: place.y,
+            nx: place.nx,
+            ny: place.ny,
+            fallback: place.fallback,
+            orientationSource: place.orientationSource,
+            deduped: false,
+          });
+        }
         setCounterGrabEffectPosition({
           type: "counter_grab",
           x,
           y,
           grabberId: data.grabberId,
           grabbedId: data.grabbedId,
-          counterId: data.counterId || `counter-grab-${Date.now()}`,
+          counterId: data.counterId || pres?.eventId || `counter-grab-${Date.now()}`,
           grabberPlayerNumber: data.grabberPlayerNumber || 1,
         });
         playSound(counterGrabSound, 0.035);
@@ -4281,6 +4676,34 @@ const GameFighter = ({
         if (!data || data.type !== "matador_success") return;
         // Yank SFX/shake + gold MATADOR stamp. Keep regular gold plumes
         // running through the pull (no extra on-hit particle burst).
+        // Phase 9: presentation identity for dedupe; stamp stays screen-space HUD.
+        const matPres = readCombatPresentation(data);
+        if (matPres && !claimPresentationEvent(matPres.eventId)) {
+          notePlacementDebug({
+            eventId: matPres.eventId,
+            profileId: matPres.profileId,
+            defenseType: matPres.defenseType,
+            outcome: matPres.outcome,
+            defenseInstanceId: matPres.defenseInstanceId,
+            screenSpaceCallout: true,
+            deduped: true,
+          });
+          return;
+        }
+        if (matPres) {
+          notePlacementDebug({
+            eventId: matPres.eventId,
+            profileId: matPres.profileId,
+            defenseType: matPres.defenseType,
+            outcome: matPres.outcome,
+            defenseInstanceId: matPres.defenseInstanceId,
+            incomingActionInstanceId: matPres.incomingActionInstanceId,
+            worldX: matPres.x,
+            worldY: matPres.y,
+            screenSpaceCallout: !!matPres.screenSpaceCallout,
+            deduped: false,
+          });
+        }
         const matX = data.matadorX ?? data.x;
         const grabX = data.grabberX ?? data.x;
         const pullDirection =
@@ -4297,6 +4720,7 @@ const GameFighter = ({
           addShake("matador", { dirX: pullDirection });
           setMatadorSuccessStampPosition({
             counterId:
+              matPres?.defenseInstanceId ||
               data.matadorId_token ||
               `matador-${data.matadorId || Date.now()}`,
             playerNumber: data.matadorPlayerNumber || 1,
@@ -4305,13 +4729,20 @@ const GameFighter = ({
       };
       socket.on("matador_success", handleMatadorSuccess);
 
-      // Clinch stance-read banners (counter_throw only emits after a LAND)
+      // Clinch stance-read banners + grab_tech world rings (Phase 8).
       handleClinchCallout = (data) => {
-        if (!data || data.type !== "counter_throw") return;
+        if (!data) return;
+        if (data.type === "grab_tech") {
+          spawnClinchTechFx(data);
+          return;
+        }
+        if (data.type !== "counter_throw") return;
+        const pres = readCombatPresentation(data);
+        if (pres && !claimPresentationEvent(pres.eventId)) return;
         setClinchCalloutData({
           type: data.type,
           playerNumber: data.playerNumber || 1,
-          calloutId: data.calloutId || `clinch-callout-${Date.now()}`,
+          calloutId: data.calloutId || pres?.eventId || `clinch-callout-${Date.now()}`,
         });
       };
       socket.on("clinch_callout", handleClinchCallout);
@@ -4319,9 +4750,11 @@ const GameFighter = ({
       // Failed throw/pull — RESISTED plaque, or PERFECT BRACE hype stamp
       handleClinchThrowFail = (data) => {
         if (!data) return;
+        const pres = readCombatPresentation(data);
+        if (pres && !claimPresentationEvent(pres.eventId)) return;
         if (data.perfectBrace) {
           setPerfectBraceStampPosition({
-            braceId: data.failId || `perfect-brace-${Date.now()}`,
+            braceId: data.failId || pres?.eventId || `perfect-brace-${Date.now()}`,
             playerNumber: data.playerNumber || 1,
           });
           return;
@@ -4329,7 +4762,7 @@ const GameFighter = ({
         setClinchCalloutData({
           type: "resisted",
           playerNumber: data.playerNumber || 1,
-          calloutId: data.failId || `clinch-fail-${Date.now()}`,
+          calloutId: data.failId || pres?.eventId || `clinch-fail-${Date.now()}`,
         });
       };
       socket.on("clinch_throw_fail", handleClinchThrowFail);
@@ -4337,10 +4770,12 @@ const GameFighter = ({
       // Deep grip earned — announce on the holder's side
       handleDeepGrip = (data) => {
         if (!data) return;
+        const pres = readCombatPresentation(data);
+        if (pres && !claimPresentationEvent(pres.eventId)) return;
         setClinchCalloutData({
           type: "deep_grip",
           playerNumber: data.playerNumber || 1,
-          calloutId: data.gripId || `deep-grip-${Date.now()}`,
+          calloutId: data.gripId || pres?.eventId || `deep-grip-${Date.now()}`,
         });
       };
       socket.on("deep_grip", handleDeepGrip);
@@ -4379,18 +4814,74 @@ const GameFighter = ({
     }
 
     const handleSnowballHit = (data) => {
-      if (data && typeof data.x === "number" && typeof data.y === "number") {
-        lastPlayerHitTime.current = Date.now();
-        if (index === 0) {
-          playSound(hitSound, 0.02, null, 1.0, xToPan(data.x));
-        }
-        setSnowballImpactPosition({
-          x: data.x + 70,
-          y: data.y + 50,
-          facing: data.facing,
-          hitId: data.hitId || `snowball-${Date.now()}`,
+      if (!data || typeof data.x !== "number" || typeof data.y !== "number") {
+        return;
+      }
+      lastPlayerHitTime.current = Date.now();
+      // Index 0 owns world-space impact VFX (both fighters used to double-spawn).
+      if (index !== 0) return;
+      const hitPres = readCombatPresentation(data);
+      const hitPlace = hitPres
+        ? worldPlacementFromPresentation(hitPres)
+        : null;
+      if (hitPres && !claimPresentationEvent(hitPres.eventId)) {
+        notePlacementDebug({
+          eventId: hitPres.eventId,
+          profileId: hitPres.profileId,
+          projectileInstanceId: hitPres.projectileInstanceId,
+          projectileType: hitPres.projectileType,
+          lifecycleStage: hitPres.lifecycleStage,
+          outcome: hitPres.outcome,
+          ownerId: hitPres.ownerId,
+          targetId: hitPres.targetId,
+          deduped: true,
+          cleanupOwner: "claim",
+        });
+        return;
+      }
+      // Prefer presentation contact (projectile X). Legacy fallback: victim+70
+      // was always +X — only used when presentation is missing.
+      const impactX = hitPlace
+        ? hitPlace.x
+        : typeof data.x === "number"
+          ? data.x
+          : 640;
+      const impactY = hitPlace ? hitPlace.y : data.y + 50;
+      const impactFacing =
+        hitPlace?.facingHint || data.facing || 1;
+      const hitId =
+        hitPres?.eventId ||
+        data.hitId ||
+        data.projectileInstanceId ||
+        `snowball-${Date.now()}`;
+      if (hitPres && hitPlace) {
+        notePlacementDebug({
+          eventId: hitPres.eventId,
+          profileId: hitPres.profileId,
+          projectileInstanceId: hitPres.projectileInstanceId,
+          projectileType: hitPres.projectileType,
+          lifecycleStage: hitPres.lifecycleStage,
+          outcome: hitPres.outcome,
+          ownerId: hitPres.ownerId,
+          targetId: hitPres.targetId,
+          worldX: hitPlace.x,
+          worldY: hitPlace.y,
+          approachX: hitPres.ax,
+          facingHint: hitPlace.facingHint,
+          orientationSource: hitPlace.orientationSource,
+          terminalX: hitPres.terminalX,
+          terminalY: hitPres.terminalY,
+          deduped: false,
+          cleanupOwner: "index0",
         });
       }
+      playSound(hitSound, 0.02, null, 1.0, xToPan(impactX));
+      setSnowballImpactPosition({
+        x: impactX,
+        y: impactY,
+        facing: impactFacing,
+        hitId,
+      });
     };
     socket.on("snowball_hit", handleSnowballHit);
 
@@ -4431,6 +4922,12 @@ const GameFighter = ({
       setHasUsedPowerUp(false);
       setGyojiCall(null); // Clear gyoji call
       setRawParryEffectPosition(null); // Clear any active parry effects
+      setHitEffectPosition(null);
+      setParryEffectPosition(null);
+      setSnowballImpactPosition(null);
+      clearPresentationEvents();
+      clearPlacementDebug();
+      clearPoseGeometryDebug();
       setBlockingEffectPosition(null);
       setGuardBlockSuccess(false);
       if (guardBlockSuccessTimeoutRef.current) {
@@ -4505,6 +5002,7 @@ const GameFighter = ({
       setGyojiState("ready");
       setHakkiyoi(true);
       setRawParryEffectPosition(null); // Clear any leftover parry effects
+      setSnowballImpactPosition(null);
       setBlockingEffectPosition(null);
       setGuardBlockSuccess(false);
       if (guardBlockSuccessTimeoutRef.current) {
@@ -4905,13 +5403,23 @@ const GameFighter = ({
       const sincePredicted =
         performance.now() - predictedSwingSoundAtRef.current.dodge;
       if (sincePredicted >= PREDICTED_SOUND_SUPPRESS_MS) {
-        playSound(dodgeSound, 0.02);
-        emitParticles("dashStart", {
-          x: penguin.dodgeStartX ?? penguin.x,
-          y: penguin.y,
-          direction: penguin.dodgeDirection ?? penguin.facing ?? 1,
-          facing: penguin.facing ?? 1,
-        });
+        if (!isAirborneForMovementSmoke(penguin)) {
+          const moveDir = normalizeMoveDir(
+            penguin.dodgeDirection,
+            penguin.facing === 1 ? -1 : 1
+          );
+          const worldX = penguin.dodgeStartX ?? penguin.x;
+          const smoke = claimMovementSmoke({
+            fighterId: player.id,
+            transitionType: MOVEMENT_SMOKE_TRANSITION.DODGE_START,
+            moveDir,
+            worldX,
+          });
+          playSound(dodgeSound, 0.02);
+          if (smoke) {
+            emitParticles("dashStart", movementSmokeEmitArgs(smoke));
+          }
+        }
       }
     }
     lastDodgeState.current = penguin.isDodging;
@@ -4922,6 +5430,9 @@ const GameFighter = ({
     penguin.facing,
     penguin.x,
     penguin.y,
+    penguin.isSlideJumping,
+    penguin.isFlapping,
+    player.id,
     emitParticles,
   ]);
 
@@ -4948,8 +5459,11 @@ const GameFighter = ({
 
         emitParticles("dashSparkTrail", {
           x: curX,
-          y: penguin.y,
-          direction: penguin.dodgeDirection ?? penguin.facing ?? 1,
+          y: MOVEMENT_SMOKE_GROUND_Y,
+          direction: normalizeMoveDir(
+            penguin.dodgeDirection,
+            penguin.facing === 1 ? -1 : 1
+          ),
         });
       }, EMIT_INTERVAL);
     } else {
@@ -4982,8 +5496,6 @@ const GameFighter = ({
   // (dodgeDirection is cleared on the land tick that arms the slide). X-delta
   // only fills speed + brief prediction gaps.
   const isIceSlidingRef = useRef(false);
-  const iceSlideDirRef = useRef(1);
-  const lastDodgeDirRef = useRef(1);
   const iceSlideLastXRef = useRef(null);
   const prevIceSlidingForParticles = useRef(false);
 
@@ -5015,6 +5527,11 @@ const GameFighter = ({
     penguin.iceSlideDir,
   ]);
 
+  // Keep hop edge ref in sync when snapshot path didn't already update it.
+  useEffect(() => {
+    prevIceSlideReverseHop.current = !!penguin.isIceSlideReverseHopping;
+  }, [penguin.isIceSlideReverseHopping]);
+
   useEffect(() => {
     const active =
       !!penguin.isIceSliding &&
@@ -5025,17 +5542,22 @@ const GameFighter = ({
       const pos = interpolatedPositionRef.current;
       const startX = pos?.x ?? penguin.x;
       iceSlideLastXRef.current = startX;
-      const commitDir =
-        typeof penguin.iceSlideDir === "number" && penguin.iceSlideDir !== 0
-          ? Math.sign(penguin.iceSlideDir)
-          : lastDodgeDirRef.current || iceSlideDirRef.current || 1;
+      const commitDir = normalizeMoveDir(
+        penguin.iceSlideDir,
+        lastDodgeDirRef.current || iceSlideDirRef.current || 1
+      );
       iceSlideDirRef.current = commitDir;
-      emitParticles("iceSlideStart", {
-        x: startX,
-        y: pos?.y ?? penguin.y,
-        direction: commitDir,
-        facing: penguin.facing || 1,
-      });
+      if (!isAirborneForMovementSmoke(penguin)) {
+        const smoke = claimMovementSmoke({
+          fighterId: player.id,
+          transitionType: MOVEMENT_SMOKE_TRANSITION.SLIDE_START,
+          moveDir: commitDir,
+          worldX: startX,
+        });
+        if (smoke) {
+          emitParticles("iceSlideStart", movementSmokeEmitArgs(smoke));
+        }
+      }
     }
     prevIceSlidingForParticles.current = active;
     if (!active) {
@@ -5051,7 +5573,6 @@ const GameFighter = ({
 
       const p = penguinRef.current;
       const curX = interpolatedPositionRef.current.x || p.x;
-      const curY = interpolatedPositionRef.current.y || p.y;
       const lastX = iceSlideLastXRef.current;
       iceSlideLastXRef.current = curX;
       const dx = lastX == null ? 0 : curX - lastX;
@@ -5069,11 +5590,12 @@ const GameFighter = ({
         1.5
       );
 
+      // Trail stays grounded — never inherit airborne Y from interp.
       emitParticles("iceSlideTrail", {
         x: curX,
-        y: curY,
+        y: MOVEMENT_SMOKE_GROUND_Y,
         direction: iceSlideDirRef.current || 1,
-        facing: p.facing || 1,
+        facing: iceSlideDirRef.current || 1,
         speed: Math.max(speed, 0.35),
         braking: !!p.isBraking || !!predictedState.current?.isBraking,
       });
@@ -5088,6 +5610,7 @@ const GameFighter = ({
     penguin.isDodging,
     penguin.isSlideJumping,
     penguin.iceSlideDir,
+    player.id,
     emitParticles,
   ]);
 
@@ -5356,33 +5879,87 @@ const GameFighter = ({
   // Grab throw landing — dust burst when the thrown player hits the ground.
   // Kill throw victims get an enhanced landing cloud + impact sound.
   // Rise trail + launch sound are handled via the "clinch_kill_throw" socket event.
+  // Phase 8: screen_shake may carry combatPresentation for land identity/dedupe.
   const wasBeingThrown = useRef(false);
+  const pendingThrowLandPresRef = useRef(null);
+  useEffect(() => {
+    if (!socket) return undefined;
+    const onThrowLandShake = (data) => {
+      if (
+        data?.type !== "throw_landing" &&
+        data?.type !== "kill_throw_land"
+      ) {
+        return;
+      }
+      const pres = readCombatPresentation(data);
+      if (pres) pendingThrowLandPresRef.current = pres;
+    };
+    socket.on("screen_shake", onThrowLandShake);
+    return () => socket.off("screen_shake", onThrowLandShake);
+  }, [socket]);
   useEffect(() => {
     let echoId = null;
     if (wasBeingThrown.current && !penguin.isBeingThrown) {
       const landX = interpolatedPositionRef.current.x || penguin.x;
-      if (penguin.isClinchKillThrowVictim) {
-        const outsideDohyo = landX <= DOHYO_LEFT_BOUNDARY || landX >= DOHYO_RIGHT_BOUNDARY;
-        emitParticles("clinchKillThrowLand", {
-          x: landX,
-          y: penguin.y,
-          behindDohyo: outsideDohyo,
+      const landPres = pendingThrowLandPresRef.current;
+      pendingThrowLandPresRef.current = null;
+      const place = landPres
+        ? worldPlacementFromPresentation(landPres)
+        : null;
+      const landEventId =
+        landPres?.eventId ||
+        `throw-land:${penguin.id}:${Math.round(landX)}:${
+          penguin.isClinchKillThrowVictim ? "kill" : "norm"
+        }`;
+      if (!claimPresentationEvent(landEventId)) {
+        notePlacementDebug({
+          eventId: landEventId,
+          interactionType: landPres?.interactionType || "throw_land",
+          deduped: true,
         });
-        playSound(chargedHit04, 0.09, null, 0.6, xToPan(landX));
-        // Aftershock — server already fired the main kill_throw_land boom;
-        // a delayed echo sells the comic "the ground is still ringing" beat.
-        echoId = setTimeout(() => {
-          addShake("kill_throw_land", { scale: 0.55 });
-        }, 95);
       } else {
-        emitParticles("throwLand", { x: landX, y: penguin.y });
+        const px = place ? place.x : landX;
+        const py = place ? place.y : penguin.y;
+        if (place && landPres) {
+          notePlacementDebug({
+            eventId: landPres.eventId,
+            clinchInstanceId: landPres.clinchInstanceId,
+            attackInstance: landPres.actionInstanceId,
+            interactionType: landPres.interactionType,
+            profileId: landPres.profileId,
+            outcome: landPres.outcome,
+            anchorType: place.anchorType,
+            worldX: place.x,
+            worldY: place.y,
+            fallback: place.fallback,
+            orientationSource: place.orientationSource,
+            deduped: false,
+          });
+        }
+        if (penguin.isClinchKillThrowVictim) {
+          const outsideDohyo =
+            px <= DOHYO_LEFT_BOUNDARY || px >= DOHYO_RIGHT_BOUNDARY;
+          emitParticles("clinchKillThrowLand", {
+            x: px,
+            y: py,
+            behindDohyo: outsideDohyo,
+          });
+          playSound(chargedHit04, 0.09, null, 0.6, xToPan(px));
+          // Aftershock — server already fired the main kill_throw_land boom;
+          // a delayed echo sells the comic "the ground is still ringing" beat.
+          echoId = setTimeout(() => {
+            addShake("kill_throw_land", { scale: 0.55 });
+          }, 95);
+        } else {
+          emitParticles("throwLand", { x: px, y: py });
+        }
       }
     }
     wasBeingThrown.current = !!penguin.isBeingThrown;
     return () => {
       if (echoId) clearTimeout(echoId);
     };
-  }, [penguin.isBeingThrown, penguin.isClinchKillThrowVictim, penguin.x, penguin.y, emitParticles]);
+  }, [penguin.isBeingThrown, penguin.isClinchKillThrowVictim, penguin.id, penguin.x, penguin.y, emitParticles]);
 
   // Warm the throw-kill landing pose as soon as the victim flag arms, so the
   // mid-arc hit→landing src swap paints from an already-decoded bitmap instead
@@ -5488,6 +6065,7 @@ const GameFighter = ({
   // (flapLiftoff untouched). Forward nudge for slide carry; extra lift so the
   // plume sits on sliding.png's crouch (pads sit above the img bottom gutter).
   const prevSlideJumpPhase = useRef(null);
+  const oaTouchdownSeqRef = useRef(0);
   useEffect(() => {
     const x = interpolatedPositionRef.current.x || penguin.x;
     const y = interpolatedPositionRef.current.y || penguin.y;
@@ -5510,22 +6088,39 @@ const GameFighter = ({
       prevSlideJumpPhase.current !== "landing" &&
       penguin.slideJumpPhase === "landing"
     ) {
-      // Same belly-flop land burst flap uses (edited landing smoke + ice shards).
-      if (
+      // Phase 6: one logical touchdown presentation per land edge (deduped).
+      const diveLand =
         flapFastFallAtLandRef.current ||
         penguin.slideJumpDiveCommitted ||
-        penguin.slideJumpFastFalling
-      ) {
-        emitParticles("flapFastFallLand", {
-          x,
-          y: SHADOW_GROUND_LEVEL,
+        penguin.slideJumpFastFalling;
+      oaTouchdownSeqRef.current += 1;
+      const landEventId = `${penguin.id || "p"}:OA_TOUCHDOWN:${oaTouchdownSeqRef.current}`;
+      if (claimPresentationEvent(landEventId)) {
+        notePlacementDebug({
+          eventId: landEventId,
+          profileId: diveLand ? "OA_DIVE_TOUCHDOWN" : "OA_SLIDE_JUMP_TOUCHDOWN",
+          anchorType: "GROUND_CONTACT",
+          worldX: x,
+          worldY: SHADOW_GROUND_LEVEL,
+          nx: 0,
+          ny: 1,
+          fallback: 3,
+          orientationSource: "GROUND_UP",
+          deduped: false,
         });
-        addShake("throw_landing");
-      } else {
-        emitParticles("throwLand", {
-          x,
-          y: SHADOW_GROUND_LEVEL,
-        });
+        // Same belly-flop land burst flap uses (edited landing smoke + ice shards).
+        if (diveLand) {
+          emitParticles("flapFastFallLand", {
+            x,
+            y: SHADOW_GROUND_LEVEL,
+          });
+          addShake("throw_landing");
+        } else {
+          emitParticles("throwLand", {
+            x,
+            y: SHADOW_GROUND_LEVEL,
+          });
+        }
       }
       flapFastFallAtLandRef.current = false;
     }
@@ -6521,23 +7116,62 @@ const GameFighter = ({
     socket.on("cinematic_kill", handleCinematicKill);
 
     const handleClinchJolt = (data) => {
+      // Index 0 owns world jolt VFX/SFX — both fighters previously double-spawned.
+      if (index !== 0) return;
       const isMutual = data.type === "mutual";
+      const pres = readCombatPresentation(data);
+      const place = pres ? worldPlacementFromPresentation(pres) : null;
+      if (pres && !claimPresentationEvent(pres.eventId)) {
+        notePlacementDebug({
+          eventId: pres.eventId,
+          clinchInstanceId: pres.clinchInstanceId,
+          interactionType: pres.interactionType,
+          profileId: pres.profileId,
+          deduped: true,
+        });
+        return;
+      }
       const midX =
         typeof data.contactX === "number"
           ? data.contactX
-          : (data.jolterX + data.targetX) / 2;
-      const pushDir = data.jolterX < data.targetX ? 1 : -1;
-      // Mutual: dead center (clinch attach seam). Single: nudge toward target chest.
-      const chestOffset =
-        isMutual || typeof data.contactX === "number"
-          ? 0
-          : (data.targetX - midX) * 0.6;
-      const effectX = midX + chestOffset;
+          : typeof data.jolterX === "number" && typeof data.targetX === "number"
+            ? (data.jolterX + data.targetX) / 2
+            : 640;
+      const pushDir =
+        typeof data.direction === "number" && data.direction !== 0
+          ? data.direction
+          : data.jolterX < data.targetX
+            ? 1
+            : -1;
+      // Shared grip seam origin for both unilateral and mutual (no initiator bias).
+      const effectX = place ? place.x : midX;
+      const effectY = place ? place.y : CLINCH_GRIP_CONTACT_Y;
+      if (place) {
+        notePlacementDebug({
+          eventId: pres.eventId,
+          clinchInstanceId: pres.clinchInstanceId,
+          attackInstance: pres.actionInstanceId,
+          interactionType: pres.interactionType,
+          initiatorId: pres.initiatorId,
+          responderId: pres.responderId,
+          profileId: pres.profileId,
+          outcome: pres.outcome,
+          anchorType: place.anchorType,
+          worldX: place.x,
+          worldY: place.y,
+          nx: place.nx,
+          ny: place.ny,
+          fallback: place.fallback,
+          orientationSource: place.orientationSource,
+          facingHint: place.facingHint,
+          deduped: false,
+        });
+      }
       setClinchJoltEffectPosition({
         x: effectX,
-        y: PLAYER_MID_Y,
-        joltId: `clinch-jolt-${Date.now()}`,
-        direction: pushDir,
+        y: effectY,
+        joltId: data.joltId || pres?.eventId || `clinch-jolt-${Date.now()}`,
+        direction: place?.nx || pushDir,
         isMutual,
       });
       const pan = xToPan(effectX);
@@ -6548,6 +7182,21 @@ const GameFighter = ({
     const handleClinchKillThrow = (data) => {
       const isVictim = player.id === data.victimId;
       if (!isVictim) return;
+      const launchPres = readCombatPresentation(data);
+      if (launchPres && !claimPresentationEvent(launchPres.eventId)) return;
+      if (launchPres) {
+        notePlacementDebug({
+          eventId: launchPres.eventId,
+          clinchInstanceId: launchPres.clinchInstanceId,
+          attackInstance: launchPres.actionInstanceId,
+          interactionType: launchPres.interactionType,
+          profileId: launchPres.profileId,
+          outcome: launchPres.outcome,
+          worldX: launchPres.x,
+          worldY: launchPres.y,
+          deduped: false,
+        });
+      }
 
       const launchX = data.victimX;
       const hitstopDelay = Math.max(0, (data.hitstopMs || 0));
@@ -6637,8 +7286,44 @@ const GameFighter = ({
 
       // Both GameFighter components receive this event. Only the
       // defender's component emits the VFX/sound (so it can use its
-      // own position ref).
+      // own position ref). Follow-the-defender remain state-owned.
       if (data.defenderId !== penguin.id) return;
+      const absorbPres = readCombatPresentation(data);
+      if (absorbPres && !claimPresentationEvent(absorbPres.eventId)) {
+        notePlacementDebug({
+          eventId: absorbPres.eventId,
+          profileId: absorbPres.profileId,
+          projectileInstanceId:
+            absorbPres.incomingActionInstanceId ||
+            data.projectileInstanceId ||
+            null,
+          projectileType: data.projectileType || absorbPres.attackFamily,
+          lifecycleStage: "ABSORB",
+          outcome: absorbPres.outcome,
+          defenseInstanceId: absorbPres.defenseInstanceId,
+          deduped: true,
+          cleanupOwner: "claim",
+        });
+        return;
+      }
+      if (absorbPres) {
+        notePlacementDebug({
+          eventId: absorbPres.eventId,
+          profileId: absorbPres.profileId,
+          projectileInstanceId:
+            absorbPres.incomingActionInstanceId ||
+            data.projectileInstanceId ||
+            null,
+          projectileType: data.projectileType || absorbPres.attackFamily,
+          lifecycleStage: "ABSORB",
+          outcome: absorbPres.outcome,
+          defenseInstanceId: absorbPres.defenseInstanceId,
+          worldX: data.x,
+          worldY: data.y,
+          deduped: false,
+          cleanupOwner: "defender-follow",
+        });
+      }
 
       // ── ABSORB SPAWN POSITION ──────────────────────────────────────
       // Starts from the same chest-height slap-hit offset that the slap
@@ -6692,16 +7377,23 @@ const GameFighter = ({
     const handleGrabArmorBreak = (data) => {
       if (typeof data?.x !== "number") return;
       if (data.defenderId !== penguin.id) return;
+      const breakPres = readCombatPresentation(data);
+      const breakPlace = breakPres
+        ? worldPlacementFromPresentation(breakPres)
+        : null;
+      if (breakPres && !claimPresentationEvent(breakPres.eventId)) return;
       const breakFacing = data.facing || 1;
-      // Prefer server tip-seam; fall back to charged HIT_FX offsets.
+      // Prefer presentation / server tip-seam; fall back to charged HIT_FX offsets.
       const facingOffsetPx = (-5.5 + breakFacing * -1.0) * 12.8;
-      const fxX =
-        typeof data.contactX === "number"
+      const fxX = breakPlace
+        ? breakPlace.x
+        : typeof data.contactX === "number"
           ? data.contactX
           : data.x + 70 + facingOffsetPx;
+      const fxY = breakPlace ? breakPlace.y : HIT_EFFECT_Y;
       emitParticles("grabArmorBreak", {
         x: fxX,
-        y: HIT_EFFECT_Y,
+        y: fxY,
         facing: breakFacing,
       });
       playSound(glassBreakSound, 0.05, null, 1.0, xToPan(fxX));
@@ -7109,6 +7801,50 @@ const GameFighter = ({
     lastNonIdleSpriteRef.current = displaySpriteSrc;
     idleHoldUntilRef.current = 0;
   }
+
+  // Phase 11 — pose registration (presentation-only; default OFF).
+  // Charged headbutt flight is intentionally airborne — never sole-corrected.
+  const isChargedFlight =
+    !!displayPenguin.isAttacking && !displayPenguin.isSlapAttack;
+  const posePresentationState = displayPenguin.isChargingAttack
+    ? "charging"
+    : isChargedFlight
+      ? "charged_flight"
+      : penguin.isRecovering
+        ? "recovering"
+        : null;
+  const poseAirborneHint =
+    displayPosition.y > SHADOW_GROUND_LEVEL + 4 ||
+    !!penguin.isSlideJumping ||
+    !!penguin.isFlapping ||
+    !!penguin.isRopeJumping ||
+    !!penguin.isBeingThrown ||
+    isChargedFlight ||
+    (!!displayPenguin.isDodging && !penguin.justLandedFromDodge);
+  const poseResolved = resolvePoseRender({
+    src: effectiveSpriteSrc,
+    presentationState: posePresentationState,
+    gameplayX: displayPosition.x,
+    gameplayY: displayPosition.y,
+    facing: penguin.facing ?? -1,
+    airborneHint: poseAirborneHint,
+  });
+  poseRenderOffsetRef.current = {
+    ox: poseResolved.appliedOffsetX,
+    oy: poseResolved.appliedOffsetY,
+    v2: poseResolved.v2,
+  };
+  if (
+    isPoseGeometryV2Enabled() &&
+    penguin.fighter === "player 1" &&
+    shouldUpdateCombatFidelityOverlay()
+  ) {
+    notePoseGeometryDebug(poseResolved);
+  }
+  const poseSoleOrigin =
+    poseResolved.v2 && poseResolved.grounded
+      ? soleTransformOriginCss(poseResolved.soleFromBottomPct)
+      : undefined;
 
   // ── Hit visual response: mutually exclusive white flash XOR red tint ──
   // A single hit only ever produces ONE of these two responses, never both.
@@ -7528,8 +8264,9 @@ const GameFighter = ({
     $isBeingPushed: penguin.isBeingPushed,
     $grabState: penguin.grabState,
     $grabAttemptType: penguin.grabAttemptType,
-    $x: displayPosition.x,
-    $y: displayPosition.y,
+    $x: poseResolved.renderX,
+    $y: poseResolved.renderY,
+    $poseSoleOrigin: poseSoleOrigin,
     $facing: penguin.facing ?? -1,
     $throwCooldown: penguin.throwCooldown,
     $grabCooldown: penguin.grabCooldown,
@@ -8154,7 +8891,9 @@ const GameFighter = ({
       <GoredBannerEffect position={goredBannerPosition} />
       <MatadorSuccessEffect position={matadorSuccessStampPosition} />
       <CounterHitEffect position={counterHitEffectPosition} />
-      <SnowballImpactEffect position={snowballImpactPosition} />
+      {index === 0 && (
+        <SnowballImpactEffect position={snowballImpactPosition} />
+      )}
       <StarStunEffect
         ref={starStunDomRef}
         x={displayPosition.x}

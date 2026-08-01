@@ -145,6 +145,25 @@ describe("Phase 5A — offensive aerial facing lock + presentation", () => {
     assert.equal(lock.allowSteerUpdate, false);
   });
 
+  it("7b. Touchdown handoff faces opponent (not stale travel facing)", () => {
+    const s = v2({ armFlap: true, flapFlight: true, attackerX: 500, defenderX: 560 });
+    placeDescendingOverOpponent(s, { height: 40 });
+    stepSlideJumpTick(s);
+    assert.equal(s.attacker.offensiveAerial?.outcome, OFFENSIVE_AERIAL_OUTCOME.HIT);
+    // Cross through during HIT continuation — travel facing was -1.
+    s.attacker.x = s.defender.x + 100;
+    s.attacker.slideJumpVelocityY = -6;
+    s.attacker.y = GROUND_LEVEL + 5;
+    runUntil(s, () => s.attacker.slideJumpPhase === "landing", 40);
+    const expected = s.attacker.x < s.defender.x ? -1 : 1;
+    const lock = getOffensiveAerialFacingLock(s.attacker);
+    assert.equal(lock?.reason, FACING_LOCK_REASON.LANDING);
+    assert.equal(lock.direction, expected);
+    assert.equal(s.attacker.facing, expected);
+    enforcePairFacing(s.attacker, s.defender);
+    assert.equal(s.attacker.facing, expected);
+  });
+
   it("8. Recovery completion restores neutral facing", () => {
     const s = v2({
       armFlap: true,
