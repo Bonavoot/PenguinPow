@@ -1,4 +1,3 @@
-import React from "react";
 import ReactDOM from "react-dom/client";
 
 // Display face — bundled via fontsource (offline-safe for Electron/Steam)
@@ -16,22 +15,19 @@ import "@fontsource/noto-sans-jp/600.css";
 import "./assets/fonts/material-symbols.css";
 import "./styles/typography.css";
 
-import App from "./App.jsx";
 import {
   ensurePerfRecorder,
   setupPerfShortcut,
 } from "./utils/perf/PerfRecorder";
-import { initGlobalVolumeFromSettings } from "./components/Settings.jsx";
-import { installAudioTraceGlobal } from "./combatAudio/index.js";
+
+const presentationLabRequested =
+  import.meta.env.DEV &&
+  new URLSearchParams(window.location.search).get("presentationLab") === "1";
 
 // Phase 0: opt-in performance recorder (?perf=1 or localStorage pumo_perf=1).
 // No-op when disabled. Overlay toggle: Ctrl+Shift+P.
 ensurePerfRecorder();
 setupPerfShortcut();
-
-// Apply saved SFX volume before first cue (preserves mute / non-default).
-initGlobalVolumeFromSettings();
-installAudioTraceGlobal();
 
 // Warm faces in the background — do not block first paint
 if (document.fonts?.load) {
@@ -44,4 +40,29 @@ if (document.fonts?.load) {
   ]).catch(() => {});
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+const root = ReactDOM.createRoot(document.getElementById("root"));
+
+if (presentationLabRequested) {
+  import("./presentationLab/PresentationLab.jsx").then(
+    ({ default: PresentationLab }) => {
+      root.render(<PresentationLab />);
+    },
+  );
+} else {
+  Promise.all([
+    import("./App.jsx"),
+    import("./components/Settings.jsx"),
+    import("./combatAudio/index.js"),
+  ]).then(
+    ([
+      { default: App },
+      { initGlobalVolumeFromSettings },
+      { installAudioTraceGlobal },
+    ]) => {
+      // Apply saved SFX volume before first cue (preserves mute / non-default).
+      initGlobalVolumeFromSettings();
+      installAudioTraceGlobal();
+      root.render(<App />);
+    },
+  );
+}
