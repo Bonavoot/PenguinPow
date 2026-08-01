@@ -1,9 +1,6 @@
 /**
  * Semantic combat-cue registry.
  * Gameplay code requests cue names; asset/layer choices live here.
- *
- * Placeholder mappings use existing library samples — tunable for playtest.
- * Durations in ms when cropping long assets for short cues.
  */
 
 /** Matches server-io/inputCommandReliability.js PALM_DIR_CHORD_MS */
@@ -13,14 +10,19 @@ export const SWING_STARTUP_MS = Object.freeze({
   slap: 55,
   palm: 90,
   lowKick: 95,
+  /** Hitbox startup only — NOT the charged lunge whoosh seam. */
   charged: 150,
 });
 
 export const CUE = Object.freeze({
   SLAP_WHIFF: "SLAP_WHIFF",
   PALM_WHIFF: "PALM_WHIFF",
-  CHARGED_ATTACK_RELEASE: "CHARGED_ATTACK_RELEASE",
+  /** Whoosh when charged forward locomotion begins (not hold, not hitbox active). */
+  CHARGED_LUNGE_BEGIN: "CHARGED_LUNGE_BEGIN",
+  /** @deprecated alias — maps to CHARGED_LUNGE_BEGIN definition */
+  CHARGED_ATTACK_RELEASE: "CHARGED_LUNGE_BEGIN",
   CLINCH_THROW_RESISTED: "CLINCH_THROW_RESISTED",
+  CLINCH_PERFECT_BRACE: "CLINCH_PERFECT_BRACE",
   ROPE_JUMP_LAUNCH: "ROPE_JUMP_LAUNCH",
   SLIDE_JUMP_LAUNCH: "SLIDE_JUMP_LAUNCH",
   SLIDE_REDIRECT: "SLIDE_REDIRECT",
@@ -28,9 +30,14 @@ export const CUE = Object.freeze({
   SLAP_PARRY: "SLAP_PARRY",
 });
 
+export const CINEMATIC_VARIANT = Object.freeze({
+  DEMOLISHED_CHARGED: "demolished_charged",
+  MATADOR_BREAK: "matador_break",
+  AP_PULL: "ap_pull",
+});
+
 /**
  * sampleKey values are resolved by the playback adapter against fighterAssets.
- * Keeping keys (not URLs) here keeps the registry free of bundler imports.
  */
 export const CUE_DEFINITIONS = Object.freeze({
   [CUE.SLAP_WHIFF]: {
@@ -55,8 +62,8 @@ export const CUE_DEFINITIONS = Object.freeze({
     authority: "reconcilable",
     priority: 40,
   },
-  [CUE.CHARGED_ATTACK_RELEASE]: {
-    label: "Charged attack release swoosh",
+  [CUE.CHARGED_LUNGE_BEGIN]: {
+    label: "Charged lunge begin whoosh",
     layers: [{ sampleKey: "attack", gain: 0.05, rate: 1.0 }],
     pitchVary: 0,
     minIntervalMs: 80,
@@ -68,15 +75,30 @@ export const CUE_DEFINITIONS = Object.freeze({
   },
   [CUE.CLINCH_THROW_RESISTED]: {
     label: "Clinch throw RESISTED",
-    // Existing grab-tech / is-teching placeholder — moderate gain, once per outcome.
-    layers: [{ sampleKey: "isTeching", gain: 0.035, rate: 1.0 }],
-    pitchVary: 0.03,
-    minIntervalMs: 120,
+    // Match proven grab-tech path gain (playSound(isTechingSound, 0.04)).
+    layers: [{ sampleKey: "isTeching", gain: 0.04, rate: 1.0 }],
+    pitchVary: 0.02,
+    minIntervalMs: 80,
     maxVoices: 2,
     voiceSteal: "none",
     cancelable: false,
     authority: "authoritative",
     priority: 70,
+  },
+  [CUE.CLINCH_PERFECT_BRACE]: {
+    label: "Clinch Perfect Brace",
+    // Tech base + quiet perfect-parry accent — more prestigious than RESISTED.
+    layers: [
+      { sampleKey: "isTeching", gain: 0.04, rate: 1.02 },
+      { sampleKey: "rawParrySuccess", gain: 0.018, rate: 1.08 },
+    ],
+    pitchVary: 0.02,
+    minIntervalMs: 80,
+    maxVoices: 2,
+    voiceSteal: "none",
+    cancelable: false,
+    authority: "authoritative",
+    priority: 75,
   },
   [CUE.ROPE_JUMP_LAUNCH]: {
     label: "Rope Jump liftoff",
@@ -108,11 +130,11 @@ export const CUE_DEFINITIONS = Object.freeze({
   },
   [CUE.SLIDE_REDIRECT]: {
     label: "Ice Slide redirect",
-    // Short transient only — full dodge (~1s) would muddy at ~160ms cadence.
-    layers: [{ sampleKey: "flap", gain: 0.014, rate: 1.35, durationMs: 70 }],
-    pitchVary: 0.05,
+    // Same Dodge vocabulary at dodge gain; one voice/actor with real steal.
+    layers: [{ sampleKey: "dodge", gain: 0.02, rate: 1.0 }],
+    pitchVary: 0,
     minIntervalMs: 40,
-    maxVoices: 2,
+    maxVoices: 1,
     voiceSteal: "oldest",
     cancelable: false,
     authority: "authoritative",
@@ -120,9 +142,10 @@ export const CUE_DEFINITIONS = Object.freeze({
   },
   [CUE.MATADOR_BREAK]: {
     label: "Matador Break shatter",
-    // Cropped glass accent — shorter/quieter than full grab-armor break.
-    layers: [{ sampleKey: "glassBreak", gain: 0.028, rate: 1.12, durationMs: 420 }],
-    pitchVary: 0.02,
+    // Original glass-break sample at natural rate — not a pitched "shatter palm"
+    // alternate (armor-break uses the same file @ 1.0 / 0.05).
+    layers: [{ sampleKey: "glassBreak", gain: 0.05, rate: 1.0 }],
+    pitchVary: 0,
     minIntervalMs: 200,
     maxVoices: 1,
     voiceSteal: "reject",
@@ -144,5 +167,8 @@ export const CUE_DEFINITIONS = Object.freeze({
 });
 
 export function getCueDefinition(cueName) {
+  if (cueName === "CHARGED_ATTACK_RELEASE") {
+    return CUE_DEFINITIONS[CUE.CHARGED_LUNGE_BEGIN] || null;
+  }
   return CUE_DEFINITIONS[cueName] || null;
 }

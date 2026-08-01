@@ -1754,6 +1754,7 @@ function processHit(player, otherPlayer, rooms, io) {
           impactX: (parrier.x + attacker.x) / 2,
           impactY: attacker.y,
           apPullKill: true,
+          cinematicVariant: "ap_pull",
           noPan: true,
         });
         {
@@ -2737,6 +2738,11 @@ function processHit(player, otherPlayer, rooms, io) {
               hitstopMs: CINEMATIC_KILL_HITSTOP_MS,
               impactX: (player.x + otherPlayer.x) / 2,
               impactY: otherPlayer.y,
+              // Explicit cinematic identity — client must not infer from visuals.
+              // demolished_charged: launch SFX + gun + smoke trail
+              // matador_break: camera/darken only (glass from Matador Break hit)
+              cinematicVariant: isGored ? "matador_break" : "demolished_charged",
+              isGored: !!isGored,
             });
           }
           // Charged-hit shake also handled by useCamera via hitCounter + knockback magnitude.
@@ -3040,6 +3046,7 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
         impactX: effectContact.contactX,
         impactY: effectContact.contactY,
         apPullKill: true,
+        cinematicVariant: "ap_pull",
         noPan: true,
       });
       {

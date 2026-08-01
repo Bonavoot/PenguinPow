@@ -80,6 +80,13 @@ import {
   SWING_STARTUP_MS as COMBAT_SWING_STARTUP_MS,
   combatAudioEnabled,
   getCombatAudioRuntime,
+  shouldPredictChargeHoldPose,
+  applyClinchThrowFailPresentationAndAudio,
+  shouldPlayCinematicGunCue,
+  shouldPlayCinematicChargedLaunchPackage,
+  shouldPlayCinematicKillSmokeTrail,
+  resolveCinematicVariant,
+  pushAudioTrace,
 } from "../combatAudio";
 import SnowEffect from "./SnowEffect";
 import "./theme.css";
@@ -1475,12 +1482,27 @@ const GameFighter = ({
               now + SWING_STARTUP_MS.lowKick;
           }
           break;
-        case "charge_start":
-          if (canPredictAction(gameStarted) && !isLocalParryActive()) {
+        case "charge_start": {
+          // AUDIO FIRST — always cancel provisional slap/palm whoosh when the
+          // charge chord completes, even if canPredictAction rejects pose
+          // stacking because pred.isAttacking is still true from that slap.
+          cancelPendingSwingSounds();
+          if (combatAudioV1 && combatAudioRef.current?.predictor) {
+            combatAudioRef.current.predictor.onChargeStart();
+          }
+
+          const predictChargePose = shouldPredictChargeHoldPose({
+            canPredictAction: canPredictAction(gameStarted),
+            isLocalParryActive: isLocalParryActive(),
+            penguinIsAttacking: !!penguin.isAttacking,
+            penguinIsCharging: !!penguin.isChargingAttack,
+            pred: predictedState.current,
+            now,
+          });
+          if (predictChargePose) {
             predictedState.current = {
               ...predictedState.current,
               isChargingAttack: true,
-              // CRITICAL: Clear other action predictions to prevent visual flicker
               isSlapAttack: false,
               isPalmThrust: false,
               isLowKick: false,
@@ -1492,14 +1514,9 @@ const GameFighter = ({
               timestamp: now,
             };
             predictionChanged = true;
-            // Charge hold must never keep a provisional slap/palm whiff.
-            // This is the primary fix for "swoosh while holding charge".
-            cancelPendingSwingSounds();
-            if (combatAudioV1 && combatAudioRef.current?.predictor) {
-              combatAudioRef.current.predictor.onChargeStart();
-            }
           }
           break;
+        }
         case "charge_release":
           // Only predict release if we were charging
           if (
@@ -1528,26 +1545,19 @@ const GameFighter = ({
               timestamp: now,
             };
             predictionChanged = true;
-            // Predicted swing audio for the released charged attack —
-            // scheduled at the LUNGE (release + 150ms startup), not the
-            // release itself. Playing it at release was the clearest
-            // "premature sound" case: a full windup telegraph passed between
-            // the whoosh and the visible swing. Skipped while dodging — the
-            // server holds the attack as pending until the dodge ends.
+            // CHARGED_LUNGE_BEGIN — immediate when local prediction starts the
+            // forward lunge. NOT release+150ms (hitbox startup is unrelated).
+            // Deferred/dodging: wait for authoritative charged isAttacking edge.
             if (!isDodging) {
               if (combatAudioV1 && combatAudioRef.current?.predictor) {
-                const rel = combatAudioRef.current.predictor.onChargeRelease({
+                const rel = combatAudioRef.current.predictor.onChargedLungeBegin({
                   pan: xToPan(penguin.x),
-                  dodging: false,
                 });
                 chargedReleaseActionIdRef.current = rel?.actionId || null;
               } else {
-                scheduleSwingSound(SWING_STARTUP_MS.charged, () =>
-                  playSound(attackSound, 0.05)
-                );
+                playSound(attackSound, 0.05);
               }
-              predictedSwingSoundAtRef.current.attack =
-                now + SWING_STARTUP_MS.charged;
+              predictedSwingSoundAtRef.current.attack = now;
             }
           }
           break;
@@ -3096,6 +3106,7 @@ const GameFighter = ({
   const lastSpawningPumoArmyState = useRef(false);
   const lastRawParryState = useRef(false);
   const lastRawParryStunState = useRef(false);
+  const lastChargeHoldAudioState = useRef(false);
   const chargeAnimKeyRef = useRef(0);
   const prevChargingRef = useRef(false);
   const lastWinnerState = useRef(false);
@@ -4109,26 +4120,41 @@ const GameFighter = ({
               grabberPlayerNumber: data.attackerPlayerNumber || 1,
             });
           }
-          // Matador Break — shatter accent once per authoritative gored hit.
-          // Distinct from grab-armor break (smaller particle preset + cropped glass).
-          if (data.isGored && combatAudioV1 && combatAudioRef.current?.orch) {
+          // Matador Break — same glass shatter package as shatter-palm /
+          // grab-armor break (grabArmorBreak particles + natural glass SFX).
+          if (data.isGored) {
+            const breakFacing = data.facing || 1;
+            const facingOffsetPx = (-5.5 + breakFacing * -1.0) * 12.8;
+            const fxX =
+              typeof data.contactX === "number"
+                ? data.contactX
+                : (typeof data.x === "number" ? data.x : 0) +
+                  70 +
+                  facingOffsetPx;
+            const fxY = HIT_EFFECT_Y;
             const breakEventId =
               (data.hitId != null ? `matador_break:${data.hitId}` : null) ||
               `matador_break:${data.victimId || "v"}:${data.timestamp || Date.now()}`;
-            const played = combatAudioRef.current.orch.playCombatCue(
-              CUE.MATADOR_BREAK,
-              {
-                eventId: breakEventId,
-                actorId: data.victimId || "victim",
-                authoritative: true,
-                pan: xToPan(typeof data.x === "number" ? data.x : 0),
-              }
-            );
-            if (played.played) {
-              emitParticles("matadorBreak", {
-                x: contactFxX(data),
-                y: HIT_EFFECT_Y,
-                facing: data.facing || 1,
+            let playedOk = true;
+            if (combatAudioV1 && combatAudioRef.current?.orch) {
+              const played = combatAudioRef.current.orch.playCombatCue(
+                CUE.MATADOR_BREAK,
+                {
+                  eventId: breakEventId,
+                  actorId: data.victimId || "victim",
+                  authoritative: true,
+                  pan: xToPan(fxX),
+                }
+              );
+              playedOk = !!played.played;
+            } else {
+              playSound(glassBreakSound, 0.05, null, 1.0, xToPan(fxX));
+            }
+            if (playedOk) {
+              emitParticles("grabArmorBreak", {
+                x: fxX,
+                y: fxY,
+                facing: breakFacing,
               });
             }
           }
@@ -4853,13 +4879,51 @@ const GameFighter = ({
       };
       socket.on("clinch_callout", handleClinchCallout);
 
-      // Failed throw/pull — RESISTED plaque, or PERFECT BRACE hype stamp
+      // Failed throw/pull — RESISTED plaque, or PERFECT BRACE hype stamp.
+      // Visual + audio share one successful presentation claim (no starve).
       handleClinchThrowFail = (data) => {
         if (!data) return;
+        pushAudioTrace({
+          status: "RESISTED_HANDLER_RECEIVED",
+          reason: data.perfectBrace ? "perfect_brace" : "resisted",
+          eventId: data.failId,
+        });
+        if (combatAudioV1 && combatAudioRef.current?.orch) {
+          applyClinchThrowFailPresentationAndAudio({
+            data,
+            claimPresentationEvent,
+            readCombatPresentation,
+            playCombatCue: (cue, ctx) =>
+              combatAudioRef.current.orch.playCombatCue(cue, {
+                ...ctx,
+                pan: xToPan(
+                  typeof data.x === "number"
+                    ? data.x
+                    : typeof data.actorX === "number"
+                      ? (data.actorX + (data.targetX || data.actorX)) / 2
+                      : penguin.x
+                ),
+              }),
+            onPerfectBraceVisual: (d, pres) => {
+              setPerfectBraceStampPosition({
+                braceId: d.failId || pres?.eventId || `perfect-brace-${Date.now()}`,
+                playerNumber: d.playerNumber || 1,
+              });
+            },
+            onResistedVisual: (d, pres) => {
+              setClinchCalloutData({
+                type: "resisted",
+                playerNumber: d.playerNumber || 1,
+                calloutId: d.failId || pres?.eventId || `clinch-fail-${Date.now()}`,
+              });
+            },
+          });
+          return;
+        }
+        // Legacy (flag off): visuals only, no Perfect Brace / RESISTED SFX.
         const pres = readCombatPresentation(data);
         if (pres && !claimPresentationEvent(pres.eventId)) return;
         if (data.perfectBrace) {
-          // Perfect Brace stays distinct — no ordinary RESISTED tech cue.
           setPerfectBraceStampPosition({
             braceId: data.failId || pres?.eventId || `perfect-brace-${Date.now()}`,
             playerNumber: data.playerNumber || 1,
@@ -4871,18 +4935,6 @@ const GameFighter = ({
           playerNumber: data.playerNumber || 1,
           calloutId: data.failId || pres?.eventId || `clinch-fail-${Date.now()}`,
         });
-        if (combatAudioV1 && combatAudioRef.current?.orch) {
-          const eventId =
-            pres?.eventId ||
-            data.failId ||
-            `clinch_throw_fail:${data.playerNumber || 0}:${data.timestamp || Date.now()}`;
-          combatAudioRef.current.orch.playCombatCue(CUE.CLINCH_THROW_RESISTED, {
-            eventId,
-            actorId: data.defenderId || data.playerId || `p${data.playerNumber || 1}`,
-            authoritative: true,
-            pan: xToPan(typeof data.x === "number" ? data.x : penguin.x),
-          });
-        }
       };
       socket.on("clinch_throw_fail", handleClinchThrowFail);
 
@@ -5386,12 +5438,9 @@ const GameFighter = ({
   // to prevent duplicate listeners and cleanup race conditions
 
   useEffect(() => {
-    // Trigger swing sound for non-slap attacks. Palm thrust gets its own
-    // dedicated whiff sound; charged / low kick keep the generic attack sound.
-    // For the LOCAL player this sound normally already played at prediction
-    // time (applyPrediction) — the gate suppresses the server-confirmation
-    // replay. It still fires here when prediction was gated (e.g. the press
-    // was server-buffered during recovery) or expired before the confirm.
+    // Non-slap attack rising edge. Charged lunge whoosh plays IMMEDIATELY when
+    // charged execution begins (locomotion), not after hitbox startup (~150ms).
+    // Palm / low kick keep startup-aligned scheduling.
     if (
       penguin.isAttacking &&
       !penguin.isSlapAttack &&
@@ -5400,48 +5449,34 @@ const GameFighter = ({
       const sincePredicted =
         performance.now() - predictedSwingSoundAtRef.current.attack;
       if (sincePredicted >= PREDICTED_SOUND_SUPPRESS_MS) {
-        // Align the whoosh with the ACTIVE swing, not the windup start.
-        // Charged / palm / low kick all set actionLockUntil = startup end on
-        // the server, and its remaining ms rides the broadcast — so this is
-        // "startup time this client hasn't seen yet". Scheduled → cancellable
-        // if the windup is interrupted before the swing comes out.
-        const startupCap = penguin.isPalmThrust
-          ? SWING_STARTUP_MS.palm
-          : penguin.isLowKick
-          ? SWING_STARTUP_MS.lowKick
-          : SWING_STARTUP_MS.charged;
-        const delay = Math.max(
-          0,
-          Math.min(penguin.actionLockRemainingMs || 0, startupCap)
-        );
         const isPalm = penguin.isPalmThrust;
+        const isLow = penguin.isLowKick;
         const panX = penguin.x;
-        // Only reached when local prediction did not recently own the whoosh
-        // (PREDICTED_SOUND_SUPPRESS_MS gate above) — remote / buffered releases.
-        if (
-          combatAudioV1 &&
-          combatAudioRef.current?.orch &&
-          !isPalm &&
-          !penguin.isLowKick
-        ) {
-          const actionId = `${penguin.id || player.id}:charged_auth:${
-            penguin.attackStartTime || performance.now()
-          }`;
-          combatAudioRef.current.orch.scheduleCombatCue(
-            CUE.CHARGED_ATTACK_RELEASE,
-            {
-              actorId: penguin.id || player.id,
-              actionId,
-              eventId: `${penguin.id || player.id}:charged_swing:${
-                penguin.attackStartTime || 0
-              }`,
-              authoritative: true,
-              local: isLocalPlayer,
-              pan: xToPan(panX),
-            },
-            { delayMs: delay, reason: "auth_charged_startup" }
+        if (combatAudioV1 && combatAudioRef.current?.orch && !isPalm && !isLow) {
+          // Charged lunge begin — immediate on first observation.
+          const actionId =
+            chargedReleaseActionIdRef.current ||
+            `${penguin.id || player.id}:charged_lunge:${
+              penguin.attackStartTime || performance.now()
+            }`;
+          combatAudioRef.current.orch.confirmCombatCue(CUE.CHARGED_LUNGE_BEGIN, {
+            actorId: penguin.id || player.id,
+            actionId,
+            eventId: `${penguin.id || player.id}:charged_lunge:${
+              penguin.attackStartTime || 0
+            }`,
+            authoritative: true,
+            local: isLocalPlayer,
+            pan: xToPan(panX),
+          });
+        } else if (isPalm || isLow) {
+          const startupCap = isPalm
+            ? SWING_STARTUP_MS.palm
+            : SWING_STARTUP_MS.lowKick;
+          const delay = Math.max(
+            0,
+            Math.min(penguin.actionLockRemainingMs || 0, startupCap)
           );
-        } else {
           scheduleSwingSound(delay, () => {
             if (isPalm) {
               playSound(palmThrustWhiffSound, 0.05, null, 1.0, xToPan(panX));
@@ -5449,6 +5484,9 @@ const GameFighter = ({
               playSound(attackSound, 0.05);
             }
           });
+        } else {
+          // Legacy non-V1 charged — also immediate at lunge begin.
+          playSound(attackSound, 0.05);
         }
       }
     }
@@ -7192,9 +7230,22 @@ const GameFighter = ({
       // charged flight VFX (orange impact spark, charged SFX, launch sounds,
       // smoke trail) — the blue AP burst + slap-parry clang play via
       // raw_parry_success instead.
-      const isApPullKill = !!data.apPullKill;
+      //
+      // Cinematic audio / flight VFX variants (authoritative):
+      //   demolished_charged — launch SFX + gun + smoke trail
+      //   matador_break — camera/darken only (glass already from Matador Break hit)
+      //   ap_pull — specialized AP package only
+      const cinematicVariant = resolveCinematicVariant(data);
+      const playLaunchPackage = shouldPlayCinematicChargedLaunchPackage(data);
+      const playSmokeTrail = shouldPlayCinematicKillSmokeTrail(data);
+      const playGun = shouldPlayCinematicGunCue(data);
+      pushAudioTrace({
+        status: "CINEMATIC_VARIANT",
+        reason: cinematicVariant,
+        eventId: data?.attackerId,
+      });
       if (index === 0) {
-        if (!isApPullKill) {
+        if (playLaunchPackage) {
           emitParticles("cinematicKillImpact", {
             x: data.impactX,
             y: data.victimY,
@@ -7219,11 +7270,16 @@ const GameFighter = ({
           pendingTimeouts.push(freezeId, unfreezeId);
         }
 
-        if (!isApPullKill) {
+        if (playLaunchPackage) {
           const launchDelay = data.hitstopMs || 550;
           const launchSoundId = setTimeout(() => {
             playSound(chargeAttackLaunchSound, 0.2, null, 1.5, xToPan(data.victimX));
-            playSound(gunLaunchSound, 0.06, null, 1.0, xToPan(data.victimX));
+            if (playGun) {
+              playSound(gunLaunchSound, 0.06, null, 1.0, xToPan(data.victimX));
+              pushAudioTrace({ status: "GUN_CUE_PLAYED", reason: cinematicVariant });
+            } else {
+              pushAudioTrace({ status: "GUN_CUE_SKIPPED", reason: cinematicVariant });
+            }
           }, launchDelay);
           pendingTimeouts.push(launchSoundId);
         }
@@ -7238,7 +7294,7 @@ const GameFighter = ({
       }
 
       const isVictim = player.id === data.victimId;
-      if (isVictim && !isApPullKill) {
+      if (isVictim && playSmokeTrail) {
         const trailDir = data.knockbackDirection;
         const trailStartDelay = data.hitstopMs || 550;
 
@@ -7651,6 +7707,14 @@ const GameFighter = ({
     chargeAnimKeyRef.current++;
   }
   prevChargingRef.current = isCurrentlyCharging;
+
+  // Charge-hold enter: same cue as parry attempt (not the lunge/attack whoosh).
+  useEffect(() => {
+    if (isCurrentlyCharging && !lastChargeHoldAudioState.current) {
+      playSound(rawParryGruntSound, 0.006, null, 1.25);
+    }
+    lastChargeHoldAudioState.current = !!isCurrentlyCharging;
+  }, [isCurrentlyCharging]);
 
   // Calculate position ONCE per render. Deliberately NOT memoized: it reads
   // the live interpolation ref, so every render must commit the freshest

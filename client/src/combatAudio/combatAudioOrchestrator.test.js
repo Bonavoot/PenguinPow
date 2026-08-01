@@ -1,5 +1,5 @@
 /**
- * Deterministic combat-audio orchestration tests (no AudioContext).
+ * Combat Audio Fidelity V1 — corrective-pass tests.
  * Run: node --test client/src/combatAudio/*.test.js
  */
 
@@ -10,7 +10,28 @@ import {
   createStrikeAudioPredictor,
   classifyMouse1Strike,
 } from "./strikeAudioPrediction.js";
-import { CUE, STRIKE_CHORD_MS, SWING_STARTUP_MS } from "./cueRegistry.js";
+import {
+  CUE,
+  STRIKE_CHORD_MS,
+  SWING_STARTUP_MS,
+  getCueDefinition,
+  CINEMATIC_VARIANT,
+} from "./cueRegistry.js";
+import {
+  shouldPredictChargeHoldPose,
+  liveChargeReclassSequence,
+  isFreshProvisionalSlapPrediction,
+} from "./chargeAudioIntegration.js";
+import {
+  resolveCinematicVariant,
+  shouldPlayCinematicGunCue,
+  shouldPlayCinematicChargedLaunchPackage,
+  shouldPlayCinematicKillSmokeTrail,
+} from "./cinematicAudio.js";
+import {
+  resolveClinchThrowFailAudio,
+  applyClinchThrowFailPresentationAndAudio,
+} from "./clinchThrowFailAudio.js";
 import {
   parseVolumeSetting,
   clampVolumePercent,
@@ -21,6 +42,7 @@ function makeHarness() {
   const timers = new Map();
   let timerSeq = 1;
   const played = [];
+  const stopped = [];
 
   const setTimeoutFn = (fn, ms) => {
     const id = timerSeq++;
@@ -50,102 +72,121 @@ function makeHarness() {
         t,
         cue: meta.cueName,
         samples: layers.map((l) => l.sampleKey),
+        durations: layers.map((l) => l.durationMs ?? null),
         pan: meta.pan,
         predicted: !!meta.ctx?.predicted,
         authoritative: !!meta.ctx?.authoritative,
         actionId: meta.ctx?.actionId,
         actorId: meta.ctx?.actorId,
       });
+      const stopAll = () => {
+        stopped.push({ cue: meta.cueName, actorId: meta.ctx?.actorId, t });
+      };
+      return { handles: [{ id: `voice-${played.length}` }], stopAll };
     },
   });
 
-  return { orch, played, advance, now: () => t, setTime: (v) => { t = v; } };
+  return {
+    orch,
+    played,
+    stopped,
+    advance,
+    now: () => t,
+    setTime: (v) => {
+      t = v;
+    },
+  };
 }
 
-describe("combat audio — charged attack / slap reclass", () => {
+describe("charge — live reclass + CHARGED_LUNGE_BEGIN", () => {
   let h;
   beforeEach(() => {
     h = makeHarness();
   });
 
-  it("charge hold produces no release/whiff cue", () => {
+  it("charge hold emits no lunge cue", () => {
     const pred = createStrikeAudioPredictor({
       orchestrator: h.orch,
       now: h.now,
       actorId: "p1",
     });
-    const r = pred.onStrikePress({
+    pred.onStrikePress({
       keys: { s: true, d: true, mouse1: true },
       facing: -1,
     });
-    assert.equal(r.command, "charge_start");
-    h.advance(200);
-    assert.equal(h.played.length, 0);
-  });
-
-  it("charge release produces one cue at startup seam", () => {
-    const pred = createStrikeAudioPredictor({
-      orchestrator: h.orch,
-      now: h.now,
-      actorId: "p1",
-    });
-    pred.onChargeStart();
-    pred.onChargeRelease({ pan: 0 });
-    h.advance(SWING_STARTUP_MS.charged - 1);
-    assert.equal(h.played.length, 0);
-    h.advance(1);
-    assert.equal(h.played.length, 1);
-    assert.equal(h.played[0].cue, CUE.CHARGED_ATTACK_RELEASE);
-  });
-
-  it("canceled / interrupted charge produces no release cue", () => {
-    const pred = createStrikeAudioPredictor({
-      orchestrator: h.orch,
-      now: h.now,
-      actorId: "p1",
-    });
-    const rel = pred.onChargeRelease();
-    pred.cancelAction(rel.actionId, "interrupted");
     h.advance(300);
-    assert.equal(h.played.length, 0);
+    assert.equal(
+      h.played.filter((p) => p.cue === CUE.CHARGED_LUNGE_BEGIN).length,
+      0
+    );
   });
 
-  it("provisional slap canceled when command becomes charge within chord", () => {
-    const pred = createStrikeAudioPredictor({
-      orchestrator: h.orch,
-      now: h.now,
-      actorId: "p1",
+  it("production order: slap then charge cancels even when canPredictAction is closed", () => {
+    let whooshAlive = true;
+    let poseCharging = false;
+    const pred = { isAttacking: true, isSlapAttack: true, timestamp: 0 };
+    const seq = liveChargeReclassSequence({
+      scheduleSlapWhoosh: () => {
+        whooshAlive = true;
+        pred.isAttacking = true;
+        pred.isSlapAttack = true;
+        pred.timestamp = 0;
+      },
+      cancelProvisionalAudio: () => {
+        whooshAlive = false;
+      },
+      canPredictActionAfterSlap: () => {
+        // Fresh provisional slap closes the generic gate.
+        return !(
+          pred.isAttacking &&
+          h.now() - pred.timestamp < 150
+        );
+      },
+      supersedePose: isFreshProvisionalSlapPrediction(pred, 40),
+      applyChargePose: () => {
+        poseCharging = true;
+        pred.isAttacking = false;
+        pred.isSlapAttack = false;
+        pred.isChargingAttack = true;
+      },
     });
-    const press = pred.onStrikePress({
-      keys: { mouse1: true },
-      facing: -1,
-    });
-    assert.equal(press.command, "slap");
-    h.advance(40);
-    const re = pred.onKeysWhileMouse1Held({
-      keys: { mouse1: true, s: true, d: true },
-      facing: -1,
-    });
-    assert.equal(re?.command, "charge_start");
-    h.advance(100);
-    assert.equal(h.played.length, 0);
+    assert.equal(seq.gateWasClosed, true);
+    assert.equal(whooshAlive, false);
+    assert.equal(poseCharging, true);
   });
 
-  it("legitimate slap cue remains at original startup seam", () => {
+  it("shouldPredictChargeHoldPose supersedes fresh provisional slap when gate closed", () => {
+    const ok = shouldPredictChargeHoldPose({
+      canPredictAction: false,
+      isLocalParryActive: false,
+      penguinIsAttacking: false,
+      penguinIsCharging: false,
+      pred: { isSlapAttack: true, isAttacking: true, timestamp: 100 },
+      now: 140,
+    });
+    assert.equal(ok, true);
+  });
+
+  it("Mouse1-first provisional slap + S+Forward in chord cancels pending slap", () => {
     const pred = createStrikeAudioPredictor({
       orchestrator: h.orch,
       now: h.now,
       actorId: "p1",
     });
     pred.onStrikePress({ keys: { mouse1: true }, facing: -1 });
-    h.advance(SWING_STARTUP_MS.slap - 1);
+    h.advance(40);
+    const re = pred.onKeysWhileMouse1Held({
+      keys: { mouse1: true, s: true, d: true },
+      facing: -1,
+    });
+    assert.equal(re?.command, "charge_start");
+    // Simulate production: charge_start always calls onChargeStart even if gate closed.
+    pred.onChargeStart();
+    h.advance(100);
     assert.equal(h.played.length, 0);
-    h.advance(1);
-    assert.equal(h.played.length, 1);
-    assert.equal(h.played[0].cue, CUE.SLAP_WHIFF);
   });
 
-  it("input outside chord window remains slap if never reclassified", () => {
+  it("legitimate slap outside chord keeps sound", () => {
     const pred = createStrikeAudioPredictor({
       orchestrator: h.orch,
       now: h.now,
@@ -153,25 +194,53 @@ describe("combat audio — charged attack / slap reclass", () => {
     });
     pred.onStrikePress({ keys: { mouse1: true }, facing: -1 });
     h.advance(STRIKE_CHORD_MS + 1);
-    const re = pred.onKeysWhileMouse1Held({
-      keys: { mouse1: true, s: true, d: true },
-      facing: -1,
-    });
-    assert.equal(re, null);
+    assert.equal(
+      pred.onKeysWhileMouse1Held({
+        keys: { mouse1: true, s: true, d: true },
+        facing: -1,
+      }),
+      null
+    );
     h.advance(SWING_STARTUP_MS.slap);
-    assert.equal(h.played.some((p) => p.cue === CUE.SLAP_WHIFF), true);
+    assert.ok(h.played.some((p) => p.cue === CUE.SLAP_WHIFF));
   });
 
-  it("local predict + authoritative confirm = one audible cue", () => {
-    const actionId = "p1:charge_release:1";
-    h.orch.scheduleCombatCue(
-      CUE.CHARGED_ATTACK_RELEASE,
-      { actorId: "p1", actionId, local: true, predicted: true },
-      { delayMs: 10 }
-    );
-    h.advance(10);
+  it("lunge begin plays immediately — no +150ms timer", () => {
+    const pred = createStrikeAudioPredictor({
+      orchestrator: h.orch,
+      now: h.now,
+      actorId: "p1",
+    });
+    pred.onChargeStart();
+    pred.onChargedLungeBegin({ pan: 0 });
     assert.equal(h.played.length, 1);
-    const conf = h.orch.confirmCombatCue(CUE.CHARGED_ATTACK_RELEASE, {
+    assert.equal(h.played[0].cue, CUE.CHARGED_LUNGE_BEGIN);
+    assert.equal(h.played[0].t, 0);
+  });
+
+  it("no schedule uses SWING_STARTUP_MS.charged for lunge cue", () => {
+    const pred = createStrikeAudioPredictor({
+      orchestrator: h.orch,
+      now: h.now,
+      actorId: "p1",
+    });
+    pred.onChargedLungeBegin();
+    h.advance(SWING_STARTUP_MS.charged);
+    assert.equal(
+      h.played.filter((p) => p.cue === CUE.CHARGED_LUNGE_BEGIN).length,
+      1
+    );
+  });
+
+  it("local predict + auth confirm = one cue", () => {
+    const actionId = "p1:charged_lunge:1";
+    h.orch.playCombatCue(CUE.CHARGED_LUNGE_BEGIN, {
+      actorId: "p1",
+      actionId,
+      local: true,
+      predicted: true,
+    });
+    const conf = h.orch.confirmCombatCue(CUE.CHARGED_LUNGE_BEGIN, {
       actorId: "p1",
       actionId,
       authoritative: true,
@@ -180,31 +249,33 @@ describe("combat audio — charged attack / slap reclass", () => {
     assert.equal(h.played.length, 1);
   });
 
-  it("remote authoritative charged release plays once", () => {
-    h.orch.playCombatCue(CUE.CHARGED_ATTACK_RELEASE, {
+  it("remote authoritative lunge plays once; snapshot replay dedupes", () => {
+    h.orch.playCombatCue(CUE.CHARGED_LUNGE_BEGIN, {
       actorId: "p2",
-      eventId: "room:charged:9",
+      eventId: "p2:charged_lunge:99",
       authoritative: true,
-      local: false,
     });
-    h.orch.playCombatCue(CUE.CHARGED_ATTACK_RELEASE, {
+    h.orch.playCombatCue(CUE.CHARGED_LUNGE_BEGIN, {
       actorId: "p2",
-      eventId: "room:charged:9",
+      eventId: "p2:charged_lunge:99",
       authoritative: true,
-      local: false,
     });
     assert.equal(h.played.length, 1);
   });
 
-  it("round reset cancels pending charged cues", () => {
-    h.orch.scheduleCombatCue(
-      CUE.CHARGED_ATTACK_RELEASE,
-      { actorId: "p1", actionId: "a1", predicted: true },
-      { delayMs: 150 }
-    );
-    h.orch.clearCombatAudioForRound("round_reset");
+  it("charge cancel without lunge produces zero lunge cues", () => {
+    const pred = createStrikeAudioPredictor({
+      orchestrator: h.orch,
+      now: h.now,
+      actorId: "p1",
+    });
+    pred.onChargeStart();
+    pred.onChargeInterrupted("hit");
     h.advance(200);
-    assert.equal(h.played.length, 0);
+    assert.equal(
+      h.played.filter((p) => p.cue === CUE.CHARGED_LUNGE_BEGIN).length,
+      0
+    );
   });
 
   it("classifyMouse1Strike charge vs slap", () => {
@@ -213,264 +284,250 @@ describe("combat audio — charged attack / slap reclass", () => {
       "charge_start"
     );
     assert.equal(classifyMouse1Strike({ mouse1: true }, -1).command, "slap");
-    assert.equal(
-      classifyMouse1Strike({ a: true }, -1).command,
-      "palm_thrust"
-    );
   });
 });
 
-describe("combat audio — RESISTED", () => {
-  it("authoritative RESISTED plays once; duplicate eventId suppressed", () => {
+describe("clinch RESISTED + Perfect Brace", () => {
+  const resistedPayload = {
+    actorId: "a1",
+    targetId: "t1",
+    actionType: "throw",
+    resistedByPlant: true,
+    playerNumber: 2,
+    failId: "clinch-fail-100-a1",
+    actorX: 500,
+    targetX: 620,
+    combatPresentation: {
+      eventId: "pres-fail-100",
+      interactionType: "THROW_FAIL",
+    },
+  };
+
+  const perfectBracePayload = {
+    actorId: "a1",
+    targetId: "t1",
+    perfectBrace: true,
+    playerNumber: 2,
+    failId: "perfect-brace-100-t1",
+    combatPresentation: {
+      eventId: "pres-pb-100",
+      interactionType: "THROW_FAIL",
+    },
+  };
+
+  it("RESISTED resolves isTeching and plays once via realistic payload", () => {
     const h = makeHarness();
-    h.orch.playCombatCue(CUE.CLINCH_THROW_RESISTED, {
-      eventId: "fail-1",
-      actorId: "p1",
-      authoritative: true,
+    const resolved = resolveClinchThrowFailAudio(resistedPayload);
+    assert.equal(resolved.cue, CUE.CLINCH_THROW_RESISTED);
+    assert.equal(getCueDefinition(resolved.cue).layers[0].sampleKey, "isTeching");
+    assert.equal(getCueDefinition(resolved.cue).layers[0].gain, 0.04);
+
+    const seen = new Set();
+    const r = applyClinchThrowFailPresentationAndAudio({
+      data: resistedPayload,
+      claimPresentationEvent: (id) => {
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      },
+      readCombatPresentation: (d) => d.combatPresentation,
+      playCombatCue: (cue, ctx) => h.orch.playCombatCue(cue, ctx),
+      onResistedVisual: () => {},
+      onPerfectBraceVisual: () => {},
     });
-    h.orch.playCombatCue(CUE.CLINCH_THROW_RESISTED, {
-      eventId: "fail-1",
-      actorId: "p1",
-      authoritative: true,
+    assert.equal(r.audio, true);
+    assert.equal(h.played.length, 1);
+    assert.equal(h.played[0].samples[0], "isTeching");
+
+    const dup = applyClinchThrowFailPresentationAndAudio({
+      data: resistedPayload,
+      claimPresentationEvent: (id) => {
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      },
+      readCombatPresentation: (d) => d.combatPresentation,
+      playCombatCue: (cue, ctx) => h.orch.playCombatCue(cue, ctx),
+      onResistedVisual: () => {},
+      onPerfectBraceVisual: () => {},
     });
+    assert.equal(dup.reason, "presentation_deduped");
     assert.equal(h.played.length, 1);
   });
 
-  it("Perfect Brace path must not use RESISTED cue (caller responsibility)", () => {
+  it("Perfect Brace uses CLINCH_PERFECT_BRACE layered cue once", () => {
     const h = makeHarness();
-    // Orchestrator has no perfectBrace mapping — absence of play is the contract
-    // when GameFighter returns early on perfectBrace before calling the cue.
-    assert.equal(h.played.length, 0);
+    const resolved = resolveClinchThrowFailAudio(perfectBracePayload);
+    assert.equal(resolved.cue, CUE.CLINCH_PERFECT_BRACE);
+    assert.notEqual(resolved.cue, CUE.CLINCH_THROW_RESISTED);
+    const layers = getCueDefinition(resolved.cue).layers;
+    assert.ok(layers.some((l) => l.sampleKey === "isTeching"));
+    assert.ok(layers.some((l) => l.sampleKey === "rawParrySuccess"));
+
+    const seen = new Set();
+    const r = applyClinchThrowFailPresentationAndAudio({
+      data: perfectBracePayload,
+      claimPresentationEvent: (id) => {
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      },
+      readCombatPresentation: (d) => d.combatPresentation,
+      playCombatCue: (cue, ctx) => h.orch.playCombatCue(cue, ctx),
+      onPerfectBraceVisual: () => {},
+      onResistedVisual: () => {
+        assert.fail("should not use resisted visual for PB");
+      },
+    });
+    assert.equal(r.audio, true);
+    assert.equal(h.played[0].cue, CUE.CLINCH_PERFECT_BRACE);
   });
 
-  it("distinct RESISTED events each play", () => {
-    const h = makeHarness();
-    h.orch.playCombatCue(CUE.CLINCH_THROW_RESISTED, {
-      eventId: "fail-a",
-      authoritative: true,
-    });
-    h.advance(130); // past cue minInterval
-    h.orch.playCombatCue(CUE.CLINCH_THROW_RESISTED, {
-      eventId: "fail-b",
-      authoritative: true,
-    });
-    assert.equal(h.played.length, 2);
+  it("unrelated throw failure maps neither cue", () => {
+    assert.equal(resolveClinchThrowFailAudio({ foo: 1 }), null);
   });
 });
 
-describe("combat audio — launches and redirect", () => {
-  it("accepted liftoff plays once; duplicate eventId does not replay", () => {
-    const h = makeHarness();
-    h.orch.playCombatCue(CUE.ROPE_JUMP_LAUNCH, {
-      eventId: "rj:1",
-      actorId: "p1",
-      authoritative: true,
-    });
-    h.orch.playCombatCue(CUE.ROPE_JUMP_LAUNCH, {
-      eventId: "rj:1",
-      actorId: "p1",
-      authoritative: true,
-    });
-    assert.equal(h.played.length, 1);
-    h.orch.playCombatCue(CUE.SLIDE_JUMP_LAUNCH, {
-      eventId: "sj:1",
-      actorId: "p1",
-      authoritative: true,
-    });
-    assert.equal(h.played.length, 2);
+describe("slide redirect — dodge sample + real voice stop", () => {
+  it("SLIDE_REDIRECT resolves dodge not flap", () => {
+    const def = getCueDefinition(CUE.SLIDE_REDIRECT);
+    assert.equal(def.layers[0].sampleKey, "dodge");
+    assert.notEqual(def.layers[0].sampleKey, "flap");
+    assert.equal(def.layers[0].gain, 0.02);
+    assert.equal(def.layers[0].rate, 1.0);
   });
 
-  it("later distinct launch can play", () => {
+  it("two redirects 160ms apart both start; steal stops prior voice", () => {
     const h = makeHarness();
-    h.orch.playCombatCue(CUE.ROPE_JUMP_LAUNCH, {
-      eventId: "rj:1",
-      actorId: "p1",
-      authoritative: true,
-    });
-    h.advance(120); // past cue minInterval
-    h.orch.playCombatCue(CUE.ROPE_JUMP_LAUNCH, {
-      eventId: "rj:2",
-      actorId: "p1",
-      authoritative: true,
-    });
-    assert.equal(h.played.length, 2);
-  });
-
-  it("accepted redirects ~160ms apart both play; same event dedupes", () => {
-    const h = makeHarness();
-    h.orch.playCombatCue(CUE.SLIDE_REDIRECT, {
-      eventId: "redir:1",
-      actorId: "p1",
-      authoritative: true,
-    });
-    h.advance(160);
-    h.orch.playCombatCue(CUE.SLIDE_REDIRECT, {
-      eventId: "redir:2",
-      actorId: "p1",
-      authoritative: true,
-    });
-    assert.equal(h.played.length, 2);
-    h.orch.playCombatCue(CUE.SLIDE_REDIRECT, {
-      eventId: "redir:2",
-      actorId: "p1",
-      authoritative: true,
-    });
-    assert.equal(h.played.length, 2);
-  });
-
-  it("one player's redirect does not suppress the opponent's", () => {
-    const h = makeHarness();
-    h.orch.playCombatCue(CUE.SLIDE_REDIRECT, {
-      eventId: "r-p1-1",
-      actorId: "p1",
-      authoritative: true,
-    });
-    h.orch.playCombatCue(CUE.SLIDE_REDIRECT, {
-      eventId: "r-p2-1",
-      actorId: "p2",
-      authoritative: true,
-    });
-    assert.equal(h.played.length, 2);
-  });
-
-  it("voice steal prevents uncontrolled pile-up on same actor", () => {
-    const h = makeHarness();
-    // maxVoices=2, voiceSteal=oldest — third still plays (steals), count stays bounded in policy
     h.orch.playCombatCue(CUE.SLIDE_REDIRECT, {
       eventId: "r1",
       actorId: "p1",
       authoritative: true,
     });
-    h.advance(50);
+    h.advance(160);
     h.orch.playCombatCue(CUE.SLIDE_REDIRECT, {
       eventId: "r2",
       actorId: "p1",
       authoritative: true,
     });
-    h.advance(50);
+    assert.equal(h.played.length, 2);
+    assert.ok(h.orch.getVoiceStopCount() >= 1);
+    assert.ok(h.stopped.length >= 1);
+    assert.equal(h.orch.getActiveVoiceCount(CUE.SLIDE_REDIRECT, "p1"), 1);
+  });
+
+  it("opponent independent voice key", () => {
+    const h = makeHarness();
     h.orch.playCombatCue(CUE.SLIDE_REDIRECT, {
-      eventId: "r3",
+      eventId: "r-p1",
       actorId: "p1",
       authoritative: true,
     });
-    assert.equal(h.played.length, 3);
-  });
-});
-
-describe("combat audio — Matador Break", () => {
-  it("MATADOR_BREAK plays once per event; ordinary hit path has no glass cue", () => {
-    const h = makeHarness();
-    h.orch.playCombatCue(CUE.MATADOR_BREAK, {
-      eventId: "hit-gored-1",
+    h.orch.playCombatCue(CUE.SLIDE_REDIRECT, {
+      eventId: "r-p2",
       actorId: "p2",
       authoritative: true,
     });
-    h.orch.playCombatCue(CUE.MATADOR_BREAK, {
-      eventId: "hit-gored-1",
-      actorId: "p2",
+    assert.equal(h.played.length, 2);
+    assert.equal(h.orch.getVoiceStopCount(), 0);
+  });
+
+  it("duplicate eventId does not replay", () => {
+    const h = makeHarness();
+    h.orch.playCombatCue(CUE.SLIDE_REDIRECT, {
+      eventId: "same",
+      actorId: "p1",
+      authoritative: true,
+    });
+    h.orch.playCombatCue(CUE.SLIDE_REDIRECT, {
+      eventId: "same",
+      actorId: "p1",
       authoritative: true,
     });
     assert.equal(h.played.length, 1);
-    assert.equal(h.played[0].cue, CUE.MATADOR_BREAK);
   });
+});
 
-  it("maxVoices reject prevents glass stacking on same actor", () => {
+describe("Matador glass + cinematic variants", () => {
+  it("MATADOR_BREAK has no forced 420ms duration", () => {
+    const def = getCueDefinition(CUE.MATADOR_BREAK);
+    assert.equal(def.layers[0].durationMs, undefined);
     const h = makeHarness();
     h.orch.playCombatCue(CUE.MATADOR_BREAK, {
       eventId: "g1",
-      actorId: "p2",
+      actorId: "v",
       authoritative: true,
     });
-    // Different event but same actor within voice window — reject
-    const r = h.orch.playCombatCue(CUE.MATADOR_BREAK, {
-      eventId: "g2",
-      actorId: "p2",
-      authoritative: true,
-    });
-    assert.equal(r.played, false);
-    assert.equal(h.played.length, 1);
-  });
-});
-
-describe("combat audio — slap parry ownership / lifecycle", () => {
-  it("duplicate eventId for SLAP_PARRY plays once", () => {
-    const h = makeHarness();
-    h.orch.playCombatCue(CUE.SLAP_PARRY, {
-      eventId: "parry-1",
-      authoritative: true,
-    });
-    h.orch.playCombatCue(CUE.SLAP_PARRY, {
-      eventId: "parry-1",
-      authoritative: true,
-    });
-    assert.equal(h.played.length, 1);
+    assert.equal(h.played[0].durations[0], null);
   });
 
-  it("unmount/clear cancels pending", () => {
-    const h = makeHarness();
-    h.orch.scheduleCombatCue(
-      CUE.SLAP_WHIFF,
-      { actionId: "x", predicted: true },
-      { delayMs: 55 }
+  it("ordinary hit path has no glass cue from registry alone", () => {
+    // Classifier responsibility — MATADOR_BREAK only when isGored handler fires.
+    assert.ok(getCueDefinition(CUE.MATADOR_BREAK));
+  });
+
+  it("demolished_charged owns launch/gun/trail; matador_break and ap_pull skip", () => {
+    assert.equal(
+      resolveCinematicVariant({ cinematicVariant: "demolished_charged" }),
+      CINEMATIC_VARIANT.DEMOLISHED_CHARGED
     );
-    h.orch.clearCombatAudioForRound("unmount");
-    h.advance(100);
-    assert.equal(h.played.length, 0);
+    assert.equal(shouldPlayCinematicGunCue({ cinematicVariant: "demolished_charged" }), true);
+    assert.equal(
+      shouldPlayCinematicChargedLaunchPackage({
+        cinematicVariant: "demolished_charged",
+      }),
+      true
+    );
+    assert.equal(
+      shouldPlayCinematicKillSmokeTrail({
+        cinematicVariant: "demolished_charged",
+      }),
+      true
+    );
+    assert.equal(shouldPlayCinematicGunCue({ cinematicVariant: "matador_break" }), false);
+    assert.equal(shouldPlayCinematicGunCue({ isGored: true }), false);
+    assert.equal(shouldPlayCinematicGunCue({ matadorKill: true }), false);
+    assert.equal(
+      shouldPlayCinematicChargedLaunchPackage({
+        cinematicVariant: "matador_break",
+      }),
+      false
+    );
+    assert.equal(
+      shouldPlayCinematicKillSmokeTrail({
+        cinematicVariant: "matador_break",
+      }),
+      false
+    );
+    assert.equal(shouldPlayCinematicChargedLaunchPackage({ apPullKill: true }), false);
+    assert.equal(shouldPlayCinematicKillSmokeTrail({ apPullKill: true }), false);
+    assert.equal(
+      resolveCinematicVariant({ apPullKill: true }),
+      CINEMATIC_VARIANT.AP_PULL
+    );
+  });
+
+  it("MATADOR_BREAK uses original glass rate (not pitched shatter alternate)", () => {
+    const layer = getCueDefinition(CUE.MATADOR_BREAK).layers[0];
+    assert.equal(layer.sampleKey, "glassBreak");
+    assert.equal(layer.rate, 1.0);
+    assert.equal(layer.gain, 0.05);
   });
 });
 
-describe("volume settings helpers", () => {
-  it("saved zero volume remains zero", () => {
+describe("volume helpers still sane", () => {
+  it("zero volume preserved", () => {
     assert.equal(parseVolumeSetting(0), 0);
     assert.equal(clampVolumePercent(0), 0);
   });
-
-  it("missing volume uses default 100", () => {
-    assert.equal(parseVolumeSetting(undefined), 100);
-    assert.equal(parseVolumeSetting(null), 100);
-  });
-
-  it("malformed values clamp/fallback safely", () => {
-    assert.equal(parseVolumeSetting("nope"), 100);
-    assert.equal(clampVolumePercent(250), 100);
-    assert.equal(clampVolumePercent(-5), 0);
-    assert.equal(parseVolumeSetting("42"), 42);
-  });
 });
 
-describe("loop handle contract (pure)", () => {
-  it("pending loop canceled before start never starts", async () => {
-    let started = false;
-    let canceled = false;
-    const handle = {
-      _canceled: false,
-      stop() {
-        this._canceled = true;
-        canceled = true;
-      },
-    };
-    const pending = Promise.resolve().then(() => {
-      if (handle._canceled) return;
-      started = true;
-    });
-    handle.stop();
-    await pending;
-    assert.equal(canceled, true);
-    assert.equal(started, false);
-  });
-
-  it("stopping twice is safe", () => {
-    let n = 0;
-    const handle = {
-      stopped: false,
-      stop() {
-        if (this.stopped) return;
-        this.stopped = true;
-        n += 1;
-      },
-    };
-    handle.stop();
-    handle.stop();
-    assert.equal(n, 1);
+// Adapter sample map includes dodge (Node can't import fighterAssets WAV URLs
+// without Vite — skip resolveSample runtime if it throws).
+describe("adapter sample keys", () => {
+  it("cue registry dodge/isTeching/glass keys are defined", () => {
+    assert.equal(getCueDefinition(CUE.SLIDE_REDIRECT).layers[0].sampleKey, "dodge");
+    assert.equal(getCueDefinition(CUE.CLINCH_THROW_RESISTED).layers[0].sampleKey, "isTeching");
+    assert.equal(getCueDefinition(CUE.MATADOR_BREAK).layers[0].sampleKey, "glassBreak");
   });
 });

@@ -5,10 +5,30 @@ export {
 export {
   CUE,
   CUE_DEFINITIONS,
+  CINEMATIC_VARIANT,
   STRIKE_CHORD_MS,
   SWING_STARTUP_MS,
   getCueDefinition,
 } from "./cueRegistry.js";
+
+export {
+  shouldPredictChargeHoldPose,
+  isFreshProvisionalSlapPrediction,
+  liveChargeReclassSequence,
+  PROVISIONAL_SLAP_SUPERSEDE_MS,
+} from "./chargeAudioIntegration.js";
+
+export {
+  resolveCinematicVariant,
+  shouldPlayCinematicGunCue,
+  shouldPlayCinematicChargedLaunchPackage,
+  shouldPlayCinematicKillSmokeTrail,
+} from "./cinematicAudio.js";
+
+export {
+  resolveClinchThrowFailAudio,
+  applyClinchThrowFailPresentationAndAudio,
+} from "./clinchThrowFailAudio.js";
 
 export {
   createCombatAudioOrchestrator,

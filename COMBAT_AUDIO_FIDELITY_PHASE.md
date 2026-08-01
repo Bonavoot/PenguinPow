@@ -1,6 +1,6 @@
 # Combat Audio Fidelity Phase — COMBAT_AUDIO_FIDELITY_V1
 
-**Status:** Implemented (awaiting subjective playtest).  
+**Status:** Corrective pass after player audition (awaiting re-audition).  
 **Flag:** `COMBAT_AUDIO_FIDELITY_V1` — **default OFF**.  
 **Scope:** Presentation/audio only. No combat tuning, hitboxes, damage, stun, or input-command rule changes.
 
@@ -12,274 +12,157 @@
 # Playtest enable
 COMBAT_AUDIO_FIDELITY_V1=1 npm run dev:web
 
-# Rollback (exact pre-phase combat-audio routing for flagged cues)
+# Rollback
 COMBAT_AUDIO_FIDELITY_V1=0 npm run dev:web
-# also: unset / false
 ```
 
 Vite exposes `COMBAT_*` via `client/vite.config.js` `envPrefix`.
 
-**Always-on reliability (not flag-gated):**
-
-- Saved volume `0` preserved; volume applied at app init
-- Master SFX gain updates live voices
-- Pending loop cancel-before-decode
-- `slap_parry` ownership → index 0 once per client
-- Charge-hold cancels provisional slap whoosh when `charge_start` predicts / server confirms charging
-- Gamepad `charge_release` prediction parity
-- Continuous charge chord while Mouse1 held (keyboard + gamepad)
-
 ---
 
-## 1. Verified charged-hold phantom root cause
+## Corrective pass (player audition) — RETRACTIONS
 
-**Cause:** Client classifies Mouse1 immediately from locally visible keys. If Mouse1 rises before Down+Forward complete the charge chord, `Game.jsx` predicts **slap** and `GameFighter` schedules a slap whiff at **press + 55ms**. The server may still resolve the same physical chord as **charge** (same-packet events or continuous S+forward-while-Mouse1-held). Charge prediction cleared slap *pose* flags but **did not cancel the pending swing timer**, so the slap/attack swoosh fired during the charge hold.
+### Retracted: charged whoosh at release +150 ms
 
-**Secondary gaps (also fixed):**
+**Wrong (v1 initial):** Schedule `CHARGED_ATTACK_RELEASE` at release + `SWING_STARTUP_MS.charged` (~150 ms), treating hitbox startup as the whoosh seam.
 
-- Gamepad lacked local `charge_release` prediction (release whoosh waited on auth confirm only)
-- No client continuous `charge_start` when S/forward arrived while Mouse1 already held
+**Correct:** Cue is `CHARGED_LUNGE_BEGIN`. It fires when charged **locomotion/execution** begins (`isAttacking` + charged, not palm/low-kick), immediately on that transition. `CHARGED_STARTUP_MS` / `isInStartupFrames` remain gameplay/hitbox-only and do **not** delay this sound.
 
----
-
-## 2. Event timeline — before
-
-1. t=0: Mouse1 down (dirs incomplete) → predict slap → schedule slap whiff @ t+55  
-2. t=10–40: S+Forward complete → server starts charging; client may clear slap pose  
-3. t=55: **pending slap whoosh plays** while holding charge  
-4. Later release → charged whoosh @ release+150 (separate path)
-
-## 3. Event timeline — after
-
-1. t=0: Mouse1 → provisional slap audio token @ playAt = inputTs+55 (not delayed by chord grace)  
-2. t&lt;50ms: S+Forward → `charge_start` prediction → **cancel** provisional slap/palm audio  
-3. Hold: no release/whiff swoosh  
-4. Release: one `CHARGED_ATTACK_RELEASE` @ release+150; auth confirm reconciles (no double)  
-5. Interrupt/cancel: pending release canceled
-
----
-
-## 4–6. Prediction / authority / reconcile
-
-| Cue | Local | Remote | Authority |
-| --- | --- | --- | --- |
-| Slap / palm / charged release whoosh | Predicted at startup seam | Auth snapshot / confirm | Reconcilable |
-| RESISTED | — | — | Authoritative `clinch_throw_fail` |
-| Rope / Slide Jump launch | — | Snapshot phase edge | Authoritative transition |
-| Slide Redirect | — | Snapshot + `claimMovementSmoke` | Same seam as smoke |
-| Matador Break | — | `player_hit` `isGored` | Authoritative |
-| Slap parry | — | Socket (if emitted) | Index 0 once |
-
-Reconcile: actionId / eventId claim; `confirmCombatCue` / suppress window; no second audible play.
-
----
-
-## 7. Semantic cue registry (placeholders)
-
-| Cue | Placeholder samples | Notes |
-| --- | --- | --- |
-| `SLAP_WHIFF` | random slap-whiff | Existing |
-| `PALM_WHIFF` | palm-thrust-whiff | Existing |
-| `CHARGED_ATTACK_RELEASE` | attack-sound.ogg | Not cinematic launch |
-| `CLINCH_THROW_RESISTED` | is-teching-sound | Not Perfect Brace |
-| `ROPE_JUMP_LAUNCH` | flap + quiet cropped attack | Restrained |
-| `SLIDE_JUMP_LAUNCH` | flap (lower) + quieter attack | Distinct from rope |
-| `SLIDE_REDIRECT` | short flap (cropped) | Not full dodge (~1s) |
-| `MATADOR_BREAK` | glass-break cropped ~420ms | Quieter than armor break |
-| `SLAP_PARRY` | slap-parry-sound | Ownership fixed |
-
-Module: `client/src/combatAudio/`.
-
----
-
-## 8. Per-cue voice policy (summary)
-
-- Redirect: minInterval 40ms, maxVoices 2/actor, steal oldest  
-- Matador Break: maxVoices 1/actor, reject  
-- Launches: minInterval 100ms, maxVoices 2  
-- RESISTED: minInterval 120ms  
-- Short whiffs: allow multi-actor overlap  
-
----
-
-## 9. Event ownership
-
-| Event | Owner |
+| State | Audio |
 | --- | --- |
-| `slap_parry` | `index === 0` once + eventId |
-| `clinch_throw_fail` | `index === 0` + presentation claim |
-| `player_hit` Matador Break | `index === 0` + hitId eventId |
-| Ice slide redirect SFX | Same fighter instance + `claimMovementSmoke` |
-| Rope/Slide launch SFX | Fighter whose phase edge fires + presentation eventId |
+| `CHARGE_HOLD` (`isChargingAttack`) | Silence (no lunge whoosh) |
+| `CHARGED_LUNGE_BEGIN` (release accepted → forward move starts) | Immediate whoosh |
+| Deferred (e.g. dodge pending) | No whoosh until lunge actually begins |
+| Remote | Immediate on first auth rising edge; eventId dedupe |
+
+### Retracted: Perfect Brace intentionally silent
+
+Player rejected silence. Perfect Brace now plays `CLINCH_PERFECT_BRACE` (isTeching + quiet rawParrySuccess accent).
+
+### Retracted: Slide Redirect = flap
+
+Player rejected. `SLIDE_REDIRECT` now uses **dodge** sample at dodge gain `0.02`, rate `1.0`, with **real** voice steal/fade-stop (max 1 voice/actor).
+
+### Retracted: Matador glass cropped to 420 ms
+
+Forced `source.stop` crop removed; glass plays its natural tail.
 
 ---
 
-## 10–14. Feature implementations
+## Live charge phantom — why the unit test passed but gameplay failed
 
-**RESISTED:** On accepted non-`perfectBrace` `clinch_throw_fail`, play `CLINCH_THROW_RESISTED` once. Perfect Brace unchanged (no tech cue — deferred distinct asset).
+1. Mouse1 → `applyPrediction("slap")` → `pred.isAttacking = true`, whoosh scheduled @ +55 ms.  
+2. S+Forward → `applyPrediction("charge_start")`.  
+3. Cancellation lived **inside** `if (canPredictAction(...))`.  
+4. `canPredictAction()` returned **false** because the fresh provisional slap still had `pred.isAttacking`.  
+5. Charge-start body never ran → timer survived → whoosh during hold.  
+6. Isolated `onKeysWhileMouse1Held` tests passed, but production never canceled when the gate blocked pose prediction.
 
-**Rope Jump launch:** On `ropeJumpPhase` → `active`, with liftoff smoke; cue `ROPE_JUMP_LAUNCH`.
-
-**Slide Jump launch:** On `slideJumpPhase` → `flight`; cue `SLIDE_JUMP_LAUNCH`.
-
-**Slide Redirect:** On successful `claimMovementSmoke(SLIDE_REDIRECT)`; cue `SLIDE_REDIRECT` (short flap). Cadence ~160ms accepted redirects.
-
-**Matador Break:** On `isGored` under V1: `MATADOR_BREAK` glass + `matadorBreak` particle preset (7 shards / shorter life vs `grabArmorBreak` 14 shards). Banner/shake/hit layers unchanged.
-
----
-
-## 15–16. Volume + loop fixes
-
-- `parseVolumeSetting` preserves `0`; Settings load uses nullish/`parseVolumeSetting`  
-- `initGlobalVolumeFromSettings()` from `main.jsx`  
-- Master SFX gain = userScale × 2.5; buffer SFX use authored gains  
-- `playBuffer(..., loop:true)` returns cancelable pending handle if undecoded  
+**Fix:** On `charge_start`, **always** cancel provisional slap/palm audio first. Pose prediction may still supersede a fresh provisional slap via `shouldPredictChargeHoldPose()` even when the generic gate is closed.
 
 ---
 
-## 17. Dev trace
+## Semantic cue registry (current)
+
+| Cue | Samples | Notes |
+| --- | --- | --- |
+| `SLAP_WHIFF` | slap-whiff | Cancelable provisional |
+| `PALM_WHIFF` | palm-thrust-whiff | |
+| `CHARGED_LUNGE_BEGIN` | attack-sound | Immediate at lunge; alias `CHARGED_ATTACK_RELEASE` → same |
+| `CLINCH_THROW_RESISTED` | isTeching @ **0.04** | Auth fail; failId + one claim path |
+| `CLINCH_PERFECT_BRACE` | isTeching + rawParrySuccess | Higher prestige than RESISTED |
+| `ROPE_JUMP_LAUNCH` | flap + quiet attack | Approved |
+| `SLIDE_JUMP_LAUNCH` | flap + quiet attack | Approved |
+| `SLIDE_REDIRECT` | **dodge** @ 0.02 | Real voice steal; same smoke seam |
+| `MATADOR_BREAK` | glassBreak **no durationMs** | Natural tail |
+| `SLAP_PARRY` | slap-parry | index 0 |
+
+---
+
+## Cinematic variant contract (server → client)
+
+| Variant | When | Launch package | Western `gunLaunchSound` |
+| --- | --- | --- | --- |
+| `demolished_charged` | Normal charged cinematic kill | Yes | **Yes** |
+| `matador_break` | Gored/Matador charged cinematic (or matadorKill) | Yes | **No** |
+| `ap_pull` | AP pull kill | No | No |
+
+Server emits `cinematicVariant` on `cinematic_kill`. Client classifies via `resolveCinematicVariant()` (legacy `apPullKill` / `matadorKill` / `isGored` fallbacks).
+
+---
+
+## RESISTED live silence root cause
+
+Handler returned early on Perfect Brace with no sound (by design then). Ordinary RESISTED called the orchestrator, but integration was not fixture-tested; gain was also slightly below the proven grab-tech path (`0.035` vs `0.04`).
+
+**Fix:** Shared `applyClinchThrowFailPresentationAndAudio()` — one successful presentation claim owns **both** visual and audio; RESISTED gain `0.04`; Perfect Brace layered cue.
+
+---
+
+## Voice steal
+
+`playSound` returns `playBuffer` handles. `playCueLayers` returns `stopAll`. Orchestrator stores `stopAll` per active voice and invokes it on oldest-steal (short fade). Redirect tests assert `getVoiceStopCount() >= 1`.
+
+---
+
+## Dev trace
 
 ```js
-localStorage.setItem("pumo_audio_trace", "1") // optional force
+localStorage.setItem("pumo_audio_trace", "1")
 window.__PUMO_AUDIO.dump()
 window.__PUMO_AUDIO.summary()
 window.__PUMO_AUDIO.clear()
 ```
 
-Records compact cue/status/action/event fields. No console spam by default.
+Statuses include: `PROVISIONAL_SLAP_*`, `CHARGE_HOLD_BEGIN`, `CHARGED_LUNGE_BEGIN`, `RESISTED_HANDLER_RECEIVED`, `CLINCH_*_PLAYED`, `SLIDE_REDIRECT_*`, `MATADOR_BREAK_PLAYED`, `CINEMATIC_VARIANT`, `GUN_CUE_PLAYED` / `GUN_CUE_SKIPPED`.
 
 ---
 
-## 18–20. Flag semantics
-
-- OFF: legacy `playSound` / `scheduleSwingSound` for most combat whooshes; new coverage cues off  
-- ON: semantic orchestrator for listed cues + coverage  
-- Always-on fixes listed above  
-
----
-
-## 21–22. Tests + commands run
+## Automated tests
 
 ```bash
 node --test client/src/combatAudio/*.test.js
-# → 27 pass / 0 fail
+# 23 pass / 0 fail
 
-# Lint changed client paths (see report)
-npx eslint <changed files> --max-warnings 0
+npm run test:contact --prefix server-io
+# 47 pass / 0 fail
 ```
 
-**Not run (prohibited this phase):** `npm run build`, vite/electron/Steam packaging, sprite bake, audio generation.
+---
 
-Server gameplay code was **not** modified; full server suite not required for this phase.
+## Manual playtest (do not mark passed)
+
+### Charge
+- [ ] Hold S+Forward, then hold Mouse1 — silence during hold  
+- [ ] Mouse1 a few ms before S+Forward — no provisional slap whoosh if charge resolves  
+- [ ] Directions before Mouse1 — clean  
+- [ ] Tap / medium / full release — whoosh on **first forward move frame**, not ~150 ms late  
+- [ ] Cancel hold without lunge — zero lunge whoosh  
+- [ ] Deferred release (dodge) — whoosh when lunge actually starts  
+- [ ] Keyboard + gamepad  
+
+### Clinch
+- [ ] Ordinary RESISTED — audible tech vocabulary (~grab-tech)  
+- [ ] Repeated distinct RESISTED  
+- [ ] Perfect Brace — audible, more distinguished than RESISTED  
+- [ ] Failed PB timing / successful throw  
+
+### Redirect
+- [ ] Sounds like Dodge, not flap  
+- [ ] Rapid ~160 ms redirects — no pile-up, no missing accepted  
+- [ ] Rejected cooldown silent  
+- [ ] Both players independent  
+
+### Matador / cinematic
+- [ ] Glass completes naturally  
+- [ ] Matador cinematic kill — **no** western gun  
+- [ ] Normal DEMOLISHED cinematic — gun present  
+- [ ] AP pull unchanged  
 
 ---
 
-## 23. Manual playtest matrix
+## Remaining risks
 
-Do **not** mark passed until you audition.
-
-### Devices
-- [ ] Keyboard/mouse  
-- [ ] Gamepad / Steam Deck-style  
-
-### Perspectives
-- [ ] Local player  
-- [ ] Remote opponent  
-- [ ] Both fighter indices  
-- [ ] Host and non-host if roles differ  
-
-### Network
-- [ ] Normal local  
-- [ ] Moderate latency  
-- [ ] High latency / delayed auth confirm  
-
-### Charged attack
-- [ ] Clean S+Forward+M1 hold — **no** phantom swoosh  
-- [ ] M1 slightly before dirs — **no** phantom; release once  
-- [ ] Dirs before M1 — clean  
-- [ ] Short / long charge release — one timed whoosh  
-- [ ] Interrupted hold — no delayed release  
-- [ ] Round end during hold — no orphan whoosh  
-- [ ] Rapid slap then charge / charge then slap  
-- [ ] Controller release parity  
-
-### RESISTED
-- [ ] Ordinary resisted throw — one tech cue  
-- [ ] Repeated distinct resists  
-- [ ] Perfect Brace — **not** ordinary RESISTED sound  
-- [ ] Throw success — silent for this cue  
-- [ ] Other throw fail reasons  
-
-### Movement
-- [ ] Rope Jump accepted liftoff — restrained launch  
-- [ ] Rope Jump denied/canceled — silent  
-- [ ] Slide Jump accepted / denied  
-- [ ] Single redirect + max cadence (~160ms)  
-- [ ] Rejected redirect cooldown — silent  
-- [ ] Both players redirect near-simultaneously — neither drops  
-- [ ] Listen for mud / flamming / fatigue  
-
-### Matador Break
-- [ ] Matador success — no glass  
-- [ ] Matador whiff no hit — no glass  
-- [ ] Hit during Matador / recovery — glass + small shards + banner  
-- [ ] Ordinary hit — no Matador glass  
-- [ ] Compare to Shatter Palm / grab armor break — family resemblance, not identical  
-
-### Volume / lifecycle
-- [ ] Start with saved volume 0 — muted  
-- [ ] Non-default saved volume at boot  
-- [ ] Change volume while SFX playing — live change  
-- [ ] Enter/leave matches; strafe loop start/stop around preload  
-- [ ] Rematch / return to menu — no orphan loops or delayed cues  
-
----
-
-## 24. Audio coverage table
-
-| Interaction | Classification |
-| --- | --- |
-| Slap startup/whiff | Covered (V1 semantic / legacy); chord cancel fixed |
-| Slap contact | Covered (existing hit path) |
-| Charged hold | Intentionally silent |
-| Charged release/whiff | Covered + phantom fix |
-| Charged contact | Covered (existing) |
-| Palm thrust whiff/contact | Covered |
-| Parry / slap parry | Covered; slap_parry ownership fixed |
-| Matador success | Intentionally mostly silent beyond existing |
-| Matador Break | **Missing → implemented (V1)** |
-| Grab entry | Covered (existing) |
-| Clinch tech | Covered (`isTeching` on tech FX) |
-| Throw RESISTED | **Missing → implemented (V1)** |
-| Perfect Brace | Visual only — **deferred** distinct SFX |
-| Throw launch / landing | Partial / cinematic; normal landing **deferred** |
-| Armor break | Covered (glass + grabArmorBreak) |
-| Rope Jump launch | **Missing → implemented (V1)** |
-| Rope Jump flight/landing | Landing smoke exists; flight intentionally light |
-| Slide start | Smoke covered; start SFX out of scope |
-| Slide redirect | Smoke existed; **SFX missing → implemented (V1)** |
-| Slide Jump launch | **Missing → implemented (V1)** |
-| Flap launch/flight/landing | Covered (existing flap path) |
-| Butt slam | Covered via flap hit path |
-| Ring-out / round-end | Partial existing; out of scope polish |
-| Counter Throw / Deep Grip callouts | **Deferred** original assets |
-| UI callouts needing audio | Mixed; out of scope except RESISTED |
-
----
-
-## 25. Deferred original-asset recommendations
-
-- Perfect Brace stinger (distinct from RESISTED/tech)  
-- Dedicated charged-release swoosh (vs generic attack)  
-- Purpose-built slide redirect transient  
-- Normal throw landing / Counter Throw / Deep Grip cues  
-- Shorter Matador-specific shatter sample (replace cropped glass)  
-
----
-
-## 26. Remaining risks
-
-- Mix levels are **unverified** until playtest (placeholder gains in `cueRegistry.js`)  
-- Glass crop length for Matador may need tuning  
-- Redirect flap may feel thin or busy at max cadence — adjust gain/rate in registry  
-- Feature flag OFF still gets charge phantom fix + volume/loop/`slap_parry` ownership  
+- Dodge sample at 160 ms redirect cadence may still feel thick — steal helps; gain may need playtest tweak  
+- Perfect Brace layer mix unverified subjectively  
+- Master volume routing changes from prior pass remain in effect  

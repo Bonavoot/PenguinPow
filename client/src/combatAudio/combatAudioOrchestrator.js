@@ -46,10 +46,12 @@ export function createCombatAudioOrchestrator(opts = {}) {
   const claimedEventIds = new Set();
   /** @type {Map<string, number>} */
   const lastPlayByVoiceKey = new Map();
-  /** @type {Map<string, Array<{ handleId: string, startedAt: number }>>} */
+  /** @type {Map<string, Array<{ handleId: string, startedAt: number, stopAll?: Function }>>} */
   const activeVoices = new Map();
   /** @type {Map<string, string>} */
   const predictedByAction = new Map();
+  /** Test/observability: count of real stopAll invocations from voice steal */
+  let voiceStops = 0;
 
   let roundToken = 0;
 
@@ -57,6 +59,26 @@ export function createCombatAudioOrchestrator(opts = {}) {
     const actor = ctx.actorId || "global";
     // Per-actor voice keys so P1 cannot suppress P2.
     return `${cueName}:${actor}`;
+  }
+
+  function stopVoiceEntry(entry, cueName, ctx, reason) {
+    if (!entry) return false;
+    if (typeof entry.stopAll === "function") {
+      try {
+        entry.stopAll(30);
+        voiceStops += 1;
+        pushAudioTrace({
+          cue: cueName,
+          actorId: ctx?.actorId,
+          status: "SLIDE_REDIRECT_VOICE_STOPPED",
+          reason: reason || "voice_steal",
+        });
+        return true;
+      } catch {
+        /* ignore */
+      }
+    }
+    return false;
   }
 
   function claimEvent(eventId) {
@@ -122,14 +144,13 @@ export function createCombatAudioOrchestrator(opts = {}) {
     return true;
   }
 
-  function registerActiveVoice(vKey, handleId) {
+  function registerActiveVoice(vKey, handleId, stopAll) {
     let list = activeVoices.get(vKey);
     if (!list) {
       list = [];
       activeVoices.set(vKey, list);
     }
-    list.push({ handleId, startedAt: nowFn() });
-    // Prune stale (>2s) — soft bound for voice counting without AudioNode refs.
+    list.push({ handleId, startedAt: nowFn(), stopAll });
     const cutoff = nowFn() - 2000;
     while (list.length && list[0].startedAt < cutoff) list.shift();
   }
@@ -140,7 +161,6 @@ export function createCombatAudioOrchestrator(opts = {}) {
     const vKey = voiceKey(cueName, ctx);
     const last = lastPlayByVoiceKey.get(vKey);
     const t = nowFn();
-    // Only enforce min-interval after a prior play for this voice key.
     if (
       def.minIntervalMs > 0 &&
       last != null &&
@@ -154,7 +174,8 @@ export function createCombatAudioOrchestrator(opts = {}) {
     activeVoices.set(vKey, list);
     if (list.length >= (def.maxVoices || 4)) {
       if (def.voiceSteal === "oldest") {
-        list.shift();
+        const oldest = list.shift();
+        stopVoiceEntry(oldest, cueName, ctx, "oldest");
         activeVoices.set(vKey, list);
         pushAudioTrace({
           cue: cueName,
@@ -242,19 +263,34 @@ export function createCombatAudioOrchestrator(opts = {}) {
     const playAt = meta.playAt != null ? meta.playAt : nowFn();
     lastPlayByVoiceKey.set(policy.vKey, playAt);
     const handleId = `h${nextHandleId++}`;
-    registerActiveVoice(policy.vKey, handleId);
 
     if (ctx.predicted && ctx.actionId) {
       predictedByAction.set(ctx.actionId, cueName);
     }
 
     const layers = def.layers || [];
-    playLayers(layers, {
+    const played = playLayers(layers, {
       cueName,
       pan: ctx.pan ?? 0,
       pitchVary: def.pitchVary || 0,
       ctx,
     });
+    const stopAll =
+      played && typeof played.stopAll === "function" ? played.stopAll : null;
+    registerActiveVoice(policy.vKey, handleId, stopAll);
+
+    const statusTag =
+      cueName === "SLIDE_REDIRECT"
+        ? "SLIDE_REDIRECT_PLAYED"
+        : cueName === "CLINCH_THROW_RESISTED"
+          ? "CLINCH_THROW_RESISTED_PLAYED"
+          : cueName === "CLINCH_PERFECT_BRACE"
+            ? "CLINCH_PERFECT_BRACE_PLAYED"
+            : cueName === "MATADOR_BREAK"
+              ? "MATADOR_BREAK_PLAYED"
+              : cueName === "CHARGED_LUNGE_BEGIN"
+                ? "CHARGED_LUNGE_BEGIN"
+                : "played";
 
     pushAudioTrace({
       cue: cueName,
@@ -264,7 +300,7 @@ export function createCombatAudioOrchestrator(opts = {}) {
       local: !!ctx.local,
       predicted: !!ctx.predicted,
       authoritative: !!ctx.authoritative,
-      status: "played",
+      status: statusTag,
       reason: meta.reason || "play",
       requestedAt: meta.requestedAt ?? playAt,
       playAt,
@@ -272,7 +308,7 @@ export function createCombatAudioOrchestrator(opts = {}) {
       roundSeq: roundToken,
     });
 
-    return { played: true, handleId, vKey: policy.vKey };
+    return { played: true, handleId, vKey: policy.vKey, stopAll };
   }
 
   function playCombatCue(cueName, context = {}) {
@@ -448,12 +484,22 @@ export function createCombatAudioOrchestrator(opts = {}) {
     return pendingByHandle.size;
   }
 
+  function getVoiceStopCount() {
+    return voiceStops;
+  }
+
+  function getActiveVoiceCount(cueName, actorId) {
+    const list = activeVoices.get(`${cueName}:${actorId || "global"}`) || [];
+    return list.length;
+  }
+
   function getDebugState() {
     return {
       pending: pendingByHandle.size,
       claimedEvents: claimedEventIds.size,
       predictedActions: predictedByAction.size,
       roundToken,
+      voiceStops,
       cues: Object.keys(CUE_DEFINITIONS),
     };
   }
@@ -466,6 +512,8 @@ export function createCombatAudioOrchestrator(opts = {}) {
     clearCombatAudioForRound,
     confirmCombatCue,
     getPendingCount,
+    getVoiceStopCount,
+    getActiveVoiceCount,
     getDebugState,
     claimEvent,
   };

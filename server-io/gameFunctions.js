@@ -2923,6 +2923,7 @@ function resolveMatadorPull(matador, grabber, room, io) {
       impactX: centerX,
       impactY: grabber.y,
       matadorKill: true,
+      cinematicVariant: "matador_break",
       noPan: true,
     });
   }
