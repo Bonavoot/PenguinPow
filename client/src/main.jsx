@@ -20,10 +20,6 @@ import {
   setupPerfShortcut,
 } from "./utils/perf/PerfRecorder";
 
-const presentationLabRequested =
-  import.meta.env.DEV &&
-  new URLSearchParams(window.location.search).get("presentationLab") === "1";
-
 // Phase 0: opt-in performance recorder (?perf=1 or localStorage pumo_perf=1).
 // No-op when disabled. Overlay toggle: Ctrl+Shift+P.
 ensurePerfRecorder();
@@ -42,27 +38,19 @@ if (document.fonts?.load) {
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 
-if (presentationLabRequested) {
-  import("./presentationLab/PresentationLab.jsx").then(
-    ({ default: PresentationLab }) => {
-      root.render(<PresentationLab />);
-    },
-  );
-} else {
-  Promise.all([
-    import("./App.jsx"),
-    import("./components/Settings.jsx"),
-    import("./combatAudio/index.js"),
-  ]).then(
-    ([
-      { default: App },
-      { initGlobalVolumeFromSettings },
-      { installAudioTraceGlobal },
-    ]) => {
-      // Apply saved SFX volume before first cue (preserves mute / non-default).
-      initGlobalVolumeFromSettings();
-      installAudioTraceGlobal();
-      root.render(<App />);
-    },
-  );
-}
+Promise.all([
+  import("./App.jsx"),
+  import("./components/Settings.jsx"),
+  import("./combatAudio/index.js"),
+]).then(
+  ([
+    { default: App },
+    { initGlobalVolumeFromSettings },
+    { installAudioTraceGlobal },
+  ]) => {
+    // Apply saved SFX volume before first cue (preserves mute / non-default).
+    initGlobalVolumeFromSettings();
+    installAudioTraceGlobal();
+    root.render(<App />);
+  },
+);
