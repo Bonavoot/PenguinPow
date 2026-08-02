@@ -31,15 +31,15 @@ This matrix records production semantics before any renderer replacement. “Lab
 
 | State | Production owner | Current behavior | Stage 1 fixture | Requirement |
 |---|---|---|---|---|
-| Empty slot | `player*ActivePowerUp = null` | Dark square slot | `neutral` | Intentional empty state; low visual weight. |
-| Active power-up | Active type from shared game state | Gradient square icon tile | `activePowerUp` | Preserve icon recognition; integrate slot with wing silhouette. |
+| Empty slot | `player*ActivePowerUp = null` | Dark square slot | `neutral` | B2/B3 remove the empty tile; absence uses negative space and keeps meter alignment stable. |
+| Active power-up | Active type from shared game state | Gradient square icon tile | `activePowerUp` | Preserve icon recognition; B2/B3 integrate icon, short name, cooldown, and charges into the wing rail. |
 | Cooldown | snowball/army cooldown props | Dim/grayscale treatment | `cooldown` | Use icon plus explicit cooldown state; not color alone. |
 | Multiple charges | throws/spawns remaining props | Numeric badge | `cooldown` | Keep count controller-distance readable. |
 | Single charge | same | Numeric badge or available state | `cooldown` right side | Avoid ambiguous “1” overlap with icon. |
 | BASHO slot unavailable | `bashoPowerUpSlots` with no applicable power-up | N/A/empty state in core HUD | neutral/BASHO fixtures cover empty vs active, not literal `N/A` | Add exact N/A fixture before Stage 3 integration. |
 | BASHO active boon | `UiPlayerInfoBasho.jsx` → `BashoBoonStrip.jsx` | Small icon/chip strip with deal-in | `basho` | Show only combat-relevant shorthand during a bout. |
 | BASHO passive boon | drafted/opponent power-up arrays | Same strip language | `basho` | Do not become inventory bar; details belong in DayCard. |
-| Maximum boon density | drafted/opponent arrays | Width and microtype pressure | `basho` representative two-per-side | Add actual configured maximum before Stage 3 QA. |
+| Maximum boon density | configured passives are `speed`, `power`, `thick_blubber`, `flap`, `shatter_palm`; one normalized draft active | Width and microtype pressure | `bashoMaximum`: all five passive types plus one active, with stacks/cooldown | B2 fits the representative maximum in one integrated strip; B3 reaches its readable-density limit and needs a production abbreviation/icon policy. |
 | BASHO day | `BashoDayHud.jsx` via `centerContent` | Center day numeral/label | `basho` day 12 | One- and two-digit values must not resize wings. |
 
 ## Identity, score, orientation, and density
@@ -67,22 +67,22 @@ This matrix records production semantics before any renderer replacement. “Lab
 
 ## Mechanical and actor-anchored event states
 
-| Event | Production component / path | Current register | Lab fixture |
-|---|---|---|---|
-| COUNTER HIT | `CounterHitEffect.jsx` → `SumoAnnouncementBanner` | Side mechanical rail | `counterHit` |
-| PUNISH | `PunishBannerEffect.jsx` → rail | Side mechanical rail | `punish` |
-| RESISTED | `ClinchCalloutEffect.jsx` → rail | Side mechanical rail | `resisted` |
-| GRAB BREAK | `GrabBreakEffect.jsx` → rail | Side mechanical rail | `grabBreak` |
-| COUNTER THROW | `ClinchCalloutEffect.jsx` → rail | Side mechanical rail | `counterThrow` |
-| DEEP GRIP | `ClinchCalloutEffect.jsx` → rail | Side mechanical rail | `deepGrip` |
-| COUNTER GRAB | `CounterGrabEffect.jsx` → rail plus clamp burst | Rail + world burst | `counterGrab` |
-| GRAB TECH | `GrabTechEffect.jsx` → rail/world effect | Mechanical read | `grabTech` |
-| MATADOR BREAK / GORED | `GoredBannerEffect.jsx` and `SumoHypeStamp` config | Current code straddles rail/hype semantics | `matadorBreak` |
-| CLAMPED | `GripPromptEffect.jsx` | Local actor-anchored prompt | `clamped` |
-| NOT ENOUGH STAMINA | `GassedEffect.jsx` | Centered local action-denied prompt | `noStamina` |
-| PERFECT | perfect-parry path → `SumoHypeStamp` | Hype stamp | `perfect` |
-| PERFECT BRACE | `PerfectBraceEffect.jsx` → hype stamp | Hype stamp | `perfectBrace` |
-| MATADOR | `MatadorSuccessEffect.jsx` → hype stamp | Hype stamp | `matador` |
+| Event | Production component / path | Verified player need | Revised family | Lab fixture |
+|---|---|---|---|---|
+| COUNTER HIT | `CounterHitEffect.jsx` → `SumoAnnouncementBanner` | Passive startup-timing acknowledgement; 35 ms slap bonus, no combo route | Offensive recognition | `counterHit` |
+| PUNISH | `PunishBannerEffect.jsx` → rail | Passive recovery-timing acknowledgement | Offensive recognition | `punish` |
+| RESISTED | `ClinchCalloutEffect.jsx` → rail | Resolved defense acknowledgement | Technical defense | `resisted` |
+| GRAB BREAK | `GrabBreakEffect.jsx` → rail | Resolved high-cost escape acknowledgement | Technical defense | `grabBreak` |
+| COUNTER THROW | `ClinchCalloutEffect.jsx` → rail | Advantage-change acknowledgement after the throw lands | Control advantage | `counterThrow` |
+| DEEP GRIP | `ClinchCalloutEffect.jsx` → rail | Advantage gained; persistent HUD carries the continuing state | Control advantage | `deepGrip` |
+| COUNTER GRAB | `CounterGrabEffect.jsx` → rail plus clamp burst | Advantage event acknowledgement; not the response prompt | Control advantage | `counterGrab` |
+| GRAB TECH | `GrabTechEffect.jsx` → rail/world effect | Resolved mutual-tech acknowledgement | Technical defense | `grabTech` |
+| MATADOR BREAK / GORED | `GoredBannerEffect.jsx` and `SumoHypeStamp` config | Hard wrong-read punishment inside a Matador attempt; strategy-dependent | Compact mastery | `matadorBreak` |
+| CLAMPED | `GripPromptEffect.jsx` | Actionable local response: offense locked, Plant still available | Warning | `clamped` |
+| NOT ENOUGH STAMINA | `GassedEffect.jsx` | Actionable local denied-input explanation | Warning | `noStamina` |
+| PERFECT | perfect-parry path → `SumoHypeStamp` | Rare 40 ms mastery read | Mastery | `perfect` |
+| PERFECT BRACE | `PerfectBraceEffect.jsx` → hype stamp | Rare 100 ms final-startup defense | Mastery | `perfectBrace` |
+| MATADOR | `MatadorSuccessEffect.jsx` → hype stamp | Successful 180 ms grab-line hard read; frequency is strategy-dependent | Compact mastery | `matador` |
 
 World-space strike, parry, grab, grip, clinch, and particle effects are not all HUD messages. They should retain world ownership unless they communicate a rule the player cannot infer from animation alone.
 
@@ -91,25 +91,29 @@ World-space strike, parry, grab, grip, clinch, and particle effects are not all 
 | Moment | Production owner | Current duration / behavior | Lab fixture |
 |---|---|---|---|
 | Normal combat | `Game.jsx` / `GameFighter.jsx` | Persistent HUD and world effects | `fight` |
-| HANDS DOWN | `SumoGameAnnouncement.jsx` `tewotsuite` | 2.0 s held-breath rise with flash/brush | `handsDown` |
-| HAKKI-YOI | `SumoGameAnnouncement.jsx` `hakkiyoi` | 1.8 s slam/release with flash/vignette/rule | `hakkiYoi` |
-| Force out | `RoundResult.jsx` config | 3.0 s result composition | `resultForce` |
+| HANDS DOWN | `SumoGameAnnouncement.jsx` `tewotsuite` | 2.0 s held-breath rise with flash/brush | `handsDown`; B2 calm band, B3 split HANDS/DOWN anticipation |
+| HAKKI-YOI | `SumoGameAnnouncement.jsx` `hakkiyoi` | 1.8 s slam/release with flash/vignette/rule | `hakkiYoi`; B2 broadcast release, B3 directional manga cut, both early-clear |
+| Force out | `RoundResult.jsx` config | 3.0 s result composition | `resultForce`; short-result B2/B3 width class |
 | Overarm throw | same | technique-specific copy | `resultThrow` |
-| Long result | same | long-string stress | `resultLong` |
+| Long result | same | long-string stress | `resultLong`; dedicated B2/B3 long width/type class |
 | Victory | result/match flow state | winner treatment | `victory` |
 | Defeat | result/match flow state | loser treatment | `defeat` |
-| PreMatch | `PreMatchScreen.jsx` | fighter load/readiness and VS presentation | `preMatch` |
-| BASHO DayCard | `DayCard.jsx` | day, opponent, record, boons/actions | `dayCard` |
+| PreMatch | `PreMatchScreen.jsx` | fighter load/readiness and VS presentation | `preMatch`; B2 bottom broadcast band, B3 separate fighter islands |
+| BASHO DayCard | `DayCard.jsx` | current near-black day/opponent/boon flow | `dayCard`; B2 split black program, B3 open black numeral/slash composition. Fixture corrected during revision — see note below. |
 | Power-up selection/reveal | `PowerUpSelection.jsx`, `PowerUpReveal.jsx` | match-adjacent BASHO flow | inventoried; not separately rendered in Stage 1 probe |
-| MatchOver | `MatchOver.jsx` | conclusion card and actions | `matchOver` |
+| MatchOver | `MatchOver.jsx` | conclusion card and actions | `matchOver`; B2 full-width result rail, B3 open left-anchored conclusion |
 | Rematch / next day | `Game.jsx` flow ownership | renderer remount/state reset risk | not simulated; Stage 7 integration case |
+
+### DayCard fixture correction
+
+The first revision pass under-specified this screen, and the resulting layouts read as sparse for a reason that was the fixture's fault rather than the composition's. Re-checking the shipped screen against the supplied gameplay video confirmed six elements the fixture omitted: the honbasho day-progress dots, the `NEXT OPPONENT` label, the opponent rank chip beside the fighting-style note, the head-to-head record pair, per-boon effect descriptions, and the withdraw (kyūjō) affordance. All six are now in the fixture, and both B2 and B3 were recomposed against the corrected density. Any later density judgement about this screen should be made against the corrected fixture, not the first-pass captures.
 
 ## Stress and collision fixtures
 
 - `Overlap test` shows simultaneous opposing callouts.
-- `Rapid repeat` cycles representative Tier 1 and Tier 2 events to expose replacement/restrike problems.
+- `Replacement demo` shows a deterministic same-side COUNTER HIT→PUNISH cut; `Rapid replacement` cycles representative Tier 1 and Tier 2 events.
 - Replay remounts the selected event/moment with a deterministic key.
-- Pause, 0.25×, 0.5×, 1×, and frame-step scrub are available.
+- Pause, 0.25×, 0.5×, 1×, and frame-step scrub through 4000 ms are available.
 - Reduced motion replaces large travel/rotation with shorter opacity/scale communication.
 - Result and match-flow fixtures intentionally demonstrate the higher-tier suppression context; the production collision policy is specified in `MOTION_AND_EVENT_TAXONOMY.md`.
 

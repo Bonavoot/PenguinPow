@@ -7,7 +7,7 @@ Scope: Stage 0 audit and Stage 1 direction gate only
 
 The arena, crowd, gyōji, and penguin silhouettes are already the game's strongest identity. The weak link is not a lack of effects; it is the absence of one hierarchy spanning the persistent HUD, mechanical reads, ceremony, results, and BASHO flow.
 
-**Recommendation: Direction B — Winter Basho Broadcast.** It gives the permanent HUD a clear mirrored broadcast silhouette, reserves large manga-style motion for meaningful events, and uses ivory/sumi/ice/vermilion/brass in roles rather than as decoration. Direction A is safer but retains too much of the current hardware-overlay silhouette. Direction C has strong personality but spends visual intensity too continuously and is least durable against the hand-drawn scene.
+**Gate status: no visual direction is approved.** Direction B remains useful only as a structural donor: its mirrored fighter wings, center anchor, and unified top silhouette are sound, but its cream surfaces, proportions, floating power-up circles, large event slabs, and card-like flow do not establish a Pumo-specific identity. Stage 1 revision candidates B2 and B3 are evaluated below; neither is being advanced to production.
 
 No production direction should be implemented until the visual-direction gate is approved.
 
@@ -51,7 +51,7 @@ No production direction should be implemented until the visual-direction gate is
 - **Mechanical callouts:** the 1.5 s side rails are appropriately smaller than ceremony, side-owned, and fast. In busy frames they can feel detached from the initiating fighter and their kanji/line/plaque details are dense relative to the short mechanical message.
 - **Hype stamps:** the 1.25 s register creates a useful priority jump, but each variant accumulates stamp, seal, kanji, label, gradient, and bespoke choreography. It reads as a family only at the component level, not across the whole package.
 - **RoundResult:** the three-second result composition is conclusive and readable, but it is materially louder than the illustrated scene: flash, haze, splash, brush, gradient display type, subtitle, and film treatment arrive together. The supplied FORCE OUT frame demonstrates strong dominance but also obscures much of the winner/loser context.
-- **Flow continuity:** PreMatch and DayCard move into very dark, full-screen graphic environments. Their typography and card grammar are internally competent, but the cut from the colorful arena is severe enough to feel like a different product layer.
+- **Flow continuity:** the dark BASHO cut has genuine ceremonial presence. Darkness itself is not a continuity defect; the disconnect comes from unrelated card grammar, type roles, spacing, and material rules. A near-black intermission can provide valuable pacing when repeated typography, fighter accents, motion, and hierarchy carry continuity.
 - **Occlusion:** the screenshots show the crowd and stage props pushing close to the top HUD. Code confirms that the entire `#game-hud-info` layer sits below ring props and actors; therefore mandatory text and meters can be crossed by tassels, fighters, and props, not merely decorative framing.
 - **Lighting:** crowd grading and vignettes create depth, but the cool/dark stack compresses the illustrated crowd while fighters do not always gain an equally clean edge separation. The ice remains attractive; more global darkness is not the solution.
 
@@ -64,7 +64,7 @@ No production direction should be implemented until the visual-direction gate is
 - Streaks, distortion, and high-energy graphics are transition punctuation rather than permanent wallpaper.
 - Bright-stage readability comes from structural contrast and silhouette, not repeated dark cards behind every label.
 
-These are hierarchy and timing lessons only. Direction B deliberately does not copy Tōkon's shapes, placement details, type, palette, or branded motion.
+These are hierarchy and timing lessons only. None of the Stage 1 probes should copy Tōkon's shapes, placement details, type, palette, or branded motion.
 
 ## Diagnosis review
 
@@ -80,7 +80,7 @@ These are hierarchy and timing lessons only. Direction B deliberately does not c
 | H | Confirmed | Rank, name, stamina, posture, center day, win history, power-ups, and boons lack a strict density/priority rule. |
 | I | Confirmed | Side reads can be small/detached; hype stamps spend too much ornament relative to their duration. |
 | J | Partially confirmed | Mood is effective, but stacked scene grading softens crowd detail without consistently improving fighter separation. |
-| K | Confirmed | PreMatch/DayCard darkness breaks arena continuity. Darkness can remain a transition device, not the whole identity. |
+| K | Rejected after revision | The current black BASHO Day presentation demonstrates that a deliberate dark cut can strengthen ceremony. Continuity should come from repeated roles and motion, not mandatory arena color or cream cards. |
 | L | Confirmed | Detailed local comments and polish coexist with global inconsistency. |
 | M | Confirmed | `UiPlayerInfo.jsx` combines state smoothing, event response, layout, animation, and material styling, making safe iteration expensive. |
 
@@ -123,7 +123,7 @@ These are hierarchy and timing lessons only. Direction B deliberately does not c
 | Posture | `#6fa9c4`, bright `#8fbed4`, mid `#5a93ae`, deep `#3a6a82` | Correct dedicated family, but still resembles a separate metallic meter. |
 | Stamina | `#3db86a`, bright `#5fd98a`, mid `#2a9a58`, deep `#176b3c` | Shared green on both players weakens ownership. |
 | Success/regen | `#4ade80`, bright `#86efac`, deep `#16a34a` | Too close to stamina; relies on glow and timing for distinction. |
-| Fighter accents | dynamic mawashi colors | Underused in the dominant current HUD; Direction B uses them as controlled ownership marks. |
+| Fighter accents | dynamic mawashi colors | Underused in the dominant current HUD; B2/B3 use them as short caps, rules, and meter ticks rather than broad team-color fields. |
 | Legacy indigo | `#1f2a4d`, bright `#3a4a85` | Marked deprecated but remains available, increasing palette drift. |
 
 | Material category | Current vocabulary | Decision |
@@ -177,7 +177,7 @@ See `PRESENTATION_LAYER_MAP.md` for coordinate spaces and the required essential
 | Steam Deck exact | 1280×800 | Exact-match rules can miss scaled/windowed 16:10. |
 | Compact desktop | max 1366×900 | Overlaps exact Steam Deck and local component rules. |
 | Portrait warning | orientation portrait and max 900 px | Match is landscape-first. |
-| Lab container tests | max aspect ratio 1.7 and max width 760 px | Stage 1 only; demonstrates a safer aspect-aware direction. |
+| Lab container tests | max aspect ratio 1.7 and max width 760 px | Stage 1 only; B2/B3 additionally cover 1920×1080 and 1280×800 with long names and maximum representative BASHO density. |
 
 ## Performance audit
 
@@ -215,29 +215,50 @@ See `PRESENTATION_LAYER_MAP.md` for coordinate spaces and the required essential
 - PreMatch and MatchOver are shared match-flow surfaces. DayCard and power-up selection/reveal are BASHO-specific but should use the same typography, color roles, and transition registers.
 - Stage 1 fixtures model mode differences as data, not separate render trees.
 
-## Direction acceptance
+## Stage 1 revision critique
 
-| Criterion | A | B | C |
-|---|---:|---:|---:|
-| Immediate readability | Strong | **Strongest** | Medium |
-| Fit with illustrated arena | Strong | **Strongest** | Medium |
-| Pumo-specific identity | Medium | **Strongest** | Strong |
-| State scalability | Strong | **Strongest** | Medium |
-| Motion clarity | Strong | **Strongest** | Medium |
-| Implementation/performance risk | Lowest | **Controlled** | Highest |
-| Steam Deck durability | Strong | **Strong** | Medium |
-| Long-session restraint | Strong | **Strongest** | Weakest |
+### Retained from Direction B
 
-Direction B wins because it changes the silhouette and hierarchy enough to solve the actual problem while keeping event effects subordinate to penguin combat. Its two motifs—broadcast wing cuts and restrained ceremonial fan/rope rhythm—are sufficient. Direction C should donate only selected transition energy after the foundation is approved.
+- Mirrored fighter-information wings and one readable top silhouette.
+- A strong center round/BASHO-day anchor.
+- Mawashi color used as restrained ownership punctuation.
+- Low permanent motion and fewer competing materials.
+- One system spanning HUD, events, ceremony, results, and flow.
+
+### Rejected from Direction B
+
+- Ivory-backed wings and cream-first premium surfaces: they mute the arena and imply a generic editorial/sumo solution.
+- Floating circular power-up slots: they read as unrelated badges rather than match information.
+- Large, near-uniform event banners: they overstate ordinary COUNTER HIT/PUNISH acknowledgements.
+- Cream DayCard and centered MatchOver card: both read like web/editorial surfaces instead of game-state compositions.
+- Broadly similar ceremony/result rectangles: hierarchy cannot be proven by changing only copy and scale.
+
+### Revised candidates
+
+| Candidate | What the evidence earns | Remaining concern |
+|---|---|---|
+| **B2 — Ink Basho Broadcast** | Most complete information system. Thin dark wings, integrated loadout/boons, compact side reads, controlled ceremony, and a full-width non-modal MatchOver remain stable at maximum density. | Still inherits a recognizable sports-broadcast grammar. Its split BASHO screen and option fields are disciplined, but not yet unmistakably Pumo Pumo. |
+| **B3 — Open Arena Manga** | Best relationship with the illustrated arena. Persistent contrast islands are minimal; event/result mass appears only when earned; the split HANDS/DOWN hold and open black BASHO composition feel more authored. | Maximum BASHO density compresses faster, boon shorthand is near the readability floor, and the sparse HUD can feel under-authored in neutral play. |
+
+The revision proves that the dark-dominant family, rebuilt event scale, and black BASHO cut are stronger than Direction B's art direction. It does **not** yet prove one candidate is cohesive and Pumo-specific enough to justify production work. B3 is the more promising identity exploration; B2 is the stronger systems/control reference. That is not an approval recommendation.
+
+### Proportion corrections found by reviewing the rendered evidence
+
+Two weaknesses were visible in the first revision captures and were fixed rather than excused:
+
+- **The BASHO DayCard fixture was under-specified.** Both candidates looked sparse because the fixture carried roughly half the content the shipped screen actually shows. Re-checking against the supplied gameplay video recovered six missing elements, listed in `MATCH_UI_STATE_MATRIX.md`. Both candidates were recomposed against the corrected density: B2 now anchors each column's closing element on a shared bottom line so the surrounding darkness reads as deliberate negative space, and B3 gained explicit anchors for the recovered elements inside its poster composition.
+- **The event-family sheet stretched to full height** with its content clustered at the top, which produced a large void mid-sheet. The sheet now sizes to its content and centers, so the five families align on a single band.
+
+Both were fixture and layout faults, not evidence of a failed direction. They are recorded here because the first-pass captures should not be used to judge the density of either screen.
 
 ## Stage 1 evidence and known limits
 
-- Comparison matrices: `premium-match-ui-evidence/direction-a-matrix.png`, `direction-b-matrix.png`, `direction-c-matrix.png`.
-- Direct side-by-side states: files beginning `abc-` in `premium-match-ui-evidence/`.
-- Motion samples: `direction-a-motion.mp4`, `direction-b-motion.mp4`, `direction-c-motion.mp4`.
-- Flow, contrast, viewport, and controls evidence: `direction-b-flow.png`, `direction-b-contrast.png`, `direction-b-resolutions.png`, `presentation-lab-controls.png`.
+- Historical A/B/C evidence remains in `premium-match-ui-evidence/`.
+- B2/B3 revision sheets and the evidence manifest are under `premium-match-ui-evidence/stage1-revision/`.
+- Revision sheets cover neutral HUD, seven stress states, semantic event families, ordinary/mastery scale, ceremony/results, black BASHO flow, PreMatch/MatchOver, 1920×1080/1280×800, and arena/bright/dark contrast.
+- Twelve H.264 motion samples cover one ordinary replacement read, one mastery read, HANDS DOWN, HAKKI-YOI, RoundResult, and the BASHO Day transition for both B2 and B3 at 30 fps.
 - The laboratory is a visual/state simulator, not a gameplay integration test.
 - Static crowd fixtures intentionally avoid production crowd animation and depth-of-field complexity.
-- Frame stepping changes a deterministic animation-delay scrub; it is useful for visual inspection but is not a full Web Animations timeline debugger.
+- Frame stepping changes a deterministic animation-delay scrub through 4000 ms; it is useful for visual inspection but is not a full Web Animations timeline debugger.
 - Motion replay is available in the lab; capture instructions are in `PREMIUM_MATCH_UI_ROADMAP.md`.
 

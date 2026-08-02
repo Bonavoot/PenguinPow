@@ -2,17 +2,13 @@
 
 ## Current gate
 
-Stages 0 and 1 are complete. Production presentation remains unchanged. The program is stopped at:
+Stage 0 and the focused Stage 1 revision are complete. Production presentation remains unchanged. The program is stopped at:
 
-**VISUAL DIRECTION GATE — recommendation: Direction B**
+**VISUAL DIRECTION GATE — no direction approved; no approval recommendation issued**
 
-Continue only after one of:
+Directions A/B/C remain available only for historical comparison. Direction B is a structural donor, not an art direction. B2 and B3 are revised probes; neither authorizes Stage 2.
 
-- `APPROVE VISUAL DIRECTION A`
-- `APPROVE VISUAL DIRECTION B`
-- `APPROVE VISUAL DIRECTION C`
-
-Adjustments requested before approval apply to Stage 1 only.
+Continue only after an explicit revised-direction approval or another Stage 1 instruction from the user.
 
 ## Stage 0 — forensic audit: complete
 
@@ -26,7 +22,7 @@ Deliverables:
 
 The audit covers the supplied Pumo and Tōkon recordings, production state ownership, event inventory, portal stack, token conflicts, first-use warming, performance risks, responsiveness, accessibility, and mode parity.
 
-## Stage 1 — dev-only presentation lab: complete
+## Stage 1 — dev-only presentation lab and focused revision: complete
 
 ### Isolation
 
@@ -56,29 +52,45 @@ When the browser is outside WSL, replace `localhost` with the WSL address shown 
 
 ### Motion replay
 
-1. Choose Direction A, B, or C.
+1. Choose historical Direction A/B/C or revised Direction B2/B3.
 2. Choose `Live fight`, then select a combat event.
 3. Press **Replay** to remount and replay the event.
 4. Use **Playback** for 0.25×, 0.5×, or 1×.
-5. Press **Pause**, then **Step +100ms** to inspect deterministic poses through 3000 ms.
+5. Press **Pause**, then **Step +100ms** to inspect deterministic poses through 4000 ms.
 6. Enable **Overlap test** for opposing simultaneous reads.
-7. Press **Rapid replacement** for the six-event replacement/restrike stress sequence.
-8. Enable **Reduced motion** and replay the same state to inspect the alternate choreography.
-9. Select HANDS DOWN, HAKKI-YOI, a result, PreMatch, DayCard, or MatchOver under **Ceremony / flow**, then press Replay.
+7. Enable **Replacement demo** for a deterministic same-side COUNTER HIT→PUNISH sequence, or press **Rapid replacement** for the six-event stress sequence.
+8. Select **Combat event system sheet** or **Ordinary ↔ mastery scale** for static hierarchy review.
+9. Enable **Reduced motion** and replay the same state to inspect the alternate choreography.
+10. Select HANDS DOWN, HAKKI-YOI, a result, PreMatch, dark BASHO Day, or MatchOver under **Ceremony / flow**, then press Replay.
 
 Controls persist into the URL. A direct example:
 
 ```text
-/?presentationLab=1&direction=B&fixture=danger&event=perfect&moment=fight&viewport=1280x800&contrast=arena&speed=0.5&inverted=0&long=0&overlap=0&reduced=0
+/?presentationLab=1&direction=B2&fixture=danger&event=perfect&moment=fight&viewport=1280x800&contrast=arena&speed=0.5&inverted=0&long=0&overlap=0&replacement=0&reduced=0
 ```
 
 Use `chrome=0` to hide lab controls for capture.
 
+### Reproducing the revision evidence
+
+With the client dev server running, `client/src/presentationLab/captureRevisionEvidence.mjs` drives the already-installed Electron runtime against the lab and writes deterministic sheets and frame sequences:
+
+```
+env -u ELECTRON_RUN_AS_NODE ./node_modules/electron/dist/electron \
+  client/src/presentationLab/captureRevisionEvidence.mjs static <output-dir>
+env -u ELECTRON_RUN_AS_NODE ./node_modules/electron/dist/electron \
+  client/src/presentationLab/captureRevisionEvidence.mjs motion <output-dir>
+```
+
+`CAPTURE_FILTER` and `MOTION_FILTER` accept comma-separated capture names for re-running a subset. `LAB_ORIGIN` overrides the dev-server origin, which matters under WSL where the Windows-side loopback address differs from the Linux one. The script is a capture harness only: it never imports production modules and is not referenced by any build.
+
 ### Direction summary
 
-- **A — Conservative Evolution:** keeps the current broad layout, removes material noise, and clarifies type. Lowest implementation risk; weakest identity improvement.
-- **B — Winter Basho Broadcast:** mirrored ivory/sumi fighter wings, centered ritual hub, restrained fighter accents, and one coherent directional event family. Best hierarchy and arena fit.
-- **C — Bold Graphic Fighter:** widest color ownership and strongest angles/transition energy. Attractive in hero frames but too assertive at rest and least durable on Steam Deck/long sessions.
+- **A — Conservative Evolution · historical:** keeps the current broad layout, removes material noise, and clarifies type. Lowest implementation risk; weakest identity improvement.
+- **B — Winter Basho Broadcast · historical donor:** useful mirrored organization and center anchor, rejected cream surfaces, circles, event slabs, and card-like flow.
+- **C — Bold Graphic Fighter · historical:** strongest permanent color/angle treatment, but too assertive at rest and least durable for long sessions.
+- **B2 — Ink Basho Broadcast:** thin dark wings, integrated loadout/boons, compact side reads, measured ceremony, split black BASHO program, and a full-width MatchOver rail. Strongest systems candidate; still recognizably sports-broadcast.
+- **B3 — Open Arena Manga:** fewer persistent containers, small dark contrast islands, stronger temporary event/result mass, split HANDS/DOWN anticipation, and an open black BASHO composition. Strongest identity lead; weakest maximum-density margin.
 
 ### Evidence
 
@@ -98,6 +110,29 @@ Primary comparison sheets:
 - `premium-match-ui-evidence/direction-b-resolutions.png`
 - `premium-match-ui-evidence/presentation-lab-controls.png`
 
+Stage 1 revision:
+
+All revision sheets live under `premium-match-ui-evidence/stage1-revision/`:
+
+- `b2-b3-neutral.png`
+- `b2-b3-danger-posture.png`
+- `b2-b3-names-inversion.png`
+- `b2-b3-loadout.png`
+- `combat-event-system.png`
+- `callout-scale-comparison.png`
+- `b2-b3-ordinary-collision.png`
+- `b2-b3-ceremony.png`
+- `b2-b3-round-result.png`
+- `basho-day-current-vs-revised.png`
+- `current-black-basho-day-reference.png`
+- `b2-b3-prematch-matchover.png`
+- `b2-b3-resolutions.png`
+- `b2-b3-contrast.png`
+- `historical-abc-day-card-regression.png`
+- `frames/` — the 47 unscaled source captures
+- `motion/` — twelve B2/B3 MP4 files named by direction and motion register
+- `EVIDENCE_MANIFEST.md`
+
 Each direction matrix contains:
 
 1. neutral HUD;
@@ -112,25 +147,26 @@ Each direction matrix contains:
 10. Steam Deck 1280×800;
 11. long-name stress.
 
-The `abc-*.png` sheets compare all directions state-for-state. Direction B composites cover PreMatch/DayCard/MatchOver, bright/dark contrast, and 1280×720/1920×1080/2560×1440. Source-video contact sheets and frame sequences are under `premium-match-ui-evidence/source-analysis/`.
+The `abc-*.png` sheets preserve the first-pass directions state-for-state. The revision sheets compare B2/B3 neutral, danger, posture break, long-name inversion, active/cooldown loadout, maximum representative BASHO density, event families/scale, ceremony/results, dark flow, target resolutions, and contrast. Source-video contact sheets and frame sequences remain under `premium-match-ui-evidence/source-analysis/`.
 
-The 1.5 s MP4 samples show the Tier 2 PERFECT entrance, hold, and exit at 10 inspection frames per second. Live Replay remains the source of truth for browser timing. For deterministic capture, add `paused=1&seek=300` (0–3000 ms) to sample an exact lab pose.
+The historical 1.5 s MP4 samples remain 10 fps evidence only. The revision delivers deterministic H.264 samples at 30 fps: ordinary acknowledgement with same-side replacement, mastery, HANDS DOWN, HAKKI-YOI, RoundResult, and BASHO Day transition for both B2 and B3. Each sample includes entrance, stable hold, and exit; the information sample also includes replacement. For an exact lab pose, add `paused=1&seek=<ms>` from 0–4000.
 
 ### Stage 1 known limitations
 
 - The lab validates visual hierarchy, state density, responsive geometry, and motion grammar; it does not validate real socket event timing.
 - Its static crowd is representative and deliberately omits production crowd animation/DoF complexity.
 - Frame stepping is a CSS delay scrub in 100 ms increments, not a frame-perfect browser timeline.
-- Exact BASHO maximum boon count, zero/max win-mark configurations, and literal N/A power-up state remain Stage 3 fixture additions.
+- The lab now represents the configured maximum of five unique passive BASHO boon types plus one normalized draft active; zero/max win-mark and literal N/A states remain Stage 3 fixture additions.
+- Source inspection can rank event opportunity windows, but no gameplay telemetry was available to quantify observed match frequency.
 - Power-up selection/reveal are inventoried but not separate A/B/C probe screens because they do not alter the first direction decision.
 
 ## Recommendation
 
-Approve **Direction B**.
+Do **not** approve Direction B, B2, or B3 yet.
 
-It is the only probe that materially fixes the fragmented top silhouette while remaining quieter than the penguin combat. It uses fighter color for ownership without turning the stamina system into neon team bars, preserves the warm illustrated arena, scales to long result strings and BASHO density, and has a feasible CSS/React path. Direction A does not go far enough; Direction C spends too much intensity in Tier 0.
+B2 proves the revised information architecture: it is the more credible reference for alignment, loadout integration, maximum BASHO density, and compact event behavior. B3 proves the stronger identity premise: the arena carries the permanent personality while graphic mass arrives only for earned moments, and its black BASHO/MatchOver compositions avoid modal-card language.
 
-The strongest idea to carry from C is its faster directional cut at Tier 2/3—not its permanent full-color HUD mass.
+B3 is the more promising exploration, but its neutral state and maximum-density shorthand do not yet clear the bar for a production commitment. B2 remains too close to a polished general sports broadcast. A future Stage 1 instruction could either refine B3's persistent information or deliberately synthesize B2's density discipline with B3's open composition; this roadmap does not start that work.
 
 ## Post-approval roadmap
 

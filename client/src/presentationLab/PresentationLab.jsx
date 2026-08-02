@@ -33,14 +33,24 @@ const DIRECTIONS = {
     description: "Current silhouette, quieter materials and clearer type roles.",
   },
   B: {
-    name: "Winter Basho Broadcast",
-    description: "Unified fighter wings, center hub and sports-manga event cuts.",
+    name: "Winter Basho Broadcast · Historical",
+    description: "Structural donor only: useful organization, rejected art direction.",
   },
   C: {
     name: "Bold Graphic Fighter",
     description: "Stronger ownership wedges and the fastest directional motion.",
   },
+  B2: {
+    name: "Ink Basho Broadcast",
+    description: "Dark, thin fighter wings with integrated loadout and measured ceremony.",
+  },
+  B3: {
+    name: "Open Arena Manga",
+    description: "Minimal contrast islands; graphic mass is reserved for decisive moments.",
+  },
 };
+
+const REVISED_DIRECTIONS = new Set(["B2", "B3"]);
 
 const POWER_UP_ICONS = {
   speed: happyFeetIcon,
@@ -101,7 +111,7 @@ const readQueryChoice = (params, key, choices, fallback) => {
 
 const readQueryMs = (params, key) => {
   const value = Number.parseInt(params.get(key) || "0", 10);
-  return Number.isFinite(value) ? Math.min(3000, Math.max(0, value)) : 0;
+  return Number.isFinite(value) ? Math.min(4000, Math.max(0, value)) : 0;
 };
 
 function useLabPortraits() {
@@ -209,6 +219,9 @@ const PowerCharm = ({ powerUp, cooldown, charges }) => {
     return (
       <div className="pml-power pml-power--empty" aria-label="No active power-up">
         <span aria-hidden="true">—</span>
+        <span className="pml-power-name" aria-hidden="true">
+          NO POWER
+        </span>
       </div>
     );
   }
@@ -222,8 +235,12 @@ const PowerCharm = ({ powerUp, cooldown, charges }) => {
         Number.isFinite(charges) ? `, ${charges} charges` : ""
       }`}
       title={label}
+      data-power={powerUp}
     >
       {icon ? <img src={icon} alt="" /> : <span>{label.slice(0, 2)}</span>}
+      <span className="pml-power-name" aria-hidden="true">
+        {label}
+      </span>
       {cooldown && <b>WAIT</b>}
       {Number.isFinite(charges) && <em>×{charges}</em>}
     </div>
@@ -286,7 +303,9 @@ const FighterWing = ({
     <section
       className={`pml-wing${local ? " is-local" : ""}${
         fighter.gassed ? " is-gassed" : ""
-      }${staminaDanger ? " is-danger" : ""}`}
+      }${staminaDanger ? " is-danger" : ""}${
+        fighter.boons.length > 0 ? " has-boons" : ""
+      }${fighter.powerUp ? " has-power" : ""}`}
       data-side={side}
       style={{ "--fighter-accent": accent }}
       aria-label={`${name}, ${local ? "local player" : "opponent"}`}
@@ -363,7 +382,11 @@ const MatchHud = ({ fixture, inverted, longNames }) => {
   const physicalRight = inverted ? fixture.fighters.left : fixture.fighters.right;
 
   return (
-    <div className={`pml-hud${fixture.matchOver ? " is-match-over" : ""}`}>
+    <div
+      className={`pml-hud${fixture.matchOver ? " is-match-over" : ""}${
+        fixture.basho ? " is-basho" : ""
+      }`}
+    >
       <FighterWing
         side="left"
         fighter={physicalLeft}
@@ -456,41 +479,82 @@ ArenaSet.propTypes = {
   contrast: PropTypes.oneOf(["arena", "bright", "dark"]).isRequired,
 };
 
-const EventCallout = ({ event, side, overlap, replayKey }) => {
+const EventCallout = ({
+  direction,
+  event,
+  side,
+  overlap,
+  replacement,
+  replayKey,
+}) => {
   if (!event || event.tier === 0) return null;
   const opposite = side === "left" ? "right" : "left";
+  const revised = REVISED_DIRECTIONS.has(direction);
+  const replacementEvent =
+    event.label === EVENT_FIXTURES.punish.label
+      ? EVENT_FIXTURES.counterHit
+      : EVENT_FIXTURES.punish;
 
-  const callout = (calloutSide, secondary = false) => (
+  const callout = (calloutSide, calloutEvent, modifier = "") => {
+    const showDetail = !revised || calloutEvent.priority === "action";
+    const cue =
+      modifier === "is-secondary" && !revised
+        ? "simultaneous read"
+        : calloutEvent.cue;
+
+    return (
     <div
-      key={`${replayKey}-${calloutSide}-${secondary ? "secondary" : "primary"}`}
-      className={`pml-event pml-event--tier-${event.tier}${
-        secondary ? " is-secondary" : ""
-      }`}
+      key={`${replayKey}-${calloutSide}-${modifier || "primary"}-${calloutEvent.label}`}
+      className={`pml-event pml-event--tier-${calloutEvent.tier} pml-event--${
+        calloutEvent.priority || "info"
+      } pml-event--family-${calloutEvent.family || "recognition"}${
+        calloutEvent.scale ? ` pml-event--scale-${calloutEvent.scale}` : ""
+      }${modifier ? ` ${modifier}` : ""}`}
       data-side={calloutSide}
+      data-family={calloutEvent.family || "recognition"}
+      data-priority={calloutEvent.priority || "info"}
+      style={{
+        "--event-sequence-delay": modifier === "is-replacement" ? "760ms" : "0ms",
+      }}
       role="status"
+      aria-label={`${calloutEvent.label}${showDetail && cue ? `, ${cue}` : ""}`}
     >
       <span className="pml-event-cut" aria-hidden="true" />
-      <strong>{secondary ? "RESISTED" : event.label}</strong>
-      <small>{secondary ? "simultaneous read" : event.cue}</small>
+      <span className="pml-event-mark" aria-hidden="true">
+        <i />
+        <i />
+      </span>
+      <strong>{calloutEvent.label}</strong>
+      {showDetail && cue && <small>{cue}</small>}
     </div>
-  );
+    );
+  };
 
   return (
-    <div className="pml-event-layer">
-      {callout(side)}
-      {overlap && callout(opposite, true)}
+    <div
+      className={`pml-event-layer${replacement ? " has-replacement" : ""}`}
+      data-direction={direction}
+    >
+      {callout(side, event)}
+      {overlap && callout(opposite, EVENT_FIXTURES.resisted, "is-secondary")}
+      {replacement && callout(side, replacementEvent, "is-replacement")}
     </div>
   );
 };
 
 EventCallout.propTypes = {
+  direction: PropTypes.oneOf(Object.keys(DIRECTIONS)).isRequired,
   event: PropTypes.shape({
     label: PropTypes.string,
     cue: PropTypes.string,
     tier: PropTypes.number.isRequired,
+    priority: PropTypes.string,
+    family: PropTypes.string,
+    scale: PropTypes.string,
   }),
   side: PropTypes.oneOf(["left", "right"]).isRequired,
   overlap: PropTypes.bool.isRequired,
+  replacement: PropTypes.bool.isRequired,
   replayKey: PropTypes.number.isRequired,
 };
 
@@ -498,19 +562,144 @@ EventCallout.defaultProps = {
   event: null,
 };
 
+const EVENT_SHEET_GROUPS = [
+  {
+    family: "recognition",
+    label: "OFFENSIVE RECOGNITION",
+    note: "single cut",
+    policy: "Startup or recovery was read. Acknowledge the timing; do not seize the bout.",
+    keys: ["counterHit", "punish"],
+  },
+  {
+    family: "technical",
+    label: "TECHNICAL DEFENSE",
+    note: "open bracket",
+    policy: "A resolved defense or escape. The mechanical outcome already carries the lesson.",
+    keys: ["resisted", "grabBreak", "grabTech"],
+  },
+  {
+    family: "control",
+    label: "CONTROL ADVANTAGE",
+    note: "double rule",
+    policy: "Advantage changed hands. The persistent HUD carries any state that continues.",
+    keys: ["counterThrow", "deepGrip", "counterGrab"],
+  },
+  {
+    family: "warning",
+    label: "ACTIONABLE WARNING",
+    note: "boxed notch",
+    policy: "The local player must react or understand why an input failed right now.",
+    keys: ["clamped", "noStamina"],
+  },
+  {
+    family: "mastery",
+    label: "MASTERY / RARE",
+    note: "split crown",
+    policy: "Tight timing or a hard RPS read earns impact, but remains below result authority.",
+    keys: ["perfect", "perfectBrace", "matador", "matadorBreak"],
+  },
+];
+
+const EventSystemSheet = () => (
+  <div className="pml-event-sheet" role="group" aria-label="Combat event family sheet">
+    <header>
+      <span>COMBAT READ SYSTEM · FIVE SEMANTIC FAMILIES</span>
+      <strong>COLOR + EDGE SHAPE + SCALE + POSITION</strong>
+    </header>
+    <div className="pml-event-sheet-grid">
+      {EVENT_SHEET_GROUPS.map((group) => (
+        <section key={group.family} data-family={group.family}>
+          <div className="pml-event-sheet-heading">
+            <span className="pml-event-sheet-mark" aria-hidden="true">
+              <i />
+              <i />
+            </span>
+            <div>
+              <strong>{group.label}</strong>
+              <small>{group.note}</small>
+            </div>
+          </div>
+          <div className="pml-event-sheet-list">
+            {group.keys.map((key) => {
+              const item = EVENT_FIXTURES[key];
+              return (
+                <div
+                  key={key}
+                  className={`pml-sheet-event pml-sheet-event--${item.priority}`}
+                  data-family={item.family}
+                >
+                  <b>{item.label}</b>
+                  {item.priority === "action" && <small>{item.cue}</small>}
+                </div>
+              );
+            })}
+          </div>
+          <p>{group.policy}</p>
+        </section>
+      ))}
+    </div>
+    <footer>
+      Ordinary reads stay side-owned. Warnings sit by the affected player. Mastery may
+      borrow graphic mass, never result authority.
+    </footer>
+  </div>
+);
+
+const CalloutScaleComparison = () => (
+  <div
+    className="pml-callout-scale"
+    role="group"
+    aria-label="Ordinary information and mastery callout scale comparison"
+  >
+    <section className="pml-callout-scale-sample" data-family="recognition">
+      <span>PASSIVE ACKNOWLEDGEMENT · 1×</span>
+      <div>
+        <i aria-hidden="true" />
+        <strong>COUNTER HIT</strong>
+      </div>
+      <small>SIDE RAIL · ONE LINE · FAST CLEAR</small>
+    </section>
+    <b aria-hidden="true">≠</b>
+    <section
+      className="pml-callout-scale-sample pml-callout-scale-sample--mastery"
+      data-family="mastery"
+    >
+      <span>RARE MASTERY · 1.85×</span>
+      <div>
+        <i aria-hidden="true" />
+        <strong>PERFECT</strong>
+      </div>
+      <small>OWNED IMPACT · LONGER HOLD · BELOW RESULT</small>
+    </section>
+  </div>
+);
+
 const Ceremony = ({ momentKey, moment, replayKey }) => {
   if (momentKey === "handsDown") {
     return (
-      <div key={replayKey} className="pml-ceremony pml-ceremony--hands" role="status">
+      <div
+        key={replayKey}
+        className="pml-ceremony pml-ceremony--hands"
+        data-moment="hands-down"
+        role="status"
+      >
         <span className="pml-ceremony-hold" aria-hidden="true" />
-        <strong>HANDS DOWN</strong>
+        <strong>
+          <span>HANDS</span>
+          <span>DOWN</span>
+        </strong>
         <small lang="ja">手を付いて</small>
       </div>
     );
   }
   if (momentKey === "hakkiYoi") {
     return (
-      <div key={replayKey} className="pml-ceremony pml-ceremony--hakki" role="status">
+      <div
+        key={replayKey}
+        className="pml-ceremony pml-ceremony--hakki"
+        data-moment="hakki-yoi"
+        role="status"
+      >
         <span className="pml-ceremony-release" aria-hidden="true" />
         <strong>HAKKI-YOI</strong>
         <small lang="ja">八卦良い</small>
@@ -518,11 +707,20 @@ const Ceremony = ({ momentKey, moment, replayKey }) => {
     );
   }
   if (moment?.result) {
+    const isLong = moment.result.length > 11;
     return (
-      <div key={replayKey} className="pml-result" role="status">
+      <div
+        key={replayKey}
+        className={`pml-result${isLong ? " is-long" : " is-short"}`}
+        data-moment="round-result"
+        role="status"
+      >
         <span className="pml-result-rule" aria-hidden="true" />
         <strong>{moment.result}</strong>
-        <small lang="ja">{moment.japanese}</small>
+        <small>
+          <span lang="ja">{moment.japanese}</span>
+          <b>TECHNIQUE</b>
+        </small>
       </div>
     );
   }
@@ -552,7 +750,13 @@ Ceremony.propTypes = {
 };
 
 const PreMatchMoment = ({ longNames, replayKey }) => (
-  <div key={replayKey} className="pml-flow-card pml-flow-card--prematch">
+  <div
+    key={replayKey}
+    className="pml-flow-card pml-flow-card--prematch"
+    data-moment="pre-match"
+  >
+    <span className="pml-flow-edge pml-flow-edge--left" aria-hidden="true" />
+    <span className="pml-flow-edge pml-flow-edge--right" aria-hidden="true" />
     <span className="pml-flow-kicker">WINTER BASHO · DAY 12</span>
     <div className="pml-versus">
       <div>
@@ -574,26 +778,69 @@ PreMatchMoment.propTypes = {
   replayKey: PropTypes.number.isRequired,
 };
 
+const DAY_BOONS = [
+  { name: "HAPPY FEET", note: "Speed & dash" },
+  { name: "SHATTER PALM", note: "Guard break" },
+  { name: "THICK BLUBBER", note: "Knockback resist" },
+];
+
 const DayCardMoment = ({ replayKey }) => (
-  <div key={replayKey} className="pml-flow-card pml-flow-card--day">
+  <div
+    key={replayKey}
+    className="pml-flow-card pml-flow-card--day"
+    data-moment="basho-day"
+  >
+    <span className="pml-day-slit" aria-hidden="true" />
     <section>
       <span className="pml-flow-kicker">HONBASHO PROGRAM</span>
-      <strong className="pml-day-number">12</strong>
-      <small>DAY · MAKUUCHI</small>
+      <span className="pml-day-dots" aria-hidden="true">
+        {Array.from({ length: 15 }, (unused, index) => (
+          <i
+            key={index}
+            className={
+              index < 11 ? "is-done" : index === 11 ? "is-now" : undefined
+            }
+          />
+        ))}
+      </span>
+      <div className="pml-day-index">
+        <strong className="pml-day-number">12</strong>
+        <small>DAY · MAKUUCHI</small>
+      </div>
+      <span className="pml-day-label">NEXT OPPONENT</span>
       <h2>THE TUSKED TEMPEST</h2>
-      <p>Record 8–3 · Aggressive pusher</p>
+      <p>
+        <b>SEKIWAKE</b>
+        <em>Aggressive pusher</em>
+      </p>
+      <dl className="pml-day-record">
+        <div>
+          <dt>YOU</dt>
+          <dd>8–3</dd>
+        </div>
+        <div>
+          <dt>TEMPEST</dt>
+          <dd>6–5</dd>
+        </div>
+      </dl>
     </section>
     <section className="pml-draft">
       <span className="pml-flow-kicker">CHOOSE TODAY&apos;S BOON</span>
       <div>
-        {["HAPPY FEET", "SHATTER PALM", "THICK BLUBBER"].map((item, index) => (
-          <button key={item} type="button" className={index === 1 ? "is-picked" : ""}>
+        {DAY_BOONS.map((boon, index) => (
+          <button
+            key={boon.name}
+            type="button"
+            className={index === 1 ? "is-picked" : ""}
+          >
             <i aria-hidden="true">{index + 1}</i>
-            <span>{item}</span>
+            <span>{boon.name}</span>
+            <small>{boon.note}</small>
           </button>
         ))}
       </div>
       <b>BEGIN BOUT</b>
+      <span className="pml-day-withdraw">WITHDRAW — FAKE INJURY (KYŪJŌ)</span>
     </section>
   </div>
 );
@@ -603,10 +850,18 @@ DayCardMoment.propTypes = {
 };
 
 const MatchOverMoment = ({ replayKey }) => (
-  <div key={replayKey} className="pml-flow-card pml-flow-card--match-over">
+  <div
+    key={replayKey}
+    className="pml-flow-card pml-flow-card--match-over"
+    data-moment="match-over"
+  >
+    <span className="pml-match-slash" aria-hidden="true" />
     <span className="pml-flow-kicker">FINAL BOUT</span>
-    <strong>VICTORY</strong>
-    <small>KACHI-KOSHI · 2–1</small>
+    <div className="pml-match-winner">
+      <strong>VICTORY</strong>
+      <span>HAKUPENGU</span>
+    </div>
+    <small className="pml-match-record">KACHI-KOSHI · 2–1</small>
     <div className="pml-match-actions">
       <b>REMATCH</b>
       <span>RETURN TO BASHO</span>
@@ -628,12 +883,14 @@ const PresentationStage = ({
   inverted,
   longNames,
   overlap,
+  replacement,
   contrast,
   replayKey,
 }) => (
   <div
     className={`pml-stage pml-direction-${direction.toLowerCase()}`}
     data-direction={direction}
+    data-moment={momentKey}
   >
     <ArenaSet portraits={portraits} inverted={inverted} contrast={contrast} />
     {MOMENTS_WITH_HUD.has(momentKey) && (
@@ -641,14 +898,18 @@ const PresentationStage = ({
     )}
     {momentKey === "fight" && (
       <EventCallout
+        direction={direction}
         event={event}
         side={inverted ? "right" : "left"}
         overlap={overlap}
+        replacement={replacement}
         replayKey={replayKey}
       />
     )}
     <Ceremony momentKey={momentKey} moment={moment} replayKey={replayKey} />
-    {["preMatch", "dayCard", "matchOver"].includes(momentKey) && (
+    {["preMatch", "dayCard", "matchOver", "eventSheet", "calloutScale"].includes(
+      momentKey,
+    ) && (
       <div className="pml-flow-dim" aria-hidden="true" />
     )}
     {momentKey === "preMatch" && (
@@ -656,12 +917,14 @@ const PresentationStage = ({
     )}
     {momentKey === "dayCard" && <DayCardMoment replayKey={replayKey} />}
     {momentKey === "matchOver" && <MatchOverMoment replayKey={replayKey} />}
+    {momentKey === "eventSheet" && <EventSystemSheet />}
+    {momentKey === "calloutScale" && <CalloutScaleComparison />}
     <div className="pml-safe-frame" aria-hidden="true" />
   </div>
 );
 
 PresentationStage.propTypes = {
-  direction: PropTypes.oneOf(["A", "B", "C"]).isRequired,
+  direction: PropTypes.oneOf(Object.keys(DIRECTIONS)).isRequired,
   fixture: MatchHud.propTypes.fixture,
   event: EventCallout.propTypes.event,
   momentKey: PropTypes.string.isRequired,
@@ -670,6 +933,7 @@ PresentationStage.propTypes = {
   inverted: PropTypes.bool.isRequired,
   longNames: PropTypes.bool.isRequired,
   overlap: PropTypes.bool.isRequired,
+  replacement: PropTypes.bool.isRequired,
   contrast: ArenaSet.propTypes.contrast,
   replayKey: PropTypes.number.isRequired,
 };
@@ -710,7 +974,7 @@ ToggleControl.propTypes = {
 export default function PresentationLab() {
   const query = useMemo(() => new URLSearchParams(window.location.search), []);
   const [direction, setDirection] = useState(
-    readQueryChoice(query, "direction", Object.keys(DIRECTIONS), "B"),
+    readQueryChoice(query, "direction", Object.keys(DIRECTIONS), "B2"),
   );
   const [fixtureKey, setFixtureKey] = useState(
     readQueryChoice(query, "fixture", Object.keys(HUD_FIXTURES), "neutral"),
@@ -733,6 +997,7 @@ export default function PresentationLab() {
   const [inverted, setInverted] = useState(query.get("inverted") === "1");
   const [longNames, setLongNames] = useState(query.get("long") === "1");
   const [overlap, setOverlap] = useState(query.get("overlap") === "1");
+  const [replacement, setReplacement] = useState(query.get("replacement") === "1");
   const [reducedMotion, setReducedMotion] = useState(
     query.get("reduced") === "1",
   );
@@ -769,6 +1034,7 @@ export default function PresentationLab() {
     params.set("inverted", inverted ? "1" : "0");
     params.set("long", longNames ? "1" : "0");
     params.set("overlap", overlap ? "1" : "0");
+    params.set("replacement", replacement ? "1" : "0");
     params.set("reduced", reducedMotion ? "1" : "0");
     params.set("paused", paused ? "1" : "0");
     params.set("seek", String(seekMs));
@@ -784,6 +1050,7 @@ export default function PresentationLab() {
     overlap,
     paused,
     reducedMotion,
+    replacement,
     seekMs,
     speed,
     viewportKey,
@@ -797,7 +1064,7 @@ export default function PresentationLab() {
 
   const stepFrame = () => {
     setPaused(true);
-    setSeekMs((value) => (value + 100) % 3000);
+    setSeekMs((value) => (value + 100) % 4000);
     setReplayKey((value) => value + 1);
   };
 
@@ -890,6 +1157,11 @@ export default function PresentationLab() {
             <ToggleControl label="Long names" checked={longNames} onChange={setLongNames} />
             <ToggleControl label="Overlap test" checked={overlap} onChange={setOverlap} />
             <ToggleControl
+              label="Replacement demo"
+              checked={replacement}
+              onChange={setReplacement}
+            />
+            <ToggleControl
               label="Reduced motion"
               checked={reducedMotion}
               onChange={setReducedMotion}
@@ -944,6 +1216,7 @@ export default function PresentationLab() {
             inverted={inverted}
             longNames={longNames}
             overlap={overlap}
+            replacement={replacement}
             contrast={contrast}
             replayKey={replayKey}
           />
