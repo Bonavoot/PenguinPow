@@ -211,9 +211,9 @@ const PROFILES = Object.freeze({
     eventType: PRESENTATION_EVENT_TYPE.OA_HIT,
     primaryAnchor: PRESENTATION_ANCHOR.CONTACT,
     orientation: ORIENTATION_RULE.CONTACT_NORMAL,
-    // Artistic registration only (world units). Spark sheet already has CSS offsetYPct.
+    // Artistic registration only (world units). Bias toward standing chest/belly.
     localOffsetX: 0,
-    localOffsetY: 0,
+    localOffsetY: -18,
     mirrorFromNormalX: true,
     spriteKey: "flap",
     particleSupplement: null,
@@ -225,7 +225,7 @@ const PROFILES = Object.freeze({
     primaryAnchor: PRESENTATION_ANCHOR.CONTACT,
     orientation: ORIENTATION_RULE.CONTACT_NORMAL,
     localOffsetX: 0,
-    localOffsetY: 0,
+    localOffsetY: -22,
     mirrorFromNormalX: true,
     spriteKey: "flap",
     particleSupplement: null,

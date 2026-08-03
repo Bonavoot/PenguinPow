@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 
@@ -24,9 +24,9 @@ import { SHADOW_GRADIENT } from "./PlayerShadow";
  * PreMatchScreen — printed banzuke face-off over the live arena.
  *
  * Identity sits in each fighter column, outer-anchored so the side
- * band isn't empty. Name floats; rank is gold type under the name,
- * no lacquer box on this screen. HUD keeps the full plaque. No glass
- * scrims or glow blooms.
+ * band isn't empty. Names fit-to-width on one line (never clip or
+ * stack). Rank lives in the meta row (gold type, no lacquer box).
+ * HUD keeps the plaque. No glass scrims or glow blooms.
  *
  * Game.jsx still adds `is-prematch-hidden` on .ui while this is up.
  */
@@ -407,7 +407,8 @@ const IdentityStage = styled.div`
   /* Anchored up into the under-feet band — not a screen-edge footer */
   bottom: clamp(44px, 7.5cqh, 84px);
   display: grid;
-  grid-template-columns: 1fr minmax(52px, 8cqw) 1fr;
+  /* minmax(0, 1fr) so long names can shrink inside the column */
+  grid-template-columns: minmax(0, 1fr) minmax(52px, 8cqw) minmax(0, 1fr);
   align-items: flex-end;
   z-index: 30;
   pointer-events: none;
@@ -417,16 +418,20 @@ const IdentityStage = styled.div`
 const IdentitySlot = styled.div`
   display: flex;
   justify-content: ${(p) => (p.$side === "left" ? "flex-start" : "flex-end")};
+  /* Keep a hard gutter toward VS so long names never crowd the center. */
   padding: ${(p) =>
     p.$side === "left"
-      ? "0 6% 0 clamp(36px, 6.5cqw, 72px)"
-      : "0 clamp(36px, 6.5cqw, 72px) 0 6%"};
+      ? "0 clamp(28px, 5.5cqw, 72px) 0 clamp(28px, 5.5cqw, 64px)"
+      : "0 clamp(28px, 5.5cqw, 64px) 0 clamp(28px, 5.5cqw, 72px)"};
   min-width: 0;
+  overflow: hidden;
 `;
 
 const IdentityBlock = styled.div`
   position: relative;
-  max-width: min(44cqw, 520px);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: ${(p) => (p.$side === "left" ? "flex-start" : "flex-end")};
@@ -455,38 +460,114 @@ const SideLabel = styled.span`
   line-height: 1;
 `;
 
+/*
+ * Display shikona — starts at the hero clamp, then FitFighterName
+ * measures and writes an exact px size so the full name always fits.
+ */
 const FighterName = styled.div`
   position: relative;
   z-index: 2;
+  width: 100%;
+  min-width: 0;
   font-family: ${FONT_DISPLAY};
-  font-size: clamp(26px, 4.1cqw, 52px);
+  font-size: clamp(24px, 3.9cqw, 50px);
   color: #ffffff;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  line-height: 0.9;
+  line-height: 0.92;
   ${FONT_RENDER}
   text-shadow: ${TEXT_SHADOW_DISPLAY};
   white-space: nowrap;
-  min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
 `;
 
-/* Prematch only — gold type, no lacquer box (HUD keeps the plaque). */
-const RankLine = styled.div`
-  position: relative;
-  z-index: 2;
-  margin-top: clamp(3px, 0.4cqh, 6px);
-  font-family: ${FONT_UI};
-  font-weight: ${FONT_WEIGHT.bold};
-  font-size: clamp(10px, 1.15cqw, 14px);
-  color: ${C.gold};
-  text-transform: uppercase;
-  letter-spacing: ${TRACK.meta};
-  line-height: 1;
-  text-shadow: ${TEXT_SHADOW_UI}, 0 0 8px rgba(232, 197, 71, 0.22);
-  white-space: nowrap;
-`;
+const NAME_MIN_PX = 14;
+
+/** Shrink font (then scaleX as a last resort) so the full name stays visible. */
+function FitFighterName({ children, side }) {
+  const ref = useRef(null);
+
+  const fit = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    el.style.fontSize = "";
+    el.style.transform = "";
+    el.style.letterSpacing = "";
+
+    const avail = el.clientWidth;
+    if (avail <= 0) return;
+
+    const maxPx = parseFloat(getComputedStyle(el).fontSize);
+    if (!maxPx) return;
+
+    let natural = el.scrollWidth;
+    if (natural <= avail + 1) return;
+
+    let next = maxPx * (avail / natural);
+    if (next < NAME_MIN_PX) {
+      el.style.fontSize = `${NAME_MIN_PX}px`;
+      el.style.letterSpacing = "0.02em";
+      natural = el.scrollWidth;
+      if (natural > avail + 1) {
+        const sx = avail / natural;
+        el.style.transform = `scaleX(${sx})`;
+        el.style.transformOrigin =
+          side === "right" ? "right center" : "left center";
+      }
+      return;
+    }
+
+    el.style.fontSize = `${next}px`;
+    if (next < maxPx * 0.72) el.style.letterSpacing = "0.02em";
+
+    // Second pass — letter-spacing / subpixel can still overhang.
+    if (el.scrollWidth > avail + 1) {
+      next = Math.max(NAME_MIN_PX, next * (avail / el.scrollWidth));
+      el.style.fontSize = `${next}px`;
+      if (el.scrollWidth > avail + 1) {
+        const sx = avail / el.scrollWidth;
+        el.style.transform = `scaleX(${sx})`;
+        el.style.transformOrigin =
+          side === "right" ? "right center" : "left center";
+      }
+    }
+  }, [children, side]);
+
+  useLayoutEffect(() => {
+    fit();
+    const el = ref.current;
+    if (!el) return undefined;
+
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    if (el.parentElement) ro.observe(el.parentElement);
+
+    let cancelled = false;
+    const onFonts = () => {
+      if (!cancelled) fit();
+    };
+    document.fonts?.ready?.then(onFonts);
+    window.addEventListener("resize", fit);
+
+    return () => {
+      cancelled = true;
+      ro.disconnect();
+      window.removeEventListener("resize", fit);
+    };
+  }, [fit]);
+
+  return (
+    <FighterName ref={ref} title={typeof children === "string" ? children : undefined}>
+      {children}
+    </FighterName>
+  );
+}
+
+FitFighterName.propTypes = {
+  children: PropTypes.node,
+  side: PropTypes.oneOf(["left", "right"]),
+};
 
 /*
  * Painted brush stroke — uneven edges via polygon, mawashi color.
@@ -528,6 +609,18 @@ const MetaItem = styled.span`
   letter-spacing: 0.2em;
   text-transform: uppercase;
   white-space: nowrap;
+`;
+
+/* Prematch only — gold type in the meta row (HUD keeps the plaque). */
+const MetaRank = styled.span`
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
+  font-size: clamp(0.5rem, 0.85cqw, 0.7rem);
+  color: ${C.gold};
+  letter-spacing: ${TRACK.meta};
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-shadow: ${TEXT_SHADOW_UI}, 0 0 8px rgba(232, 197, 71, 0.22);
 `;
 
 const MetaSep = styled.span`
@@ -582,17 +675,6 @@ export const SPECIAL_MAWASHI_GRADIENTS = {
   galaxy: "linear-gradient(135deg, #2E0854, #4B0082, #6A0DAD, #9932CC, #4B0082)",
   gold: "linear-gradient(135deg, #B8860B, #FFD700, #FFF8DC, #FFD700, #B8860B)",
 };
-
-const DOJO_NAMES = [
-  "Ice Floe Dojo",
-  "Blizzard Hall",
-  "Glacier Peak",
-  "Frostbite Stable",
-  "Snowdrift Gym",
-  "Penguin Palace",
-  "Arctic Thunder",
-  "Frozen Tundra",
-];
 
 const FIGHTING_STYLES = [
   "Pusher",
@@ -657,8 +739,6 @@ const PreMatchScreen = ({
   const [player2Sprite, setPlayer2Sprite] = useState(pumo);
   const [spritesReady, setSpritesReady] = useState(false);
 
-  const player1Dojo = getSeededValue(player1Name, DOJO_NAMES);
-  const player2Dojo = getSeededValue(player2Name, DOJO_NAMES);
   const player1Style = getSeededValue(player1Name + "style", FIGHTING_STYLES);
   const player2Style = getSeededValue(player2Name + "style", FIGHTING_STYLES);
 
@@ -813,8 +893,7 @@ const PreMatchScreen = ({
             <SideTag>
               <SideLabel $accent={p1Accent}>East</SideLabel>
             </SideTag>
-            <FighterName>{player1Name}</FighterName>
-            <RankLine>{formatRankLabel(player1Rank)}</RankLine>
+            <FitFighterName side="left">{player1Name}</FitFighterName>
             <BrushStroke
               $side="left"
               $color={p1Accent}
@@ -822,7 +901,7 @@ const PreMatchScreen = ({
               aria-hidden
             />
             <MetaRow $side="left">
-              <MetaItem>{player1Dojo}</MetaItem>
+              <MetaRank>{formatRankLabel(player1Rank)}</MetaRank>
               <MetaSep />
               <MetaItem>{player1Style}</MetaItem>
               <MetaSep />
@@ -844,8 +923,7 @@ const PreMatchScreen = ({
             <SideTag>
               <SideLabel $accent={p2Accent}>West</SideLabel>
             </SideTag>
-            <FighterName>{player2Name}</FighterName>
-            <RankLine>{formatRankLabel(player2Rank)}</RankLine>
+            <FitFighterName side="right">{player2Name}</FitFighterName>
             <BrushStroke
               $side="right"
               $color={p2Accent}
@@ -863,7 +941,7 @@ const PreMatchScreen = ({
               <MetaSep />
               <MetaItem>{player2Style}</MetaItem>
               <MetaSep />
-              <MetaItem>{player2Dojo}</MetaItem>
+              <MetaRank>{formatRankLabel(player2Rank)}</MetaRank>
             </MetaRow>
           </IdentityBlock>
         </IdentitySlot>

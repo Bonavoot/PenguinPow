@@ -10,11 +10,13 @@ const {
   GROUND_LEVEL,
   FLAP_DIVE_MIN_DOWN_VELOCITY,
   BURST_STUN_MS,
+  SLIDE_JUMP_DIVE_MIN_HEIGHT,
 } = require("../../constants");
 const {
   setSimRoomResolver,
   timeoutManager,
   isSlideJumpFlightImmune,
+  isSlideJumpDiveEnabled,
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
 } = require("../../gameUtils");
@@ -31,6 +33,54 @@ afterEach(() => {
   setSimRoomResolver(() => null);
 });
 
+describe("offensive aerial — S dive hop lock / buffer", () => {
+  it("rejects instant hop-cancel dive from low launch", () => {
+    const s = createSlideJumpScenario({
+      name: "dive_lock_early",
+      attackerY: GROUND_LEVEL + 20,
+      velY: 13.2,
+      hSpeed: 4,
+      attackerKeys: { s: true },
+    });
+    assert.equal(isSlideJumpDiveEnabled(s.attacker, s.room.simTime), false);
+    stepSlideJumpTick(s);
+    assert.equal(s.attacker.slideJumpDiveCommitted, false);
+    assert.equal(s.attacker.slideJumpDiveBuffered, true);
+  });
+
+  it("early S tap buffers and commits on first enabled tick", () => {
+    const s = createSlideJumpScenario({
+      name: "dive_buffer",
+      attackerY: GROUND_LEVEL + 20,
+      velY: 13.2,
+      hSpeed: 0,
+    });
+    s.attacker.keys.s = true;
+    stepSlideJumpTick(s);
+    assert.equal(s.attacker.slideJumpDiveBuffered, true);
+    assert.equal(s.attacker.slideJumpDiveCommitted, false);
+    // Release S — buffer must still fire when enable clears.
+    s.attacker.keys.s = false;
+    const snap = runUntil(s, () => s.attacker.slideJumpDiveCommitted, 40);
+    assert.ok(snap);
+    assert.equal(s.attacker.slideJumpDiveCommitted, true);
+    assert.equal(s.attacker.keys.s, false);
+  });
+
+  it("S after enable commits immediately", () => {
+    const s = createSlideJumpScenario({
+      name: "dive_late",
+      attackerY: GROUND_LEVEL + SLIDE_JUMP_DIVE_MIN_HEIGHT + 10,
+      velY: 4,
+      hSpeed: 0,
+    });
+    assert.equal(isSlideJumpDiveEnabled(s.attacker, s.room.simTime), true);
+    s.attacker.keys.s = true;
+    stepSlideJumpTick(s);
+    assert.equal(s.attacker.slideJumpDiveCommitted, true);
+  });
+});
+
 describe("offensive aerial — S-key body slam dive", () => {
   it("clean dive hit on grounded defender", () => {
     const s = createSlideJumpScenario({
@@ -43,7 +93,8 @@ describe("offensive aerial — S-key body slam dive", () => {
       attackerY: GROUND_LEVEL + 50,
     });
     placeDescendingOverOpponent(s, { height: 50, dive: true });
-    assert.equal(isSlideJumpFlightImmune(s.attacker), false);
+    // Dive keeps receive-immunity; offense window is still open.
+    assert.equal(isSlideJumpFlightImmune(s.attacker), true);
     assert.equal(isBodySlamWindowOpen(s.attacker), true);
     stepSlideJumpTick(s);
     assert.equal(s.attacker.slideJumpHitLanded, true);
@@ -90,7 +141,7 @@ describe("offensive aerial — S-key body slam dive", () => {
       defenderX: 700,
       velY: 6,
       hSpeed: 5,
-      attackerY: GROUND_LEVEL + 80,
+      attackerY: GROUND_LEVEL + SLIDE_JUMP_DIVE_MIN_HEIGHT + 10,
       attackerKeys: { s: true },
     });
     const lockX = s.attacker.x;
@@ -104,7 +155,7 @@ describe("offensive aerial — S-key body slam dive", () => {
     const s = createSlideJumpScenario({
       name: "dive_burns_charges",
       armFlap: true,
-      attackerY: GROUND_LEVEL + 80,
+      attackerY: GROUND_LEVEL + SLIDE_JUMP_DIVE_MIN_HEIGHT + 10,
       velY: 4,
       hSpeed: 0,
       attackerKeys: { s: true },
@@ -195,7 +246,7 @@ describe("offensive aerial — S-key body slam dive", () => {
     assert.equal(s.io.find("player_hit").length, 0);
   });
 
-  it("hit airborne defender (non-immune) begins air-hit fall", () => {
+  it("does not body-slam an airborne defender (grounded contact only)", () => {
     const s = createSlideJumpScenario({
       name: "dive_vs_air",
       attackerX: 500,
@@ -205,12 +256,81 @@ describe("offensive aerial — S-key body slam dive", () => {
       attackerY: GROUND_LEVEL + 40,
     });
     placeDescendingOverOpponent(s, { height: 40, dive: true });
-    // Defender airborne but not slide-jump flight immune (e.g. hit-falling / stranded).
+    // Stranded / hit-falling above the floor — slam must wait for ground.
     s.defender.y = GROUND_LEVEL + 30;
     s.defender.isSlideJumping = false;
     stepSlideJumpTick(s);
+    assert.equal(s.attacker.slideJumpHitLanded, false);
+    assert.equal(s.defender.isHit, false);
+    assert.equal(s.defender.isHitFalling, false);
+  });
+
+  it("contested dual dive on floor: lower flyer connects, higher receives", () => {
+    const s = createSlideJumpScenario({
+      name: "dual_dive_height",
+      attackerX: 500,
+      defenderX: 500,
+      dive: true,
+      velY: -FLAP_DIVE_MIN_DOWN_VELOCITY,
+      attackerY: GROUND_LEVEL,
+    });
+    placeDescendingOverOpponent(s, { height: 0, dive: true });
+    // Equal Y → id tie-break; attacker id < defender id ⇒ attacker may connect.
+    s.attacker.id = "a";
+    s.defender.id = "b";
+    s.attacker.y = GROUND_LEVEL;
+    s.defender.isSlideJumping = true;
+    s.defender.slideJumpPhase = "flight";
+    s.defender.slideJumpDiveCommitted = true;
+    s.defender.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
+    s.defender.slideJumpHitLanded = false;
+    s.defender.y = GROUND_LEVEL;
+    stepSlideJumpTick(s);
     assert.equal(s.attacker.slideJumpHitLanded, true);
     assert.equal(s.defender.isHit, true);
-    assert.equal(s.defender.isHitFalling, true);
+
+    // Reverse ids: attacker loses the equal-Y tie and cannot latch.
+    const s2 = createSlideJumpScenario({
+      name: "dual_dive_height_lose",
+      attackerX: 500,
+      defenderX: 500,
+      dive: true,
+      velY: -FLAP_DIVE_MIN_DOWN_VELOCITY,
+      attackerY: GROUND_LEVEL,
+    });
+    placeDescendingOverOpponent(s2, { height: 0, dive: true });
+    s2.attacker.id = "b";
+    s2.defender.id = "a";
+    s2.attacker.y = GROUND_LEVEL;
+    s2.defender.isSlideJumping = true;
+    s2.defender.slideJumpPhase = "flight";
+    s2.defender.slideJumpDiveCommitted = true;
+    s2.defender.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
+    s2.defender.slideJumpHitLanded = false;
+    s2.defender.y = GROUND_LEVEL;
+    stepSlideJumpTick(s2);
+    assert.equal(s2.attacker.slideJumpHitLanded, false);
+    assert.equal(s2.defender.isHit, false);
+  });
+
+  it("contested dual dive mid-air: neither connects (grounded gate)", () => {
+    const s = createSlideJumpScenario({
+      name: "dual_dive_air",
+      attackerX: 500,
+      defenderX: 500,
+      dive: true,
+      velY: -FLAP_DIVE_MIN_DOWN_VELOCITY,
+      attackerY: GROUND_LEVEL + 40,
+    });
+    placeDescendingOverOpponent(s, { height: 40, dive: true });
+    s.defender.isSlideJumping = true;
+    s.defender.slideJumpPhase = "flight";
+    s.defender.slideJumpDiveCommitted = true;
+    s.defender.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
+    s.defender.y = GROUND_LEVEL + 50; // higher
+    s.attacker.y = GROUND_LEVEL + 40;
+    stepSlideJumpTick(s);
+    assert.equal(s.attacker.slideJumpHitLanded, false);
+    assert.equal(s.defender.isHit, false);
   });
 });

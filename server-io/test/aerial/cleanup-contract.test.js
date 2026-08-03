@@ -130,7 +130,7 @@ describe("offensive aerial — cleanup stages", () => {
 });
 
 describe("offensive aerial — immunity cleanup", () => {
-  it("flight immunity timing unchanged: immune until dive", () => {
+  it("flight immunity holds through dive until touchdown", () => {
     const s = createSlideJumpScenario({
       name: "immunity_flight",
       armFlap: true,
@@ -139,9 +139,9 @@ describe("offensive aerial — immunity cleanup", () => {
     });
     assert.equal(isSlideJumpFlightImmune(s.attacker), true);
     s.attacker.keys.s = true;
-    stepSlideJumpTick(s);
+    runUntil(s, () => s.attacker.slideJumpDiveCommitted, 40);
     assert.equal(s.attacker.slideJumpDiveCommitted, true);
-    assert.equal(isSlideJumpFlightImmune(s.attacker), false);
+    assert.equal(isSlideJumpFlightImmune(s.attacker), true);
   });
 
   it("parry clears flight immunity (no longer slide-jumping)", () => {

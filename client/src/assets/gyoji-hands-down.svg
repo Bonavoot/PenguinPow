@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc">
+  <title id="title">Gyoji calm speech bubble</title>
+  <desc id="desc">A wide, softly irregular speech balloon with a center-bottom tail for the Gyoji's Hands Down command.</desc>
+
+  <!-- The tail is a separate path so it can be repositioned or hidden easily. -->
+  <path
+    id="tail"
+    d="M 494 244 C 548 300 566 357 576 415 C 636 378 670 318 706 244 Z"
+    fill="#fffaf0"
+    stroke="#111111"
+    stroke-width="20"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <path
+    id="bubble"
+    d="
+      M 154 64
+      C 211 32 289 34 347 61
+      C 410 28 499 31 558 59
+      C 624 27 718 28 779 61
+      C 845 33 932 38 983 69
+      C 1052 51 1120 82 1130 134
+      C 1171 159 1174 214 1142 246
+      C 1144 297 1090 329 1027 321
+      C 979 354 897 355 843 329
+      C 779 362 694 362 632 332
+      C 568 365 481 363 420 332
+      C 359 361 275 357 225 325
+      C 157 338 91 310 84 261
+      C 39 238 29 188 59 155
+      C 54 107 96 72 154 64
+      Z
+    "
+    fill="#fffaf0"
+    stroke="#111111"
+    stroke-width="20"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

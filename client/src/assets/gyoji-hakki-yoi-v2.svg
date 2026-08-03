@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 660" role="img" aria-labelledby="title desc">
+  <title id="title">Gyoji explosive command balloon</title>
+  <desc id="desc">An asymmetrical hand-inked rupture balloon with a narrow center tail for the Gyoji's Hakki-Yoi command.</desc>
+
+  <!--
+    The viewBox deliberately matches the original 1600 x 660 asset so this can
+    replace it without changing the working in-game width, anchor, or offset.
+    Keep live text in React/HTML; this file is only the illustrated silhouette.
+  -->
+  <g fill="#ffffff" stroke="#111111" stroke-linecap="round" stroke-linejoin="round">
+    <path
+      id="tail"
+      d="M 716 430 C 760 484 786 551 797 638 C 846 566 870 492 895 423 Z"
+      stroke-width="12"
+    />
+
+    <path
+      id="bubble"
+      d="
+        M 77 335
+        L 232 293
+        L 128 222
+        L 302 228
+        L 247 121
+        L 420 177
+        L 414 54
+        L 562 151
+        L 630 33
+        L 731 145
+        L 838 39
+        L 910 157
+        L 1063 67
+        L 1052 188
+        L 1252 123
+        L 1195 242
+        L 1453 222
+        L 1313 320
+        L 1535 374
+        L 1288 406
+        L 1437 526
+        L 1191 470
+        L 1230 607
+        L 1041 509
+        L 983 632
+        L 842 523
+        L 748 608
+        L 650 507
+        L 472 604
+        L 482 474
+        L 257 531
+        L 337 417
+        L 108 452
+        L 256 363
+        Z
+      "
+      stroke-width="13"
+    />
+  </g>
+
+  <!-- Sparse impact flecks: a few authored marks, not a decorative halo. -->
+  <g fill="#111111">
+    <path d="M 86 176 L 161 151 L 122 204 Z"/>
+    <path d="M 1377 130 L 1469 98 L 1410 174 Z"/>
+    <path d="M 1472 515 L 1553 555 L 1461 552 Z"/>
+  </g>
+
+  <!-- A second imperfect ink pass gives the burst weight after effects settle. -->
+  <path
+    d="M 190 305 L 139 270 M 311 205 L 276 148 M 1204 258 L 1334 246 M 1196 474 L 1262 522"
+    fill="none"
+    stroke="#111111"
+    stroke-width="3.5"
+    stroke-linecap="round"
+    opacity="0.48"
+  />
+</svg>

@@ -466,7 +466,7 @@ describe("Matador glass + cinematic variants", () => {
     assert.ok(getCueDefinition(CUE.MATADOR_BREAK));
   });
 
-  it("demolished_charged owns launch/gun/trail; matador_break and ap_pull skip", () => {
+  it("demolished_charged owns launch/gun/trail; matador_kill and ap_pull skip", () => {
     assert.equal(
       resolveCinematicVariant({ cinematicVariant: "demolished_charged" }),
       CINEMATIC_VARIANT.DEMOLISHED_CHARGED
@@ -484,18 +484,44 @@ describe("Matador glass + cinematic variants", () => {
       }),
       true
     );
-    assert.equal(shouldPlayCinematicGunCue({ cinematicVariant: "matador_break" }), false);
-    assert.equal(shouldPlayCinematicGunCue({ isGored: true }), false);
+    // Matador Break hit callout (isGored) must NOT strip the charged package —
+    // a charged Matador-Break cinematic kill is still demolished_charged.
+    assert.equal(
+      resolveCinematicVariant({
+        cinematicVariant: "demolished_charged",
+        isGored: true,
+      }),
+      CINEMATIC_VARIANT.DEMOLISHED_CHARGED
+    );
+    assert.equal(
+      shouldPlayCinematicGunCue({
+        cinematicVariant: "demolished_charged",
+        isGored: true,
+      }),
+      true
+    );
+    assert.equal(shouldPlayCinematicGunCue({ isGored: true }), true);
+    // MATADOR success kill (belly-slide) — camera only.
+    assert.equal(
+      resolveCinematicVariant({ cinematicVariant: "matador_kill" }),
+      CINEMATIC_VARIANT.MATADOR_KILL
+    );
+    assert.equal(shouldPlayCinematicGunCue({ cinematicVariant: "matador_kill" }), false);
     assert.equal(shouldPlayCinematicGunCue({ matadorKill: true }), false);
+    // Legacy misnomer still resolves to matador_kill (camera-only).
+    assert.equal(
+      resolveCinematicVariant({ cinematicVariant: "matador_break" }),
+      CINEMATIC_VARIANT.MATADOR_KILL
+    );
     assert.equal(
       shouldPlayCinematicChargedLaunchPackage({
-        cinematicVariant: "matador_break",
+        cinematicVariant: "matador_kill",
       }),
       false
     );
     assert.equal(
       shouldPlayCinematicKillSmokeTrail({
-        cinematicVariant: "matador_break",
+        cinematicVariant: "matador_kill",
       }),
       false
     );

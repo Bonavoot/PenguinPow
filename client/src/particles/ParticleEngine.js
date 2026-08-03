@@ -2467,9 +2467,11 @@ const PRESETS = {
   },
 
   // ── ICE SLIDE (SHIFT-held post-dodge) ────────────────────────────────────
-  // Premium skate-blade FX pinned to sliding.png. Blue mist is facing-mirrored
+  // Premium skate-blade FX pinned to sliding.png. Mist is facing-mirrored
   // to match P1's good look (face right → wake off art-left pad toward back);
   // opposite facing uses the same sprite-relative layout via wakeDir = facing.
+  // Mist puffs tint to the fighter's mawashi via accentTextures (same path as
+  // sidestepTrail); ice chips / blade sparks stay cyan frost.
 
   // One-shot commitment burst when the slide locks in after dodge land.
   // variant: "redirect" → tighter dig-reversal burst (see iceSlideRedirect).
@@ -2478,9 +2480,11 @@ const PRESETS = {
       PRESETS.iceSlideRedirect(engine, opts);
       return;
     }
-    const { x, y, direction, facing } = opts;
+    const { x, y, direction, facing, playerNumber } = opts;
     const footY = GAME_H - y - SLIDE_FOOT_Y_LIFT;
     const { wakeDir, artLeftX, artRightX } = slideArtFeet(x, facing);
+    const accent = engine.accentTextures?.[`player${playerNumber}`];
+    const mistTex = () => accent?.trailPuff || pickBluePuff(engine.textures);
 
     // Soft frost bloom — bias toward the wake side (P1-good layout).
     for (const fx of [artLeftX, artRightX]) {
@@ -2500,7 +2504,7 @@ const PRESETS = {
         easeAlpha: "inCubic",
         rotationSpeed: rand(-0.6, 0.6),
         maxLife: rand(0.32, 0.42),
-        texture: pickBluePuff(engine.textures),
+        texture: mistTex(),
       });
     }
 
@@ -2600,14 +2604,17 @@ const PRESETS = {
   },
 
   // Continuous emission (~36ms) while ice-sliding. Dual-foot blade grind;
-  // blue mist is facing-mirrored (see slideArtFeet), not travel-dir based.
-  iceSlideTrail(engine, { x, y, direction, facing, speed = 0.7, braking = false }) {
+  // mist is facing-mirrored (see slideArtFeet), not travel-dir based, and
+  // tinted to the fighter's mawashi when accentTextures are baked.
+  iceSlideTrail(engine, { x, y, direction, facing, speed = 0.7, braking = false, playerNumber }) {
     const footY = GAME_H - y - SLIDE_FOOT_Y_LIFT;
     const s = Math.min(Math.max(speed, 0.25), 1.5);
     const brake = braking ? 1.55 : 1;
     const { wakeDir, artLeftX, artRightX } = slideArtFeet(x, facing);
     const feet = [artLeftX, artRightX];
     const digX = artRightX;
+    const accent = engine.accentTextures?.[`player${playerNumber}`];
+    const mistTex = () => accent?.trailPuff || pickBluePuff(engine.textures);
 
     // Soft frost mist from BOTH pads — facing-mirrored wake direction.
     // One puff per foot per tick (was piled on a single pad before).
@@ -2630,7 +2637,7 @@ const PRESETS = {
           easeAlpha: "inQuad",
           rotationSpeed: rand(-0.4, 0.4),
           maxLife: rand(0.26, 0.4),
-          texture: pickBluePuff(engine.textures),
+          texture: mistTex(),
         });
       }
     }
@@ -2766,7 +2773,7 @@ const PRESETS = {
           easeAlpha: "inCubic",
           rotationSpeed: rand(-0.6, 0.6),
           maxLife: rand(0.2, 0.3),
-          texture: pickBluePuff(engine.textures),
+          texture: mistTex(),
         });
       }
       // Extra hot grind sparks at the dig edge.
@@ -5679,7 +5686,8 @@ export class ParticleEngine {
     // Per-player accent textures keyed by playerNumber (1 or 2). Each entry is
     // { haloRing, trailPuff } baked at color-pick time from the player's
     // mawashi color via setAccentTextures(). Presets that need player-color
-    // particles read from this map (e.g. localPlayerHalo, sidestepTrail).
+    // particles read from this map (e.g. localPlayerHalo, sidestepTrail,
+    // iceSlideStart, iceSlideTrail).
     this.accentTextures = {};
     this._rafId = null;
     this._lastTime = 0;

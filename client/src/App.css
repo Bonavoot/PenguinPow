@@ -10,6 +10,10 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
+  /* Game chrome: no click-drag text highlight */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 #root {
@@ -27,6 +31,122 @@ body {
   zoom: var(--app-zoom, 1);
   position: relative;
   overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Keep typing fields selectable/editable */
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Block native "drag image out of the page" ghost */
+img,
+svg,
+canvas,
+video {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+/* Native CSS cursors (OS-composited, zero extra lag).
+   Default arrow; hand on clickable controls. Hotspots = tip of art. */
+body.cursor-custom,
+body.cursor-custom *,
+.app-container.cursor-custom,
+.app-container.cursor-custom * {
+  cursor: url("./assets/cursor.png") 1 0, auto !important;
+}
+
+body.cursor-custom :is(
+    a,
+    button,
+    [role="button"],
+    label,
+    select,
+    summary,
+    input[type="button"],
+    input[type="submit"],
+    input[type="reset"],
+    input[type="checkbox"],
+    input[type="radio"],
+    input[type="file"],
+    input[type="range"],
+    input[type="color"]
+  ),
+body.cursor-custom
+  :is(
+    a,
+    button,
+    [role="button"],
+    label,
+    select,
+    summary,
+    input[type="button"],
+    input[type="submit"],
+    input[type="reset"],
+    input[type="checkbox"],
+    input[type="radio"],
+    input[type="file"],
+    input[type="range"],
+    input[type="color"]
+  )
+  *,
+.app-container.cursor-custom
+  :is(
+    a,
+    button,
+    [role="button"],
+    label,
+    select,
+    summary,
+    input[type="button"],
+    input[type="submit"],
+    input[type="reset"],
+    input[type="checkbox"],
+    input[type="radio"],
+    input[type="file"],
+    input[type="range"],
+    input[type="color"]
+  ),
+.app-container.cursor-custom
+  :is(
+    a,
+    button,
+    [role="button"],
+    label,
+    select,
+    summary,
+    input[type="button"],
+    input[type="submit"],
+    input[type="reset"],
+    input[type="checkbox"],
+    input[type="radio"],
+    input[type="file"],
+    input[type="range"],
+    input[type="color"]
+  )
+  * {
+  cursor: url("./assets/hand-cursor.png") 13 0, pointer !important;
+}
+
+body.cursor-custom :is(a, button, [role="button"], select, summary):disabled,
+body.cursor-custom :is(a, button, [role="button"], select, summary):disabled *,
+.app-container.cursor-custom
+  :is(a, button, [role="button"], select, summary):disabled,
+.app-container.cursor-custom
+  :is(a, button, [role="button"], select, summary):disabled * {
+  cursor: url("./assets/cursor.png") 1 0, not-allowed !important;
+}
+
+body.cursor-hidden,
+body.cursor-hidden *,
+.app-container.cursor-hidden,
+.app-container.cursor-hidden * {
+  cursor: none !important;
 }
 
 /* Startup Screen Styles */
@@ -492,13 +612,36 @@ body {
   pointer-events: none;
 }
 
+/* ── Ceremony layer (Gyoji speech bubbles) ────────────────────────────────
+   Same camera transform as ring props / actors so the bubble tail stays
+   locked to the Gyoji through ready framing and the hakkiyoi zoom pulse.
+   Stack: nameplates (200) < wrestlers (205) < ceremony (207)
+          < main HUD / RoundResult (210). Bubbles read above UiPlayerInfo. */
+.game-ceremony {
+  position: absolute;
+  inset: 0;
+  z-index: 207;
+  pointer-events: none;
+  transform-origin: center center;
+  transform: translate3d(var(--cam-x, 0px), var(--cam-y, 0px), 0)
+    rotate(var(--cam-rot, 0deg))
+    scale(var(--cam-scale, 1));
+  will-change: transform;
+  backface-visibility: hidden;
+  opacity: 1;
+  transition: opacity 0.35s ease-out;
+}
+.game-ceremony.is-prematch-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* ── Actors layer: the wrestlers (+ their particles/VFX) ──────────────────
    Identical box + identical camera transform as .game-scene (reads the same
    inherited --cam-* props), so the penguins render exactly where they always
-   did. The ONLY difference is z-order: this layer sits ABOVE #game-hud-info
-   (nameplates), #game-ring-props (gyoji/salt), and #game-hud-callouts (side
-   combat plaques) so penguins paint over all three, and BELOW #game-hud
-   (center announcements / KO / power-up screens) which stay on top.
+   did. Z-order: above nameplates / ring props / callouts, below ceremony (207).
+   #game-hud (210) stays on top for RoundResult / KO.
    pointer-events:none so it never intercepts clicks meant for the HUD beneath
    it (the wrestlers are keyboard-driven and not interactive). */
 .game-actors {
@@ -631,11 +774,9 @@ body {
 }
 
 /* ── Player-info HUD (nameplates / health / balance / stamina / power-up
-   chips) — the broadcast lower-thirds. Split out of .game-hud so it can sit
-   BELOW the actors layer (205): high-flying penguins now paint OVER it, just
-   like a fighting-game character jumping in front of its own HUD. Kept at
-   z-index 200 (above the film-grain at 199 and vignette at 198) so the panel
-   itself looks IDENTICAL to before — only the players now layer on top. */
+   chips) — the broadcast lower-thirds. Below actors (205) so airborne
+   penguins paint over nameplates, and below ceremony (207) so Gyoji
+   speech bubbles read above UiPlayerInfo. Below #game-hud (210) RoundResult. */
 .game-hud-info {
   position: absolute;
   inset: 0;
@@ -656,8 +797,9 @@ body {
 /* ── Side combat callouts (info plaques + hype stamps)
    Viewport-fixed like the other HUD hosts. Stack:
      nameplates (200) < ring props (201) < callouts (202) < wrestlers (205)
-   so banners sit over gyoji/salt baskets but under the penguins. Center
-   announcements (HAKKI-YOI / RoundResult) stay in #game-hud at 210. */
+   < ceremony (207) so banners sit over gyoji/salt but under the penguins,
+   and Gyoji speech reads above UiPlayerInfo. Center RoundResult / KO stay
+   in #game-hud at 210. */
 .game-hud-callouts {
   position: absolute;
   inset: 0;

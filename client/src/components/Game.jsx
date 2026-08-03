@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState, useRef, useCallback } from "react";
+import { useContext, useEffect, useLayoutEffect, useState, useRef, useCallback } from "react";
 import { SocketContext } from "../SocketContext";
 import GameFighter from "./GameFighter";
 import MobileControls from "./MobileControls";
@@ -39,6 +39,7 @@ import {
   setLocalGameActive,
   getLocalKeyState,
 } from "../prediction/localInput";
+import { acquireCursor, releaseCursor } from "../ui/cursorGate";
 import { getServerOffset, isServerClockSynced, getEstimatedRtt } from "../lib/serverClock";
 import {
   requestFighterResync,
@@ -153,6 +154,13 @@ const Game = ({
   }, [socket]);
   const [isPowerUpSelectionActive, setIsPowerUpSelectionActive] =
     useState(false);
+  // Cursor only while the power-up picker is actually open — not prematch,
+  // not the between-round wait before selection_start.
+  useLayoutEffect(() => {
+    if (isPowerUpSelectionActive) acquireCursor("powerup");
+    else releaseCursor("powerup");
+    return () => releaseCursor("powerup");
+  }, [isPowerUpSelectionActive]);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [disconnectedRoomId, setDisconnectedRoomId] = useState(null);
   const [crowdEvent, setCrowdEvent] = useState(null);
@@ -735,7 +743,7 @@ const Game = ({
 
       // Being grabbed / in clinch: Mouse1 is clinch jolt (server-gated) — never
       // an open-game strike. Still accept the key so the jolt request goes out.
-      // Mouse2 is always allowed (belt hold / throw chords).
+      // Mouse2 is always allowed (throw/pull chords in clinch).
       if (e.button === 0) {
         e.preventDefault();
         const wasPressed = keyState.mouse1;
@@ -756,8 +764,8 @@ const Game = ({
         if (!wasPressed) pushEvent("mouse2", "down");
 
         // Don't predict an open-game grab while already clinching / grabbing —
-        // M2 is belt-hold / throw chord there. canPredictAction also rejects
-        // this, but skip the call so we don't even attempt a grab pose flash.
+        // M2 is throw/pull chord there. canPredictAction also rejects this,
+        // but skip the call so we don't even attempt a grab pose flash.
         if (
           !wasPressed &&
           !cp?.isBeingGrabbed &&
@@ -1205,10 +1213,9 @@ const Game = ({
             .cinematic-dim in App.css for the full freeze-fix rationale). */}
         <div className="cinematic-dim" aria-hidden="true"></div>
         {/* Player-info HUD target — portal host for the nameplate/health/stamina
-            lower-thirds (UiPlayerInfo). Lives UNDER the actors layer so airborne
-            penguins paint over it, but above the film-grain/vignette so the panel
-            itself is visually unchanged. Hidden during the pre-match screen, same
-            as the main HUD. */}
+            lower-thirds (UiPlayerInfo). Below actors and ceremony so speech
+            reads above the persistent HUD; below #game-hud RoundResult / KO.
+            Hidden during the pre-match screen, same as the main HUD. */}
         <div
           id="game-hud-info"
           className={`game-hud-info${
@@ -1298,6 +1305,15 @@ const Game = ({
             </div>
           </ParticleProvider>
         </div>
+        {/* Gyoji ceremony bubbles — camera-synced above wrestlers (205) and
+            UiPlayerInfo (200) so dialogue reads over the persistent HUD.
+            RoundResult / MatchOver remain in #game-hud (210). */}
+        <div
+          id="game-ceremony"
+          className={`game-ceremony${
+            showPreMatchScreen ? " is-prematch-hidden" : ""
+          }`}
+        ></div>
         {/* HUD layer — viewport-fixed, unaffected by camera zoom/pan.
             While the pre-match screen is up we add `is-prematch-hidden`
             so the in-game HUD (player nameplates, health/balance bars,

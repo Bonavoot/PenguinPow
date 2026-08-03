@@ -96,8 +96,8 @@ export function ParticleProvider({ children, behindCanvasRef }) {
 
   // Bake per-player accent textures (halo ring + trail puff) whenever the
   // engine becomes ready or a player color changes. This keeps the colored
-  // textures used by localPlayerHalo / sidestepStart / sidestepTrail in
-  // sync with the active mawashi colors.
+  // textures used by localPlayerHalo / sidestepStart / sidestepTrail /
+  // iceSlideStart / iceSlideTrail in sync with the active mawashi colors.
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine) return;

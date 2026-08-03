@@ -20,6 +20,7 @@ const {
   SLIDE_JUMP_AIR_STEER,
   SLIDE_JUMP_AIR_STEER_BLEED,
   SLIDE_JUMP_LANDING_RECOVERY_MS,
+  SLIDE_JUMP_LAND_SLAM_IFRAME_MS,
   FLAP_IMPULSE,
   FLAP_GRAVITY,
   FLAP_MAX_HEIGHT,
@@ -48,6 +49,7 @@ const {
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
   clearSlideJumpState,
+  shouldCommitSlideJumpDive,
   cancelPendingSlapWork,
   armSlideJumpFlapCharges,
 } = require("../../../gameUtils");
@@ -207,6 +209,8 @@ function beginSlideJumpFlight(player, opts = {}) {
   player.slideJumpVelocityX = dir * (opts.hSpeed != null ? opts.hSpeed : SLIDE_JUMP_H_BASE);
   player.facing = dir > 0 ? -1 : 1;
   player.slideJumpDiveCommitted = !!opts.dive;
+  player.slideJumpDiveBuffered = !!opts.dive;
+  player.slideJumpDiveBufferUntil = 0;
   player.slideJumpDiveLockX = opts.dive ? player.x : 0;
   player.slideJumpHitLanded = false;
   player.slideJumpHitRecoverDuration = 0;
@@ -370,8 +374,10 @@ function stepSlideJumpTick(scenario, options = {}) {
         attacker.wJustPressed = false;
       }
 
-      if (!attacker.slideJumpDiveCommitted && attacker.keys.s) {
+      if (shouldCommitSlideJumpDive(attacker, now)) {
         attacker.slideJumpDiveCommitted = true;
+        attacker.slideJumpDiveBuffered = false;
+        attacker.slideJumpDiveBufferUntil = 0;
         attacker.slideJumpDiveLockX = attacker.x;
         attacker.slideJumpVelocityX = 0;
         attacker.flapVelocityX = 0;
@@ -536,6 +542,7 @@ function stepSlideJumpTick(scenario, options = {}) {
       }
       attacker.slideJumpPhase = "landing";
       attacker.slideJumpLandingTime = now;
+      attacker.slideJumpLandSlamImmuneUntil = now + SLIDE_JUMP_LAND_SLAM_IFRAME_MS;
       attacker._oaTouchdownPresentation = true;
       handoffOffensiveAerialFacingAtTouchdown(attacker, defender);
       const whiffRecovery = attacker.slideJumpFlapFlightActive

@@ -292,9 +292,8 @@ const GRAB_ARM_PIVOT_AFTER_MOTION =
 const grabArmBodyHoldMotion = (props) => {
   const dx = GRAB_ARM_SHOULDER_DX_PCT;
   const dy = GRAB_ARM_SHOULDER_DY_PCT;
-  // Per-frame vars (rAF): deg / y stagger the over·under holds; len shortens
-  // reach from the shoulder WITHOUT thinning (scaleX after rotate — body holds
-  // sit near-horizontal so X ≈ length, Y ≈ thickness stays 1).
+  // Per-frame vars (rAF): deg / y / len for grab-arm pose tweaks; len shortens
+  // reach from the shoulder WITHOUT thinning (scaleX after rotate).
   return (
     ` translate(${dx}%, ${dy}%)` +
     ` rotate(var(--grab-arm-body-hold-deg, 0deg))` +
@@ -917,12 +916,9 @@ export const StyledImage = styled("img")
         ? "clinchTeeterHeavy 0.95s ease-in-out infinite"
         : props.$inClinch && props.$balanceWobble
         ? "clinchTeeter 1.5s ease-in-out infinite"
-        // Hit reaction: amp-scaled contact squash, then (if the stun/slide
-        // outlasts it) a decaying feet-pinned stagger so a launched victim
-        // keeps REACTING through the knockback slide instead of going rigid
-        // at 0.28s while still moving.
+        // Hit reaction: amp-scaled contact squash only (no post-squash stagger).
         : props.$isHit
-        ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1), hitStaggerSettle 0.55s cubic-bezier(0.33, 1, 0.68, 1) 0.28s"
+        ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
         // Attacker contact recoil: their own body jolts back a beat when a
         // strike CONNECTS (impact resistance — the target has mass). Sits
         // above slapRush/attackPunch so it briefly interrupts the swing loop.
@@ -1050,18 +1046,6 @@ export const StyledImage = styled("img")
     55% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.04 * var(--impact-amp, 1)))) scaleY(calc(1 + 0.04 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -0.5% * var(--impact-amp, 1))) skewX(calc(var(--facing, 1) * -0.5deg * var(--impact-amp, 1))); }
     100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); }
   }
-  /* Chained after hitSquash (0.28s delay in the animation shorthand): a
-     decaying feet-pinned rock away from the hit while the victim is still
-     stunned/sliding. Slap stuns clear before it starts (isHit drops → the
-     whole animation is removed), so in practice this reads only on charged /
-     flap / burst launches — exactly where the post-squash rigidity showed. */
-  @keyframes hitStaggerSettle {
-    0% { transform: scaleX(var(--facing, 1)) skewX(0deg) translateX(0); }
-    24% { transform: scaleX(var(--facing, 1)) skewX(calc(var(--facing, 1) * -2.2deg * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -0.8% * var(--impact-amp, 1))); }
-    52% { transform: scaleX(var(--facing, 1)) skewX(calc(var(--facing, 1) * 1.2deg * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * 0.3% * var(--impact-amp, 1))); }
-    78% { transform: scaleX(var(--facing, 1)) skewX(calc(var(--facing, 1) * -0.5deg * var(--impact-amp, 1))) translateX(0); }
-    100% { transform: scaleX(var(--facing, 1)) skewX(0deg) translateX(0); }
-  }
   /* Attacker-side contact recoil — a short backward jolt + settle when their
      strike lands. Fixed amplitude (the ATTACKER's mass doesn't change with
      hit strength; the victim's --impact-amp carries the grading). */
@@ -1173,11 +1157,24 @@ export const StyledImage = styled("img")
     87% { transform: scaleX(var(--facing, 1)) translateX(-2px); }
     100% { transform: scaleX(var(--facing, 1)) translateX(0px); }
   }
-  /* Grab-arm wobble twins — body motion + shoulder pivot; no brightness/glow. */
+  /* Grab-arm wobble twin — same motion + brightness flash as the body.
+     Brightness only (no drop-shadow/rim): arm filter stays "none" so we
+     don't paint a backdrop halo around the flipper. */
   @keyframes clinchOpenWobbleArm {
-    0%, 100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1) skewX(0deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
-    35% { transform: scaleX(calc(var(--facing, 1) * 1.06)) translateX(calc(var(--facing, 1) * -3px)) scaleY(0.94) skewX(calc(var(--facing, 1) * -2deg))${GRAB_ARM_PIVOT_AFTER_MOTION}; }
-    70% { transform: scaleX(calc(var(--facing, 1) * 0.98)) translateX(calc(var(--facing, 1) * 2px)) scaleY(1.02) skewX(calc(var(--facing, 1) * 1.5deg))${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+    0%, 100% {
+      transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1) skewX(0deg)${GRAB_ARM_PIVOT_AFTER_MOTION};
+      filter: brightness(1);
+    }
+    35% {
+      transform: scaleX(calc(var(--facing, 1) * 1.06)) translateX(calc(var(--facing, 1) * -3px))
+        scaleY(0.94) skewX(calc(var(--facing, 1) * -2deg))${GRAB_ARM_PIVOT_AFTER_MOTION};
+      filter: brightness(1.18);
+    }
+    70% {
+      transform: scaleX(calc(var(--facing, 1) * 0.98)) translateX(calc(var(--facing, 1) * 2px))
+        scaleY(1.02) skewX(calc(var(--facing, 1) * 1.5deg))${GRAB_ARM_PIVOT_AFTER_MOTION};
+      filter: brightness(1.08);
+    }
   }
   @keyframes clinchTeeterArm {
     0%, 100% { transform: scaleX(var(--facing, 1)) skewX(0deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
@@ -1541,13 +1538,10 @@ export const AnimatedFighterContainer = styled.div
         clipPath: "inset(0 0.5% 0 0.5%)",
         // Sole origin so sidestep scaleY / hit squash never lift painted feet.
         transformOrigin: FIGHTER_SOLE_TRANSFORM_ORIGIN,
-        // Hit reactions chain a decaying stagger after the contact squash so
-        // long-stun launches keep reacting through the knockback slide (see
-        // hitStaggerSettle in StyledImage — the keyframes are shared globals).
         animation: props.$isBurstKnockback
-          ? "burstHitSquash 0.35s cubic-bezier(0.22, 0.6, 0.35, 1), hitStaggerSettle 0.6s cubic-bezier(0.33, 1, 0.68, 1) 0.35s"
+          ? "burstHitSquash 0.35s cubic-bezier(0.22, 0.6, 0.35, 1)"
           : props.$isHit
-          ? "hitSquashContainer 0.28s cubic-bezier(0.22, 0.6, 0.35, 1), hitStaggerSettle 0.55s cubic-bezier(0.33, 1, 0.68, 1) 0.28s"
+          ? "hitSquashContainer 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
           // MASTERY Phase 2 (2.1): feet-pinned openable teeter on spritesheet
           // path too (hit squash still outranks — impact feedback wins).
           : props.$isPostureBroken

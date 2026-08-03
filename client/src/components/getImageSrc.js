@@ -317,7 +317,7 @@ const getImageSrc = (
   // Committed drive reuses grabbing body — lean is CSS.
   if (isClinchPushing) return grabbing;
   // Grip is automatic on clinch connect — grabbed fighters use the armless
-  // grabbing body + flipper overlay (body-hold / belt-hold via arm rotate).
+  // grabbing body + flipper overlay (belt grip).
   // beingGrabbed remains only as a rare fallback if grip is somehow missing.
   if (isBeingGrabbed) {
     if (hasGrip) return grabbing;

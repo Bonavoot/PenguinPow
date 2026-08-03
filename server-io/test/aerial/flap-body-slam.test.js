@@ -105,6 +105,29 @@ describe("offensive aerial — FLAP / slide-jump clean hit", () => {
     assert.equal(hits[0].payload.attackType, "flap");
   });
 
+  it("clean hit soft-nudges victim without full pushbox teleport", () => {
+    const s = createSlideJumpScenario({
+      name: "clean_hit_park",
+      attackerX: 500,
+      defenderX: 500,
+      velY: -8,
+      hSpeed: 0,
+      attackerY: GROUND_LEVEL + 40,
+    });
+    placeDescendingOverOpponent(s, { height: 40 });
+    const atkX = s.attacker.x;
+    stepSlideJumpTick(s);
+    assert.equal(s.attacker.slideJumpHitLanded, true);
+    const sep = Math.abs(s.defender.x - atkX);
+    // Soft unstack only — must move, must not teleport to resting pushbox (~116+).
+    assert.ok(sep > 8, `expected soft nudge, got sep=${sep}`);
+    assert.ok(sep < 40, `teleport park regression, sep=${sep}`);
+    const hit = s.io.last("player_hit");
+    assert.ok(hit);
+    assert.equal(hit.payload.attackerX, atkX);
+    assert.equal(typeof hit.payload.attackerY, "number");
+  });
+
   it("repeated-hit prevention: second tick cannot re-hit same flight", () => {
     const s = createSlideJumpScenario({
       name: "no_double_hit",

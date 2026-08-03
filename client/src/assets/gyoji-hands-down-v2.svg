@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc">
+  <title id="title">Gyoji restrained command balloon</title>
+  <desc id="desc">A compact, hand-inked white speech balloon with a right-based, left-tilting tail for the Gyoji's Hands Down command.</desc>
+
+  <!--
+    The viewBox deliberately matches the original 1200 x 440 asset so this can
+    replace it without changing the working in-game width, anchor, or offset.
+    Keep live text in React/HTML; this file is only the illustrated silhouette.
+  -->
+
+  <!-- Tail: base nudged left; tip still aims slightly right of down. -->
+  <path
+    id="tail"
+    d="M 745 300
+       C 737 334 717 364 703 392
+       C 730 368 803 338 830 298
+       Z"
+    fill="#ffffff"
+    stroke="#111111"
+    stroke-width="11"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <!-- Balloon body on top of the tail. -->
+  <path
+    id="bubble"
+    d="
+      M 132 111
+      C 211 76 302 73 388 84
+      C 482 70 588 75 675 84
+      C 773 68 879 73 968 91
+      C 1042 84 1101 112 1120 153
+      C 1148 191 1138 239 1104 267
+      C 1068 303 1010 313 944 304
+      C 858 319 760 314 679 304
+      C 588 319 489 315 405 304
+      C 320 316 229 310 164 290
+      C 103 283 66 250 70 207
+      C 63 165 84 131 132 111
+      Z
+    "
+    fill="#ffffff"
+    stroke="#111111"
+    stroke-width="12"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <!--
+    Fill-only overpaint of the tail: hides the balloon's bottom outline where
+    it would otherwise cut through the neck, while leaving the tail's side
+    strokes from the first pass visible below the join.
+  -->
+  <path
+    d="M 745 300
+       C 737 334 717 364 703 392
+       C 730 368 803 338 830 298
+       Z"
+    fill="#ffffff"
+    stroke="none"
+  />
+
+  <!-- Uneven interior ink passes keep the contour from reading as clip-art. -->
+  <path
+    d="M 142 119 C 250 88 349 91 446 96 M 747 94 C 861 83 980 92 1065 118"
+    fill="none"
+    stroke="#111111"
+    stroke-width="2.5"
+    stroke-linecap="round"
+    opacity="0.42"
+  />
+</svg>

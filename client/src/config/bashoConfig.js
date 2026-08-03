@@ -113,7 +113,7 @@ export const LOADOUT_OPTIONS = {
       kanji: "翔",
       cost: 1,
       unlock: "loadout_flap", // must be purchased from the kenshō shop (§Phase 6)
-      desc: "Your slide jumps grant air-flap charges. After a slide takeoff, tap W mid-air to beat your wings and re-angle, then S to body-slam. Parry stays intact — Flap is pure movement conversion off the ice slide.",
+      desc: "Your slide jumps grant one mid-air flap. After a slide takeoff, tap W once to beat your wings and re-angle, then S to body-slam. Parry stays intact — Flap is pure movement conversion off the ice slide.",
     },
   ],
   grappling: [
@@ -216,7 +216,7 @@ export const UNLOCKS = [
     sub: "Movement Sidegrade",
     kanji: "翔",
     cost: 150,
-    desc: "Unlock the Flap movement option: slide-jump takeoffs grant air-flap charges.",
+    desc: "Unlock the Flap movement option: slide-jump takeoffs grant one mid-air wing beat.",
   },
   {
     id: "loadout_shattering_palm",

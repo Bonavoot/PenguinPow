@@ -17,12 +17,17 @@ const { ROPE_JUMP_BOUNDARY_ZONE,
         FLAP_CHARGE_COOLDOWN_MS, FLAP_STAMINA_COST,
         SLAP_TOTAL_MS, CADENCE_WINDOW_MS,
         CPU_CADENCE_EASY, CPU_CADENCE_NORMAL, CPU_CADENCE_HARD, CPU_CADENCE_IMPOSSIBLE,
-        BALANCE_MAX, GRAB_BREAK_REACTION_LOCK_MS } = require("./constants");
+        BALANCE_MAX, GRAB_BREAK_REACTION_LOCK_MS,
+        ICE_SLIDE_BRAKE_ARM_MS, ICE_SLIDE_REVERSE_SPEED_MAX,
+        ICE_SLIDE_REVERSE_BUFFER_MS, SLIDE_JUMP_MIN_MS,
+        DODGE_TRAVEL_DISTANCE, CHARGE_FULL_POWER_MS,
+        DODGE_STAMINA_COST: DODGE_STAMINA_COST_CONST } = require("./constants");
 const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
         canPlayerSidestep, getSidestepInitData, simNowForPlayer,
         logVerbInitiation, beginPlayerDodge,
         beginGrabStartup,
-        canArmAttackParry, armAttackParry } = require("./gameUtils");
+        canArmAttackParry, armAttackParry,
+        tryIceSlideReverse } = require("./gameUtils");
 const { getConnectDistance, attackKindFromPlayer } = require("./strikeContact");
 const { startRopeJump } = require("./ropeJumpStart");
 
@@ -166,6 +171,57 @@ const AI_CONFIG = {
   FLAP_DEF_REACT_HEIGHT: 130,   // Flapper height (px above ground) at which we commit a parry/dash
   FLAP_DODGE_CHANCE: 0.55,      // Chance to dash out from under a landing (primary counter)
   FLAP_PARRY_CHANCE: 0.35,      // Chance to parry the slam instead (only if parry is available)
+
+  // === Ice-slide chain (non-FLAP) — OFFENSIVE sprint / gap-close toolkit ===
+  // Slide ≈ sprint button. Primary use: dash-slide IN from mid/far for pressure.
+  // Back-slide is NOT escape — only a short runway so you can redirect IN for
+  // jump-slam or grounded offense (slap/palm/grab/parry). Defense is elsewhere.
+  SLIDE_CHAIN_COOLDOWN: 4800,
+  SLIDE_CHAIN_COOLDOWN_IMPOSSIBLE: 3400,
+  SLIDE_CHAIN_NORMAL_COOLDOWN: 6000,
+  // Mid/close rolls stay modest; FAR uses distance-scaled nearly-certain chance below.
+  SLIDE_CHAIN_ATTEMPT_CHANCE: 0.14,
+  SLIDE_CHAIN_ATTEMPT_CHANCE_IMPOSSIBLE: 0.22,
+  SLIDE_CHAIN_NORMAL_APPROACH_CHANCE: 0.55, // NORMAL far: usually sprint-slide, not walk
+  SLIDE_CHAIN_TIMEOUT_MS: 2800,
+  // Spacing — FAR = slide-in territory; walk is for closer footsie only
+  SLIDE_CLOSE_MIN: 95,
+  SLIDE_CLOSE_MAX: 155,
+  SLIDE_FORWARD_MIN: 185,                  // Aligns with MID_RANGE → far pocket
+  SLIDE_FORWARD_MAX: 480,
+  SLIDE_FAR_COMMIT: 240,                   // At/above this: almost always slide, never stroll
+  SLIDE_PRESSURE_RANGE: 155,
+  SLIDE_ATTACK_LAND_MIN: 88,
+  SLIDE_ATTACK_LAND_MAX: 150,
+  SLIDE_RUNWAY_NEED: 165,
+  SLIDE_OUT_MAX_PX: 72,
+  SLIDE_JUMP_CLEARANCE: 108,
+  SLIDE_OUT_MIN_MS: 90,
+  SLIDE_APPROACH_HOLD_MS: 200,
+  SLIDE_JUMP_FROM_BACK_CHANCE: 0.72,
+  SLIDE_JUMP_FROM_FORWARD_CHANCE: 0.34,
+  SLIDE_JUMP_FORWARD_FAR_CHANCE: 0.52,     // Fullscreen sprint → jump mix more often
+  // Dive is the default payoff — float-without-S was leaving them hanging.
+  SLIDE_DIVE_IF_JUMP_BACK_CHANCE: 0.96,
+  SLIDE_DIVE_IF_JUMP_FORWARD_CHANCE: 0.92,
+  SLIDE_DIVE_ALIGN: 56,                    // Over the player → S (dive locks X, so don't early-drop)
+  SLIDE_DIVE_MUST_ALIGN: 95,               // Past this late in flight: still slam rather than float over
+  SLIDE_DECLINE_BACKOFF_MS: 1100,
+  SLIDE_FAR_DECLINE_BACKOFF_MS: 180,
+
+  // === Far-range charged attack — occasional powered hold when there's time ===
+  // Not every gap-close; slide remains the default. Charge when really far and
+  // the opponent isn't already rushing in.
+  CHARGE_FAR_MIN: 260,
+  CHARGE_ATTEMPT_CHANCE: 0.16,
+  CHARGE_ATTEMPT_CHANCE_IMPOSSIBLE: 0.24,
+  CHARGE_ATTEMPT_CHANCE_NORMAL: 0.10,
+  CHARGE_COOLDOWN_MS: 5200,
+  CHARGE_TARGET_POWER_MIN: 78,
+  CHARGE_TARGET_POWER_MAX: 100,
+  CHARGE_HOLD_TIMEOUT_MS: 1300,
+  CHARGE_THREAT_ABORT: 175,        // Opponent attacking / closing → cancel
+  CHARGE_MIN_HOLD_DISTANCE: 140,   // Too close mid-hold → cancel, don't whiff
 };
 
 // ============================================================================
@@ -849,7 +905,9 @@ function getAIState(playerId) {
       currentStrafeDirection: 0,
       isChargingIntentional: false,
       chargeStartTime: 0,
-      targetChargeTime: 0,
+      targetChargePower: 0,
+      chargeTimeoutAt: 0,
+      chargeCooldownUntil: 0,
       pendingParry: false,
       parryStartTime: 0,
       parryReleaseTime: 0,
@@ -948,6 +1006,11 @@ function getAIState(playerId) {
       flapReactDetectTime: 0,
       flapReactDelay: 0,
       flapReactProcessed: false,
+      // === Ice-slide chain (non-FLAP runway → redirect → jump → slam) ===
+      slideChain: null,            // active commitment object, or null
+      slideChainCooldownUntil: 0,  // gate between attempts
+      slideDiveCommitted: false,   // plain slide-jump dive lock (like flapDiveCommitted)
+      pendingArrivalOffense: false, // after spacing-aware dodge-in: press on land
     });
   }
   return aiStates.get(playerId);
@@ -1397,13 +1460,19 @@ function updateCPUAI(cpu, human, room, currentTime) {
       aiState.lastCornerDecisionTime = 0;
       aiState.cornerActiveLast = false;
       aiState.opponentSlapTimes = [];
+      if (aiState.slideChain) endSlideChain(cpu, aiState, currentTime, { success: false });
+      aiState.slideChainCooldownUntil = 0;
+      clearChargeIntent(cpu, aiState, { cancel: true });
+      aiState.chargeCooldownUntil = 0;
     }
     aiState.prevHakkiyoiCount = room.hakkiyoiCount;
   }
 
   // Don't process AI during game over or before game starts
   if (room.gameOver || room.matchOver || !room.gameStart || room.hakkiyoiCount === 0) {
-    resetAllKeys(cpu);
+    if (aiState.slideChain) endSlideChain(cpu, aiState, currentTime);
+    if (aiState.isChargingIntentional) clearChargeIntent(cpu, aiState, { cancel: true });
+    else resetAllKeys(cpu);
     return;
   }
 
@@ -1444,8 +1513,24 @@ function updateCPUAI(cpu, human, room, currentTime) {
       human.isGrabBreaking || human.isGrabBreakCountered || human.isGrabBreakSeparating;
   if (inClinchBreak) {
     aiState.wasInClinchBreak = true;
-    resetAllKeys(cpu);
+    if (aiState.slideChain) endSlideChain(cpu, aiState, currentTime);
+    else resetAllKeys(cpu);
     return;
+  }
+
+  // Interrupt cleanup: if a slide chain was live and we got hit/grabbed, drop it
+  // immediately so later movement doesn't keep walking the slide dirs.
+  if (
+    aiState.slideChain &&
+    (cpu.isHit || cpu.isBeingGrabbed || cpu.isBeingThrown || cpu.inClinch)
+  ) {
+    endSlideChain(cpu, aiState, currentTime);
+  }
+  if (
+    aiState.isChargingIntentional &&
+    (cpu.isHit || cpu.isBeingGrabbed || cpu.isBeingThrown || cpu.inClinch)
+  ) {
+    clearChargeIntent(cpu, aiState, { cancel: true });
   }
 
   // Just exited grab break — assign a human-like reaction delay before the
@@ -1522,11 +1607,57 @@ function updateCPUAI(cpu, human, room, currentTime) {
   }
 
   // HIGHEST PRIORITY (FLAP slide-jump): if WE are in a FLAP-armed slide-jump,
-  // pilot air charges + dive. Plain slide-jumps fall through to normal logic.
+  // pilot air charges + dive.
   if (cpu.isSlideJumping && cpu.slideJumpHasFlap) {
     pilotFlapFlight(cpu, human, aiState, currentTime, distance);
     return;
   }
+  // Plain slide-jump pilot — HARD+ ice-slide chain (steer; S only if wantDive).
+  if (
+    cpu.isSlideJumping &&
+    aiState.slideChain &&
+    aiState.slideChain.wantJump
+  ) {
+    pilotSlideSlamFlight(cpu, human, aiState, currentTime, distance);
+    return;
+  }
+  // Active ice-slide chain owns keys every tick (must beat decision-cooldown
+  // movement so SHIFT isn't dropped mid-dodge / mid-slide).
+  if (
+    aiState.slideChain &&
+    aiState.slideChain.phase &&
+    aiState.slideChain.phase !== "done"
+  ) {
+    if (driveSlideChain(cpu, human, aiState, currentTime, distance)) {
+      return;
+    }
+  }
+
+  // Active far-charge owns keys every tick (S+forward+mouse1 must stay held).
+  if (aiState.isChargingIntentional) {
+    if (shouldAbortFarCharge(cpu, human, aiState, currentTime, distance)) {
+      clearChargeIntent(cpu, aiState, { cancel: true });
+    } else if (driveFarCharge(cpu, human, aiState, currentTime, distance)) {
+      return;
+    }
+  }
+
+  // Spacing-aware dodge-in just landed — PRESS immediately (no idle delay).
+  if (
+    aiState.pendingArrivalOffense &&
+    !cpu.isDodging &&
+    !cpu.isIceSliding &&
+    !cpu.isSlideJumping &&
+    !cpu.isHit &&
+    !cpu.isBeingGrabbed
+  ) {
+    aiState.pendingArrivalOffense = false;
+    if (canAct(cpu) || canAttack(cpu) || canGrab(cpu) || canParry(cpu)) {
+      commitArrivalOffense(cpu, human, aiState, currentTime, distance);
+      return;
+    }
+  }
+
   // Reset incoming-flap reaction bookkeeping once the opponent lands.
   if (
     !(human.isSlideJumping &&
@@ -1726,12 +1857,12 @@ function updateCPUAI(cpu, human, room, currentTime) {
     }
   }
   
-  // Legacy: Handle charging attack (disabled — neutral charge removed)
-  if (cpu.isChargingAttack) {
+  // Orphan charge (not AI-owned) — clear so we don't freeze in stance.
+  // Intentional holds are driven earlier with the slide-chain ownership block.
+  if (cpu.isChargingAttack && !aiState.isChargingIntentional) {
     cpu.isChargingAttack = false;
     cpu.chargeStartTime = 0;
     cpu.chargeAttackPower = 0;
-    return;
   }
   
   // Cooldown between major decisions
@@ -1741,8 +1872,21 @@ function updateCPUAI(cpu, human, room, currentTime) {
   }
   
   // Priority 5.5: FLAP OFFENSE — take flight to slam an opponent (engage or punish
-  // a whiff). EASY does not use power-ups offensively.
+  // a whiff). EASY does not use power-ups offensively. FLAP outranks plain
+  // ice-slide chains when the power-up is equipped.
   if (DIFF.usePowerUps && handleFlapOffense(cpu, human, aiState, currentTime, distance)) {
+    return;
+  }
+
+  // Priority 5.55: FAR charged attack — sometimes hold a big charge instead of
+  // always sprint-sliding. Runs before slide so the mix-up can actually fire.
+  if (tryStartFarCharge(cpu, human, aiState, currentTime, distance)) {
+    return;
+  }
+
+  // Priority 5.6: ICE-SLIDE CHAIN — runway / redirect / slide-jump slam (HARD+),
+  // or rare forward slide approach (NORMAL). Starts only; active chains drive earlier.
+  if (tryStartSlideChain(cpu, human, aiState, currentTime, distance)) {
     return;
   }
 
@@ -2373,6 +2517,15 @@ function pilotFlapFlight(cpu, human, aiState, currentTime, distance) {
     currentTime - (cpu.lastFlapChargeTime || 0) >= FLAP_CHARGE_COOLDOWN_MS;
 
   cpu.facing = horiz > 0 ? 1 : -1;
+
+  // Dive already locked X — hold S only.
+  if (cpu.slideJumpDiveCommitted) {
+    cpu.keys.s = true;
+    return;
+  }
+
+  // Steer until the server dive actually commits (early S buffers through the
+  // min-air/height gate — don't freeze steering while waiting).
   if (!aligned) {
     if (horiz > 0) cpu.keys.a = true;
     else cpu.keys.d = true;
@@ -2381,7 +2534,7 @@ function pilotFlapFlight(cpu, human, aiState, currentTime, distance) {
   if (aligned) aiState.flapDiveCommitted = true;
 
   if (aiState.flapDiveCommitted) {
-    cpu.keys.s = true; // body-slam dive
+    cpu.keys.s = true; // buffered if dive not enabled yet
     return;
   }
 
@@ -2447,6 +2600,875 @@ function handleFlapOffense(cpu, human, aiState, currentTime, distance) {
   aiState.lastDecisionTime = currentTime;
   aiState.lastActionType = "flap_slide_setup";
   return true;
+}
+
+// ============================================================
+// ICE-SLIDE CHAIN AI (non-FLAP)
+// ============================================================
+// Runway tool: sometimes backdodge away → dig+SHIFT redirect → slide jump → S
+// slam. Commitment owns keys across ticks (survives decision cooldown). FLAP
+// keeps its own path when equipped.
+
+function slideChainCooldownMs() {
+  if (DIFF_KEY === "IMPOSSIBLE") return AI_CONFIG.SLIDE_CHAIN_COOLDOWN_IMPOSSIBLE;
+  if (DIFF_KEY === "NORMAL") return AI_CONFIG.SLIDE_CHAIN_NORMAL_COOLDOWN;
+  return AI_CONFIG.SLIDE_CHAIN_COOLDOWN;
+}
+
+/**
+ * Tear down slide-chain commitment and release any held slide keys.
+ * Must be called whenever the chain fails, is interrupted, or finishes —
+ * otherwise the CPU keeps walking in outDir/inDir as if still sliding.
+ */
+function endSlideChain(cpu, aiState, currentTime, { success = false, clearKeys = true } = {}) {
+  if (cpu && clearKeys) {
+    resetAllKeys(cpu);
+    cpu.wJustPressed = false;
+  }
+  // Clear hold-through-land latch so later dodges aren't forced into slides.
+  aiState.shiftReleaseTime = 0;
+  aiState.slideChain = null;
+  aiState.slideDiveCommitted = false;
+  const base = slideChainCooldownMs();
+  // Whiffs cool down a bit shorter so HARD+ can retry after a spoiled setup.
+  aiState.slideChainCooldownUntil =
+    currentTime + (success ? base : Math.floor(base * 0.65));
+}
+
+/** Where a dodge toward `dir` lands (fixed travel distance). */
+function projectedDodgeLandX(cpu, dir) {
+  const d = dir >= 0 ? 1 : -1;
+  return cpu.x + d * DODGE_TRAVEL_DISTANCE;
+}
+
+function projectedDodgeDistance(cpu, human, dir) {
+  return Math.abs(projectedDodgeLandX(cpu, dir) - human.x);
+}
+
+/**
+ * True when a dodge-in lands with space to attack (not on top of them).
+ * 'overlap' = would land in their body — only OK if we press immediately after.
+ */
+function classifyDodgeInLanding(cpu, human, dir) {
+  const landDist = projectedDodgeDistance(cpu, human, dir);
+  if (landDist < AI_CONFIG.SLIDE_ATTACK_LAND_MIN) return "overlap";
+  if (landDist <= AI_CONFIG.SLIDE_ATTACK_LAND_MAX) return "sweet";
+  return "still_far"; // dodge alone won't finish the gap — slide/sprint makes sense
+}
+
+/**
+ * On slide/dodge arrival: PRESS something immediately. Never release into idle.
+ * Leaves attack keys held; caller should endSlideChain(..., { clearKeys: false }).
+ */
+function commitArrivalOffense(cpu, human, aiState, currentTime, distance) {
+  resetAllKeys(cpu);
+  const toward = getDirectionToOpponent(cpu, human);
+  holdSlideDir(cpu, toward);
+  aiState.shiftReleaseTime = 0;
+
+  // Incoming attack in our face → parry, don't freeze.
+  if (
+    human.isAttacking &&
+    !human.isInStartupFrames &&
+    canParry(cpu) &&
+    distance <= getSlapInitiateRange(cpu, human) + 25 &&
+    chance(0.45)
+  ) {
+    cpu.keys.s = true;
+    aiState.pendingParry = true;
+    aiState.parryStartTime = currentTime;
+    aiState.parryReleaseTime = currentTime + randomInRange(120, 200);
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "slide_arrival_parry";
+    return "parry";
+  }
+
+  // Point-blank → grab mix
+  if (
+    distance <= AI_CONFIG.GRAB_RANGE &&
+    canGrab(cpu) &&
+    isOpponentGrabbable(human) &&
+    chance(0.30)
+  ) {
+    cpu.keys.mouse2 = true;
+    aiState.mouse2ReleaseTime = currentTime + 50;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "slide_arrival_grab";
+    return "grab";
+  }
+
+  // Palm when in poke range
+  if (
+    hasVerb("palm") &&
+    distance >= AI_CONFIG.PALM_COUNTERPOKE_MIN_RANGE - 20 &&
+    tryPalmThrust(cpu, human, aiState, currentTime, distance, "slide_arrive")
+  ) {
+    return "palm";
+  }
+
+  // Default: slap the moment we're in / near connect range
+  if (canAttack(cpu) && distance <= getSlapInitiateRange(cpu, human) + 35) {
+    cpu.keys.mouse1 = true;
+    aiState.mouse1ReleaseTime = currentTime + 45;
+    aiState.lastDecisionTime = currentTime;
+    aiState.lastActionType = "slide_arrival_slap";
+    // Keep pressing — short burst so arrival isn't a single poke then freeze
+    if (isHardPlusTier() && chance(0.55)) {
+      startCommitment(
+        aiState,
+        "slap_burst",
+        randomInRange(AI_CONFIG.COMMIT_SLAP_BURST_MIN, 3),
+        currentTime
+      );
+    }
+    return "slap";
+  }
+
+  // Not quite in range yet — keep walking in (still doing something)
+  aiState.lastDecisionTime = currentTime;
+  aiState.lastActionType = "slide_arrival_walk";
+  return "walk";
+}
+
+function isSlideChainAbortState(cpu) {
+  return !!(
+    cpu.isHit ||
+    cpu.isBeingGrabbed ||
+    cpu.isBeingThrown ||
+    cpu.isGrabbing ||
+    cpu.isGrabStartup ||
+    cpu.isAttacking ||
+    cpu.isRawParrying ||
+    cpu.isSidestepping ||
+    cpu.isRopeJumping ||
+    cpu.inClinch
+  );
+}
+
+/** True while the chain still has a live dodge / ice-slide / jump to ride. */
+function isSlideChainPhysicallyLive(cpu, chain) {
+  if (!chain) return false;
+  if (cpu.isDodging || cpu.isIceSliding || cpu.isSlideJumping) return true;
+  // backdodge may wait a brief window to START a dodge — not "live" yet.
+  return false;
+}
+
+/**
+ * Pick offensive slide mode from live spacing. null = don't start.
+ *  - forward: FAR/mid-far sprint-in (default gap-close — not a walk mixup)
+ *  - back_setup: close — short back-slide → redirect IN for offense
+ */
+function pickSlidePressureMode(cpu, human, distance) {
+  if (human.isAttacking || human.isRawParrying || human.isDead) return null;
+
+  // Close: need a tiny runway before an offensive redirect-in.
+  if (
+    distance >= AI_CONFIG.SLIDE_CLOSE_MIN &&
+    distance < AI_CONFIG.SLIDE_CLOSE_MAX
+  ) {
+    return "back_setup";
+  }
+
+  // Far / mid-far: this is slide-in territory. Don't require still_far — a
+  // single dodge from fullscreen never finishes the gap alone.
+  if (
+    distance >= AI_CONFIG.SLIDE_FORWARD_MIN &&
+    distance <= AI_CONFIG.SLIDE_FORWARD_MAX
+  ) {
+    return "forward";
+  }
+  return null;
+}
+
+function holdSlideDir(cpu, dir) {
+  if (dir > 0) {
+    cpu.keys.d = true;
+    cpu.keys.a = false;
+  } else {
+    cpu.keys.a = true;
+    cpu.keys.d = false;
+  }
+}
+
+function iceSlideDigReady(cpu, currentTime) {
+  const speed = Math.abs(cpu.movementVelocity || 0);
+  const brakeArmed =
+    cpu.iceSlideBrakeArmStart &&
+    currentTime - cpu.iceSlideBrakeArmStart >= ICE_SLIDE_BRAKE_ARM_MS;
+  return brakeArmed || speed <= ICE_SLIDE_REVERSE_SPEED_MAX;
+}
+
+/**
+ * Roll jump / dive conversion from live spacing once we're sliding in.
+ * Backdodge→redirect with space leans jump→slam; forward slides lean grounded.
+ */
+function rollSlideConversion(chain, distance, human) {
+  if (chain.intent === "slide_approach") {
+    return { wantJump: false, wantDive: false };
+  }
+
+  const fromBackRedirect = chain.mode === "back_setup" || !chain.skipRedirect;
+  // How far we STARTED the sprint — stored on chain for forward gap-closes.
+  const startDist = chain.startDistance ?? distance;
+  const farSprint = startDist >= AI_CONFIG.SLIDE_FORWARD_MIN + 80;
+  const canJump = distance >= AI_CONFIG.SLIDE_JUMP_CLEARANCE;
+  const punishing =
+    human.isRecovering ||
+    human.isInEndlag ||
+    human.isWhiffingGrab ||
+    human.isGrabWhiffRecovery ||
+    human.isRawParryStun;
+
+  if (!canJump) {
+    return { wantJump: false, wantDive: false };
+  }
+
+  let jumpChance;
+  if (fromBackRedirect) {
+    jumpChance = AI_CONFIG.SLIDE_JUMP_FROM_BACK_CHANCE;
+  } else if (farSprint) {
+    jumpChance = AI_CONFIG.SLIDE_JUMP_FORWARD_FAR_CHANCE;
+  } else {
+    jumpChance = AI_CONFIG.SLIDE_JUMP_FROM_FORWARD_CHANCE;
+  }
+  if (punishing) jumpChance = clampChance(jumpChance + 0.12);
+
+  const wantJump = chance(jumpChance);
+  if (!wantJump) return { wantJump: false, wantDive: false };
+
+  const diveChance = fromBackRedirect
+    ? AI_CONFIG.SLIDE_DIVE_IF_JUMP_BACK_CHANCE
+    : AI_CONFIG.SLIDE_DIVE_IF_JUMP_FORWARD_CHANCE;
+  return { wantJump: true, wantDive: chance(diveChance) };
+}
+
+/**
+ * Plain slide-jump body-slam pilot — simple: fly at the player, S when over them.
+ * No edge bias (that caused early drops). Dive locks X, so never S while still short.
+ * Never float past into the corner without dropping.
+ */
+function pilotSlideSlamFlight(cpu, human, aiState, currentTime, distance) {
+  resetAllKeys(cpu);
+  const chain = aiState.slideChain;
+  if (!cpu.isSlideJumping || cpu.slideJumpPhase !== "flight") {
+    if (!aiState.slideDiveCommitted) {
+      commitArrivalOffense(cpu, human, aiState, currentTime, distance);
+      endSlideChain(cpu, aiState, currentTime, {
+        success: true,
+        clearKeys: false,
+      });
+    } else {
+      endSlideChain(cpu, aiState, currentTime, { success: true });
+    }
+    return;
+  }
+
+  const horiz = cpu.x - human.x; // + => cpu is right of player
+  const absH = Math.abs(horiz);
+  const aligned = absH <= AI_CONFIG.SLIDE_DIVE_ALIGN;
+  const flightAge = currentTime - (cpu.slideJumpStartTime || currentTime);
+  const descending = (cpu.slideJumpVelocityY ?? 1) <= 0;
+  const nearEdge =
+    distanceToLeftEdge(cpu) < 90 || distanceToRightEdge(cpu) < 90;
+
+  // Server dive locked — hold S only (X pinned).
+  if (cpu.slideJumpDiveCommitted) {
+    cpu.keys.s = true;
+    return;
+  }
+
+  // Steer until dive actually commits. Early S is buffered by the dive gate;
+  // freezing steer here caused sail-past while waiting for min height/airtime.
+  if (!aligned) {
+    if (horiz > 0) cpu.keys.a = true;
+    else cpu.keys.d = true;
+  }
+
+  const wantDive = !chain || chain.wantDive !== false;
+
+  // Over them → request slam (buffers if hop lock still active).
+  if (wantDive && aligned) {
+    aiState.slideDiveCommitted = true;
+  }
+
+  // Sail-past / corner escape: drop instead of floating into the rope.
+  const passedThem =
+    flightAge > 140 &&
+    absH <= AI_CONFIG.SLIDE_DIVE_MUST_ALIGN &&
+    (descending || flightAge > 260);
+  if (wantDive && passedThem) {
+    aiState.slideDiveCommitted = true;
+  }
+  if (nearEdge && absH < 140 && flightAge > 100) {
+    aiState.slideDiveCommitted = true;
+  }
+
+  if (aiState.slideDiveCommitted) {
+    cpu.keys.s = true;
+  }
+}
+
+/**
+ * @param {string} intent slide_approach | slide_pressure
+ * @param {string|null} mode back_setup | forward
+ */
+function beginSlideChain(cpu, human, aiState, currentTime, intent, mode = null) {
+  const toward = getDirectionToOpponent(cpu, human);
+  const away = -toward;
+  const startDistance = Math.abs(cpu.x - human.x);
+
+  let outDir;
+  let inDir;
+  let skipRedirect = false;
+  let wantJump = false;
+  let wantDive = false;
+  let conversionRolled = true;
+  let pressureMode = mode;
+
+  if (intent === "slide_approach") {
+    outDir = toward;
+    inDir = toward;
+    skipRedirect = true;
+    pressureMode = "forward";
+  } else {
+    // slide_pressure — offensive sprint or close back→redirect-in
+    conversionRolled = false;
+    wantJump = null;
+    wantDive = null;
+    if (pressureMode === "back_setup") {
+      outDir = away;
+      inDir = toward;
+      skipRedirect = false;
+    } else {
+      pressureMode = "forward";
+      outDir = toward;
+      inDir = toward;
+      skipRedirect = true;
+    }
+  }
+
+  // Can't make runway toward the rope — skip back_setup rather than flee wrong way.
+  if (outDir < 0 && distanceToLeftEdge(cpu) < 70) {
+    if (pressureMode === "back_setup") return false;
+    outDir = 1;
+  }
+  if (outDir > 0 && distanceToRightEdge(cpu) < 70) {
+    if (pressureMode === "back_setup") return false;
+    outDir = -1;
+  }
+  if (skipRedirect) inDir = outDir;
+
+  aiState.slideChain = {
+    intent,
+    mode: pressureMode,
+    phase: "backdodge",
+    outDir,
+    inDir,
+    skipRedirect,
+    wantJump,
+    wantDive,
+    conversionRolled,
+    startedAt: currentTime,
+    phaseStartedAt: currentTime,
+    sawDodge: false,
+    redirectAttempts: 0,
+    slideOutStartX: cpu.x,
+    startDistance,
+  };
+  aiState.slideDiveCommitted = false;
+  aiState.shiftReleaseTime = 0;
+  aiState.lastDecisionTime = currentTime;
+  aiState.lastActionType = `slide_chain_${pressureMode}`;
+  return driveSlideChain(cpu, human, aiState, currentTime, startDistance);
+}
+
+/**
+ * Per-tick driver for an active slide chain. Returns true while it owns input.
+ * On any failed commit / interrupt: endSlideChain clears keys so we don't keep
+ * walking in slide dirs after the physical slide is gone.
+ */
+function driveSlideChain(cpu, human, aiState, currentTime, distance) {
+  const chain = aiState.slideChain;
+  if (!chain || !chain.phase || chain.phase === "done") return false;
+
+  if (currentTime - chain.startedAt > AI_CONFIG.SLIDE_CHAIN_TIMEOUT_MS) {
+    endSlideChain(cpu, aiState, currentTime, { success: false });
+    return false;
+  }
+
+  if (isSlideChainAbortState(cpu)) {
+    endSlideChain(cpu, aiState, currentTime, { success: false });
+    return false;
+  }
+
+  // Airborne handoff — pilot steers; S only if wantDive and range is real.
+  if (cpu.isSlideJumping) {
+    chain.phase = "airborne";
+    if (chain.wantJump) {
+      pilotSlideSlamFlight(cpu, human, aiState, currentTime, distance);
+      return !!aiState.slideChain; // false if pilot already ended the chain
+    }
+    endSlideChain(cpu, aiState, currentTime, { success: true });
+    return false;
+  }
+
+  // Orphaned commitment: no dodge/slide/jump live, and we're past the
+  // backdodge "try to start" window — kill immediately (this was the stuck walk).
+  if (
+    !isSlideChainPhysicallyLive(cpu, chain) &&
+    chain.phase !== "backdodge"
+  ) {
+    endSlideChain(cpu, aiState, currentTime, { success: false });
+    return false;
+  }
+
+  const setPhase = (phase) => {
+    chain.phase = phase;
+    chain.phaseStartedAt = currentTime;
+  };
+
+  // ── backdodge: one dodge attempt, hold SHIFT through land into ice slide ──
+  // CRITICAL: if dodge ends without ice-slide, abort — do NOT keep walking
+  // with SHIFT+dir until the global timeout (that was the weird strafe bug).
+  if (chain.phase === "backdodge") {
+    if (cpu.isIceSliding) {
+      chain.sawDodge = true;
+      setPhase(chain.skipRedirect ? "slidingIn" : "slidingOut");
+      // fall through into the new phase this tick
+    } else if (cpu.isDodging) {
+      chain.sawDodge = true;
+      resetAllKeys(cpu);
+      cpu.keys.shift = true;
+      holdSlideDir(cpu, chain.outDir);
+      aiState.shiftReleaseTime = 0;
+      return true;
+    } else if (chain.sawDodge) {
+      // Dodge finished and we never entered ice slide.
+      endSlideChain(cpu, aiState, currentTime, { success: false });
+      return false;
+    } else if (currentTime - chain.phaseStartedAt > 320) {
+      // Never got a dodge off in time (blocked / cooldown edge).
+      endSlideChain(cpu, aiState, currentTime, { success: false });
+      return false;
+    } else if (!canDodge(cpu)) {
+      endSlideChain(cpu, aiState, currentTime, { success: false });
+      return false;
+    } else {
+      resetAllKeys(cpu);
+      cpu.keys.shift = true;
+      holdSlideDir(cpu, chain.outDir);
+      aiState.shiftReleaseTime = 0;
+      return true;
+    }
+  }
+
+  // From here every phase requires a live ice slide.
+  if (!cpu.isIceSliding) {
+    endSlideChain(cpu, aiState, currentTime, { success: false });
+    return false;
+  }
+
+  // ── slidingOut: SHORT offensive runway, then redirect IN (not an escape) ──
+  if (chain.phase === "slidingOut") {
+    const outMin = AI_CONFIG.SLIDE_OUT_MIN_MS;
+    const outAge = currentTime - chain.phaseStartedAt;
+    const spaced = distance >= AI_CONFIG.SLIDE_RUNWAY_NEED;
+    const traveled = Math.abs(cpu.x - (chain.slideOutStartX ?? cpu.x));
+    const traveledEnough = traveled >= AI_CONFIG.SLIDE_OUT_MAX_PX;
+    const shouldTurn =
+      spaced ||
+      traveledEnough ||
+      (outAge >= outMin + 120 && distance >= AI_CONFIG.SLIDE_JUMP_CLEARANCE);
+
+    resetAllKeys(cpu);
+    cpu.keys.shift = true;
+    holdSlideDir(cpu, chain.outDir);
+    aiState.shiftReleaseTime = 0;
+
+    if (shouldTurn && (outAge >= outMin || spaced || traveledEnough)) {
+      setPhase("redirectDig");
+    } else if (outAge >= outMin + 350) {
+      endSlideChain(cpu, aiState, currentTime, { success: false });
+      return false;
+    }
+    return true;
+  }
+
+  // ── redirectDig: hold opposite of travel to arm brake, keep SHIFT ──
+  if (chain.phase === "redirectDig") {
+    const slideDir = cpu.iceSlideDir || chain.outDir;
+    const against = slideDir > 0 ? -1 : 1;
+    resetAllKeys(cpu);
+    holdSlideDir(cpu, against);
+    cpu.keys.shift = true;
+    aiState.shiftReleaseTime = 0;
+
+    if (iceSlideDigReady(cpu, currentTime)) {
+      // One-tick SHIFT release so the next tick can rising-edge repress.
+      cpu.keys.shift = false;
+      setPhase("redirectRepress");
+    } else if (currentTime - chain.phaseStartedAt > 500) {
+      endSlideChain(cpu, aiState, currentTime, { success: false });
+      return false;
+    }
+    return true;
+  }
+
+  // ── redirectRepress: dig + SHIFT rising edge → tryIceSlideReverse ──
+  if (chain.phase === "redirectRepress") {
+    const slideDir = cpu.iceSlideDir || chain.outDir;
+    const against = slideDir > 0 ? -1 : 1;
+    const reversed =
+      cpu.isIceSlideReverseHopping ||
+      (cpu.isIceSliding &&
+        Math.sign(cpu.iceSlideDir || 0) === Math.sign(chain.inDir));
+
+    resetAllKeys(cpu);
+    holdSlideDir(cpu, against);
+    cpu.keys.shift = true; // rising edge vs previous tick's release
+    aiState.shiftReleaseTime = 0;
+
+    if (reversed) {
+      setPhase("slidingIn");
+    } else if (currentTime - chain.phaseStartedAt > 280) {
+      chain.redirectAttempts = (chain.redirectAttempts || 0) + 1;
+      // One retry max — don't ping-pong dig/repress while walking oddly.
+      if (cpu.isIceSliding && chain.redirectAttempts < 2) {
+        setPhase("redirectDig");
+      } else {
+        endSlideChain(cpu, aiState, currentTime, { success: false });
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // ── slidingIn / jumpWait — sprint until pressure range, then PRESS ──
+  if (chain.phase === "slidingIn" || chain.phase === "jumpWait") {
+    const slideAge = currentTime - (cpu.iceSlideStartTime || currentTime);
+    const toward = chain.inDir || getDirectionToOpponent(cpu, human);
+    const inPressure = distance <= AI_CONFIG.SLIDE_PRESSURE_RANGE;
+    const stillClosing =
+      chain.mode === "forward" &&
+      !inPressure &&
+      currentTime - chain.startedAt < AI_CONFIG.SLIDE_CHAIN_TIMEOUT_MS - 200;
+
+    // Arrived early / overlapping mid-sprint — attack NOW, don't keep sliding on them.
+    if (
+      chain.mode === "forward" &&
+      distance < AI_CONFIG.SLIDE_ATTACK_LAND_MIN &&
+      !chain.conversionRolled
+    ) {
+      commitArrivalOffense(cpu, human, aiState, currentTime, distance);
+      endSlideChain(cpu, aiState, currentTime, { success: true, clearKeys: false });
+      return true;
+    }
+
+    if (stillClosing) {
+      resetAllKeys(cpu);
+      cpu.keys.shift = true;
+      holdSlideDir(cpu, toward);
+      aiState.shiftReleaseTime = 0;
+      return true;
+    }
+
+    // Arrived: roll once — grounded = immediate press (never idle hold).
+    if (!chain.conversionRolled) {
+      const rolled =
+        chain.intent === "slide_approach"
+          ? { wantJump: false, wantDive: false }
+          : rollSlideConversion(chain, distance, human);
+      chain.wantJump = rolled.wantJump;
+      chain.wantDive = rolled.wantDive;
+      chain.conversionRolled = true;
+      chain.convertStartedAt = currentTime;
+
+      if (!chain.wantJump) {
+        commitArrivalOffense(cpu, human, aiState, currentTime, distance);
+        endSlideChain(cpu, aiState, currentTime, {
+          success: true,
+          clearKeys: false,
+        });
+        return true;
+      }
+      aiState.lastActionType = chain.wantDive
+        ? "slide_chain_jump_slam"
+        : "slide_chain_jump_float";
+    }
+
+    const convertAge =
+      currentTime - (chain.convertStartedAt || chain.phaseStartedAt);
+    const clearanceOk = distance >= AI_CONFIG.SLIDE_JUMP_CLEARANCE;
+    const jumpReady = slideAge >= SLIDE_JUMP_MIN_MS;
+
+    // Too close to jump — attack immediately instead of freezing.
+    if (!clearanceOk && distance < AI_CONFIG.SLIDE_JUMP_CLEARANCE * 0.8) {
+      commitArrivalOffense(cpu, human, aiState, currentTime, distance);
+      endSlideChain(cpu, aiState, currentTime, { success: true, clearKeys: false });
+      return true;
+    }
+
+    resetAllKeys(cpu);
+    cpu.keys.shift = true;
+    holdSlideDir(cpu, toward);
+    aiState.shiftReleaseTime = 0;
+
+    if (jumpReady && clearanceOk && chain.wantJump) {
+      cpu.keys.w = true;
+      cpu.wJustPressed = true;
+      if (chain.phase !== "jumpWait") setPhase("jumpWait");
+    } else if (convertAge > 500) {
+      // Jump window missed — still press something.
+      commitArrivalOffense(cpu, human, aiState, currentTime, distance);
+      endSlideChain(cpu, aiState, currentTime, { success: true, clearKeys: false });
+      return true;
+    }
+    return true;
+  }
+
+  if (chain.phase === "airborne") {
+    // isSlideJumping already handled above; if we get here the jump ended.
+    endSlideChain(cpu, aiState, currentTime, { success: false });
+    return false;
+  }
+
+  // Unknown / stale phase — never keep ownership.
+  endSlideChain(cpu, aiState, currentTime, { success: false });
+  return false;
+}
+
+// Forward key relative to facing (matches human charged-attack chord).
+function chargeForwardKey(cpu) {
+  return cpu.facing === -1 ? "d" : "a";
+}
+
+function clearChargeIntent(cpu, aiState, { cancel = false } = {}) {
+  aiState.isChargingIntentional = false;
+  aiState.chargeStartTime = 0;
+  aiState.targetChargePower = 0;
+  aiState.chargeTimeoutAt = 0;
+  if (cancel && cpu) {
+    cpu.isChargingAttack = false;
+    cpu.chargeStartTime = 0;
+    cpu.chargeAttackPower = 0;
+    cpu.chargingFacingDirection = null;
+    if (cpu.keys) {
+      cpu.keys.mouse1 = false;
+      cpu.keys.s = false;
+    }
+  }
+}
+
+function shouldAbortFarCharge(cpu, human, aiState, currentTime, distance) {
+  if (cpu.isHit || cpu.isBeingGrabbed || cpu.isBeingThrown || cpu.inClinch) {
+    return true;
+  }
+  if (cpu.isDodging || cpu.isIceSliding || cpu.isSlideJumping) return true;
+  // Opponent pressed or closed the gap — don't eat a free punish mid-charge.
+  if (human.isAttacking && distance < AI_CONFIG.CHARGE_THREAT_ABORT) return true;
+  if (distance < AI_CONFIG.CHARGE_MIN_HOLD_DISTANCE) return true;
+  // Timed out with almost no power (interrupted build) — bail.
+  if (
+    currentTime >= (aiState.chargeTimeoutAt || 0) &&
+    (cpu.chargeAttackPower || 0) < 40
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Hold S+forward+mouse1 until a strong charge, then release mouse1.
+ * processCPUInputs fires executeChargedAttack on the mouse1 falling edge.
+ */
+function driveFarCharge(cpu, human, aiState, currentTime, distance) {
+  if (!aiState.isChargingIntentional) return false;
+
+  resetAllKeys(cpu);
+  const fwd = chargeForwardKey(cpu);
+  cpu.keys.s = true;
+  cpu.keys[fwd] = true;
+  cpu.keys.mouse1 = true;
+
+  const power = cpu.chargeAttackPower || 0;
+  const target = aiState.targetChargePower || AI_CONFIG.CHARGE_TARGET_POWER_MIN;
+  const ready =
+    (cpu.isChargingAttack && power >= target) ||
+    currentTime >= (aiState.chargeTimeoutAt || 0);
+
+  if (ready && cpu.isChargingAttack) {
+    // Release to fire — keep S+forward this tick; mouse1 falling edge executes.
+    cpu.keys.mouse1 = false;
+    aiState.lastActionType = "charged_release";
+    return true;
+  }
+
+  // Still winding up (or waiting for processCPUInputs to startCharging).
+  aiState.lastActionType = "charged_hold";
+  return true;
+}
+
+/**
+ * Sometimes open a far-range charged attack when there's time to hold power.
+ * Slide remains the main gap-closer; this is a mix-up, not the default.
+ */
+function tryStartFarCharge(cpu, human, aiState, currentTime, distance) {
+  if (DIFF_KEY === "EASY") return false;
+  if (aiState.isChargingIntentional || aiState.slideChain) return false;
+  if (currentTime < (aiState.chargeCooldownUntil || 0)) return false;
+  if (distance < AI_CONFIG.CHARGE_FAR_MIN) return false;
+  if (!canAttack(cpu)) return false;
+  if (cpu.isGassed || cpu.stamina < CHARGED_ATTACK_STAMINA_COST + 4) return false;
+  if (human.isAttacking) return false;
+  if (!isFacingOpponent(cpu, human)) return false;
+  if (
+    aiState.consecutiveChargedAttacks >= AI_CONFIG.MAX_CONSECUTIVE_CHARGED
+  ) {
+    return false;
+  }
+  // Don't charge while they're already flying in / on top of us soon.
+  if (
+    human.isSlideJumping ||
+    human.isDodging ||
+    human.isIceSliding ||
+    (human.movementVelocity &&
+      Math.abs(human.movementVelocity) > 0.35 &&
+      !isOpponentRetreating(cpu, human) &&
+      distance < AI_CONFIG.CHARGE_FAR_MIN + 40)
+  ) {
+    return false;
+  }
+
+  let attempt =
+    DIFF_KEY === "IMPOSSIBLE"
+      ? AI_CONFIG.CHARGE_ATTEMPT_CHANCE_IMPOSSIBLE
+      : DIFF_KEY === "NORMAL"
+        ? AI_CONFIG.CHARGE_ATTEMPT_CHANCE_NORMAL
+        : AI_CONFIG.CHARGE_ATTEMPT_CHANCE;
+
+  // Fullscreen = more time to hold a real charge.
+  if (distance >= 340) attempt += 0.06;
+  const aggMult = getAggressionMultiplier(aiState);
+  attempt = clampChance(attempt * (aggMult.attack || 1));
+
+  if (!chance(attempt)) return false;
+
+  // Hold long enough for a strong (not tap) charge.
+  const targetPower = randomInRange(
+    AI_CONFIG.CHARGE_TARGET_POWER_MIN,
+    AI_CONFIG.CHARGE_TARGET_POWER_MAX
+  );
+  const holdMs = Math.min(
+    AI_CONFIG.CHARGE_HOLD_TIMEOUT_MS,
+    Math.ceil((targetPower / 100) * CHARGE_FULL_POWER_MS) + 80
+  );
+
+  aiState.isChargingIntentional = true;
+  aiState.chargeStartTime = currentTime;
+  aiState.targetChargePower = targetPower;
+  aiState.chargeTimeoutAt = currentTime + holdMs;
+  aiState.lastDecisionTime = currentTime;
+  aiState.lastActionType = "charged_start";
+  aiState.consecutiveChargedAttacks =
+    (aiState.consecutiveChargedAttacks || 0) + 1;
+
+  resetAllKeys(cpu);
+  const fwd = chargeForwardKey(cpu);
+  cpu.keys.s = true;
+  cpu.keys[fwd] = true;
+  cpu.keys.mouse1 = true;
+  return true;
+}
+
+/**
+ * Maybe open a new slide chain. Active chains are driven earlier in updateCPUAI.
+ */
+function tryStartSlideChain(cpu, human, aiState, currentTime, distance) {
+  if (DIFF_KEY === "EASY") return false;
+  if (aiState.slideChain) return false;
+  if (currentTime < (aiState.slideChainCooldownUntil || 0)) return false;
+  // FLAP owns the powered variant of these verbs.
+  if (cpu.activePowerUp === POWER_UP_TYPES.FLAP) return false;
+  if (cpu.isSlideJumping || cpu.isIceSliding || cpu.isDodging) return false;
+  if (!canAct(cpu) || !canDodge(cpu)) return false;
+  if (cpu.isGassed || cpu.stamina < DODGE_STAMINA_COST_CONST + 4) return false;
+  if (human.isAttacking) return false;
+  // Near-rope bans are handled per-mode in beginSlideChain (back_setup only).
+
+  const mode = pickSlidePressureMode(cpu, human, distance);
+  if (!mode) return false;
+
+  const isFarForward =
+    mode === "forward" && distance >= AI_CONFIG.SLIDE_FAR_COMMIT;
+  const isForward = mode === "forward";
+
+  // NORMAL: far = sprint-slide; don't stroll fullscreen.
+  if (DIFF_KEY === "NORMAL") {
+    if (!isForward) return false;
+    const normalChance = isFarForward
+      ? 0.88
+      : AI_CONFIG.SLIDE_CHAIN_NORMAL_APPROACH_CHANCE;
+    if (!chance(normalChance)) {
+      if (!isFarForward) {
+        aiState.slideChainCooldownUntil =
+          currentTime + AI_CONFIG.SLIDE_DECLINE_BACKOFF_MS;
+      }
+      return false;
+    }
+    return beginSlideChain(
+      cpu,
+      human,
+      aiState,
+      currentTime,
+      "slide_approach",
+      "forward"
+    );
+  }
+
+  if (!isHardPlusTier()) return false;
+
+  const aggMult = getAggressionMultiplier(aiState);
+  const attemptBase =
+    DIFF_KEY === "IMPOSSIBLE"
+      ? AI_CONFIG.SLIDE_CHAIN_ATTEMPT_CHANCE_IMPOSSIBLE
+      : AI_CONFIG.SLIDE_CHAIN_ATTEMPT_CHANCE;
+
+  const punishing =
+    human.isRecovering ||
+    human.isInEndlag ||
+    human.isWhiffingGrab ||
+    human.isGrabWhiffRecovery ||
+    human.isRawParryStun;
+
+  // FAR forward: nearly certain slide-in. Mid forward / back_setup stay mixed.
+  let useChance;
+  if (isFarForward) {
+    useChance = punishing ? 0.96 : distance >= 320 ? 0.92 : 0.85;
+    if (DIFF_KEY === "IMPOSSIBLE") useChance = Math.min(0.98, useChance + 0.04);
+  } else if (isForward) {
+    useChance = clampChance(attemptBase * 2.4 * aggMult.attack);
+  } else {
+    useChance = clampChance(attemptBase * 1.1 * aggMult.attack);
+  }
+  if (punishing && !isFarForward) useChance = clampChance(useChance * 1.35);
+
+  if (!chance(useChance)) {
+    // Far: no cooldown — handleFarRange commits the slide same tick.
+    if (!isFarForward) {
+      aiState.slideChainCooldownUntil =
+        currentTime + AI_CONFIG.SLIDE_DECLINE_BACKOFF_MS;
+    }
+    return false;
+  }
+
+  return beginSlideChain(
+    cpu,
+    human,
+    aiState,
+    currentTime,
+    "slide_pressure",
+    mode
+  );
 }
 
 function handleFlapDefense(cpu, human, aiState, currentTime, distance) {
@@ -3401,14 +4423,19 @@ function handleMidRange(cpu, human, aiState, currentTime, distance) {
     canAttack(cpu)
   ) {
     const dirToOpponent = getDirectionToOpponent(cpu, human);
-    if (canDodge(cpu) && chance(0.5)) {
-      // Dash-in: the biggest runway-free momentum generator (walk→dodge→slap).
+    const landClass = classifyDodgeInLanding(cpu, human, dirToOpponent);
+    // Only dash-in when the hop lands with attack space (or still closing).
+    if (canDodge(cpu) && chance(0.5) && landClass !== "overlap") {
       cpu.keys.shift = true;
       if (dirToOpponent === 1) cpu.keys.d = true;
       else cpu.keys.a = true;
       aiState.shiftReleaseTime = currentTime + 80;
       aiState.lastDecisionTime = currentTime;
       aiState.lastActionType = "momentum_dash_in";
+      // Land in sweet spot → slap as soon as dodge ends (next decisions).
+      if (landClass === "sweet") {
+        aiState.pendingArrivalOffense = true;
+      }
       return;
     }
     // Walk-in: build ground speed for a momentum slap on the next cycle.
@@ -3435,11 +4462,19 @@ function handleMidRange(cpu, human, aiState, currentTime, distance) {
   // Mid-range is OUTSIDE tip-connect by definition (close pocket handles
   // engage). Never slap from here — approach / dash in until connect range.
   const dirToOpponent = getDirectionToOpponent(cpu, human);
-  if (canDodge(cpu) && chance(0.15) && aiState.aggressionMode === 'aggressive') {
+  const midLand = classifyDodgeInLanding(cpu, human, dirToOpponent);
+  // Dash only when landing is sweet (space to attack) — not into their body.
+  if (
+    canDodge(cpu) &&
+    chance(0.12) &&
+    aiState.aggressionMode === "aggressive" &&
+    midLand === "sweet"
+  ) {
     cpu.keys.shift = true;
     if (dirToOpponent === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
     aiState.shiftReleaseTime = currentTime + 80;
+    aiState.pendingArrivalOffense = true;
     aiState.lastDecisionTime = currentTime;
     aiState.lastActionType = "dodge_approach";
     return;
@@ -3455,47 +4490,71 @@ function handleMidRange(cpu, human, aiState, currentTime, distance) {
   aiState.lastDecisionTime = currentTime;
 }
 
-// Far range — approach with occasional charged attacks
+// Far range — SLIDE IN. Walking fullscreen is wrong; sprint-slide is the tool.
 function handleFarRange(cpu, human, aiState, currentTime, distance) {
   resetAllKeys(cpu);
-  
-  const roll = Math.random();
-  
-  // Mostly approach (75%)
-  if (roll < 0.75) {
-    const dirToOpponent = getDirectionToOpponent(cpu, human);
-    // Occasionally dash in
-    if (canDodge(cpu) && chance(0.12)) {
-      cpu.keys.shift = true;
-      if (dirToOpponent === 1) cpu.keys.d = true;
-      else cpu.keys.a = true;
-      aiState.shiftReleaseTime = currentTime + 80;
-      aiState.lastDecisionTime = currentTime;
-      aiState.lastActionType = "dodge_approach";
+
+  const dirToOpponent = getDirectionToOpponent(cpu, human);
+  const farLand = classifyDodgeInLanding(cpu, human, dirToOpponent);
+
+  // tryStartSlideChain already ran this tick; if we're still here, force a
+  // forward slide when far and a dodge can start (cooldown/gassed are the only outs).
+  if (
+    !aiState.slideChain &&
+    canDodge(cpu) &&
+    canAct(cpu) &&
+    !human.isAttacking &&
+    cpu.activePowerUp !== POWER_UP_TYPES.FLAP &&
+    currentTime >= (aiState.slideChainCooldownUntil || 0) &&
+    distance >= AI_CONFIG.SLIDE_FORWARD_MIN &&
+    farLand !== "overlap"
+  ) {
+    if (
+      beginSlideChain(
+        cpu,
+        human,
+        aiState,
+        currentTime,
+        DIFF_KEY === "NORMAL" ? "slide_approach" : "slide_pressure",
+        "forward"
+      )
+    ) {
       return;
     }
-    if (dirToOpponent === 1) cpu.keys.d = true;
-    else cpu.keys.a = true;
-    aiState.lastActionType = "approach";
   }
-  // Dash approach (15%) — close the gap faster at far range
-  else if (roll < 0.90 && canDodge(cpu)) {
+
+  // Last resorts only: can't slide (cooldown/gassed) — short dodge toward, never stroll.
+  if (canDodge(cpu) && farLand !== "overlap") {
     cpu.keys.shift = true;
-    const dirToOpponent = getDirectionToOpponent(cpu, human);
     if (dirToOpponent === 1) cpu.keys.d = true;
     else cpu.keys.a = true;
-    aiState.shiftReleaseTime = currentTime + 80;
+    // Hold into ice slide when still far; tap-dodge if already near land space.
+    if (farLand === "still_far" || distance >= AI_CONFIG.SLIDE_FAR_COMMIT) {
+      aiState.shiftReleaseTime = 0;
+      // Arm a light chain so arrival still converts instead of coasting forever.
+      if (!aiState.slideChain) {
+        beginSlideChain(
+          cpu,
+          human,
+          aiState,
+          currentTime,
+          DIFF_KEY === "NORMAL" ? "slide_approach" : "slide_pressure",
+          "forward"
+        );
+      }
+    } else {
+      aiState.shiftReleaseTime = currentTime + 80;
+      aiState.pendingArrivalOffense = true;
+    }
     aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "dodge_approach";
+    aiState.lastActionType = "far_slide_in";
+    return;
   }
-  // Just approach
-  else {
-    const dirToOpponent = getDirectionToOpponent(cpu, human);
-    if (dirToOpponent === 1) cpu.keys.d = true;
-    else cpu.keys.a = true;
-    aiState.lastActionType = "approach";
-  }
-  
+
+  // Truly cannot dash — inch forward (rare: gassed / locked).
+  if (dirToOpponent === 1) cpu.keys.d = true;
+  else cpu.keys.a = true;
+  aiState.lastActionType = "approach_gassed";
   aiState.lastDecisionTime = currentTime;
 }
 
@@ -3724,11 +4783,33 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
 
   const prevKeys = cpu._prevKeys;
   const keyJustPressed = (key) => cpu.keys[key] && !prevKeys[key];
+  const keyJustReleased = (key) => !cpu.keys[key] && !!prevKeys[key];
+  const aiState = getAIState(cpu.id);
 
   // NOTE: The old "mash to win" grab-clash system was removed.
   // Mutual grabs now resolve deterministically into a shared clinch via executeGrabTech.
   // The legacy W-throw path (gated on isGrabbing && !inClinch) was also removed —
   // grabs always enter the clinch now, and clinch throws use clinchThrowRequest.
+
+  // MOUSE1 RELEASE: fire charged attack (human parity with socketHandlers).
+  // Must run before shouldBlockAction — charging itself isn't an attacking lock.
+  if (keyJustReleased("mouse1") && cpu.isChargingAttack && executeChargedAttack) {
+    const chargePercentage = cpu.chargeAttackPower || 1;
+    cpu.isChargingAttack = false;
+    cpu.chargeStartTime = 0;
+    cpu.chargingFacingDirection = null;
+    executeChargedAttack(cpu, chargePercentage, rooms);
+    if (aiState.isChargingIntentional) {
+      clearChargeIntent(cpu, aiState, { cancel: false });
+      aiState.chargeCooldownUntil = currentTime + AI_CONFIG.CHARGE_COOLDOWN_MS;
+      aiState.lastActionType = "charged_fire";
+    } else if (!(cpu.isAttacking && cpu.attackType === "charged")) {
+      cpu.chargeAttackPower = 0;
+    }
+    if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+    else Object.assign(cpu._prevKeys, cpu.keys);
+    return;
+  }
 
   // Block if in blocking state
   if (shouldBlockAction()) {
@@ -3756,8 +4837,42 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     }
   }
 
+  // Far charged attack start — S+forward+mouse1 (not a slap).
+  if (
+    keyJustPressed("mouse1") &&
+    aiState.isChargingIntentional &&
+    !cpu.isChargingAttack &&
+    startCharging &&
+    canPlayerSlap(cpu, { ignoreCooldown: true }) &&
+    !shouldBlockAction()
+  ) {
+    const fwd = chargeForwardKey(cpu);
+    if (cpu.keys.s && cpu.keys[fwd]) {
+      cpu.chargeAttackPower = 0;
+      cpu.chargeStartTime = 0;
+      startCharging(cpu);
+      cpu.chargingFacingDirection = cpu.facing;
+      cpu.movementVelocity = 0;
+      cpu.isStrafing = false;
+      cpu.isPowerSliding = false;
+      cpu.isBraking = false;
+      cpu.isRawParrySuccess = false;
+      cpu.isPerfectRawParrySuccess = false;
+      cpu.isCrouchStance = false;
+      cpu.isCrouchStrafing = false;
+      if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+      else Object.assign(cpu._prevKeys, cpu.keys);
+      return;
+    }
+  }
+
   // Process slap attack
-  if (keyJustPressed("mouse1") && canPlayerSlap(cpu) && !shouldBlockAction()) {
+  if (
+    keyJustPressed("mouse1") &&
+    !aiState.isChargingIntentional &&
+    canPlayerSlap(cpu) &&
+    !shouldBlockAction()
+  ) {
     executeSlapAttack(cpu, rooms);
     if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
     else Object.assign(cpu._prevKeys, cpu.keys);
@@ -3837,8 +4952,27 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     }
   }
 
-  // Process dodge — locked while gassed (same as sidestep / rope jump)
+  // Ice-slide SHIFT repress → bunny-hop reverse (human parity with socketHandlers).
+  // Always eat the edge so mid-slide repress never becomes a new dodge.
+  if (
+    keyJustPressed("shift") &&
+    cpu.isIceSliding &&
+    !cpu.isSlideJumping &&
+    !cpu.isDodging &&
+    !cpu.isHit &&
+    !cpu.isBeingGrabbed
+  ) {
+    cpu.iceSlideReverseBufferUntil = currentTime + ICE_SLIDE_REVERSE_BUFFER_MS;
+    tryIceSlideReverse(cpu, currentTime);
+    if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+    else Object.assign(cpu._prevKeys, cpu.keys);
+    return;
+  }
+
+  // Process dodge — locked while gassed (same as sidestep / rope jump).
+  // Ice slide owns SHIFT repress (above); never start a dodge while sliding.
   if (keyJustPressed("shift") &&
+      !cpu.isIceSliding &&
       !cpu.keys.mouse2 &&
       !cpu.isBeingGrabbed &&
       !cpu.isGassed &&
@@ -3886,8 +5020,10 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   // Process ATTACK PARRY — the CPU "taps" s (edge-triggered via keyJustPressed).
   // Arms one short deflect window via the shared helper; the main-loop AP state
   // machine handles the active→whiff-recovery transition (so NO manual release
-  // here).
+  // here). Skip while winding a charged attack (S is part of the charge chord).
   if (keyJustPressed("s") &&
+      !aiState.isChargingIntentional &&
+      !cpu.isChargingAttack &&
       !shouldBlockAction() &&
       !cpu.isRawParryStun &&
       !cpu.isSidestepping &&
@@ -3914,9 +5050,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     return;
   }
   
-  // Neutral charged attack REMOVED from the CPU's neutral game.
-  // Clear any lingering charge state
-  if (cpu.isChargingAttack) {
+  // Clear orphan charge only — intentional far-charge is owned by updateCPUAI.
+  if (cpu.isChargingAttack && !aiState.isChargingIntentional) {
     clearChargeState(cpu);
   }
   

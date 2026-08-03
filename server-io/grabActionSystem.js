@@ -48,8 +48,6 @@ const {
   CLINCH_STALEMATE_MOVEMENT_THRESHOLD,
   CLINCH_STALEMATE_BALANCE_THRESHOLD,
   CLINCH_ATTACHED_DISTANCE,
-  CLINCH_MIXED_HOLD_DISTANCE,
-  CLINCH_BODY_HOLD_DISTANCE,
   CLINCH_ATTACH_LERP_PER_SEC,
   CLINCH_THROW_ANIMATION_MS,
   CLINCH_THROW_STAMINA_COST,
@@ -81,6 +79,10 @@ const {
   CLINCH_TUMBLE_BALANCE_DRAIN,
   CLINCH_THROW_DISTANCE_MIN,
   CLINCH_THROW_DISTANCE_MAX,
+  CLINCH_THROW_ARC_HEIGHT_MIN,
+  CLINCH_THROW_ARC_HEIGHT_MAX,
+  CLINCH_THROW_DURATION_MIN_MS,
+  CLINCH_THROW_DURATION_MAX_MS,
   CLINCH_PULL_DISTANCE_MIN,
   CLINCH_PULL_DISTANCE_MAX,
   CLINCH_EDGE_ZONE_THRESHOLD,
@@ -88,7 +90,6 @@ const {
   CLINCH_EDGE_THROW_DRAIN_BONUS,
   CLINCH_EDGE_PULL_DRAIN_BONUS,
   CLINCH_THROW_KILL_THRESHOLD,
-  CLINCH_THROW_DURATION_MS,
   CLINCH_CLASH_ANIMATION_MS,
   CLINCH_PULL_ANIMATION_MS,
   CLINCH_PULL_DISTANCE,
@@ -423,30 +424,6 @@ function getPlantIntent(player, opponent) {
   return (player.keys[awayKey] && !toward) || (player.keys.s && !toward);
 }
 
-function isPlayerBeltHolding(p) {
-  // Cosmetic arm pose: M2 held = belt, released = body hold. Holding M2
-  // through grab connect stays on the belt — no forced release/re-press.
-  return !!(
-    p.inClinch &&
-    !p.isArmClamped &&
-    (!!p.keys?.mouse2 ||
-      p.clinchThrowRequest ||
-      p.clinchThrowActive ||
-      p.isClinchThrowing ||
-      p.isAttemptingGrabThrow ||
-      p.isAttemptingPull)
-  );
-}
-
-// Body holds need space for the flippers; belt grips pull the pair tight.
-function getClinchTargetAttachDistance(player, opponent) {
-  const belts =
-    (isPlayerBeltHolding(player) ? 1 : 0) + (isPlayerBeltHolding(opponent) ? 1 : 0);
-  if (belts >= 2) return CLINCH_ATTACHED_DISTANCE;
-  if (belts === 1) return CLINCH_MIXED_HOLD_DISTANCE;
-  return CLINCH_BODY_HOLD_DISTANCE;
-}
-
 function updateGrabActions(player, room, io, delta, rooms) {
   // Only process for the player who initiated the grab (isGrabbing)
   if (!player.isGrabbing || !player.grabbedOpponent) return;
@@ -474,14 +451,12 @@ function updateGrabActions(player, room, io, delta, rooms) {
   const leftBoundary = MAP_LEFT_BOUNDARY;
   const rightBoundary = MAP_RIGHT_BOUNDARY;
 
-  // Belt-arm pose + attach spacing share the same M2/throw intent.
-  // Body holds sit farther apart; pressing M2 (belt) lerps the pair tight.
+  // Clinch is always a belt grip — M2 is throw/pull chord only, not a pose toggle.
   for (const p of [player, opponent]) {
-    p.isClinchBeltHolding = isPlayerBeltHolding(p);
+    p.isClinchBeltHolding = true;
   }
   const sizeMult = opponent.sizeMultiplier || 1;
-  const targetAttach =
-    getClinchTargetAttachDistance(player, opponent) * sizeMult;
+  const targetAttach = CLINCH_ATTACHED_DISTANCE * sizeMult;
   if (!(player.clinchAttachDistance > 0)) {
     player.clinchAttachDistance = targetAttach;
   } else {
@@ -2242,7 +2217,15 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
     // throwDir to the thrower’s sprite. An old over-the-head throw once used
     // throwDir as facing; forward W+Mouse2 must not revive that flip under V2.
     const throwDir = actor.x < target.x ? 1 : -1;
-    const throwDuration = isKill ? CLINCH_KILL_THROW_DURATION_MS : CLINCH_THROW_DURATION_MS;
+    // Non-kill: stamp distance / height / duration from the same Balance lerp so
+    // weak tosses stay forward-biased (more X, less Y, snappier) instead of a hop.
+    const throwDuration = isKill
+      ? CLINCH_KILL_THROW_DURATION_MS
+      : scaledClinchTechniqueDistance(
+          targetBalance,
+          CLINCH_THROW_DURATION_MIN_MS,
+          CLINCH_THROW_DURATION_MAX_MS
+        );
     const throwerPresentationFacing =
       actor.facing === 1 || actor.facing === -1 ? actor.facing : -1;
 
@@ -2255,6 +2238,13 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
           targetBalance,
           CLINCH_THROW_DISTANCE_MIN,
           CLINCH_THROW_DISTANCE_MAX
+        );
+    actor.clinchThrowArcHeight = isKill
+      ? 0
+      : scaledClinchTechniqueDistance(
+          targetBalance,
+          CLINCH_THROW_ARC_HEIGHT_MIN,
+          CLINCH_THROW_ARC_HEIGHT_MAX
         );
     const hitstopMs = isKill ? 0 : HITSTOP_THROW_MS;
     // Sim clock pauses during the throw hitstop triggered below, so the throw

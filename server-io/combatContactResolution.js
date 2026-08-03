@@ -110,11 +110,9 @@ function classifyBodyPresence(player, opts = {}) {
     };
   }
 
-  if (
-    player.isSlideJumping &&
-    player.slideJumpPhase === "flight" &&
-    !player.slideJumpDiveCommitted
-  ) {
+  // Full flight (including S dive) is intangible until touchdown — dive is
+  // offense commitment, not a mid-air hurtbox open.
+  if (player.isSlideJumping && player.slideJumpPhase === "flight") {
     return {
       present: false,
       pushboxActive: false,

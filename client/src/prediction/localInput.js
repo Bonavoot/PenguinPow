@@ -12,6 +12,7 @@
 
 let localKeyState = null;
 let gameActive = false;
+const gameActiveListeners = new Set();
 
 export function registerLocalKeyState(keyStateObject) {
   localKeyState = keyStateObject;
@@ -28,9 +29,19 @@ export function getLocalKeyState() {
 }
 
 export function setLocalGameActive(active) {
-  gameActive = !!active;
+  const next = !!active;
+  if (next === gameActive) return;
+  gameActive = next;
+  gameActiveListeners.forEach((listener) => listener(gameActive));
 }
 
 export function isLocalGameActive() {
   return gameActive;
+}
+
+/** Subscribe to live-fight changes (cursor hide, etc.). Returns unsubscribe. */
+export function subscribeLocalGameActive(listener) {
+  gameActiveListeners.add(listener);
+  listener(gameActive);
+  return () => gameActiveListeners.delete(listener);
 }

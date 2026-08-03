@@ -106,11 +106,14 @@ function createInitialPlayerState(overrides = {}) {
     slideJumpVelocityY: 0,
     slideJumpVelocityX: 0,
     slideJumpDiveCommitted: false,
+    slideJumpDiveBuffered: false, // early S latched until dive enable
+    slideJumpDiveBufferUntil: 0, // wall-clock expiry for a buffered dive tap
     slideJumpFastFalling: false, // mirrors flapFastFalling — dive latched for VFX
     slideJumpDiveLockX: 0,
     slideJumpHitLanded: false,
     slideJumpHitRecoverDuration: 0,
     slideJumpLandingTime: 0,
+    slideJumpLandSlamImmuneUntil: 0, // brief slam-only i-frames after touchdown
     slideJumpStartTime: 0,
     slideJumpBufferUntil: 0, // W pressed during min flash — consume when jump becomes legal
     slideJumpHasFlap: false, // FLAP-armed takeoff — grants charges; flight still i-frame until S dive
@@ -519,6 +522,7 @@ function createInitialPlayerState(overrides = {}) {
     clinchBraceLatchUntil: 0, // Throw/Pull brace grace after Plant release
     clinchBracePressGameTime: 0,
     clinchThrowArcDistance: 0,
+    clinchThrowArcHeight: 0,
     // MASTERY Phase 2 (posture coupling): broken-posture "openable" tell,
     // derived from `balance` each tick behind MASTERY_P2_POSTURE (false when
     // the flag is off).

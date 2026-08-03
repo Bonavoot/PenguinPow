@@ -20,12 +20,12 @@ import { AI_ARCHETYPES } from "../config/bashoConfig";
  * bouts (spec §5.8). As of the Phase 7 rework it is also where the player
  * DRAFTS this bout's power-up before stepping onto the dohyo.
  *
- * Layout: a TWO-COLUMN stage — run framing (day / division / opponent /
- * record) on the left, the draft + Begin/Withdraw actions on the right,
- * split by a thin broadcast divider so the two halves read as ONE match
- * dossier rather than two stacks floating in a void. The stage never wraps
- * to a single column; it keeps a fixed design size and scales uniformly to
- * fill as much of the viewport as possible — never scrolling.
+ * Layout: a TWO-COLUMN stage — run framing on the left (your record under
+ * DAY; opponent name, then one meta row of rank / style / record), draft
+ * + Begin/Withdraw on the right, split by a thin broadcast divider.
+ * The stage never wraps to a single column; it keeps a fixed design size
+ * and scales uniformly to fill as much of the viewport as possible —
+ * never scrolling.
  *
  * Presentation is tuned to sit in the same premium printed-broadcast world
  * as PreMatchScreen: a lit near-black stage (warm top glow + cool floor
@@ -206,7 +206,9 @@ const Stage = styled.div`
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
-  align-items: center;
+  // Top-align both columns so Honbasho and Draft share a baseline —
+  // centering made the shorter draft stack float mid-page.
+  align-items: flex-start;
   justify-content: center;
   gap: 2.8rem;
   padding: 2.4rem 3rem;
@@ -302,7 +304,7 @@ const DayHero = styled.div`
   flex-direction: column;
   align-items: center;
   gap: 0.1rem;
-  padding: 0.35rem 0 0.1rem;
+  padding: 0.35rem 0 0.25rem;
 `;
 
 const HeroKanjiBg = styled.div`
@@ -350,24 +352,25 @@ const DayNumber = styled.div`
   animation: ${fadeUp} 0.6s ease both 0.08s;
 `;
 
-const DivisionLine = styled.div`
+// Player basho record under the day — keeps "you" above the section rule
+// and the whole opponent block below it.
+const PlayerRecord = styled.div`
   position: relative;
   z-index: 1;
-  margin-top: 0.15rem;
+  margin-top: 0.25rem;
   font-family: ${FONT_UI};
-  font-weight: ${FONT_WEIGHT.bold};
-  font-size: 0.9rem;
-  letter-spacing: ${TRACK.label};
-  text-indent: ${TRACK.label};
-  text-transform: uppercase;
-  color: ${C.iceBright};
+  font-weight: ${FONT_WEIGHT.black};
+  font-size: 1.35rem;
+  line-height: 1;
+  letter-spacing: ${TRACK.none};
+  color: ${C.cream};
   animation: ${fadeUp} 0.6s ease both 0.16s;
 `;
 
 const SectionRule = styled.span`
   width: clamp(120px, 62%, 300px);
   height: 1px;
-  margin: 0.35rem 0 0.1rem;
+  margin: 0.35rem 0 0.15rem;
   background: linear-gradient(
     90deg,
     transparent,
@@ -378,13 +381,16 @@ const SectionRule = styled.span`
   animation: ${fadeIn} 0.6s ease both 0.22s;
 `;
 
+// Opponent nameplate. Hierarchy: section break → eyebrow → name → meta.
+// Eyebrow sits closer to the name than the name sits to the meta row.
 const Versus = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0;
   width: 100%;
   max-width: 100%;
+  margin-top: 0.25rem;
   animation: ${fadeUp} 0.6s ease both 0.24s;
 `;
 
@@ -396,13 +402,15 @@ const VsLabel = styled.span`
   text-indent: ${TRACK.label};
   text-transform: uppercase;
   color: ${C.creamMute};
+  line-height: 1;
+  margin-bottom: 0.45rem;
 `;
 
 const OpponentName = styled.span`
   font-family: ${FONT_UI};
   font-weight: ${FONT_WEIGHT.black};
   font-size: ${({ $compact }) => ($compact ? "1.6rem" : "2.1rem")};
-  line-height: 1.1;
+  line-height: 1;
   letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   max-width: 100%;
@@ -410,6 +418,7 @@ const OpponentName = styled.span`
   word-break: break-word;
   hyphens: auto;
   color: ${({ $boss }) => ($boss ? C.gold : C.vermillionBright)};
+  margin-bottom: 0.55rem;
   ${({ $boss }) =>
     $boss &&
     css`
@@ -417,15 +426,15 @@ const OpponentName = styled.span`
     `}
 `;
 
-// Rank / boss / style all sit on ONE inline meta row under the name, so the
-// opponent block reads as a single nameplate instead of a stack of labels.
+// Rank / boss / style / record — one line under the name. Fixed sep margins
+// beat flex-gap so letter-spacing on the rank doesn't skew the rule.
 const OppMeta = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 0.55rem;
-  margin-top: 0.1rem;
+  row-gap: 0.35rem;
+  line-height: 1;
 `;
 
 const OpponentRank = styled.span`
@@ -433,30 +442,46 @@ const OpponentRank = styled.span`
   font-weight: ${FONT_WEIGHT.bold};
   font-size: 0.82rem;
   letter-spacing: ${TRACK.meta};
+  // Kill the trailing tracking so the rule doesn't sit farther from the
+  // last letter than from the next item on the other side.
+  margin-right: -0.08em;
   text-transform: uppercase;
   color: ${C.gold};
 `;
 
-const StyleTag = styled.span`
+const MetaSep = styled.span`
+  width: 1px;
+  height: 0.75em;
+  margin: 0 0.55rem;
+  background: rgba(245, 236, 217, 0.28);
+  flex-shrink: 0;
+`;
+
+const StyleMark = styled.span`
   display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
+  align-items: baseline;
+  gap: 0.3rem;
   font-family: ${FONT_UI};
   font-weight: ${FONT_WEIGHT.medium};
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   color: ${C.creamMute};
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  padding: 0.18rem 0.62rem;
 
   .kanji {
     font-family: ${FONT_KANJI};
-    font-size: 1.25em;
+    font-size: 1.05em;
     letter-spacing: 0;
     color: ${C.iceBright};
   }
+`;
+
+const MetaRecord = styled.span`
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
+  font-size: 0.82rem;
+  letter-spacing: ${TRACK.none};
+  color: ${C.cream};
 `;
 
 const BossBadge = styled.span`
@@ -468,55 +493,8 @@ const BossBadge = styled.span`
   text-transform: uppercase;
   color: ${C.ink};
   background: linear-gradient(180deg, #f1d061, ${C.gold});
-  border-radius: 4px;
-  padding: 0.2rem 0.55rem;
+  padding: 0.18rem 0.5rem;
   box-shadow: 0 0 16px rgba(232, 197, 71, 0.5);
-`;
-
-// Tale-of-the-tape record split, divided by a hairline.
-const Records = styled.div`
-  display: flex;
-  align-items: stretch;
-  gap: 1.8rem;
-  margin-top: 0.65rem;
-  animation: ${fadeUp} 0.6s ease both 0.3s;
-`;
-
-const RecordSep = styled.span`
-  width: 1px;
-  align-self: center;
-  height: 30px;
-  background: rgba(245, 236, 217, 0.16);
-`;
-
-const RecordCol = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.2rem;
-  min-width: 0;
-  max-width: min(20vw, 200px);
-`;
-
-const RecordWho = styled.span`
-  font-family: ${FONT_UI};
-  font-weight: ${FONT_WEIGHT.medium};
-  font-size: clamp(0.54rem, 1.1vmin, 0.72rem);
-  letter-spacing: ${TRACK.label};
-  text-transform: uppercase;
-  color: ${C.creamMute};
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-
-const RecordVal = styled.span`
-  font-family: ${FONT_UI};
-  font-weight: ${FONT_WEIGHT.black};
-  font-size: 1.5rem;
-  letter-spacing: ${TRACK.none};
-  color: ${C.cream};
 `;
 
 // ── RIGHT: DRAFT + ACTIONS ──────────────────────────────────────────────────
@@ -524,7 +502,7 @@ const DraftCol = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.1rem;
+  gap: 0.85rem;
   flex: 0 0 auto;
   min-width: 0;
 `;
@@ -546,7 +524,6 @@ const CardsRow = styled.div`
   justify-content: center;
   align-items: stretch;
   flex-wrap: nowrap;
-  padding-top: 18px;
 `;
 
 // Card surface — copied from PowerUpSelection.PowerCard (cream washi trading
@@ -923,7 +900,6 @@ function useStageFillScale(stageRef, deps = []) {
 function DayCard({
   day,
   totalBouts,
-  divisionLabel,
   opponentName,
   opponentRankLabel,
   opponentRecord,
@@ -1043,7 +1019,9 @@ function DayCard({
               <HeroKanjiBg aria-hidden>日</HeroKanjiBg>
               <DayKanji>第{day}日目</DayKanji>
               <DayNumber>DAY {day}</DayNumber>
-              <DivisionLine>{divisionLabel}</DivisionLine>
+              <PlayerRecord aria-label={`Your record ${fmtRecord(playerRecord)}`}>
+                {fmtRecord(playerRecord)}
+              </PlayerRecord>
             </DayHero>
 
             <SectionRule />
@@ -1055,33 +1033,37 @@ function DayCard({
               <OpponentName $boss={opponentIsBoss} $compact={compactName}>
                 {opponentName}
               </OpponentName>
-              {(opponentRankLabel || opponentIsBoss || archetypeMeta) && (
-                <OppMeta>
-                  {opponentRankLabel && (
-                    <OpponentRank>{opponentRankLabel}</OpponentRank>
-                  )}
-                  {opponentIsBoss && <BossBadge>Boss</BossBadge>}
-                  {archetypeMeta && (
-                    <StyleTag>
+              <OppMeta
+                aria-label={`Opponent record ${fmtRecord(opponentRecord)}`}
+              >
+                {[
+                  opponentRankLabel ? (
+                    <OpponentRank key="rank">{opponentRankLabel}</OpponentRank>
+                  ) : null,
+                  opponentIsBoss ? (
+                    <BossBadge key="boss">Boss</BossBadge>
+                  ) : null,
+                  archetypeMeta ? (
+                    <StyleMark key="style">
                       <span className="kanji">{archetypeMeta.kanji}</span>
                       {archetypeMeta.label}
-                    </StyleTag>
+                    </StyleMark>
+                  ) : null,
+                  <MetaRecord key="record">
+                    {fmtRecord(opponentRecord)}
+                  </MetaRecord>,
+                ]
+                  .filter(Boolean)
+                  .flatMap((part, i) =>
+                    i === 0
+                      ? [part]
+                      : [
+                          <MetaSep key={`sep-${i}`} aria-hidden />,
+                          part,
+                        ]
                   )}
-                </OppMeta>
-              )}
+              </OppMeta>
             </Versus>
-
-            <Records>
-              <RecordCol>
-                <RecordWho>You</RecordWho>
-                <RecordVal>{fmtRecord(playerRecord)}</RecordVal>
-              </RecordCol>
-              <RecordSep />
-              <RecordCol>
-                <RecordWho>{opponentName}</RecordWho>
-                <RecordVal>{fmtRecord(opponentRecord)}</RecordVal>
-              </RecordCol>
-            </Records>
           </InfoCol>
 
           <ColumnDivider aria-hidden />
@@ -1089,7 +1071,7 @@ function DayCard({
           <DraftCol>
             {options.length > 0 && (
               <>
-                <DraftLabel>Draft · Choose Your Edge</DraftLabel>
+                <DraftLabel>Draft · Pick a Boon</DraftLabel>
                 <CardsRow>
                   {options.map((type, index) => {
                     const info = DRAFT_INFO[type];
@@ -1132,10 +1114,10 @@ function DayCard({
                 </span>
               </BeginButton>
               <BeginHint $visible={options.length > 0 && !picked} aria-hidden={picked != null}>
-                Select a power-up
+                Choose boon first
               </BeginHint>
               <WithdrawLink onClick={() => setConfirming(true)}>
-                Withdraw — Fake Injury (Kyūjō)
+                Withdraw — Fake an Injury (Quit)
               </WithdrawLink>
               {devEnabled && onSkipToFinalDay && !isFinalDay && (
                 <DevLink onClick={() => onSkipToFinalDay()}>
@@ -1156,7 +1138,6 @@ function DayCard({
 DayCard.propTypes = {
   day: PropTypes.number,
   totalBouts: PropTypes.number,
-  divisionLabel: PropTypes.string,
   opponentName: PropTypes.string,
   opponentRankLabel: PropTypes.string,
   opponentRecord: PropTypes.shape({

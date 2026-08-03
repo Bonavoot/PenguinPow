@@ -146,6 +146,7 @@ function executeGrabWhiff(player) {
   player.y = GROUND_LEVEL;
   player.grabState = GRAB_STATES.INITIAL;
   player.grabAttemptType = null;
+  player.currentAction = null;
 
   player.isGrabWhiffRecovery = true;
   player.isWhiffingGrab = true;

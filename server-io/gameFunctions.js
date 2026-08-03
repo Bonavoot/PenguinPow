@@ -147,6 +147,7 @@ const {
   PULL_BOUNDARY_MARGIN,
   MATADOR_HITSTOP_MS,
   MATADOR_PULL_DISTANCE,
+  AP_KILL_HITSTOP_MS,
 } = require("./constants");
 
 // Hit 3 charge functions removed — charged attack is now a standalone move (S + FORWARD + MOUSE1)
@@ -704,11 +705,14 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.slideJumpVelocityY = 0;
     p.slideJumpVelocityX = 0;
     p.slideJumpDiveCommitted = false;
+    p.slideJumpDiveBuffered = false;
+    p.slideJumpDiveBufferUntil = 0;
     p.slideJumpFastFalling = false;
     p.slideJumpDiveLockX = 0;
     p.slideJumpHitLanded = false;
     p.slideJumpHitRecoverDuration = 0;
     p.slideJumpLandingTime = 0;
+    p.slideJumpLandSlamImmuneUntil = 0;
     p.slideJumpStartTime = 0;
     p.offensiveAerial = null;
     p._offensiveAerialTrace = null;
@@ -819,6 +823,7 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.clinchBraceLatchUntil = 0;
     p.clinchBracePressGameTime = 0;
     p.clinchThrowArcDistance = 0;
+    p.clinchThrowArcHeight = 0;
     p.isResistingThrow = false;
     p.isResistingPull = false;
     p.isClinchJolting = false;
@@ -2865,7 +2870,17 @@ function resolveMatadorPull(matador, grabber, room, io) {
   const centerX = (matador.x + grabber.x) / 2;
   const centerY = (matador.y + grabber.y) / 2;
 
-  triggerHitstopAndEmit(io, room, MATADOR_HITSTOP_MS, "matador");
+  // Kill uses the same presentation-tier freeze as AP pull KO / charged
+  // cinematic (550ms). Non-kill keeps the short confirm steal (110ms).
+  // Previously kill only got MATADOR_HITSTOP_MS and cinematic_kill hitstopMs:0
+  // — camera zoom still fell back to 550, but sim/actors never froze.
+  const matadorHitstopMs = isKill ? AP_KILL_HITSTOP_MS : MATADOR_HITSTOP_MS;
+  triggerHitstopAndEmit(
+    io,
+    room,
+    matadorHitstopMs,
+    isKill ? "cinematic_kill" : "matador"
+  );
   const matadorToken = `matador-${nowSim}-${matador.id}`;
   const matadorPresentation = buildDefensivePresentation({
     defenseType: DEFENSE_TYPE.MATADOR,
@@ -2891,7 +2906,7 @@ function resolveMatadorPull(matador, grabber, room, io) {
         y: centerY,
         matadorPlayerNumber,
         isKill,
-        hitstopMs: MATADOR_HITSTOP_MS,
+        hitstopMs: matadorHitstopMs,
         matadorId_token: matadorToken,
       },
       matadorPresentation
@@ -2919,11 +2934,13 @@ function resolveMatadorPull(matador, grabber, room, io) {
       attackerX: matador.x,
       attackerY: matador.y,
       knockbackDirection: pullDirection,
-      hitstopMs: 0,
+      hitstopMs: AP_KILL_HITSTOP_MS,
       impactX: centerX,
       impactY: grabber.y,
       matadorKill: true,
-      cinematicVariant: "matador_break",
+      // Camera/darken only — NOT the charged DEMOLISHED flight package.
+      // Distinct from Matador Break (isGored strike callout on player_hit).
+      cinematicVariant: "matador_kill",
       noPan: true,
     });
   }

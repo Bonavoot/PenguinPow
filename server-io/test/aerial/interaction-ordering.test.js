@@ -66,9 +66,9 @@ describe("offensive aerial — interaction ordering", () => {
     assert.equal(s.defender.slideJumpHitLanded, false);
   });
 
-  it("aerial vs dive-committed defender: dive is hittable", () => {
+  it("aerial vs dive-committed defender: dive stays flight-immune mid-air", () => {
     const s = createSlideJumpScenario({
-      name: "vs_dive",
+      name: "vs_dive_air",
       attackerX: 500,
       defenderX: 500,
       velY: -8,
@@ -78,10 +78,51 @@ describe("offensive aerial — interaction ordering", () => {
     s.defender.isSlideJumping = true;
     s.defender.slideJumpPhase = "flight";
     s.defender.slideJumpDiveCommitted = true;
-    s.defender.y = GROUND_LEVEL; // grounded footprint but dive flag
+    s.defender.y = GROUND_LEVEL + 40;
     s.defender.slideJumpVelocityY = -8;
     stepSlideJumpTick(s);
+    assert.equal(s.attacker.slideJumpHitLanded, false);
+    assert.equal(s.defender.isHit, false);
+  });
+
+  it("aerial vs dive defender on landing phase: grounded punish window is open", () => {
+    const s = createSlideJumpScenario({
+      name: "vs_dive_land",
+      attackerX: 500,
+      defenderX: 500,
+      velY: -8,
+      attackerY: GROUND_LEVEL + 40,
+    });
+    placeDescendingOverOpponent(s, { height: 40 });
+    // Touchdown already happened — landing recovery is the hittable window
+    // after brief slam-only land i-frames expire.
+    s.defender.isSlideJumping = true;
+    s.defender.slideJumpPhase = "landing";
+    s.defender.slideJumpDiveCommitted = true;
+    s.defender.y = GROUND_LEVEL;
+    s.defender.slideJumpVelocityY = 0;
+    s.defender.slideJumpLandSlamImmuneUntil = 0;
+    stepSlideJumpTick(s);
     assert.equal(s.attacker.slideJumpHitLanded, true);
+    assert.equal(s.defender.isHit, true);
+  });
+
+  it("fresh slide-jump touchdown blocks slam during land i-frames", () => {
+    const s = createSlideJumpScenario({
+      name: "vs_land_iframe",
+      attackerX: 500,
+      defenderX: 500,
+      velY: -8,
+      attackerY: GROUND_LEVEL + 40,
+    });
+    placeDescendingOverOpponent(s, { height: 40 });
+    s.defender.isSlideJumping = true;
+    s.defender.slideJumpPhase = "landing";
+    s.defender.y = GROUND_LEVEL;
+    s.defender.slideJumpLandSlamImmuneUntil = s.room.simTime + 78;
+    stepSlideJumpTick(s);
+    assert.equal(s.attacker.slideJumpHitLanded, false);
+    assert.equal(s.defender.isHit, false);
   });
 
   it("thick blubber / hit absorption is NOT consulted by checkFlapBodySlam (current gap)", () => {

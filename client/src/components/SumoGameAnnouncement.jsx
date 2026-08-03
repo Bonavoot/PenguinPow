@@ -1,15 +1,35 @@
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
-import { C, FONT_DISPLAY, FONT_KANJI } from "./menuTheme";
+import { FONT_DISPLAY } from "./menuTheme";
+import {
+  GYOJI_CENTER_PCT,
+  GYOJI_MOUTH_BOTTOM,
+} from "./gyojiLayout";
+import handsDownBubble from "../assets/gyoji-hands-down-v2.svg";
+import handsDownWordmark from "../assets/gyoji-hands-down-wordmark-v1.svg";
 
 // ============================================
-// SHARED Y-POSITION (both announcements live here — below the HUD)
+// SHARED Y-POSITION (RoundResult / PowerUpReveal)
 // ============================================
 /** Shared with PowerUpReveal — upper-arena band just under the HUD. */
 export const ANNOUNCE_Y = "clamp(100px, 28cqh, 190px)";
 
+/** Pro fight-call budget: snap → brief hold → gone as play opens. */
+export const DEFAULT_HAKKIYOI_DURATION = 0.75;
+export const DEFAULT_TEWOTSUITE_DURATION = 2;
+
+/*
+ * Restored working widths (pre diagonal-tail / vw revision), then scaled:
+ *   HANDS DOWN...  × 0.70
+ * Same cqw clamp coordinate system as the centered Gyoji version.
+ */
+const HANDS_BUBBLE_WIDTH = "clamp(132px, 17cqw, 226px)"; // ~90% of prior restored×0.70
+
+/** Vertical seat — raise above the mouth plant. */
+const BUBBLE_RAISE = "4.5cqh";
+
 // ============================================
-// ANIMATIONS
+// HAKKI-YOI MOTION — recovered from pre-bubble HEAD (b21793bd)
 // ============================================
 
 /* HAKKI-YOI — scale punch-in, no rebound.
@@ -44,25 +64,6 @@ const slamIn = keyframes`
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
 `;
 
-/* TE WO TSUITE — quiet rise.
- *
- * Te-wo-tsuite is the call before the bout: both wrestlers crouch
- * into starting position and put their hands on the ground. It's a
- * moment of held breath, not action. The motion should reflect that:
- * the text rises gently into its final position over ~360ms and
- * holds. No scale, no rotation, no rebound. Pure positional motion.
- *
- * Distinct from HAKKI-YOI (scale punch-in) and RoundResult (stamp
- * impression) — using a translate-only entrance here gives each
- * round-state call its own motion axis instead of layering the same
- * choreography three times. */
-const slideIn = keyframes`
-  0%   { opacity: 0; transform: translate(-50%, calc(-50% + 10px)); }
-  18%  { opacity: 1; transform: translate(-50%, -50%); }
-  80%  { opacity: 1; transform: translate(-50%, -50%); }
-  100% { opacity: 0; transform: translate(-50%, -50%); }
-`;
-
 // ── Screen flash ──
 const screenFlash = keyframes`
   0%   { opacity: 0; }
@@ -70,15 +71,6 @@ const screenFlash = keyframes`
   22%  { opacity: 0.25; }
   40%  { opacity: 0.35; }
   60%  { opacity: 0.12; }
-  100% { opacity: 0; }
-`;
-
-// ── Fade in then out ──
-const fadeIO = keyframes`
-  0%   { opacity: 0; }
-  16%  { opacity: 0; }
-  28%  { opacity: 1; }
-  75%  { opacity: 1; }
   100% { opacity: 0; }
 `;
 
@@ -99,7 +91,32 @@ const brushReveal = keyframes`
 `;
 
 // ============================================
-// SCREEN FLASH (shared — both types)
+// HANDS DOWN MOTION — current bubble ceremony (unchanged)
+// ============================================
+
+/* HANDS DOWN — restrained settle from the Gyoji/tail. */
+const handsDownIn = keyframes`
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+  }
+  14% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  82% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.98);
+  }
+`;
+
+// ============================================
+// HAKKIYOI STYLED COMPONENTS — pre-bubble HEAD restore
+// (no Japanese subtitle; spaced "HAKKI-YOI !" text)
 // ============================================
 
 const ScreenFlash = styled.div`
@@ -112,15 +129,13 @@ const ScreenFlash = styled.div`
   z-index: 1000;
   animation: ${screenFlash} 0.65s ease-out forwards;
 
-  background: ${(p) =>
-    p.$type === "hakkiyoi"
-      ? `radial-gradient(ellipse at 50% 28%, rgba(232,197,71,0.28) 0%, rgba(232,197,71,0.1) 32%, transparent 56%)`
-      : `radial-gradient(ellipse at 50% 25%, rgba(245,236,217,0.22) 0%, rgba(245,236,217,0.08) 22%, transparent 45%)`};
+  background: radial-gradient(
+    ellipse at 50% 28%,
+    rgba(232, 197, 71, 0.28) 0%,
+    rgba(232, 197, 71, 0.1) 32%,
+    transparent 56%
+  );
 `;
-
-// ============================================
-// HAKKIYOI STYLED COMPONENTS
-// ============================================
 
 /* Quiet ink seat — grounds the call without a muddy brown blot. */
 const DarkVignette = styled.div`
@@ -192,166 +207,96 @@ const HakkiyoiText = styled.div`
   pointer-events: none;
 
   font-family: ${FONT_DISPLAY}, "Impact", sans-serif;
-  font-size: clamp(2.1rem, 6cqw, 5.4rem);
-  font-weight: 400;
+  font-size: clamp(2.45rem, 7cqw, 6.2rem);
+  font-weight: 500;
   line-height: 1;
-  letter-spacing: 0.11em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
 
   color: #f0d56a;
-  -webkit-text-stroke: clamp(1.2px, 0.17cqw, 2.1px) rgba(18, 12, 6, 0.92);
+  -webkit-text-stroke: clamp(1.4px, 0.19cqw, 2.4px) rgba(18, 12, 6, 0.92);
 
   text-shadow:
     0 1px 0 rgba(255, 244, 200, 0.35),
     0 2px 0 rgba(120, 78, 12, 0.55),
     0 3px 10px rgba(0, 0, 0, 0.65),
-    0 0 18px rgba(232, 197, 71, 0.22);
+    0 0 22px rgba(232, 197, 71, 0.28);
 
   animation: ${css`
       ${slamIn}`} ${(p) => p.$duration} cubic-bezier(0.16, 1, 0.3, 1)
     forwards;
 
   @media (max-width: 900px) {
-    font-size: clamp(1.7rem, 5.2cqw, 4rem);
-    letter-spacing: 0.09em;
+    font-size: clamp(2rem, 6.1cqw, 4.7rem);
+    letter-spacing: 0.085em;
   }
   @media (max-width: 600px) {
-    font-size: clamp(1.35rem, 4.8cqw, 2.8rem);
+    font-size: clamp(1.55rem, 5.5cqw, 3.25rem);
     letter-spacing: 0.07em;
   }
 `;
 
-/* Japanese subtitle — matching leaf gold, quieter than the roman. */
-const HakkiyoiKanji = styled.div`
+// ============================================
+// HANDS DOWN — V2 bubble shell (geometry frozen)
+// ============================================
+
+/**
+ * Planted on the Gyoji mouth/head — horizontally centered on the same
+ * percentage + cqw space as `.gyoji`. Raised so the face stays clearer
+ * under the tail. Seat only — no motion animation here.
+ */
+const BubbleRoot = styled.div`
   position: absolute;
-  top: calc(${ANNOUNCE_Y} + clamp(30px, 4.6cqh, 52px));
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1004;
+  left: ${GYOJI_CENTER_PCT}%;
+  bottom: calc(${GYOJI_MOUTH_BOTTOM} + ${BUBBLE_RAISE});
+  z-index: 1;
   pointer-events: none;
-
-  font-family: ${FONT_KANJI};
-  font-size: clamp(0.72rem, 1.45cqw, 1.15rem);
-  color: rgba(240, 213, 106, 0.88);
-  letter-spacing: 0.4em;
-  text-indent: 0.4em;
-  opacity: 0;
-  animation: ${fadeIO} ${(p) => p.$duration} ease-out forwards;
-  animation-delay: 0.12s;
-
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
-
-  @media (max-width: 600px) {
-    font-size: clamp(0.58rem, 1.3cqw, 0.9rem);
-    letter-spacing: 0.28em;
-    text-indent: 0.28em;
-    top: calc(${ANNOUNCE_Y} + clamp(24px, 4cqh, 42px));
-  }
+  transform: translate(-50%, 0);
+  width: ${HANDS_BUBBLE_WIDTH};
+  aspect-ratio: 1200 / 440;
+  height: auto;
 `;
 
-// ============================================
-// TE WO TSUITE STYLED COMPONENTS
-// ============================================
+/** Motion layer — restrained settle from the tail tip. */
+const BubbleMotion = styled.div`
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: 50% 100%;
+  opacity: 0;
+  animation: ${handsDownIn} ${(p) => p.$duration}
+    cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+`;
 
-/* HANDS DOWN text — matches RoundResult style, slightly smaller than HAKKIYOI/RoundResult */
-const TeWoTsuiteText = styled.div`
+/** Balloon + wordmark share this box (matched 1200×440 viewBoxes). */
+const BubbleArt = styled.img`
   position: absolute;
-  top: ${ANNOUNCE_Y};
-  left: 50%;
-  z-index: 1004;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   pointer-events: none;
+  user-select: none;
+`;
 
-  font-family: ${FONT_DISPLAY}, "Impact", sans-serif;
-  font-size: clamp(1.65rem, 5cqw, 4.4rem);
-  font-weight: 400;
-  line-height: 1;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+const BubbleWordmark = styled(BubbleArt)`
+  z-index: 1;
+`;
+
+const SrOnly = styled.span`
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
   white-space: nowrap;
-
-  color: ${C.cream};
-  -webkit-text-stroke: clamp(1.5px, 0.2cqw, 2.5px) rgba(10, 10, 10, 0.85);
-
-  text-shadow:
-    clamp(2px, 0.14cqw, 3px) clamp(2px, 0.14cqw, 3px) 0 rgba(10, 8, 6, 0.9),
-    clamp(3px, 0.28cqw, 5px) clamp(3px, 0.28cqw, 5px) 0 rgba(10, 8, 6, 0.65),
-    clamp(5px, 0.4cqw, 8px) clamp(5px, 0.4cqw, 8px) 0 rgba(8, 6, 4, 0.38),
-    clamp(7px, 0.52cqw, 10px) clamp(7px, 0.52cqw, 10px) 0 rgba(5, 4, 2, 0.18),
-    0 clamp(2px, 0.24cqw, 4px) clamp(8px, 0.8cqw, 16px) rgba(0, 0, 0, 0.6);
-
-  animation: ${css`
-      ${slideIn}`} ${(p) => p.$duration} cubic-bezier(0.25, 0.46, 0.45, 0.94)
-    forwards;
-
-  @media (max-width: 900px) {
-    font-size: clamp(1.35rem, 4.4cqw, 3.2rem);
-    letter-spacing: 0.08em;
-  }
-  @media (max-width: 600px) {
-    font-size: clamp(1.1rem, 3.8cqw, 2.2rem);
-    letter-spacing: 0.06em;
-  }
-`;
-
-/* Brush stroke under HANDS DOWN */
-const TeWoBrush = styled.div`
-  position: absolute;
-  top: calc(${ANNOUNCE_Y} + clamp(15px, 2.5cqh, 32px));
-  left: 50%;
-  transform: translateX(-50%);
-  width: clamp(190px, 30cqw, 360px);
-  height: clamp(10px, 1.5cqh, 18px);
-  z-index: 1003;
-  pointer-events: none;
-  border-radius: 50%;
-  filter: blur(1px);
-
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(245, 236, 217, 0.1) 15%,
-    rgba(245, 236, 217, 0.22) 50%,
-    rgba(245, 236, 217, 0.1) 85%,
-    transparent 100%
-  );
-
-  animation: ${brushReveal} ${(p) => p.$duration} ease-out forwards;
-
-  @media (max-width: 900px) {
-    width: clamp(160px, 28cqw, 290px);
-    top: calc(${ANNOUNCE_Y} + clamp(12px, 2cqh, 26px));
-  }
-  @media (max-width: 600px) {
-    width: clamp(120px, 26cqw, 220px);
-    top: calc(${ANNOUNCE_Y} + clamp(10px, 1.8cqh, 20px));
-  }
-`;
-
-/* Japanese subtitle 手を付いて — below the brush */
-const TeWoKanji = styled.div`
-  position: absolute;
-  top: calc(${ANNOUNCE_Y} + clamp(36px, 5.5cqh, 62px));
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1004;
-  pointer-events: none;
-
-  font-family: ${FONT_KANJI};
-  font-size: clamp(0.65rem, 1.3cqw, 1.05rem);
-  font-weight: 700;
-  color: rgba(245, 236, 217, 0.78);
-  letter-spacing: 0.3em;
-  opacity: 0;
-  animation: ${fadeIO} ${(p) => p.$duration} ease-out forwards;
-  animation-delay: 0.1s;
-
-  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.9);
-
-  @media (max-width: 600px) {
-    font-size: clamp(0.55rem, 1.1cqw, 0.8rem);
-    top: calc(${ANNOUNCE_Y} + clamp(28px, 4.5cqh, 50px));
-  }
+  border: 0;
 `;
 
 // ============================================
@@ -359,30 +304,44 @@ const TeWoKanji = styled.div`
 // ============================================
 
 const SumoGameAnnouncement = ({ type = "hakkiyoi", duration = null }) => {
-  const actualDuration = duration || (type === "hakkiyoi" ? 1.8 : 2);
+  const actualDuration =
+    duration ??
+    (type === "hakkiyoi"
+      ? DEFAULT_HAKKIYOI_DURATION
+      : DEFAULT_TEWOTSUITE_DURATION);
   const durationStr = `${actualDuration}s`;
 
-  // ─── HAKKIYOI ───
+  // ─── HAKKIYOI — containerless pre-bubble presentation ───
   if (type === "hakkiyoi") {
     return (
       <>
-        <ScreenFlash $type="hakkiyoi" />
+        <ScreenFlash />
         <DarkVignette $duration={durationStr} />
-        <HakkiyoiText $duration={durationStr}>HAKKI-YOI!</HakkiyoiText>
+        <HakkiyoiText $duration={durationStr}>HAKKI-YOI !</HakkiyoiText>
         <HakkiyoiRule $duration={durationStr} aria-hidden />
-        <HakkiyoiKanji $duration={durationStr}>八卦良い</HakkiyoiKanji>
       </>
     );
   }
 
-  // ─── TE WO TSUITE ───
+  // ─── HANDS DOWN — V2 Gyoji balloon + authored wordmark layer ───
   return (
-    <>
-      <ScreenFlash $type="tewotsuite" />
-      <TeWoTsuiteText $duration={durationStr}>HANDS DOWN!</TeWoTsuiteText>
-      <TeWoKanji $duration={durationStr}>手を付いて</TeWoKanji>
-      <TeWoBrush $duration={durationStr} />
-    </>
+    <BubbleRoot>
+      <BubbleMotion $duration={durationStr}>
+        <BubbleArt
+          src={handsDownBubble}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+        />
+        <BubbleWordmark
+          src={handsDownWordmark}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+        />
+        <SrOnly>HANDS DOWN...</SrOnly>
+      </BubbleMotion>
+    </BubbleRoot>
   );
 };
 

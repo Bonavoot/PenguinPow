@@ -5,6 +5,11 @@ import gamepadHandler from "./utils/gamepadHandler";
 import { PlayerColorProvider } from "./context/PlayerColorContext";
 import { startServerClock, stopServerClock } from "./lib/serverClock";
 import { gameSocket as socket, selectGameServer } from "./lib/serverConnection";
+import {
+  acquireCursor,
+  releaseCursor,
+  subscribeCursorVisible,
+} from "./ui/cursorGate";
 import "./App.css";
 import "./components/SteamDeck.css";
 
@@ -18,7 +23,27 @@ function App() {
   const [steamDeckMode, setSteamDeckMode] = useState(false);
   const [controllerConnected, setControllerConnected] = useState(false);
   const [showStartupScreen, setShowStartupScreen] = useState(true);
+  const [cursorVisible, setCursorVisible] = useState(true);
   const appContainerRef = useRef(null);
+
+  // Cursor shows only while a click-needed UI reason is held (menus, DayCard,
+  // power select, rematch). Prematch / fight / between-round = hidden.
+  useLayoutEffect(() => subscribeCursorVisible(setCursorVisible), []);
+
+  useLayoutEffect(() => {
+    if (showStartupScreen) acquireCursor("startup");
+    else releaseCursor("startup");
+    return () => releaseCursor("startup");
+  }, [showStartupScreen]);
+
+  // Mirror onto body so letterbox margins match (app is 1280×720 centered).
+  useLayoutEffect(() => {
+    document.body.classList.toggle("cursor-custom", cursorVisible);
+    document.body.classList.toggle("cursor-hidden", !cursorVisible);
+    return () => {
+      document.body.classList.remove("cursor-hidden", "cursor-custom");
+    };
+  }, [cursorVisible]);
 
   useLayoutEffect(() => {
     const updateZoom = () => {
@@ -32,6 +57,13 @@ function App() {
     updateZoom();
     window.addEventListener("resize", updateZoom);
     return () => window.removeEventListener("resize", updateZoom);
+  }, []);
+
+  // Kill native drag-out of images/sprites (CSS covers most; this catches leftovers).
+  useEffect(() => {
+    const preventNativeDrag = (e) => e.preventDefault();
+    document.addEventListener("dragstart", preventNativeDrag);
+    return () => document.removeEventListener("dragstart", preventNativeDrag);
   }, []);
 
   const handleContinueFromStartup = () => {
@@ -122,7 +154,7 @@ function App() {
           ref={appContainerRef}
           className={`app-container ${steamDeckMode ? "steam-deck-mode" : ""} ${
             controllerConnected ? "controller-connected" : ""
-          }`}
+          } ${cursorVisible ? "cursor-custom" : "cursor-hidden"}`}
         >
           <svg width="0" height="0" style={{position:'absolute'}} aria-hidden="true">
             <defs>

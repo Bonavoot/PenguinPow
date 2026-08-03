@@ -131,7 +131,7 @@ describe("offensive aerial — slide-jump lifecycle", () => {
     assert.equal(s.attacker.slideJumpHitLanded, false);
   });
 
-  it("S dive during ascent opens active window immediately", () => {
+  it("S dive during ascent opens active window once hop lock clears", () => {
     const s = createSlideJumpScenario({
       name: "dive_opens",
       attackerX: 500,
@@ -144,14 +144,14 @@ describe("offensive aerial — slide-jump lifecycle", () => {
     // Before tick: ascent, no dive yet.
     assert.equal(isBodySlamWindowOpen(s.attacker), false);
     stepSlideJumpTick(s);
+    // Early S buffers — may not commit on the first tick from low height.
+    if (!s.attacker.slideJumpDiveCommitted) {
+      assert.equal(s.attacker.slideJumpDiveBuffered, true);
+      runUntil(s, () => s.attacker.slideJumpDiveCommitted, 40);
+    }
     assert.equal(s.attacker.slideJumpDiveCommitted, true);
     // Dive commit forces descending qualification even if vel was cleared.
     assert.ok(s.attacker.slideJumpVelocityY <= 0);
-    // May hit this tick if overlapping.
-    if (Math.abs(s.attacker.x - s.defender.x) <= 100) {
-      // Characterization only — dive may connect same tick.
-      assert.ok(true);
-    }
   });
 
   it("parry of plain slide-jump body contact grounds attacker", () => {

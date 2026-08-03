@@ -75,9 +75,9 @@ const DELTA_TRACKED_PROPS = [
   'isSlapParryRecovering',
   'isHitFalling', 'isSidestepHitReturn',
   'inClinch', 'hasGrip', 'clinchAction',
-  // Holding M2 (or mid throw/pull) → arms on belt; otherwise body-hold pose.
+  // Always true while in clinch (belt grip is the only clinch pose).
   'isClinchBeltHolding',
-  // Legacy wire field — always false. M2-through-connect is valid belt hold.
+  // Legacy wire field — always false.
   'clinchBeltRequiresM2Release',
   'isClinchThrowing', 'isClinchClashing',
   'isClinchPushing', 'isClinchPlanting',
@@ -288,12 +288,14 @@ const SLAP_MIN_HITSTUN_MS = 60;
 
 // ── EXPOSED (MATADOR punish) ─────────────────────────────────────────────────
 // Hitting someone during a live / whiffed MATADOR is a special RPS punish —
-// the grab-line counterpart to CLAMPED. Callout reads "EXPOSED". Harder shove
-// than a counter hit, and forces ring-out eligibility (wrong hard-read must hurt).
+// the grab-line counterpart to CLAMPED. Callout reads "EXPOSED" / MATADOR BREAK.
+// Knockback sits only a notch above counter hit — the callout + hitstun/hitstop
+// carry the "wrong hard-read" read. Does NOT force midscreen ring-out (that used
+// to stack with CINEMATIC_KILL_KNOCKBACK_BOOST and yeet victims off-camera).
 // Internals still use GORED_* / isGored names.
-const GORED_KB_MULT = 2.55;            // vs SLAP_COUNTER_KB_MULT 1.25 — must READ as a shove
+const GORED_KB_MULT = 1.35;            // vs SLAP_COUNTER_KB_MULT 1.25 — slight bump
 const GORED_HITSTUN_BONUS_MS = 130;    // vs SLAP_COUNTER_HIT_BONUS_MS 35 — clear tempo steal
-const GORED_CHARGED_KB_MULT = 1.85;    // charged/palm into matador also pays
+const GORED_CHARGED_KB_MULT = 1.35;    // vs charged counter 1.25 — same small bump
 const GORED_HITSTOP_BONUS_MS = 45;     // EXPOSED bonus — special, but stays under palm tier
 
 const CHARGED_STARTUP_MS = 150;   // Clear windup (unchanged)
@@ -559,6 +561,21 @@ const SLIDE_JUMP_SCALE_MS = 450;           // Slide duration after min to reach 
 const SLIDE_JUMP_AIR_STEER = 1.2;          // Weak air nudge (also bleeds H slightly)
 const SLIDE_JUMP_AIR_STEER_BLEED = 0.97;   // Per-tick H decay when air-steering
 const SLIDE_JUMP_LANDING_RECOVERY_MS = 90; // Barely punishable — strict slap-timing window
+// S dive enable — kill hop-cancel micro-slams while keeping mid-ascent freedom.
+// Enabled when EITHER airtime OR height clears (mid-launch, not peak).
+const SLIDE_JUMP_DIVE_MIN_AIR_MS = 220;    // ~14 ticks @ 64Hz — readable hop telegraph
+const SLIDE_JUMP_DIVE_MIN_HEIGHT = 118;    // upper mid-ascent (~11 ticks on normal liftoff; peak ~160)
+// Early S during the lock latches; commit fires on the first enabled tick.
+const SLIDE_JUMP_DIVE_BUFFER_MS = 220;     // Tap forgiveness across the lock window
+// Brief slam-only i-frames after slide-jump touchdown so "landed first" isn't
+// an instant free belly-plant while still in the land pose.
+const SLIDE_JUMP_LAND_SLAM_IFRAME_MS = 78;  // ~5 ticks @ 64Hz
+// Soft belly unstack on slam HIT — NOT a full pushbox park (that teleported
+// victims ~100px+ and read as a snap). Cap the out-nudge; KB owns separation
+// after hitstop. Flight pushbox-off can still stack at contact.
+const FLAP_BODYSLAM_PARK_MAX_NUDGE_PX = 18;
+// Soften post-hit H travel (non-dive still carries slide H through the victim).
+const FLAP_BODYSLAM_POST_HIT_H_DAMP = 0.2;
 
 // Edge awareness
 const DOHYO_EDGE_PANIC_ZONE = 89;       // Scaled for camera zoom (was 120)
@@ -952,7 +969,7 @@ const ROPE_JUMP_LANDING_COMMIT_T_MIN = 0.05;
 // by ground strikes), but the descending body hit is parryable. Landing
 // recovery remains punishable.
 const FLAP_STARTUP_MS = 166;             // Legacy — standalone grounded startup removed
-const FLAP_CHARGES = 2;                  // Air flaps granted on FLAP-armed slide-jump takeoff
+const FLAP_CHARGES = 1;                  // Air flaps granted on FLAP-armed slide-jump takeoff
 const FLAP_LIFTOFF_IMPULSE = 11.5;       // Legacy standalone liftoff (slide takeoff uses SLIDE_JUMP_LIFTOFF_IMPULSE)
 const FLAP_IMPULSE = 9.5;                // Upward velocity (px/tick) per AIR flap (W)
 const FLAP_GRAVITY = 0.44;               // Flight gravity once charges are in use
@@ -1139,12 +1156,9 @@ const CLINCH_SEPARATION_DISTANCE = 50;           // Distance to push apart on st
 const CLINCH_SEPARATION_TWEEN_DURATION = 300;    // Tween duration for separation
 const CLINCH_SEPARATION_INPUT_LOCK_MS = 350;     // Input lock after stalemate separation
 
-// Clinch grab attachment — tight when on the belt (M2), looser on body holds
-// so full-length flippers have room instead of spearing through each other.
-const CLINCH_ATTACHED_DISTANCE = Math.round(75 * 0.96); // ~72px — both on belt
-const CLINCH_MIXED_HOLD_DISTANCE = Math.round(88 * 0.96); // ~85px — one on belt, one body
-const CLINCH_BODY_HOLD_DISTANCE = Math.round(108 * 0.96); // ~104px — both body-holding
-const CLINCH_ATTACH_LERP_PER_SEC = 14; // Snap-in speed when someone presses/releases M2
+// Clinch grab attachment — always belt grip spacing.
+const CLINCH_ATTACHED_DISTANCE = Math.round(75 * 0.96); // ~72px
+const CLINCH_ATTACH_LERP_PER_SEC = 14; // Settle speed toward attached spacing
 
 // Clinch Flow P1 — throw/pull techniques (both are throws; pull = side-switch yank).
 // Clean techniques always land unless held Plant resists (Deep Grip breaks Plant).
@@ -1211,12 +1225,18 @@ const DEEP_GRIP_PUSH_WIN_MS = 1000;              // Continuous unanswered push t
 const CLINCH_TECH_STAMINA_COST = 8;              // Legacy export; tumble uses CLINCH_TUMBLE_*
 const CLINCH_THROW_LAND_THRESHOLD = 0;           // Retired — every undefended technique lands
 const CLINCH_THROW_KILL_THRESHOLD = 15;          // Balance below which = KILL THROW (round over)
-// Balance-scaled non-kill throw distance (full composure → short toss; near-kill → far)
-const CLINCH_THROW_DISTANCE_MIN = 140;           // Clean throw at full Balance
+// Balance-scaled non-kill throw (full composure → short toss; near-kill → far).
+// Distance, arc height, and duration all scale together so a high-Balance toss
+// keeps a forward throw ratio instead of reading as a tall Y-hop with little travel.
+const CLINCH_THROW_DISTANCE_MIN = 185;           // Clean throw at full Balance (was 140 — too hoppy)
 const CLINCH_THROW_DISTANCE_MAX = 260;           // Clean throw near lethal Balance
 const CLINCH_THROW_DISTANCE = 260;               // Legacy alias (= max); prefer scaled helper
-const CLINCH_THROW_ARC_HEIGHT = 100;             // Low hill arc (peak ~80px) — not a big sky launch
-const CLINCH_THROW_DURATION_MS = 550;            // Longer travel time for the farther distance
+const CLINCH_THROW_ARC_HEIGHT_MIN = 55;          // Weak toss peak ~44px (3.2×h×0.25)
+const CLINCH_THROW_ARC_HEIGHT_MAX = 100;         // Strong toss peak ~80px
+const CLINCH_THROW_ARC_HEIGHT = 100;             // Legacy alias (= max)
+const CLINCH_THROW_DURATION_MIN_MS = 400;        // Snappy short toss — matches short travel
+const CLINCH_THROW_DURATION_MAX_MS = 550;        // Longer air time for the far throw
+const CLINCH_THROW_DURATION_MS = 550;            // Legacy alias (= max)
 const CLINCH_CLASH_ANIMATION_MS = 280;           // Brief flash before mutual tumble separates
 
 // Clinch pull system (Mouse2 + away TAP during clinch)
@@ -1772,6 +1792,12 @@ module.exports = {
   SLIDE_JUMP_AIR_STEER,
   SLIDE_JUMP_AIR_STEER_BLEED,
   SLIDE_JUMP_LANDING_RECOVERY_MS,
+  SLIDE_JUMP_DIVE_MIN_AIR_MS,
+  SLIDE_JUMP_DIVE_MIN_HEIGHT,
+  SLIDE_JUMP_DIVE_BUFFER_MS,
+  SLIDE_JUMP_LAND_SLAM_IFRAME_MS,
+  FLAP_BODYSLAM_PARK_MAX_NUDGE_PX,
+  FLAP_BODYSLAM_POST_HIT_H_DAMP,
   DOHYO_EDGE_PANIC_ZONE,
   CHARGED_KILL_EDGE_ZONE,
   ICE_EDGE_BRAKE_BONUS,
@@ -2103,8 +2129,6 @@ module.exports = {
   CLINCH_SEPARATION_TWEEN_DURATION,
   CLINCH_SEPARATION_INPUT_LOCK_MS,
   CLINCH_ATTACHED_DISTANCE,
-  CLINCH_MIXED_HOLD_DISTANCE,
-  CLINCH_BODY_HOLD_DISTANCE,
   CLINCH_ATTACH_LERP_PER_SEC,
 
   // Clinch throw/pull
@@ -2130,6 +2154,10 @@ module.exports = {
   CLINCH_TUMBLE_BALANCE_DRAIN,
   CLINCH_THROW_DISTANCE_MIN,
   CLINCH_THROW_DISTANCE_MAX,
+  CLINCH_THROW_ARC_HEIGHT_MIN,
+  CLINCH_THROW_ARC_HEIGHT_MAX,
+  CLINCH_THROW_DURATION_MIN_MS,
+  CLINCH_THROW_DURATION_MAX_MS,
   CLINCH_PULL_DISTANCE_MIN,
   CLINCH_PULL_DISTANCE_MAX,
   CLINCH_THROW_BALANCE_DRAIN_VS_PUSH,

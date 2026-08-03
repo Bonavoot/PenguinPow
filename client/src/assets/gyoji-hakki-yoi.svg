@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 660" role="img" aria-labelledby="title desc">
+  <title id="title">Gyoji shouting speech bubble</title>
+  <desc id="desc">A wide, asymmetrical impact balloon with a center-bottom tail for the Gyoji's Hakki-Yoi shout.</desc>
+
+  <!-- The tail points toward a centered Gyoji and may be transformed independently. -->
+  <path
+    id="tail"
+    d="M 682 380 C 752 458 779 551 795 637 C 862 566 898 469 932 380 Z"
+    fill="#fffaf0"
+    stroke="#111111"
+    stroke-width="22"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <path
+    id="bubble"
+    d="
+      M 78 326
+      L 203 286
+      L 104 229
+      L 244 218
+      L 169 139
+      L 326 168
+      L 292 70
+      L 438 132
+      L 446 38
+      L 572 116
+      L 616 27
+      L 711 111
+      L 782 25
+      L 851 111
+      L 950 29
+      L 980 119
+      L 1120 48
+      L 1117 145
+      L 1274 89
+      L 1230 187
+      L 1392 158
+      L 1317 241
+      L 1526 250
+      L 1408 316
+      L 1533 359
+      L 1392 398
+      L 1504 470
+      L 1343 458
+      L 1404 558
+      L 1244 507
+      L 1264 604
+      L 1112 533
+      L 1087 625
+      L 956 541
+      L 899 570
+      L 846 518
+      L 808 545
+      L 758 516
+      L 705 570
+      L 661 537
+      L 524 617
+      L 507 522
+      L 347 586
+      L 381 486
+      L 215 518
+      L 294 426
+      L 126 445
+      L 225 373
+      Z
+    "
+    fill="#fffaf0"
+    stroke="#111111"
+    stroke-width="22"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

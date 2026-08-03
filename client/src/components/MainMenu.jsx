@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useContext } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useContext } from "react";
 import PropTypes from "prop-types";
 
 import Lobby from "./Lobby";
@@ -10,6 +10,7 @@ import HatTuner from "./HatTuner";
 import BashoHub from "./BashoHub";
 import DayCard from "./DayCard";
 import BashoResults from "./BashoResults";
+import { acquireCursor, releaseCursor } from "../ui/cursorGate";
 import { usePlayerColors } from "../context/PlayerColorContext";
 import { patchSave, makeDefaultSave, loadSave } from "../lib/saveStore";
 import {
@@ -692,6 +693,20 @@ const MainMenu = ({
   const [bashoPhase, setBashoPhase] = useState(null); // null | "day" | "bout"
   const [bashoArmed, setBashoArmed] = useState(false);
   const [bashoBoutToken, setBashoBoutToken] = useState(0);
+
+  // Cursor: menus always; on the game page only DayCard (power select / rematch
+  // are acquired inside Game / GameFighter when those UIs are actually up).
+  useLayoutEffect(() => {
+    if (currentPage !== "game") acquireCursor("menu");
+    else releaseCursor("menu");
+    return () => releaseCursor("menu");
+  }, [currentPage]);
+
+  useLayoutEffect(() => {
+    if (currentPage === "game" && bashoPhase === "day") acquireCursor("daycard");
+    else releaseCursor("daycard");
+    return () => releaseCursor("daycard");
+  }, [currentPage, bashoPhase]);
   // The 3 power-up options offered on the current DAY card (Phase 7 draft).
   const [bashoDraftOptions, setBashoDraftOptions] = useState(null);
   // Refs mirror the latest values for use inside once-registered socket
@@ -1410,7 +1425,6 @@ const MainMenu = ({
             <DayCard
               day={bashoRun.day}
               totalBouts={bashoRun.totalBouts}
-              divisionLabel={getDivision({ division: bashoRun.division }).label}
               opponentName={bashoOpp?.name}
               opponentRankLabel={
                 bashoOpp?.rank

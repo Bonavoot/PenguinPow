@@ -45,7 +45,10 @@ import NoStaminaEffect from "./GassedEffect";
 import SnowballImpactEffect from "./SnowballImpactEffect";
 import PumoCloneSpawnEffect from "./PumoCloneSpawnEffect";
 import SlapHitSpriteEffect from "./SlapHitSpriteEffect";
-import SumoGameAnnouncement from "./SumoGameAnnouncement";
+import SumoGameAnnouncement, {
+  DEFAULT_HAKKIYOI_DURATION,
+  DEFAULT_TEWOTSUITE_DURATION,
+} from "./SumoGameAnnouncement";
 import {
   recolorImage,
   getCachedRecoloredImage,
@@ -123,6 +126,7 @@ import {
   isMovementPredictionEnabled,
 } from "../prediction/movementPredictor";
 import { getLocalKeyState, isLocalGameActive } from "../prediction/localInput";
+import { acquireCursor, releaseCursor } from "../ui/cursorGate";
 import {
   shouldUpdateCombatFidelityOverlay,
   noteCombatContactEvent,
@@ -2227,7 +2231,6 @@ const GameFighter = ({
   }, [
     penguin.hasDeepGrip,
     penguin.inClinch,
-    penguin.isClinchBeltHolding,
     penguin.isClinchPlanting,
     penguin.isGrabbing,
   ]);
@@ -2257,6 +2260,15 @@ const GameFighter = ({
   const [playerTwoWinCount, setPlayerTwoWinCount] = useState(0);
   const [roundHistory, setRoundHistory] = useState([]); // Track order of wins: ["player1", "player2", "player1", ...]
   const [matchOver, setMatchOver] = useState(false);
+  // Rematch buttons need the cursor; keep it hidden through the KO beat until
+  // MatchOver actually mounts (setMatchOver is delayed after match_over).
+  // Only the HUD owner (index 0) drives this so the two fighters don't thrash.
+  useLayoutEffect(() => {
+    if (index !== 0) return undefined;
+    if (matchOver && !isBashoMatch) acquireCursor("rematch");
+    else releaseCursor("rematch");
+    return () => releaseCursor("rematch");
+  }, [index, matchOver, isBashoMatch]);
   const [parryEffectPosition, setParryEffectPosition] = useState(null);
   const [blockingEffectPosition, setBlockingEffectPosition] = useState(null);
   // Guard SUCCESS pose — mirrors isRawParrySuccess. True only for the absorb
@@ -2743,68 +2755,17 @@ const GameFighter = ({
         const grabArmEl = grabArmImgDomRef.current;
         const deepGripGlowEl = deepGripGlowDomRef.current;
         if (grabArmEl || deepGripGlowEl) {
-          // Belt vs body-hold arm pose. Local M2 is read live so the flipper
-          // drops to the belt on press without waiting on the 32Hz flag.
-          // Holding M2 through grab connect stays on the belt (cosmetic only).
-          // Body holds are ASYMMETRIC (over / under) so the two long flippers
-          // nest at different heights instead of crossing through each other.
-          //   Grabber  → overhook (higher chest)
-          //   Grabbed  → underhook (mid torso, still clearly off the belt)
-          const localKeys = isLocalPlayer ? getLocalKeyState() : null;
-          const localM2Down = !!localKeys?.mouse2;
-          const localM2 =
-            isLocalPlayer &&
-            p.inClinch &&
-            !p.isArmClamped &&
-            localM2Down;
-          const onBelt =
-            !!p.isClinchBeltHolding ||
-            localM2 ||
-            !!p.isAttemptingGrabThrow ||
-            !!p.isAttemptingPull;
-          const bodyHolding = p.inClinch && !onBelt;
-          // +deg = tip swings UP from the belt-rest asset. Mild over/under
-          // split — server also spaces body holds farther apart so we don't
-          // need a tiny underhook or a severe length chop (those made the
-          // snap to full belt-arm look broken).
-          const BODY_HOLD_OVER_DEG = 20;
-          const BODY_HOLD_UNDER_DEG = 17;
-          const BODY_HOLD_LEN = 0.88;
-          const isOverhook = !!p.isGrabbing;
-          let bodyHoldDeg = 0;
-          let bodyHoldY = "0%";
-          let bodyHoldLen = 1;
-          if (bodyHolding) {
-            bodyHoldDeg = isOverhook
-              ? BODY_HOLD_OVER_DEG
-              : BODY_HOLD_UNDER_DEG;
-            bodyHoldY = isOverhook ? "-0.5%" : "1.5%";
-            bodyHoldLen = BODY_HOLD_LEN;
-          }
-          // Plant / body-hold: pull flipper BACK off the white belly. Belt (M2)
-          // stays pre-aligned (0). Written here so M2 press/release is instant.
-          let nudgeX = 0;
-          let nudgeY = 0;
-          if (p.isClinchPlanting) {
-            nudgeX = 7.5;
-            nudgeY = 2;
-          } else if (bodyHolding) {
-            nudgeX = 4.5;
-            nudgeY = 0.75;
-          }
+          // Clinch is always belt grip. Plant nudges the flipper back off the
+          // belly; otherwise arms stay on the pre-aligned belt rest.
+          const nudgeX = p.isClinchPlanting ? 7.5 : 0;
+          const nudgeY = p.isClinchPlanting ? 2 : 0;
           const applyGrabArmMotion = (el) => {
             if (!el) return;
             el.style.left = leftPct;
             el.style.bottom = bottomPct;
-            el.style.setProperty(
-              "--grab-arm-body-hold-deg",
-              `${bodyHoldDeg}deg`
-            );
-            el.style.setProperty("--grab-arm-body-hold-y", bodyHoldY);
-            el.style.setProperty(
-              "--grab-arm-body-hold-len",
-              String(bodyHoldLen)
-            );
+            el.style.setProperty("--grab-arm-body-hold-deg", "0deg");
+            el.style.setProperty("--grab-arm-body-hold-y", "0%");
+            el.style.setProperty("--grab-arm-body-hold-len", "1");
             el.style.setProperty("--grab-arm-nudge-x", `${nudgeX}%`);
             el.style.setProperty("--grab-arm-nudge-y", `${nudgeY}%`);
           };
@@ -3787,7 +3748,9 @@ const GameFighter = ({
         // Palm thrust skips the outline flash — burst VFX/hitstop already sell it.
         if (data.attackerId && data.attackerId === player.id && !data.isPalmThrust) {
           let tier = "slap";
-          if (data.attackType === "charged") tier = "charged";
+          if (data.attackType === "charged" || data.attackType === "flap") {
+            tier = "charged";
+          }
           if (data.cinematicKill) tier = "cinematic";
           // Tip slap confirm reads a touch sharper than a deep mash connect.
           if (data.tipSlap && tier === "slap") tier = "tip";
@@ -3795,7 +3758,7 @@ const GameFighter = ({
           if (attackerConfirmTimeoutRef.current) {
             clearTimeout(attackerConfirmTimeoutRef.current);
           }
-          // Cinematic / charged confirms linger longer so the satisfaction matches the weight.
+          // Cinematic / charged / belly-slam confirms linger longer for weight.
           // Slap is short — presses fire fast and the pulse must clear before the next hit.
           const dur =
             tier === "cinematic" ? 280 :
@@ -3809,14 +3772,15 @@ const GameFighter = ({
 
         // PROCEDURAL ANIMATION — attacker contact recoil. On connect, the
         // attacker's body jolts back for ~0.18s (attackerContactRecoil
-        // keyframes) before resuming the swing loop. Charged headbutts PLANT
-        // (server + no CSS bounce). Cinematic kills keep their scripted pose.
+        // keyframes) before resuming the swing loop. Charged headbutts + belly
+        // slams PLANT (no CSS bounce). Cinematic kills keep their scripted pose.
         // The 200ms auto-clear ends before the fastest slap re-chain.
         if (
           data.attackerId &&
           data.attackerId === player.id &&
           !data.cinematicKill &&
-          data.attackType !== "charged"
+          data.attackType !== "charged" &&
+          data.attackType !== "flap"
         ) {
           setAttackerRecoil(true);
           if (attackerRecoilTimeoutRef.current) {
@@ -3867,12 +3831,14 @@ const GameFighter = ({
           }
         };
 
-        // Attacker plant pin — charged / palm / slap. Snap interp to server X so
-        // hitstop freezes the tip park, not a pre-correction bury or coast.
+        // Attacker plant pin — charged / palm / slap / belly-slam. Snap interp
+        // to server X so hitstop freezes the tip/belly park, not a bury or coast.
         if (
           data.attackerId &&
           data.attackerId === player.id &&
-          (data.attackType === "charged" || data.attackType === "slap")
+          (data.attackType === "charged" ||
+            data.attackType === "slap" ||
+            data.attackType === "flap")
         ) {
           pinFighterX(data.attackerX, data.attackerY);
           // Headbutt drops strike pose on connect — clear local attack predict.
@@ -3892,10 +3858,13 @@ const GameFighter = ({
         }
 
         // Victim park pin — data.x is post-contact-correction (tip/palm park).
+        // Belly-slam skips victim pin: even a soft server nudge + hard client
+        // snap stacked into a visible teleport. Attacker still plants above.
         if (
           data.victimId &&
           data.victimId === player.id &&
-          typeof data.x === "number"
+          typeof data.x === "number" &&
+          data.attackType !== "flap"
         ) {
           pinFighterX(data.x, data.y);
         }
@@ -4187,13 +4156,17 @@ const GameFighter = ({
         //   });
         // }
 
-        // Victim feet skid dust on slap hits — the ground-side read of the
-        // knockback transfer (the judder below is the body-side read). Index 0
-        // owns world-anchored particles, same as the hit spark. data.x is the
-        // victim's raw x — the sprite is CENTERED on it (translate -50%), so
-        // no offset: canvas presets anchored on raw x sit under the body for
-        // both facings (same convention as sidestepLand / throwLand).
-        if (index === 0 && !data.cinematicKill && data.attackType === "slap") {
+        // Victim feet skid dust on slap / belly-slam hits — the ground-side
+        // read of the knockback transfer (the judder below is the body-side
+        // read). Index 0 owns world-anchored particles, same as the hit spark.
+        // data.x is the victim's raw x — the sprite is CENTERED on it
+        // (translate -50%), so no offset: canvas presets anchored on raw x sit
+        // under the body for both facings (same as sidestepLand / throwLand).
+        if (
+          index === 0 &&
+          !data.cinematicKill &&
+          (data.attackType === "slap" || data.attackType === "flap")
+        ) {
           const skidDir =
             data.knockbackDirection || (data.facing === 1 ? -1 : 1);
           emitParticles("slapSkidDust", {
@@ -4201,6 +4174,15 @@ const GameFighter = ({
             y: data.y,
             dir: skidDir,
           });
+          if (data.attackType === "flap") {
+            // Extra plant tell — reuse land dust so the belly slam reads grounded.
+            emitParticles("throwLand", { x: data.x, y: data.y });
+            emitParticles("slapSkidDust", {
+              x: data.x + skidDir * 8,
+              y: data.y,
+              dir: skidDir,
+            });
+          }
           // MASTERY Phase 5 (5.2): a momentum hit throws a second, heavier skid
           // (more ground visibly lost); a braked hit kicks the chips BACK toward
           // the incoming shove ("dig-in" against it). Both reuse the existing
@@ -5216,9 +5198,10 @@ const GameFighter = ({
       stopEeshi();
       startBattleMusic();
 
+      // Unmount just after the short fight-call anim finishes (not mid-combat).
       const tid = setTimeout(() => {
         setHakkiyoi(false);
-      }, 3000);
+      }, Math.round(DEFAULT_HAKKIYOI_DURATION * 1000) + 50);
       pendingSocketTimeouts.current.push(tid);
     };
     socket.on("game_start", handleGameStart);
@@ -5780,7 +5763,10 @@ const GameFighter = ({
           worldX: startX,
         });
         if (smoke) {
-          emitParticles("iceSlideStart", movementSmokeEmitArgs(smoke));
+          emitParticles("iceSlideStart", {
+            ...movementSmokeEmitArgs(smoke),
+            playerNumber,
+          });
         }
       }
     }
@@ -5823,6 +5809,7 @@ const GameFighter = ({
         facing: iceSlideDirRef.current || 1,
         speed: Math.max(speed, 0.35),
         braking: !!p.isBraking || !!predictedState.current?.isBraking,
+        playerNumber,
       });
     };
 
@@ -5836,6 +5823,7 @@ const GameFighter = ({
     penguin.isSlideJumping,
     penguin.iceSlideDir,
     player.id,
+    playerNumber,
     emitParticles,
   ]);
 
@@ -7270,7 +7258,8 @@ const GameFighter = ({
       //
       // Cinematic audio / flight VFX variants (authoritative):
       //   demolished_charged — launch SFX + gun + smoke trail
-      //   matador_break — camera/darken only (glass already from Matador Break hit)
+      //     (includes charged KOs that ALSO tagged Matador Break / isGored)
+      //   matador_kill — MATADOR success belly-slide KO: camera/darken only
       //   ap_pull — specialized AP package only
       const cinematicVariant = resolveCinematicVariant(data);
       const playLaunchPackage = shouldPlayCinematicChargedLaunchPackage(data);
@@ -8354,38 +8343,19 @@ const GameFighter = ({
   // either body (bodies are ≤ 99 during a grab); the +1 puts the facing===1
   // penguin's arm on top of the other's.
   const grabArmZ = (penguin.facing ?? -1) === 1 ? 106 : 105;
-  // Plant / body-hold poses angle the armless body such that the pre-aligned
-  // belt arm lands on the white belly — nudge BACK (local +X, symmetric across
-  // facing) so the flipper sits on the dark torso. Belt (M2) grabbing pose
-  // stays at 0. +X = back, +Y = down.
-  const GRAB_ARM_PLANT_NUDGE_X_PCT = 7.5; // back (plant body angles arm onto belly)
-  const GRAB_ARM_PLANT_NUDGE_Y_PCT = 2; // down
-  const GRAB_ARM_BODY_HOLD_NUDGE_X_PCT = 4.5; // back off white belly
-  const GRAB_ARM_BODY_HOLD_NUDGE_Y_PCT = 0.75;
+  // Plant angles the body so the belt arm can land on the belly — nudge BACK
+  // (local +X) onto the dark torso. Default clinch belt pose stays at 0.
+  const GRAB_ARM_PLANT_NUDGE_X_PCT = 7.5;
+  const GRAB_ARM_PLANT_NUDGE_Y_PCT = 2;
   const isPlantingArm = effectiveSpriteSrc === clinchPlantingSprite;
-  const renderLocalM2 = !!getLocalKeyState()?.mouse2;
-  const localBeltHold =
-    isLocalPlayer &&
-    penguin.inClinch &&
-    !penguin.isArmClamped &&
-    renderLocalM2;
-  const armOnBelt =
-    !!penguin.isClinchBeltHolding ||
-    localBeltHold ||
-    !!penguin.isAttemptingGrabThrow ||
-    !!penguin.isAttemptingPull;
   let grabArmNudgeXPct = 0;
   let grabArmNudgeYPct = 0;
   if (isPlantingArm) {
     grabArmNudgeXPct = GRAB_ARM_PLANT_NUDGE_X_PCT;
     grabArmNudgeYPct = GRAB_ARM_PLANT_NUDGE_Y_PCT;
-  } else if (penguin.inClinch && !armOnBelt) {
-    grabArmNudgeXPct = GRAB_ARM_BODY_HOLD_NUDGE_X_PCT;
-    grabArmNudgeYPct = GRAB_ARM_BODY_HOLD_NUDGE_Y_PCT;
   }
 
-  // Clinch arm overlay uses shoulder-pivot rotate driven by CSS var
-  // --grab-arm-body-hold-deg (written per-frame in the rAF loop).
+  // Clinch arm overlay CSS vars (written per-frame in the rAF loop).
   const grabArmBodyHoldActive = showGrabArm && penguin.inClinch;
 
   // ── Equipped top hat (composited into body — NOT a second animated layer) ─
@@ -8801,13 +8771,32 @@ const GameFighter = ({
           document.getElementById("game-hud-info")
         )}
 
+      {/* HANDS DOWN balloon — camera-synced #game-ceremony so the tail
+          tracks the Gyoji. HAKKI-YOI stays in #game-hud (screen space). */}
+      {index === 0 &&
+        gyojiCall &&
+        document.getElementById("game-ceremony") &&
+        createPortal(
+          <SumoGameAnnouncement
+            type="tewotsuite"
+            duration={DEFAULT_TEWOTSUITE_DURATION}
+          />,
+          document.getElementById("game-ceremony")
+        )}
+
       {/* Screen-space HUD: portalled outside the scene so it never zooms.
           NOTE: UiPlayerInfo → #game-hud-info (under actors). Side combat
           plaques → #game-hud-callouts (also under actors). Center callouts /
-          KO / match-over below stay in #game-hud (z 210) above wrestlers. */}
+          HAKKI-YOI / KO / match-over stay in #game-hud (z 210) above wrestlers. */}
       {document.getElementById("game-hud") &&
         createPortal(
           <>
+            {index === 0 && hakkiyoi && (
+              <SumoGameAnnouncement
+                type="hakkiyoi"
+                duration={DEFAULT_HAKKIYOI_DURATION}
+              />
+            )}
             {index === 0 && isLocalEdgePushed && (() => {
               const belowThreshold = localEdgeStamina <= DANGER_STAMINA_THRESHOLD;
               const staminaRatio = belowThreshold
@@ -8827,12 +8816,6 @@ const GameFighter = ({
                 />
               );
             })()}
-            {index === 0 && gyojiCall && (
-              <SumoGameAnnouncement type="tewotsuite" duration={2} />
-            )}
-            {index === 0 && hakkiyoi && (
-              <SumoGameAnnouncement type="hakkiyoi" duration={1.8} />
-            )}
             {index === 0 && showRoundResult && !matchOver && (
               <RoundResult isVictory={winner.id === localId} winType={winType} />
             )}
@@ -8896,8 +8879,14 @@ const GameFighter = ({
               announcement tree) right as opening inputs go live; later rounds
               were clean. Pre-injecting it here moves that one-time cost into the
               hidden pre-round warm-up. */}
-          <SumoGameAnnouncement type="hakkiyoi" duration={1.8} />
-          <SumoGameAnnouncement type="tewotsuite" duration={2} />
+          <SumoGameAnnouncement
+            type="hakkiyoi"
+            duration={DEFAULT_HAKKIYOI_DURATION}
+          />
+          <SumoGameAnnouncement
+            type="tewotsuite"
+            duration={DEFAULT_TEWOTSUITE_DURATION}
+          />
         </div>
       )}
       {penguin.id === localId &&

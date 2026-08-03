@@ -29,6 +29,7 @@ const {
   SLIDE_JUMP_GRAVITY, SLIDE_JUMP_H_BASE, SLIDE_JUMP_H_BONUS, SLIDE_JUMP_H_SPEED_SCALE,
   SLIDE_JUMP_SCALE_MS, SLIDE_JUMP_AIR_STEER, SLIDE_JUMP_AIR_STEER_BLEED,
   SLIDE_JUMP_LANDING_RECOVERY_MS,
+  SLIDE_JUMP_LAND_SLAM_IFRAME_MS,
   DODGE_LANDING_BASE, K_DODGE_INHERIT, DODGE_LANDING_MIN, DODGE_LANDING_MAX,
   DOHYO_EDGE_PANIC_ZONE, ICE_EDGE_BRAKE_BONUS, ICE_EDGE_SLIDE_PENALTY,
   MOVEMENT_DECELERATION,
@@ -135,6 +136,7 @@ const {
   clearIceSlideState,
   tryIceSlideReverse,
   clearSlideJumpState,
+  shouldCommitSlideJumpDive,
   armSlideJumpFlapCharges,
   cancelPendingSlapWork,
   stampMomentumWindow,
@@ -1923,7 +1925,9 @@ function tick(delta) {
         if (opponent) {
           const throwArcHeight = player.isRingOutThrowCutscene ? 75
             : player.isClinchKillThrow ? CLINCH_KILL_THROW_ARC_HEIGHT
-            : CLINCH_THROW_ARC_HEIGHT;
+            : (player.clinchThrowArcHeight > 0
+              ? player.clinchThrowArcHeight
+              : CLINCH_THROW_ARC_HEIGHT);
           const isNormalForwardThrow = !player.isRingOutThrowCutscene && !player.isClinchKillThrow;
           let armsReachDistance = player.isRingOutThrowCutscene ? -100 : 50;
 
@@ -2806,6 +2810,8 @@ function tick(delta) {
             player.slideJumpVelocityX = jumpDir * hSpeed;
             player.facing = jumpDir > 0 ? -1 : 1;
             player.slideJumpDiveCommitted = false;
+            player.slideJumpDiveBuffered = false;
+            player.slideJumpDiveBufferUntil = 0;
             player.slideJumpDiveLockX = 0;
             player.slideJumpHitLanded = false;
             player.slideJumpHitRecoverDuration = 0;
@@ -2905,8 +2911,11 @@ function tick(delta) {
             }
 
             // S belly-flop — pin X, kill horizontal, heavy plummet; burns charges.
-            if (!player.slideJumpDiveCommitted && player.keys.s) {
+            // Early S buffers through the min-air/height lock (no eaten input).
+            if (shouldCommitSlideJumpDive(player, now)) {
               player.slideJumpDiveCommitted = true;
+              player.slideJumpDiveBuffered = false;
+              player.slideJumpDiveBufferUntil = 0;
               player.slideJumpDiveLockX = player.x;
               player.slideJumpVelocityX = 0;
               player.flapVelocityX = 0;
@@ -3047,6 +3056,10 @@ function tick(delta) {
             }
             player.slideJumpPhase = "landing";
             player.slideJumpLandingTime = now;
+            // Slam-only — strikes can still punish the land. Stops dual-jump
+            // "first to floor eats an instant belly plant" from reading unfair.
+            player.slideJumpLandSlamImmuneUntil =
+              now + SLIDE_JUMP_LAND_SLAM_IFRAME_MS;
             player._oaTouchdownPresentation = true;
             // One opponent-facing handoff at touchdown (not travel-facing carry).
             handoffOffensiveAerialFacingAtTouchdown(player, sjOpponent, {

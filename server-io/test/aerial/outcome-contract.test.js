@@ -76,7 +76,7 @@ describe("offensive aerial — activation identity", () => {
       attackerKeys: { s: true },
     });
     assert.equal(s.attacker.offensiveAerial, null);
-    stepSlideJumpTick(s);
+    runUntil(s, () => s.attacker.slideJumpDiveCommitted, 40);
     assert.equal(s.attacker.slideJumpDiveCommitted, true);
     assert.ok(s.attacker.offensiveAerial);
     assert.equal(

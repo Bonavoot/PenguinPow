@@ -83,6 +83,8 @@ const {
   LOW_KICK_BALANCE_DRAIN_VS_PARRY,
   LOW_KICK_BALANCE_DRAIN_COUNTER,
   FLAP_BODYSLAM_KB_VELOCITY,
+  FLAP_BODYSLAM_PARK_MAX_NUDGE_PX,
+  FLAP_BODYSLAM_POST_HIT_H_DAMP,
   AIR_STRIKE_HURT_HEIGHT,
   AP_ACTIVE_MS,
   AP_LATE_PARRY_MS,
@@ -2286,7 +2288,8 @@ function processHit(player, otherPlayer, rooms, io) {
     // PUNISH IS A LABEL, GAME-WIDE: no knockback bonus, no stun bonus, no
     // ring-out bypass. The free hit itself is the whole prize — the banner
     // just tells both players what happened.
-    // GORED is the exception: it forces ring-out eligibility below.
+    // GORED keeps a small KB bump + hitstun/hitstop, but uses the same
+    // kill-reach / rope gates as everyone else (no midscreen ring-out cheat).
 
     if (player.activePowerUp === POWER_UP_TYPES.POWER) {
       if (isSlapAttack) {
@@ -2380,7 +2383,6 @@ function processHit(player, otherPlayer, rooms, io) {
           // carried momentum + the victim's broken posture (flag off ⇒
           // SLAP_KILL_RANGE, unchanged).
           otherPlayer.slapKnockbackCanRingOut =
-            isGored ||
             distanceToBoundaryInKbDir <= slapKillBand(player, otherPlayer);
 
           // GROUND TRANSFER: both slide toward the victim's rope; attacker push
@@ -2461,9 +2463,7 @@ function processHit(player, otherPlayer, rooms, io) {
             : otherPlayer.x - MAP_LEFT_BOUNDARY;
         // MASTERY Phase 2 (2.4): the palm (rooted → no momentum term) still gets
         // the broken-posture band extension. Flag off ⇒ SLAP_KILL_RANGE.
-        // GORED forces ring-out eligibility (MATADOR wrong-read punish).
         otherPlayer.slapKnockbackCanRingOut =
-          isGored ||
           distanceToBoundaryInKbDir <= slapKillBand(player, otherPlayer);
 
         // Palm holds its ground — no backward recoil on a connected hit.
@@ -2500,9 +2500,10 @@ function processHit(player, otherPlayer, rooms, io) {
             CHARGED_KILL_REACH_CAP
           );
         }
-        // GORED (MATADOR punish) always rings out — wrong hard-read must hurt.
-        const canChargedRingOut =
-          isGored || distToBoundaryChargedKb <= killReach;
+        // Same kill-reach gate as every other charged hit (GORED no longer
+        // bypasses the midscreen deadzone — that stacked with the cinematic
+        // ×4 boost and deleted victims off-camera).
+        const canChargedRingOut = distToBoundaryChargedKb <= killReach;
 
         const isReadKill =
           isCounterHit || isPunish || isGored || !!otherPlayer.isGassed;
@@ -2738,10 +2739,12 @@ function processHit(player, otherPlayer, rooms, io) {
               hitstopMs: CINEMATIC_KILL_HITSTOP_MS,
               impactX: (player.x + otherPlayer.x) / 2,
               impactY: otherPlayer.y,
-              // Explicit cinematic identity — client must not infer from visuals.
-              // demolished_charged: launch SFX + gun + smoke trail
-              // matador_break: camera/darken only (glass from Matador Break hit)
-              cinematicVariant: isGored ? "matador_break" : "demolished_charged",
+              // Charged fly-out KO always owns the full DEMOLISHED package
+              // (launch SFX + gun + smoke trail). Matador Break (isGored) is
+              // only a hit callout — glass already fired on player_hit. The
+              // camera-only matador_kill variant is reserved for MATADOR
+              // success kills (gameFunctions), not strike-beats-matador KOs.
+              cinematicVariant: "demolished_charged",
               isGored: !!isGored,
             });
           }
@@ -3237,8 +3240,36 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   // Must overlap a standing body — clear over their head = no hit.
   if (flapper.y - GROUND_LEVEL > FLAP_BODYSLAM_CONTACT_HEIGHT) return;
 
-  // Opponent must be a grounded, hittable target. Airborne/immune/dead/locked
-  // defenders can't be body-slammed (mirror the strike i-frame rules).
+  // Belly slam only connects vs a grounded body. Mid-air exchanges (two
+  // divers overlapping at +40, etc.) look wrong — require the floor.
+  if (opponent.y > GROUND_LEVEL) return;
+
+  // Contested dual slam on the floor footprint: both still in descending
+  // flight → only the lower body may connect (higher player gets hit).
+  // Equal height → stable id order so the early-pair poll can't double-latch.
+  // This is the one case that may pierce flight immunity (both committed).
+  const opponentDescending =
+    (opponent.slideJumpVelocityY ?? 0) <= 0 || !!opponent.slideJumpDiveCommitted;
+  const opponentAlsoSlamming =
+    opponent.isSlideJumping &&
+    opponent.slideJumpPhase === "flight" &&
+    opponentDescending &&
+    !opponent.slideJumpHitLanded;
+  if (opponentAlsoSlamming) {
+    // Clamp to the floor footprint — integrate can push y slightly below
+    // GROUND before the land snap, which must not count as "lower".
+    const flapH = Math.max(flapper.y, GROUND_LEVEL);
+    const oppH = Math.max(opponent.y, GROUND_LEVEL);
+    if (flapH > oppH) return;
+    if (flapH === oppH && String(flapper.id) > String(opponent.id)) {
+      return;
+    }
+  }
+
+  // Opponent must be a hittable target. Immune/dead/locked defenders can't
+  // be body-slammed (mirror the strike i-frame rules). Flight immunity now
+  // covers dive as well — landing phase is the punish window — except the
+  // contested dual-slam case above.
   if (
     opponent.isDead ||
     opponent.isAlreadyHit ||
@@ -3248,9 +3279,23 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
     opponent.isBeingGrabbed ||
     opponent.isGrabbing ||
     (opponent.isRopeJumping && opponent.ropeJumpPhase === "active") ||
-    isSlideJumpFlightImmune(opponent) ||
+    (!opponentAlsoSlamming && isSlideJumpFlightImmune(opponent)) ||
     (opponent.isSidestepping && !opponent.isSidestepStartup) ||
     !canApplyKnockback(opponent)
+  ) {
+    return;
+  }
+
+  const currentRoom = rooms.find((room) =>
+    room.players.some((p) => p.id === flapper.id)
+  );
+  const currentTime = simNow(currentRoom);
+
+  // Fresh slide-jump touchdown — brief slam-only i-frames so landing first
+  // doesn't read as an instant free belly-plant (strikes still punish land).
+  if (
+    opponent.slideJumpLandSlamImmuneUntil &&
+    currentTime < opponent.slideJumpLandSlamImmuneUntil
   ) {
     return;
   }
@@ -3260,11 +3305,6 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
     HITBOX_DISTANCE_VALUE * 2 * FLAP_BODYSLAM_WIDTH_SCALE *
     Math.max(flapper.sizeMultiplier || 1, opponent.sizeMultiplier || 1);
   if (Math.abs(flapper.x - opponent.x) > bodyWidth) return;
-
-  const currentRoom = rooms.find((room) =>
-    room.players.some((p) => p.id === flapper.id)
-  );
-  const currentTime = simNow(currentRoom);
 
   // The grounded defender can RAW PARRY the drop — the parry beats the slam,
   // ends the flight, and punishes the flapper instead of damaging the defender.
@@ -3281,7 +3321,7 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
 
   // Connecting latches this flight (no double-hit), burns all remaining air
   // charges, and schedules synced recovery once the flapper naturally touches
-  // down. Flight physics keep running — no self pushback / scripted descent.
+  // down. Post-hit: belly park + H damp (dive keeps X plant lock).
   // Flapper recovery stays BURST_STUN_MS (neutral slam is still +0); CH/GORED
   // extend victim stun only so the read earns tempo.
   flapper.slideJumpHitLanded = true;
@@ -3294,7 +3334,6 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   // Contact fidelity BEFORE defender clearAll (positions still valid).
   const slamContact = computeOffensiveAerialContact(flapper, opponent);
   const contactFields = toOutcomeContactFields(slamContact);
-  const effectContact = toEffectContactPayload(slamContact, flapper);
   const sideBefore =
     slamContact.attackerSideAtContact !== 0
       ? slamContact.attackerSideAtContact
@@ -3404,13 +3443,39 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
     opponent.y = GROUND_LEVEL;
   }
 
+  // Soft belly unstack — only a capped nudge along KB. Full pushbox park was
+  // teleporting victims from stacked flight overlap and looked like a snap;
+  // burst KB finishes the separation after hitstop.
+  {
+    const cur = Math.abs(opponent.x - flapper.x);
+    if (cur < FLAP_BODYSLAM_PARK_MAX_NUDGE_PX * 2) {
+      const nudge = Math.min(
+        FLAP_BODYSLAM_PARK_MAX_NUDGE_PX,
+        FLAP_BODYSLAM_PARK_MAX_NUDGE_PX * 2 - cur
+      );
+      if (nudge > 0.5) {
+        opponent.x += knockbackDirection * nudge;
+        opponent.x = Math.max(
+          MAP_LEFT_BOUNDARY,
+          Math.min(opponent.x, MAP_RIGHT_BOUNDARY)
+        );
+      }
+    }
+  }
+  // Kill leftover slide/flap H so continuation doesn't coast back through them.
+  flapper.slideJumpVelocityX *= FLAP_BODYSLAM_POST_HIT_H_DAMP;
+  flapper.flapVelocityX = 0;
+  if (flapper.slideJumpDiveCommitted) {
+    flapper.slideJumpDiveLockX = flapper.x;
+    flapper.slideJumpVelocityX = 0;
+  }
+
   // ROPE RESISTANCE (same treatment as the slap/palm): the slam may only send the
   // victim OUT of the ring if they were already within SLAP_KILL_RANGE of the
   // boundary they're knocked toward at connect time. From mid-ring the rope
   // catches them at the edge instead (clamped in the isHit movement block,
   // gated on isSlapKnockback). isBurstKnockback already governs the friction
   // curve, so this flag only enables the rope clamp — no other behavior change.
-  // GORED forces ring-out eligibility (MATADOR wrong-read must hurt).
   opponent.isSlapKnockback = true;
   const distanceToBoundaryInKbDir =
     knockbackDirection > 0
@@ -3419,7 +3484,6 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   // MASTERY Phase 2 (2.4): flap body-slam (airborne → no momentum term) still
   // gets the broken-posture band extension. Flag off ⇒ SLAP_KILL_RANGE.
   opponent.slapKnockbackCanRingOut =
-    isGored ||
     distanceToBoundaryInKbDir <= slapKillBand(flapper, opponent);
 
   if (!opponent.isAtTheRopes && !opponent.atTheRopesFacingDirection) {
@@ -3446,11 +3510,14 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   if (currentRoom) {
     const attackerPlayerNumber =
       currentRoom.players.findIndex((p) => p.id === flapper.id) + 1;
+    // Recompute contact anchors after park so the spark sits in the plant gap.
+    const parkedContact = computeOffensiveAerialContact(flapper, opponent);
+    const parkedEffect = toEffectContactPayload(parkedContact, flapper);
     const hitPresentation = buildOffensiveAerialContactPresentation({
       eventType: PRESENTATION_EVENT_TYPE.OA_HIT,
       attacker: flapper,
       defender: opponent,
-      contact: slamContact,
+      contact: parkedContact,
       approachX: flapper.slideJumpVelocityX || flapper.flapVelocityX || 0,
       approachY: flapper.slideJumpVelocityY || 0,
       salt: "hit",
@@ -3478,8 +3545,11 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
           isArmorBreak: false,
           attackerId: flapper.id,
           victimId: opponent.id,
-          // Phase 3: authoritative slam contact (replaces client x+70 fallback).
-          ...effectContact,
+          // Plant pin — same as slap/charged hitstop freeze.
+          attackerX: flapper.x,
+          attackerY: flapper.y,
+          // Phase 3: authoritative slam contact (post-park plant seam).
+          ...parkedEffect,
           // MASTERY Phase 5 (5.2): braked-knockback "dig-in" tell (false w/ flag off).
           momentumHit: false,
           braked: MASTERY_P5_ASSISTS && flapBraked,

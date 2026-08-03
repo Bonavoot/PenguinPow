@@ -57,6 +57,9 @@ const {
   ICE_SLIDE_REVERSE_COOLDOWN_MS,
   GRAB_STATES,
   GRAB_STARTUP_DURATION_MS,
+  SLIDE_JUMP_DIVE_MIN_AIR_MS,
+  SLIDE_JUMP_DIVE_MIN_HEIGHT,
+  SLIDE_JUMP_DIVE_BUFFER_MS,
 } = require("./constants");
 
 // Velocity-at-press telemetry sink (MASTERY Phase 0). appendVerbInit is a
@@ -1382,6 +1385,11 @@ function clearAllActionStates(player) {
   player.isGrabStartup = false;
   player.isWhiffingGrab = false;
   player.isGrabWhiffRecovery = false;
+  // Whiff recovery arms grabCooldown and clears it via the grabWhiffRecovery
+  // timer. That timer is cancelled above (LIFECYCLE_TIMEOUT_NAMES) — if we
+  // don't clear the flag here, mouse2 grabs stay rejected forever after a
+  // hit/interrupt during whiff recovery.
+  player.grabCooldown = false;
   player.grabbedOpponent = null;
   player.grabMovementStartTime = 0;
   player.grabMovementDirection = 0;
@@ -1675,11 +1683,14 @@ function clearSlideJumpState(player, opts = {}) {
   player.slideJumpVelocityY = 0;
   player.slideJumpVelocityX = 0;
   player.slideJumpDiveCommitted = false;
+  player.slideJumpDiveBuffered = false;
+  player.slideJumpDiveBufferUntil = 0;
   player.slideJumpFastFalling = false;
   player.slideJumpDiveLockX = 0;
   player.slideJumpHitLanded = false;
   player.slideJumpHitRecoverDuration = 0;
   player.slideJumpLandingTime = 0;
+  player.slideJumpLandSlamImmuneUntil = 0;
   player.slideJumpStartTime = 0;
   player.slideJumpBufferUntil = 0;
   player.slideJumpHasFlap = false;
@@ -1867,8 +1878,9 @@ function clearHitFall(player) {
 }
 
 /**
- * Commitment model: passive slide-jump / FLAP flight is strike-immune.
- * S dive (`slideJumpDiveCommitted`) and landing phase are hittable.
+ * Slide-jump / FLAP flight is strike-immune until touchdown.
+ * Includes S dive — dive commits the slam offense but does not open the
+ * flyer to mid-air hits (landing phase is the punish window).
  */
 function isSlideJumpFlightImmune(player) {
   // Parried recoil is deliberately vulnerable (flight immunity cleared).
@@ -1876,9 +1888,52 @@ function isSlideJumpFlightImmune(player) {
   return !!(
     player &&
     player.isSlideJumping &&
-    player.slideJumpPhase === "flight" &&
-    !player.slideJumpDiveCommitted
+    player.slideJumpPhase === "flight"
   );
+}
+
+/**
+ * True once the hop is readable enough for S dive (mid-ascent, not peak).
+ * Either minimum airtime OR height — normal liftoff clears height first (~6 ticks).
+ */
+function isSlideJumpDiveEnabled(player, now = 0) {
+  if (!player?.isSlideJumping || player.slideJumpPhase !== "flight") {
+    return false;
+  }
+  if (player.slideJumpDiveCommitted) return true;
+  const age = now - (player.slideJumpStartTime || 0);
+  const height = (player.y || 0) - GROUND_LEVEL;
+  return (
+    age >= SLIDE_JUMP_DIVE_MIN_AIR_MS || height >= SLIDE_JUMP_DIVE_MIN_HEIGHT
+  );
+}
+
+/** Latch early S so the dive isn't eaten during the enable lock. */
+function bufferSlideJumpDiveInput(player, now = 0) {
+  if (!player?.isSlideJumping || player.slideJumpPhase !== "flight") return;
+  if (player.slideJumpDiveCommitted) return;
+  player.slideJumpDiveBuffered = true;
+  player.slideJumpDiveBufferUntil = now + SLIDE_JUMP_DIVE_BUFFER_MS;
+}
+
+/** True if a buffered / held S should commit this tick. */
+function shouldCommitSlideJumpDive(player, now = 0) {
+  if (!player?.isSlideJumping || player.slideJumpPhase !== "flight") {
+    return false;
+  }
+  if (player.slideJumpDiveCommitted) return false;
+  if (player.keys?.s) {
+    bufferSlideJumpDiveInput(player, now);
+  }
+  const bufferLive =
+    !!player.slideJumpDiveBuffered &&
+    (!player.slideJumpDiveBufferUntil ||
+      now <= player.slideJumpDiveBufferUntil);
+  if (!bufferLive) {
+    player.slideJumpDiveBuffered = false;
+    return false;
+  }
+  return isSlideJumpDiveEnabled(player, now);
 }
 
 /** Prior vertical velocity to carry into an air-hit fall (call BEFORE clearAllActionStates). */
@@ -2502,6 +2557,9 @@ module.exports = {
   clearHitFall,
   clearSidestepHitReturn,
   isSlideJumpFlightImmune,
+  isSlideJumpDiveEnabled,
+  bufferSlideJumpDiveInput,
+  shouldCommitSlideJumpDive,
   captureAirVerticalVelocity,
   captureAirHorizontalVelocity,
   applyAirHitKnockbackBoost,

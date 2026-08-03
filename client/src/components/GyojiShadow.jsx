@@ -1,11 +1,13 @@
 import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import IceReflection from "./IceReflection";
+import {
+  GYOJI_FOOT_BOTTOM_PCT,
+  GYOJI_LEFT_PCT,
+  GYOJI_WIDTH_PCT,
+} from "./gyojiLayout";
 
-// Lockstep with `.gyoji` in App.css — same left-edge plant + width.
-const GYOJI_LEFT_PCT = 42.75;
-const GYOJI_WIDTH = "14.5%";
-const GYOJI_FOOT_BOTTOM_PCT = 47.75;
+const GYOJI_WIDTH = `${GYOJI_WIDTH_PCT}%`;
 
 // Lift under the sandals — too low reads "in front of him" on the ice plane;
 // too high mashes into the kimono as a blob.

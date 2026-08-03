@@ -180,7 +180,7 @@ const MobileControls = ({ isInputBlocked = false, currentPlayer }) => {
     // Block inputs during power-up selection or when throwing snowball
     if (isInputBlocked || currentPlayer?.isThrowingSnowball) return;
 
-    // While grabbed: allow break (attack/Space), throw (W), grab/M2 (belt).
+    // While grabbed: allow break (attack/Space), throw (W), grab/M2 (throw chord).
     // Block dash — open-game only.
     if (currentPlayer?.isBeingGrabbed && action === "dash") return;
 

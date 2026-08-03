@@ -1460,9 +1460,10 @@ function processInputPacket(room, player, data, io, rooms) {
   //   THROW — M2 + W
   //   PULL  — M2 + away
   // Either input can be the tap that completes the chord while the other is
-  // held or was tapped within the window. Holding M2 alone is still belt pose.
-  // Tradeoff: holding away (Plant) + tapping M2 will pull — plant with S, or
-  // keep M2 held, if you only want belt arms.
+  // held or was tapped within the window. Clinch pose is always belt grip;
+  // M2 alone does not change pose.
+  // Tradeoff: holding away (Plant) + tapping M2 will pull — plant with S
+  // if you only want to brace.
   //
   // Grab-initiate M2 must NOT feed the throw chord. A tap that starts a grab
   // is grab-only; instant throw on connect requires M2 still held when W/away

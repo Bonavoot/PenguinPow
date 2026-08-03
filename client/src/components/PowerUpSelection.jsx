@@ -736,7 +736,7 @@ const PowerUpSelection = ({
       },
       flap: {
         name: "Flap",
-        description: "Slide jump air charges",
+        description: "Slide jump + 1 air flap",
         icon: flapIcon,
         active: true,
         usageLabel: "W mid-air",

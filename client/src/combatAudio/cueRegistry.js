@@ -32,6 +32,10 @@ export const CUE = Object.freeze({
 
 export const CINEMATIC_VARIANT = Object.freeze({
   DEMOLISHED_CHARGED: "demolished_charged",
+  // MATADOR success kill (belly-slide) — camera/darken only.
+  // NOT Matador Break (isGored strike-beats-matador hit callout).
+  MATADOR_KILL: "matador_kill",
+  /** @deprecated legacy misnomer — resolveCinematicVariant maps to MATADOR_KILL */
   MATADOR_BREAK: "matador_break",
   AP_PULL: "ap_pull",
 });
