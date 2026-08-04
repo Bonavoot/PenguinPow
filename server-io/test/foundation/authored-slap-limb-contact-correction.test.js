@@ -17,7 +17,13 @@ const {
   advanceSim,
   armPalmPhase,
   armChargedPhase,
+  placeAtGap,
 } = require("./helpers/scenarioHarness");
+const {
+  limbOnlyGap,
+  limbReachGap,
+  torsoGate,
+} = require("./helpers/limbSpacing");
 const {
   SLAP_STARTUP_MS,
   SLAP_ACTIVE_MS,
@@ -44,9 +50,23 @@ const {
 } = require("../../authoredSlapHurtTarget");
 
 const TICK_MS = 1000 / TICK_RATE;
-const LIMB_GAP = 160;
+// Spacing is derived from live authored geometry (see helpers/limbSpacing.js).
+// The old literal LIMB_GAP=160 only "worked" while the authored limb over-reached
+// its own art by ~27 world units.
 const TORSO_GAP = 120;
 const SIZE = 0.85;
+
+/**
+ * Re-space an armed scenario into the honest limb-only band for this pairing.
+ * Returns the applied gap, or null when the band is empty (authored limb is
+ * enclosed by legacy torso connect — e.g. the retracted slap-recovery arm).
+ */
+function placeInLimbOnlyBand(s, attackKind, simTime, bias = 0.5) {
+  const gap = limbOnlyGap(attackKind, s.left, s.right, simTime, bias);
+  if (gap == null) return null;
+  placeAtGap(s, gap);
+  return gap;
+}
 
 function hitCount(io) {
   return io.find("player_hit").length;
@@ -120,11 +140,15 @@ describe("Phase 4A limb-contact correction — no torso park on limb-only", () =
 
   it("slap vs recovery limb: no pre-KB suction; spark at limb; KB away", () => {
     setAuthoredSlapHurtboxForTests(true);
-    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const s = createFoundationScenario({ sizeA: SIZE, sizeB: SIZE });
     s.right.isCPU = true;
     const t0 = s.room.simTime;
     armSlapRecovery(s.right, t0);
     armSlapActive(s.left, t0, 60);
+    assert.ok(
+      placeInLimbOnlyBand(s, "slap", t0) != null,
+      "slap→recovery limb-only band must exist at the shipped size"
+    );
     assertLimbOnlySpacing(s.left, s.right);
     const before = { ax: s.left.x, vx: s.right.x, dist: Math.abs(s.left.x - s.right.x) };
     stepCollisionBothOrders(s);
@@ -159,10 +183,11 @@ describe("Phase 4A limb-contact correction — no torso park on limb-only", () =
 
   it("slap vs active limb (reciprocal priority): winner limb hit skips torso park", () => {
     setAuthoredSlapHurtboxForTests(true);
-    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const s = createFoundationScenario({ sizeA: SIZE, sizeB: SIZE });
     const t0 = s.room.simTime;
     armSlapActive(s.right, t0, 40);
     armSlapActive(s.left, t0, 0);
+    placeInLimbOnlyBand(s, "slap", t0);
     assertLimbOnlySpacing(s.left, s.right);
     stepCollisionBothOrders(s);
     assert.equal(hitCount(s.io), 1);
@@ -171,35 +196,49 @@ describe("Phase 4A limb-contact correction — no torso park on limb-only", () =
     s.dispose();
   });
 
-  it("palm vs recovery slap limb: connects and skips torso park (already on pipeline)", () => {
+  it("palm vs recovery slap limb: honest band is empty — palm reach cannot beat torso connect", () => {
     setAuthoredSlapHurtboxForTests(true);
-    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const s = createFoundationScenario({ sizeA: SIZE, sizeB: SIZE });
     const t0 = s.room.simTime;
     armSlapRecovery(s.right, t0);
     armPalmPhase(s.left, "active", t0);
     empowerPalm(s.left, t0);
     s.left.chargingFacingDirection = s.left.facing;
-    assertLimbOnlySpacing(s.left, s.right);
-    const beforeDist = Math.abs(s.left.x - s.right.x);
-    const beforeAx = s.left.x;
+    // Palm's authored rail (73.825) + retracted recovery arm (54.448) = 128.27,
+    // which is INSIDE palm torso connect (137.58 at size 0.85). A limb-only palm
+    // punish of the settle-back arm is geometrically impossible — the arm never
+    // pokes out past the victim pushbox. Document it rather than inflate it.
+    assert.equal(
+      limbOnlyGap("palm", s.left, s.right, t0),
+      null,
+      "palm→recovery must have no limb-only band"
+    );
+    assert.ok(limbReachGap("palm", s.right, t0) < torsoGate("palm", s.left, s.right));
+    // At the limb-reach boundary the torso is ALSO in connect, so this resolves
+    // as torso-plus-limb: one hit, frontArm identity for VFX, legacy torso park.
+    placeAtGap(s, limbReachGap("palm", s.right, t0));
     stepCollisionBothOrders(s);
-    assert.equal(hitCount(s.io), 1, "palm must already be able to hit exposed slap limb");
+    assert.equal(hitCount(s.io), 1, "limb overlap still commits exactly one hit");
     assert.equal(lastHit(s.io).victimHurtRegion, "frontArm");
-    assertNoTorsoParkPull(getLastSlapHurtCommitted(), "palm-recovery");
-    // Palm may keep its own root (rooted poke); must not drag victim to torso park.
-    assert.equal(s.left.x, beforeAx, "palm attacker root must not be pulled");
-    assert.ok(Math.abs(s.left.x - s.right.x) + 0.01 >= beforeDist - 1);
+    assert.equal(
+      lastHit(s.io).limbOnlyContact,
+      false,
+      "torso-plus-limb must not advertise limbOnlyContact"
+    );
+    const committed = getLastSlapHurtCommitted();
+    assert.equal(committed.parkPolicy, "torso_park");
     s.dispose();
   });
 
   it("palm vs active slap limb: connects once; no suction", () => {
     setAuthoredSlapHurtboxForTests(true);
-    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const s = createFoundationScenario({ sizeA: SIZE, sizeB: SIZE });
     const t0 = s.room.simTime;
     armSlapActive(s.right, t0, 60);
     armPalmPhase(s.left, "active", t0);
     empowerPalm(s.left, t0);
     s.left.chargingFacingDirection = s.left.facing;
+    assert.ok(placeInLimbOnlyBand(s, "palm", t0) != null);
     stepCollisionBothOrders(s);
     assert.equal(hitCount(s.io), 1);
     assertNoTorsoParkPull(getLastSlapHurtCommitted(), "palm-active");
@@ -208,13 +247,14 @@ describe("Phase 4A limb-contact correction — no torso park on limb-only", () =
 
   it("charged vs recovery slap limb: if tip∩limb connects, skip torso park", () => {
     setAuthoredSlapHurtboxForTests(true);
-    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const s = createFoundationScenario({ sizeA: SIZE, sizeB: SIZE });
     const t0 = s.room.simTime;
     armSlapRecovery(s.right, t0);
     armChargedPhase(s.left, "active", t0);
     s.left.chargeAttackPower = CHARGE_PRIORITY_THRESHOLD;
     s.left.chargingFacingDirection = s.left.facing;
     s.left.isInStartupFrames = false;
+    placeAtGap(s, limbReachGap("charged", s.right, t0));
     stepCollisionBothOrders(s);
     // Charged tip may or may not overlap limb at this gap — document either way.
     if (hitCount(s.io) === 0) {
@@ -293,10 +333,12 @@ describe("Phase 4A limb-contact correction — no torso park on limb-only", () =
 
   it("flag OFF: limb spacing misses; roots unchanged", () => {
     setAuthoredSlapHurtboxForTests(false);
-    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const s = createFoundationScenario({ sizeA: SIZE, sizeB: SIZE });
     const t0 = s.room.simTime;
     armSlapRecovery(s.right, t0);
     armSlapActive(s.left, t0, 60);
+    // Flag OFF must still be evaluated at a spacing the flag-ON path accepts.
+    placeInLimbOnlyBand(s, "slap", t0);
     const before = { ax: s.left.x, vx: s.right.x };
     stepCollisionBothOrders(s);
     assert.equal(hitCount(s.io), 0);
@@ -308,7 +350,7 @@ describe("Phase 4A limb-contact correction — no torso park on limb-only", () =
 
   it("retracted limb miss changes neither root", () => {
     setAuthoredSlapHurtboxForTests(true);
-    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const s = createFoundationScenario({ gap: 160, sizeA: SIZE, sizeB: SIZE });
     const t0 = s.room.simTime;
     armSlapActive(s.left, t0, 60);
     s.right.isAttacking = false;
@@ -344,7 +386,6 @@ describe("Phase 4A limb-contact correction — no torso park on limb-only", () =
     ];
     for (const c of cases) {
       const s = createFoundationScenario({
-        gap: LIMB_GAP,
         sizeA: c.size,
         sizeB: c.size,
         leftFacing: c.leftFacing,
@@ -353,8 +394,12 @@ describe("Phase 4A limb-contact correction — no torso park on limb-only", () =
       });
       s.right.isCPU = true;
       const t0 = s.room.simTime;
-      armSlapRecovery(s.right, t0);
-      armSlapActive(s.left, t0, 60);
+      // Victim ACTIVE: the only pose whose arm honestly pokes past torso connect
+      // at BOTH shipped sizes (the settle-back recovery arm never does at size 1).
+      armSlapActive(s.right, t0, 60);
+      armSlapActive(s.left, t0, 0);
+      const gap = placeInLimbOnlyBand(s, "slap", t0);
+      assert.ok(gap != null, `${c.label}: limb-only band must exist`);
       stepCollisionBothOrders(s);
       assert.equal(hitCount(s.io), 1, c.label);
       assertNoTorsoParkPull(getLastSlapHurtCommitted(), c.label);
@@ -372,10 +417,11 @@ describe("Phase 4A limb-contact correction — no torso park on limb-only", () =
 
   it("animation-stop regression: reciprocal limb still lands one hit", () => {
     setAuthoredSlapHurtboxForTests(true);
-    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const s = createFoundationScenario({ sizeA: SIZE, sizeB: SIZE });
     const t0 = s.room.simTime;
     armSlapActive(s.right, t0, 40);
     armSlapActive(s.left, t0, 0);
+    placeInLimbOnlyBand(s, "slap", t0);
     stepCollisionBothOrders(s);
     assert.equal(hitCount(s.io), 1);
     assert.equal(s.left.isHit || s.right.isHit, true);

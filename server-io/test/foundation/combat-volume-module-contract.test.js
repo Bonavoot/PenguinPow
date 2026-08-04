@@ -18,9 +18,15 @@ const SHARED_JSON = path.join(
 
 /**
  * Poses-only fingerprint (camera-sync projection + head/torso/limb art alignment).
+ *
+ * Rolled for the Phase 4A visible-limb-contact repair: `slap_active` gained
+ * per-variant `frontArm` volumes and both `slap_active` / `slap_recovery`
+ * `frontArm` bounds were re-measured against the real artwork (outer edge was
+ * 106, ~27.6 units past the widest visible arm tip). See
+ * `meta.phase4aLimbMeasurement` for the measurement method and per-sprite bands.
  */
 const EXPECTED_POSES_SHA256 =
-  "628ecacfd2b7cd2e794eea2b09389cc9c1faa516ec2d6e52dd008429bf81c85c";
+  "ed309b74386f058e43e9897522b7634c62510b8840a262d2da5cf3264b6ba975";
 
 const REQUIRED_TOP_KEYS = ["version", "phase", "coordSystem", "meta", "poses"];
 const REQUIRED_POSES = [

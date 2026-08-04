@@ -163,6 +163,36 @@ export function resolveClientAuthoredPoseKey(fighter) {
 }
 
 /**
+ * Region list for a pose, with any per-variant overrides applied.
+ *
+ * Mirrors the server's resolveVariantRegions (combatVolumeDefs.js). `slap_active`
+ * authors one `frontArm` per slap animation because the two hit frames genuinely
+ * draw different arm lengths — without this the overlay would draw the shorter
+ * fallback box on slap-2 frames and read as if authority were under-reaching.
+ * An unknown variant falls back to the base (shorter) regions, same as authority.
+ */
+export function resolveAuthoredPoseRegions(pose, fighter) {
+  if (!pose || !Array.isArray(pose.regions)) return [];
+  if (!pose.variants || !pose.variantKey) return pose.regions;
+  const raw = fighter ? fighter[pose.variantKey] : undefined;
+  const key = raw == null ? null : String(raw);
+  const variant =
+    (key && pose.variants[key]) ||
+    (pose.variantDefault != null
+      ? pose.variants[String(pose.variantDefault)]
+      : null);
+  const overrides =
+    variant && Array.isArray(variant.regionOverrides)
+      ? variant.regionOverrides
+      : null;
+  if (!overrides || overrides.length === 0) return pose.regions;
+  return pose.regions.map((r) => {
+    const o = overrides.find((v) => v.label === r.label);
+    return o ? { ...r, ...o } : r;
+  });
+}
+
+/**
  * Derive authored debug volumes for overlay. Returns [] when unsupported/uncertain.
  */
 export function deriveAuthoredDebugVolumes(fighter) {
@@ -187,8 +217,9 @@ export function deriveAuthoredDebugVolumes(fighter) {
   // Grounded-only regions stay on the sim ground plane (not pose visual lift).
   const groundAnchorY = GROUND_LEVEL + (rootY - simY);
 
-  for (let i = 0; i < pose.regions.length; i++) {
-    const r = pose.regions[i];
+  const regions = resolveAuthoredPoseRegions(pose, fighter);
+  for (let i = 0; i < regions.length; i++) {
+    const r = regions[i];
     if (r.groundedOnly && simY < GROUND_LEVEL - 2) continue;
     // Hard invariant: recovery/startup/uncertain never emit HIT, even if a
     // pose table row were mis-authored.

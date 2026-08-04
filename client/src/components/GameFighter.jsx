@@ -253,7 +253,13 @@ import {
   clinchPlanting as clinchPlantingSprite,
   beltGrabArm as beltGrabArmSprite,
 } from "./fighterAssets";
-import getImageSrc from "./getImageSrc";
+import getImageSrc, { getStruckSlapLimbSrc } from "./getImageSrc";
+import {
+  createStruckLimbHold,
+  armStruckLimbHold,
+  resolveStruckLimbHold,
+  struckLimbHoldNeedsTick,
+} from "../combatPresentation/struckLimbHold";
 import {
   getHatOverlayForSprite,
   getEquippedHeadGearId,
@@ -3018,6 +3024,14 @@ const GameFighter = ({
         (rendered.flash && nowMs >= hitFlashUntilRef.current) ||
         (rendered.tint && nowMs >= hitTintUntilRef.current) ||
         (rendered.hold && nowMs >= idleHoldUntilRef.current) ||
+        // Struck-limb pose hold expired with the freeze (commit the handoff to
+        // the ordinary hit reaction this frame), or `player_hit` beat the hitstop
+        // packet and the deadline still needs adopting.
+        struckLimbHoldNeedsTick(
+          struckLimbHoldRef.current,
+          nowMs,
+          rendered.struckLimbHold
+        ) ||
         (rendered.flapBeat &&
           nowMs >= flapBeatRef.current.startedAt + FLAP_WINGBEAT_MS) ||
         // Palm-thrust animation is mid-sequence: force frames until it settles
@@ -3145,6 +3159,12 @@ const GameFighter = ({
   // chargeTintWhite sprite variant (preloaded by PlayerColorContext for every
   // skin combo), so it lights up instantly with no first-hit pop.
   const hitFlashUntilRef = useRef(0);
+
+  // PHASE 4A — struck-limb contact-pose hold. All ordering/lifetime rules live
+  // in combatPresentation/struckLimbHold (pure + unit-tested); this ref is just
+  // the per-fighter record.
+  const struckLimbHoldRef = useRef(createStruckLimbHold());
+
   // What the last committed render showed (flash/tint/hold/prediction
   // visible) — the rAF loop compares against live deadlines to know when a
   // re-render is needed.
@@ -3157,6 +3177,9 @@ const GameFighter = ({
     palmThrustAnim: false,
     slapAnim: false,
     dashAnim: false,
+    // Phase 4A struck-limb pose hold is showing — force the release render the
+    // moment display hitstop lapses so the extended arm can't outlive the freeze.
+    struckLimbHold: false,
   });
   // Debounce flag for rapid multi-hits (e.g. back-to-back slaps). Only the
   // OPENING hit of a string should flash; subsequent hits within the cooldown
@@ -4302,6 +4325,24 @@ const GameFighter = ({
             amp: data.attackType === "charged" ? 4 : 3,
             frame: 0,
           };
+        }
+
+        // PHASE 4A — arm the struck-limb pose hold. Only GENUINE limb-only
+        // contacts qualify (see struckLimbHold); torso and torso-plus-limb body
+        // contacts fall through to the ordinary hit reaction.
+        if (
+          armStruckLimbHold(
+            struckLimbHoldRef.current,
+            data,
+            player.id,
+            performance.now(),
+            getDisplayHitstopUntil(),
+            getStruckSlapLimbSrc
+          )
+        ) {
+          // `isHit` may already have rendered (hitstop-before-event order), so
+          // the swap needs its own render — movement alone doesn't re-render.
+          forceVisualRender();
         }
 
         // Charged-hit knockback trail (A4): only the victim's GameFighter instance
@@ -7979,6 +8020,17 @@ const GameFighter = ({
     else if (elapsed < SLAP_ANIM.HIT_END) slapFrame = 2; // hit (strike, held)
     else slapFrame = 3; // recovery — settle back to the ready stance (not idle)
   }
+  // PHASE 4A — resolve the struck-limb hold for THIS render. The deadline is
+  // always the existing display hitstop's, so the pose can never outlive the
+  // freeze it belongs to.
+  const struckLimbHold = struckLimbHoldRef.current;
+  const holdStruckLimbPose = resolveStruckLimbHold(
+    struckLimbHold,
+    performance.now(),
+    getDisplayHitstopUntil(),
+    penguin.isHit || penguin.isHitFalling
+  );
+
   // Dev combat-volume debug: publish exact slap/palm director phase for this slot.
   // Gated — no hint bookkeeping when fidelity debug is off / production.
   if (isCombatFidelityDebugEnabled()) {
@@ -8165,7 +8217,12 @@ const GameFighter = ({
   // bookend frames that sell its weight. Landing only overrides an idle (pumo)
   // frame so it never stomps an action buffered out of the (0ms) recovery, nor
   // the power-slide crouch pose.
-  const displaySpriteSrc = inDashWindup
+  // PHASE 4A struck-limb hold outranks the generic hit sprite for the duration
+  // of the existing display hitstop, so the player can actually SEE the arm that
+  // was hit (and the spark that lands on it) before the hit reaction takes over.
+  const displaySpriteSrc = holdStruckLimbPose
+    ? struckLimbHold.src
+    : inDashWindup
     ? recovering
     : penguin.justLandedFromDodge && rawSpriteSrc === pumo
     ? recovering
@@ -8290,6 +8347,7 @@ const GameFighter = ({
   renderedHitVisualsRef.current.flash = showHitFlashThisFrame;
   renderedHitVisualsRef.current.tint = showHitTintThisFrame;
   renderedHitVisualsRef.current.hold = effectiveSpriteSrc !== displaySpriteSrc;
+  renderedHitVisualsRef.current.struckLimbHold = holdStruckLimbPose;
   renderedHitVisualsRef.current.dashAnim =
     displayPenguin.isDodging || penguin.justLandedFromDodge;
   // FLAP / slide-jump wing-beat: when this render committed the down-stroke

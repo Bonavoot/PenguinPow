@@ -7,6 +7,12 @@
  * Does NOT replace strikeContact tip-meets-body. Does NOT author hits from client
  * debug latches, renderX/Y, or pose-director hints.
  *
+ * BOTH sides of the limb query are authored geometry:
+ *   attacker → the canonical HIT rail of its real authoritative pose
+ *              (slap_active / palm_active / charged_active)
+ *   victim   → the exposed pose's HURT_LIMB, variant-resolved from slapAnimation
+ * Neither is size-scaled: rendered sprite width is fixed, so reach is fixed.
+ *
  * Exposure: slap_active + slap_recovery only (startup limb is authored but not
  * Phase 4A-authoritative until separately approved).
  *
@@ -28,6 +34,7 @@ const {
   resolveMirrorFacing,
   inferAuthoredPhase,
   getPoseDefinition,
+  resolvePoseVariantKey,
   materializeLocalRegions,
   SUPPORT,
 } = require("./combatVolumeDefs");
@@ -43,7 +50,6 @@ const {
   SLAP_GRACE_CONFIRM_SLACK_PX,
 } = require("./constants");
 const {
-  getStrikeTipWorld,
   getAttackDir,
   attackKindFromPlayer,
   getConnectDistance,
@@ -51,10 +57,17 @@ const {
   getContactSeamX,
 } = require("./strikeContact");
 
-/** Tip-probe half extents — match approved slap tip_rail visualization. */
-const TIP_PROBE_HALF_W = 14;
-const TIP_PROBE_HALF_H = 16;
-const TIP_PROBE_UP = 66;
+/**
+ * Attack kind → authored pose whose canonical HIT region IS the limb probe.
+ * There is no second probe table: the rail drawn in the authored catalog is the
+ * rail queried at runtime.
+ */
+const ATTACKER_HIT_POSE = Object.freeze({
+  slap: "slap_active",
+  palm: "palm_active",
+  palmThrust: "palm_active",
+  charged: "charged_active",
+});
 
 /**
  * Server-side slap allowlist for Phase 4A authority.
@@ -162,6 +175,8 @@ function noteSlapHurtCommitted(entry) {
     kind: entry.kind || null,
     victimPhase: entry.victimPhase || null,
     poseKey: entry.poseKey || null,
+    variantKey: entry.variantKey != null ? entry.variantKey : null,
+    limbOnly: entry.limbOnly == null ? null : !!entry.limbOnly,
     attackType: entry.attackType || null,
     isPunish: !!entry.isPunish,
     authoredSlapHurtboxV1: !!entry.authoredSlapHurtboxV1,
@@ -247,7 +262,10 @@ function getVictimSlapLimbAabb(victim, simTime, out) {
   const poseDef = getPoseDefinition(exposure.poseKey);
   if (!poseDef || poseDef.support !== SUPPORT.SUPPORTED) return null;
   const size = victim.sizeMultiplier || 1;
-  const locals = materializeLocalRegions(poseDef, size);
+  // Variant comes from authoritative sim state (slapAnimation), so the queried
+  // volume is the one the victim is actually drawing this frame.
+  const variantKey = resolvePoseVariantKey(poseDef, victim);
+  const locals = materializeLocalRegions(poseDef, size, variantKey);
   let limbLocal = null;
   for (let i = 0; i < locals.length; i++) {
     if (locals[i].kind === COMBAT_VOLUME_KIND.HURT_LIMB) {
@@ -270,7 +288,25 @@ function getVictimSlapLimbAabb(victim, simTime, out) {
     phase: exposure.phase,
     region: limbLocal.region || limbLocal.label,
     label: limbLocal.label,
+    variantKey,
+    /** Outward edge along the victim's forward — honest visible arm tip. */
+    reachForward: limbLocal.forward + limbLocal.halfW,
   };
+}
+
+/**
+ * Max root-to-root gap at which `attackKind` can legally reach `victim`'s
+ * exposed slap limb. Pure geometry (probe outer edge + limb outer edge) —
+ * exported so tests and diagnostics can assert the honest range directly.
+ */
+function getMaxLegalLimbGap(attackKind, victim, simTime) {
+  const probe = getAttackerHitRegion(
+    attackKind === "palmThrust" ? "palm" : attackKind
+  );
+  if (!probe) return null;
+  const limb = getVictimSlapLimbAabb(victim, simTime);
+  if (!limb) return null;
+  return probe.region.forward + probe.region.halfW + limb.reachForward;
 }
 
 function resolveAttackerActionFacing(attacker, attackKind) {
@@ -293,21 +329,81 @@ function resolveAttackerActionFacing(attacker, attackKind) {
 }
 
 /**
- * Tip probe AABB from strikeContact tip length + approved tip-rail half extents.
- * Offense authority remains tip length; this is only the probe for limb overlap.
+ * Canonical authored HIT region for an attack kind's real authoritative pose.
+ * Throws when a supported pose is missing or malformed — a silently-wrong probe
+ * is how the 12-unit invisible-reach defect survived in the first place.
+ */
+function getAttackerHitRegion(attackKind) {
+  const poseKey = ATTACKER_HIT_POSE[attackKind];
+  if (!poseKey) return null;
+  const poseDef = getPoseDefinition(poseKey);
+  if (!poseDef || poseDef.support !== SUPPORT.SUPPORTED) {
+    const e = new Error(
+      `[authoredSlapHurt] ${poseKey} is not a supported authored pose — cannot derive limb probe`
+    );
+    e.code = "AUTHORED_HIT_POSE_UNSUPPORTED";
+    throw e;
+  }
+  const regions = Array.isArray(poseDef.regions) ? poseDef.regions : [];
+  const hit = regions.find((r) => r && r.kind === COMBAT_VOLUME_KIND.HIT);
+  if (!hit) {
+    const e = new Error(
+      `[authoredSlapHurt] ${poseKey} has no HIT region — cannot derive limb probe`
+    );
+    e.code = "AUTHORED_HIT_REGION_MISSING";
+    throw e;
+  }
+  const nums = [hit.forward, hit.up, hit.halfW, hit.halfH];
+  if (!nums.every((n) => typeof n === "number" && Number.isFinite(n))) {
+    const e = new Error(
+      `[authoredSlapHurt] ${poseKey} HIT region "${hit.label}" is malformed ` +
+        `(forward/up/halfW/halfH must be finite numbers)`
+    );
+    e.code = "AUTHORED_HIT_REGION_MALFORMED";
+    throw e;
+  }
+  if (!(hit.halfW > 0) || !(hit.halfH > 0)) {
+    const e = new Error(
+      `[authoredSlapHurt] ${poseKey} HIT region "${hit.label}" has non-positive extents`
+    );
+    e.code = "AUTHORED_HIT_REGION_MALFORMED";
+    throw e;
+  }
+  return { poseKey, region: hit };
+}
+
+/**
+ * Limb-query probe AABB, straight off the attacker's canonical authored HIT rail.
+ *
+ * Position comes from the server root, committed action-facing and the
+ * authoritative action state only — never client pose hints, renderX/Y or DOM.
+ * Extents are authored world units and are deliberately NOT multiplied by
+ * sizeMultiplier: the rendered sprite width is fixed, so sprite reach is too.
  */
 function buildAttackerTipProbeAabb(attacker, attackKind, out) {
-  const tip = getStrikeTipWorld(attackKind, attacker);
+  const hit = getAttackerHitRegion(attackKind);
+  if (!hit) return null;
+  const { region } = hit;
   const facing = resolveAttackerActionFacing(attacker, attackKind);
   const dir = facing === 1 ? -1 : 1;
-  const cx = attacker.x + dir * tip;
-  const cy = (typeof attacker.y === "number" ? attacker.y : 0) + TIP_PROBE_UP;
+  const cx = attacker.x + dir * region.forward;
+  const cy = (typeof attacker.y === "number" ? attacker.y : 0) + region.up;
   const aabb = out || { left: 0, right: 0, top: 0, bottom: 0 };
-  aabb.left = cx - TIP_PROBE_HALF_W;
-  aabb.right = cx + TIP_PROBE_HALF_W;
-  aabb.bottom = cy - TIP_PROBE_HALF_H;
-  aabb.top = cy + TIP_PROBE_HALF_H;
-  return { aabb, tipX: cx, tipY: cy, facing, attackDir: dir };
+  aabb.left = cx - region.halfW;
+  aabb.right = cx + region.halfW;
+  aabb.bottom = cy - region.halfH;
+  aabb.top = cy + region.halfH;
+  return {
+    aabb,
+    tipX: cx,
+    tipY: cy,
+    facing,
+    attackDir: dir,
+    hitPoseKey: hit.poseKey,
+    hitLabel: region.label || null,
+    /** Outward edge along attack direction — the honest max reach of the probe. */
+    reachForward: region.forward + region.halfW,
+  };
 }
 
 /**
@@ -337,6 +433,7 @@ function evaluateTipVersusSlapLimb(attacker, victim, opts = {}) {
   if (!limb) return null;
 
   const tip = buildAttackerTipProbeAabb(attacker, kind === "palmThrust" ? "palm" : kind);
+  if (!tip) return null;
   if (!aabbsOverlap(tip.aabb, limb.aabb)) return null;
 
   const contact = aabbContactApprox(tip.aabb, limb.aabb, {
@@ -357,9 +454,12 @@ function evaluateTipVersusSlapLimb(attacker, victim, opts = {}) {
     poseKey: limb.poseKey,
     phase: limb.phase,
     mirrorFacing: limb.mirrorFacing,
+    variantKey: limb.variantKey,
     tipX: tip.tipX,
     tipY: tip.tipY,
     attackKind: kind,
+    hitPoseKey: tip.hitPoseKey,
+    hitLabel: tip.hitLabel,
     edgePolicy: EDGE_POLICY.name,
   };
 }
@@ -391,6 +491,7 @@ function selectWinningVictimContact(args) {
       poseKey: args.limb.poseKey,
       phase: args.limb.phase,
       mirrorFacing: args.limb.mirrorFacing,
+      variantKey: args.limb.variantKey,
     });
   }
   if (candidates.length === 0) return null;
@@ -574,6 +675,8 @@ function stampStrikeContactOverride(attacker, winner) {
     poseKey: winner.poseKey || null,
     phase: winner.phase || null,
     mirrorFacing: winner.mirrorFacing != null ? winner.mirrorFacing : null,
+    /** Exact slap animation variant the victim was drawing (1 | 2 | null). */
+    variantKey: winner.variantKey != null ? winner.variantKey : null,
     authoredSlapHurtboxV1: limbSource,
     bodyEligible,
     /** When true, processHit must NOT apply tip-meets-body torso park. */
@@ -595,6 +698,8 @@ module.exports = {
   isSlapTipLive,
   resolveSlapLimbExposure,
   getVictimSlapLimbAabb,
+  getAttackerHitRegion,
+  getMaxLegalLimbGap,
   buildAttackerTipProbeAabb,
   evaluateTipVersusSlapLimb,
   selectWinningVictimContact,
@@ -610,7 +715,5 @@ module.exports = {
   noteSlapHurtCommitted,
   getLastSlapHurtCommitted,
   clearLastSlapHurtCommitted,
-  TIP_PROBE_HALF_W,
-  TIP_PROBE_HALF_H,
-  TIP_PROBE_UP,
+  ATTACKER_HIT_POSE,
 };

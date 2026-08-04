@@ -663,6 +663,7 @@ function checkCollision(player, otherPlayer, rooms, io) {
     if (slapHurt.mode === "authored_slap_hurtbox_v1") {
       const exp = resolveSlapLimbExposure(otherPlayer, now);
       const tip = buildAttackerTipProbeAabb(player, "slap");
+      const tipProbeX = tip ? tip.tipX : null;
       noteSlapHurtQuery({
         simTime: now,
         accepted: !!(bodyEligible || limbOnlyConnect),
@@ -683,7 +684,7 @@ function checkCollision(player, otherPlayer, rooms, io) {
         victimPhase: exp.phase,
         victimPoseKey: exp.poseKey,
         limbExposed: exp.exposed,
-        tipX: tip.tipX,
+        tipX: tipProbeX,
         candidateRegion: slapHurt.winner
           ? slapHurt.winner.victimRegion
           : exp.exposed
@@ -1031,6 +1032,7 @@ function checkCollision(player, otherPlayer, rooms, io) {
   if (chargedHurt.mode === "authored_slap_hurtbox_v1") {
     const exp = resolveSlapLimbExposure(otherPlayer, now);
     const tip = buildAttackerTipProbeAabb(player, chargedKind);
+    const tipProbeX = tip ? tip.tipX : null;
     noteSlapHurtQuery({
       simTime: now,
       accepted: !!(chargedBodyEligible || chargedLimbOnly),
@@ -1051,7 +1053,7 @@ function checkCollision(player, otherPlayer, rooms, io) {
       victimPhase: exp.phase,
       victimPoseKey: exp.poseKey,
       limbExposed: exp.exposed,
-      tipX: tip.tipX,
+      tipX: tipProbeX,
       candidateRegion: chargedHurt.winner
         ? chargedHurt.winner.victimRegion
         : exp.exposed
@@ -3042,6 +3044,17 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
                       strikeContactOverride.mirrorFacing != null
                         ? strikeContactOverride.mirrorFacing
                         : null,
+                    // Exact slap animation the victim was drawing (1 | 2).
+                    victimSlapVariant:
+                      strikeContactOverride.variantKey != null
+                        ? strikeContactOverride.variantKey
+                        : null,
+                    // GENUINE limb-only: authored limb won AND torso was out of
+                    // legacy connect. Presentation-only consumer (struck-limb
+                    // pose hold). Torso-plus-limb stays false so body contacts
+                    // keep ordinary hit presentation — never key off
+                    // victimHurtKind === HURT_LIMB alone.
+                    limbOnlyContact: limbOnlyHit === true,
                   }
                 : {}),
             },
@@ -3059,6 +3072,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
             kind: strikeContactOverride.victimKind,
             victimPhase: strikeContactOverride.phase,
             poseKey: strikeContactOverride.poseKey,
+            variantKey: strikeContactOverride.variantKey,
+            limbOnly: limbOnlyHit === true,
             attackType: hitAttackType,
             isPunish,
             authoredSlapHurtboxV1: !!strikeContactOverride.authoredSlapHurtboxV1,

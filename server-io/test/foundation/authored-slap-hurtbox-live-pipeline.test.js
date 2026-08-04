@@ -43,9 +43,31 @@ const {
 const { createInitialPlayerState } = require("../../playerFactory");
 const { checkCollision } = require("../../collisionSystem");
 
+const { limbOnlyGap } = require("./helpers/limbSpacing");
+
 const TICK_MS = 1000 / TICK_RATE;
+// Nominal construction spacing only. Real limb-only spacing is DERIVED per
+// victim pose after arming (see placeLiveLimbOnly) — the corrected authored arm
+// no longer reaches a literal 160.
 const LIMB_ONLY_GAP = 160;
 const SIZE = 0.85;
+
+/**
+ * Re-space an armed live scenario into the honest limb-only band, keeping the
+ * pair centred and preserving which fighter is on which side (cross-up cases
+ * deliberately swap roots). Returns the applied gap, or null if no band exists.
+ */
+function placeLiveLimbOnly(s, kind, simTime, opts = {}) {
+  const attacker = opts.attacker || s.left;
+  const victim = opts.victim || s.right;
+  const gap = limbOnlyGap(kind, attacker, victim, simTime, opts.bias);
+  if (gap == null) return null;
+  const mid = (s.left.x + s.right.x) / 2;
+  const leftSign = s.left.x <= s.right.x ? -1 : 1;
+  s.left.x = mid + (leftSign * gap) / 2;
+  s.right.x = mid - (leftSign * gap) / 2;
+  return gap;
+}
 
 function hitCount(io) {
   return io.find("player_hit").length;
@@ -136,6 +158,7 @@ describe("Phase 4A live-pipeline — orphan slap-vs-slap AP grace (root cause)",
     armLiveSlapActive(s.right, t0, 40);
     // P1 later, just cleared startup (age 55) — inside grace too.
     armLiveSlapActive(s.left, t0, 0);
+    assert.ok(placeLiveLimbOnly(s, "slap", t0) != null);
     assertLimbOnlySpacing(s.left, s.right);
 
     const leftAtkBefore = s.left.isAttacking;
@@ -206,6 +229,9 @@ describe("Phase 4A live-pipeline — multi-tick limb authority", () => {
     const t0 = s.room.simTime;
     armLiveSlapRecovery(s.right, t0);
     armLiveSlapActive(s.left, t0, 0); // enters grace
+    // Slap is the only attacker whose authored rail out-reaches legacy torso
+    // connect against the retracted recovery arm (size 0.85 only).
+    assert.ok(placeLiveLimbOnly(s, "slap", t0) != null);
     assertLimbOnlySpacing(s.left, s.right);
 
     let landedAt = -1;
@@ -243,6 +269,7 @@ describe("Phase 4A live-pipeline — multi-tick limb authority", () => {
       const t0 = s.room.simTime;
       armLiveSlapRecovery(s.right, t0);
       armLiveSlapActive(s.left, t0, 60);
+      assert.ok(placeLiveLimbOnly(s, "slap", t0) != null);
       assertLimbOnlySpacing(s.left, s.right);
       stepCollisionBothOrders(s);
       assert.equal(hitCount(s.io), 1, "P1→CPU");
@@ -255,6 +282,7 @@ describe("Phase 4A live-pipeline — multi-tick limb authority", () => {
       const t0 = s.room.simTime;
       armLiveSlapRecovery(s.right, t0);
       armLiveSlapActive(s.left, t0, 60);
+      assert.ok(placeLiveLimbOnly(s, "slap", t0) != null);
       stepCollisionBothOrders(s);
       assert.equal(hitCount(s.io), 1, "order-swap");
       s.dispose();
@@ -278,6 +306,9 @@ describe("Phase 4A live-pipeline — multi-tick limb authority", () => {
       s.left.slapFacingDirection = 1;
       s.right.facing = -1;
       s.right.slapFacingDirection = -1;
+      // Re-space AFTER the cross-up swap and facing commit — placement preserves
+      // sides, so retained action-facing is what the probe reads.
+      assert.ok(placeLiveLimbOnly(s, "slap", t0) != null);
       assertLimbOnlySpacing(s.left, s.right);
       stepCollisionBothOrders(s);
       assert.equal(hitCount(s.io), 1, "cross-up retained facing");

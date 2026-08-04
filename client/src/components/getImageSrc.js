@@ -371,4 +371,20 @@ const getImageSrc = (
   return pumo;
 };
 
+/**
+ * Sprite the victim was drawing at the instant an authored slap limb was struck.
+ * Keyed off the SERVER's contact stamp (pose + variant), never a client guess,
+ * so the held frame is the one authority actually collided with.
+ * Mirrors the slap branch above — keep the two in sync.
+ */
+export const getStruckSlapLimbSrc = (victimSlapPoseKey, victimSlapVariant) => {
+  if (victimSlapPoseKey === "slap_active") {
+    return String(victimSlapVariant) === "2" ? slapAttack2Hit : slapAttack1Hit;
+  }
+  // Recovery settles back to the ready stance — hold the ACTUAL recovery frame,
+  // never a fabricated extension.
+  if (victimSlapPoseKey === "slap_recovery") return palmThrustStartup;
+  return null;
+};
+
 export default getImageSrc;

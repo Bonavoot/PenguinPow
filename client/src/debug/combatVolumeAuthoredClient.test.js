@@ -16,6 +16,7 @@ import {
   unbindAuthoredCatalogForTests,
   deriveAuthoredDebugVolumes,
   resolveClientAuthoredPoseKey,
+  resolveAuthoredPoseRegions,
   getAuthoredCatalog,
 } from "./combatVolumeAuthoredClient.js";
 
@@ -154,5 +155,84 @@ describe("Phase 3 — client authored volumes", () => {
     };
     assert.equal(resolveClientAuthoredPoseKey(f).poseKey, "charged_active");
     assert.ok(deriveAuthoredDebugVolumes(f).some((v) => v.kind === "HIT"));
+  });
+});
+
+describe("Phase 4A — overlay honours per-variant frontArm volumes", () => {
+  /** Measured visible arm tips (meta.phase4aLimbMeasurement) — authority's values. */
+  const EXPECTED_OUTER = { 1: 75.276, 2: 78.392 };
+
+  function frontArmOuter(poseKey, slapAnimation) {
+    const pose = getAuthoredCatalog().poses[poseKey];
+    const regions = resolveAuthoredPoseRegions(pose, { slapAnimation });
+    const arm = regions.find((r) => r.label === "frontArm");
+    assert.ok(arm, `${poseKey} must author a frontArm`);
+    return arm.forward + arm.halfW;
+  }
+
+  it("each slap variant draws its own measured arm length", () => {
+    for (const variant of [1, 2]) {
+      assert.equal(
+        frontArmOuter("slap_active", variant),
+        EXPECTED_OUTER[variant],
+        `variant ${variant} overlay must match authority`
+      );
+    }
+    assert.notEqual(
+      frontArmOuter("slap_active", 1),
+      frontArmOuter("slap_active", 2),
+      "one shared box would misdraw one of the two hit frames"
+    );
+  });
+
+  it("unknown / missing variant falls back to the SHORTER volume", () => {
+    for (const bogus of [99, null, undefined, "x"]) {
+      assert.equal(
+        frontArmOuter("slap_active", bogus),
+        EXPECTED_OUTER[1],
+        `variant ${bogus} must never draw reach the fighter does not have`
+      );
+    }
+  });
+
+  it("recovery has no variants and keeps its retracted arm", () => {
+    // The settle-back frame draws one arm regardless of which slap preceded it.
+    for (const variant of [1, 2]) {
+      assert.ok(
+        Math.abs(frontArmOuter("slap_recovery", variant) - 54.448) < 1e-6,
+        `variant ${variant}: recovery arm must stay retracted`
+      );
+    }
+  });
+
+  it("poses without variants are returned untouched (same array)", () => {
+    const neutral = getAuthoredCatalog().poses.neutral;
+    assert.equal(
+      resolveAuthoredPoseRegions(neutral, { slapAnimation: 2 }),
+      neutral.regions
+    );
+  });
+
+  it("the drawn overlay volume reflects the live variant", () => {
+    const outers = [1, 2].map((slapAnimation) => {
+      const vols = deriveAuthoredDebugVolumes({
+        x: 400,
+        y: 286,
+        facing: -1,
+        isAttacking: true,
+        isSlapAttack: true,
+        strikePhaseHint: "active",
+        slapAnimation,
+      });
+      const limb = vols.find((v) => v.kind === "HURT_LIMB");
+      assert.ok(limb, `variant ${slapAnimation}: overlay must draw the limb`);
+      // Facing -1 ⇒ forward is +X, so the outer edge is the max side.
+      return Math.max(limb.aabb.left, limb.aabb.right);
+    });
+    assert.notEqual(
+      outers[0],
+      outers[1],
+      "overlay must not draw the same arm box for both hit frames"
+    );
   });
 });

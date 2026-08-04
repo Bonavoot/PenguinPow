@@ -252,11 +252,44 @@ function resolveHalfW(spec, sizeMultiplier) {
   return spec;
 }
 
-function materializeLocalRegions(poseDef, sizeMultiplier) {
+/**
+ * Authored variant key for a pose, read from authoritative sim state only
+ * (never client pose hints). Returns null when the pose has no variants.
+ */
+function resolvePoseVariantKey(poseDef, player) {
+  if (!poseDef || !poseDef.variants || !poseDef.variantKey) return null;
+  const raw = player ? player[poseDef.variantKey] : undefined;
+  const key = raw == null ? null : String(raw);
+  if (key && poseDef.variants[key]) return key;
+  const fallback = poseDef.variantDefault == null ? null : String(poseDef.variantDefault);
+  return fallback && poseDef.variants[fallback] ? fallback : null;
+}
+
+/**
+ * Base regions with the named variant's `regionOverrides` merged in by label.
+ * Variants may only replace an existing authored region — never add one — so a
+ * variant can't smuggle in a volume the base pose does not declare.
+ */
+function resolveVariantRegions(poseDef, variantKey) {
   if (!poseDef || !Array.isArray(poseDef.regions)) return [];
+  const variant =
+    variantKey && poseDef.variants ? poseDef.variants[variantKey] : null;
+  const overrides = variant && Array.isArray(variant.regionOverrides)
+    ? variant.regionOverrides
+    : null;
+  if (!overrides || overrides.length === 0) return poseDef.regions;
+  return poseDef.regions.map((r) => {
+    const o = overrides.find((v) => v.label === r.label);
+    return o ? { ...r, ...o } : r;
+  });
+}
+
+function materializeLocalRegions(poseDef, sizeMultiplier, variantKey) {
+  if (!poseDef || !Array.isArray(poseDef.regions)) return [];
+  const regions = resolveVariantRegions(poseDef, variantKey || null);
   const out = [];
-  for (let i = 0; i < poseDef.regions.length; i++) {
-    const r = poseDef.regions[i];
+  for (let i = 0; i < regions.length; i++) {
+    const r = regions[i];
     out.push({
       kind: r.kind,
       label: r.label,
@@ -283,6 +316,8 @@ module.exports = {
   inferAuthoredPhase,
   resolveAuthoredPoseKey,
   getPoseDefinition,
+  resolvePoseVariantKey,
+  resolveVariantRegions,
   materializeLocalRegions,
   HITBOX_DISTANCE_VALUE,
   GROUND_LEVEL,

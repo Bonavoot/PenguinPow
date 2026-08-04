@@ -20,7 +20,21 @@
       "charged": 69.6875,
       "note": "spritePx * (1280*0.123)/960 — must match server strikeContact / constants"
     },
-    "pushHalfBase": 65
+    "pushHalfBase": 65,
+    "phase4aLimbMeasurement": {
+      "method": "frontmost opaque column of the arm row-band on the real 960x960 source art",
+      "alphaThreshold": 16,
+      "spritePxToWorld": 0.164,
+      "rootXpx": 480,
+      "soleFracFromBottom": 0.021,
+      "innerForward": 34,
+      "note": "Feet / stray specks excluded — palm-thrust-startup's frontmost pixel is a TOE at up≈7, not the arm. Each frontArm outer edge equals its measured visible arm tip; no extra tolerance is added on the victim side.",
+      "armBands": {
+        "slap-attack-1-hit-frame.png": { "up": [61, 92], "tipPx": 459, "outerForward": 75.276 },
+        "slap-attack-2-hit-frame.png": { "up": [56, 92], "tipPx": 478, "outerForward": 78.392 },
+        "palm-thrust-startup.png": { "up": [59, 87], "tipPx": 332, "outerForward": 54.448 }
+      }
+    }
   },
   "poses": {
     "neutral": {
@@ -167,6 +181,41 @@
       "support": "supported",
       "phase4aAuthority": true,
       "art": "slap-attack-*-hit-frame.png",
+      "variantKey": "slapAnimation",
+      "variantDefault": "1",
+      "variantNotes": "The two slap hit frames do NOT share one honest arm volume (75.276 vs 78.392 outer). Base regions carry the SHORTER variant-1 volume so an unknown variant can never claim reach it does not draw; `variants` supplies the exact per-animation frontArm.",
+      "variants": {
+        "1": {
+          "art": "slap-attack-1-hit-frame.png",
+          "regionOverrides": [
+            {
+              "kind": "HURT_LIMB",
+              "label": "frontArm",
+              "region": "frontArm",
+              "forward": 54.638,
+              "up": 76.5,
+              "halfW": 20.638,
+              "halfH": 15.5,
+              "notes": "Measured arm band up[61,92], visible tip 75.276 (459px)"
+            }
+          ]
+        },
+        "2": {
+          "art": "slap-attack-2-hit-frame.png",
+          "regionOverrides": [
+            {
+              "kind": "HURT_LIMB",
+              "label": "frontArm",
+              "region": "frontArm",
+              "forward": 56.196,
+              "up": 74,
+              "halfW": 22.196,
+              "halfH": 18,
+              "notes": "Measured arm band up[56,92], visible tip 78.392 (478px)"
+            }
+          ]
+        }
+      },
       "regions": [
         {
           "kind": "PUSH",
@@ -209,10 +258,11 @@
           "kind": "HURT_LIMB",
           "label": "frontArm",
           "region": "frontArm",
-          "forward": 70,
-          "up": 66,
-          "halfW": 36,
-          "halfH": 18
+          "forward": 54.638,
+          "up": 76.5,
+          "halfW": 20.638,
+          "halfH": 15.5,
+          "notes": "Variant-1 (shorter) honest volume — see poses.slap_active.variants"
         },
         {
           "kind": "HIT",
@@ -273,11 +323,11 @@
           "kind": "HURT_LIMB",
           "label": "frontArm",
           "region": "frontArm",
-          "forward": 70,
-          "up": 66,
-          "halfW": 36,
-          "halfH": 18,
-          "notes": "Punishable exposure — no HIT"
+          "forward": 44.224,
+          "up": 73,
+          "halfW": 10.224,
+          "halfH": 14,
+          "notes": "Punishable exposure — no HIT. Measured arm band up[59,87], visible tip 54.448 (332px) on palm-thrust-startup.png. The settle-back arm is retracted INSIDE the victim pushbox half (65×size), so at size 1 a limb-only recovery punish is geometrically impossible — torso connect always arrives first."
         }
       ]
     },

@@ -479,6 +479,25 @@ function tracesEqual(a, b) {
 }
 
 /**
+ * Re-space an already-armed scenario to an exact root-to-root gap, keeping the
+ * pair centred. Lets Phase 4A fixtures derive spacing from live authored
+ * geometry AFTER arming instead of baking a literal gap into the constructor.
+ */
+function placeAtGap(scenario, gap, options = {}) {
+  const mid =
+    options.midX != null
+      ? options.midX
+      : (scenario.left.x + scenario.right.x) / 2;
+  // Preserve which fighter is on which side — cross-up / mirrored-facing
+  // fixtures deliberately swap roots, and forcing left-is-left would silently
+  // undo the arrangement under test.
+  const leftSign = scenario.left.x <= scenario.right.x ? -1 : 1;
+  scenario.left.x = mid + (leftSign * gap) / 2;
+  scenario.right.x = mid - (leftSign * gap) / 2;
+  return Math.abs(scenario.right.x - scenario.left.x);
+}
+
+/**
  * Run the same script twice and return both traces (for determinism asserts).
  * script(scenario, api) may call api helpers.
  */
@@ -522,6 +541,7 @@ module.exports = {
   resetRematch,
   captureTrace,
   tracesEqual,
+  placeAtGap,
   runScript,
   serializeVolumes,
   // re-export timings for tests

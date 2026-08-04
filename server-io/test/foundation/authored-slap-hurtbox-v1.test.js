@@ -52,6 +52,12 @@ const {
   armChargedPhase,
   stepCollisionBothOrders,
 } = require("./helpers/scenarioHarness");
+const {
+  limbReachGap,
+  limbOnlyGap,
+  torsoGate,
+  visibleTouchGap,
+} = require("./helpers/limbSpacing");
 
 const TICK_MS = 1000 / TICK_RATE;
 
@@ -83,10 +89,51 @@ function empowerPalm(player, now) {
   }
 }
 
+/** Re-space to an exact root gap, preserving which fighter is on which side. */
 function placeGap(s, gap) {
   const mid = (s.left.x + s.right.x) / 2;
-  s.left.x = mid - gap / 2;
-  s.right.x = mid + gap / 2;
+  const leftSign = s.left.x <= s.right.x ? -1 : 1;
+  s.left.x = mid + (leftSign * gap) / 2;
+  s.right.x = mid - (leftSign * gap) / 2;
+}
+
+/**
+ * Phase 4A spacing is DERIVED from live authored geometry, never literal. The
+ * old fixtures used gap 160, which is only reachable while the authored limb
+ * over-reaches its own art. `attacker` defaults to s.left, `victim` to s.right.
+ */
+function placeLimbContact(s, kind, simTime, opts = {}) {
+  const victim = opts.victim || s.right;
+  const reach = limbReachGap(kind, victim, simTime);
+  if (reach == null) return null;
+  // Sit just inside the outer edge so the limb overlap is unambiguous.
+  const gap = reach - (opts.inset == null ? 0.25 : opts.inset);
+  placeGap(s, gap);
+  return gap;
+}
+
+/** Mid-band limb-ONLY spacing, or null when torso connect encloses the limb. */
+function placeLimbOnly(s, kind, simTime, opts = {}) {
+  const attacker = opts.attacker || s.left;
+  const victim = opts.victim || s.right;
+  const gap = limbOnlyGap(kind, attacker, victim, simTime, opts.bias);
+  if (gap == null) return null;
+  placeGap(s, gap);
+  return gap;
+}
+
+/**
+ * Victim holds an ACTIVE slap so the extended arm is exposed, but its own
+ * offensive rail points AWAY — no reciprocal tip contest to muddy the limb
+ * assertion. The arm's mirror still faces the attacker, so it stays a hittable
+ * surface. (Active is the only pose with a limb-only band at BOTH shipped sizes.)
+ */
+function armExposedActiveLimb(victim, attacker, now) {
+  armSlapPhase(victim, "active", now);
+  deepenSlapActive(victim, now);
+  const limbTowardAttacker = attacker.x < victim.x ? 1 : -1;
+  victim.slapFacingDirection = limbTowardAttacker;
+  victim.facing = -limbTowardAttacker;
 }
 
 function hitCount(io) {
@@ -259,21 +306,29 @@ describe("Phase 4A — flag ON slap limb authority", () => {
     clearLastSlapHurtCommitted();
   });
 
-  it("limb-only during recovery: palm tip hits exposed slap limb once", () => {
-    const s = sc({ gap: 160, sizeA: 0.85, sizeB: 0.85 });
+  it("limb-only during recovery: slap tip hits exposed recovery limb once", () => {
+    const s = sc({ sizeA: 0.85, sizeB: 0.85 });
     const now = s.room.simTime;
     armSlapPhase(s.right, "recovery", now);
-    armPalmPhase(s.left, "active", now);
-    empowerPalm(s.left, now);
+    armSlapPhase(s.left, "active", now);
+    deepenSlapActive(s.left, now);
+    // Slap is the ONLY attacker whose authored rail out-reaches legacy torso
+    // connect against the retracted recovery arm, and only at size 0.85.
+    // Palm's rail loses to its own legacy torso overhang — see the
+    // "recovery limb is enclosed by torso connect" test below.
+    assert.ok(
+      placeLimbOnly(s, "slap", now) != null,
+      "slap→recovery limb-only band must exist at 0.85"
+    );
     const dist = Math.abs(s.right.x - s.left.x);
     assert.equal(
-      isWithinConnectRange(dist, getConnectDistance("palm", s.left, s.right)),
+      isWithinConnectRange(dist, getConnectDistance("slap", s.left, s.right)),
       false,
       "must be body-whiff spacing"
     );
     const limb = evaluateTipVersusSlapLimb(s.left, s.right, {
       simTime: now,
-      attackKind: "palm",
+      attackKind: "slap",
     });
     assert.ok(limb && limb.hit, "tip must overlap recovery limb");
     stepCollisionBothOrders(s);
@@ -282,18 +337,49 @@ describe("Phase 4A — flag ON slap limb authority", () => {
     const payload = lastHit(s.io);
     assert.equal(payload.victimHurtRegion, "frontArm");
     assert.equal(payload.isPunish, true);
+    assert.equal(payload.limbOnlyContact, true);
     // Consumed — no second hit from the same attack lifecycle.
     checkCollision(s.left, s.right, s.rooms, s.io);
     assert.equal(hitCount(s.io), 1);
     s.dispose();
   });
 
+  it("recovery limb-only band: palm never, size 1 never, slap/charged only at 0.85", () => {
+    // The settle-back arm (54.448) barely clears the pushbox. Documented honest
+    // matrix — no pairing here may be widened to manufacture a punish window.
+    const expected = {
+      "1|slap": false,
+      "1|palm": false,
+      "1|charged": false,
+      "0.85|slap": true,
+      "0.85|palm": false,
+      "0.85|charged": true,
+    };
+    for (const size of [1, 0.85]) {
+      for (const kind of ["slap", "palm", "charged"]) {
+        const s = sc({ sizeA: size, sizeB: size });
+        const now = s.room.simTime;
+        armSlapPhase(s.right, "recovery", now);
+        empowerPalm(s.left, now);
+        const reach = limbReachGap(kind, s.right, now);
+        const gate = torsoGate(kind, s.left, s.right);
+        assert.equal(
+          reach > gate,
+          expected[`${size}|${kind}`],
+          `${kind}@${size}: reach ${reach.toFixed(3)} vs torso gate ${gate.toFixed(3)}`
+        );
+        s.dispose();
+      }
+    }
+  });
+
   it("limb-only during active: slap tip geometry overlaps opponent active limb", () => {
-    const s = sc({ gap: 160, sizeA: 0.85, sizeB: 0.85 });
+    const s = sc({ sizeA: 0.85, sizeB: 0.85 });
     const now = s.room.simTime;
     armSlapPhase(s.right, "active", now);
     armSlapPhase(s.left, "active", now);
     deepenSlapActive(s.left, now);
+    placeLimbOnly(s, "slap", now);
     const limb = evaluateTipVersusSlapLimb(s.left, s.right, {
       simTime: now,
       attackKind: "slap",
@@ -358,26 +444,24 @@ describe("Phase 4A — flag ON slap limb authority", () => {
   });
 
   it("player-array order reversal: same limb hit victim", () => {
-    const a = sc({ gap: 160, sizeA: 0.85, sizeB: 0.85, swapPlayerOrder: false });
-    const b = sc({ gap: 160, sizeA: 0.85, sizeB: 0.85, swapPlayerOrder: true });
-    for (const s of [a, b]) {
+    // One scenario alive at a time — setSimRoomResolver is module-global, so a
+    // second live scenario silently orphans the first one's room lookup.
+    for (const swapPlayerOrder of [false, true]) {
+      const s = sc({ sizeA: 0.85, sizeB: 0.85, swapPlayerOrder });
       const now = s.room.simTime;
-      armSlapPhase(s.right, "recovery", now);
+      armExposedActiveLimb(s.right, s.left, now);
       armPalmPhase(s.left, "active", now);
       empowerPalm(s.left, now);
+      placeLimbOnly(s, "palm", now);
       stepCollisionBothOrders(s);
+      assert.equal(s.right.isHit, true, `swapPlayerOrder=${swapPlayerOrder}`);
+      assert.equal(hitCount(s.io), 1, `swapPlayerOrder=${swapPlayerOrder}`);
+      s.dispose();
     }
-    assert.equal(a.right.isHit, true);
-    assert.equal(b.right.isHit, true);
-    assert.equal(hitCount(a.io), 1);
-    assert.equal(hitCount(b.io), 1);
-    a.dispose();
-    b.dispose();
   });
 
   it("both facings: limb hit mirrors", () => {
     const s = sc({
-      gap: 160,
       sizeA: 0.85,
       sizeB: 0.85,
       leftFacing: 1,
@@ -390,20 +474,24 @@ describe("Phase 4A — flag ON slap limb authority", () => {
     s.left.facing = 1;
     s.right.facing = -1;
     const now = s.room.simTime;
-    armSlapPhase(s.right, "recovery", now);
+    armExposedActiveLimb(s.right, s.left, now);
     armPalmPhase(s.left, "active", now);
     empowerPalm(s.left, now);
+    placeLimbOnly(s, "palm", now);
     stepCollisionBothOrders(s);
     assert.equal(s.right.isHit, true);
     s.dispose();
   });
 
   it("size 1 limb-only still connects at whiff torso spacing", () => {
-    const s = sc({ gap: 165, sizeA: 1, sizeB: 1 });
+    const s = sc({ sizeA: 1, sizeB: 1 });
     const now = s.room.simTime;
-    armSlapPhase(s.right, "recovery", now);
+    // Size 1 has a limb-only band only against the ACTIVE (extended) arm —
+    // at size 1 the bigger pushbox swallows the retracted recovery arm entirely.
+    armSlapPhase(s.right, "active", now);
     armPalmPhase(s.left, "active", now);
     empowerPalm(s.left, now);
+    assert.ok(placeLimbOnly(s, "palm", now) != null);
     const dist = Math.abs(s.right.x - s.left.x);
     assert.equal(
       isWithinConnectRange(dist, getConnectDistance("palm", s.left, s.right)),
@@ -454,16 +542,17 @@ describe("Phase 4A — flag ON slap limb authority", () => {
   });
 
   it("resolve mode reports authored when flag ON", () => {
-    const s = sc({ gap: 160 });
+    const s = sc();
     const now = s.room.simTime;
     armSlapPhase(s.right, "recovery", now);
     armPalmPhase(s.left, "active", now);
+    placeLimbContact(s, "palm", now);
     const r = resolveAuthoredSlapHurtContact(s.left, s.right, {
       simTime: now,
       attackKind: "palm",
       bodyEligible: false,
       bodyContactX: null,
-      bodyDist: 160,
+      bodyDist: Math.abs(s.right.x - s.left.x),
     });
     assert.equal(r.mode, "authored_slap_hurtbox_v1");
     assert.equal(r.connect, true);
@@ -474,13 +563,14 @@ describe("Phase 4A — flag ON slap limb authority", () => {
 
   it("P1 and P2 as limb owner both punishable", () => {
     for (const owner of ["left", "right"]) {
-      const s = sc({ gap: 160, sizeA: 0.85, sizeB: 0.85 });
+      const s = sc({ sizeA: 0.85, sizeB: 0.85 });
       const now = s.room.simTime;
       const victim = owner === "left" ? s.left : s.right;
       const attacker = owner === "left" ? s.right : s.left;
-      armSlapPhase(victim, "recovery", now);
+      armSlapPhase(victim, "active", now);
       armPalmPhase(attacker, "active", now);
       empowerPalm(attacker, now);
+      placeLimbOnly(s, "palm", now, { attacker, victim });
       stepCollisionBothOrders(s);
       assert.equal(victim.isHit, true, `${owner} limb owner must be hit`);
       s.dispose();
@@ -501,21 +591,17 @@ describe("Phase 4A — deterministic recovery-only limb punish", () => {
    * Victim slap whiffs torso at gap 160; attacker palm tip becomes active
    * exactly when victim enters recovery. Boundary ticks around recovery exposure.
    */
-  it("recovery limb-only: miss before attacker active, hit first/last recovery, miss after clear, PUNISH once", () => {
-    const s = sc({ gap: 160, sizeA: 0.85, sizeB: 0.85 });
+  it("recovery limb: miss before attacker active, hit first/last recovery, miss after clear, PUNISH once", () => {
+    const s = sc({ sizeA: 0.85, sizeB: 0.85 });
     const t0 = s.room.simTime;
 
-    // Victim slap that will be in recovery at t0 (whiff spacing vs torso).
     armSlapPhase(s.right, "recovery", t0);
     assert.equal(resolveSlapLimbExposure(s.right, t0).poseKey, "slap_recovery");
-    assert.equal(
-      isWithinConnectRange(
-        Math.abs(s.right.x - s.left.x),
-        getConnectDistance("palm", s.left, s.right)
-      ),
-      false,
-      "torso must remain a miss"
-    );
+    // Spacing is the honest palm-vs-recovery-arm touch boundary. NOTE: the
+    // retracted recovery arm sits inside palm's (legacy-overhang) torso connect,
+    // so this is a torso-plus-limb contact — the authored limb still owns region
+    // identity and the punish classification, but there is no limb-ONLY window.
+    placeLimbContact(s, "palm", t0);
 
     // Attacker palm still in startup one tick before tip is live.
     armPalmPhase(s.left, "startup", t0);
@@ -566,10 +652,9 @@ describe("Phase 4A — deterministic recovery-only limb punish", () => {
 
     // Fresh attack lifecycle on final recovery-exposure tick.
     // processHit clears victim slap flags + parks spacing + grants KB immunity
-    // (palm VFX/emit sits behind canApplyKnockback). Restore whiff spacing and
+    // (palm VFX/emit sits behind canApplyKnockback). Restore contact spacing and
     // clear immunity so this proves the last exposed tick, not a ghost/immune.
     s.io.clear();
-    placeGap(s, 160);
     armSlapPhase(s.right, "recovery", t0);
     s.right.isAlreadyHit = false;
     s.right.isHit = false;
@@ -579,6 +664,9 @@ describe("Phase 4A — deterministic recovery-only limb punish", () => {
     empowerPalm(s.left, t0);
     s.left.chargedAttackHit = false;
     s.left.lastCheckedAttackTime = null;
+    // Re-space AFTER both fighters are armed — the probe reads committed
+    // action-facing, and the first hit's contact park moved the roots.
+    placeLimbContact(s, "palm", t0);
     assert.equal(resolveSlapLimbExposure(s.right, t0).exposed, true);
     assert.equal(resolveSlapLimbExposure(s.right, t0).phase, "recovery");
     assert.equal(
@@ -595,9 +683,11 @@ describe("Phase 4A — deterministic recovery-only limb punish", () => {
     assert.equal(lastHit(s.io).victimSlapPhase, "recovery");
     assert.equal(lastHit(s.io).victimHurtRegion, "frontArm");
 
-    // First tick after exposure ends — slap flags cleared.
+    // First tick after exposure ends — slap flags cleared. Back off past torso
+    // connect so this proves the limb path went dead, not that the torso rail
+    // happened to still reach.
     s.io.clear();
-    placeGap(s, 160);
+    placeGap(s, torsoGate("palm", s.left, s.right) + 5);
     s.right.isSlapAttack = false;
     s.right.isAttacking = false;
     s.right.attackType = null;
@@ -619,9 +709,10 @@ describe("Phase 4A — deterministic recovery-only limb punish", () => {
   });
 
   it("rejected startup query does not suppress later unconsumed active limb hit", () => {
-    const s = sc({ gap: 160, sizeA: 0.85, sizeB: 0.85 });
+    const s = sc({ sizeA: 0.85, sizeB: 0.85 });
     const now = s.room.simTime;
     armSlapPhase(s.right, "recovery", now);
+    placeLimbContact(s, "palm", now);
     armPalmPhase(s.left, "startup", now);
     s.left.chargeAttackPower = PALM_THRUST_POWER;
     s.left.isInStartupFrames = true;
@@ -712,10 +803,8 @@ describe("Phase 4A — phantom cancellation: limb-only vs recovering slap", () =
 
   function runLimbRetalVsRecovery(flagOn) {
     setAuthoredSlapHurtboxForTests(flagOn);
-    const s = sc({ gap: 160, sizeA: 0.85, sizeB: 0.85 });
+    const s = sc({ sizeA: 0.85, sizeB: 0.85 });
     const now = s.room.simTime;
-    const lx0 = s.left.x;
-    const rx0 = s.right.x;
 
     armSlapPhase(s.right, "recovery", now);
     armSlapPhase(s.left, "active", now);
@@ -728,13 +817,20 @@ describe("Phase 4A — phantom cancellation: limb-only vs recovering slap", () =
       s.left.attackStartTime > s.right.attackStartTime,
       "left must be the later slap"
     );
+    // Slap is the one attacker whose authored rail out-reaches legacy torso
+    // connect against the retracted recovery arm (and only at size 0.85), so
+    // this stays a genuine limb-only punish under the corrected geometry.
+    const limbOnly = placeLimbOnly(s, "slap", now);
+    assert.ok(limbOnly != null, "slap→recovery limb-only band must exist");
+    const lx0 = s.left.x;
+    const rx0 = s.right.x;
     assert.equal(
       isWithinConnectRange(
         Math.abs(s.right.x - s.left.x),
         getConnectDistance("slap", s.left, s.right)
       ),
       false,
-      "torso must miss at gap 160"
+      "torso must miss inside the limb-only band"
     );
     const limb = evaluateTipVersusSlapLimb(s.left, s.right, {
       simTime: now,
@@ -877,11 +973,11 @@ describe("Phase 4A — active-end boundary (slapActiveEndTime exclusivity)", () 
       swapFacing = false,
       swapOwners = false,
       swapPlayerOrder = false,
-      gap = 160,
+      gap = null,
     } = opts;
     setAuthoredSlapHurtboxForTests(flagOn);
     const s = sc({
-      gap,
+      ...(gap != null ? { gap } : {}),
       sizeA: 0.85,
       sizeB: 0.85,
       swapPlayerOrder,
@@ -895,6 +991,14 @@ describe("Phase 4A — active-end boundary (slapActiveEndTime exclusivity)", () 
     armAttackerFirstActive(attacker, now);
     // Attacker must be the later slap vs victim's earlier cycle.
     assert.ok(attacker.attackStartTime > victim.attackStartTime);
+    // Default spacing is the honest limb-only band for THIS victim pose, derived
+    // after arming. Callers passing an explicit `gap` are testing torso spacing.
+    if (gap == null) {
+      assert.ok(
+        placeLimbOnly(s, "slap", now, { attacker, victim }) != null,
+        `limb-only band must exist at offsetMs=${offsetMs}`
+      );
+    }
 
     const tipLive = isSlapTipLive(victim, now);
     const exposure = resolveSlapLimbExposure(victim, now);
@@ -1128,7 +1232,7 @@ describe("Phase 4A — active-end boundary (slapActiveEndTime exclusivity)", () 
     s.dispose();
 
     // Tip-dead recovery slap cannot beat under-threshold charged/palm.
-    const s2 = sc({ gap: 160, sizeA: 0.85, sizeB: 0.85 });
+    const s2 = sc({ sizeA: 0.85, sizeB: 0.85 });
     const t = s2.room.simTime;
     armVictimAtActiveEnd(s2.right, t, 0);
     assert.equal(isSlapTipLive(s2.right, t), false);
@@ -1137,6 +1241,7 @@ describe("Phase 4A — active-end boundary (slapActiveEndTime exclusivity)", () 
     s2.left.isInStartupFrames = false;
     s2.left.attackStartTime = t - PALM_THRUST_STARTUP_MS - 20;
     s2.left.startupEndTime = s2.left.attackStartTime + PALM_THRUST_STARTUP_MS;
+    placeLimbContact(s2, "palm", t);
     stepCollisionBothOrders(s2);
     assert.equal(
       s2.left._lastCombatContactResolution?.interruptionReason ===
@@ -1247,7 +1352,6 @@ describe("Phase 4A — recovery-classification partition", () => {
     ];
     for (const v of variants) {
       const s = sc({
-        gap: 160,
         sizeA: 0.85,
         sizeB: 0.85,
         swapPlayerOrder: v.swapPlayerOrder,
@@ -1273,6 +1377,10 @@ describe("Phase 4A — recovery-classification partition", () => {
 
       armDeepActiveAttacker(attacker, now);
       assert.ok(attacker.attackStartTime > victim.attackStartTime);
+      assert.ok(
+        placeLimbOnly(s, "slap", now, { attacker, victim }) != null,
+        `limb-only band required ${JSON.stringify(v)}`
+      );
       stepCollisionBothOrders(s);
       assert.equal(hitCount(s.io), 1, JSON.stringify(v));
       const payload = lastHit(s.io);
@@ -1287,7 +1395,7 @@ describe("Phase 4A — recovery-classification partition", () => {
 
   it("after endpoint recovery: tip dead, recovery, once-only PUNISH", () => {
     setAuthoredSlapHurtboxForTests(true);
-    const s = sc({ gap: 160, sizeA: 0.85, sizeB: 0.85 });
+    const s = sc({ sizeA: 0.85, sizeB: 0.85 });
     const now = s.room.simTime;
     armSlapPhase(s.right, "recovery", now);
     s.right.attackAttemptTime = now;
@@ -1297,6 +1405,7 @@ describe("Phase 4A — recovery-classification partition", () => {
     assert.equal(evaluateHitCallouts(s.right, now).isCounterHit, false);
 
     armDeepActiveAttacker(s.left, now);
+    assert.ok(placeLimbOnly(s, "slap", now) != null);
     stepCollisionBothOrders(s);
     assert.equal(hitCount(s.io), 1);
     assert.equal(lastHit(s.io).isPunish, true);
@@ -1371,10 +1480,9 @@ describe("Phase 4A — unilateral active-limb contact (recording 13.3–13.6s)",
       flagOn = true,
       swapOwners = false,
       swapPlayerOrder = false,
-      gap = 160,
     } = opts;
     setAuthoredSlapHurtboxForTests(flagOn);
-    const s = sc({ gap, sizeA: 0.85, sizeB: 0.85, swapPlayerOrder });
+    const s = sc({ sizeA: 0.85, sizeB: 0.85, swapPlayerOrder });
     const now = s.room.simTime;
     const older = swapOwners ? s.left : s.right;
     const later = swapOwners ? s.right : s.left;
@@ -1389,6 +1497,14 @@ describe("Phase 4A — unilateral active-limb contact (recording 13.3–13.6s)",
     const limbTowardLater = later.x < older.x ? 1 : -1;
     older.slapFacingDirection = limbTowardLater;
     older.facing = -limbTowardLater;
+
+    // Honest limb-only spacing for slap vs the older fighter's ACTIVE arm.
+    // Derived, so this fixture tracks the authored geometry instead of the old
+    // literal 160 (which the corrected arm volume no longer reaches).
+    assert.ok(
+      placeLimbOnly(s, "slap", now, { attacker: later, victim: older }) != null,
+      "slap→active limb-only band must exist"
+    );
 
     assert.equal(
       isWithinConnectRange(
@@ -1463,10 +1579,13 @@ describe("Phase 4A — unilateral active-limb contact (recording 13.3–13.6s)",
     // Footage mechanism with facing-each-other limb-only spacing: old code
     // cleared later then earlier missed the now-neutral body. Fix commits earlier.
     setAuthoredSlapHurtboxForTests(true);
-    const s = sc({ gap: 160, sizeA: 0.85, sizeB: 0.85 });
+    const s = sc({ sizeA: 0.85, sizeB: 0.85 });
     const now = s.room.simTime;
     armDeepActive(s.right, now, 40);
     armDeepActive(s.left, now, 1);
+    // Both fighters hold an extended ACTIVE arm, so the reciprocal limb-only
+    // band is symmetric — derive it instead of assuming the stale gap 160.
+    assert.ok(placeLimbOnly(s, "slap", now) != null);
     assert.equal(querySlapOffensiveContact(s.left, s.right, now).connects, true);
     assert.equal(querySlapOffensiveContact(s.right, s.left, now).connects, true);
     // Later checks first (player-array order left→right).
@@ -1585,16 +1704,19 @@ describe("Phase 4A — unilateral active-limb contact (recording 13.3–13.6s)",
 
   it("same-tick: older checks during later startup, then later active resolves without orphan cancel", () => {
     setAuthoredSlapHurtboxForTests(true);
-    const s = sc({ gap: 160, sizeA: 0.85, sizeB: 0.85 });
+    const s = sc({ sizeA: 0.85, sizeB: 0.85 });
     const now = s.room.simTime;
     armDeepActive(s.right, now, 40);
+    // Spacing derived from the older fighter's exposed ACTIVE arm, so the later
+    // fighter's startup (no limb yet, torso out of connect) is a clean miss.
+    placeLimbOnly(s, "slap", now, { attacker: s.left, victim: s.right });
     armSlapPhase(s.left, "startup", now);
     s.left.attackStartTime = now;
     checkCollision(s.right, s.left, s.rooms, s.io);
     assert.equal(s.left.isHit, false, "older misses startup (no limb) at spacing");
     assert.equal(s.left.isAttacking, true);
 
-    // Later becomes active — with facing-each-other this is reciprocal at gap 160.
+    // Later becomes active — facing each other, this is now reciprocal.
     s.left.isInStartupFrames = false;
     s.left.attackStartTime = now - SLAP_STARTUP_MS - AP_LATE_PARRY_MS - 1;
     s.left.slapActiveEndTime =
