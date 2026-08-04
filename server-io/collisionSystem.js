@@ -242,6 +242,24 @@ const {
   attackKindFromPlayer,
 } = require("./strikeContact");
 
+const {
+  resolveAuthoredSlapHurtContact,
+  querySlapOffensiveContact,
+  stampStrikeContactOverride,
+  consumeStrikeContactOverride,
+  resolveSlapLimbExposure,
+  buildAttackerTipProbeAabb,
+  noteSlapHurtQuery,
+  noteSlapHurtCommitted,
+  isSlapTipLive,
+} = require("./authoredSlapHurtTarget");
+const { isAuthoredSlapHurtboxV1Enabled } = require("./authoredSlapHurtboxFlags");
+const {
+  isAuthoredSlapHurtLiveTraceEnabled,
+  noteAuthoredSlapHurtLiveTrace,
+  captureSlapPairSnapshot,
+} = require("./authoredSlapHurtLiveTrace");
+
 // handleWinCondition is used by the lethal AP slap-down. gameFunctions does not
 // require collisionSystem, so this top-level require introduces no cycle.
 const { handleWinCondition } = require("./gameFunctions");
@@ -342,12 +360,19 @@ function evaluateHitCallouts(victim, currentTime, opts = {}) {
   const isGored =
     !!victim.isMatadorParrying || !!victim.isMatadorWhiffRecovering;
 
-  // Slap recovery: active window over, still locked in the slap cycle
-  // (including SLAP_WHIFF_EXTRA_RECOVERY_MS). Never sets isRecovering itself.
+  // Slap recovery — positive authoritative conditions only.
+  // Equality (now === slapActiveEndTime) is recovery. Offensive tip uses the
+  // half-open interval now < slapActiveEndTime via isSlapTipLive; do NOT use
+  // !isSlapTipLive as the recovery discriminator (startup / neutral / wrong
+  // attackType / malformed clocks also yield tip-not-live).
   const slapInRecovery =
-    !!victim.isSlapAttack &&
     !!victim.isAttacking &&
-    !!victim.slapActiveEndTime &&
+    victim.attackType === "slap" &&
+    !!victim.isSlapAttack &&
+    !victim.isInStartupFrames &&
+    typeof victim.slapActiveEndTime === "number" &&
+    victim.slapActiveEndTime > 0 &&
+    typeof currentTime === "number" &&
     currentTime >= victim.slapActiveEndTime;
 
   // Punish = hitting opponent during RECOVERY. Dodge excluded (DODGE_RECOVERY_MS = 0).
@@ -462,6 +487,26 @@ function checkCollision(player, otherPlayer, rooms, io) {
   // Check for startup frames on all attacks - disable collision during startup
   // Use isInStartupFrames flag for accurate timing (set by executeSlapAttack/executeChargedAttack)
   if (player.isAttacking && player.isInStartupFrames) {
+    if (isAuthoredSlapHurtboxV1Enabled()) {
+      const nowStartup = simNowForPlayer(player);
+      const exp = resolveSlapLimbExposure(otherPlayer, nowStartup);
+      // Startup skip is normal timing — NOT an authoritative interruption.
+      // Do not label this interrupted-before-active without a committed cause.
+      noteSlapHurtQuery({
+        simTime: nowStartup,
+        accepted: false,
+        rejectReason: "startup-pending",
+        attackType: player.attackType || null,
+        attackerPhase: "startup",
+        attackerId: player.id,
+        victimId: otherPlayer.id,
+        victimPhase: exp.phase,
+        victimPoseKey: exp.poseKey,
+        limbExposed: exp.exposed,
+        overlap: false,
+        bodyEligible: false,
+      });
+    }
     return; // Skip collision detection during startup frames - attack not active yet
   }
   
@@ -479,8 +524,13 @@ function checkCollision(player, otherPlayer, rooms, io) {
     }
   }
 
-  // Skip collision if the attack's active frames have ended (in recovery phase of attack)
-  if (player.attackType === "slap" && player.slapActiveEndTime && simNowForPlayer(player) > player.slapActiveEndTime) {
+  // Skip slap offensive collision once tip is no longer live (recovery at
+  // slapActiveEndTime inclusive — same boundary as isSlapTipLive).
+  if (
+    player.attackType === "slap" &&
+    player.slapActiveEndTime &&
+    !isSlapTipLive(player, simNowForPlayer(player))
+  ) {
     return;
   }
   if (player.attackType === "charged" && player.chargedActiveEndTime && simNowForPlayer(player) > player.chargedActiveEndTime) {
@@ -593,38 +643,212 @@ function checkCollision(player, otherPlayer, rooms, io) {
         horizontalDistance,
         hitboxDistance + SLAP_GRACE_CONFIRM_SLACK_PX
       );
-    if (inRange || confirmDeferredOpenHit) {
-      if (otherPlayer.isAttacking && otherPlayer.attackType === "slap") {
-        // ── SLAP vs SLAP: earlier-connect wins; same-tick tie TRADES ──────────
-        // The old clash ("slap parry") is gone. Resolution is now purely by who
-        // connected first (judged on attackStartTime, so it's order-independent —
-        // no P1 bias). Only a genuine ~1-tick tie is a TRADE (both take a hit).
+    // Phase 4A: optional authored slap limb as extra victim surface (flag OFF = legacy).
+    const bodyEligible = inRange || confirmDeferredOpenHit;
+    const slapHurt = resolveAuthoredSlapHurtContact(player, otherPlayer, {
+      simTime: now,
+      attackKind: "slap",
+      bodyEligible,
+      bodyContactX: getContactSeamX(player, otherPlayer, "slap"),
+      bodyDist: horizontalDistance,
+      attackDir,
+    });
+    // Limb-only connects still require the opponent to be in front of the slap.
+    const limbOnlyConnect =
+      slapHurt.mode === "authored_slap_hurtbox_v1" &&
+      slapHurt.connect &&
+      !bodyEligible &&
+      opponentInFront &&
+      !!slapHurt.limb;
+    if (slapHurt.mode === "authored_slap_hurtbox_v1") {
+      const exp = resolveSlapLimbExposure(otherPlayer, now);
+      const tip = buildAttackerTipProbeAabb(player, "slap");
+      noteSlapHurtQuery({
+        simTime: now,
+        accepted: !!(bodyEligible || limbOnlyConnect),
+        rejectReason:
+          bodyEligible || limbOnlyConnect
+            ? null
+            : !opponentInFront
+              ? "candidate-rejected:not_in_front"
+              : !exp.exposed
+                ? `candidate-rejected:${exp.reason || "limb_not_exposed"}`
+                : !slapHurt.limb
+                  ? "candidate-rejected:tip_limb_no_overlap"
+                  : "candidate-rejected:no_connect",
+        attackType: "slap",
+        attackerPhase: "active",
+        attackerId: player.id,
+        victimId: otherPlayer.id,
+        victimPhase: exp.phase,
+        victimPoseKey: exp.poseKey,
+        limbExposed: exp.exposed,
+        tipX: tip.tipX,
+        candidateRegion: slapHurt.winner
+          ? slapHurt.winner.victimRegion
+          : exp.exposed
+            ? "frontArm"
+            : null,
+        overlap: !!slapHurt.limb,
+        bodyEligible,
+        mirrorFacing: exp.exposed
+          ? slapHurt.limb && slapHurt.limb.mirrorFacing
+          : null,
+      });
+    }
+    if (bodyEligible || limbOnlyConnect) {
+      if (slapHurt.mode === "authored_slap_hurtbox_v1" && slapHurt.winner) {
+        stampStrikeContactOverride(player, slapHurt.winner);
+      }
+      if (isAuthoredSlapHurtLiveTraceEnabled()) {
+        const snap = captureSlapPairSnapshot(player, otherPlayer, now);
+        noteAuthoredSlapHurtLiveTrace({
+          force: true,
+          simTime: now,
+          attackerId: player.id,
+          victimId: otherPlayer.id,
+          attackerAttackType: "slap",
+          ...snap,
+          bodyEligible,
+          limbOnlyConnect,
+          selectedRegion:
+            (slapHurt.winner && slapHurt.winner.victimRegion) || null,
+          contactPoint: slapHurt.winner
+            ? {
+                x: slapHurt.winner.contactX,
+                y: slapHurt.winner.contactY,
+              }
+            : null,
+          stamped: !!(slapHurt.winner && slapHurt.mode === "authored_slap_hurtbox_v1"),
+          attackerAttackingBefore: true,
+          victimAttackingBefore: !!otherPlayer.isAttacking,
+          categoryHint: limbOnlyConnect
+            ? "limb_candidate"
+            : bodyEligible
+              ? "body_candidate"
+              : "none",
+        });
+      }
+      // Slap-vs-slap: tip-live alone is NOT a force field. Priority/trade only
+      // when BOTH have legitimate contact candidates this snapshot. Unilateral
+      // limb contact from a later slap must fall through to processHit — never
+      // LATER_SLAP_STUFFED without a paired committed winner hit.
+      if (isSlapTipLive(otherPlayer, now)) {
+        const reciprocal = querySlapOffensiveContact(otherPlayer, player, now);
+        const otherHasContact = !!reciprocal.connects;
         const diff = player.attackStartTime - otherPlayer.attackStartTime;
-        if (Math.abs(diff) <= SLAP_TRADE_WINDOW_MS) {
-          // Genuine tie → TRADE. resolveSlapTrade applies BOTH hits and clears
-          // both attacks, so the reciprocal checkCollision(other, player) this
-          // tick self-skips (its isAttacking gate is now false).
-          resolveSlapTrade(player, otherPlayer, rooms, io);
-          return;
-        }
-        if (diff > 0) {
-          // player pressed LATER → the earlier otherPlayer wins; this slap is
-          // stuffed. otherPlayer's own checkCollision call lands their hit.
-          // Phase 13: end loser hitbox/pose on this tick (0 survival ticks).
-          if (isCombatContactFidelityV2Enabled()) {
-            consumeLosingAttackInstance(player, {
-              winner: otherPlayer,
-              winnerMove: "slap",
-              loserMove: "slap",
-              outcome: CONTACT_OUTCOME.PRIORITY_LOSS,
-              interactionType: "SLAP_VS_SLAP",
-              interruptionReason: "LATER_SLAP_STUFFED",
-              strikeKind: "slap",
+
+        if (otherHasContact) {
+          // ── Reciprocal contact: earlier-connect wins; same-tick tie TRADES ─
+          if (Math.abs(diff) <= SLAP_TRADE_WINDOW_MS) {
+            if (isAuthoredSlapHurtboxV1Enabled()) {
+              noteSlapHurtQuery({
+                simTime: now,
+                accepted: true,
+                attackType: "slap",
+                attackerPhase: "active",
+                attackerId: player.id,
+                victimId: otherPlayer.id,
+                slapVsSlapDecision: "trade",
+                reciprocalContact: true,
+              });
+            }
+            resolveSlapTrade(player, otherPlayer, rooms, io);
+            consumeStrikeContactOverride(player);
+            return;
+          }
+          if (diff > 0) {
+            // Later slap loses — commit earlier's hit FIRST, then stuff later.
+            // Never consumeLosing before processHit: AP open-hit grace used to
+            // return without damage after the later slap was already cleared,
+            // leaving an animation stop and a permanent limb-whiff at torso-
+            // miss spacing (Phase 4A live-runtime failure).
+            consumeStrikeContactOverride(player);
+            if (reciprocal.winner) {
+              stampStrikeContactOverride(otherPlayer, reciprocal.winner);
+            }
+            processHit(otherPlayer, player, rooms, io, {
+              skipSlapOpenHitGrace: true,
+            });
+            if (isCombatContactFidelityV2Enabled() && player.isAttacking) {
+              consumeLosingAttackInstance(player, {
+                winner: otherPlayer,
+                winnerMove: "slap",
+                loserMove: "slap",
+                outcome: CONTACT_OUTCOME.PRIORITY_LOSS,
+                interactionType: "SLAP_VS_SLAP",
+                interruptionReason: "LATER_SLAP_STUFFED",
+                strikeKind: "slap",
+              });
+            }
+            if (isAuthoredSlapHurtboxV1Enabled()) {
+              noteSlapHurtQuery({
+                simTime: now,
+                accepted: !!player.isHit,
+                rejectReason: player.isHit
+                  ? null
+                  : "rejected/interrupted-before-active",
+                attackType: "slap",
+                attackerPhase: "active",
+                attackerId: player.id,
+                victimId: otherPlayer.id,
+                limbExposed: resolveSlapLimbExposure(otherPlayer, now).exposed,
+                overlap: !!limbOnlyConnect,
+                bodyEligible,
+                slapVsSlapDecision: "earlier_contact_winner",
+                reciprocalContact: true,
+                interruptionSource: player.isHit ? "LATER_SLAP_STUFFED" : null,
+                interruptionEventId:
+                  player._lastCombatContactResolution?.interactionId || null,
+                winnerId: otherPlayer.id,
+                winnerRegion:
+                  (reciprocal.winner && reciprocal.winner.victimRegion) || null,
+              });
+            }
+            // Winner's own checkCollision later this tick must not reset
+            // isAlreadyHit via the per-attack lastCheckedAttackTime latch.
+            otherPlayer.lastCheckedAttackTime = otherPlayer.attackStartTime;
+            return;
+          }
+          // diff < 0 → current slap earlier with reciprocal contact → processHit.
+          if (isAuthoredSlapHurtboxV1Enabled()) {
+            noteSlapHurtQuery({
+              simTime: now,
+              accepted: true,
+              attackType: "slap",
+              attackerPhase: "active",
+              attackerId: player.id,
+              victimId: otherPlayer.id,
+              slapVsSlapDecision: "earlier_contact_winner",
+              reciprocalContact: true,
+              winnerId: player.id,
             });
           }
-          return;
+        } else {
+          // Unilateral: current has contact, older tip-live slap does not.
+          // Priority cannot consume the connecting slap.
+          if (isAuthoredSlapHurtboxV1Enabled()) {
+            noteSlapHurtQuery({
+              simTime: now,
+              accepted: true,
+              attackType: "slap",
+              attackerPhase: "active",
+              attackerId: player.id,
+              victimId: otherPlayer.id,
+              limbExposed: resolveSlapLimbExposure(otherPlayer, now).exposed,
+              overlap: !!limbOnlyConnect,
+              bodyEligible,
+              slapVsSlapDecision:
+                diff > 0
+                  ? "unilateral_contact_no_reciprocal"
+                  : "unilateral_contact",
+              reciprocalContact: false,
+              winnerId: player.id,
+              winnerRegion:
+                (slapHurt.winner && slapHurt.winner.victimRegion) || null,
+            });
+          }
         }
-        // diff < 0 → player pressed EARLIER → fall through to processHit (wins clean).
       }
 
       // Slap vs Charged / palm.
@@ -660,6 +884,7 @@ function checkCollision(player, otherPlayer, rooms, io) {
           );
           // Resolved, or both active but no surface contact yet — do not let
           // the slap tip ghost through the forehead via legacy processHit.
+          consumeStrikeContactOverride(player);
           return;
         }
 
@@ -691,6 +916,7 @@ function checkCollision(player, otherPlayer, rooms, io) {
                 winnerIsAttacker: true,
               });
             }
+            consumeStrikeContactOverride(player);
             return; // Charged/palm priority — that branch will process the hit
           }
         }
@@ -715,12 +941,16 @@ function checkCollision(player, otherPlayer, rooms, io) {
             strikeKind: "slap",
           });
         }
+        consumeStrikeContactOverride(player);
         return; // Throw catch — grab connect will clinch this tick
       }
 
       // Slap stuffs early grab startup (before throw-catch frames).
       // Thick Blubber is the only absorb, resolved grabs-only inside processHit.
-      if (eitherHasSlapParryImmunity) return;
+      if (eitherHasSlapParryImmunity) {
+        consumeStrikeContactOverride(player);
+        return;
+      }
       processHit(player, otherPlayer, rooms, io);
     }
     return;
@@ -779,10 +1009,66 @@ function checkCollision(player, otherPlayer, rooms, io) {
   const chargedOpponentInFront = chargedDeltaX * chargedAttackDir >= 0;
   const chargedHorizontalDistance = Math.abs(chargedDeltaX);
 
-  if (
+  const chargedBodyEligible =
     chargedOpponentInFront &&
-    isWithinConnectRange(chargedHorizontalDistance, hitboxDistance)
-  ) {
+    isWithinConnectRange(chargedHorizontalDistance, hitboxDistance);
+  const chargedKind = player.isPalmThrust ? "palm" : "charged";
+  const chargedHurt = resolveAuthoredSlapHurtContact(player, otherPlayer, {
+    simTime: now,
+    attackKind: chargedKind,
+    bodyEligible: chargedBodyEligible,
+    bodyContactX: getContactSeamX(player, otherPlayer, chargedKind),
+    bodyDist: chargedHorizontalDistance,
+    attackDir: chargedAttackDir,
+  });
+  const chargedLimbOnly =
+    chargedHurt.mode === "authored_slap_hurtbox_v1" &&
+    chargedHurt.connect &&
+    !chargedBodyEligible &&
+    chargedOpponentInFront &&
+    !!chargedHurt.limb;
+
+  if (chargedHurt.mode === "authored_slap_hurtbox_v1") {
+    const exp = resolveSlapLimbExposure(otherPlayer, now);
+    const tip = buildAttackerTipProbeAabb(player, chargedKind);
+    noteSlapHurtQuery({
+      simTime: now,
+      accepted: !!(chargedBodyEligible || chargedLimbOnly),
+      rejectReason:
+        chargedBodyEligible || chargedLimbOnly
+          ? null
+          : !chargedOpponentInFront
+            ? "candidate-rejected:not_in_front"
+            : !exp.exposed
+              ? `candidate-rejected:${exp.reason || "limb_not_exposed"}`
+              : !chargedHurt.limb
+                ? "candidate-rejected:tip_limb_no_overlap"
+                : "candidate-rejected:no_connect",
+      attackType: chargedKind,
+      attackerPhase: "active",
+      attackerId: player.id,
+      victimId: otherPlayer.id,
+      victimPhase: exp.phase,
+      victimPoseKey: exp.poseKey,
+      limbExposed: exp.exposed,
+      tipX: tip.tipX,
+      candidateRegion: chargedHurt.winner
+        ? chargedHurt.winner.victimRegion
+        : exp.exposed
+          ? "frontArm"
+          : null,
+      overlap: !!chargedHurt.limb,
+      bodyEligible: chargedBodyEligible,
+      mirrorFacing:
+        chargedHurt.limb && chargedHurt.limb.mirrorFacing != null
+          ? chargedHurt.limb.mirrorFacing
+          : null,
+    });
+  }
+  if (chargedBodyEligible || chargedLimbOnly) {
+    if (chargedHurt.mode === "authored_slap_hurtbox_v1" && chargedHurt.winner) {
+      stampStrikeContactOverride(player, chargedHurt.winner);
+    }
     // PALM THRUST vs a grab: there is no default grab-startup armor, so a palm
     // that reaches a grabber stuffs the grab like any other strike (resolved in
     // processHit, where only the grabs-only Thick Blubber can absorb it). We
@@ -795,6 +1081,7 @@ function checkCollision(player, otherPlayer, rooms, io) {
     ) {
       // Already clinching us (active grab) — the palm can't connect.
       if (otherPlayer.isGrabbing) {
+        consumeStrikeContactOverride(player);
         return;
       }
     }
@@ -814,6 +1101,7 @@ function checkCollision(player, otherPlayer, rooms, io) {
             currentRoom, io
           );
         }
+        consumeStrikeContactOverride(player);
       } else if (otherPlayer.attackType === "slap") {
         // === CHARGED vs SLAP ===
         // Phase 13A (V2): flying headbutt → physical first-contact. Palm keeps
@@ -841,14 +1129,17 @@ function checkCollision(player, otherPlayer, rooms, io) {
               simTime: now,
             }
           );
+          consumeStrikeContactOverride(player);
           return;
         }
         const chargeLevel = player.chargeAttackPower || 0;
-        if (chargeLevel >= CHARGE_PRIORITY_THRESHOLD) {
-          // Legacy / palm: charged priority — hit the slap player.
+        const slapTipLive = isSlapTipLive(otherPlayer, now);
+        if (chargeLevel >= CHARGE_PRIORITY_THRESHOLD || !slapTipLive) {
+          // Charged/palm priority, OR slap tip already dead (recovery/startup):
+          // resolve the charged/palm hit — never cancel into a non-tip slap.
           processHit(player, otherPlayer, rooms, io);
         } else if (isCombatContactFidelityV2Enabled()) {
-          // Slap wins (below threshold / palm path) — end charged hitbox/pose.
+          // Live slap tip beats under-threshold charged/palm.
           consumeLosingAttackInstance(player, {
             winner: otherPlayer,
             winnerMove: "slap",
@@ -859,8 +1150,11 @@ function checkCollision(player, otherPlayer, rooms, io) {
             strikeKind: "slap",
             winnerIsAttacker: true,
           });
+          consumeStrikeContactOverride(player);
+        } else {
+          consumeStrikeContactOverride(player);
         }
-        // Below threshold: skip — the slap branch handles it (slap wins)
+        // Below threshold vs live slap tip: skip — the slap branch handles it.
       } else {
         processHit(player, otherPlayer, rooms, io);
       }
@@ -1308,11 +1602,14 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
 // one-hit absorb. The absorb behavior now lives ONLY in the grabs-only Thick
 // Blubber loadout/power-up, resolved inside processHit.)
 
-function processHit(player, otherPlayer, rooms, io) {
+function processHit(player, otherPlayer, rooms, io, opts = {}) {
   // Find the current room
   const currentRoom = rooms.find((room) =>
     room.players.some((p) => p.id === player.id)
   );
+
+  // Phase 4A contact stamp (limb vs torso) — consume once at hit resolve.
+  const strikeContactOverride = consumeStrikeContactOverride(player);
 
   // Sim clock — every combat timestamp written here (lastHitTime, counter-hit
   // windows, burst knockback) lives on the room's pausable clock so it freezes
@@ -1560,10 +1857,16 @@ function processHit(player, otherPlayer, rooms, io) {
   // charged are unchanged. Stamp slapOpenHitPending so checkCollision can
   // still confirm after grace if ice drift nudged the pair slightly past tip
   // connect (point-blank ghost whiff).
+  //
+  // NEVER defer when slap-vs-slap priority already committed this hit. Orphaning
+  // consumeLosingAttackInstance on the later slap (clear tip/limb, no damage)
+  // is the Phase 4A live-runtime failure: limb-only reciprocal contact at
+  // torso-whiff spacing + grace return = animation stop with zero hits.
   if (
     isSlapAttack &&
     player.attackStartTime &&
-    !otherPlayer.isRawParrying
+    !otherPlayer.isRawParrying &&
+    !opts.skipSlapOpenHitGrace
   ) {
     const slapAge = simNowForPlayer(player) - player.attackStartTime;
     if (
@@ -2083,10 +2386,40 @@ function processHit(player, otherPlayer, rooms, io) {
     // Contact rails: snap before KB / hitstop so the freeze frame reads solid.
     // Slap/charged → tip-meets-body; palm → tip+outset. tipQuality already
     // latched from slapSpacingBeforeExtension (pre-sep) — park is presentation.
+    //
+    // Phase 4A limb-only: NEVER torso-park. Tip-meets-body parking pulls the
+    // limb owner toward the attacker ("suction") even though only frontArm was
+    // hit. VFX uses strikeContactOverride.contactX; knockback still applies
+    // normally afterward. Genuine torso / body-preferred hits keep legacy park.
     const hitAttackKind = attackKindFromPlayer(player);
+    // Only skip park when the stamp explicitly says so (limb hit with torso
+    // out of legacy connect). Do NOT key off source===authored_slap_limb alone:
+    // torso+limb may select frontArm for VFX while bodyEligible remains true.
+    const limbOnlyHit =
+      !!strikeContactOverride &&
+      (strikeContactOverride.skipTorsoPark === true ||
+        strikeContactOverride.limbOnly === true);
+    const preParkAx = player.x;
+    const preParkVx = otherPlayer.x;
+    let parkPolicy = "none";
     if (isSlapAttack || player.attackType === "charged" || player.isPalmThrust) {
-      const parkDist = getHitParkDistance(hitAttackKind, player, otherPlayer);
-      applyContactCorrection(player, otherPlayer, parkDist);
+      if (limbOnlyHit) {
+        parkPolicy = "skip_limb_only";
+      } else {
+        parkPolicy = "torso_park";
+        const parkDist = getHitParkDistance(hitAttackKind, player, otherPlayer);
+        applyContactCorrection(player, otherPlayer, parkDist);
+      }
+    }
+    const postParkAx = player.x;
+    const postParkVx = otherPlayer.x;
+    // Stash for commit diagnostics (read when noteSlapHurtCommitted runs).
+    if (strikeContactOverride) {
+      strikeContactOverride._parkPolicy = parkPolicy;
+      strikeContactOverride._preParkAx = preParkAx;
+      strikeContactOverride._preParkVx = preParkVx;
+      strikeContactOverride._postParkAx = postParkAx;
+      strikeContactOverride._postParkVx = postParkVx;
     }
 
     // Clear any existing hit state cleanup to prevent conflicts
@@ -2597,7 +2930,11 @@ function processHit(player, otherPlayer, rooms, io) {
         const emitAttackKind = isLowKick
           ? "slap"
           : attackKindFromPlayer(player);
-        const contactX = getContactSeamX(player, otherPlayer, emitAttackKind);
+        const contactX =
+          strikeContactOverride &&
+          typeof strikeContactOverride.contactX === "number"
+            ? strikeContactOverride.contactX
+            : getContactSeamX(player, otherPlayer, emitAttackKind);
         const hitId = Math.random().toString(36).substr(2, 9);
         const hitAttackType = isSlapAttack
           ? "slap"
@@ -2693,10 +3030,58 @@ function processHit(player, otherPlayer, rooms, io) {
               // Art-tip contact seam for sparks / banners (replaces magic x+70).
               contactX,
               contactY: otherPlayer.y,
+              // Phase 4A — present only when AUTHORED_SLAP_HURTBOX_V1 stamped a region.
+              ...(strikeContactOverride
+                ? {
+                    victimHurtRegion: strikeContactOverride.victimRegion || null,
+                    victimHurtKind: strikeContactOverride.victimKind || null,
+                    authoredSlapHurtboxV1: !!strikeContactOverride.authoredSlapHurtboxV1,
+                    victimSlapPoseKey: strikeContactOverride.poseKey || null,
+                    victimSlapPhase: strikeContactOverride.phase || null,
+                    victimSlapMirrorFacing:
+                      strikeContactOverride.mirrorFacing != null
+                        ? strikeContactOverride.mirrorFacing
+                        : null,
+                  }
+                : {}),
             },
             groundPresentation
           )
         );
+        if (strikeContactOverride) {
+          const preAx = strikeContactOverride._preParkAx;
+          const preVx = strikeContactOverride._preParkVx;
+          const postAx = strikeContactOverride._postParkAx;
+          const postVx = strikeContactOverride._postParkVx;
+          noteSlapHurtCommitted({
+            simTime: currentTime,
+            region: strikeContactOverride.victimRegion,
+            kind: strikeContactOverride.victimKind,
+            victimPhase: strikeContactOverride.phase,
+            poseKey: strikeContactOverride.poseKey,
+            attackType: hitAttackType,
+            isPunish,
+            authoredSlapHurtboxV1: !!strikeContactOverride.authoredSlapHurtboxV1,
+            consumption: "consumed_once",
+            parkPolicy: strikeContactOverride._parkPolicy || null,
+            preParkAx: preAx,
+            preParkVx: preVx,
+            postParkAx: postAx,
+            postParkVx: postVx,
+            preParkDist:
+              typeof preAx === "number" && typeof preVx === "number"
+                ? Math.abs(preAx - preVx)
+                : null,
+            postParkDist:
+              typeof postAx === "number" && typeof postVx === "number"
+                ? Math.abs(postAx - postVx)
+                : null,
+            vfxContactX:
+              typeof strikeContactOverride.contactX === "number"
+                ? strikeContactOverride.contactX
+                : null,
+          });
+        }
         
         // ============================================
         // FG HITSTOP LADDER + SCREEN SHAKE
@@ -3632,6 +4017,8 @@ module.exports = {
   resolveSlapChargedTrade,
   resolveSlapChargedFromLunge,
   resolveChargeClash,
+  // Callout partition helper — tests only; not a gameplay entry point.
+  evaluateHitCallouts,
   // Geometry constants — exported for characterization / audit tests only.
   FLAP_BODYSLAM_CONTACT_HEIGHT,
   FLAP_BODYSLAM_WIDTH_SCALE,

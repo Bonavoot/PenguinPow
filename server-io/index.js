@@ -2438,6 +2438,7 @@ function tick(delta) {
         player.isSidestepping = false;
         player.isSidestepStartup = false;
         player.isSidestepRecovery = false;
+        player.sidestepDirection = 0;
         player.y = GROUND_LEVEL;
       }
       if (player.isSidestepping && !player.isBeingGrabbed) {
@@ -2571,6 +2572,7 @@ function tick(delta) {
           player.isSidestepping = false;
           player.isSidestepStartup = false;
           player.isSidestepRecovery = false;
+          player.sidestepDirection = 0;
           player.y = GROUND_LEVEL;
           player.actionLockUntil = 0;
 
@@ -4474,4 +4476,16 @@ io.on("connection", (socket) => {
 
 // Update server listen
 server.listen(PORT, () => {
+  // Phase 4A — one-shot startup diagnostic (dev/console only; not networked).
+  try {
+    const {
+      logAuthoredSlapHurtboxStartupDiagnostic,
+    } = require("./authoredSlapHurtboxFlags");
+    logAuthoredSlapHurtboxStartupDiagnostic({ port: PORT });
+  } catch (err) {
+    console.warn(
+      "[authoredSlapHurtbox] startup diagnostic failed:",
+      err && err.message ? err.message : err
+    );
+  }
 });

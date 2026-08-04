@@ -34,9 +34,10 @@ const { startRopeJump } = require("./ropeJumpStart");
 // MASTERY OVERHAUL feature flags (Phase 1: momentum, Phase 2: posture, Phase 3: cadence).
 const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P3_CADENCE } = require("./masteryFlags");
 
-// Map boundaries - MUST match gameUtils.js (340 and 940)
-const MAP_LEFT_BOUNDARY = 340;
-const MAP_RIGHT_BOUNDARY = 940;
+// Map boundaries — authoritative arena limits from gameUtils (340 / 935).
+// Do not duplicate literals; rope + ordinary CPU movement share this authority.
+const MAP_LEFT_BOUNDARY = GAME_MAP_LEFT;
+const MAP_RIGHT_BOUNDARY = GAME_MAP_RIGHT;
 const MAP_CENTER = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
 const MAP_WIDTH = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
 

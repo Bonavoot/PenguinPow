@@ -71,7 +71,9 @@ const DELTA_TRACKED_PROPS = [
   // Flap charges / wing-beat sync ride on slide-jump when FLAP is equipped
   // (standalone isFlapping liftoff was removed). Fields kept for cleanup/deltas.
   'isFlapping', 'flapPhase', 'flapCharges', 'flapWingBeatTime', 'flapFastFalling', 'flapBeatHDir',
-  'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery',
+  // sidestepDirection: -1/1 travel (NOT facing). Neutral 0 clears reliably on
+  // the delta wire (undefined cannot). Phase 2 presentation parity.
+  'isSidestepping', 'isSidestepStartup', 'isSidestepRecovery', 'sidestepDirection',
   'isSlapParryRecovering',
   'isHitFalling', 'isSidestepHitReturn',
   'inClinch', 'hasGrip', 'clinchAction',

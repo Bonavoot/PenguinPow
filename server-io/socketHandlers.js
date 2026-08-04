@@ -451,10 +451,11 @@ function processInputPacket(room, player, data, io, rooms) {
     return player.isAttacking && player.attackType === "charged";
   };
 
-  // Helper function to check if an action should be blocked
-  // allowDodgeCancelRecovery: allows dodge to cancel recovery state
-  // allowChargingDuringDodge: allows starting/continuing charged attack during dodge
-  const shouldBlockAction = (allowDodgeCancelRecovery = false, allowChargingDuringDodge = false) => {
+  // Helper function to check if an action should be blocked.
+  // Recovery is committed / uncancellable (Phase 2): Shift may buffer while
+  // recovering, but canPlayerDash / canPlayerSidestep reject until isRecovering
+  // clears. allowChargingDuringDodge: start/continue charged attack during dodge.
+  const shouldBlockAction = (allowChargingDuringDodge = false) => {
     // Global action lock gate to serialize actions visually/feel-wise
     if (player.actionLockUntil && simNowForPlayer(player) < player.actionLockUntil) {
       return true;
@@ -478,11 +479,8 @@ function processInputPacket(room, player, data, io, rooms) {
     if (player.inClinch) {
       return true;
     }
-    // Block during recovery unless it's a dodge and dodge cancel is allowed
-    if (
-      player.isRecovering &&
-      !(allowDodgeCancelRecovery && data.keys && data.keys.shift)
-    ) {
+    // Committed recovery — punishable; no dodge/sidestep cancel exception.
+    if (player.isRecovering) {
       return true;
     }
     // Block other actions while airborne on slide-jump (or legacy flap state).
@@ -1075,16 +1073,7 @@ function processInputPacket(room, player, data, io, rooms) {
   ) {
     const sidestepOpponent = room.players.find(p => p.id !== player.id && !p.isDead);
     if (sidestepOpponent) {
-      if (player.isRecovering) {
-        const recoveryAge = simNowForPlayer(player) - player.recoveryStartTime;
-        if (recoveryAge > 100) {
-          player.isRecovering = false;
-          player.movementVelocity = 0;
-          player.recoveryDirection = null;
-        }
-      }
-
-      if (!player.isRecovering) {
+      // canPlayerSidestep already rejects isRecovering — recovery is uncancellable.
       const initData = getSidestepInitData(player.x, sidestepOpponent.x);
       player.isRawParrySuccess = false;
       player.isPerfectRawParrySuccess = false;
@@ -1110,7 +1099,6 @@ function processInputPacket(room, player, data, io, rooms) {
       player.currentAction = "sidestep";
       player.actionLockUntil = simNowForPlayer(player) + SIDESTEP_TOTAL_MS;
       player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
-      }
     }
   }
   // "Not enough stamina" feedback when gassed sidestep is denied
@@ -1143,7 +1131,8 @@ function processInputPacket(room, player, data, io, rooms) {
     tryIceSlideReverse(player, nowSim);
     player.shiftJustPressed = false;
   }
-  // Handle dash - allow canceling recovery but block during charged attack execution
+  // Handle dash — recovery is committed/uncancellable (canPlayerDash rejects
+  // isRecovering). Block during charged attack execution.
   // Gassed: dodge locked (same as sidestep/rope/flap) — surfaces "not enough stamina".
   // Use shiftJustPressed to prevent dash from triggering when key is held through other actions
   else if (
@@ -1156,33 +1145,8 @@ function processInputPacket(room, player, data, io, rooms) {
     canPlayerDash(player) &&
     !player.isGassed
   ) {
-    // Allow dodge to cancel recovery
-    if (player.isRecovering) {
-      // Add grace period - don't allow dodge to cancel recovery for 100ms after it starts
-      // This prevents immediate dodge from canceling recovery that was just set
-      const recoveryAge = simNowForPlayer(player) - player.recoveryStartTime;
-      if (recoveryAge > 100) {
-        player.isRecovering = false;
-        player.movementVelocity = 0;
-        player.recoveryDirection = null;
-      } else {
-        // Phase 16 V2: do NOT return from the whole packet — that silently
-        // dropped later clinch throw/pull recognition in the same process.
-        // Legacy keeps the early return for exact rollback.
-        noteCommandReject(player, INPUT_REJECT.DODGE_RECOVERY_FRESH, {
-          command: "dodge",
-        });
-        if (!isInputCommandReliabilityV2Enabled()) {
-          return; // Legacy: Don't execute dodge if recovery is too fresh
-        }
-        // V2: skip dodge only; continue processing the rest of the packet.
-      }
-    }
-
-    if (!(player.isRecovering && isInputCommandReliabilityV2Enabled())) {
-      beginPlayerDodge(player, { nowSim: simNowForPlayer(player) });
-      noteCommandAccept(player, "dodge", {});
-    }
+    beginPlayerDodge(player, { nowSim: simNowForPlayer(player) });
+    noteCommandAccept(player, "dodge", {});
 
     // Dodge lifecycle (landing, recovery, cooldown) is handled entirely by the tick
     // loop in index.js. Pending charge attacks are executed when recovery ends.

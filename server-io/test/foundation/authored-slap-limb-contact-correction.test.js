@@ -1,0 +1,384 @@
+"use strict";
+
+/**
+ * Phase 4A — limb-only hits must not torso-park (forward "suction").
+ * Entry: real checkCollision → processHit. Asserts pre-knockback park stage.
+ */
+
+const { describe, it, afterEach } = require("node:test");
+const assert = require("node:assert/strict");
+
+const {
+  setAuthoredSlapHurtboxForTests,
+} = require("../../authoredSlapHurtboxFlags");
+const {
+  createFoundationScenario,
+  stepCollisionBothOrders,
+  advanceSim,
+  armPalmPhase,
+  armChargedPhase,
+} = require("./helpers/scenarioHarness");
+const {
+  SLAP_STARTUP_MS,
+  SLAP_ACTIVE_MS,
+  SLAP_RECOVERY_MS,
+  PALM_THRUST_POWER,
+  PALM_THRUST_STARTUP_MS,
+  CHARGE_PRIORITY_THRESHOLD,
+  TICK_RATE,
+} = require("../../constants");
+const {
+  MAP_LEFT_BOUNDARY,
+  MAP_RIGHT_BOUNDARY,
+} = require("../../gameUtils");
+const {
+  getConnectDistance,
+  isWithinConnectRange,
+  getHitParkDistance,
+  CONTACT_SNAP_EPSILON,
+} = require("../../strikeContact");
+const {
+  clearLastSlapHurtCommitted,
+  getLastSlapHurtCommitted,
+  clearSlapHurtQueryLog,
+} = require("../../authoredSlapHurtTarget");
+
+const TICK_MS = 1000 / TICK_RATE;
+const LIMB_GAP = 160;
+const TORSO_GAP = 120;
+const SIZE = 0.85;
+
+function hitCount(io) {
+  return io.find("player_hit").length;
+}
+
+function lastHit(io) {
+  const hits = io.find("player_hit");
+  return hits.length ? hits[hits.length - 1].payload : null;
+}
+
+function armSlapActive(player, now, agePastStartup = 60) {
+  player.isAttacking = true;
+  player.isSlapAttack = true;
+  player.attackType = "slap";
+  player.slapAnimation = 1;
+  player.slapFacingDirection = player.facing;
+  player.currentAction = "slap";
+  player.isInStartupFrames = false;
+  player.attackStartTime = now - SLAP_STARTUP_MS - agePastStartup;
+  player.slapActiveEndTime =
+    player.attackStartTime + SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
+  player.attackEndTime = player.slapActiveEndTime + SLAP_RECOVERY_MS;
+}
+
+function armSlapRecovery(player, now) {
+  armSlapActive(player, now, SLAP_ACTIVE_MS + 10);
+}
+
+function empowerPalm(player, now) {
+  player.chargeAttackPower = Math.max(
+    PALM_THRUST_POWER,
+    CHARGE_PRIORITY_THRESHOLD
+  );
+  player.isInStartupFrames = false;
+  player.attackStartTime = now - PALM_THRUST_STARTUP_MS - 20;
+  player.startupEndTime = player.attackStartTime + PALM_THRUST_STARTUP_MS;
+}
+
+function assertLimbOnlySpacing(a, b) {
+  const dist = Math.abs(a.x - b.x);
+  assert.equal(
+    isWithinConnectRange(dist, getConnectDistance("slap", a, b)),
+    false
+  );
+}
+
+function assertNoTorsoParkPull(committed, label) {
+  assert.ok(committed, `${label}: missing commit`);
+  assert.equal(committed.parkPolicy, "skip_limb_only", label);
+  assert.equal(committed.region, "frontArm", label);
+  assert.ok(
+    typeof committed.preParkDist === "number" &&
+      typeof committed.postParkDist === "number",
+    `${label}: park distances required`
+  );
+  // Correction stage must not reduce root-to-root distance (suction).
+  assert.ok(
+    committed.postParkDist + 0.01 >= committed.preParkDist,
+    `${label}: park pulled together pre=${committed.preParkDist} post=${committed.postParkDist}`
+  );
+  assert.equal(committed.preParkAx, committed.postParkAx, `${label}: attacker root moved`);
+  assert.equal(committed.preParkVx, committed.postParkVx, `${label}: victim root moved`);
+}
+
+describe("Phase 4A limb-contact correction — no torso park on limb-only", () => {
+  afterEach(() => {
+    setAuthoredSlapHurtboxForTests(null);
+    clearLastSlapHurtCommitted();
+    clearSlapHurtQueryLog();
+  });
+
+  it("slap vs recovery limb: no pre-KB suction; spark at limb; KB away", () => {
+    setAuthoredSlapHurtboxForTests(true);
+    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    s.right.isCPU = true;
+    const t0 = s.room.simTime;
+    armSlapRecovery(s.right, t0);
+    armSlapActive(s.left, t0, 60);
+    assertLimbOnlySpacing(s.left, s.right);
+    const before = { ax: s.left.x, vx: s.right.x, dist: Math.abs(s.left.x - s.right.x) };
+    stepCollisionBothOrders(s);
+    assert.equal(hitCount(s.io), 1);
+    const committed = getLastSlapHurtCommitted();
+    assertNoTorsoParkPull(committed, "slap-recovery");
+    assert.equal(committed.preParkDist, before.dist);
+    const payload = lastHit(s.io);
+    assert.equal(payload.victimHurtRegion, "frontArm");
+    assert.ok(
+      typeof payload.contactX === "number" &&
+        Math.abs(payload.contactX - committed.vfxContactX) < 1
+    );
+    // After full processHit, victim should not be parked at torso connect.
+    const parkDist = getHitParkDistance("slap", s.left, s.right);
+    const finalDist = Math.abs(s.left.x - s.right.x);
+    assert.ok(
+      Math.abs(finalDist - parkDist) > CONTACT_SNAP_EPSILON + 1 ||
+        s.right.isHit,
+      "must not freeze at torso park distance as the only outcome"
+    );
+    // Knockback / hit: victim is the right fighter.
+    assert.equal(s.right.isHit, true);
+    // Away from attacker: victim was to the right; KB should not pull left of pre-park.
+    // (Hitstun may set velocity; root after KB should not be closer than pre-park.)
+    assert.ok(
+      Math.abs(s.right.x - s.left.x) + 0.01 >= before.dist - 1,
+      `victim sucked inward after hit: before=${before.dist} after=${Math.abs(s.right.x - s.left.x)}`
+    );
+    s.dispose();
+  });
+
+  it("slap vs active limb (reciprocal priority): winner limb hit skips torso park", () => {
+    setAuthoredSlapHurtboxForTests(true);
+    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const t0 = s.room.simTime;
+    armSlapActive(s.right, t0, 40);
+    armSlapActive(s.left, t0, 0);
+    assertLimbOnlySpacing(s.left, s.right);
+    stepCollisionBothOrders(s);
+    assert.equal(hitCount(s.io), 1);
+    assert.equal(lastHit(s.io).victimHurtRegion, "frontArm");
+    assertNoTorsoParkPull(getLastSlapHurtCommitted(), "slap-active-reciprocal");
+    s.dispose();
+  });
+
+  it("palm vs recovery slap limb: connects and skips torso park (already on pipeline)", () => {
+    setAuthoredSlapHurtboxForTests(true);
+    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const t0 = s.room.simTime;
+    armSlapRecovery(s.right, t0);
+    armPalmPhase(s.left, "active", t0);
+    empowerPalm(s.left, t0);
+    s.left.chargingFacingDirection = s.left.facing;
+    assertLimbOnlySpacing(s.left, s.right);
+    const beforeDist = Math.abs(s.left.x - s.right.x);
+    const beforeAx = s.left.x;
+    stepCollisionBothOrders(s);
+    assert.equal(hitCount(s.io), 1, "palm must already be able to hit exposed slap limb");
+    assert.equal(lastHit(s.io).victimHurtRegion, "frontArm");
+    assertNoTorsoParkPull(getLastSlapHurtCommitted(), "palm-recovery");
+    // Palm may keep its own root (rooted poke); must not drag victim to torso park.
+    assert.equal(s.left.x, beforeAx, "palm attacker root must not be pulled");
+    assert.ok(Math.abs(s.left.x - s.right.x) + 0.01 >= beforeDist - 1);
+    s.dispose();
+  });
+
+  it("palm vs active slap limb: connects once; no suction", () => {
+    setAuthoredSlapHurtboxForTests(true);
+    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const t0 = s.room.simTime;
+    armSlapActive(s.right, t0, 60);
+    armPalmPhase(s.left, "active", t0);
+    empowerPalm(s.left, t0);
+    s.left.chargingFacingDirection = s.left.facing;
+    stepCollisionBothOrders(s);
+    assert.equal(hitCount(s.io), 1);
+    assertNoTorsoParkPull(getLastSlapHurtCommitted(), "palm-active");
+    s.dispose();
+  });
+
+  it("charged vs recovery slap limb: if tip∩limb connects, skip torso park", () => {
+    setAuthoredSlapHurtboxForTests(true);
+    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const t0 = s.room.simTime;
+    armSlapRecovery(s.right, t0);
+    armChargedPhase(s.left, "active", t0);
+    s.left.chargeAttackPower = CHARGE_PRIORITY_THRESHOLD;
+    s.left.chargingFacingDirection = s.left.facing;
+    s.left.isInStartupFrames = false;
+    stepCollisionBothOrders(s);
+    // Charged tip may or may not overlap limb at this gap — document either way.
+    if (hitCount(s.io) === 0) {
+      assert.equal(s.left.isAttacking, true, "miss must not cancel charged");
+      assert.equal(getLastSlapHurtCommitted(), null);
+    } else {
+      assert.equal(lastHit(s.io).victimHurtRegion, "frontArm");
+      assertNoTorsoParkPull(getLastSlapHurtCommitted(), "charged-limb");
+    }
+    s.dispose();
+  });
+
+  it("genuine torso contact still parks to tip-meets-body", () => {
+    setAuthoredSlapHurtboxForTests(true);
+    const s = createFoundationScenario({ gap: TORSO_GAP, sizeA: SIZE, sizeB: SIZE });
+    const t0 = s.room.simTime;
+    s.right.isAttacking = false;
+    s.right.isSlapAttack = false;
+    s.right.attackType = null;
+    armSlapActive(s.left, t0, 60);
+    assert.equal(
+      isWithinConnectRange(
+        Math.abs(s.left.x - s.right.x),
+        getConnectDistance("slap", s.left, s.right)
+      ),
+      true
+    );
+    stepCollisionBothOrders(s);
+    assert.equal(hitCount(s.io), 1);
+    const committed = getLastSlapHurtCommitted();
+    // Body hit may stamp torso or have null override path — park must run.
+    if (committed && committed.authoredSlapHurtboxV1) {
+      assert.equal(committed.parkPolicy, "torso_park");
+    }
+    // After park stage (recorded) distance should near parkDist when body won.
+    if (committed && committed.parkPolicy === "torso_park") {
+      const parkDist = getHitParkDistance("slap", s.left, s.right);
+      assert.ok(
+        Math.abs(committed.postParkDist - parkDist) <= CONTACT_SNAP_EPSILON + 0.5,
+        `torso park post=${committed.postParkDist} expected≈${parkDist}`
+      );
+    } else {
+      // No Phase 4A stamp on pure body — still must have moved toward park.
+      const parkDist = getHitParkDistance("slap", s.left, s.right);
+      // Final spacing after park+KB is not exact; ensure hit landed.
+      assert.equal(s.right.isHit, true);
+      assert.ok(parkDist > 0);
+    }
+    s.dispose();
+  });
+
+  it("torso+limb overlap: one hit, body-preferred park policy", () => {
+    setAuthoredSlapHurtboxForTests(true);
+    const s = createFoundationScenario({ gap: TORSO_GAP, sizeA: SIZE, sizeB: SIZE });
+    const t0 = s.room.simTime;
+    armSlapRecovery(s.right, t0);
+    armSlapActive(s.left, t0, 60);
+    stepCollisionBothOrders(s);
+    assert.equal(hitCount(s.io), 1);
+    for (let i = 0; i < 3; i++) {
+      advanceSim(s, TICK_MS);
+      stepCollisionBothOrders(s);
+    }
+    assert.equal(hitCount(s.io), 1);
+    const committed = getLastSlapHurtCommitted();
+    assert.ok(committed, "torso+limb must commit");
+    // Body was in connect range → must torso-park even if VFX region is limb.
+    assert.equal(committed.parkPolicy, "torso_park");
+    const parkDist = getHitParkDistance("slap", s.left, s.right);
+    assert.ok(
+      Math.abs(committed.postParkDist - parkDist) <= CONTACT_SNAP_EPSILON + 0.5,
+      `torso+limb park post=${committed.postParkDist} expected≈${parkDist}`
+    );
+    s.dispose();
+  });
+
+  it("flag OFF: limb spacing misses; roots unchanged", () => {
+    setAuthoredSlapHurtboxForTests(false);
+    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const t0 = s.room.simTime;
+    armSlapRecovery(s.right, t0);
+    armSlapActive(s.left, t0, 60);
+    const before = { ax: s.left.x, vx: s.right.x };
+    stepCollisionBothOrders(s);
+    assert.equal(hitCount(s.io), 0);
+    assert.equal(s.left.x, before.ax);
+    assert.equal(s.right.x, before.vx);
+    assert.equal(s.left.isAttacking, true);
+    s.dispose();
+  });
+
+  it("retracted limb miss changes neither root", () => {
+    setAuthoredSlapHurtboxForTests(true);
+    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const t0 = s.room.simTime;
+    armSlapActive(s.left, t0, 60);
+    s.right.isAttacking = false;
+    s.right.isSlapAttack = false;
+    s.right.attackType = null;
+    const before = { ax: s.left.x, vx: s.right.x };
+    stepCollisionBothOrders(s);
+    assert.equal(hitCount(s.io), 0);
+    assert.equal(s.left.x, before.ax);
+    assert.equal(s.right.x, before.vx);
+    s.dispose();
+  });
+
+  it("both sizes, facings, edges, ownership: limb-only skips park", () => {
+    setAuthoredSlapHurtboxForTests(true);
+    const cases = [
+      { size: 0.85, leftFacing: -1, rightFacing: 1, mid: null, label: "0.85" },
+      { size: 1, leftFacing: -1, rightFacing: 1, mid: null, label: "1.0" },
+      {
+        size: 0.85,
+        leftFacing: -1,
+        rightFacing: 1,
+        mid: MAP_LEFT_BOUNDARY + 200,
+        label: "left-edge",
+      },
+      {
+        size: 0.85,
+        leftFacing: -1,
+        rightFacing: 1,
+        mid: MAP_RIGHT_BOUNDARY - 200,
+        label: "right-edge",
+      },
+    ];
+    for (const c of cases) {
+      const s = createFoundationScenario({
+        gap: LIMB_GAP,
+        sizeA: c.size,
+        sizeB: c.size,
+        leftFacing: c.leftFacing,
+        rightFacing: c.rightFacing,
+        midX: c.mid == null ? undefined : c.mid,
+      });
+      s.right.isCPU = true;
+      const t0 = s.room.simTime;
+      armSlapRecovery(s.right, t0);
+      armSlapActive(s.left, t0, 60);
+      stepCollisionBothOrders(s);
+      assert.equal(hitCount(s.io), 1, c.label);
+      assertNoTorsoParkPull(getLastSlapHurtCommitted(), c.label);
+      assert.ok(
+        s.left.x >= MAP_LEFT_BOUNDARY - 1 &&
+          s.left.x <= MAP_RIGHT_BOUNDARY + 1 &&
+          s.right.x >= MAP_LEFT_BOUNDARY - 1 &&
+          s.right.x <= MAP_RIGHT_BOUNDARY + 1,
+        `${c.label}: out of ring`
+      );
+      clearLastSlapHurtCommitted();
+      s.dispose();
+    }
+  });
+
+  it("animation-stop regression: reciprocal limb still lands one hit", () => {
+    setAuthoredSlapHurtboxForTests(true);
+    const s = createFoundationScenario({ gap: LIMB_GAP, sizeA: SIZE, sizeB: SIZE });
+    const t0 = s.room.simTime;
+    armSlapActive(s.right, t0, 40);
+    armSlapActive(s.left, t0, 0);
+    stepCollisionBothOrders(s);
+    assert.equal(hitCount(s.io), 1);
+    assert.equal(s.left.isHit || s.right.isHit, true);
+    s.dispose();
+  });
+});

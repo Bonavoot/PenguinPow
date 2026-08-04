@@ -1,10 +1,18 @@
 /**
  * Combat fidelity debug helpers — DISABLED BY DEFAULT.
  *
- * Enable in the browser console or before match load:
+ * HARD PRODUCTION GATE: import.meta.env.DEV (Vite). In production builds every
+ * public entry returns false / no-ops BEFORE localStorage, geometry, arrays,
+ * or debug DOM. See isCombatFidelityDebugAvailable().
+ *
+ * Enable in the browser console (dev only) before match load:
  *   localStorage.setItem("pumo_combat_fidelity_debug", "1")
  * Disable:
  *   localStorage.removeItem("pumo_combat_fidelity_debug")
+ *
+ * Phase 1 diagnostic combat volumes (derived locally — NOT on the network):
+ *   localStorage.setItem("pumo_combat_volumes_debug", "1")  // default ON when fidelity debug is on
+ *   localStorage.setItem("pumo_combat_volumes_debug", "0")  // force off
  *
  * Aerial landing one-jump client snapshot (optional):
  *   localStorage.setItem("pumo_landing_trace", "1")
@@ -17,14 +25,46 @@
  * Does not alter gameplay, balance, or simulation authority.
  * Prefer server-authored half-widths / landing fields when present.
  *
- * See COMBAT_FIDELITY_AUDIT.md / AERIAL_LANDING_PHASE_A1.md.
+ * See COMBAT_FIDELITY_AUDIT.md / PREMIUM_COMBAT_FOUNDATION_AUDIT.md.
  */
 
 import { getLastPlacementDebug } from "../combatPresentation/placement";
 import { getPoseGeometryDebugSnapshot } from "../poseGeometry";
 import { getLastClientInputCommandResult } from "./inputCommandTrace";
+import {
+  deriveDebugCombatVolumes,
+  formatStrikePhaseDebugLine,
+  renderVolumeBoxesHtml,
+  renderAnchorMarkersHtml,
+  resolveDebugVolumeRoot,
+  resolveMirrorFacing,
+  getFighterRenderAnchor,
+  clearLocalStrikePhaseHints,
+} from "./combatVolumeDebug";
+// Vite JSON→ESM bind for shared authored defs (must precede derive helpers).
+import "./combatVolumeAuthoredViteBind";
+import {
+  deriveAuthoredDebugVolumes,
+  formatAuthoredPoseDebugLine,
+} from "./combatVolumeAuthoredClient";
+import {
+  formatSlapHurtHudLines,
+  LAST_COMMITTED_FRESH_MS,
+  readAuthoredSlapHurtboxHudFlag,
+} from "./slapHurtDebugHud";
+
+/**
+ * Hard gate — Vite `import.meta.env.DEV`.
+ * Production path must never read debug localStorage or build overlay geometry.
+ * Location: client/src/debug/CombatFidelityDebug.js (this constant + every export).
+ */
+const IS_DEV_BUILD =
+  typeof import.meta !== "undefined" && import.meta.env && import.meta.env.DEV === true;
 
 const FLAG_KEY = "pumo_combat_fidelity_debug";
+const VOLUMES_FLAG_KEY = "pumo_combat_volumes_debug";
+/** Phase 3 authored shadow volumes (default OFF — opt-in). */
+const SHADOW_VOLUMES_FLAG_KEY = "pumo_combat_volume_shadow";
 const LANDING_TRACE_KEY = "pumo_landing_trace";
 /** Optional console dump when a slide-jump / FLAP flight ends (client view). */
 const AERIAL_TRACE_KEY = "pumo_offensive_aerial_trace";
@@ -32,20 +72,36 @@ const INPUT_TRACE_KEY = "pumo_input_command_trace";
 /** Fallback only — must match server-io/constants.js HITBOX_DISTANCE_VALUE */
 const HITBOX_HALF_FALLBACK = 65;
 const DESIGN_W = 1280;
-/** Cap overlay DOM rebuilds — full innerHTML every RAF was a major jank source. */
-const OVERLAY_MIN_INTERVAL_MS = 100;
+const DESIGN_H = 720;
+/**
+ * HUD-only throttle when combat volumes are off.
+ * When volumes are ON, paint every caller frame so world geometry cannot lag
+ * an earlier combat phase behind throttled diagnostic text.
+ */
+const HUD_MIN_INTERVAL_MS = 100;
 
-let overlayEl = null;
+/** Screen-space HUD (body) — readable, not camera-transformed. */
+let hudEl = null;
+/**
+ * World-space volume/anchor layer — MUST mount under `.game-actors` so it
+ * inherits the same `--cam-*` transform (+ app zoom) as the wrestlers.
+ * Mounting on document.body was the Phase 3 vertical misalignment root cause.
+ */
+let worldEl = null;
 let lastContact = null;
 let landingTraceArmed = false;
 let lastLandingTraceKey = null;
 /** Latest server `landing_diag` payload (debug-net only). */
 let lastLandingDiag = null;
 let lastOverlayPaintMs = 0;
-let lastOverlayHtml = "";
+let lastHudHtml = "";
+let lastWorldHtml = "";
 
 // Cache localStorage flags — getItem every RAF (60Hz+) is measurable main-thread cost.
+// Never populated in production (IS_DEV_BUILD gate).
 let cachedFidelityEnabled = null;
+let cachedVolumesEnabled = null;
+let cachedShadowVolumesEnabled = null;
 let cachedLandingTraceEnabled = null;
 let cachedAerialTraceEnabled = null;
 let cachedInputTraceEnabled = null;
@@ -58,19 +114,45 @@ function readFlag(key) {
   }
 }
 
+function readVolumesFlag() {
+  try {
+    const v = localStorage.getItem(VOLUMES_FLAG_KEY);
+    if (v === "0" || v === "false") return false;
+    if (v === "1" || v === "true") return true;
+    // Default ON whenever fidelity debug is on (no extra network cost).
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 function refreshCachedFlags() {
+  if (!IS_DEV_BUILD) {
+    cachedFidelityEnabled = false;
+    cachedVolumesEnabled = false;
+    cachedShadowVolumesEnabled = false;
+    cachedLandingTraceEnabled = false;
+    cachedAerialTraceEnabled = false;
+    cachedInputTraceEnabled = false;
+    return;
+  }
   cachedFidelityEnabled = readFlag(FLAG_KEY);
+  cachedVolumesEnabled = readVolumesFlag();
+  cachedShadowVolumesEnabled = readFlag(SHADOW_VOLUMES_FLAG_KEY);
   cachedLandingTraceEnabled = readFlag(LANDING_TRACE_KEY);
   cachedAerialTraceEnabled = readFlag(AERIAL_TRACE_KEY);
   cachedInputTraceEnabled = readFlag(INPUT_TRACE_KEY);
 }
 
-if (typeof window !== "undefined") {
+// DEV only: localStorage cache + cross-tab sync. Production never registers.
+if (IS_DEV_BUILD && typeof window !== "undefined") {
   refreshCachedFlags();
   window.addEventListener("storage", (e) => {
     if (
       !e.key ||
       e.key === FLAG_KEY ||
+      e.key === VOLUMES_FLAG_KEY ||
+      e.key === SHADOW_VOLUMES_FLAG_KEY ||
       e.key === LANDING_TRACE_KEY ||
       e.key === AERIAL_TRACE_KEY ||
       e.key === INPUT_TRACE_KEY
@@ -80,29 +162,57 @@ if (typeof window !== "undefined") {
   });
 }
 
+/** True only in Vite DEV builds — hard production gate. */
+export function isCombatFidelityDebugAvailable() {
+  return IS_DEV_BUILD;
+}
+
+function isCombatVolumesDebugEnabled() {
+  if (!IS_DEV_BUILD) return false;
+  if (!isCombatFidelityDebugEnabled()) return false;
+  if (cachedVolumesEnabled == null) refreshCachedFlags();
+  return !!cachedVolumesEnabled;
+}
+
+/** Phase 3 authored shadow overlay (opt-in; default OFF). */
+function isCombatVolumeShadowOverlayEnabled() {
+  if (!IS_DEV_BUILD) return false;
+  if (!isCombatVolumesDebugEnabled()) return false;
+  if (cachedShadowVolumesEnabled == null) refreshCachedFlags();
+  return !!cachedShadowVolumesEnabled;
+}
+
 export function isCombatFidelityDebugEnabled() {
+  if (!IS_DEV_BUILD) return false;
   if (cachedFidelityEnabled == null) refreshCachedFlags();
   return !!cachedFidelityEnabled;
 }
 
 /** Cheap gate for RAF callers — avoid building overlay payloads every frame. */
 export function shouldUpdateCombatFidelityOverlay() {
+  // Hard production gate first — no localStorage, no timers, no geometry.
+  if (!IS_DEV_BUILD) return false;
   if (!isCombatFidelityDebugEnabled()) return false;
   if (typeof document !== "undefined" && document.hidden) return false;
-  return performance.now() - lastOverlayPaintMs >= OVERLAY_MIN_INTERVAL_MS;
+  // Volumes enabled → phase-honest every gameplay frame. HUD-only → throttle.
+  if (isCombatVolumesDebugEnabled()) return true;
+  return performance.now() - lastOverlayPaintMs >= HUD_MIN_INTERVAL_MS;
 }
 
 function isLandingTraceEnabled() {
+  if (!IS_DEV_BUILD) return false;
   if (cachedLandingTraceEnabled == null) refreshCachedFlags();
   return !!cachedLandingTraceEnabled;
 }
 
 function isOffensiveAerialTraceEnabled() {
+  if (!IS_DEV_BUILD) return false;
   if (cachedAerialTraceEnabled == null) refreshCachedFlags();
   return !!cachedAerialTraceEnabled;
 }
 
 function setCachedFlag(key, enabled) {
+  if (!IS_DEV_BUILD) return;
   try {
     if (enabled) localStorage.setItem(key, "1");
     else localStorage.removeItem(key);
@@ -159,28 +269,62 @@ function classifyOffensiveAerial(fighter) {
 }
 
 export function noteCombatContactEvent(data) {
-  if (!isCombatFidelityDebugEnabled() || !data) return;
+  if (!IS_DEV_BUILD || !isCombatFidelityDebugEnabled() || !data) return;
   lastContact = {
     contactX: typeof data.contactX === "number" ? data.contactX : null,
     contactY: typeof data.contactY === "number" ? data.contactY : null,
     attackerX: typeof data.attackerX === "number" ? data.attackerX : null,
     victimX: typeof data.x === "number" ? data.x : null,
     attackType: data.attackType || null,
+    victimHurtRegion: data.victimHurtRegion || null,
+    victimHurtKind: data.victimHurtKind || null,
+    authoredSlapHurtboxV1: !!data.authoredSlapHurtboxV1,
+    victimSlapPoseKey: data.victimSlapPoseKey || null,
+    victimSlapPhase: data.victimSlapPhase || null,
+    victimSlapMirrorFacing:
+      data.victimSlapMirrorFacing === 1 || data.victimSlapMirrorFacing === -1
+        ? data.victimSlapMirrorFacing
+        : null,
+    isPunish: !!data.isPunish,
+    isCounterHit: !!data.isCounterHit,
+    // Wall-clock stamp for LAST COMMITTED age / EXPIRED labeling only.
     t: performance.now(),
+    label: "LAST_COMMITTED",
   };
 }
 
 /** Ingest a server `landing_diag` packet (emitted only when LANDING_DEBUG_NET). */
 export function noteLandingDiag(data) {
-  if (!data) return;
+  if (!IS_DEV_BUILD || !data) return;
   lastLandingDiag = { ...data, t: performance.now() };
 }
 
-function ensureOverlay() {
-  if (overlayEl || typeof document === "undefined") return overlayEl;
-  overlayEl = document.createElement("div");
-  overlayEl.id = "pumo-combat-fidelity-debug";
-  overlayEl.style.cssText = [
+function teardownDebugLayers() {
+  if (hudEl) {
+    hudEl.remove();
+    hudEl = null;
+  }
+  if (worldEl) {
+    worldEl.remove();
+    worldEl = null;
+  }
+  // Belt-and-suspenders: remove by id if a prior host unmount orphaned refs.
+  if (typeof document !== "undefined") {
+    document.getElementById("pumo-combat-fidelity-debug")?.remove();
+    document.getElementById("pumo-combat-volume-world")?.remove();
+  }
+  lastHudHtml = "";
+  lastWorldHtml = "";
+  // Debug lifecycle boundary — drop strike-identity latches + director hints.
+  clearLocalStrikePhaseHints();
+}
+
+function ensureHudOverlay() {
+  if (!IS_DEV_BUILD || typeof document === "undefined") return null;
+  if (hudEl && hudEl.isConnected) return hudEl;
+  hudEl = document.createElement("div");
+  hudEl.id = "pumo-combat-fidelity-debug";
+  hudEl.style.cssText = [
     "position:fixed",
     "inset:0",
     "pointer-events:none",
@@ -189,8 +333,27 @@ function ensureOverlay() {
     "color:#b8f5c8",
     "text-shadow:0 1px 2px #000",
   ].join(";");
-  document.body.appendChild(overlayEl);
-  return overlayEl;
+  document.body.appendChild(hudEl);
+  return hudEl;
+}
+
+function ensureWorldOverlay() {
+  if (!IS_DEV_BUILD || typeof document === "undefined") return null;
+  if (worldEl && worldEl.isConnected) return worldEl;
+  const host = document.querySelector(".game-actors");
+  if (!host) return null;
+  worldEl = document.createElement("div");
+  worldEl.id = "pumo-combat-volume-world";
+  worldEl.setAttribute("data-combat-volume-world", "1");
+  worldEl.style.cssText = [
+    "position:absolute",
+    "inset:0",
+    "pointer-events:none",
+    "z-index:50",
+    "overflow:visible",
+  ].join(";");
+  host.appendChild(worldEl);
+  return worldEl;
 }
 
 function halfWidthFor(fighter) {
@@ -208,15 +371,17 @@ function halfWidthFor(fighter) {
 function fighterBox(fighter, label, color) {
   if (!fighter || typeof fighter.x !== "number") return "";
   const half = halfWidthFor(fighter);
-  const toPct = (x) => `${(x / DESIGN_W) * 100}%`;
-  const mult =
-    fighter.sizeMult ?? fighter.sizeMultiplier ?? 1;
+  const { rootX, rootY } = resolveDebugVolumeRoot(fighter);
+  const leftPct = (rootX / DESIGN_W) * 100;
+  const bottomPct = (rootY / DESIGN_H) * 100;
+  const halfPct = (half / DESIGN_W) * 100;
+  const mult = fighter.sizeMult ?? fighter.sizeMultiplier ?? 1;
   return `
-    <div style="position:absolute;left:${toPct(fighter.x)};bottom:18%;transform:translateX(-50%);text-align:center;color:${color}">
-      <div style="width:2px;height:120px;margin:0 auto;background:${color}"></div>
-      <div style="position:absolute;left:50%;top:40px;width:${(half * 2 / DESIGN_W) * 100}vw;max-width:${half * 2}px;height:28px;border:1px solid ${color};transform:translateX(-50%);opacity:0.85;box-sizing:border-box"></div>
-      <div>${label} x=${Math.round(fighter.x)}</div>
-      <div style="opacity:0.85">size=${Number(mult).toFixed(2)} half=${half.toFixed(1)}</div>
+    <div style="position:absolute;left:${leftPct}%;bottom:${bottomPct}%;transform:translateX(-50%);text-align:center;color:${color};pointer-events:none">
+      <div style="width:2px;height:120px;margin:0 auto;background:${color};transform:translateY(-100%)"></div>
+      <div style="position:absolute;left:50%;bottom:0;width:${halfPct * 2}%;height:28px;border:1px solid ${color};transform:translateX(-50%);opacity:0.85;box-sizing:border-box"></div>
+      <div style="position:absolute;left:50%;bottom:130px;transform:translateX(-50%);white-space:nowrap;font:10px/1.2 monospace;text-shadow:0 1px 2px #000">${label} x=${Math.round(rootX)} y=${Math.round(rootY)}</div>
+      <div style="position:absolute;left:50%;bottom:116px;transform:translateX(-50%);white-space:nowrap;opacity:0.85;font:10px/1 monospace">size=${Number(mult).toFixed(2)} half=${half.toFixed(1)}</div>
     </div>`;
 }
 
@@ -323,11 +488,11 @@ function maybeEmitLandingTrace(state) {
  * }} state
  */
 export function renderCombatFidelityOverlay(state) {
+  // Hard production gate first — no localStorage, geometry, arrays, or DOM.
+  if (!IS_DEV_BUILD) return;
   if (!isCombatFidelityDebugEnabled()) {
-    if (overlayEl) {
-      overlayEl.remove();
-      overlayEl = null;
-      lastOverlayHtml = "";
+    if (hudEl || worldEl) {
+      teardownDebugLayers();
       lastOverlayPaintMs = 0;
     }
     return;
@@ -336,21 +501,47 @@ export function renderCombatFidelityOverlay(state) {
   if (typeof document !== "undefined" && document.hidden) return;
 
   const nowMs = performance.now();
-  if (nowMs - lastOverlayPaintMs < OVERLAY_MIN_INTERVAL_MS) return;
+  const volumesWanted = isCombatVolumesDebugEnabled();
+  // When volumes are on, never skip a snapshot for throttle reasons.
+  if (!volumesWanted && nowMs - lastOverlayPaintMs < HUD_MIN_INTERVAL_MS) {
+    return;
+  }
 
-  const el = ensureOverlay();
-  if (!el || !state) return;
+  const hud = ensureHudOverlay();
+  const world = ensureWorldOverlay();
+  if (!hud || !state) return;
 
-  const p1 = state.p1 || {
-    x: state.p1x || 0,
-    y: state.p1y || 0,
-    sizeMult: state.p1SizeMult ?? state.sizeMult ?? 1,
+  const mergeAnchor = (fighter, slotKey) => {
+    if (!fighter) return fighter;
+    const a = getFighterRenderAnchor(slotKey);
+    if (!a) return fighter;
+    return {
+      ...fighter,
+      renderX: a.renderX,
+      renderY: a.renderY,
+      soleFromBottomPct: a.soleFromBottomPct,
+      // Keep sim x/y for grounded checks; prefer live anchor sim when fresher.
+      x: typeof a.simX === "number" ? a.simX : fighter.x,
+      y: typeof a.simY === "number" ? a.simY : fighter.y,
+    };
   };
-  const p2 = state.p2 || {
-    x: state.p2x || 0,
-    y: state.p2y || 0,
-    sizeMult: state.p2SizeMult ?? 1,
-  };
+
+  const p1 = mergeAnchor(
+    state.p1 || {
+      x: state.p1x || 0,
+      y: state.p1y || 0,
+      sizeMult: state.p1SizeMult ?? state.sizeMult ?? 1,
+    },
+    "player 1"
+  );
+  const p2 = mergeAnchor(
+    state.p2 || {
+      x: state.p2x || 0,
+      y: state.p2y || 0,
+      sizeMult: state.p2SizeMult ?? 1,
+    },
+    "player 2"
+  );
 
   maybeEmitLandingTrace({ p1, p2 });
 
@@ -523,6 +714,18 @@ export function renderCombatFidelityOverlay(state) {
     return "body";
   };
   const contactLines = `contact P1=${contactPresence(p1)} atk=${p1.isAttacking ? p1.attackType || "Y" : "—"} hit=${p1.isHit ? "Y" : "N"} · P2=${contactPresence(p2)} atk=${p2.isAttacking ? p2.attackType || "Y" : "—"} hit=${p2.isHit ? "Y" : "N"} (COMBAT_CONTACT_FIDELITY_V2 default ON)`;
+  const slapHurtHud = formatSlapHurtHudLines({
+    p1,
+    p2,
+    lastCommitted: lastContact,
+    nowMs: performance.now(),
+    flagHud: readAuthoredSlapHurtboxHudFlag(),
+  });
+  const slapHurtLines = `${slapHurtHud.flagLine}<br/><span style="color:#ffccbc">${slapHurtHud.currentLine}</span><br/><span style="color:#ffe0b2">${slapHurtHud.queryLine}</span><br/><span style="color:${
+    lastContact && performance.now() - lastContact.t > LAST_COMMITTED_FRESH_MS
+      ? "#90a4ae"
+      : "#ffab91"
+  }">${slapHurtHud.lastLine}</span>`;
 
   // Lifecycle ownership: infer domains from authoritative gameplay flags.
   // Instance IDs / reject counts stay server-side (no debug-only wire fields).
@@ -575,28 +778,104 @@ export function renderCombatFidelityOverlay(state) {
   }
 
   const toPct = (x) => `${(x / DESIGN_W) * 100}%`;
+  const toBottomPct = (y) => `${(y / DESIGN_H) * 100}%`;
   let targetMarks = "";
   if (j && typeof j.ropeJumpRawTargetX === "number" && j.ropeJumpRawTargetX) {
-    targetMarks += `<div style="position:absolute;left:${toPct(j.ropeJumpRawTargetX)};bottom:30%;transform:translateX(-50%);color:#fff59d">raw▼</div>`;
+    targetMarks += `<div style="position:absolute;left:${toPct(j.ropeJumpRawTargetX)};bottom:${toBottomPct(GROUND_LEVEL_MARKER)};transform:translateX(-50%);color:#fff59d">raw▼</div>`;
   }
   if (j && typeof j.ropeJumpResolvedTargetX === "number" && j.ropeJumpResolvedTargetX) {
-    targetMarks += `<div style="position:absolute;left:${toPct(j.ropeJumpResolvedTargetX)};bottom:34%;transform:translateX(-50%);color:#69f0ae">res▼</div>`;
+    targetMarks += `<div style="position:absolute;left:${toPct(j.ropeJumpResolvedTargetX)};bottom:${toBottomPct(GROUND_LEVEL_MARKER + 12)};transform:translateX(-50%);color:#69f0ae">res▼</div>`;
   }
   if (j && j.ropeJumpLandingCommitted && typeof j.ropeJumpLandingCommitX === "number") {
-    targetMarks += `<div style="position:absolute;left:${toPct(j.ropeJumpLandingCommitX)};bottom:38%;transform:translateX(-50%);color:#80cbc4">commit▼</div>`;
+    targetMarks += `<div style="position:absolute;left:${toPct(j.ropeJumpLandingCommitX)};bottom:${toBottomPct(GROUND_LEVEL_MARKER + 24)};transform:translateX(-50%);color:#80cbc4">commit▼</div>`;
   }
 
   let contactHtml = "";
   if (lastContact && performance.now() - lastContact.t < 1200 && lastContact.contactX != null) {
+    const cy =
+      typeof lastContact.contactY === "number" ? lastContact.contactY : GROUND_LEVEL_MARKER + 40;
+    const age = Math.round(performance.now() - lastContact.t);
+    const expired = age > LAST_COMMITTED_FRESH_MS;
     contactHtml = `
-      <div style="position:absolute;left:${toPct(lastContact.contactX)};bottom:22%;transform:translateX(-50%);color:#ff8a80">
-        <div style="width:3px;height:80px;margin:0 auto;background:#ff8a80"></div>
-        contactX=${Math.round(lastContact.contactX)} ${lastContact.attackType || ""}
+      <div style="position:absolute;left:${toPct(lastContact.contactX)};bottom:${toBottomPct(cy)};transform:translateX(-50%);color:${
+        expired ? "#90a4ae" : "#ff8a80"
+      }">
+        <div style="width:3px;height:80px;margin:0 auto;background:${
+          expired ? "#90a4ae" : "#ff8a80"
+        };transform:translateY(-100%);opacity:${expired ? 0.45 : 1}"></div>
+        LAST COMMITTED${expired ? " EXPIRED" : ""} age=${age}ms x=${Math.round(
+          lastContact.contactX
+        )} ${lastContact.attackType || ""}${
+          lastContact.victimHurtRegion
+            ? ` region=${lastContact.victimHurtRegion}${
+                lastContact.authoredSlapHurtboxV1 ? "/limbAuth" : ""
+              }`
+            : ""
+        }${
+          lastContact.victimSlapPhase
+            ? ` vPhase=${lastContact.victimSlapPhase}`
+            : ""
+        }${
+          lastContact.victimSlapMirrorFacing != null
+            ? ` vFace=${lastContact.victimSlapMirrorFacing}`
+            : ""
+        }${lastContact.isPunish ? " PUNISH" : ""}${
+          lastContact.isCounterHit ? " COUNTER" : ""
+        }
       </div>`;
   }
 
-  const html = `
-    <div style="position:absolute;left:8px;top:8px;background:rgba(0,0,0,0.62);padding:8px 10px;border-radius:4px;max-width:420px">
+  const volumesOn = isCombatVolumesDebugEnabled();
+  const shadowOn = isCombatVolumeShadowOverlayEnabled();
+  // Geometry derivation only when volumes enabled (debug-off: none).
+  // Shadow ON → Phase 3 authored defs; else Phase 1 diagnostic fixtures.
+  let volumeHtml = "";
+  let anchorHtml = "";
+  let strikePhaseLines = "";
+  let anchorHudLine = "";
+  if (volumesOn) {
+    const vols1 = shadowOn
+      ? deriveAuthoredDebugVolumes(p1)
+      : deriveDebugCombatVolumes(p1);
+    const vols2 = shadowOn
+      ? deriveAuthoredDebugVolumes(p2)
+      : deriveDebugCombatVolumes(p2);
+    volumeHtml = `${renderVolumeBoxesHtml(p1, "p1", vols1)}${renderVolumeBoxesHtml(p2, "p2", vols2)}`;
+    anchorHtml = `${renderAnchorMarkersHtml(p1, "p1")}${renderAnchorMarkersHtml(p2, "p2")}`;
+    const a1 = resolveDebugVolumeRoot(p1);
+    const a2 = resolveDebugVolumeRoot(p2);
+    const m1 = resolveMirrorFacing(p1);
+    const m2 = resolveMirrorFacing(p2);
+    anchorHudLine = `anchors P1 sim=(${fmt(a1.simX)},${fmt(a1.simY)}) rend=(${fmt(a1.rootX)},${fmt(a1.rootY)}) footY=${fmt(a1.visualFootY)} face=${m1} · P2 sim=(${fmt(a2.simX)},${fmt(a2.simY)}) rend=(${fmt(a2.rootX)},${fmt(a2.rootY)}) footY=${fmt(a2.visualFootY)} face=${m2} · worldHost=${world ? ".game-actors" : "MISSING"}`;
+    strikePhaseLines = [
+      formatStrikePhaseDebugLine(p1, "P1"),
+      formatStrikePhaseDebugLine(p2, "P2"),
+      shadowOn ? formatAuthoredPoseDebugLine(p1, "P1") : null,
+      shadowOn ? formatAuthoredPoseDebugLine(p2, "P2") : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  const volumeLegend = volumesOn
+    ? `<br/><span style="color:#bbb">volumes (${
+        shadowOn ? "PHASE3 authored SHADOW" : "local Phase1 diag"
+      }): <span style="color:#2196f3">PUSH</span> <span style="color:#4caf50">HURT</span> <span style="color:#a5d6a7">LIMB</span> <span style="color:#f44336">HIT/tip</span> <span style="color:#ffeb3b">GRAB</span> <span style="color:#00bcd4">LAND</span> — not authoritative; recovery never HIT</span>${
+        strikePhaseLines
+          ? `<br/><span style="color:#ff8a80">${strikePhaseLines}</span>`
+          : ""
+      }${
+        anchorHudLine
+          ? `<br/><span style="color:#f8bbd0">${anchorHudLine}</span>`
+          : ""
+      }${
+        shadowOn
+          ? ""
+          : `<br/><span style="color:#888">authored shadow: localStorage pumo_combat_volume_shadow=1</span>`
+      }`
+    : "";
+
+  const hudHtml = `
+    <div style="position:absolute;left:8px;top:8px;background:rgba(0,0,0,0.62);padding:8px 10px;border-radius:4px;max-width:480px">
       pumo_combat_fidelity_debug<br/>
       P1 half=${half1.toFixed(1)} (×${Number(p1.sizeMult ?? p1.sizeMultiplier ?? 1).toFixed(2)})
       · P2 half=${half2.toFixed(1)} (×${Number(p2.sizeMult ?? p2.sizeMultiplier ?? 1).toFixed(2)})<br/>
@@ -607,37 +886,52 @@ export function renderCombatFidelityOverlay(state) {
       <span style="color:#a5d6a7">${poseLines}</span><br/>
       <span style="color:#fff59d">${facingLines}</span><br/>
       <span style="color:#90caf9">${contactLines}</span><br/>
+      <span style="color:#ffab91">${slapHurtLines}</span><br/>
       <span style="color:#b0bec5">${lifecycleLines}</span>
       ${
         inputCmdLines
           ? `<br/><span style="color:#ffcc80">${inputCmdLines}</span>`
           : ""
       }
+      ${volumeLegend}
     </div>
-    ${fighterBox(p1, "P1", "#80d8ff")}
-    ${fighterBox(p2, "P2", "#ffd180")}
-    ${targetMarks}
-    ${contactHtml}
   `;
+
+  const worldHtml = volumesOn
+    ? `${volumeHtml}${anchorHtml}${fighterBox(p1, "P1", "#80d8ff")}${fighterBox(p2, "P2", "#ffd180")}${targetMarks}${contactHtml}`
+    : `${fighterBox(p1, "P1", "#80d8ff")}${fighterBox(p2, "P2", "#ffd180")}${targetMarks}${contactHtml}`;
+
   // Skip identical DOM writes (still pays string build, but avoids layout thrash).
-  if (html === lastOverlayHtml) {
+  if (hudHtml === lastHudHtml && worldHtml === lastWorldHtml) {
     lastOverlayPaintMs = nowMs;
     return;
   }
-  lastOverlayHtml = html;
+  lastHudHtml = hudHtml;
+  lastWorldHtml = worldHtml;
   lastOverlayPaintMs = nowMs;
-  el.innerHTML = html;
+  hud.innerHTML = hudHtml;
+  if (world) {
+    world.innerHTML = worldHtml;
+  }
 }
+
+/** Ground Y used for rope-target marks (matches server GROUND_LEVEL). */
+const GROUND_LEVEL_MARKER = 286;
 
 function fmt(n, digits = 1) {
   if (typeof n !== "number" || !Number.isFinite(n)) return "—";
   return Number(n.toFixed(digits));
 }
 
-if (typeof window !== "undefined") {
+// DEV only console helpers — never attach in production builds.
+if (IS_DEV_BUILD && typeof window !== "undefined") {
   window.__PUMO_COMBAT_FIDELITY = {
     enable: () => setCachedFlag(FLAG_KEY, true),
     disable: () => setCachedFlag(FLAG_KEY, false),
+    enableVolumes: () => setCachedFlag(VOLUMES_FLAG_KEY, true),
+    disableVolumes: () => setCachedFlag(VOLUMES_FLAG_KEY, false),
+    enableShadowVolumes: () => setCachedFlag(SHADOW_VOLUMES_FLAG_KEY, true),
+    disableShadowVolumes: () => setCachedFlag(SHADOW_VOLUMES_FLAG_KEY, false),
     enableLandingTrace: () => setCachedFlag(LANDING_TRACE_KEY, true),
     disableLandingTrace: () => setCachedFlag(LANDING_TRACE_KEY, false),
     enableOffensiveAerialTrace: () => setCachedFlag(AERIAL_TRACE_KEY, true),
@@ -646,5 +940,6 @@ if (typeof window !== "undefined") {
     noteContact: noteCombatContactEvent,
     noteLandingDiag,
     render: renderCombatFidelityOverlay,
+    isAvailable: isCombatFidelityDebugAvailable,
   };
 }

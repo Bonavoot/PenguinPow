@@ -1,0 +1,683 @@
+{
+  "version": 1,
+  "phase": 3,
+  "coordSystem": {
+    "forward": "toward attack along action-facing (+ = attack direction)",
+    "up": "+Y toward head from fighter root (feet near root Y)",
+    "mirror": "single definition mirrored by committed action-facing",
+    "units": "gameplay world units (same as server sim / 1280×720 design)"
+  },
+  "meta": {
+    "definitionOwner": "shared/combatVolumeAuthored.json",
+    "queryOwner": "server-io/combatVolumeDefs.js + combatVolumeQuery.queryAuthoredCombatVolumes",
+    "serverTransform": "server-io/combatGeometry.localRectToWorldAabb",
+    "clientDebugTransform": "client/src/debug/combatVolumeDebug.js + CombatFidelityDebug world layer under .game-actors (camera-synced)",
+    "authority": "SHADOW_DEFAULT — catalog is not gameplay-approved. Phase 4A may enable ONLY poses with phase4aAuthority=true (slap_active + slap_recovery HURT_LIMB) when AUTHORED_SLAP_HURTBOX_V1 is ON. Palm, charged, sidestep, aerial, grab, clinch, throw, rope-jump, and slap_startup remain legacy/shadow.",
+    "phase4aSlapAllowlist": ["slap_active", "slap_recovery"],
+    "tipWorld": {
+      "slap": 78.39166666666667,
+      "palm": 71.825,
+      "charged": 69.6875,
+      "note": "spritePx * (1280*0.123)/960 — must match server strikeContact / constants"
+    },
+    "pushHalfBase": 65
+  },
+  "poses": {
+    "neutral": {
+      "support": "supported",
+      "art": "pumo-idle.png",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 6,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        }
+      ]
+    },
+    "crouch": {
+      "support": "supported",
+      "art": "crouch-stance.png",
+      "notes": "Live isCrouchStance is currently unused on server; fixtures may force _phase3Crouch or isCrouchStance for viz.",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 38,
+          "halfW": "pushHalf",
+          "halfH": 38
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 34,
+          "halfW": "pushHalf",
+          "halfH": 26
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 4,
+          "up": 72,
+          "halfW": 18,
+          "halfH": 13
+        }
+      ]
+    },
+    "slap_startup": {
+      "support": "supported",
+      "art": "palm-thrust-startup.png",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 6,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        },
+        {
+          "kind": "HURT_LIMB",
+          "label": "frontArm",
+          "region": "frontArm",
+          "forward": 42,
+          "up": 68,
+          "halfW": 26,
+          "halfH": 12,
+          "notes": "Windup prep — mild exposure, no HIT"
+        }
+      ]
+    },
+    "slap_active": {
+      "support": "supported",
+      "phase4aAuthority": true,
+      "art": "slap-attack-*-hit-frame.png",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 6,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        },
+        {
+          "kind": "HURT_LIMB",
+          "label": "frontArm",
+          "region": "frontArm",
+          "forward": 70,
+          "up": 66,
+          "halfW": 36,
+          "halfH": 18
+        },
+        {
+          "kind": "HIT",
+          "label": "tip_rail_slap",
+          "region": "tipRail",
+          "forward": 66.39166666666667,
+          "up": 66,
+          "halfW": 14,
+          "halfH": 16,
+          "role": "tip_rail_visualization",
+          "notes": "Visualizes existing tip identity; does NOT replace strikeContact authority"
+        }
+      ]
+    },
+    "slap_recovery": {
+      "support": "supported",
+      "phase4aAuthority": true,
+      "art": "palm-thrust-startup.png",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 6,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        },
+        {
+          "kind": "HURT_LIMB",
+          "label": "frontArm",
+          "region": "frontArm",
+          "forward": 70,
+          "up": 66,
+          "halfW": 36,
+          "halfH": 18,
+          "notes": "Punishable exposure — no HIT"
+        }
+      ]
+    },
+    "palm_startup": {
+      "support": "supported",
+      "art": "palm-thrust-startup.png",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 2,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 8,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        },
+        {
+          "kind": "HURT_LIMB",
+          "label": "frontArm",
+          "region": "frontArm",
+          "forward": 48,
+          "up": 64,
+          "halfW": 28,
+          "halfH": 14
+        }
+      ]
+    },
+    "palm_active": {
+      "support": "supported",
+      "art": "palm-thrust.png",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 2,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 8,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        },
+        {
+          "kind": "HURT_LIMB",
+          "label": "frontArm",
+          "region": "frontArm",
+          "forward": 64,
+          "up": 64,
+          "halfW": 34,
+          "halfH": 16
+        },
+        {
+          "kind": "HIT",
+          "label": "tip_rail_palm",
+          "region": "tipRail",
+          "forward": 59.825,
+          "up": 64,
+          "halfW": 14,
+          "halfH": 18,
+          "role": "tip_rail_visualization"
+        }
+      ]
+    },
+    "palm_recovery": {
+      "support": "supported",
+      "art": "palm-thrust-startup.png",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 2,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 8,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        },
+        {
+          "kind": "HURT_LIMB",
+          "label": "frontArm",
+          "region": "frontArm",
+          "forward": 56,
+          "up": 64,
+          "halfW": 30,
+          "halfH": 14
+        }
+      ]
+    },
+    "charged_hold": {
+      "support": "supported",
+      "art": "charging.png",
+      "role": "compatibility_visualization",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 10,
+          "up": 108,
+          "halfW": 22,
+          "halfH": 15
+        }
+      ]
+    },
+    "charged_active": {
+      "support": "supported",
+      "art": "attack.png",
+      "role": "compatibility_visualization",
+      "notes": "Preserves tip-rail viz of existing charged contact surface; does not replace earliest-physical-contact resolver",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 4,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 18,
+          "up": 108,
+          "halfW": 24,
+          "halfH": 15
+        },
+        {
+          "kind": "HIT",
+          "label": "tip_rail_charged",
+          "region": "tipRail",
+          "forward": 55.6875,
+          "up": 68,
+          "halfW": 16,
+          "halfH": 20,
+          "role": "tip_rail_visualization"
+        }
+      ]
+    },
+    "charged_recovery": {
+      "support": "supported",
+      "art": "recovering.png",
+      "role": "compatibility_visualization",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 6,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        }
+      ]
+    },
+    "sidestep_startup": {
+      "support": "supported",
+      "art": "is_perfect_parried.png",
+      "notes": "Occupancy viz only — Phase 5 owns destination/overlap",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        }
+      ]
+    },
+    "sidestep_active": {
+      "support": "supported",
+      "art": "is_perfect_parried.png",
+      "tags": [
+        "INTANGIBLE",
+        "INVULNERABLE"
+      ],
+      "notes": "Pass-through occupancy — no hurt target during active sidestep viz",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push_intangible",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52,
+          "dashed": true
+        }
+      ]
+    },
+    "sidestep_recovery": {
+      "support": "supported",
+      "art": "recovering.png",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 6,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        }
+      ]
+    }
+  }
+}

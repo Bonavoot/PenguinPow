@@ -32,3 +32,8 @@ export const PALM_THRUST_STARTUP_MS = 90;
 export const PALM_THRUST_ACTIVE_MS = 90;
 export const PALM_THRUST_HOLD_MS = 260;
 export const PALM_THRUST_END_RECOVERY_MS = 60;
+
+/** Sidestep active — MUST match server-io/constants.js SIDESTEP_ACTIVE_MS. */
+export const SIDESTEP_ACTIVE_MS = 400;
+export const SIDESTEP_STARTUP_MS = 50;
+export const SIDESTEP_RECOVERY_MS = 150;

@@ -99,6 +99,12 @@ import {
   AP_WHIFF_RECOVERY_MS,
 } from "../config/combatTiming";
 import {
+  SIDESTEP_ACTIVE_MS,
+  isSidestepActivePhase,
+  resolveSidestepTravelDirection,
+  sidestepTrailProgress,
+} from "../combatPresentation/sidestepVfx";
+import {
   SHADOW_GROUND_LEVEL,
   playerShadowBottomY,
   playerShadowOpacity,
@@ -129,10 +135,18 @@ import { getLocalKeyState, isLocalGameActive } from "../prediction/localInput";
 import { acquireCursor, releaseCursor } from "../ui/cursorGate";
 import {
   shouldUpdateCombatFidelityOverlay,
+  isCombatFidelityDebugEnabled,
   noteCombatContactEvent,
   noteLandingDiag,
   renderCombatFidelityOverlay,
 } from "../debug/CombatFidelityDebug";
+import {
+  getLocalStrikePhaseHint,
+  noteLocalStrikePhaseHint,
+  noteFighterRenderAnchor,
+  palmFrameToStrikePhaseHint,
+  slapFrameToStrikePhaseHint,
+} from "../debug/combatVolumeDebug";
 import {
   claimPresentationEvent,
   clearPresentationEvents,
@@ -873,6 +887,8 @@ const GameFighter = ({
     isSidestepping: false,
     isSidestepStartup: false,
     isSidestepRecovery: false,
+    // Travel direction (-1/1); 0 = clear. Never use facing as substitute.
+    sidestepDirection: 0,
     isStrafing: false,
     isBraking: false, // ICE PHYSICS: True when actively braking (digging in)
     isPowerSliding: false, // ICE PHYSICS: True when power sliding (C key held)
@@ -2679,6 +2695,19 @@ const GameFighter = ({
           fighterEl.style.left = leftPct;
           fighterEl.style.bottom = bottomPct;
         }
+        // DEV fidelity: publish the same stage anchor the sprite CSS uses so
+        // combat-volume overlays share camera + pose root (no getBoundingClientRect).
+        if (isCombatFidelityDebugEnabled()) {
+          noteFighterRenderAnchor(penguinRef.current.fighter, {
+            simX: newPos.x,
+            simY: newPos.y,
+            renderX: renderX + atRopesNudge,
+            renderY,
+            soleFromBottomPct:
+              typeof poseOff.sole === "number" ? poseOff.sole : 0.021,
+            facing: penguinRef.current.facing,
+          });
+        }
         // Dev-only pushbox/contact overlay — player1 instance owns the draw.
         // Gated + throttled: never allocate overlay payloads when disabled or
         // between paint windows (was a major RAF cost with debug ON).
@@ -2696,6 +2725,38 @@ const GameFighter = ({
                   y,
                   sizeMult: p.sizeMultiplier || 1,
                   sizeMultiplier: p.sizeMultiplier || 1,
+                  // Phase 1 diagnostic volumes (local derive only — no debug net).
+                  facing: p.facing,
+                  slapFacingDirection: p.slapFacingDirection,
+                  chargingFacingDirection: p.chargingFacingDirection,
+                  fighter: p.fighter,
+                  isAttacking: p.isAttacking,
+                  isSlapAttack: p.isSlapAttack,
+                  isPalmThrust: p.isPalmThrust,
+                  isLowKick: p.isLowKick,
+                  attackType: p.attackType,
+                  isChargingAttack: p.isChargingAttack,
+                  isInStartupFrames: p.isInStartupFrames,
+                  isInEndlag: p.isInEndlag,
+                  isRecovering: p.isRecovering,
+                  currentAction: p.currentAction,
+                  // Phase 4A fidelity HUD — clocks when present on local/merged state
+                  // (not a new delta prop; overlay-only).
+                  attackStartTime: p.attackStartTime,
+                  slapActiveEndTime: p.slapActiveEndTime,
+                  _overlaySimTime: (() => {
+                    const st = getSharedFighterState()?.simTime;
+                    return typeof st === "number" ? st : null;
+                  })(),
+                  // Local pose-director phase when available; else omit → uncertain HIT policy.
+                  strikePhaseHint: getLocalStrikePhaseHint(p.fighter),
+                  isGrabStartup: p.isGrabStartup,
+                  isDodging: p.isDodging,
+                  isSidestepping: p.isSidestepping,
+                  isSidestepStartup: p.isSidestepStartup,
+                  isSidestepRecovery: p.isSidestepRecovery,
+                  isHit: p.isHit,
+                  isRopeJumping: p.isRopeJumping,
                   ropeJumpPhase: p.ropeJumpPhase,
                   ropeJumpRawTargetX: p.ropeJumpRawTargetX,
                   ropeJumpResolvedTargetX: p.ropeJumpResolvedTargetX,
@@ -3444,6 +3505,11 @@ const GameFighter = ({
           isSidestepping: playerData.isSidestepping ?? prev.isSidestepping ?? false,
           isSidestepStartup: playerData.isSidestepStartup ?? prev.isSidestepStartup ?? false,
           isSidestepRecovery: playerData.isSidestepRecovery ?? prev.isSidestepRecovery ?? false,
+          // 0 is a valid clear — must not fall back to facing or stale prev when sent.
+          sidestepDirection:
+            typeof playerData.sidestepDirection === "number"
+              ? playerData.sidestepDirection
+              : prev.sidestepDirection ?? 0,
           isGrabBreaking:
             playerData.isGrabBreaking ?? prev.isGrabBreaking ?? false,
           isGrabBreakCountered:
@@ -3558,6 +3624,7 @@ const GameFighter = ({
           prev.isSidestepping !== newState.isSidestepping ||
           prev.isSidestepStartup !== newState.isSidestepStartup ||
           prev.isSidestepRecovery !== newState.isSidestepRecovery ||
+          prev.sidestepDirection !== newState.sidestepDirection ||
           prev.hasGrip !== newState.hasGrip ||
           prev.isClinchBeltHolding !== newState.isClinchBeltHolding ||
           prev.clinchBeltRequiresM2Release !==
@@ -6536,58 +6603,80 @@ const GameFighter = ({
   // All three effects emit ground-level dust, no airborne mist.
   //
   // sidestepStart: rising edge of "active arc began" (startup ended)
-  // sidestepTrail: every 40ms while active, with `t` for arc progress
+  // sidestepTrail: every 40ms while active flags true, with `t` for arc progress
   // sidestepLand:  rising edge of recovery (arc completed)
+  // Direction = authoritative sidestepDirection (travel), never facing.
+  // Emission stops when phase flags leave active — no free-running duration timer.
   // ─────────────────────────────────────────────────────────────────
   const prevSidestepActive = useRef(false);
+  const sidestepTravelDirRef = useRef(null);
   useEffect(() => {
-    const isActive =
-      penguin.isSidestepping &&
-      !penguin.isSidestepStartup &&
-      !penguin.isSidestepRecovery;
+    const isActive = isSidestepActivePhase(penguin);
 
     if (isActive && !prevSidestepActive.current) {
+      const travel = resolveSidestepTravelDirection({
+        sidestepDirection: penguin.sidestepDirection,
+      });
+      sidestepTravelDirRef.current = travel;
+      // Skip direction-dependent kick-off until travel is known (never use facing).
+      if (travel === 1 || travel === -1) {
+        const pos = interpolatedPositionRef.current;
+        emitParticles("sidestepStart", {
+          x: pos?.x ?? penguin.x,
+          y: pos?.y ?? penguin.y,
+          direction: travel,
+          playerNumber,
+        });
+      }
+    }
+    if (!isActive) {
+      sidestepTravelDirRef.current = null;
+    } else if (
+      sidestepTravelDirRef.current == null &&
+      (penguin.sidestepDirection === 1 || penguin.sidestepDirection === -1)
+    ) {
+      // Late delta reconcile: latch travel without facing fallback.
+      sidestepTravelDirRef.current = penguin.sidestepDirection;
       const pos = interpolatedPositionRef.current;
       emitParticles("sidestepStart", {
         x: pos?.x ?? penguin.x,
         y: pos?.y ?? penguin.y,
-        direction: penguin.facing || 1,
+        direction: penguin.sidestepDirection,
         playerNumber,
       });
     }
     prevSidestepActive.current = isActive;
+    // penguin.x/y read from refs/closure for emit only — phase + direction drive this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     penguin.isSidestepping,
     penguin.isSidestepStartup,
     penguin.isSidestepRecovery,
-    penguin.facing,
+    penguin.sidestepDirection,
     playerNumber,
     emitParticles,
   ]);
 
   useEffect(() => {
-    const isActive =
-      penguin.isSidestepping &&
-      !penguin.isSidestepStartup &&
-      !penguin.isSidestepRecovery;
+    const isActive = isSidestepActivePhase(penguin);
     if (!isActive) return;
 
-    // Active phase length is fixed server-side (SIDESTEP_ACTIVE_MS = 320).
-    // Tracking elapsed locally lets us pass a 0..1 `t` for apex-boost in
-    // the trail preset — fine even with mild server clock drift since the
-    // effect just intensifies dust at mid-arc.
+    // Apex `t` uses mirrored SIDESTEP_ACTIVE_MS (400). Interval clears when
+    // phase flags leave active — does not outlive authoritative recovery.
     const startTime = performance.now();
-    const ACTIVE_MS = 320;
     const TRAIL_INTERVAL_MS = 40;
 
     const fire = () => {
+      const travel = resolveSidestepTravelDirection({
+        sidestepDirection: sidestepTravelDirRef.current,
+      });
+      if (travel !== 1 && travel !== -1) return;
       const pos = interpolatedPositionRef.current;
-      const elapsed = performance.now() - startTime;
-      const t = Math.min(elapsed / ACTIVE_MS, 1);
+      const t = sidestepTrailProgress(performance.now() - startTime, SIDESTEP_ACTIVE_MS);
       emitParticles("sidestepTrail", {
         x: pos?.x ?? penguin.x,
         y: pos?.y ?? penguin.y,
-        direction: penguin.facing || 1,
+        direction: travel,
         t,
         playerNumber,
       });
@@ -6596,11 +6685,13 @@ const GameFighter = ({
     fire();
     const id = setInterval(fire, TRAIL_INTERVAL_MS);
     return () => clearInterval(id);
+    // Intentionally omit facing / sidestepDirection: latch travel in ref so
+    // cross-ups cannot reverse or restart the trail mid-active.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     penguin.isSidestepping,
     penguin.isSidestepStartup,
     penguin.isSidestepRecovery,
-    penguin.facing,
     playerNumber,
     emitParticles,
   ]);
@@ -6613,9 +6704,19 @@ const GameFighter = ({
         x: pos?.x ?? penguin.x,
         y: pos?.y ?? penguin.y,
       });
+      sidestepTravelDirRef.current = null;
+    }
+    if (!penguin.isSidestepping && !penguin.isSidestepRecovery) {
+      sidestepTravelDirRef.current = null;
     }
     prevSidestepRecovery.current = penguin.isSidestepRecovery;
-  }, [penguin.isSidestepRecovery, emitParticles]);
+  }, [
+    penguin.isSidestepRecovery,
+    penguin.isSidestepping,
+    emitParticles,
+    penguin.x,
+    penguin.y,
+  ]);
 
   // ─────────────────────────────────────────────────────────────────
   // CLINCH BALANCE TELL — strain sweat
@@ -7878,6 +7979,16 @@ const GameFighter = ({
     else if (elapsed < SLAP_ANIM.HIT_END) slapFrame = 2; // hit (strike, held)
     else slapFrame = 3; // recovery — settle back to the ready stance (not idle)
   }
+  // Dev combat-volume debug: publish exact slap/palm director phase for this slot.
+  // Gated — no hint bookkeeping when fidelity debug is off / production.
+  if (isCombatFidelityDebugEnabled()) {
+    let strikeHint = null;
+    if (inSlapPhaseAnim) strikeHint = slapFrameToStrikePhaseHint(slapFrame);
+    else if (displayPenguin.isPalmThrust) {
+      strikeHint = palmFrameToStrikePhaseHint(palmThrustFrame);
+    }
+    noteLocalStrikePhaseHint(penguin.fighter, strikeHint);
+  }
   // Raw parry SUCCESS pose director — see rawParrySuccessVisualRef.
   const nowSuccessMs = performance.now();
   const successVisual = rawParrySuccessVisualRef.current;
@@ -8119,6 +8230,7 @@ const GameFighter = ({
     ox: poseResolved.appliedOffsetX,
     oy: poseResolved.appliedOffsetY,
     v2: poseResolved.v2,
+    sole: poseResolved.soleFromBottomPct,
   };
   if (
     isPoseGeometryV2Enabled() &&
