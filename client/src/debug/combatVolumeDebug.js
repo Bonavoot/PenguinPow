@@ -60,10 +60,35 @@ export function getLocalStrikePhaseHint(fighterKey) {
   return localStrikePhaseHints[fighterKey] ?? null;
 }
 
+/**
+ * Per-slot struck-limb hold summary published by GameFighter (dev/debug only).
+ * Presentation state lives in a component ref; the HUD is rendered by the
+ * P1-owned overlay, so it needs this read-only bridge to show both fighters.
+ */
+const struckLimbHoldDebugLines = Object.create(null);
+
+/** @param {"player 1"|"player 2"} fighterKey @param {string|null} line */
+export function noteStruckLimbHoldDebug(fighterKey, line) {
+  if (fighterKey !== "player 1" && fighterKey !== "player 2") return;
+  struckLimbHoldDebugLines[fighterKey] =
+    typeof line === "string" && line ? line : null;
+}
+
+export function getStruckLimbHoldDebugLines() {
+  return ["player 1", "player 2"]
+    .map((k, i) => {
+      const line = struckLimbHoldDebugLines[k];
+      return line ? `P${i + 1} ${line}` : null;
+    })
+    .filter(Boolean);
+}
+
 /** Test / rematch helper — clears stale director hints. */
 export function clearLocalStrikePhaseHints() {
   delete localStrikePhaseHints["player 1"];
   delete localStrikePhaseHints["player 2"];
+  delete struckLimbHoldDebugLines["player 1"];
+  delete struckLimbHoldDebugLines["player 2"];
   clearFighterRenderAnchors();
   clearSupportedStrikeLatches();
 }

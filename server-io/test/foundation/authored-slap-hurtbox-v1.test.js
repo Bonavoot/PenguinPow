@@ -507,10 +507,13 @@ describe("Phase 4A — flag ON slap limb authority", () => {
     s.dispose();
   });
 
-  it("palm victim remains legacy (no palm limb authority)", () => {
+  // Phase 4B authorizes the palm's HELD recovery pose, not its settled tail.
+  // Once the art retracts the arm sits inside the pushbox, so authority must
+  // fall back to exactly this legacy behaviour.
+  it("settled palm recovery victim remains legacy (retracted arm, no limb window)", () => {
     const s = sc({ gap: 160, sizeA: 0.85, sizeB: 0.85 });
     const now = s.room.simTime;
-    armPalmPhase(s.right, "recovery", now);
+    armPalmPhase(s.right, "recovery_settled", now);
     armSlapPhase(s.left, "active", now);
     // Slap vs palm may have priority rules; body is out of range.
     const dist = Math.abs(s.right.x - s.left.x);

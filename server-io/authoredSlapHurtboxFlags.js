@@ -1,12 +1,16 @@
 "use strict";
 
 /**
- * Phase 4A — authored slap target hurt regions (default OFF).
+ * Phase 4A/4B — authored target hurt regions (default OFF).
  *
  * When OFF / unset: exact legacy tip-meets-body contact only.
  * When ON: opponent strikes may also confirm against the victim's authored
- * slap HURT_LIMB during approved active + recovery exposure. Offensive slap
- * HIT remains the existing tip rail — this flag only adds a victim surface.
+ * HURT_LIMB during approved exposure — Phase 4A slap active + recovery, and
+ * Phase 4B palm active + the palm's held recovery pose. Offensive HIT remains
+ * the existing authored rail; this flag only adds a victim surface.
+ *
+ * Phase 4B ships under this SAME gate (no second flag): the palm surfaces are
+ * the same authored-limb system, so one switch keeps rollback exact.
  *
  * Enable:
  *   AUTHORED_SLAP_HURTBOX_V1=1 npm run dev:web
@@ -67,11 +71,11 @@ function logAuthoredSlapHurtboxStartupDiagnostic(opts = {}) {
   let catalogFp = "n/a";
   try {
     const {
-      EXPOSED_SLAP_POSES,
-      isPhase4aSlapPoseAuthorityReady,
+      EXPOSED_LIMB_POSES,
+      isAuthoredLimbPoseAuthorityReady,
     } = require("./authoredSlapHurtTarget");
-    allowlist = Object.keys(EXPOSED_SLAP_POSES || {}).filter((k) =>
-      isPhase4aSlapPoseAuthorityReady(k)
+    allowlist = Object.keys(EXPOSED_LIMB_POSES || {}).filter((k) =>
+      isAuthoredLimbPoseAuthorityReady(k)
     );
   } catch {
     /* allowlist module may be mid-load in odd test graphs */

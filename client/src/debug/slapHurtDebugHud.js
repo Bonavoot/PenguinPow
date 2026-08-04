@@ -197,6 +197,7 @@ export function formatSlapHurtHudLines({
   nowMs,
   flagHud,
   lastServerQuery,
+  holdLines,
 }) {
   const flag = flagHud || readAuthoredSlapHurtboxHudFlag();
   const c1 = inferCurrentSlapVictimDebug(p1);
@@ -264,9 +265,32 @@ export function formatSlapHurtHudLines({
     currentLine: `CURRENT ${cur("P1", c1, p1)} · ${cur("P2", c2, p2)}`,
     queryLine: query.line,
     lastLine,
+    limbHoldLine: formatLimbHoldHudLine({ lastCommitted, holdLines }),
     c1,
     c2,
     serverAuthority,
     clientExpect,
   };
+}
+
+/**
+ * Phase 4B debug line: the committed limb identity next to each fighter's
+ * struck-limb hold state, so a missing hold can be attributed to the SERVER
+ * classification or to the CLIENT presentation without guessing.
+ *
+ * Observation only — never authors or alters a hit.
+ */
+export function formatLimbHoldHudLine({ lastCommitted, holdLines }) {
+  const c = lastCommitted;
+  const committed = !c
+    ? "HIT: —"
+    : `HIT family=${c.victimLimbFamily || (c.victimSlapPoseKey ? "slap" : "—")}` +
+      ` pose=${c.victimLimbPoseKey || c.victimSlapPoseKey || "—"}` +
+      `/${c.victimLimbPhase || c.victimSlapPhase || "—"}` +
+      ` variant=${c.victimLimbVariant ?? c.victimSlapVariant ?? "—"}` +
+      ` region=${c.victimHurtRegion || "—"}` +
+      ` limbOnly=${c.limbOnlyContact ? "Y" : "N"}` +
+      ` auth=${c.authoredSlapHurtboxV1 ? "Y" : "N"}`;
+  const holds = (holdLines || []).filter(Boolean);
+  return holds.length ? `${committed} · ${holds.join(" · ")}` : committed;
 }

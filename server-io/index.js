@@ -269,6 +269,7 @@ const {
   attackKindFromPlayer,
   enforceStrikeExtensionSeparation,
 } = require("./strikeContact");
+const { refreshPalmLimbExtended } = require("./authoredSlapHurtTarget");
 const {
   CLINCH_INTERACTION,
   CLINCH_EFFECT_MID_Y,
@@ -708,6 +709,11 @@ function tick(delta) {
       // Facing is enforced once per tick AFTER movement (see enforcePairFacing
       // below). Early/mid-tick writes from attacks / grabs still snapshot locks;
       // locomotion no longer owns facing.
+
+      // Phase 4B: publish the palm's held-out-arm window before collision so the
+      // debug overlay resolves the same authored variant authority will query.
+      refreshPalmLimbExtended(player1, room.simTime);
+      refreshPalmLimbExtended(player2, room.simTime);
 
       if (player1.isAttacking) {
         checkCollision(player1, player2, rooms, io);

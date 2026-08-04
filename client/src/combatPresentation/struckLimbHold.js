@@ -1,14 +1,14 @@
 /**
- * PHASE 4A — STRUCK-LIMB CONTACT-POSE HOLD (presentation only).
+ * PHASE 4A/4B — STRUCK-LIMB CONTACT-POSE HOLD (presentation only).
  *
  * A limb-only connect was unreadable: authoritative `isHit` lands on the same
  * frame as the contact, so the exposed arm vanished into the generic hit sprite
  * before the eye could register WHAT was struck — the limb-anchored spark then
  * read as a hit on empty air.
  *
- * This module owns the decision of whether to keep drawing the exact slap frame
- * the SERVER collided with. It is deliberately pure so the ordering rules can be
- * tested without a DOM.
+ * This module owns the decision of whether to keep drawing the exact frame the
+ * SERVER collided with (Phase 4A slap, Phase 4B palm). It is deliberately pure
+ * so the ordering rules can be tested without a DOM.
  *
  * Invariants (all enforced here, not by the caller):
  *   • Never delays or suppresses authoritative `isHit`.
@@ -31,9 +31,28 @@ export const createStruckLimbHold = () => ({
   mirrorFacing: null,
   poseKey: null,
   variant: null,
+  family: null,
   hitId: null,
   pendingHitId: null,
   pendingUntil: 0,
+  /** Debug-only: why the last `player_hit` did or did not arm a hold. */
+  decision: "idle",
+  /** Debug-only: "idle" | "bridging" | "active" | "ended". */
+  state: "idle",
+});
+
+/**
+ * Authoritative contact stamp, generic across limb families.
+ *
+ * Phase 4B servers send `victimLimb*` for every family; the `victimSlap*`
+ * fallback keeps a Phase 4A server (or a replayed Phase 4A payload) working
+ * unchanged. Never merges the two — a payload uses one naming or the other.
+ */
+const limbStamp = (data) => ({
+  poseKey: data.victimLimbPoseKey ?? data.victimSlapPoseKey ?? null,
+  variant: data.victimLimbVariant ?? data.victimSlapVariant ?? null,
+  mirrorFacing: data.victimLimbMirrorFacing ?? data.victimSlapMirrorFacing ?? null,
+  family: data.victimLimbFamily ?? (data.victimSlapPoseKey ? "slap" : null),
 });
 
 /**
@@ -43,7 +62,7 @@ export const createStruckLimbHold = () => ({
 export const struckLimbEventId = (data) => {
   if (!data) return null;
   if (data.hitId != null) return `limbhold:${data.hitId}`;
-  return `limbhold:${data.victimSlapPoseKey || "?"}:${data.timestamp ?? ""}`;
+  return `limbhold:${limbStamp(data).poseKey || "?"}:${data.timestamp ?? ""}`;
 };
 
 /**
@@ -78,19 +97,33 @@ export const armStruckLimbHold = (
   hitstopUntil,
   resolveSrc
 ) => {
-  if (!hold || !isStruckLimbHoldEligible(data, playerId)) return false;
+  if (!hold) return false;
+  if (!isStruckLimbHoldEligible(data, playerId)) {
+    if (data && data.victimId === playerId) {
+      hold.decision = data.cinematicKill ? "cinematic" : "not_limb_only";
+    }
+    return false;
+  }
   const eventId = struckLimbEventId(data);
   // Duplicate / retransmitted event — must not restart the hold.
-  if (!eventId || hold.hitId === eventId) return false;
-  const src = resolveSrc(data.victimSlapPoseKey, data.victimSlapVariant);
-  if (!src) return false;
+  if (!eventId || hold.hitId === eventId) {
+    hold.decision = "duplicate";
+    return false;
+  }
+  const stamp = limbStamp(data);
+  const src = resolveSrc(stamp.poseKey, stamp.variant);
+  if (!src) {
+    hold.decision = `no_sprite:${stamp.poseKey || "?"}/${stamp.variant ?? "—"}`;
+    return false;
+  }
 
   hold.hitId = eventId;
   hold.src = src;
-  hold.poseKey = data.victimSlapPoseKey || null;
-  hold.variant = data.victimSlapVariant != null ? data.victimSlapVariant : null;
-  hold.mirrorFacing =
-    data.victimSlapMirrorFacing != null ? data.victimSlapMirrorFacing : null;
+  hold.poseKey = stamp.poseKey;
+  hold.variant = stamp.variant;
+  hold.family = stamp.family;
+  hold.mirrorFacing = stamp.mirrorFacing;
+  hold.decision = "armed";
   if (hitstopUntil > now) {
     // hitstop-before-event: adopt the existing freeze deadline immediately.
     hold.until = hitstopUntil;
@@ -133,8 +166,55 @@ export const resolveStruckLimbHold = (hold, now, hitstopUntil, inHitReaction) =>
     hold.mirrorFacing = null;
     hold.poseKey = null;
     hold.variant = null;
+    hold.family = null;
+    hold.state = "ended";
+  } else {
+    hold.state = holding ? "active" : hold.pendingHitId ? "bridging" : hold.state;
   }
   return holding;
+};
+
+/**
+ * Final sprite precedence for one fighter render.
+ *
+ * Extracted verbatim from GameFighter so the ORDER ITSELF is testable: an active
+ * struck-limb hold must outrank the sprite `getImageSrc` derives from
+ * authoritative `isHit`. Authority is untouched — this only decides what is
+ * drawn while the existing hitstop freeze runs.
+ */
+export const resolveFighterDisplaySprite = ({
+  struckLimbHoldSrc,
+  inDashWindup,
+  justLandedFromDodge,
+  rawSpriteSrc,
+  idleSrc,
+  recoveringSrc,
+}) => {
+  if (struckLimbHoldSrc) return struckLimbHoldSrc;
+  if (inDashWindup) return recoveringSrc;
+  if (justLandedFromDodge && rawSpriteSrc === idleSrc) return recoveringSrc;
+  return rawSpriteSrc;
+};
+
+/**
+ * Debug-only one-liner for the authored-hurtbox HUD. Pure; no gameplay effect.
+ */
+export const formatStruckLimbHoldHudLine = (hold, now, hitstopUntil) => {
+  if (!hold) return "LIMB HOLD: —";
+  const remaining =
+    hold.until > now ? Math.round(hold.until - now) : hold.pendingHitId ? -1 : 0;
+  const spriteName = (s) =>
+    typeof s === "string" ? s.split("/").pop().split("?")[0] : s ? "asset" : "—";
+  return (
+    `LIMB HOLD state=${hold.state} decision=${hold.decision}` +
+    ` family=${hold.family || "—"} pose=${hold.poseKey || "—"}` +
+    ` variant=${hold.variant ?? "—"} face=${hold.mirrorFacing ?? "—"}` +
+    ` src=${spriteName(hold.src)}` +
+    ` left=${remaining < 0 ? "bridging" : `${remaining}ms`}` +
+    ` hitstopIn=${
+      hitstopUntil > now ? `${Math.round(hitstopUntil - now)}ms` : "none"
+    }`
+  );
 };
 
 /** True while the rAF watcher must keep forcing renders for this hold. */

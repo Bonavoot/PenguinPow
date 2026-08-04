@@ -22,6 +22,8 @@ const {
   SLAP_RECOVERY_MS,
   PALM_THRUST_STARTUP_MS,
   PALM_THRUST_ACTIVE_MS,
+  PALM_THRUST_HOLD_MS,
+  PALM_THRUST_END_RECOVERY_MS,
   CHARGED_STARTUP_MS,
   GRAB_STARTUP_MS,
   SIDESTEP_STARTUP_MS,
@@ -199,7 +201,20 @@ function armSlapPhase(player, phase, now) {
   return player;
 }
 
-function armPalmPhase(player, phase, now) {
+/**
+ * Arm a palm thrust in a given phase.
+ *
+ * Phases:
+ *   "startup" | "active"
+ *   "recovery"          — whiff recovery, still HOLDING the extended strike pose
+ *                         (mirrors gameFunctions: isRecovering + recoveryStartTime
+ *                         + recoveryDuration HOLD+END, isPalmThrust kept alive).
+ *   "recovery_settled"  — the same recovery past PALM_THRUST_HOLD_MS, where the
+ *                         art has retracted to the ready stance.
+ *
+ * `opts.holdElapsed` places the fixture at an exact ms into the hold window.
+ */
+function armPalmPhase(player, phase, now, opts = {}) {
   player.isAttacking = true;
   player.isPalmThrust = true;
   player.isSlapAttack = false;
@@ -213,9 +228,23 @@ function armPalmPhase(player, phase, now) {
     player.isInStartupFrames = false;
     player.attackStartTime = now - PALM_THRUST_STARTUP_MS - 5;
   } else {
+    const settled = phase === "recovery_settled";
+    const holdElapsed =
+      opts.holdElapsed != null
+        ? opts.holdElapsed
+        : settled
+          ? PALM_THRUST_HOLD_MS + 5
+          : 5;
     player.isInStartupFrames = false;
+    player.isAttacking = false;
+    player.isRecovering = true;
+    player.recoveryStartTime = now - holdElapsed;
+    player.recoveryDuration = PALM_THRUST_HOLD_MS + PALM_THRUST_END_RECOVERY_MS;
+    player.recoveryDirection = player.facing;
     player.attackStartTime =
-      now - PALM_THRUST_STARTUP_MS - PALM_THRUST_ACTIVE_MS - 5;
+      player.recoveryStartTime - PALM_THRUST_STARTUP_MS - PALM_THRUST_ACTIVE_MS;
+    player.palmThrustVisualUntil =
+      player.recoveryStartTime + player.recoveryDuration;
   }
   return player;
 }
@@ -335,6 +364,7 @@ function clearActionState(player) {
   player.isInStartupFrames = false;
   player.isInEndlag = false;
   player.isRecovering = false;
+  player.palmLimbExtended = false;
   player.isGrabStartup = false;
   player.isWhiffingGrab = false;
   player.isGrabWhiffRecovery = false;
@@ -547,6 +577,10 @@ module.exports = {
   // re-export timings for tests
   SLAP_STARTUP_MS,
   SLAP_ACTIVE_MS,
+  PALM_THRUST_STARTUP_MS,
+  PALM_THRUST_ACTIVE_MS,
+  PALM_THRUST_HOLD_MS,
+  PALM_THRUST_END_RECOVERY_MS,
   SIDESTEP_STARTUP_MS,
   SIDESTEP_ACTIVE_MS,
   SIDESTEP_RECOVERY_MS,

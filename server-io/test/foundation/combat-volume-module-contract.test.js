@@ -24,9 +24,14 @@ const SHARED_JSON = path.join(
  * `frontArm` bounds were re-measured against the real artwork (outer edge was
  * 106, ~27.6 units past the widest visible arm tip). See
  * `meta.phase4aLimbMeasurement` for the measurement method and per-sprite bands.
+ *
+ * Rolled again for Phase 4B: all three palm `frontArm` volumes were replaced
+ * with measured bounds (authored outers were 76 / 98 / 86 vs measured
+ * 54.448 / 71.832 / 54.448) and `palm_recovery` gained the hold/settle variant.
+ * See `meta.phase4bLimbMeasurement`.
  */
 const EXPECTED_POSES_SHA256 =
-  "ed309b74386f058e43e9897522b7634c62510b8840a262d2da5cf3264b6ba975";
+  "ba443678acff14c5ff5b1786757e7aafbd13a7f7d9456442c5d47b73cc21d57b";
 
 const REQUIRED_TOP_KEYS = ["version", "phase", "coordSystem", "meta", "poses"];
 const REQUIRED_POSES = [

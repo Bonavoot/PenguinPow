@@ -5,6 +5,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   createStruckLimbHold,
   armStruckLimbHold,
@@ -13,6 +14,8 @@ import {
   isStruckLimbHoldEligible,
   struckLimbEventId,
   STRUCK_LIMB_HOLD_BRIDGE_MS,
+  resolveFighterDisplaySprite,
+  formatStruckLimbHoldHudLine,
 } from "./struckLimbHold.js";
 
 const VICTIM = "victim-1";
@@ -278,6 +281,190 @@ describe("struck-limb hold — release", () => {
   });
 });
 
+/**
+ * Phase 4B — the payload switched to generic `victimLimb*` fields so palm data
+ * is not smuggled through slap-named keys. A Phase 4A payload must keep working.
+ */
+describe("struck-limb hold — Phase 4B generic limb stamp", () => {
+  /** Stand-in for getStruckLimbPoseSrc, mirroring the real palm rules. */
+  const resolveLimbSrc = (poseKey, variant) => {
+    if (poseKey === "slap_active") {
+      return String(variant) === "2" ? "slap2Hit.png" : "slap1Hit.png";
+    }
+    if (poseKey === "slap_recovery") return "palmThrustStartup.png";
+    if (poseKey === "palm_active") return "palmThrust.png";
+    if (poseKey === "palm_recovery") {
+      return String(variant) === "true" ? "palmThrust.png" : null;
+    }
+    return null;
+  };
+
+  const palmHit = (overrides = {}) => ({
+    hitId: "p1",
+    victimId: VICTIM,
+    attackerId: ATTACKER,
+    limbOnlyContact: true,
+    victimHurtRegion: "frontArm",
+    victimHurtKind: "HURT_LIMB",
+    victimLimbFamily: "palm",
+    victimLimbPoseKey: "palm_active",
+    victimLimbPhase: "active",
+    victimLimbVariant: null,
+    victimLimbMirrorFacing: 1,
+    // Phase 4A fields are explicitly null for a non-slap family.
+    victimSlapPoseKey: null,
+    victimSlapVariant: null,
+    victimSlapPhase: null,
+    victimSlapMirrorFacing: null,
+    ...overrides,
+  });
+
+  it("holds the extended palm pose for an active-palm limb hit", () => {
+    const hold = createStruckLimbHold();
+    assert.equal(
+      armStruckLimbHold(hold, palmHit(), VICTIM, 1000, 1180, resolveLimbSrc),
+      true
+    );
+    assert.equal(hold.src, "palmThrust.png");
+    assert.equal(hold.poseKey, "palm_active");
+    assert.equal(resolveStruckLimbHold(hold, 1000, 1180, true), true);
+  });
+
+  it("holds the palm's recovery pose only while it is still held out", () => {
+    const held = createStruckLimbHold();
+    armStruckLimbHold(
+      held,
+      palmHit({
+        victimLimbPoseKey: "palm_recovery",
+        victimLimbPhase: "recovery",
+        victimLimbVariant: "true",
+      }),
+      VICTIM,
+      1000,
+      1180,
+      resolveLimbSrc
+    );
+    assert.equal(held.src, "palmThrust.png");
+    assert.equal(held.variant, "true");
+
+    // Settled tail: no authorized pose, so no hold — ordinary hit reaction.
+    const settled = createStruckLimbHold();
+    assert.equal(
+      armStruckLimbHold(
+        settled,
+        palmHit({
+          victimLimbPoseKey: "palm_recovery",
+          victimLimbPhase: "recovery",
+          victimLimbVariant: null,
+        }),
+        VICTIM,
+        1000,
+        1180,
+        resolveLimbSrc
+      ),
+      false
+    );
+    assert.equal(settled.src, null);
+  });
+
+  it("carries the palm's committed mirror facing, for both facings", () => {
+    for (const facing of [1, -1]) {
+      const hold = createStruckLimbHold();
+      armStruckLimbHold(
+        hold,
+        palmHit({ victimLimbMirrorFacing: facing }),
+        VICTIM,
+        1000,
+        1180,
+        resolveLimbSrc
+      );
+      assert.equal(hold.mirrorFacing, facing);
+    }
+  });
+
+  it("a Phase 4A slap payload still resolves through the slap-named fields", () => {
+    const hold = createStruckLimbHold();
+    assert.equal(
+      armStruckLimbHold(hold, limbOnlyHit(), VICTIM, 1000, 1180, resolveLimbSrc),
+      true
+    );
+    assert.equal(hold.src, "slap1Hit.png");
+    assert.equal(hold.poseKey, "slap_active");
+    assert.equal(hold.mirrorFacing, 1);
+  });
+
+  it("generic fields win when a server sends both namings", () => {
+    const hold = createStruckLimbHold();
+    armStruckLimbHold(
+      hold,
+      limbOnlyHit({
+        victimLimbFamily: "slap",
+        victimLimbPoseKey: "slap_active",
+        victimLimbVariant: "2",
+        victimLimbMirrorFacing: -1,
+      }),
+      VICTIM,
+      1000,
+      1180,
+      resolveLimbSrc
+    );
+    assert.equal(hold.src, "slap2Hit.png");
+    assert.equal(hold.mirrorFacing, -1);
+  });
+
+  it("palm holds obey the same hitstop bound and dedup rules", () => {
+    const hold = createStruckLimbHold();
+    const data = palmHit();
+    armStruckLimbHold(hold, data, VICTIM, 1000, 1180, resolveLimbSrc);
+    // Duplicate delivery with a longer freeze must not extend the hold.
+    assert.equal(
+      armStruckLimbHold(hold, data, VICTIM, 1100, 1400, resolveLimbSrc),
+      false
+    );
+    assert.equal(hold.until, 1180);
+    // Released exactly when the freeze lapses.
+    assert.equal(resolveStruckLimbHold(hold, 1179, 1180, true), true);
+    assert.equal(resolveStruckLimbHold(hold, 1180, 1180, true), false);
+    assert.equal(hold.src, null);
+  });
+
+  it("event id uses the generic pose key when no hitId is present", () => {
+    const noId = palmHit({ hitId: null, timestamp: 777 });
+    assert.equal(struckLimbEventId(noId), "limbhold:palm_active:777");
+  });
+
+  /**
+   * getImageSrc imports PNG URLs, which Node cannot resolve (same limitation the
+   * audio suite documents for WAVs), so the real resolver is checked at the
+   * source level. The failure this guards against is concrete: holding the
+   * RETRACTED palm sprite for a hit that authority resolved against the
+   * EXTENDED arm would put the spark in empty space.
+   */
+  it("the real resolver holds the same palm sprite the renderer draws", () => {
+    const src = readFileSync(
+      new URL("../components/getImageSrc.js", import.meta.url),
+      "utf8"
+    );
+    const resolver = src.slice(src.indexOf("export const getStruckLimbPoseSrc"));
+    assert.match(
+      resolver,
+      /victimLimbPoseKey === "palm_active"\) return palmThrust;/,
+      "palm_active must hold palm-thrust.png, the extended strike art"
+    );
+    assert.match(
+      resolver,
+      /String\(victimLimbVariant\) === "true" \? palmThrust : null/,
+      "palm_recovery must hold the extended art ONLY for the authorized hold variant"
+    );
+    // The renderer's own active branch returns the same sprite constant.
+    assert.match(src, /if \(palmThrustFrame === 3\) return palmThrustStartup;\s*\n\s*return palmThrust;/);
+    assert.ok(
+      src.includes("export const getStruckSlapLimbSrc = getStruckLimbPoseSrc"),
+      "the Phase 4A export name must keep working"
+    );
+  });
+});
+
 describe("struck-limb hold — render scheduling", () => {
   it("requests a tick at expiry so the handoff commits", () => {
     const hold = createStruckLimbHold();
@@ -302,5 +489,233 @@ describe("struck-limb hold — render scheduling", () => {
       struckLimbHoldNeedsTick(createStruckLimbHold(), 1000, false),
       false
     );
+  });
+});
+
+/**
+ * The defect this guards against is NOT "does the hold resolve true" — it is
+ * "does the held sprite actually reach the DOM". `isHit` is authoritative and
+ * `getImageSrc` turns it into a hit sprite every render; if that sprite ever
+ * outranks the hold, the struck limb vanishes on the impact frame even though
+ * every pure resolver above passes. GameFighter calls exactly this function, so
+ * the ordering itself is under test.
+ */
+describe("struck-limb hold — final sprite precedence", () => {
+  const resolveLimbSrc = (poseKey, variant) => {
+    if (poseKey === "palm_active") return "palmThrust.png";
+    if (poseKey === "palm_recovery") {
+      return String(variant) === "true" ? "palmThrust.png" : null;
+    }
+    if (poseKey === "slap_active") {
+      return String(variant) === "2" ? "slap2Hit.png" : "slap1Hit.png";
+    }
+    return null;
+  };
+  const palmHit = (overrides = {}) => ({
+    hitId: "pp1",
+    victimId: VICTIM,
+    attackerId: ATTACKER,
+    limbOnlyContact: true,
+    victimHurtRegion: "frontArm",
+    victimHurtKind: "HURT_LIMB",
+    victimLimbFamily: "palm",
+    victimLimbPoseKey: "palm_active",
+    victimLimbPhase: "active",
+    victimLimbVariant: null,
+    victimLimbMirrorFacing: 1,
+    ...overrides,
+  });
+  // What getImageSrc returns for an authoritative isHit victim.
+  const HIT_SPRITE = "hit.png";
+  const IDLE = "pumo.png";
+  const RECOVERING = "recovering.png";
+
+  const render = (hold, now, hitstopUntil, isHit, raw = HIT_SPRITE) =>
+    resolveFighterDisplaySprite({
+      struckLimbHoldSrc: resolveStruckLimbHold(hold, now, hitstopUntil, isHit)
+        ? hold.src
+        : null,
+      inDashWindup: false,
+      justLandedFromDodge: false,
+      rawSpriteSrc: raw,
+      idleSrc: IDLE,
+      recoveringSrc: RECOVERING,
+    });
+
+  it("an active palm hold outranks the authoritative isHit sprite", () => {
+    const hold = createStruckLimbHold();
+    armStruckLimbHold(hold, palmHit(), VICTIM, 1000, 1180, resolveLimbSrc);
+    assert.equal(render(hold, 1000, 1180, true), "palmThrust.png");
+    assert.equal(render(hold, 1179, 1180, true), "palmThrust.png");
+  });
+
+  it("the extended palm_recovery variant is held the same way", () => {
+    const hold = createStruckLimbHold();
+    armStruckLimbHold(
+      hold,
+      palmHit({
+        hitId: "pp2",
+        victimLimbPoseKey: "palm_recovery",
+        victimLimbPhase: "recovery",
+        victimLimbVariant: "true",
+      }),
+      VICTIM,
+      1000,
+      1180,
+      resolveLimbSrc
+    );
+    assert.equal(render(hold, 1050, 1180, true), "palmThrust.png");
+  });
+
+  it("hitstop expiry hands the frame straight back to isHit", () => {
+    const hold = createStruckLimbHold();
+    armStruckLimbHold(hold, palmHit(), VICTIM, 1000, 1180, resolveLimbSrc);
+    assert.equal(render(hold, 1179, 1180, true), "palmThrust.png");
+    assert.equal(render(hold, 1180, 1180, true), HIT_SPRITE, "ends WITH hitstop");
+    assert.equal(render(hold, 1181, 1180, true), HIT_SPRITE);
+  });
+
+  it("both packet orders reach the same held frame", () => {
+    // player_hit → hitstop: the bridge preserves the hold WITHOUT drawing it
+    // (Phase 4A contract — no invented duration), then adopts the real deadline.
+    const a = createStruckLimbHold();
+    armStruckLimbHold(a, palmHit(), VICTIM, 1000, 0, resolveLimbSrc);
+    assert.equal(render(a, 1002, 0, true), HIT_SPRITE, "bridging draws nothing");
+    assert.equal(a.state, "bridging");
+    assert.equal(render(a, 1004, 1180, true), "palmThrust.png", "adopted");
+    // hitstop → player_hit: deadline is known at arm time, so it draws at once.
+    const b = createStruckLimbHold();
+    armStruckLimbHold(b, palmHit({ hitId: "pp3" }), VICTIM, 1000, 1180, resolveLimbSrc);
+    assert.equal(render(b, 1000, 1180, true), "palmThrust.png");
+    // Both orders end on the same deadline.
+    assert.equal(a.until, b.until);
+  });
+
+  it("a duplicate event cannot restart the hold past its deadline", () => {
+    const hold = createStruckLimbHold();
+    armStruckLimbHold(hold, palmHit(), VICTIM, 1000, 1180, resolveLimbSrc);
+    assert.equal(
+      armStruckLimbHold(hold, palmHit(), VICTIM, 1170, 1400, resolveLimbSrc),
+      false
+    );
+    assert.equal(hold.decision, "duplicate");
+    assert.equal(render(hold, 1180, 1400, true), HIT_SPRITE);
+  });
+
+  it("torso and torso-plus-limb palm contacts never take the frame", () => {
+    for (const payload of [
+      palmHit({ limbOnlyContact: false, victimHurtRegion: "torso", victimHurtKind: "HURT_BODY" }),
+      palmHit({ limbOnlyContact: false }), // limb region, but body was also in reach
+    ]) {
+      const hold = createStruckLimbHold();
+      assert.equal(
+        armStruckLimbHold(hold, payload, VICTIM, 1000, 1180, resolveLimbSrc),
+        false
+      );
+      assert.equal(hold.decision, "not_limb_only");
+      assert.equal(render(hold, 1000, 1180, true), HIT_SPRITE);
+    }
+  });
+
+  it("keeps the committed facing for both orientations", () => {
+    for (const facing of [1, -1]) {
+      const hold = createStruckLimbHold();
+      armStruckLimbHold(
+        hold,
+        palmHit({ hitId: `f${facing}`, victimLimbMirrorFacing: facing }),
+        VICTIM,
+        1000,
+        1180,
+        resolveLimbSrc
+      );
+      assert.equal(render(hold, 1000, 1180, true), "palmThrust.png");
+      assert.equal(hold.mirrorFacing, facing);
+      assert.equal(hold.family, "palm");
+    }
+  });
+
+  it("Phase 4A slap precedence is unchanged", () => {
+    const hold = createStruckLimbHold();
+    armStruckLimbHold(hold, limbOnlyHit({ victimSlapVariant: "2" }), VICTIM, 1000, 1180, resolveLimbSrc);
+    assert.equal(render(hold, 1000, 1180, true), "slap2Hit.png");
+    assert.equal(render(hold, 1180, 1180, true), HIT_SPRITE);
+  });
+
+  it("with no hold, every other branch keeps its old order", () => {
+    const base = {
+      struckLimbHoldSrc: null,
+      inDashWindup: false,
+      justLandedFromDodge: false,
+      rawSpriteSrc: HIT_SPRITE,
+      idleSrc: IDLE,
+      recoveringSrc: RECOVERING,
+    };
+    assert.equal(resolveFighterDisplaySprite(base), HIT_SPRITE);
+    assert.equal(
+      resolveFighterDisplaySprite({ ...base, inDashWindup: true }),
+      RECOVERING
+    );
+    assert.equal(
+      resolveFighterDisplaySprite({
+        ...base,
+        justLandedFromDodge: true,
+        rawSpriteSrc: IDLE,
+      }),
+      RECOVERING
+    );
+    assert.equal(
+      resolveFighterDisplaySprite({ ...base, justLandedFromDodge: true }),
+      HIT_SPRITE,
+      "landing swap only replaces idle"
+    );
+  });
+
+  it("GameFighter renders through this resolver, not an inline ternary", () => {
+    const src = readFileSync(
+      new URL("../components/GameFighter.jsx", import.meta.url),
+      "utf8"
+    );
+    assert.match(src, /const displaySpriteSrc = resolveFighterDisplaySprite\(\{/);
+    assert.match(src, /struckLimbHoldSrc: holdStruckLimbPose \? struckLimbHold\.src : null/);
+    // Nothing downstream may re-derive the sprite from isHit.
+    assert.match(src, /let effectiveSpriteSrc = displaySpriteSrc;/);
+  });
+});
+
+describe("struck-limb hold — debug line", () => {
+  it("reports family, pose, state and remaining hitstop without touching state", () => {
+    const hold = createStruckLimbHold();
+    assert.match(formatStruckLimbHoldHudLine(hold, 1000, 0), /state=idle/);
+    armStruckLimbHold(
+      hold,
+      {
+        hitId: "d1",
+        victimId: VICTIM,
+        limbOnlyContact: true,
+        victimHurtKind: "HURT_LIMB",
+        victimLimbFamily: "palm",
+        victimLimbPoseKey: "palm_recovery",
+        victimLimbVariant: "true",
+        victimLimbMirrorFacing: -1,
+      },
+      VICTIM,
+      1000,
+      1180,
+      () => "palm-thrust.png"
+    );
+    resolveStruckLimbHold(hold, 1040, 1180, true);
+    const line = formatStruckLimbHoldHudLine(hold, 1040, 1180);
+    assert.match(line, /state=active/);
+    assert.match(line, /decision=armed/);
+    assert.match(line, /family=palm/);
+    assert.match(line, /pose=palm_recovery/);
+    assert.match(line, /variant=true/);
+    assert.match(line, /face=-1/);
+    assert.match(line, /src=palm-thrust\.png/);
+    assert.match(line, /left=140ms/);
+    assert.match(line, /hitstopIn=140ms/);
+    // Purely a read: the hold is still exactly as resolved.
+    assert.equal(hold.src, "palm-thrust.png");
+    assert.equal(hold.until, 1180);
   });
 });

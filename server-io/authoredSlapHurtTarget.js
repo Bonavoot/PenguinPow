@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * Phase 4A — authored slap HURT_LIMB as an extra victim target surface.
+ * Phase 4A/4B — authored HURT_LIMB as an extra victim target surface.
  *
  * Consumes shared/combatVolumeAuthored.json via combatVolumeDefs (no second table).
  * Does NOT replace strikeContact tip-meets-body. Does NOT author hits from client
@@ -10,11 +10,15 @@
  * BOTH sides of the limb query are authored geometry:
  *   attacker → the canonical HIT rail of its real authoritative pose
  *              (slap_active / palm_active / charged_active)
- *   victim   → the exposed pose's HURT_LIMB, variant-resolved from slapAnimation
+ *   victim   → the exposed pose's HURT_LIMB, variant-resolved from authoritative
+ *              sim state (slapAnimation for slap, hold window for palm)
  * Neither is size-scaled: rendered sprite width is fixed, so reach is fixed.
  *
- * Exposure: slap_active + slap_recovery only (startup limb is authored but not
- * Phase 4A-authoritative until separately approved).
+ * Exposure:
+ *   Phase 4A — slap_active + slap_recovery
+ *   Phase 4B — palm_active + palm_recovery, the latter ONLY while the palm is
+ *              still holding the extended strike pose (PALM_THRUST_HOLD_MS into
+ *              recovery). Startup is excluded for both moves.
  *
  * Winning-contact policy when body + limb both eligible:
  *   1. Prefer earliest physical contact along attacker forward (smaller |tip→contact|).
@@ -48,6 +52,7 @@ const {
   SLAP_STARTUP_MS,
   AP_LATE_PARRY_MS,
   SLAP_GRACE_CONFIRM_SLACK_PX,
+  PALM_THRUST_HOLD_MS,
 } = require("./constants");
 const {
   getAttackDir,
@@ -80,14 +85,41 @@ const EXPOSED_SLAP_POSES = Object.freeze({
   slap_recovery: true,
 });
 
+/**
+ * Phase 4B palm allowlist. Mirrors meta.phase4bPalmAllowlist +
+ * poses.*.phase4bAuthority. palm_startup is excluded for the same reason
+ * slap_startup is.
+ */
+const EXPOSED_PALM_POSES = Object.freeze({
+  palm_active: true,
+  palm_recovery: true,
+});
+
+/** Every pose the authored-limb gate may target, across both phases. */
+const EXPOSED_LIMB_POSES = Object.freeze({
+  ...EXPOSED_SLAP_POSES,
+  ...EXPOSED_PALM_POSES,
+});
+
+/**
+ * Authored variant key selecting `palm_recovery`'s extended hold volume. The
+ * value is `String(true)` because the authoritative source is the boolean
+ * `palmLimbExtended`, which is also what the debug overlay reads off the wire —
+ * one field, so overlay and authority can never resolve different geometry.
+ */
+const PALM_LIMB_HOLD_VARIANT = "true";
+
+function isAuthoredLimbPoseAuthorityReady(poseKey) {
+  if (!poseKey || !EXPOSED_LIMB_POSES[poseKey]) return false;
+  const poseDef = getPoseDefinition(poseKey);
+  if (!poseDef || poseDef.support !== SUPPORT.SUPPORTED) return false;
+  return poseDef.phase4aAuthority === true || poseDef.phase4bAuthority === true;
+}
+
+/** Phase 4A-named alias — slap poses only, kept for existing callers/tests. */
 function isPhase4aSlapPoseAuthorityReady(poseKey) {
   if (!poseKey || !EXPOSED_SLAP_POSES[poseKey]) return false;
-  const poseDef = getPoseDefinition(poseKey);
-  return !!(
-    poseDef &&
-    poseDef.support === SUPPORT.SUPPORTED &&
-    poseDef.phase4aAuthority === true
-  );
+  return isAuthoredLimbPoseAuthorityReady(poseKey);
 }
 
 /**
@@ -210,61 +242,135 @@ function isSlapFamilyVictim(victim) {
   );
 }
 
-/**
- * Authoritative slap limb exposure for Phase 4A.
- * @returns {{ exposed: boolean, poseKey: string|null, phase: string|null, reason: string }}
- */
-function resolveSlapLimbExposure(victim, simTime) {
-  if (!victim) {
-    return { exposed: false, poseKey: null, phase: null, reason: "no_victim" };
-  }
-  if (!isSlapFamilyVictim(victim)) {
-    return { exposed: false, poseKey: null, phase: null, reason: "not_slap_family" };
-  }
-  const phase = inferAuthoredPhase(victim, simTime);
-  if (phase === COMBAT_PHASE.STARTUP) {
-    return {
-      exposed: false,
-      poseKey: "slap_startup",
-      phase,
-      reason: "startup_not_phase4a_exposed",
-    };
-  }
-  if (phase === COMBAT_PHASE.ACTIVE) {
-    return {
-      exposed: true,
-      poseKey: "slap_active",
-      phase,
-      reason: "slap_active",
-    };
-  }
-  if (phase === COMBAT_PHASE.RECOVERY) {
-    return {
-      exposed: true,
-      poseKey: "slap_recovery",
-      phase,
-      reason: "slap_recovery",
-    };
-  }
-  return {
-    exposed: false,
-    poseKey: null,
-    phase,
-    reason: "phase_not_exposed",
-  };
+function isPalmFamilyVictim(victim) {
+  return !!(victim && victim.isPalmThrust);
 }
 
-function getVictimSlapLimbAabb(victim, simTime, out) {
-  const exposure = resolveSlapLimbExposure(victim, simTime);
-  if (!exposure.exposed || !isPhase4aSlapPoseAuthorityReady(exposure.poseKey)) {
+/** "slap" | "palm" | null — which authored limb family a pose key belongs to. */
+function limbFamilyForPoseKey(poseKey) {
+  if (!poseKey) return null;
+  if (EXPOSED_SLAP_POSES[poseKey]) return "slap";
+  if (EXPOSED_PALM_POSES[poseKey]) return "palm";
+  return null;
+}
+
+/**
+ * Is the palm still HOLDING its extended strike pose during recovery?
+ *
+ * Pure, and derived only from authoritative recovery state — never from the
+ * client's PALM_THRUST_ANIM clock. `recoveryDuration` is 320 on whiff
+ * (HOLD 260 + END_RECOVERY 60) and 200 on a connect; both keep drawing
+ * palm-thrust.png for the whole window this returns true for, and the boundary
+ * lands 20ms BEFORE the client swaps back to the retracted art.
+ */
+function isPalmLimbHoldWindow(victim, simTime) {
+  if (!victim || !victim.isRecovering) return false;
+  const start = victim.recoveryStartTime;
+  if (typeof start !== "number" || !(start > 0)) return false;
+  if (typeof simTime !== "number" || !Number.isFinite(simTime)) return false;
+  const elapsed = simTime - start;
+  return elapsed >= 0 && elapsed < PALM_THRUST_HOLD_MS;
+}
+
+/**
+ * Authoritative victim limb exposure (Phase 4A slap + Phase 4B palm).
+ * @returns {{ exposed: boolean, poseKey: string|null, phase: string|null, variantKey: string|null, reason: string }}
+ */
+function resolveVictimLimbExposure(victim, simTime) {
+  const miss = (poseKey, phase, reason) => ({
+    exposed: false,
+    poseKey,
+    phase,
+    variantKey: null,
+    reason,
+  });
+  if (!victim) return miss(null, null, "no_victim");
+
+  if (isSlapFamilyVictim(victim)) {
+    const phase = inferAuthoredPhase(victim, simTime);
+    if (phase === COMBAT_PHASE.STARTUP) {
+      return miss("slap_startup", phase, "startup_not_phase4a_exposed");
+    }
+    if (phase === COMBAT_PHASE.ACTIVE) {
+      return {
+        exposed: true,
+        poseKey: "slap_active",
+        phase,
+        variantKey: null,
+        reason: "slap_active",
+      };
+    }
+    if (phase === COMBAT_PHASE.RECOVERY) {
+      return {
+        exposed: true,
+        poseKey: "slap_recovery",
+        phase,
+        variantKey: null,
+        reason: "slap_recovery",
+      };
+    }
+    return miss(null, phase, "phase_not_exposed");
+  }
+
+  if (isPalmFamilyVictim(victim)) {
+    const phase = inferAuthoredPhase(victim, simTime);
+    if (phase === COMBAT_PHASE.STARTUP) {
+      return miss("palm_startup", phase, "startup_not_phase4b_exposed");
+    }
+    if (phase === COMBAT_PHASE.ACTIVE) {
+      return {
+        exposed: true,
+        poseKey: "palm_active",
+        phase,
+        variantKey: null,
+        reason: "palm_active",
+      };
+    }
+    if (phase === COMBAT_PHASE.RECOVERY) {
+      // Only the held-out portion. Once the arm settles back inside the
+      // pushbox there is nothing honest left to hit, so the limb goes away
+      // entirely rather than shrinking to a volume that can never win.
+      if (!isPalmLimbHoldWindow(victim, simTime)) {
+        return miss("palm_recovery", phase, "palm_recovery_settled");
+      }
+      return {
+        exposed: true,
+        poseKey: "palm_recovery",
+        phase,
+        variantKey: PALM_LIMB_HOLD_VARIANT,
+        reason: "palm_recovery_hold",
+      };
+    }
+    return miss(null, phase, "phase_not_exposed");
+  }
+
+  return miss(null, null, "not_limb_family");
+}
+
+/** Phase 4A-named alias. */
+function resolveSlapLimbExposure(victim, simTime) {
+  const r = resolveVictimLimbExposure(victim, simTime);
+  return r.reason === "not_limb_family"
+    ? { ...r, reason: "not_slap_family" }
+    : r;
+}
+
+function getVictimLimbAabb(victim, simTime, out) {
+  const exposure = resolveVictimLimbExposure(victim, simTime);
+  if (!exposure.exposed || !isAuthoredLimbPoseAuthorityReady(exposure.poseKey)) {
     return null;
   }
   const poseDef = getPoseDefinition(exposure.poseKey);
   if (!poseDef || poseDef.support !== SUPPORT.SUPPORTED) return null;
   const size = victim.sizeMultiplier || 1;
-  // Variant comes from authoritative sim state (slapAnimation), so the queried
-  // volume is the one the victim is actually drawing this frame.
-  const variantKey = resolvePoseVariantKey(poseDef, victim);
+  // Variant comes from authoritative sim state (slapAnimation for slap, the
+  // resolved hold window for palm), so the queried volume is the one the victim
+  // is actually drawing this frame. An unresolvable variant falls back to the
+  // pose's base regions, which are always authored as the SHORTER volume.
+  const variantKey =
+    exposure.variantKey != null
+      ? exposure.variantKey
+      : resolvePoseVariantKey(poseDef, victim);
   const locals = materializeLocalRegions(poseDef, size, variantKey);
   let limbLocal = null;
   for (let i = 0; i < locals.length; i++) {
@@ -294,9 +400,14 @@ function getVictimSlapLimbAabb(victim, simTime, out) {
   };
 }
 
+/** Phase 4A-named alias. */
+function getVictimSlapLimbAabb(victim, simTime, out) {
+  return getVictimLimbAabb(victim, simTime, out);
+}
+
 /**
  * Max root-to-root gap at which `attackKind` can legally reach `victim`'s
- * exposed slap limb. Pure geometry (probe outer edge + limb outer edge) —
+ * exposed limb. Pure geometry (probe outer edge + limb outer edge) —
  * exported so tests and diagnostics can assert the honest range directly.
  */
 function getMaxLegalLimbGap(attackKind, victim, simTime) {
@@ -304,7 +415,7 @@ function getMaxLegalLimbGap(attackKind, victim, simTime) {
     attackKind === "palmThrust" ? "palm" : attackKind
   );
   if (!probe) return null;
-  const limb = getVictimSlapLimbAabb(victim, simTime);
+  const limb = getVictimLimbAabb(victim, simTime);
   if (!limb) return null;
   return probe.region.forward + probe.region.halfW + limb.reachForward;
 }
@@ -429,7 +540,7 @@ function evaluateTipVersusSlapLimb(attacker, victim, opts = {}) {
     return null;
   }
 
-  const limb = getVictimSlapLimbAabb(victim, simTime);
+  const limb = getVictimLimbAabb(victim, simTime);
   if (!limb) return null;
 
   const tip = buildAttackerTipProbeAabb(attacker, kind === "palmThrust" ? "palm" : kind);
@@ -519,6 +630,14 @@ function selectWinningVictimContact(args) {
 function resolveAuthoredSlapHurtContact(attacker, victim, opts = {}) {
   const flagOn = isAuthoredSlapHurtboxV1Enabled(opts.envValue);
   const bodyEligible = !!opts.bodyEligible;
+  // `bodyEligible` answers "may this hit commit?" and can be true purely from a
+  // TIMING forgiveness (the slap open-hit grace re-confirms a deferred hit up to
+  // SLAP_GRACE_CONFIRM_SLACK_PX past tip connect). `torsoEligible` answers the
+  // different question "is the torso actually at tip-meets-body range NOW?" —
+  // the only honest basis for limb-only classification and park policy.
+  // Defaults to bodyEligible so callers without a grace path are unchanged.
+  const torsoEligible =
+    opts.torsoEligible != null ? !!opts.torsoEligible : bodyEligible;
   const result = {
     connect: bodyEligible,
     winner: null,
@@ -558,13 +677,14 @@ function resolveAuthoredSlapHurtContact(attacker, victim, opts = {}) {
   if (winner) {
     // Park policy needs body eligibility even when limb wins VFX selection.
     winner.bodyEligible = bodyEligible;
+    winner.torsoEligible = torsoEligible;
   }
   result.winner = winner;
   result.connect = !!winner;
   if (!winner && !bodyEligible) {
     result.fallbackReason = limb
       ? null
-      : resolveSlapLimbExposure(victim, opts.simTime).reason;
+      : resolveVictimLimbExposure(victim, opts.simTime).reason;
   }
   _lastResolve = result;
   return result;
@@ -622,6 +742,9 @@ function querySlapOffensiveContact(attacker, victim, simTime) {
     simTime,
     attackKind: "slap",
     bodyEligible,
+    // Mirrors the checkCollision slap branch: the grace confirm is a commit
+    // allowance, never evidence that the torso is in reach.
+    torsoEligible: inRange,
     bodyContactX: getContactSeamX(attacker, victim, "slap"),
     bodyDist: horizontalDistance,
     attackDir,
@@ -660,10 +783,17 @@ function stampStrikeContactOverride(attacker, winner) {
   }
   const limbSource = winner.source === "authored_slap_limb";
   const bodyEligible = !!winner.bodyEligible;
+  // Torso reach is the honest basis here, NOT commit eligibility: a slap
+  // open-hit grace confirm can commit a hit while the tip is up to
+  // SLAP_GRACE_CONFIRM_SLACK_PX short of the torso. Classifying that as
+  // "torso-plus-limb" mislabelled genuine limb contacts (killing the struck-limb
+  // hold) and parked them to tip-meets-body, i.e. suction on an arm hit.
+  const torsoEligible =
+    winner.torsoEligible != null ? !!winner.torsoEligible : bodyEligible;
   // Limb-only for PARK: authored limb won AND torso was out of legacy connect.
-  // If torso was also eligible, keep legacy tip-meets-body park even when the
-  // selected VFX region is the limb (earliest tip contact).
-  const limbOnlyPark = limbSource && !bodyEligible;
+  // If the torso was genuinely in reach, keep legacy tip-meets-body park even
+  // when the selected VFX region is the limb (earliest tip contact).
+  const limbOnlyPark = limbSource && !torsoEligible;
   // Separate meanings: VFX/region identity must not imply torso parking.
   attacker._strikeContactOverride = {
     /** VFX / spark / region identity point (authored limb intersection or seam). */
@@ -674,11 +804,14 @@ function stampStrikeContactOverride(attacker, winner) {
     source: winner.source,
     poseKey: winner.poseKey || null,
     phase: winner.phase || null,
+    /** Phase 4B: "slap" | "palm" | null — lets consumers branch without parsing poseKey. */
+    limbFamily: limbFamilyForPoseKey(winner.poseKey || null),
     mirrorFacing: winner.mirrorFacing != null ? winner.mirrorFacing : null,
-    /** Exact slap animation variant the victim was drawing (1 | 2 | null). */
+    /** Exact authored variant the victim was drawing (slap 1|2, palm hold true, else null). */
     variantKey: winner.variantKey != null ? winner.variantKey : null,
     authoredSlapHurtboxV1: limbSource,
     bodyEligible,
+    torsoEligible,
     /** When true, processHit must NOT apply tip-meets-body torso park. */
     skipTorsoPark: limbOnlyPark,
     limbOnly: limbOnlyPark,
@@ -692,12 +825,36 @@ function consumeStrikeContactOverride(attacker) {
   return v;
 }
 
+/**
+ * Publish the palm hold window as a plain player field so the debug overlay can
+ * resolve `palm_recovery`'s variant off the wire and draw exactly what authority
+ * queried. Authority itself never reads this field — it re-derives the window
+ * from `isPalmLimbHoldWindow`, so a dropped/stale delta cannot move a hitbox.
+ *
+ * Called once per tick per player, before checkCollision.
+ */
+function refreshPalmLimbExtended(player, simTime) {
+  if (!player) return false;
+  const extended = isPalmFamilyVictim(player) && isPalmLimbHoldWindow(player, simTime);
+  player.palmLimbExtended = extended;
+  return extended;
+}
+
 module.exports = {
   EXPOSED_SLAP_POSES,
+  EXPOSED_PALM_POSES,
+  EXPOSED_LIMB_POSES,
+  PALM_LIMB_HOLD_VARIANT,
   isPhase4aSlapPoseAuthorityReady,
+  isAuthoredLimbPoseAuthorityReady,
   isSlapTipLive,
+  isPalmLimbHoldWindow,
+  refreshPalmLimbExtended,
+  limbFamilyForPoseKey,
   resolveSlapLimbExposure,
+  resolveVictimLimbExposure,
   getVictimSlapLimbAabb,
+  getVictimLimbAabb,
   getAttackerHitRegion,
   getMaxLegalLimbGap,
   buildAttackerTipProbeAabb,

@@ -236,3 +236,99 @@ describe("Phase 4A — overlay honours per-variant frontArm volumes", () => {
     );
   });
 });
+
+describe("Phase 4B — overlay mirrors the palm's authoritative hold window", () => {
+  /** Measured visible arm tips (meta.phase4bLimbMeasurement). */
+  const PALM_EXTENDED = 71.832;
+  const PALM_RETRACTED = 54.448;
+
+  const near = (actual, expected, msg) =>
+    assert.ok(
+      Math.abs(actual - expected) < 1e-6,
+      `${msg} (got ${actual}, want ${expected})`
+    );
+
+  function palmArmOuter(poseKey, fighter) {
+    const pose = getAuthoredCatalog().poses[poseKey];
+    const arm = resolveAuthoredPoseRegions(pose, fighter).find(
+      (r) => r.label === "frontArm"
+    );
+    assert.ok(arm, `${poseKey} must author a frontArm`);
+    return arm.forward + arm.halfW;
+  }
+
+  it("palm_active draws the measured extended arm", () => {
+    near(palmArmOuter("palm_active", {}), PALM_EXTENDED, "palm_active");
+  });
+
+  it("palm_recovery follows palmLimbExtended, the server's own hold boolean", () => {
+    near(
+      palmArmOuter("palm_recovery", { palmLimbExtended: true }),
+      PALM_EXTENDED,
+      "while the arm is held out the overlay must draw the box authority queries"
+    );
+    near(
+      palmArmOuter("palm_recovery", { palmLimbExtended: false }),
+      PALM_RETRACTED,
+      "once the art settles the overlay must retract with it"
+    );
+  });
+
+  it("unknown / missing palmLimbExtended falls back to the RETRACTED volume", () => {
+    for (const bogus of [undefined, null, "banana", 0, 1, "true "]) {
+      near(
+        palmArmOuter("palm_recovery", { palmLimbExtended: bogus }),
+        PALM_RETRACTED,
+        `${JSON.stringify(bogus)} must never draw reach the fighter does not have`
+      );
+    }
+    assert.equal(
+      getAuthoredCatalog().poses.palm_recovery.variantDefault,
+      undefined,
+      "a variantDefault would let a missing field resolve the longer box"
+    );
+  });
+
+  it("palm_startup is corrected to the retracted art it actually draws", () => {
+    // Overlay-only pose: never authoritative, so it must under-draw, not over.
+    near(palmArmOuter("palm_startup", {}), PALM_RETRACTED, "palm_startup");
+  });
+
+  it("the drawn overlay volume tracks the live hold flag", () => {
+    const outerFor = (palmLimbExtended) => {
+      const vols = deriveAuthoredDebugVolumes({
+        x: 400,
+        y: 286,
+        facing: -1,
+        isPalmThrust: true,
+        isRecovering: true,
+        currentAction: "palm",
+        palmLimbExtended,
+      });
+      const limb = vols.find((v) => v.kind === "HURT_LIMB");
+      assert.ok(limb, `palmLimbExtended=${palmLimbExtended}: limb must draw`);
+      // Facing -1 ⇒ forward is +X, so the outer edge is the max side.
+      return Math.max(limb.aabb.left, limb.aabb.right);
+    };
+    near(
+      outerFor(true) - outerFor(false),
+      PALM_EXTENDED - PALM_RETRACTED,
+      "overlay must shrink by exactly the authored retraction when the hold ends"
+    );
+  });
+
+  it("server recovery state beats the client palm animation clock", () => {
+    // The client director keeps palm-thrust.png up ~20ms past the server hold.
+    // isRecovering is authoritative, so the overlay must resolve palm_recovery
+    // (variant-gated) rather than palm_active (always extended).
+    const resolved = resolveClientAuthoredPoseKey({
+      x: 400,
+      isPalmThrust: true,
+      isRecovering: true,
+      currentAction: "palm",
+      strikePhaseHint: "active",
+    });
+    assert.equal(resolved.poseKey, "palm_recovery");
+    assert.equal(resolved.phase, "recovery");
+  });
+});

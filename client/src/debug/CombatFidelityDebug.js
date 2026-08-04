@@ -40,6 +40,7 @@ import {
   resolveMirrorFacing,
   getFighterRenderAnchor,
   clearLocalStrikePhaseHints,
+  getStruckLimbHoldDebugLines,
 } from "./combatVolumeDebug";
 // Vite JSON→ESM bind for shared authored defs (must precede derive helpers).
 import "./combatVolumeAuthoredViteBind";
@@ -285,6 +286,17 @@ export function noteCombatContactEvent(data) {
       data.victimSlapMirrorFacing === 1 || data.victimSlapMirrorFacing === -1
         ? data.victimSlapMirrorFacing
         : null,
+    // Phase 4B generic limb identity — carries palm as well as slap.
+    victimLimbFamily: data.victimLimbFamily || null,
+    victimLimbPoseKey: data.victimLimbPoseKey || null,
+    victimLimbPhase: data.victimLimbPhase || null,
+    victimLimbVariant:
+      data.victimLimbVariant != null ? String(data.victimLimbVariant) : null,
+    victimLimbMirrorFacing:
+      data.victimLimbMirrorFacing === 1 || data.victimLimbMirrorFacing === -1
+        ? data.victimLimbMirrorFacing
+        : null,
+    limbOnlyContact: data.limbOnlyContact === true,
     isPunish: !!data.isPunish,
     isCounterHit: !!data.isCounterHit,
     // Wall-clock stamp for LAST COMMITTED age / EXPIRED labeling only.
@@ -720,12 +732,15 @@ export function renderCombatFidelityOverlay(state) {
     lastCommitted: lastContact,
     nowMs: performance.now(),
     flagHud: readAuthoredSlapHurtboxHudFlag(),
+    holdLines: getStruckLimbHoldDebugLines(),
   });
   const slapHurtLines = `${slapHurtHud.flagLine}<br/><span style="color:#ffccbc">${slapHurtHud.currentLine}</span><br/><span style="color:#ffe0b2">${slapHurtHud.queryLine}</span><br/><span style="color:${
     lastContact && performance.now() - lastContact.t > LAST_COMMITTED_FRESH_MS
       ? "#90a4ae"
       : "#ffab91"
-  }">${slapHurtHud.lastLine}</span>`;
+  }">${slapHurtHud.lastLine}</span><br/><span style="color:#b39ddb">${
+    slapHurtHud.limbHoldLine
+  }</span>`;
 
   // Lifecycle ownership: infer domains from authoritative gameplay flags.
   // Instance IDs / reject counts stay server-side (no debug-only wire fields).

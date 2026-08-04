@@ -143,6 +143,7 @@ import {
 import {
   getLocalStrikePhaseHint,
   noteLocalStrikePhaseHint,
+  noteStruckLimbHoldDebug,
   noteFighterRenderAnchor,
   palmFrameToStrikePhaseHint,
   slapFrameToStrikePhaseHint,
@@ -259,6 +260,8 @@ import {
   armStruckLimbHold,
   resolveStruckLimbHold,
   struckLimbHoldNeedsTick,
+  resolveFighterDisplaySprite,
+  formatStruckLimbHoldHudLine,
 } from "../combatPresentation/struckLimbHold";
 import {
   getHatOverlayForSprite,
@@ -8040,6 +8043,14 @@ const GameFighter = ({
       strikeHint = palmFrameToStrikePhaseHint(palmThrustFrame);
     }
     noteLocalStrikePhaseHint(penguin.fighter, strikeHint);
+    noteStruckLimbHoldDebug(
+      penguin.fighter,
+      formatStruckLimbHoldHudLine(
+        struckLimbHold,
+        performance.now(),
+        getDisplayHitstopUntil()
+      )
+    );
   }
   // Raw parry SUCCESS pose director — see rawParrySuccessVisualRef.
   const nowSuccessMs = performance.now();
@@ -8217,16 +8228,19 @@ const GameFighter = ({
   // bookend frames that sell its weight. Landing only overrides an idle (pumo)
   // frame so it never stomps an action buffered out of the (0ms) recovery, nor
   // the power-slide crouch pose.
-  // PHASE 4A struck-limb hold outranks the generic hit sprite for the duration
-  // of the existing display hitstop, so the player can actually SEE the arm that
-  // was hit (and the spark that lands on it) before the hit reaction takes over.
-  const displaySpriteSrc = holdStruckLimbPose
-    ? struckLimbHold.src
-    : inDashWindup
-    ? recovering
-    : penguin.justLandedFromDodge && rawSpriteSrc === pumo
-    ? recovering
-    : rawSpriteSrc;
+  // PHASE 4A/4B struck-limb hold outranks the generic hit sprite for the
+  // duration of the existing display hitstop, so the player can actually SEE the
+  // arm that was hit (and the spark that lands on it) before the hit reaction
+  // takes over. The precedence lives in combatPresentation/struckLimbHold so the
+  // ordering is unit-tested against the real authoritative-isHit sprite.
+  const displaySpriteSrc = resolveFighterDisplaySprite({
+    struckLimbHoldSrc: holdStruckLimbPose ? struckLimbHold.src : null,
+    inDashWindup,
+    justLandedFromDodge: penguin.justLandedFromDodge,
+    rawSpriteSrc,
+    idleSrc: pumo,
+    recoveringSrc: recovering,
+  });
 
   // Hold previous sprite briefly when transitioning to idle to prevent
   // ghost frames during state transition gaps (e.g. isHit=false before isRecovering=true)

@@ -12,8 +12,9 @@
     "queryOwner": "server-io/combatVolumeDefs.js + combatVolumeQuery.queryAuthoredCombatVolumes",
     "serverTransform": "server-io/combatGeometry.localRectToWorldAabb",
     "clientDebugTransform": "client/src/debug/combatVolumeDebug.js + CombatFidelityDebug world layer under .game-actors (camera-synced)",
-    "authority": "SHADOW_DEFAULT — catalog is not gameplay-approved. Phase 4A may enable ONLY poses with phase4aAuthority=true (slap_active + slap_recovery HURT_LIMB) when AUTHORED_SLAP_HURTBOX_V1 is ON. Palm, charged, sidestep, aerial, grab, clinch, throw, rope-jump, and slap_startup remain legacy/shadow.",
+    "authority": "SHADOW_DEFAULT — catalog is not gameplay-approved. The AUTHORED_SLAP_HURTBOX_V1 gate may enable ONLY poses with phase4aAuthority=true (slap_active + slap_recovery) or phase4bAuthority=true (palm_active + palm_recovery, hold window only). Charged, sidestep, aerial, grab, clinch, throw, rope-jump, slap_startup, and palm_startup remain legacy/shadow.",
     "phase4aSlapAllowlist": ["slap_active", "slap_recovery"],
+    "phase4bPalmAllowlist": ["palm_active", "palm_recovery"],
     "tipWorld": {
       "slap": 78.39166666666667,
       "palm": 71.825,
@@ -34,6 +35,15 @@
         "slap-attack-2-hit-frame.png": { "up": [56, 92], "tipPx": 478, "outerForward": 78.392 },
         "palm-thrust-startup.png": { "up": [59, 87], "tipPx": 332, "outerForward": 54.448 }
       }
+    },
+    "phase4bLimbMeasurement": {
+      "method": "identical to phase4aLimbMeasurement — reproduced by tools/measure-limb-band.js, which regenerates all three Phase 4A armBands values exactly before being used for palm",
+      "tool": "node tools/measure-limb-band.js palm-thrust.png --band 61:92",
+      "armBands": {
+        "palm-thrust.png": { "up": [61, 92], "tipPx": 438, "outerForward": 71.832 }
+      },
+      "note": "The extended palm arm band is bounded by a hard silhouette step: the frontmost opaque column is 218px (body) at up 92.5, jumps to 408px at up 92.3, and falls back to 259px at up 61.0. 438px is also STRIKE_TIP_PALM_SPRITE_PX, i.e. the arm IS the sprite's frontmost feature — no feet, glow, smear, or padding is included.",
+      "renderedArtWindows": "Client PALM_THRUST_ANIM (GameFighter) draws palm-thrust-smear 0-40ms, palm-thrust.png 40-460ms, palm-thrust-startup.png from 460ms. Server phases are startup [0,90), active [90,180), recovery [180,500) on whiff. The authorized limb window ends at PALM_THRUST_HOLD_MS into recovery (440ms from move start) — 20ms BEFORE the art retracts, so authority can never advertise reach the sprite is not drawing."
     }
   },
   "poses": {
@@ -334,6 +344,7 @@
     "palm_startup": {
       "support": "supported",
       "art": "palm-thrust-startup.png",
+      "notes": "Not authoritative (mirrors the slap_startup exclusion). The client swaps to palm-thrust.png ~40ms into the 90ms startup, so the authored arm here is deliberately the SHORTER retracted measurement — an overlay that under-draws is safe, one that over-draws is not.",
       "regions": [
         {
           "kind": "PUSH",
@@ -376,15 +387,17 @@
           "kind": "HURT_LIMB",
           "label": "frontArm",
           "region": "frontArm",
-          "forward": 48,
-          "up": 64,
-          "halfW": 28,
-          "halfH": 14
+          "forward": 44.224,
+          "up": 73,
+          "halfW": 10.224,
+          "halfH": 14,
+          "notes": "Measured arm band up[59,87], visible tip 54.448 (332px) on palm-thrust-startup.png"
         }
       ]
     },
     "palm_active": {
       "support": "supported",
+      "phase4bAuthority": true,
       "art": "palm-thrust.png",
       "regions": [
         {
@@ -428,10 +441,11 @@
           "kind": "HURT_LIMB",
           "label": "frontArm",
           "region": "frontArm",
-          "forward": 64,
-          "up": 64,
-          "halfW": 34,
-          "halfH": 16
+          "forward": 52.916,
+          "up": 76.5,
+          "halfW": 18.916,
+          "halfH": 15.5,
+          "notes": "Punishable exposure — measured arm band up[61,92], visible tip 71.832 (438px) on palm-thrust.png. Outer edge sits 6.832 past the size-1 pushbox half (65), so a genuine limb-only window exists vs slap and charged."
         },
         {
           "kind": "HIT",
@@ -447,7 +461,27 @@
     },
     "palm_recovery": {
       "support": "supported",
-      "art": "palm-thrust-startup.png",
+      "phase4bAuthority": true,
+      "art": "palm-thrust.png (hold) → palm-thrust-startup.png (settle)",
+      "variantKey": "palmLimbExtended",
+      "variantNotes": "Palm recovery draws TWO poses. For PALM_THRUST_HOLD_MS the arm stays fully extended on palm-thrust.png (constants.js: 'this is REAL recovery ... they ARE punishable'); only the short tail settles back to palm-thrust-startup.png. `palmLimbExtended` is the server's authoritative hold-window boolean, so the variant is `true` exactly while the extended art is drawn. Base regions carry the SHORTER settled volume and there is no variantDefault, so a missing/unknown value can never claim the extended reach.",
+      "variants": {
+        "true": {
+          "art": "palm-thrust.png",
+          "regionOverrides": [
+            {
+              "kind": "HURT_LIMB",
+              "label": "frontArm",
+              "region": "frontArm",
+              "forward": 52.916,
+              "up": 76.5,
+              "halfW": 18.916,
+              "halfH": 15.5,
+              "notes": "Held-out palm — measured arm band up[61,92], visible tip 71.832 (438px)"
+            }
+          ]
+        }
+      },
       "regions": [
         {
           "kind": "PUSH",
@@ -490,10 +524,11 @@
           "kind": "HURT_LIMB",
           "label": "frontArm",
           "region": "frontArm",
-          "forward": 56,
-          "up": 64,
-          "halfW": 30,
-          "halfH": 14
+          "forward": 44.224,
+          "up": 73,
+          "halfW": 10.224,
+          "halfH": 14,
+          "notes": "Settled tail — measured arm band up[59,87], visible tip 54.448 (332px) on palm-thrust-startup.png. Retracted INSIDE the size-1 pushbox half (65), so this variant produces no limb-only window and is NOT authorized; see poses.palm_recovery.variants.true for the authorized hold volume."
         }
       ]
     },

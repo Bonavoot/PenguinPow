@@ -24,6 +24,11 @@ const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'balance', 'id', 'figh
 
 const DELTA_TRACKED_PROPS = [
   'isAttacking', 'isSlapAttack', 'isPalmThrust', 'palmThrustFxId', 'isLowKick', 'slapAnimation', 'attackType',
+  // Phase 4B: true only while the palm is still HOLDING its extended strike
+  // pose during recovery. Debug-overlay consumer (picks palm_recovery's authored
+  // variant so the drawn box matches the box authority queried). Authority
+  // re-derives this window server-side and never reads the wire value.
+  'palmLimbExtended',
   'isChargingAttack', 'chargeAttackPower', 'chargeStartTime',
   // Stops client lunge trails the moment a charged hit plants.
   'chargedAttackHit',

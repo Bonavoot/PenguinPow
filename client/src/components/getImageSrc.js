@@ -372,19 +372,34 @@ const getImageSrc = (
 };
 
 /**
- * Sprite the victim was drawing at the instant an authored slap limb was struck.
+ * Sprite the victim was drawing at the instant an authored limb was struck.
  * Keyed off the SERVER's contact stamp (pose + variant), never a client guess,
  * so the held frame is the one authority actually collided with.
- * Mirrors the slap branch above — keep the two in sync.
+ * Mirrors the slap + palm branches above — keep the three in sync.
+ *
+ * Returns null for anything not authorized, so an unrecognized stamp falls
+ * through to the ordinary hit reaction instead of holding a guessed pose.
  */
-export const getStruckSlapLimbSrc = (victimSlapPoseKey, victimSlapVariant) => {
-  if (victimSlapPoseKey === "slap_active") {
-    return String(victimSlapVariant) === "2" ? slapAttack2Hit : slapAttack1Hit;
+export const getStruckLimbPoseSrc = (victimLimbPoseKey, victimLimbVariant) => {
+  if (victimLimbPoseKey === "slap_active") {
+    return String(victimLimbVariant) === "2" ? slapAttack2Hit : slapAttack1Hit;
   }
   // Recovery settles back to the ready stance — hold the ACTUAL recovery frame,
   // never a fabricated extension.
-  if (victimSlapPoseKey === "slap_recovery") return palmThrustStartup;
+  if (victimLimbPoseKey === "slap_recovery") return palmThrustStartup;
+  // PHASE 4B — palm. The extended strike pose (palm-thrust.png) is what the
+  // client draws for the whole active window AND for the recovery hold.
+  if (victimLimbPoseKey === "palm_active") return palmThrust;
+  // palm_recovery is authorized ONLY while the arm is still held out; the
+  // server marks that with variant "true". After the hold the arm is retracted
+  // and no limb-only window exists, so there is nothing honest to hold.
+  if (victimLimbPoseKey === "palm_recovery") {
+    return String(victimLimbVariant) === "true" ? palmThrust : null;
+  }
   return null;
 };
+
+/** Phase 4A-named alias — kept so existing call sites/tests keep working. */
+export const getStruckSlapLimbSrc = getStruckLimbPoseSrc;
 
 export default getImageSrc;

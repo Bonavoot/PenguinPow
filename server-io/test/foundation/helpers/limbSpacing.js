@@ -18,7 +18,7 @@
 
 const {
   getAttackerHitRegion,
-  getVictimSlapLimbAabb,
+  getVictimLimbAabb,
 } = require("../../../authoredSlapHurtTarget");
 const {
   getConnectDistance,
@@ -30,10 +30,17 @@ const {
   setAuthoredSlapHurtboxForTests,
 } = require("../../../authoredSlapHurtboxFlags");
 
-/** Measured visible arm tip per victim pose / slap variant (see meta.phase4aLimbMeasurement). */
+/**
+ * Measured visible arm tip per victim pose / variant.
+ * See meta.phase4aLimbMeasurement (slap) and meta.phase4bLimbMeasurement (palm).
+ * Palm keys off `palmLimbExtended`: "true" = held-out palm-thrust.png art,
+ * anything else = the settled palm-thrust-startup.png art.
+ */
 const VISIBLE_ARM_TIP = Object.freeze({
   slap_active: Object.freeze({ 1: 75.276, 2: 78.392 }),
   slap_recovery: Object.freeze({ 1: 54.448, 2: 54.448 }),
+  palm_active: Object.freeze({ 1: 71.832, 2: 71.832 }),
+  palm_recovery: Object.freeze({ true: 71.832, 1: 54.448, 2: 54.448 }),
 });
 
 function normalizeKind(attackKind) {
@@ -56,7 +63,7 @@ function victimLimbReach(victim, simTime) {
   const prior = isAuthoredSlapHurtboxV1Enabled();
   setAuthoredSlapHurtboxForTests(true);
   try {
-    const limb = getVictimSlapLimbAabb(victim, simTime);
+    const limb = getVictimLimbAabb(victim, simTime);
     return limb ? limb.reachForward : null;
   } finally {
     setAuthoredSlapHurtboxForTests(prior);
@@ -84,7 +91,8 @@ function visibleTouchGap(attackKind, attacker, victimPoseKey, victimVariant) {
   const tip = getStrikeTipWorld(normalizeKind(attackKind), attacker);
   const table = VISIBLE_ARM_TIP[victimPoseKey];
   if (!table) return null;
-  const arm = table[String(victimVariant) === "2" ? 2 : 1];
+  const key = String(victimVariant);
+  const arm = table[key] != null ? table[key] : table[key === "2" ? 2 : 1];
   return tip + arm;
 }
 

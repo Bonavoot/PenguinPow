@@ -649,6 +649,11 @@ function checkCollision(player, otherPlayer, rooms, io) {
       simTime: now,
       attackKind: "slap",
       bodyEligible,
+      // The grace confirm is a TIMING allowance, not proof the torso is in
+      // reach. Classification and park must use real tip-meets-body range, or a
+      // genuine limb hit inside the grace slack gets mislabelled torso-plus-limb
+      // (no struck-limb hold) and parked forward onto a torso it never touched.
+      torsoEligible: inRange,
       bodyContactX: getContactSeamX(player, otherPlayer, "slap"),
       bodyDist: horizontalDistance,
       attackDir,
@@ -3032,20 +3037,44 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
               // Art-tip contact seam for sparks / banners (replaces magic x+70).
               contactX,
               contactY: otherPlayer.y,
-              // Phase 4A — present only when AUTHORED_SLAP_HURTBOX_V1 stamped a region.
+              // Phase 4A/4B — present only when AUTHORED_SLAP_HURTBOX_V1 stamped a region.
               ...(strikeContactOverride
                 ? {
                     victimHurtRegion: strikeContactOverride.victimRegion || null,
                     victimHurtKind: strikeContactOverride.victimKind || null,
                     authoredSlapHurtboxV1: !!strikeContactOverride.authoredSlapHurtboxV1,
-                    victimSlapPoseKey: strikeContactOverride.poseKey || null,
-                    victimSlapPhase: strikeContactOverride.phase || null,
+                    // Phase 4B generic identity — carries EVERY authored limb family
+                    // (slap + palm). New consumers read these.
+                    victimLimbFamily: strikeContactOverride.limbFamily || null,
+                    victimLimbPoseKey: strikeContactOverride.poseKey || null,
+                    victimLimbPhase: strikeContactOverride.phase || null,
+                    victimLimbMirrorFacing:
+                      strikeContactOverride.mirrorFacing != null
+                        ? strikeContactOverride.mirrorFacing
+                        : null,
+                    victimLimbVariant:
+                      strikeContactOverride.variantKey != null
+                        ? strikeContactOverride.variantKey
+                        : null,
+                    // Phase 4A fields, preserved byte-for-byte for slap. They stay
+                    // null for palm rather than smuggling non-slap pose data through
+                    // slap-named keys.
+                    victimSlapPoseKey:
+                      strikeContactOverride.limbFamily === "slap"
+                        ? strikeContactOverride.poseKey || null
+                        : null,
+                    victimSlapPhase:
+                      strikeContactOverride.limbFamily === "slap"
+                        ? strikeContactOverride.phase || null
+                        : null,
                     victimSlapMirrorFacing:
+                      strikeContactOverride.limbFamily === "slap" &&
                       strikeContactOverride.mirrorFacing != null
                         ? strikeContactOverride.mirrorFacing
                         : null,
                     // Exact slap animation the victim was drawing (1 | 2).
                     victimSlapVariant:
+                      strikeContactOverride.limbFamily === "slap" &&
                       strikeContactOverride.variantKey != null
                         ? strikeContactOverride.variantKey
                         : null,

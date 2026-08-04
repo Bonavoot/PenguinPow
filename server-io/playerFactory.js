@@ -187,6 +187,7 @@ function createInitialPlayerState(overrides = {}) {
     palmThrustQueued: false,
     palmThrustFxId: 0,
     palmThrustVisualUntil: 0,
+    palmLimbExtended: false,
     slapAnimation: 2,
     slapFacingDirection: null,
     actionFacingLock: null,
