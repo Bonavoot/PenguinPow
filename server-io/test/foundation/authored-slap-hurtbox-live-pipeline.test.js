@@ -389,10 +389,15 @@ describe("Phase 4A live-pipeline — fixture vs live fighter fields", () => {
     assert.equal("isRecovering" in p, false);
   });
 
-  it("module default flag remains OFF", () => {
+  // Phase 4C graduated this gate: the accepted slap/palm limb authority is the
+  // shipped default, and only an explicit OFF spelling rolls back to legacy.
+  it("module default flag is ON, with the explicit rollback intact", () => {
     setAuthoredSlapHurtboxForTests(null);
-    assert.equal(AUTHORED_SLAP_HURTBOX_V1, false);
-    assert.equal(isAuthoredSlapHurtboxV1Enabled(""), false);
-    assert.equal(isAuthoredSlapHurtboxV1Enabled(undefined), false);
+    assert.equal(AUTHORED_SLAP_HURTBOX_V1, true);
+    assert.equal(isAuthoredSlapHurtboxV1Enabled(""), true);
+    assert.equal(isAuthoredSlapHurtboxV1Enabled(undefined), true);
+    for (const off of ["0", "false", "off", "no"]) {
+      assert.equal(isAuthoredSlapHurtboxV1Enabled(off), false, off);
+    }
   });
 });

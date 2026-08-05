@@ -29,7 +29,7 @@ Do **not** begin with a geometry rewrite of slap contact. Keep tip rails; add au
 | 1 Harness + debug volumes | Keep first — still missing |
 | 2 Parity / proven bugs | Keep — 320/400, direction wire, CPU 940, recovery-cancel decision are all still live |
 | 3 Shadow geometry | Keep — no authored hurt system yet |
-| 4 Limb rollout | Keep — highest strike-feel payoff after shadow proof |
+| 4 Limb rollout | **Done** — slap + palm shipped, flag default ON (4C closeout) |
 | 5 Sidestep authority | Keep, but **raise urgency**: many sidestep defects are already proven; Phase 2 should fix *presentation parity only*, Phase 5 owns physical outcomes |
 | 6 Premium beats | Keep after 5 + Plant trace; Plant is likely presentation-first |
 | 7 Actionability | Keep — distributed gates still real; recovery-cancel decision feeds this |
@@ -183,37 +183,44 @@ Tip rail, park, seam, charged earliest contact, clinch, rope V2, aerial outcome 
 
 ---
 
-## Phase 4 — Whiff-punishable limbs (gated rollout)
+## Phase 4 — Whiff-punishable limbs (gated rollout) — **COMPLETE**
 
 **Goal:** Extended recovery limbs become honest hurt targets; HIT only during active.
 
-### Phase 4A status (current)
+### Status
 
 | Gate | Status |
 |---|---|
-| Automated unit/foundation/live-pipeline tests | Passing |
-| Live limb connect (VS CPU Easy) | Working after live-runtime repair |
-| Limb-only torso-park / forward suction | **Repaired** — skip tip-meets-body park when torso out of connect |
-| Production readiness | **Not fully approved** — feel gate still open |
-| Flag default | **OFF** (must remain OFF) |
-| Prior “ready for human gameplay approval” | Still revoked until feel approval |
-| Human recording requirement | Removed |
+| 4A slap active + recovery limbs | **Accepted** (live feel approved) |
+| 4B palm active + held-out recovery limb | **Accepted** (live feel approved), checkpoint `3b8ed5bb` |
+| 4C flag graduation + closeout | **Complete** |
+| Limb-only torso-park / forward suction | **Repaired** — limb-only never parks to tip-meets-body |
+| Flag default | **ON** since 4C; explicit `0`/`false`/`off`/`no` is the exact legacy rollback |
+| Full post-4C regression | Server 1279/1279, client 164/164 |
 
-Do **not** mark Phase 4A complete until ordinary gameplay feel is accepted.
+### Rollout outcome
 
-### Rollout order (unless shadow evidence says otherwise)
+1. Slap hurt targets — shipped
+2. Slap visible-recovery limb — shipped
+3. Palm (active + held-out recovery) — shipped in 4B
+4. Low kick — **not revived.** `LOW_KICK_ENABLED = false`; `executeLowKick` early-returns and both call sites are gated. No geometry, no future rollout target.
+5. Charged — compatibility only. Charged may *strike* a supported exposed slap/palm limb; it gets **no** victim-limb family of its own.
 
-1. Slap hurt targets  
-2. Slap visible-recovery limb  
-3. Palm if verified  
-4. Low kick only if re-enabled and traced  
-5. Charged compatibility check only  
+One feature flag (`AUTHORED_SLAP_HURTBOX_V1`) governs both surfaces. Once-only contact; order-independent; no region damage minigame.
 
-One feature flag, default preserves legacy until approval. Once-only contact; order-independent; no region damage minigame.
+### Authority invariant established in 4B
+
+`bodyEligible` (may this hit commit, including open-hit grace) is **separate** from `torsoEligible` (does the rail physically reach the torso this tick). Limb-only classification and `skipTorsoPark` derive from `torsoEligible` only. Conflating them mislabelled genuine limb hits as torso-plus-limb, which suppressed the struck-limb hold and applied ~12 units of forward suction.
+
+### Qualification rule for any future limb family
+
+A move qualifies only if its art materially extends a distinct appendage beyond ordinary body authority, that appendage stays independently exposed for a legible interval, an opponent's legitimate strike can intersect it while missing the torso, body authority creates a real visual/physical mismatch, the server can derive lifecycle/phase/facing/geometry honestly, and the region improves honesty rather than merely punishability.
+
+**Audited and excluded (4C):** charged headbutt and butt slam (whole body travels; body/landing authority is correct), rope jump and offensive aerials (separate whole-body aerial/landing authority), grab/clinch/throw (own interaction system), sidestep/dodge/parry/crouch/movement (sidestep is intangible; no exposed appendage), low kick (disabled), projectiles/power-ups (may hit a supported limb; not a victim-limb family). The authored catalog carries `HURT_LIMB` only on slap and palm poses.
 
 ### Stop
 
-`PUMO PREMIUM COMBAT FOUNDATION — PHASE 4A LIVE-RUNTIME REPAIR GATE` then human feel approval (not recording-gated)
+`PUMO PREMIUM COMBAT FOUNDATION — PHASE 4C ROLLOUT AND CLOSEOUT GATE` — Phase 4 closed. Default-ON soak continues; the flag is intentionally retained for rollback and is **not** removed in this phase.
 
 ---
 

@@ -682,6 +682,82 @@ describe("struck-limb hold — final sprite precedence", () => {
   });
 });
 
+/**
+ * Phase 4C graduated the server flag to default ON, but the explicit-OFF
+ * rollback must still be complete on the client: legacy payloads carry no
+ * authored limb identity at all, so no hold can arm and the hit reaction is
+ * the only presentation. The client must never manufacture identity locally.
+ */
+describe("struck-limb hold — legacy (flag OFF) payloads", () => {
+  const resolveLimbSrc = (poseKey, variant) => {
+    if (poseKey === "palm_active") return "palmThrust.png";
+    if (poseKey === "palm_recovery") {
+      return String(variant) === "true" ? "palmThrust.png" : null;
+    }
+    if (poseKey === "slap_active") {
+      return String(variant) === "2" ? "slap2Hit.png" : "slap1Hit.png";
+    }
+    return null;
+  };
+
+  // Exactly what the server emits with AUTHORED_SLAP_HURTBOX_V1=0: a torso hit
+  // with every authored-limb field absent (not false — absent).
+  const legacyHit = (overrides = {}) => ({
+    hitId: "legacy-1",
+    victimId: VICTIM,
+    attackerId: ATTACKER,
+    attackType: "slap",
+    victimHurtRegion: "torso",
+    victimHurtKind: "HURT_BODY",
+    ...overrides,
+  });
+
+  it("a legacy torso payload cannot arm the hold", () => {
+    const hold = createStruckLimbHold();
+    assert.equal(isStruckLimbHoldEligible(legacyHit(), VICTIM), false);
+    assert.equal(
+      armStruckLimbHold(hold, legacyHit(), VICTIM, 1000, 1180, resolveLimbSrc),
+      false
+    );
+    assert.equal(hold.src, null);
+    assert.equal(resolveStruckLimbHold(hold, 1000, 1180, true), false);
+  });
+
+  it("absent limb identity is not inferred from the hurt region alone", () => {
+    // Even if a legacy build ever labelled the region, the limb-only flag is
+    // the sole gate — a region name must never be enough.
+    const hold = createStruckLimbHold();
+    const payload = legacyHit({
+      victimHurtRegion: "frontArm",
+      victimHurtKind: "HURT_LIMB",
+    });
+    assert.equal(
+      armStruckLimbHold(hold, payload, VICTIM, 1000, 1180, resolveLimbSrc),
+      false
+    );
+    assert.equal(hold.decision, "not_limb_only");
+    assert.equal(hold.src, null);
+  });
+
+  it("the ordinary isHit sprite owns every legacy frame", () => {
+    const hold = createStruckLimbHold();
+    armStruckLimbHold(hold, legacyHit(), VICTIM, 1000, 1180, resolveLimbSrc);
+    for (const now of [1000, 1100, 1180, 1300]) {
+      const src = resolveFighterDisplaySprite({
+        struckLimbHoldSrc: resolveStruckLimbHold(hold, now, 1180, true)
+          ? hold.src
+          : null,
+        inDashWindup: false,
+        justLandedFromDodge: false,
+        rawSpriteSrc: "hit.png",
+        idleSrc: "pumo.png",
+        recoveringSrc: "recovering.png",
+      });
+      assert.equal(src, "hit.png", `legacy frame at ${now}`);
+    }
+  });
+});
+
 describe("struck-limb hold — debug line", () => {
   it("reports family, pose, state and remaining hitstop without touching state", () => {
     const hold = createStruckLimbHold();

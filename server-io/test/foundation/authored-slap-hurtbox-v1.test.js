@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * Phase 4A — AUTHORED_SLAP_HURTBOX_V1 (default OFF).
+ * Phase 4A — AUTHORED_SLAP_HURTBOX_V1 (Phase 4C: default ON, explicit-OFF rollback).
  * Real checkCollision / processHit path; shared JSON limb geometry.
  */
 
@@ -11,6 +11,7 @@ const {
   setAuthoredSlapHurtboxForTests,
   isAuthoredSlapHurtboxV1Enabled,
   parseAuthoredSlapHurtboxFlag,
+  AUTHORED_SLAP_HURTBOX_V1,
 } = require("../../authoredSlapHurtboxFlags");
 const {
   resolveSlapLimbExposure,
@@ -187,14 +188,58 @@ describe("Phase 4A — AUTHORED_SLAP_HURTBOX_V1 flag", () => {
     clearLastAuthoredSlapHurtResolve();
   });
 
-  it("unset / empty / unknown → OFF; 1/true/on → ON; 0/false/off → OFF", () => {
-    assert.equal(parseAuthoredSlapHurtboxFlag(undefined), false);
-    assert.equal(parseAuthoredSlapHurtboxFlag(""), false);
-    assert.equal(parseAuthoredSlapHurtboxFlag("nope"), false);
-    assert.equal(parseAuthoredSlapHurtboxFlag("1"), true);
-    assert.equal(parseAuthoredSlapHurtboxFlag("true"), true);
-    assert.equal(parseAuthoredSlapHurtboxFlag("0"), false);
-    assert.equal(parseAuthoredSlapHurtboxFlag("off"), false);
+  // Phase 4C graduated the default: the feature is ON unless a recognized OFF
+  // spelling is given. Only those four spellings are the legacy rollback.
+  it("unset / empty → ON, matching an explicit ON", () => {
+    assert.equal(parseAuthoredSlapHurtboxFlag(undefined), true);
+    assert.equal(parseAuthoredSlapHurtboxFlag(null), true);
+    assert.equal(parseAuthoredSlapHurtboxFlag(""), true);
+    assert.equal(
+      parseAuthoredSlapHurtboxFlag(undefined),
+      parseAuthoredSlapHurtboxFlag("1"),
+      "unset must be indistinguishable from explicit ON"
+    );
+  });
+
+  it("every supported explicit-OFF spelling is the legacy rollback", () => {
+    for (const raw of ["0", "false", "off", "no"]) {
+      assert.equal(parseAuthoredSlapHurtboxFlag(raw), false, raw);
+      // Project convention: case and surrounding whitespace are ignored.
+      assert.equal(parseAuthoredSlapHurtboxFlag(raw.toUpperCase()), false, raw);
+      assert.equal(parseAuthoredSlapHurtboxFlag(`  ${raw}  `), false, raw);
+    }
+  });
+
+  it("every supported explicit-ON spelling stays ON", () => {
+    for (const raw of ["1", "true", "on", "yes"]) {
+      assert.equal(parseAuthoredSlapHurtboxFlag(raw), true, raw);
+      assert.equal(parseAuthoredSlapHurtboxFlag(raw.toUpperCase()), true, raw);
+      assert.equal(parseAuthoredSlapHurtboxFlag(` ${raw} `), true, raw);
+    }
+  });
+
+  it("malformed values fall back to the shipped default, never to silent legacy", () => {
+    for (const raw of ["nope", "2", "-1", "onn", "disabled"]) {
+      assert.equal(parseAuthoredSlapHurtboxFlag(raw), true, raw);
+    }
+  });
+
+  it("the module-level constant reflects the graduated default", () => {
+    // Process env is not set in the suite, so this is the shipped default.
+    assert.equal(process.env.AUTHORED_SLAP_HURTBOX_V1, undefined);
+    assert.equal(AUTHORED_SLAP_HURTBOX_V1, true);
+    setAuthoredSlapHurtboxForTests(null);
+    assert.equal(isAuthoredSlapHurtboxV1Enabled(), true, "unset resolves ON");
+  });
+
+  it("an explicit env value still wins over the default at query time", () => {
+    setAuthoredSlapHurtboxForTests(null);
+    for (const raw of ["0", "false", "off", "no"]) {
+      assert.equal(isAuthoredSlapHurtboxV1Enabled(raw), false, raw);
+    }
+    for (const raw of ["1", "true", "on", "yes"]) {
+      assert.equal(isAuthoredSlapHurtboxV1Enabled(raw), true, raw);
+    }
   });
 
   it("test override enables and disables without env", () => {

@@ -1,37 +1,49 @@
 "use strict";
 
 /**
- * Phase 4A/4B — authored target hurt regions (default OFF).
+ * Phase 4A/4B/4C — authored target hurt regions (Phase 4C: default ON).
  *
- * When OFF / unset: exact legacy tip-meets-body contact only.
- * When ON: opponent strikes may also confirm against the victim's authored
- * HURT_LIMB during approved exposure — Phase 4A slap active + recovery, and
- * Phase 4B palm active + the palm's held recovery pose. Offensive HIT remains
- * the existing authored rail; this flag only adds a victim surface.
+ * When ON / unset: opponent strikes may also confirm against the victim's
+ * authored HURT_LIMB during approved exposure — Phase 4A slap active +
+ * recovery, and Phase 4B palm active + the palm's held recovery pose.
+ * Offensive HIT remains the existing authored rail; this flag only adds a
+ * victim surface.
  *
- * Phase 4B ships under this SAME gate (no second flag): the palm surfaces are
- * the same authored-limb system, so one switch keeps rollback exact.
+ * When explicitly OFF: exact legacy tip-meets-body contact only.
  *
- * Enable:
- *   AUTHORED_SLAP_HURTBOX_V1=1 npm run dev:web
- * Rollback / unset:
- *   unset AUTHORED_SLAP_HURTBOX_V1
- *   AUTHORED_SLAP_HURTBOX_V1=0
+ * Phase 4B shipped under this SAME gate (no second flag) and Phase 4C
+ * graduates that one gate to default ON, so a single switch still gives an
+ * exact rollback. The name is kept for compatibility even though it now
+ * governs both the slap and palm surfaces.
+ *
+ * Ordinary development (no env var needed):
+ *   npm run dev:web
+ * Exact legacy rollback:
+ *   AUTHORED_SLAP_HURTBOX_V1=0 npm run dev:web
+ *   (`false`, `off` and `no` are equivalent; case and surrounding whitespace
+ *    are ignored, matching the project's other env-flag parsers.)
  */
 
+/** Only these exact spellings turn the graduated feature back off. */
+const OFF_VALUES = new Set(["0", "false", "off", "no"]);
+const ON_VALUES = new Set(["1", "true", "on", "yes"]);
+
 function parseAuthoredSlapHurtboxFlag(raw) {
+  // Phase 4C: unset / empty is the shipped default, which is now ON.
   if (raw === undefined || raw === null || raw === "") {
-    return false;
+    return true;
   }
   const v = String(raw).trim().toLowerCase();
-  if (v === "0" || v === "false" || v === "off" || v === "no") return false;
-  if (v === "1" || v === "true" || v === "on" || v === "yes") return true;
+  if (OFF_VALUES.has(v)) return false;
+  if (ON_VALUES.has(v)) return true;
+  // A typo must not silently hand one machine legacy combat while every other
+  // machine runs the graduated default — rollback has to be deliberate.
   console.warn(
     `[authoredSlapHurtbox] unrecognized AUTHORED_SLAP_HURTBOX_V1=${JSON.stringify(
       String(raw)
-    )}; defaulting OFF`
+    )}; using default ON (explicit 0/false/off/no is the legacy rollback)`
   );
-  return false;
+  return true;
 }
 
 const AUTHORED_SLAP_HURTBOX_V1 = parseAuthoredSlapHurtboxFlag(
