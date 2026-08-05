@@ -42,10 +42,10 @@ const MAP_CENTER = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
 const MAP_WIDTH = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
 
 // ── TRAINING LAB (TEMP) ──────────────────────────────────────────────────────
-// When true, Easy VS CPU only mashes mouse1 (slap). Flip to false for normal Easy.
-const EASY_SLAP_ONLY_DUMMY = true;
+// When true, Easy VS CPU only mashes palm thrust (back+mouse1). Flip to false for normal Easy.
+const EASY_PALM_ONLY_DUMMY = true;
 // When true, Easy VS CPU is a grab-only dummy with infinite posture (MATADOR).
-// Mutually exclusive with EASY_SLAP_ONLY_DUMMY — slap flag wins if both true.
+// Mutually exclusive with EASY_PALM_ONLY_DUMMY — palm flag wins if both true.
 const EASY_GRAB_MATADOR_DUMMY = false;
 
 // AI Configuration - Tuned for expert sumo gameplay
@@ -424,17 +424,16 @@ const DIFFICULTY_PROFILES = {
 
 // Cache resolved profiles so we don't rebuild the object every tick.
 const _diffCache = {};
-function isEasySlapOnlyDummy() {
-  return EASY_SLAP_ONLY_DUMMY && DIFF_KEY === "EASY";
+function isEasyPalmOnlyDummy() {
+  return EASY_PALM_ONLY_DUMMY && DIFF_KEY === "EASY";
 }
 function isEasyGrabMatadorDummy() {
-  return !EASY_SLAP_ONLY_DUMMY && EASY_GRAB_MATADOR_DUMMY && DIFF_KEY === "EASY";
+  return !EASY_PALM_ONLY_DUMMY && EASY_GRAB_MATADOR_DUMMY && DIFF_KEY === "EASY";
 }
 
-// Slap-only training dummy (Easy only, gated by flag above).
-// Stand still and mash mouse1. Nothing else.
-function runEasySlapOnlyDummy(cpu, human, aiState, currentTime, distance) {
-  cpu.palmThrustQueued = false;
+// Palm-only training dummy (Easy only, gated by flag above).
+// Stand still and mash palm thrust (back+mouse1 via palmThrustQueued). Nothing else.
+function runEasyPalmOnlyDummy(cpu, human, aiState, currentTime, distance) {
   aiState.pendingParry = false;
   aiState.parryReleaseTime = 0;
   aiState.reactionTarget = null;
@@ -444,23 +443,29 @@ function runEasySlapOnlyDummy(cpu, human, aiState, currentTime, distance) {
 
   resetAllKeys(cpu);
 
-  // Tap mouse1 on a short press/release cycle so slap sees rising edges.
+  // Face the opponent so the rooted thrust fires the right way (no movement keys).
+  cpu.facing = cpu.x < human.x ? -1 : 1;
+
+  // Tap mouse1 on a short press/release cycle; queue palm so processCPUInputs
+  // consumes back+mouse1 as executePalmThrust (not slap).
   const PRESS_MS = 50;
   const RELEASE_MS = 50;
   if (
-    !aiState.easySlapPhase ||
-    currentTime >= (aiState.easySlapPhaseUntil || 0)
+    !aiState.easyPalmPhase ||
+    currentTime >= (aiState.easyPalmPhaseUntil || 0)
   ) {
-    if (aiState.easySlapPhase === "press") {
-      aiState.easySlapPhase = "release";
-      aiState.easySlapPhaseUntil = currentTime + RELEASE_MS;
+    if (aiState.easyPalmPhase === "press") {
+      aiState.easyPalmPhase = "release";
+      aiState.easyPalmPhaseUntil = currentTime + RELEASE_MS;
     } else {
-      aiState.easySlapPhase = "press";
-      aiState.easySlapPhaseUntil = currentTime + PRESS_MS;
+      aiState.easyPalmPhase = "press";
+      aiState.easyPalmPhaseUntil = currentTime + PRESS_MS;
     }
   }
-  cpu.keys.mouse1 = aiState.easySlapPhase === "press";
-  aiState.lastActionType = "slap_dummy_mash";
+  const pressing = aiState.easyPalmPhase === "press";
+  cpu.keys.mouse1 = pressing;
+  cpu.palmThrustQueued = pressing;
+  aiState.lastActionType = "palm_dummy_mash";
 }
 
 function topUpEasyGrabDummy(cpu) {
@@ -1594,9 +1599,9 @@ function updateCPUAI(cpu, human, room, currentTime) {
   // Handle pending key releases
   handlePendingKeyReleases(cpu, aiState, currentTime);
 
-  // Slap lab: Easy = mash mouse1 only.
-  if (isEasySlapOnlyDummy()) {
-    runEasySlapOnlyDummy(cpu, human, aiState, currentTime, distance);
+  // Palm lab: Easy = mash palm thrust only (no movement).
+  if (isEasyPalmOnlyDummy()) {
+    runEasyPalmOnlyDummy(cpu, human, aiState, currentTime, distance);
     return;
   }
 
