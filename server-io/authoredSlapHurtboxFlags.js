@@ -96,10 +96,7 @@ function logAuthoredSlapHurtboxStartupDiagnostic(opts = {}) {
     const crypto = require("crypto");
     const fs = require("fs");
     const path = require("path");
-    const catalogPath = path.join(
-      __dirname,
-      "../shared/combatVolumeAuthored.json"
-    );
+    const catalogPath = path.join(__dirname, "combatVolumeAuthored.json");
     catalogFp = crypto
       .createHash("sha256")
       .update(fs.readFileSync(catalogPath))

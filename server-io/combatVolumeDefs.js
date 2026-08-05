@@ -3,7 +3,7 @@
 /**
  * Phase 3 — authored combat-volume definition loader / pose resolver.
  *
- * Source of truth: ../shared/combatVolumeAuthored.json
+ * Source of truth: shared/combatVolumeAuthored.json
  * Loaded via combatVolumeAuthoredLoad.js (CommonJS adapter).
  * INERT: never deals damage, moves fighters, or enters live collision.
  */

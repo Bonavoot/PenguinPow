@@ -1,0 +1,768 @@
+{
+  "version": 1,
+  "phase": 3,
+  "coordSystem": {
+    "forward": "toward attack along action-facing (+ = attack direction)",
+    "up": "+Y toward head from fighter root (feet near root Y)",
+    "mirror": "single definition mirrored by committed action-facing",
+    "units": "gameplay world units (same as server sim / 1280×720 design)"
+  },
+  "meta": {
+    "definitionOwner": "shared/combatVolumeAuthored.json",
+    "queryOwner": "server-io/combatVolumeDefs.js + combatVolumeQuery.queryAuthoredCombatVolumes",
+    "serverTransform": "server-io/combatGeometry.localRectToWorldAabb",
+    "clientDebugTransform": "client/src/debug/combatVolumeDebug.js + CombatFidelityDebug world layer under .game-actors (camera-synced)",
+    "authority": "SHADOW_DEFAULT — catalog is not gameplay-approved. The AUTHORED_SLAP_HURTBOX_V1 gate may enable ONLY poses with phase4aAuthority=true (slap_active + slap_recovery) or phase4bAuthority=true (palm_active + palm_recovery, hold window only). Charged, sidestep, aerial, grab, clinch, throw, rope-jump, slap_startup, and palm_startup remain legacy/shadow.",
+    "phase4aSlapAllowlist": ["slap_active", "slap_recovery"],
+    "phase4bPalmAllowlist": ["palm_active", "palm_recovery"],
+    "tipWorld": {
+      "slap": 78.39166666666667,
+      "palm": 71.825,
+      "charged": 69.6875,
+      "note": "spritePx * (1280*0.123)/960 — must match server strikeContact / constants"
+    },
+    "pushHalfBase": 65,
+    "phase4aLimbMeasurement": {
+      "method": "frontmost opaque column of the arm row-band on the real 960x960 source art",
+      "alphaThreshold": 16,
+      "spritePxToWorld": 0.164,
+      "rootXpx": 480,
+      "soleFracFromBottom": 0.021,
+      "innerForward": 34,
+      "note": "Feet / stray specks excluded — palm-thrust-startup's frontmost pixel is a TOE at up≈7, not the arm. Each frontArm outer edge equals its measured visible arm tip; no extra tolerance is added on the victim side.",
+      "armBands": {
+        "slap-attack-1-hit-frame.png": { "up": [61, 92], "tipPx": 459, "outerForward": 75.276 },
+        "slap-attack-2-hit-frame.png": { "up": [56, 92], "tipPx": 478, "outerForward": 78.392 },
+        "palm-thrust-startup.png": { "up": [59, 87], "tipPx": 332, "outerForward": 54.448 }
+      }
+    },
+    "phase4bLimbMeasurement": {
+      "method": "identical to phase4aLimbMeasurement — reproduced by tools/measure-limb-band.js, which regenerates all three Phase 4A armBands values exactly before being used for palm",
+      "tool": "node tools/measure-limb-band.js palm-thrust.png --band 61:92",
+      "armBands": {
+        "palm-thrust.png": { "up": [61, 92], "tipPx": 438, "outerForward": 71.832 }
+      },
+      "note": "The extended palm arm band is bounded by a hard silhouette step: the frontmost opaque column is 218px (body) at up 92.5, jumps to 408px at up 92.3, and falls back to 259px at up 61.0. 438px is also STRIKE_TIP_PALM_SPRITE_PX, i.e. the arm IS the sprite's frontmost feature — no feet, glow, smear, or padding is included.",
+      "renderedArtWindows": "Client PALM_THRUST_ANIM (GameFighter) draws palm-thrust-smear 0-40ms, palm-thrust.png 40-460ms, palm-thrust-startup.png from 460ms. Server phases are startup [0,90), active [90,180), recovery [180,500) on whiff. The authorized limb window ends at PALM_THRUST_HOLD_MS into recovery (440ms from move start) — 20ms BEFORE the art retracts, so authority can never advertise reach the sprite is not drawing."
+    }
+  },
+  "poses": {
+    "neutral": {
+      "support": "supported",
+      "art": "pumo-idle.png",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 6,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        }
+      ]
+    },
+    "crouch": {
+      "support": "supported",
+      "art": "crouch-stance.png",
+      "notes": "Live isCrouchStance is currently unused on server; fixtures may force _phase3Crouch or isCrouchStance for viz.",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 38,
+          "halfW": "pushHalf",
+          "halfH": 38
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 34,
+          "halfW": "pushHalf",
+          "halfH": 26
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 4,
+          "up": 72,
+          "halfW": 18,
+          "halfH": 13
+        }
+      ]
+    },
+    "slap_startup": {
+      "support": "supported",
+      "art": "palm-thrust-startup.png",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 6,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        },
+        {
+          "kind": "HURT_LIMB",
+          "label": "frontArm",
+          "region": "frontArm",
+          "forward": 42,
+          "up": 68,
+          "halfW": 26,
+          "halfH": 12,
+          "notes": "Windup prep — mild exposure, no HIT"
+        }
+      ]
+    },
+    "slap_active": {
+      "support": "supported",
+      "phase4aAuthority": true,
+      "art": "slap-attack-*-hit-frame.png",
+      "variantKey": "slapAnimation",
+      "variantDefault": "1",
+      "variantNotes": "The two slap hit frames do NOT share one honest arm volume (75.276 vs 78.392 outer). Base regions carry the SHORTER variant-1 volume so an unknown variant can never claim reach it does not draw; `variants` supplies the exact per-animation frontArm.",
+      "variants": {
+        "1": {
+          "art": "slap-attack-1-hit-frame.png",
+          "regionOverrides": [
+            {
+              "kind": "HURT_LIMB",
+              "label": "frontArm",
+              "region": "frontArm",
+              "forward": 54.638,
+              "up": 76.5,
+              "halfW": 20.638,
+              "halfH": 15.5,
+              "notes": "Measured arm band up[61,92], visible tip 75.276 (459px)"
+            }
+          ]
+        },
+        "2": {
+          "art": "slap-attack-2-hit-frame.png",
+          "regionOverrides": [
+            {
+              "kind": "HURT_LIMB",
+              "label": "frontArm",
+              "region": "frontArm",
+              "forward": 56.196,
+              "up": 74,
+              "halfW": 22.196,
+              "halfH": 18,
+              "notes": "Measured arm band up[56,92], visible tip 78.392 (478px)"
+            }
+          ]
+        }
+      },
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 6,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        },
+        {
+          "kind": "HURT_LIMB",
+          "label": "frontArm",
+          "region": "frontArm",
+          "forward": 54.638,
+          "up": 76.5,
+          "halfW": 20.638,
+          "halfH": 15.5,
+          "notes": "Variant-1 (shorter) honest volume — see poses.slap_active.variants"
+        },
+        {
+          "kind": "HIT",
+          "label": "tip_rail_slap",
+          "region": "tipRail",
+          "forward": 66.39166666666667,
+          "up": 66,
+          "halfW": 14,
+          "halfH": 16,
+          "role": "tip_rail_visualization",
+          "notes": "Visualizes existing tip identity; does NOT replace strikeContact authority"
+        }
+      ]
+    },
+    "slap_recovery": {
+      "support": "supported",
+      "phase4aAuthority": true,
+      "art": "palm-thrust-startup.png",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 6,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        },
+        {
+          "kind": "HURT_LIMB",
+          "label": "frontArm",
+          "region": "frontArm",
+          "forward": 44.224,
+          "up": 73,
+          "halfW": 10.224,
+          "halfH": 14,
+          "notes": "Punishable exposure — no HIT. Measured arm band up[59,87], visible tip 54.448 (332px) on palm-thrust-startup.png. The settle-back arm is retracted INSIDE the victim pushbox half (65×size), so at size 1 a limb-only recovery punish is geometrically impossible — torso connect always arrives first."
+        }
+      ]
+    },
+    "palm_startup": {
+      "support": "supported",
+      "art": "palm-thrust-startup.png",
+      "notes": "Not authoritative (mirrors the slap_startup exclusion). The client swaps to palm-thrust.png ~40ms into the 90ms startup, so the authored arm here is deliberately the SHORTER retracted measurement — an overlay that under-draws is safe, one that over-draws is not.",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 2,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 8,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        },
+        {
+          "kind": "HURT_LIMB",
+          "label": "frontArm",
+          "region": "frontArm",
+          "forward": 44.224,
+          "up": 73,
+          "halfW": 10.224,
+          "halfH": 14,
+          "notes": "Measured arm band up[59,87], visible tip 54.448 (332px) on palm-thrust-startup.png"
+        }
+      ]
+    },
+    "palm_active": {
+      "support": "supported",
+      "phase4bAuthority": true,
+      "art": "palm-thrust.png",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 2,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 8,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        },
+        {
+          "kind": "HURT_LIMB",
+          "label": "frontArm",
+          "region": "frontArm",
+          "forward": 52.916,
+          "up": 76.5,
+          "halfW": 18.916,
+          "halfH": 15.5,
+          "notes": "Punishable exposure — measured arm band up[61,92], visible tip 71.832 (438px) on palm-thrust.png. Outer edge sits 6.832 past the size-1 pushbox half (65), so a genuine limb-only window exists vs slap and charged."
+        },
+        {
+          "kind": "HIT",
+          "label": "tip_rail_palm",
+          "region": "tipRail",
+          "forward": 59.825,
+          "up": 64,
+          "halfW": 14,
+          "halfH": 18,
+          "role": "tip_rail_visualization"
+        }
+      ]
+    },
+    "palm_recovery": {
+      "support": "supported",
+      "phase4bAuthority": true,
+      "art": "palm-thrust.png (hold) → palm-thrust-startup.png (settle)",
+      "variantKey": "palmLimbExtended",
+      "variantNotes": "Palm recovery draws TWO poses. For PALM_THRUST_HOLD_MS the arm stays fully extended on palm-thrust.png (constants.js: 'this is REAL recovery ... they ARE punishable'); only the short tail settles back to palm-thrust-startup.png. `palmLimbExtended` is the server's authoritative hold-window boolean, so the variant is `true` exactly while the extended art is drawn. Base regions carry the SHORTER settled volume and there is no variantDefault, so a missing/unknown value can never claim the extended reach.",
+      "variants": {
+        "true": {
+          "art": "palm-thrust.png",
+          "regionOverrides": [
+            {
+              "kind": "HURT_LIMB",
+              "label": "frontArm",
+              "region": "frontArm",
+              "forward": 52.916,
+              "up": 76.5,
+              "halfW": 18.916,
+              "halfH": 15.5,
+              "notes": "Held-out palm — measured arm band up[61,92], visible tip 71.832 (438px)"
+            }
+          ]
+        }
+      },
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 2,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 8,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        },
+        {
+          "kind": "HURT_LIMB",
+          "label": "frontArm",
+          "region": "frontArm",
+          "forward": 44.224,
+          "up": 73,
+          "halfW": 10.224,
+          "halfH": 14,
+          "notes": "Settled tail — measured arm band up[59,87], visible tip 54.448 (332px) on palm-thrust-startup.png. Retracted INSIDE the size-1 pushbox half (65), so this variant produces no limb-only window and is NOT authorized; see poses.palm_recovery.variants.true for the authorized hold volume."
+        }
+      ]
+    },
+    "charged_hold": {
+      "support": "supported",
+      "art": "charging.png",
+      "role": "compatibility_visualization",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 10,
+          "up": 108,
+          "halfW": 22,
+          "halfH": 15
+        }
+      ]
+    },
+    "charged_active": {
+      "support": "supported",
+      "art": "attack.png",
+      "role": "compatibility_visualization",
+      "notes": "Preserves tip-rail viz of existing charged contact surface; does not replace earliest-physical-contact resolver",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 4,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 18,
+          "up": 108,
+          "halfW": 24,
+          "halfH": 15
+        },
+        {
+          "kind": "HIT",
+          "label": "tip_rail_charged",
+          "region": "tipRail",
+          "forward": 55.6875,
+          "up": 68,
+          "halfW": 16,
+          "halfH": 20,
+          "role": "tip_rail_visualization"
+        }
+      ]
+    },
+    "charged_recovery": {
+      "support": "supported",
+      "art": "recovering.png",
+      "role": "compatibility_visualization",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 6,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        }
+      ]
+    },
+    "sidestep_startup": {
+      "support": "supported",
+      "art": "is_perfect_parried.png",
+      "notes": "Occupancy viz only — Phase 5 owns destination/overlap",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        }
+      ]
+    },
+    "sidestep_active": {
+      "support": "supported",
+      "art": "is_perfect_parried.png",
+      "tags": [
+        "INTANGIBLE",
+        "INVULNERABLE"
+      ],
+      "notes": "Pass-through occupancy — no hurt target during active sidestep viz",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push_intangible",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52,
+          "dashed": true
+        }
+      ]
+    },
+    "sidestep_recovery": {
+      "support": "supported",
+      "art": "recovering.png",
+      "regions": [
+        {
+          "kind": "PUSH",
+          "label": "push",
+          "region": "push",
+          "forward": 0,
+          "up": 52,
+          "halfW": "pushHalf",
+          "halfH": 52
+        },
+        {
+          "kind": "LANDING",
+          "label": "landing",
+          "region": "landing",
+          "forward": 0,
+          "up": 4,
+          "halfW": "pushHalf",
+          "halfH": 4,
+          "groundedOnly": true
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "torso",
+          "region": "torso",
+          "forward": 0,
+          "up": 50,
+          "halfW": "pushHalf",
+          "halfH": 36
+        },
+        {
+          "kind": "HURT_BODY",
+          "label": "head",
+          "region": "head",
+          "forward": 6,
+          "up": 108,
+          "halfW": 20,
+          "halfH": 15
+        }
+      ]
+    }
+  }
+}
