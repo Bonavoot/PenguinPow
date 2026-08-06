@@ -1,13 +1,22 @@
 "use strict";
 
-const { describe, it } = require("node:test");
+const { describe, it, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   facingTowardOpponent,
   getLockedFacing,
   enforcePlayerFacing,
   enforcePairFacing,
+  retargetPostSidestepActionFacing,
 } = require("../../facingSystem");
+const {
+  setActionFacingOwnershipV2ForTests,
+  mintActionFacingInstanceId,
+  acquireActionFacingLock,
+  getActionFacingLock,
+  ACTION_FACING_OWNER,
+  ACTION_FACING_REASON,
+} = require("../../actionFacingOwnership");
 
 function makePlayer(overrides = {}) {
   return {
@@ -18,6 +27,9 @@ function makePlayer(overrides = {}) {
     chargingFacingDirection: null,
     atTheRopesFacingDirection: null,
     beingThrownFacingDirection: null,
+    actionFacingLock: null,
+    _actionFacingSeq: 0,
+    postSidestepFacingTrackUntil: 0,
     isAttacking: false,
     isChargingAttack: false,
     isDodging: false,
@@ -205,5 +217,93 @@ describe("facingSystem hard rule", () => {
     enforcePairFacing(p1, p2);
     assert.equal(p1.facing, -1);
     assert.equal(p2.facing, 1);
+  });
+});
+
+describe("post-sidestep facing track", () => {
+  afterEach(() => setActionFacingOwnershipV2ForTests(null));
+
+  it("retargets action lock when charged lunge flips sides after sidestep", () => {
+    setActionFacingOwnershipV2ForTests(true);
+    const dodger = makePlayer({
+      id: "dodger",
+      x: 200,
+      facing: -1,
+      postSidestepFacingTrackUntil: 1000,
+    });
+    const attacker = makePlayer({ id: "atk", x: 300, facing: 1 });
+    const slapId = mintActionFacingInstanceId(dodger, ACTION_FACING_OWNER.SLAP);
+    acquireActionFacingLock(dodger, {
+      ownerType: ACTION_FACING_OWNER.SLAP,
+      ownerInstanceId: slapId,
+      direction: -1, // committed facing right while opponent was on the right
+      reason: ACTION_FACING_REASON.COMMIT,
+      allowDirectionUpdate: false,
+      supersede: true,
+    });
+    dodger.slapFacingDirection = -1;
+
+    // Charged lunge crosses past the dodger after the slap locked facing.
+    attacker.x = 100;
+    enforcePairFacing(dodger, attacker, 500);
+
+    assert.equal(getActionFacingLock(dodger).direction, 1);
+    assert.equal(dodger.slapFacingDirection, 1);
+    assert.equal(dodger.facing, 1);
+  });
+
+  it("non-side-switch: track window is a no-op when relative sides stay the same", () => {
+    setActionFacingOwnershipV2ForTests(true);
+    const dodger = makePlayer({
+      id: "dodger",
+      x: 200,
+      facing: -1,
+      postSidestepFacingTrackUntil: 1000,
+    });
+    const attacker = makePlayer({ id: "atk", x: 300, facing: 1 });
+    const slapId = mintActionFacingInstanceId(dodger, ACTION_FACING_OWNER.SLAP);
+    acquireActionFacingLock(dodger, {
+      ownerType: ACTION_FACING_OWNER.SLAP,
+      ownerInstanceId: slapId,
+      direction: -1,
+      reason: ACTION_FACING_REASON.COMMIT,
+      allowDirectionUpdate: false,
+      supersede: true,
+    });
+    dodger.slapFacingDirection = -1;
+
+    // Opponent stays on the same side (failed / short sidestep case).
+    attacker.x = 320;
+    const changed = retargetPostSidestepActionFacing(dodger, attacker, 500);
+    enforcePairFacing(dodger, attacker, 500);
+
+    assert.equal(changed, false);
+    assert.equal(getActionFacingLock(dodger).direction, -1);
+    assert.equal(dodger.slapFacingDirection, -1);
+    assert.equal(dodger.facing, -1);
+  });
+
+  it("track window expired: frozen slap lock is not retargeted", () => {
+    setActionFacingOwnershipV2ForTests(true);
+    const dodger = makePlayer({
+      id: "dodger",
+      x: 200,
+      facing: -1,
+      postSidestepFacingTrackUntil: 100,
+    });
+    const attacker = makePlayer({ id: "atk", x: 100, facing: 1 });
+    const slapId = mintActionFacingInstanceId(dodger, ACTION_FACING_OWNER.SLAP);
+    acquireActionFacingLock(dodger, {
+      ownerType: ACTION_FACING_OWNER.SLAP,
+      ownerInstanceId: slapId,
+      direction: -1,
+      reason: ACTION_FACING_REASON.COMMIT,
+      allowDirectionUpdate: false,
+      supersede: true,
+    });
+
+    enforcePairFacing(dodger, attacker, 500);
+    assert.equal(getActionFacingLock(dodger).direction, -1);
+    assert.equal(dodger.facing, -1);
   });
 });

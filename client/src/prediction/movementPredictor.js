@@ -145,6 +145,8 @@ const BLOCKING_FLAGS = [
   "clinchOpenHideStars",
   "clinchThrowFailStagger",
   "isClinchPerfectBracing",
+  "clinchBracePhase",
+  "clinchThrowAnimMs",
   "isClinchCommittedDrive",
   "isClinchKillThrowVictim",
   "isClinchKillPullVictim",

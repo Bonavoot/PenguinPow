@@ -7,7 +7,7 @@ const {
   CLINCH_PULL_ANIMATION_MS,
   CLINCH_THROW_CLASH_WINDOW_MS,
   CLINCH_THROW_KILL_THRESHOLD,
-  CLINCH_PERFECT_BRACE_WINDOW_MS,
+  CLINCH_BRACE_IMPACT_SLACK_MS,
 } = require("../../../constants");
 const { createClinchScenario } = require("../harness");
 
@@ -251,13 +251,33 @@ describe("Throw/Pull defense matrix", () => {
     assert.equal(r.resisted, false);
   });
 
-  it("Perfect Brace window constant is used (activation at windowStart works)", () => {
+  it("the reaction window opens at the visible tell, not the buffered request", () => {
+    const s = sc();
+    // Request is filed a full simul window before the technique becomes visible.
+    // Bracing in that hidden gap must NOT count as a response to the tell.
+    const requestAt = s.now();
+    s.setThrowRequest(s.grabber, "throw", requestAt);
+    s.setActivePlant(s.grabbed, requestAt + 10);
+    s.advance(CLINCH_THROW_CLASH_WINDOW_MS + 1);
+    assert.equal(s.grabber.clinchThrowActive, true);
+    assert.ok(
+      s.grabber.clinchThrowStartTime > requestAt + 10,
+      "tell starts after the pre-tell Plant"
+    );
+    s.advance(CLINCH_THROW_ANIMATION_MS);
+    const fail = s.io.last("clinch_throw_fail");
+    assert.ok(fail);
+    assert.equal(fail.payload.resistedByPlant, true);
+    assert.equal(!!fail.payload.perfectBrace, false);
+    assert.equal(s.grabbed.hasDeepGrip, false);
+  });
+
+  it("a reaction one tick past impact still counts (impact slack)", () => {
     const s = sc();
     const start = s.now();
     s.setActiveTechnique(s.grabber, "throw", start);
     const impact = start + CLINCH_THROW_ANIMATION_MS;
-    const activateAt = impact - CLINCH_PERFECT_BRACE_WINDOW_MS;
-    s.setActivePlant(s.grabbed, activateAt);
+    s.setActivePlant(s.grabbed, impact + CLINCH_BRACE_IMPACT_SLACK_MS);
     s.advance(CLINCH_THROW_ANIMATION_MS);
     const fail = s.io.last("clinch_throw_fail");
     assert.ok(fail);

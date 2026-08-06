@@ -11,8 +11,10 @@ const {
   CLINCH_JOLT_LOCKOUT_VS_PLANT,
   CLINCH_JOLT_LOCKOUT_VS_NEUTRAL,
   CLINCH_JOLT_STAMINA_COST,
+  CLINCH_JOLT_HITSTOP_MS,
   CLINCH_THROW_CLASH_WINDOW_MS,
   CLINCH_THROW_ANIMATION_MS,
+  CLINCH_THROW_FAIL_STAGGER_MS,
   CLINCH_LIGHT_DRIVE_MS,
 } = require("../../../constants");
 const { createClinchScenario } = require("../harness");
@@ -349,5 +351,120 @@ describe("Jolt collision matrix", () => {
     s.setJoltRequest(s.grabber, s.now());
     s.stepOnce();
     assert.equal(s.grabber.isClinchJolting, false);
+  });
+});
+
+/**
+ * Jolt is intentionally NOT paced like Throw/Pull: it risks less and rewards
+ * less, so it keeps its own shorter recovery. These lock that in and cover the
+ * "Committed Drive beats Jolt" feedback, which used to contradict itself.
+ */
+describe("Jolt audit — recovery, feedback, single-charge costs", () => {
+  it(`recovery stays at ${CLINCH_JOLT_RECOVERY_MS}ms (not raised to Throw/Pull pacing)`, () => {
+    assert.equal(CLINCH_JOLT_RECOVERY_MS, 420);
+    assert.ok(
+      CLINCH_JOLT_RECOVERY_MS < CLINCH_THROW_FAIL_STAGGER_MS,
+      "jolt risks less than a technique, so it recovers faster"
+    );
+  });
+
+  it("jolt recovery Open ends exactly at the authored duration", () => {
+    const s = sc();
+    s.holdNeutral(s.grabbed);
+    s.setJoltRequest(s.grabber, s.now());
+    s.stepOnce();
+    s.advance(CLINCH_JOLT_ANIMATION_MS);
+    if (s.grabber.isClinchJolting) s.stepOnce();
+    assert.equal(s.grabber.isClinchOpen, true);
+    s.advance(CLINCH_JOLT_RECOVERY_MS - 60);
+    assert.equal(s.grabber.isClinchOpen, true, "still recovering");
+    s.advance(90);
+    assert.equal(s.grabber.isClinchOpen, false, "recovery released on time");
+    assert.equal(s.grabber.clinchJoltRecovery, false);
+  });
+
+  it("Committed Drive beats Jolt: the winner is not posed or gated as if jolted", () => {
+    const s = sc();
+    s.setCommittedDrive(s.grabbed);
+    s.stepOnce();
+    s.setDeepGrip(s.grabbed);
+    s.setJoltRequest(s.grabber, s.now());
+    s.stepOnce();
+    s.advance(CLINCH_JOLT_ANIMATION_MS);
+    if (s.grabber.isClinchJolting) s.stepOnce();
+
+    const evt = s.io.last("clinch_jolt");
+    assert.ok(evt, "the failure is still announced");
+    assert.equal(evt.payload.intoCommittedDrive, true);
+    assert.equal(
+      evt.payload.combatPresentation?.outcome,
+      "INTO_DRIVE",
+      "presentation reads as a failure, not a hit"
+    );
+    assert.ok(s.io.find("hitstop").length >= 1, "contact beat is still felt");
+
+    assert.equal(
+      s.grabbed.isBeingClinchJolted,
+      false,
+      "the driver won — no jolted recoil pose"
+    );
+    assert.equal(s.grabbed.hasDeepGrip, true, "a swallowed jolt strips nothing");
+    assert.equal(s.grabbed.inputLockUntil || 0, 0, "no lockout on the winner");
+    assert.equal(s.grabber.isClinchOpen, true, "the jolter eats the disadvantage");
+    assert.equal(s.grabber.clinchThrowFailStagger, true, "visible failed state");
+  });
+
+  it("Committed Drive keeps its buffered technique — the free window is the reward", () => {
+    const s = sc();
+    s.setCommittedDrive(s.grabbed);
+    s.stepOnce();
+    s.setThrowRequest(s.grabbed, "throw", s.now());
+    s.setJoltRequest(s.grabber, s.now());
+    s.stepOnce();
+    s.advance(CLINCH_JOLT_ANIMATION_MS);
+    if (s.grabber.isClinchJolting) s.stepOnce();
+    // Either it already committed on the resolve tick or it is still queued and
+    // free to commit — what must never happen is a silent cancel.
+    if (!s.grabbed.clinchThrowActive) {
+      assert.equal(s.grabbed.clinchThrowRequest, "throw");
+      s.advance(CLINCH_THROW_CLASH_WINDOW_MS + 16);
+    }
+    assert.equal(s.grabbed.clinchThrowActive, true, "free technique window honored");
+  });
+
+  it("jolt-into-Drive self-posture cost is charged exactly once", () => {
+    const s = sc();
+    s.setCommittedDrive(s.grabbed);
+    s.stepOnce();
+    const before = s.grabber.balance;
+    s.setJoltRequest(s.grabber, s.now());
+    s.stepOnce();
+    s.advance(CLINCH_JOLT_ANIMATION_MS);
+    if (s.grabber.isClinchJolting) s.stepOnce();
+    assert.equal(s.grabber.balance, before - CLINCH_JOLT_SELF_BALANCE_VS_PUSH);
+    // Settle past recovery with the Drive released, so the only balance change
+    // that could appear is a duplicated jolt cost.
+    s.holdNeutral(s.grabbed);
+    const afterImpact = s.grabber.balance;
+    s.advance(CLINCH_JOLT_RECOVERY_MS + 200);
+    assert.ok(
+      s.grabber.balance >= afterImpact,
+      "the jolt self-cost is never charged a second time"
+    );
+    assert.equal(s.io.find("clinch_jolt").length, 1, "one resolution only");
+  });
+
+  it("a jolt held through recovery does not auto-fire when recovery ends", () => {
+    const s = sc();
+    s.holdNeutral(s.grabbed);
+    s.setJoltRequest(s.grabber, s.now());
+    s.stepOnce();
+    s.advance(CLINCH_JOLT_ANIMATION_MS);
+    if (s.grabber.isClinchJolting) s.stepOnce();
+    s.grabber.clinchJoltRequest = true;
+    s.grabber.clinchJoltRequestTime = s.now();
+    s.advance(CLINCH_JOLT_HITSTOP_MS + CLINCH_JOLT_RECOVERY_MS + 120);
+    assert.equal(s.grabber.isClinchJolting, false, "must re-press Mouse1");
+    assert.equal(s.io.find("clinch_jolt").length, 1);
   });
 });

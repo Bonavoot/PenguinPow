@@ -66,6 +66,7 @@ const {
   ACTION_FACING_REASON,
   ACTION_FACING_RELEASE,
 } = require("./actionFacingOwnership");
+const { facingTowardOpponent } = require("./facingSystem");
 const {
   isInputCommandReliabilityV2Enabled,
   isInputCommandTraceEnabled,
@@ -89,6 +90,7 @@ const {
 } = require("./inputCommandTrace");
 
 const { startRopeJump } = require("./ropeJumpStart");
+const { beginBraceAttempt } = require("./grabActionSystem");
 
 const {
   LOBBY_COLORS,
@@ -666,14 +668,17 @@ function processInputPacket(room, player, data, io, rooms) {
     });
     const forwardKey = dirInfo.forwardKey || (facingSnap === -1 ? "d" : "a");
     const backKey = dirInfo.backKey || (facingSnap === -1 ? "a" : "d");
-    // Charged still keys off held S+forward (legacy), so A+D overlap keeps
-    // charge priority over palm — palm requires an unambiguous BACK resolve.
+    // Charged still keys off held S+forward (legacy), so S+A+D keeps charge
+    // priority over palm. Without S, A+D overlap prefers palm — releasing
+    // forward a frame late while already holding back must not slap.
     const wantsChargedAttack = player.keys.s && !!player.keys[forwardKey];
     // S held without forward — rooted trip (disabled while LOW_KICK_ENABLED is false).
     const wantsLowKick =
       LOW_KICK_ENABLED && player.keys.s && !player.keys[forwardKey];
-    // Back without forward — deliberate palm. Ambiguous A+D is never palm.
-    const wantsPalmThrust = dirInfo.relativeDir === RELATIVE_DIR.BACK;
+    // Back alone OR A+D overlap → palm. Neutral / forward-only → slap below.
+    const wantsPalmThrust =
+      dirInfo.relativeDir === RELATIVE_DIR.BACK ||
+      dirInfo.relativeDir === RELATIVE_DIR.AMBIGUOUS;
 
     if (isInputCommandTraceEnabled()) {
       pushInputCommandTrace(player.id, INPUT_COMMAND_STAGE.AUTHORITATIVE_DIRECTION_RESOLVED, {
@@ -693,6 +698,13 @@ function processInputPacket(room, player, data, io, rooms) {
       player.chargeAttackPower = 0;
       player.chargeStartTime = 0;
       startCharging(player);
+      // Commit hold facing from live relative X (not stale post-sidestep facing).
+      {
+        const holdOpp = room.players.find((p) => p.id !== player.id);
+        if (holdOpp && !player.atTheRopesFacingDirection) {
+          player.facing = facingTowardOpponent(player, holdOpp);
+        }
+      }
       player.chargingFacingDirection = player.facing;
       if (isActionFacingOwnershipV2Enabled()) {
         const holdId = mintActionFacingInstanceId(
@@ -728,14 +740,14 @@ function processInputPacket(room, player, data, io, rooms) {
       executePalmThrust(player, rooms);
       if (player.isPalmThrust) {
         noteCommandAccept(player, "palm_thrust", {
-          relativeDir: RELATIVE_DIR.BACK,
+          relativeDir: dirInfo.relativeDir,
           facingSnap,
         });
         if (isInputCommandTraceEnabled()) {
           pushInputCommandTrace(player.id, INPUT_COMMAND_STAGE.ACTION_STARTED, {
             command: "palm_thrust",
             facingSnap,
-            relativeDir: RELATIVE_DIR.BACK,
+            relativeDir: dirInfo.relativeDir,
           });
         }
       } else {
@@ -745,16 +757,6 @@ function processInputPacket(room, player, data, io, rooms) {
         });
       }
     } else if (canPlayerSlap(player)) {
-      if (
-        isInputCommandReliabilityV2Enabled() &&
-        dirInfo.relativeDir === RELATIVE_DIR.AMBIGUOUS
-      ) {
-        noteCommandReject(player, INPUT_REJECT.AMBIGUOUS_DIRECTION, {
-          command: "palm_thrust",
-          facingSnap,
-          relativeDir: RELATIVE_DIR.AMBIGUOUS,
-        });
-      }
       executeSlapAttack(player, rooms);
       // V2: mark slap start so a Back edge arriving within the chord window
       // can convert during startup (Mouse1 narrowly before Back).
@@ -806,11 +808,12 @@ function processInputPacket(room, player, data, io, rooms) {
         ? player._strikeFacingSnap
         : player.facing;
     const backKey = snap === -1 ? "a" : "d";
-    const forwardKey = snap === -1 ? "d" : "a";
     const backEdge =
       (backKey === "a" && player.aJustPressed) ||
       (backKey === "d" && player.dJustPressed);
-    if (backEdge && !player.keys[forwardKey]) {
+    // Allow convert while forward is still held (A+D overlap) — same preference
+    // as Mouse1 A+D → palm. Charge is unaffected (needs S+forward continuously).
+    if (backEdge) {
       const converted = tryConvertSlapToPalmChord(
         player,
         rooms,
@@ -1276,6 +1279,12 @@ function processInputPacket(room, player, data, io, rooms) {
       player.chargeAttackPower = 0;
       player.chargeStartTime = 0;
       startCharging(player);
+      {
+        const holdOpp = room.players.find((p) => p.id !== player.id);
+        if (holdOpp && !player.atTheRopesFacingDirection) {
+          player.facing = facingTowardOpponent(player, holdOpp);
+        }
+      }
       player.chargingFacingDirection = player.facing;
       if (isActionFacingOwnershipV2Enabled()) {
         const holdId = mintActionFacingInstanceId(
@@ -1406,16 +1415,33 @@ function processInputPacket(room, player, data, io, rooms) {
       const towardKey = awayKey === "a" ? "d" : "a";
       const towardHeld = !!player.keys[towardKey];
       if (plantEdge && !towardHeld) {
+        // One press = one Brace attempt. Back and S share the cycle, so
+        // alternating them cannot bypass it, and an edge arriving during
+        // ACTIVE/SETTLE is inert: no stamp, nothing queued, cycle untouched.
+        // Passive held Plant is unaffected — isActivelyPlanting reads intent,
+        // not this stamp — so mid-settle still resists a raw technique.
+        // Record the trusted press time FIRST — lagCompensatedClinchBraceStart
+        // reads it to backdate the stamp.
         const completingKey = awayEdge ? awayKey : "s";
         const pressGameTime = pressGameTimeFromEvents(player, data, completingKey);
+        const prevPressGameTime = player.clinchBracePressGameTime;
+        const prevPressReceipt = player.clinchBracePressReceiptGameNow;
         if (pressGameTime) {
           player.clinchBracePressGameTime = pressGameTime;
           player.clinchBracePressReceiptGameNow = data._receiptGameNow || gameNow();
         }
-        player.clinchBraceSimTime = lagCompensatedClinchBraceStart(
-          player,
-          simNowForPlayer(player)
-        );
+        const braceNow = simNowForPlayer(player);
+        const stampAt = lagCompensatedClinchBraceStart(player, braceNow);
+        // The cycle is anchored to the lag-compensated moment the brace really
+        // began, so a laggy player is neither penalised nor handed extra time.
+        if (beginBraceAttempt(player, Math.min(stampAt, braceNow))) {
+          player.clinchBraceSimTime = stampAt;
+        } else {
+          // Inert edge: leave no trace at all. Restoring the press bookkeeping
+          // keeps a mashed input from quietly re-dating the previous attempt.
+          player.clinchBracePressGameTime = prevPressGameTime;
+          player.clinchBracePressReceiptGameNow = prevPressReceipt;
+        }
       }
     }
   }

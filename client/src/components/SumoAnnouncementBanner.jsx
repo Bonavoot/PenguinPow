@@ -8,6 +8,10 @@ import {
   FONT_KANJI,
   TEXT_SHADOW_COMBAT,
 } from "./menuTheme";
+import {
+  ANNOUNCEMENT_EXIT_S,
+  ANNOUNCEMENT_MIN_HOLD_S,
+} from "./sumoAnnouncementTiming";
 
 /*
  * SumoAnnouncementBanner — side INFO rail plaque.
@@ -28,8 +32,10 @@ import {
  * RAIL: ONE plaque per side. A new callout replaces the prior — old
  * snaps out, new owns the rail. Same-type repeats restrike in place.
  *
- * IMPORTANT: parents must keep this mounted for at least
- * ANNOUNCEMENT_DURATION_MS so the shared slide-away exit can finish.
+ * IMPORTANT: `duration` is a target for the HOLD, not the time on screen — a
+ * shared minimum hold and the slide-away exit both run past it. Parents must
+ * keep this mounted until announcementVisibleMs(duration) has elapsed, or the
+ * plaque pops off the rail instead of leaving. See ./sumoAnnouncementTiming.
  */
 
 export const ANNOUNCEMENT_DURATION_S = 1.5;
@@ -316,10 +322,11 @@ const BannerWrapper = styled.div`
   }
 `;
 
-const EXIT_DURATION_S = 0.28;
+const EXIT_DURATION_S = ANNOUNCEMENT_EXIT_S;
 const REPLACE_EXIT_DURATION_S = 0.18;
 const RESTRIKE_IN_DURATION_S = 0.18;
 const REPLACE_ENTER_DELAY_S = 0.07;
+const MIN_HOLD_S = ANNOUNCEMENT_MIN_HOLD_S;
 
 const BannerMotion = styled.div`
   position: relative;
@@ -353,8 +360,10 @@ const BannerMotion = styled.div`
     const enterDelay = isReplace ? REPLACE_ENTER_DELAY_S : 0;
     const exitAnim = p.$isLeftSide ? slabOutToLeft : slabOutToRight;
     const hold =
-      Math.max(0.4, (p.$duration || ANNOUNCEMENT_DURATION_S) - EXIT_DURATION_S) +
-      enterDelay;
+      Math.max(
+        MIN_HOLD_S,
+        (p.$duration || ANNOUNCEMENT_DURATION_S) - EXIT_DURATION_S
+      ) + enterDelay;
 
     return css`
       animation:

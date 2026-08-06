@@ -1,14 +1,28 @@
 "use strict";
 
+/**
+ * Perfect Brace boundaries under the ACTIVE-RESPONSE model.
+ *
+ * The reaction opportunity is the ENTIRE visible technique startup:
+ *   [clinchThrowStartTime, clinchThrowStartTime + anim + CLINCH_BRACE_IMPACT_SLACK_MS]
+ * There is no early/late grade — beginning, middle and last-frame reactions all
+ * produce the same PERFECT BRACE. Activation strictly before the tell is a
+ * prediction (passive Plant), which ordinarily RESISTS but never Perfect Braces.
+ */
+
 const { describe, it, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   CLINCH_THROW_ANIMATION_MS,
-  CLINCH_PERFECT_BRACE_WINDOW_MS,
+  CLINCH_PULL_ANIMATION_MS,
+  CLINCH_BRACE_IMPACT_SLACK_MS,
+  CLINCH_BRACE_LATCH_MS,
   CLINCH_DRIVE_PLANT_CANCEL_MS,
 } = require("../../../constants");
 const {
   isPerfectBraceTiming,
+  isFreshBraceActivation,
+  getTechniqueBraceWindow,
   getClinchThrowDefense,
   getPlantActivationTime,
 } = require("../../../grabActionSystem");
@@ -26,67 +40,90 @@ function sc(opts) {
 }
 
 const ANIM = CLINCH_THROW_ANIMATION_MS;
-const WIN = CLINCH_PERFECT_BRACE_WINDOW_MS;
+const SLACK = CLINCH_BRACE_IMPACT_SLACK_MS;
 
 describe("Perfect Brace boundary tests", () => {
+  it("the authoritative window is the whole visible startup", () => {
+    const actor = { id: "a", clinchThrowStartTime: 5000 };
+    const win = getTechniqueBraceWindow(actor, ANIM);
+    assert.deepEqual(win, {
+      start: 5000,
+      impact: 5000 + ANIM,
+      end: 5000 + ANIM + SLACK,
+    });
+  });
+
+  // Offsets relative to the technique's authoritative start.
   const offsets = [
-    { name: "1ms before window", deltaFromWindowStart: -1, expectPB: false },
-    { name: "exactly at window start", deltaFromWindowStart: 0, expectPB: true },
-    { name: "1ms inside window", deltaFromWindowStart: 1, expectPB: true },
-    { name: "middle of window", deltaFromWindowStart: Math.floor(WIN / 2), expectPB: true },
-    { name: "1ms before window end (impact)", deltaFromWindowStart: WIN - 1, expectPB: true },
-    { name: "exactly at impact", deltaFromWindowStart: WIN, expectPB: true },
-    { name: "1ms after impact (within +16 slack)", deltaFromWindowStart: WIN + 1, expectPB: true },
-    { name: "17ms after impact (past +16 slack)", deltaFromWindowStart: WIN + 17, expectPB: false },
+    { name: "1ms before the tell (prediction)", fromStart: -1, expectPB: false },
+    { name: "exactly at the tell", fromStart: 0, expectPB: true },
+    { name: "1ms after the tell", fromStart: 1, expectPB: true },
+    { name: "middle of startup", fromStart: Math.floor(ANIM / 2), expectPB: true },
+    { name: "1ms before impact", fromStart: ANIM - 1, expectPB: true },
+    { name: "exactly at impact", fromStart: ANIM, expectPB: true },
+    { name: "1ms after impact (inside slack)", fromStart: ANIM + 1, expectPB: true },
+    { name: "1ms past the slack", fromStart: ANIM + SLACK + 1, expectPB: false },
   ];
 
-  describe("neutral defender pressing Plant into window", () => {
-    for (const { name, deltaFromWindowStart, expectPB } of offsets) {
+  describe("defender pressing Plant across the startup", () => {
+    for (const { name, fromStart, expectPB } of offsets) {
       it(`${name} → PerfectBrace=${expectPB}`, () => {
         const s = sc();
         const start = s.now();
-        const impact = start + ANIM;
-        const windowStart = impact - WIN;
-        const activateAt = windowStart + deltaFromWindowStart;
+        const activateAt = start + fromStart;
 
         s.setActiveTechnique(s.grabber, "throw", start);
         s.setActivePlant(s.grabbed, activateAt);
 
         assert.equal(getPlantActivationTime(s.grabbed), activateAt);
-        assert.equal(
-          isPerfectBraceTiming(s.grabber, s.grabbed, ANIM),
-          expectPB && activateAt > 0
-        );
+        assert.equal(isPerfectBraceTiming(s.grabber, s.grabbed, ANIM), expectPB);
+        assert.equal(isFreshBraceActivation(s.grabber, s.grabbed, ANIM), expectPB);
 
         s.advance(ANIM);
         if (s.grabber.clinchThrowActive) s.stepOnce();
 
         const fail = s.io.last("clinch_throw_fail");
-        if (expectPB && activateAt <= impact + 16 && activateAt >= windowStart) {
-          assert.ok(fail, "expected fail event");
-          assert.equal(fail.payload.perfectBrace, true);
-          assert.equal(s.grabbed.hasDeepGrip, true);
-        } else if (activateAt <= impact && activateAt > 0) {
-          // Active plant outside PB window → ordinary resist
-          assert.ok(fail);
-          assert.equal(!!fail.payload.perfectBrace, false);
-        } else {
-          // Activation after impact slack → land
-          assert.ok(!fail || !fail.payload.perfectBrace);
-        }
+        assert.ok(fail, "held Plant always produces at least ordinary RESISTED");
+        assert.equal(!!fail.payload.perfectBrace, expectPB);
+        assert.equal(fail.payload.resistedByPlant, true);
+        assert.equal(s.grabbed.hasDeepGrip, expectPB);
       });
     }
   });
 
-  it("cancelling Light Drive: Plant is immediate (no cancel), PB uses activation stamp", () => {
+  it("beginning / middle / last-frame reactions are graded identically", () => {
+    const results = [];
+    for (const fromStart of [0, Math.floor(ANIM / 2), ANIM - 1]) {
+      const s = sc();
+      const start = s.now();
+      s.setActiveTechnique(s.grabber, "throw", start);
+      s.setActivePlant(s.grabbed, start + fromStart);
+      s.advance(ANIM);
+      if (s.grabber.clinchThrowActive) s.stepOnce();
+      const fail = s.io.last("clinch_throw_fail");
+      results.push({
+        perfectBrace: !!fail?.payload?.perfectBrace,
+        deepGrip: !!s.grabbed.hasDeepGrip,
+        attackerOpen: !!s.grabber.isClinchOpen,
+      });
+    }
+    for (const r of results) {
+      assert.deepEqual(r, {
+        perfectBrace: true,
+        deepGrip: true,
+        attackerOpen: true,
+      });
+    }
+  });
+
+  it("cancelling Light Drive mid-startup Perfect Braces (immediate Plant)", () => {
     const s = sc();
     s.setLightDrive(s.grabbed);
     s.stepOnce();
     const start = s.now();
-    const impact = start + ANIM;
     s.setActiveTechnique(s.grabber, "throw", start);
-    // Switch to plant mid-startup inside PB window
-    const activateAt = impact - 40;
+    // Switch to plant early in the startup — no cancel lock on Light Drive.
+    const activateAt = start + 30;
     s.holdAway(s.grabbed);
     s.grabbed.clinchBraceSimTime = activateAt;
     s.grabbed.clinchDrivePlantCancelUntil = 0;
@@ -103,15 +140,15 @@ describe("Perfect Brace boundary tests", () => {
     s.stepOnce();
     const start = s.now();
     const impact = start + ANIM;
-    // Raw press early (outside window), cancel completes inside window
-    const rawPress = impact - WIN - 50;
+    // Raw press BEFORE the tell; the cancel only completes after it. The press
+    // is predictive, the activation is a response — activation is what counts.
+    const rawPress = start - 40;
     const activateAt = rawPress + CLINCH_DRIVE_PLANT_CANCEL_MS;
-    assert.ok(activateAt >= impact - WIN, "activation should land in PB window");
-    assert.ok(rawPress < impact - WIN, "raw press outside window");
+    assert.ok(rawPress < start, "raw press precedes the tell");
+    assert.ok(activateAt > start && activateAt <= impact);
 
     s.setActiveTechnique(s.grabber, "throw", start);
     s.setDrivePlantCancel(s.grabbed, activateAt);
-    // Raw stamp wrongly early — activation helper must prefer cancelUntil
     s.grabbed.clinchBraceSimTime = rawPress;
     assert.equal(getPlantActivationTime(s.grabbed), activateAt);
 
@@ -122,7 +159,7 @@ describe("Perfect Brace boundary tests", () => {
     assert.equal(fail.payload.perfectBrace, true);
   });
 
-  it("pre-held Plant before startup is resist but NOT Perfect Brace", () => {
+  it("pre-held Plant before startup is RESISTED but NOT Perfect Brace", () => {
     const s = sc();
     s.setActivePlant(s.grabbed, s.now() - 1000);
     const start = s.now();
@@ -133,48 +170,132 @@ describe("Perfect Brace boundary tests", () => {
     assert.ok(fail);
     assert.equal(fail.payload.resistedByPlant, true);
     assert.equal(!!fail.payload.perfectBrace, false);
+    assert.equal(s.grabbed.hasDeepGrip, false, "no Deep Grip for passive Plant");
   });
 
-  it("Perfect Brace beats attacker Deep Grip", () => {
+  it("input immediately before the tell stays passive until a fresh Brace lands", () => {
     const s = sc();
-    s.setDeepGrip(s.grabber);
+    // Established 1ms before the technique became visible → prediction.
     const start = s.now();
-    const impact = start + ANIM;
+    s.setActivePlant(s.grabbed, start - 1);
     s.setActiveTechnique(s.grabber, "throw", start);
-    // Deep grip consumed on setActiveTechnique
-    assert.equal(s.grabber.hasDeepGrip, false);
-    assert.equal(s.grabber.clinchThrowUsedDeepGrip, true);
-    s.setActivePlant(s.grabbed, impact - 30);
+    s.advance(60);
+    assert.equal(!!s.grabbed.clinchBraceArmedTechnique, false);
+    // Fresh Brace edge (S while still holding away) mid-startup → upgrade to PB.
+    s.grabbed.keys.s = true;
+    s.grabbed.clinchBraceSimTime = s.now();
     s.advance(ANIM);
     if (s.grabber.clinchThrowActive) s.stepOnce();
     const fail = s.io.last("clinch_throw_fail");
     assert.ok(fail);
     assert.equal(fail.payload.perfectBrace, true);
-    assert.equal(s.grabbed.hasDeepGrip, true);
   });
 
-  it("ordinary Plant resist loses to Deep Grip (no PB)", () => {
+  for (const type of ["throw", "pull"]) {
+    const anim = type === "pull" ? CLINCH_PULL_ANIMATION_MS : ANIM;
+
+    it(`${type}: Perfect Brace beats attacker Deep Grip at every reaction point`, () => {
+      for (const fromStart of [0, Math.floor(anim / 2), anim - 1]) {
+        const s = sc();
+        s.setDeepGrip(s.grabber);
+        const start = s.now();
+        s.setActiveTechnique(s.grabber, type, start);
+        assert.equal(s.grabber.hasDeepGrip, false, "consumed on commit");
+        assert.equal(s.grabber.clinchThrowUsedDeepGrip, true);
+        s.setActivePlant(s.grabbed, start + fromStart);
+        s.advance(anim);
+        if (s.grabber.clinchThrowActive) s.stepOnce();
+        const fail = s.io.last("clinch_throw_fail");
+        assert.ok(fail, `expected PB at +${fromStart}ms`);
+        assert.equal(fail.payload.perfectBrace, true);
+        assert.equal(s.grabbed.hasDeepGrip, true);
+      }
+    });
+
+    it(`${type}: passive Plant loses to Deep Grip (no PB)`, () => {
+      const s = sc();
+      s.setDeepGrip(s.grabber);
+      s.setActivePlant(s.grabbed, s.now() - 500);
+      const start = s.now();
+      s.setActiveTechnique(s.grabber, type, start);
+      s.advance(anim);
+      if (s.grabber.clinchThrowActive) s.stepOnce();
+      const fail = s.io.last("clinch_throw_fail");
+      assert.ok(!fail, "Deep Grip should break passive Plant");
+      assert.ok(
+        s.grabbed.isBeingThrown ||
+          s.grabbed.isBeingPullReversaled ||
+          !s.grabber.inClinch,
+        "technique should land"
+      );
+    });
+  }
+
+  it("an early Brace does not expire when the generic latch is shorter than startup", () => {
     const s = sc();
-    s.setDeepGrip(s.grabber);
-    s.setActivePlant(s.grabbed, s.now() - 500);
     const start = s.now();
     s.setActiveTechnique(s.grabber, "throw", start);
+    // React 16ms in, then let go immediately. The 150ms latch dies before the
+    // 220ms startup ends — the arm must carry the response to impact.
+    s.advance(16);
+    s.holdAway(s.grabbed);
+    s.grabbed.clinchBraceSimTime = s.now();
+    s.grabbed.clinchBraceLatchUntil = s.now() + CLINCH_BRACE_LATCH_MS;
+    s.stepOnce();
+    assert.ok(s.grabbed.clinchBraceArmedTechnique, "arm records the response");
+    s.holdNeutral(s.grabbed);
     s.advance(ANIM);
     if (s.grabber.clinchThrowActive) s.stepOnce();
     const fail = s.io.last("clinch_throw_fail");
-    assert.ok(!fail, "Deep Grip should break non-PB Plant");
-    assert.ok(
-      s.grabbed.isBeingThrown || !s.grabber.inClinch,
-      "technique should land"
-    );
+    assert.ok(fail, "released-but-valid reaction still defends");
+    assert.equal(fail.payload.perfectBrace, true);
   });
 
-  it("defense helper and full resolve agree on PB at window edges", () => {
+  it("cancelling the Brace into a Drive before impact drops the arm", () => {
+    const s = sc();
+    const start = s.now();
+    s.setActiveTechnique(s.grabber, "throw", start);
+    s.advance(16);
+    s.holdAway(s.grabbed);
+    s.grabbed.clinchBraceSimTime = s.now();
+    s.stepOnce();
+    assert.ok(s.grabbed.clinchBraceArmedTechnique);
+    // Abandon the brace and drive forward instead.
+    s.holdToward(s.grabbed);
+    s.stepOnce();
+    assert.equal(s.grabbed.clinchBraceArmedTechnique, null);
+    assert.equal(s.grabbed.clinchBraceSimTime, 0, "stale stamp cannot re-arm");
+    s.advance(ANIM);
+    if (s.grabber.clinchThrowActive) s.stepOnce();
+    const fail = s.io.last("clinch_throw_fail");
+    assert.ok(!fail, "cancelled brace should let the technique land");
+  });
+
+  it("a Brace arm never leaks into the next technique", () => {
+    const s = sc();
+    const start = s.now();
+    s.setActiveTechnique(s.grabber, "throw", start);
+    s.setActivePlant(s.grabbed, start + 20);
+    s.advance(ANIM);
+    if (s.grabber.clinchThrowActive) s.stepOnce();
+    assert.ok(s.io.last("clinch_throw_fail")?.payload?.perfectBrace);
+    assert.equal(s.grabbed.clinchBraceArmedTechnique, null);
+    assert.equal(s.grabbed.clinchBraceSimTime, 0);
+  });
+
+  it("defense helper and full resolve agree at the window edges", () => {
     const start = 50_000;
     const impact = start + ANIM;
-    for (const activateAt of [impact - WIN - 1, impact - WIN, impact, impact + 16, impact + 17]) {
-      const actor = { clinchThrowStartTime: start, x: 100, hasGrip: true, keys: {} };
+    for (const activateAt of [start - 1, start, impact, impact + SLACK, impact + SLACK + 1]) {
+      const actor = {
+        id: "attacker",
+        clinchThrowStartTime: start,
+        x: 100,
+        hasGrip: true,
+        keys: {},
+      };
       const target = {
+        id: "defender",
         x: 200,
         hasGrip: true,
         clinchDrivePlantCancelUntil: 0,
@@ -182,10 +303,9 @@ describe("Perfect Brace boundary tests", () => {
         clinchBraceLatchUntil: 0,
         keys: { a: true, d: false, s: false },
       };
-      // Plant via away (actor left of target → away is a)
       const d = getClinchThrowDefense(actor, target, impact, ANIM);
-      const inWindow = activateAt >= impact - WIN && activateAt <= impact + 16;
-      assert.equal(d.perfectBrace, inWindow && d.bracing);
+      const inWindow = activateAt >= start && activateAt <= impact + SLACK;
+      assert.equal(d.perfectBrace, inWindow, `activateAt=${activateAt}`);
     }
   });
 });

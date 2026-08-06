@@ -76,6 +76,7 @@ const {
   SIDESTEP_ARC_DEPTH, SIDESTEP_TRAVEL, SIDESTEP_TRAVEL_EDGE, SIDESTEP_GRAB_TRACK_RANGE,
   SIDESTEP_GRAB_TRACK_RANGE_P5,
   SIDESTEP_RECOVERY_OVERLAP_THRESHOLD,
+  POST_SIDESTEP_FACING_TRACK_MS,
   CLINCH_KILL_THROW_ARC_HEIGHT,
   CLINCH_KILL_THROW_DISTANCE,
   CLINCH_THROW_DISTANCE,
@@ -2445,6 +2446,7 @@ function tick(delta) {
         player.isSidestepStartup = false;
         player.isSidestepRecovery = false;
         player.sidestepDirection = 0;
+        player.postSidestepFacingTrackUntil = 0;
         player.y = GROUND_LEVEL;
       }
       if (player.isSidestepping && !player.isBeingGrabbed) {
@@ -2571,6 +2573,15 @@ function tick(delta) {
           const arcLandX = player.sidestepTargetX;
           player.x = arcLandX + (player.sidestepRecoveryTargetX - arcLandX) * easeOut;
           player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(player.x, MAP_RIGHT_BOUNDARY));
+
+          // Track opponent during recovery settle. isSidestepping still freezes
+          // facing via getLockedFacing, but we rewrite the frozen value from
+          // live X — so a charged lunge crossing mid-recovery doesn't leave
+          // stale facing for the first post-sidestep action. No side change ⇒
+          // same facing (no-op for non-side-switch sidesteps).
+          if (sidestepOpponent && !player.atTheRopesFacingDirection) {
+            player.facing = player.x < sidestepOpponent.x ? -1 : 1;
+          }
         }
 
         // END: cleanup
@@ -2597,6 +2608,8 @@ function tick(delta) {
           if (sidestepOpponent && !player.atTheRopesFacingDirection) {
             player.facing = player.x < sidestepOpponent.x ? -1 : 1;
           }
+          // Cover charged-lunge side flips under an immediate follow-up action.
+          player.postSidestepFacingTrackUntil = now + POST_SIDESTEP_FACING_TRACK_MS;
         }
       }
 
@@ -3519,8 +3532,12 @@ function tick(delta) {
         const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
         const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
 
+        // A+D cancel to NEUTRAL (no strafe input). Client movementPredictor
+        // already uses exclusive holds; without !a here, D wins and you slide
+        // right while a later A+D clear wipes isStrafing (no strafe anim).
         if (
           player.keys.d &&
+          !player.keys.a &&
           !player.isDodging &&
           !player.isSidestepping &&
           !player.isRopeJumping &&
@@ -3605,6 +3622,7 @@ function tick(delta) {
           }
         } else if (
           player.keys.a &&
+          !player.keys.d &&
           !player.isDodging &&
           !player.isSidestepping &&
           !player.isRopeJumping &&
@@ -4370,7 +4388,7 @@ function tick(delta) {
     // unless a purposeful lock is active (attack, dodge hop, ropes, throw, etc.).
     // (Player loop is outside the early hitstop pair-block, so resolve from room.)
     if (room.players.length === 2 && !isRoomInHitstop(room)) {
-      enforcePairFacing(room.players[0], room.players[1]);
+      enforcePairFacing(room.players[0], room.players[1], now);
     }
 
     // ROOM-LEVEL SAFETY: Check game reset outside player loop

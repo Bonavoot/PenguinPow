@@ -2,6 +2,11 @@
  * Regression: Committed Drive → Plant cancel must not defend Throw/Pull
  * until the transition completes. Perfect Brace uses Plant activation time.
  *
+ * Perfect Brace is an ACTIVE response to a specific tell: any Plant activation
+ * from the visible technique start through impact (+1 tick of slack) qualifies.
+ * The interesting cases here are the ones where the Drive→Plant transition
+ * pushes activation past impact, which must NOT defend.
+ *
  * Run: node server-io/scripts/test-drive-plant-cancel-defense.js
  */
 "use strict";
@@ -11,7 +16,7 @@ const {
   CLINCH_DRIVE_PLANT_CANCEL_MS,
   CLINCH_THROW_ANIMATION_MS,
   CLINCH_PULL_ANIMATION_MS,
-  CLINCH_PERFECT_BRACE_WINDOW_MS,
+  CLINCH_BRACE_IMPACT_SLACK_MS,
   CLINCH_BRACE_LATCH_MS,
 } = require("../constants");
 const {
@@ -70,7 +75,7 @@ console.log("\nDrive→Plant cancel defense regressions\n");
 console.log(`CLINCH_DRIVE_PLANT_CANCEL_MS = ${CLINCH_DRIVE_PLANT_CANCEL_MS}`);
 console.log(`CLINCH_THROW_ANIMATION_MS    = ${CLINCH_THROW_ANIMATION_MS}`);
 console.log(`CLINCH_PULL_ANIMATION_MS     = ${CLINCH_PULL_ANIMATION_MS}`);
-console.log(`CLINCH_PERFECT_BRACE_WINDOW  = ${CLINCH_PERFECT_BRACE_WINDOW_MS}`);
+console.log(`CLINCH_BRACE_IMPACT_SLACK_MS = ${CLINCH_BRACE_IMPACT_SLACK_MS}`);
 console.log(`CLINCH_BRACE_LATCH_MS        = ${CLINCH_BRACE_LATCH_MS}\n`);
 
 assert.strictEqual(CLINCH_DRIVE_PLANT_CANCEL_MS, 90, "expected 90ms cancel");
@@ -120,7 +125,6 @@ check("already Planting (no cancel) defends and can Perfect Brace from activatio
   const throwStart = 1000;
   const anim = CLINCH_THROW_ANIMATION_MS; // 220
   const impact = throwStart + anim;
-  // Activation in final 100ms window
   const activateAt = impact - 40;
   const { actor, target } = makePair({
     cancelUntil: 0,
@@ -142,33 +146,31 @@ function runTechniqueCases(label, animDuration) {
   const impact = throwStart + animDuration;
 
   check(`${label}: transition finishes well before impact → defended, Perfect Brace from activation`, () => {
-    // Request early: activate at impact - 80 (well inside / before window edge)
     const activateAt = impact - 80;
     const { actor, target } = makePair({
       cancelUntil: activateAt,
       braceSimTime: activateAt,
       throwStart,
     });
-    assert.ok(activateAt < impact);
+    assert.ok(activateAt > throwStart && activateAt < impact);
     const d = getClinchThrowDefense(actor, target, impact, animDuration);
     assert.strictEqual(d.activelyPlanting, true);
     assert.strictEqual(d.bracing, true);
-    // Activation in final window → Perfect Brace
-    assert.ok(activateAt >= impact - CLINCH_PERFECT_BRACE_WINDOW_MS);
+    // Activation inside the visible startup → Perfect Brace
     assert.strictEqual(d.perfectBrace, true);
   });
 
   check(`${label}: transition finishes just before impact → defended; PB uses activation time`, () => {
     const activateAt = impact - 30;
-    const rawPress = activateAt - CLINCH_DRIVE_PLANT_CANCEL_MS; // would be too early if used raw
+    const rawPress = activateAt - CLINCH_DRIVE_PLANT_CANCEL_MS;
     const { actor, target } = makePair({
       cancelUntil: activateAt,
       braceSimTime: activateAt, // deferred from raw press
       throwStart,
     });
-    // Raw press is outside the perfect window; activation is inside.
-    assert.ok(rawPress < impact - CLINCH_PERFECT_BRACE_WINDOW_MS);
-    assert.ok(activateAt >= impact - CLINCH_PERFECT_BRACE_WINDOW_MS);
+    // Both the raw press and the deferred activation sit inside the startup —
+    // the point is that activation, not the raw press, is what counts.
+    assert.ok(rawPress >= throwStart && activateAt < impact);
 
     const d = getClinchThrowDefense(actor, target, impact, animDuration);
     assert.strictEqual(d.activelyPlanting, true);
@@ -192,8 +194,18 @@ function runTechniqueCases(label, animDuration) {
     assert.strictEqual(isDrivePlantCancelPending(target, impact), false);
     assert.strictEqual(d.activelyPlanting, true);
     assert.strictEqual(d.bracing, true);
-    // Activation at impact is within +16ms tolerance → Perfect Brace
+    // Activation at impact is inside the window (slack covers the resolve tick)
     assert.strictEqual(d.perfectBrace, true);
+  });
+
+  check(`${label}: activation past the impact slack → no Perfect Brace`, () => {
+    const activateAt = impact + CLINCH_BRACE_IMPACT_SLACK_MS + 1;
+    const { actor, target } = makePair({
+      cancelUntil: activateAt,
+      braceSimTime: activateAt,
+      throwStart,
+    });
+    assert.strictEqual(isPerfectBraceTiming(actor, target, animDuration), false);
   });
 
   check(`${label}: transition finishes just after impact → technique lands`, () => {
@@ -272,18 +284,37 @@ check("tap Plant then release before impact → still braces via latch", () => {
   assert.strictEqual(d.perfectBrace, true);
 });
 
-check("latch expired before impact → technique lands", () => {
+check("early in-startup Brace outlives the latch (no reaction dead zone)", () => {
   const throwStart = 1000;
   const anim = CLINCH_THROW_ANIMATION_MS;
   const impact = throwStart + anim;
-  const activateAt = impact - 200;
+  // Reacted at the very first readable frame, then let go of the stick.
+  const activateAt = throwStart + 4;
   const { actor, target } = makePair({
     defenderKeys: {},
     braceSimTime: activateAt,
-    latchUntil: activateAt + CLINCH_BRACE_LATCH_MS, // ends before impact
+    latchUntil: activateAt + CLINCH_BRACE_LATCH_MS, // expires before impact
     throwStart,
   });
-  assert.ok(activateAt + CLINCH_BRACE_LATCH_MS < impact);
+  assert.ok(activateAt + CLINCH_BRACE_LATCH_MS < impact, "latch really does expire");
+  const d = getClinchThrowDefense(actor, target, impact, anim);
+  // Passive-Plant resistance is gone (they are not holding anything), but the
+  // active response to THIS tell still counts — that is the whole point.
+  assert.strictEqual(d.bracing, false);
+  assert.strictEqual(d.perfectBrace, true);
+});
+
+check("Plant established before the tell, then released → no defense at all", () => {
+  const throwStart = 1000;
+  const anim = CLINCH_THROW_ANIMATION_MS;
+  const impact = throwStart + anim;
+  const activateAt = throwStart - 300; // predictive, not a response
+  const { actor, target } = makePair({
+    defenderKeys: {},
+    braceSimTime: activateAt,
+    latchUntil: activateAt + CLINCH_BRACE_LATCH_MS,
+    throwStart,
+  });
   const d = getClinchThrowDefense(actor, target, impact, anim);
   assert.strictEqual(d.bracing, false);
   assert.strictEqual(d.perfectBrace, false);

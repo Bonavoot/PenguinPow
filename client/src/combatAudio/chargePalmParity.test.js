@@ -453,11 +453,16 @@ describe("charge/palm parity — live facing + owned lifecycle", () => {
     assert.ok(filtered.every((r) => r.status || r.cue));
   });
 
-  it("A+D together never classifies as palm", () => {
+  it("A+D together classifies as palm (forward-release overlap)", () => {
     assert.equal(
       classifyMouse1Strike({ a: true, d: true, mouse1: true }, 1).command,
-      "slap"
+      "palm_thrust"
     );
+    assert.equal(
+      classifyMouse1Strike({ a: true, d: true, mouse1: true }, 1).relativeDir,
+      "ambiguous"
+    );
+    // S+A+D still charges — charge keeps priority over palm.
     assert.equal(
       classifyMouse1Strike({ a: true, d: true, s: true, mouse1: true }, 1)
         .command,

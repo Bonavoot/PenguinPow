@@ -84,6 +84,7 @@ const {
   ACTION_FACING_REASON,
   ACTION_FACING_RELEASE,
 } = require("./actionFacingOwnership");
+const { facingTowardOpponent } = require("./facingSystem");
 const {
   isActionLifecycleOwnershipV2Enabled,
 } = require("./actionLifecycleFlags");
@@ -181,6 +182,10 @@ function cleanupGrabStates(player, opponent) {
     p.clinchPushLossStart = 0;
     p.clinchBraceSimTime = 0;
     p.clinchBraceLatchUntil = 0;
+    p.clinchBraceArmedTechnique = null;
+    p.clinchBraceAttemptStart = 0;
+    p.clinchBraceAttemptRefunded = false;
+    p.clinchBracePhase = null;
     p.clinchBracePressGameTime = 0;
     p.clinchBracePressReceiptGameNow = 0;
     p.clinchTechniquePressGameTime = 0;
@@ -192,6 +197,7 @@ function cleanupGrabStates(player, opponent) {
     p.clinchShoveLead = null;
     p.deepGripPushStart = 0;
     p.clinchPushRampStart = 0;
+    p.clinchOpenPunishBlend = 0;
   }
 
   // Clean up grabber states
@@ -226,7 +232,7 @@ function cleanupGrabStates(player, opponent) {
   player.grabActionType = null;
   player.lastGrabPushStaminaDrainTime = 0;
   player.isAtBoundaryDuringGrab = false;
-  player.clinchEdgePinStart = 0;
+  player.clinchEdgePinHeldMs = 0;
   player.grabDurationPaused = false;
   player.grabDurationPausedAt = 0;
   player.grabPushEndTime = 0;
@@ -259,6 +265,7 @@ function cleanupGrabStates(player, opponent) {
   player.clinchThrowRequestTime = 0;
   player.clinchThrowActive = false;
   player.clinchThrowType = null;
+  player.clinchThrowAnimMs = 0;
   player.clinchThrowStartTime = 0;
   player.clinchThrowCooldown = false;
   player.clinchThrowUsedDeepGrip = false;
@@ -288,6 +295,10 @@ function cleanupGrabStates(player, opponent) {
   player.clinchPushLossStart = 0;
   player.clinchBraceSimTime = 0;
   player.clinchBraceLatchUntil = 0;
+  player.clinchBraceArmedTechnique = null;
+  player.clinchBraceAttemptStart = 0;
+  player.clinchBraceAttemptRefunded = false;
+  player.clinchBracePhase = null;
   player.clinchBracePressGameTime = 0;
   player.clinchBracePressReceiptGameNow = 0;
   player.lastTrustedPressGameTime = 0;
@@ -339,7 +350,7 @@ function cleanupGrabStates(player, opponent) {
   opponent.grabActionType = null;
   opponent.lastGrabPushStaminaDrainTime = 0;
   opponent.isAtBoundaryDuringGrab = false;
-  opponent.clinchEdgePinStart = 0;
+  opponent.clinchEdgePinHeldMs = 0;
   opponent.grabDurationPaused = false;
   opponent.grabDurationPausedAt = 0;
   opponent.grabPushEndTime = 0;
@@ -372,6 +383,7 @@ function cleanupGrabStates(player, opponent) {
   opponent.clinchThrowRequestTime = 0;
   opponent.clinchThrowActive = false;
   opponent.clinchThrowType = null;
+  opponent.clinchThrowAnimMs = 0;
   opponent.clinchThrowStartTime = 0;
   opponent.clinchThrowCooldown = false;
   opponent.clinchThrowUsedDeepGrip = false;
@@ -401,6 +413,10 @@ function cleanupGrabStates(player, opponent) {
   opponent.clinchPushLossStart = 0;
   opponent.clinchBraceSimTime = 0;
   opponent.clinchBraceLatchUntil = 0;
+  opponent.clinchBraceArmedTechnique = null;
+  opponent.clinchBraceAttemptStart = 0;
+  opponent.clinchBraceAttemptRefunded = false;
+  opponent.clinchBracePhase = null;
   opponent.clinchBracePressGameTime = 0;
   opponent.clinchBracePressReceiptGameNow = 0;
   opponent.lastTrustedPressGameTime = 0;
@@ -795,11 +811,13 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.hasDeepGrip = false;
     p.deepGripPushStart = 0;
     p.clinchPushRampStart = 0;
+    p.clinchOpenPunishBlend = 0;
     p.clinchStalemateStart = 0;
     p.clinchThrowRequest = null;
     p.clinchThrowRequestTime = 0;
     p.clinchThrowActive = false;
     p.clinchThrowType = null;
+    p.clinchThrowAnimMs = 0;
     p.clinchThrowStartTime = 0;
     p.clinchThrowCooldown = false;
     p.clinchThrowUsedDeepGrip = false;
@@ -821,6 +839,10 @@ function handleWinCondition(room, loser, winner, io, winType) {
     p.clinchPushLossStart = 0;
     p.clinchBraceSimTime = 0;
     p.clinchBraceLatchUntil = 0;
+    p.clinchBraceArmedTechnique = null;
+    p.clinchBraceAttemptStart = 0;
+    p.clinchBraceAttemptRefunded = false;
+    p.clinchBracePhase = null;
     p.clinchBracePressGameTime = 0;
     p.clinchThrowArcDistance = 0;
     p.clinchThrowArcHeight = 0;
@@ -1231,12 +1253,12 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
 
 // OPEN-PALM THRUST (back + mouse1) — a rooted, single-hit counterpart to the
 // advancing slap string. It rides the charged hit-resolution path (attackType
-// "charged" + isPalmThrust flag) as a fixed-power mini-charge, so it inherits
-// all the battle-tested charged knockback/trade/parry logic for free, but:
+// "charged" + isPalmThrust flag) for shared hit plumbing, but:
 //   • takes NO forward lunge (the lunge block in index.js is gated on
 //     !isPalmThrust) — the player holds their ground,
-//   • uses its own fast startup / long whiff-recovery frame data, and
-//   • deals a fixed "weak charged" knockback (PALM_THRUST_POWER).
+//   • uses its own startup / whiff-recovery frame data,
+//   • shoves with PALM_THRUST_KB_VELOCITY (not the charged KB formula),
+//   • vs slap resolves by timing winner/trade (not CHARGE_PRIORITY_THRESHOLD).
 // The whiff recovery (safelyEndChargedAttack) and connected-hit recovery
 // (processHit) both branch on isPalmThrust for their palm-specific values.
 function executePalmThrust(player, rooms) {
@@ -2499,6 +2521,13 @@ function activateBufferedInputAfterGrab(player, rooms) {
       player.chargeAttackPower = 0;
       player.chargeStartTime = 0;
       startCharging(player);
+      {
+        const holdRoom = rooms.find((r) => r.players.some((p) => p.id === player.id));
+        const holdOpp = holdRoom && holdRoom.players.find((p) => p.id !== player.id);
+        if (holdOpp && !player.atTheRopesFacingDirection) {
+          player.facing = facingTowardOpponent(player, holdOpp);
+        }
+      }
       player.chargingFacingDirection = player.facing;
       if (isActionFacingOwnershipV2Enabled()) {
         const holdId = mintActionFacingInstanceId(
@@ -2689,6 +2718,13 @@ function executeInputBuffer(player, rooms) {
         player.chargeAttackPower = 0;
         player.chargeStartTime = 0;
         startCharging(player);
+        {
+          const holdRoom = rooms.find((r) => r.players.some((p) => p.id === player.id));
+          const holdOpp = holdRoom && holdRoom.players.find((p) => p.id !== player.id);
+          if (holdOpp && !player.atTheRopesFacingDirection) {
+            player.facing = facingTowardOpponent(player, holdOpp);
+          }
+        }
         player.chargingFacingDirection = player.facing;
         if (isActionFacingOwnershipV2Enabled()) {
           const holdId = mintActionFacingInstanceId(

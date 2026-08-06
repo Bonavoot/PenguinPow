@@ -131,7 +131,7 @@ const getImageSrc = (
   // Open-palm thrust (back + mouse1) — the planted strike is a client-driven
   // multi-frame animation. isPalmThrust stays true for the whole move; the
   // frame index (see palmThrustFrame) picks which pose to show:
-  //   0 = startup (windup)   1 = smear (whoosh)
+  //   0 = smear (windup)     1 = smear (whoosh)
   //   2 = active strike      3 = recovery (reuses the startup pose)
   isPalmThrust,
   palmThrustFrame = 2,

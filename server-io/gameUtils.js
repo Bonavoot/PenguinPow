@@ -1373,6 +1373,7 @@ function clearAllActionStates(player) {
   player.sidestepTargetX = 0;
   player.sidestepRecoveryStartX = 0;
   player.sidestepRecoveryTargetX = 0;
+  player.postSidestepFacingTrackUntil = 0;
   
   // CRITICAL: Clear any buffered actions - prevents buffered dodge from executing while grabbed
   player.bufferedAction = null;
@@ -1418,7 +1419,7 @@ function clearAllActionStates(player) {
   player.grabActionType = null;
   player.lastGrabPushStaminaDrainTime = 0;
   player.isAtBoundaryDuringGrab = false;
-  player.clinchEdgePinStart = 0;
+  player.clinchEdgePinHeldMs = 0;
   player.grabDurationPaused = false;
   player.grabDurationPausedAt = 0;
   player.grabPushEndTime = 0;

@@ -200,8 +200,9 @@ function tryConvertSlapToPalmChord(player, rooms, executePalmThrust, opts = {}) 
     sanitizeFacingSnap(player._strikeFacingSnap) ||
     sanitizeFacingSnap(player.facing);
   if (facingSnap == null) return false;
-  const { forwardKey, backKey } = facingKeys(facingSnap);
-  if (!!player.keys?.[forwardKey]) return false;
+  const { backKey } = facingKeys(facingSnap);
+  // Back edge/hold converts even if forward is still held (A+D overlap) —
+  // matches Mouse1 strike selection preferring palm on ambiguous horizontals.
   if (!player.keys?.[backKey] && !opts.backJustPressed) return false;
 
   // Tear down slap shell just enough for executePalmThrust's !isAttacking guard.

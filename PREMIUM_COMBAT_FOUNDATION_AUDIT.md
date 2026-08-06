@@ -262,16 +262,17 @@ Only facing freeze coverage in `server-io/test/facing/facing-system.test.js`. No
 
 | Step | Owner | Evidence |
 |---|---|---|
-| Technique commit | clinch chord / `grabActionSystem` | throw anim `CLINCH_THROW_ANIMATION_MS` 220 |
-| Plant / Perfect Brace check | `getClinchThrowDefense` / `isPerfectBraceTiming` | final `CLINCH_PERFECT_BRACE_WINDOW_MS` 100 |
-| Resist → Open | `applyClinchOpen(actor, CLINCH_THROW_FAIL_STAGGER_MS=320)` | sets `isClinchOpen` + `clinchThrowFailStagger` |
-| Perfect Brace → Open | `applyClinchOpen(actor, CLINCH_PERFECT_BRACE_OPEN_MS=400)` | attacker Open |
-| Input reject while Open | `socketHandlers.js` → `INPUT_REJECT.THROW_RECOVERY_ACTIVE` | blocks technique retry |
-| Clear | sim-clock timeout name `clinchThrowFailStagger` | |
+| Technique commit | clinch chord / `grabActionSystem` | throw anim `CLINCH_THROW_ANIMATION_MS` 220, pull 250; `clinchThrowStartTime` = the visible tell |
+| Plant / Perfect Brace check | `getClinchThrowDefense` / `isPerfectBraceTiming` | whole startup: `clinchThrowStartTime` → impact `+ CLINCH_BRACE_IMPACT_SLACK_MS` 16 |
+| Brace arm against one technique | `updateTechniqueBraceArm` / `clinchBraceArmedTechnique` | an in-window response survives `CLINCH_BRACE_LATCH_MS` expiry until impact |
+| Resist → beat + Open | `CLINCH_THROW_RESISTED_HITSTOP_MS=100` then `applyClinchOpen(actor, CLINCH_THROW_FAIL_STAGGER_MS=550)` | sets `isClinchOpen` + `clinchThrowFailStagger` |
+| Perfect Brace → beat + Open | `CLINCH_PERFECT_BRACE_HITSTOP_MS=140` then `applyClinchOpen(actor, CLINCH_PERFECT_BRACE_OPEN_MS=650)` | attacker Open + defender Deep Grip |
+| Input reject while Open | `socketHandlers.js` → `INPUT_REJECT.THROW_RECOVERY_ACTIVE` | blocks technique retry; `applyClinchOpen` also voids buffered offense |
+| Clear | sim-clock timeout name `clinchThrowFailStagger` | Open runs on the sim clock, so hitstop and Open add in wall time |
 
 **Verdict:** thrower is **not** immediately actionable for clinch offense. User “instant retry” reports are classified primarily as **presentation / pose readability** risk unless a future input trace proves a bypass. Do not stack a hidden cooldown before proving actionability.
 
-Clinch regression harness: `server-io/test/clinch/` (including Perfect Brace boundaries, throw-pull defense matrix).
+Clinch regression harness: `server-io/test/clinch/` (including Perfect Brace boundaries, throw-pull defense matrix, resisted pacing, brace input ergonomics).
 
 ---
 

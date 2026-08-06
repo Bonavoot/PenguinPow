@@ -33,6 +33,16 @@ export const PALM_THRUST_ACTIVE_MS = 90;
 export const PALM_THRUST_HOLD_MS = 260;
 export const PALM_THRUST_END_RECOVERY_MS = 60;
 
+/**
+ * Palm pose director — short smear lead-in, early strike pose (pre-130 package).
+ * Server hitbox is PALM_THRUST_STARTUP_MS (90); paint is intentionally snappier.
+ */
+export const PALM_THRUST_ANIM = {
+  STARTUP_END: 20,
+  SMEAR_END: 40,
+  ACTIVE_END: 460,
+};
+
 /** Sidestep active — MUST match server-io/constants.js SIDESTEP_ACTIVE_MS. */
 export const SIDESTEP_ACTIVE_MS = 400;
 export const SIDESTEP_STARTUP_MS = 50;

@@ -6,7 +6,7 @@ const {
   CLINCH_DRIVE_PLANT_CANCEL_MS,
   CLINCH_THROW_ANIMATION_MS,
   CLINCH_PULL_ANIMATION_MS,
-  CLINCH_PERFECT_BRACE_WINDOW_MS,
+  CLINCH_BRACE_IMPACT_SLACK_MS,
 } = require("../../../constants");
 const {
   getClinchAction,
@@ -91,11 +91,14 @@ describe("Committed Drive → Plant timing vs technique impact", () => {
           assert.equal(defense.activelyPlanting, expectActive);
           assert.equal(defense.bracing, expectActive); // no latch in this setup
 
-          const windowStart = impact - CLINCH_PERFECT_BRACE_WINDOW_MS;
+          // New rule: any Plant activation from the visible tell through impact
+          // is an ACTIVE response. A Drive→Plant cancel that completes inside
+          // the startup is exactly that. A cancel still pending at impact was
+          // a Drive when it landed, so the impact slack does not rescue it.
           const expectPB =
-            expectActive &&
-            activateAt >= windowStart &&
-            activateAt <= impact + 16;
+            activateAt >= start &&
+            activateAt <= impact + CLINCH_BRACE_IMPACT_SLACK_MS &&
+            activateAt <= impact;
           assert.equal(defense.perfectBrace, expectPB);
 
           // Full resolve path when we can place impact in the future without
@@ -172,7 +175,9 @@ describe("Committed Drive → Plant timing vs technique impact", () => {
         const t0 = s.now();
         s.stepOnce();
         const activateAt = t0 + CLINCH_DRIVE_PLANT_CANCEL_MS;
-        const impact = activateAt - 1; // 1ms before Plant becomes active
+        // Impact lands 1ms before Plant becomes active: still a Drive at impact,
+        // so neither the brace latch nor the impact slack may rescue it.
+        const impact = activateAt - 1;
         const start = impact - anim;
         s.holdAway(s.grabbed);
         assert.equal(getPlantIntent(s.grabbed, s.grabber), true);

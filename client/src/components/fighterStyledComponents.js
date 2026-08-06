@@ -263,6 +263,18 @@ export const getFighterPopFilter = (props) => {
 // Grab-arm overlay back/down nudge → appended AFTER scaleX so X is local
 // (symmetric "back" per facing) and Y is screen-down. Values come from rAF
 // (--grab-arm-nudge-*) with prop fallbacks for the first paint.
+// Pace the Throw/Pull windup over the technique's authoritative startup so the
+// tell completes on the impact frame. These animations were authored at 1.0s /
+// 0.6s against a 220ms / 250ms startup, so they only ever played the first
+// quarter of their motion — the wind-up barely moved, which is what made the
+// tell hard to read. The server sends the committed duration (clinchThrowAnimMs)
+// so a Deep Grip technique with a different startup stays in sync for free.
+const techniqueTellDuration = (props, fallbackSeconds) => {
+  const ms = props.$clinchThrowAnimMs;
+  if (!Number.isFinite(ms) || ms <= 0) return `${fallbackSeconds}s`;
+  return `${(ms / 1000).toFixed(3)}s`;
+};
+
 const grabArmNudge = (props) => {
   const x = props.$grabArmNudgeXPct || 0;
   const y = props.$grabArmNudgeYPct || 0;
@@ -328,14 +340,20 @@ export const resolveGrabArmAnimation = (props) => {
   }
   if (props.$isGrabSeparating) return "grabSeparatePushArm 0.3s ease-out";
   if (props.$isAttemptingPull || props.$isMatadorSuccess) {
-    return "attemptingPullTugArm 0.6s cubic-bezier(0.4, 0.0, 0.6, 1.0)";
+    return `attemptingPullTugArm ${techniqueTellDuration(
+      props,
+      0.6
+    )} cubic-bezier(0.4, 0.0, 0.6, 1.0) forwards`;
   }
   if (props.$isGrabPushing) return "grabPushStrainArm 0.3s ease-in-out infinite";
   if (props.$isBeingGrabPushed) {
     return "grabPushResistArm 0.3s ease-in-out infinite";
   }
   if (props.$isAttemptingGrabThrow) {
-    return "attemptingGrabThrowPullArm 1.0s cubic-bezier(0.4, 0.0, 0.6, 1.0)";
+    return `attemptingGrabThrowPullArm ${techniqueTellDuration(
+      props,
+      1.0
+    )} cubic-bezier(0.4, 0.0, 0.6, 1.0) forwards`;
   }
   if (props.$isGrabBreaking || props.$isGrabBreakCountered) {
     return "grabBreakShakeArm 0.1s ease-in-out infinite";
@@ -883,13 +901,19 @@ export const StyledImage = styled("img")
         : props.$isGrabSeparating
         ? "grabSeparatePush 0.3s ease-out"
         : props.$isAttemptingPull || props.$isMatadorSuccess
-        ? "attemptingPullTug 0.6s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
+        ? `attemptingPullTug ${techniqueTellDuration(
+            props,
+            0.6
+          )} cubic-bezier(0.4, 0.0, 0.6, 1.0) forwards`
         : props.$isGrabPushing
         ? "grabPushStrain 0.3s ease-in-out infinite"
         : props.$isBeingGrabPushed
         ? "grabPushResist 0.3s ease-in-out infinite"
         : props.$isAttemptingGrabThrow
-        ? "attemptingGrabThrowPull 1.0s cubic-bezier(0.4, 0.0, 0.6, 1.0)"
+        ? `attemptingGrabThrowPull ${techniqueTellDuration(
+            props,
+            1.0
+          )} cubic-bezier(0.4, 0.0, 0.6, 1.0) forwards`
         : props.$isSlapParryRecovering
         ? "slapParryRecoil 0.2s cubic-bezier(0.22, 1, 0.36, 1)"
         : props.$isRawParrySuccess || props.$isPerfectRawParrySuccess
@@ -912,6 +936,15 @@ export const StyledImage = styled("img")
         ? "grabTechShake 0.25s ease-in-out infinite"
         : props.$isClinchOpen || props.$clinchThrowFailStagger
         ? "clinchOpenWobble 0.42s ease-in-out infinite"
+        // Brace attempt cycle. Sits below every higher-priority combat pose
+        // above (throw, jolt, clash, tech, Open) so it never fights them, and
+        // above the idle teeter so a spent Brace is still readable. This is what
+        // makes baiting a Brace legible: you can SEE the weight go down and
+        // reset, which is the window to strike.
+        : props.$inClinch && props.$clinchBracePhase === "active"
+        ? "clinchBraceSet 0.27s cubic-bezier(0.2, 0.8, 0.3, 1) forwards"
+        : props.$inClinch && props.$clinchBracePhase === "settle"
+        ? "clinchBraceSettle 0.22s ease-out forwards"
         : props.$inClinch && props.$balanceDanger
         ? "clinchTeeterHeavy 0.95s ease-in-out infinite"
         : props.$inClinch && props.$balanceWobble
@@ -1144,6 +1177,38 @@ export const StyledImage = styled("img")
       transform: scaleX(calc(var(--facing, 1) * 0.98)) translateX(calc(var(--facing, 1) * 2px))
         scaleY(1.02) skewX(calc(var(--facing, 1) * 1.5deg));
       filter: brightness(1.08);
+    }
+  }
+  /* BRACE ATTEMPT — weight dropping into the hold. Compression + a small lean
+     away from the opponent, settling into a wide planted stance. Deliberately
+     quiet: it is a stance read, not a status effect, and it must not compete
+     with Open's wobble or the throw/jolt poses that outrank it. */
+  @keyframes clinchBraceSet {
+    0% {
+      transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1);
+    }
+    40% {
+      transform: scaleX(calc(var(--facing, 1) * 1.07)) translateX(calc(var(--facing, 1) * -4px))
+        scaleY(0.9);
+    }
+    100% {
+      transform: scaleX(calc(var(--facing, 1) * 1.04)) translateX(calc(var(--facing, 1) * -2px))
+        scaleY(0.95);
+    }
+  }
+  /* SETTLE — the weight coming back up. This is the readable "spent" beat: the
+     window where an attacker can punish a fished Brace. */
+  @keyframes clinchBraceSettle {
+    0% {
+      transform: scaleX(calc(var(--facing, 1) * 1.04)) translateX(calc(var(--facing, 1) * -2px))
+        scaleY(0.95);
+    }
+    55% {
+      transform: scaleX(calc(var(--facing, 1) * 0.985)) translateX(calc(var(--facing, 1) * 1px))
+        scaleY(1.025);
+    }
+    100% {
+      transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1);
     }
   }
   @keyframes grabTechShake {

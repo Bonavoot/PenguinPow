@@ -61,14 +61,18 @@ describe("Request lifetime and input-lock tests", () => {
       assert.equal(s.grabbed.clinchThrowRequest, null);
     });
 
-    it("cleared when Open blocks — request remains until commit attempt fails gates", () => {
+    it("voided while Open — a buffered technique may never survive the recovery", () => {
       const s = sc();
       s.setThrowRequest(s.grabber, "throw", s.now() - 100);
       s.setOpen(s.grabber, s.now() + 1000);
       s.stepOnce();
-      assert.equal(s.grabber.clinchThrowActive, false);
-      // Open does not auto-clear request in canCommitTechnique — it just won't commit
-      assert.equal(s.grabber.clinchThrowRequest, "throw");
+      assert.equal(s.grabber.clinchThrowActive, false, "Open blocks the commit");
+      // Open is a real turn loss: the request is dropped rather than parked,
+      // so it cannot auto-fire the instant the recovery ends.
+      assert.equal(s.grabber.clinchThrowRequest, null);
+      s.clearOpen(s.grabber);
+      s.stepOnce();
+      assert.equal(s.grabber.clinchThrowActive, false, "nothing queued past Open");
     });
 
     it("cleared on mutual tumble", () => {

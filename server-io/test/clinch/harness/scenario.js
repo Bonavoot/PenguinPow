@@ -29,7 +29,10 @@ const {
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
 } = require("../../../gameUtils");
-const { updateGrabActions } = require("../../../grabActionSystem");
+const {
+  updateGrabActions,
+  selectTechniqueAnimationMs,
+} = require("../../../grabActionSystem");
 const { createMockIo } = require("./mockIo");
 
 const DEFAULT_TICK_MS = 1000 / TICK_RATE; // 15.625
@@ -299,6 +302,10 @@ function createClinchScenario(options = {}) {
       actor.isAttemptingPull = type === "pull";
       actor.clinchThrowUsedDeepGrip = !!actor.hasDeepGrip;
       if (actor.hasDeepGrip) actor.hasDeepGrip = false;
+      actor.clinchThrowAnimMs = selectTechniqueAnimationMs(
+        type,
+        actor.clinchThrowUsedDeepGrip
+      );
       actor.clinchThrowKillBalance =
         typeof scenario.other(actor).balance === "number"
           ? scenario.other(actor).balance
@@ -470,6 +477,7 @@ function createClinchScenario(options = {}) {
         clinchThrowType: player.clinchThrowType,
         clinchThrowStartTime: player.clinchThrowStartTime || 0,
         clinchThrowUsedDeepGrip: !!player.clinchThrowUsedDeepGrip,
+        clinchThrowAnimMs: player.clinchThrowAnimMs || 0,
         clinchJoltRequest: !!player.clinchJoltRequest,
         isClinchJolting: !!player.isClinchJolting,
         clinchJoltStartTime: player.clinchJoltStartTime || 0,
@@ -490,7 +498,7 @@ function createClinchScenario(options = {}) {
         isBeingPullReversaled: !!player.isBeingPullReversaled,
         isGrabBreaking: !!player.isGrabBreaking,
         isGrabBreakSeparating: !!player.isGrabBreakSeparating,
-        clinchEdgePinStart: player.clinchEdgePinStart || 0,
+        clinchEdgePinHeldMs: player.clinchEdgePinHeldMs || 0,
         clinchStalemateStart: player.clinchStalemateStart || 0,
         isClinchClashing: !!player.isClinchClashing,
         isClinchPerfectBracing: !!player.isClinchPerfectBracing,

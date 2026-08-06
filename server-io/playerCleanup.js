@@ -27,6 +27,7 @@ function cleanupPlayerStates(player) {
   player.clinchShoveLead = null;
   player.deepGripPushStart = 0;
   player.clinchPushRampStart = 0;
+  player.clinchOpenPunishBlend = 0;
   player.isThrowing = false;
   player.isBeingThrown = false;
   player.isAttacking = false;
@@ -217,6 +218,7 @@ function cleanupOpponentStates(opponent) {
     opponent.hasDeepGrip = false;
     opponent.deepGripPushStart = 0;
     opponent.clinchPushRampStart = 0;
+    opponent.clinchOpenPunishBlend = 0;
     opponent.isBeingPushed = false;
     opponent.isBeingPulled = false;
     opponent.isBeingThrown = false;

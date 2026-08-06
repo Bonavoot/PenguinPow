@@ -30,6 +30,7 @@ const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
         tryIceSlideReverse } = require("./gameUtils");
 const { getConnectDistance, attackKindFromPlayer } = require("./strikeContact");
 const { startRopeJump } = require("./ropeJumpStart");
+const { beginBraceAttempt } = require("./grabActionSystem");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum, Phase 2: posture, Phase 3: cadence).
 const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P3_CADENCE } = require("./masteryFlags");
@@ -2005,6 +2006,15 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
           CS.breakEager * 0.08
       );
       aiState.clinchBraceDecision = chance(braceChance) ? "plant" : "whiff";
+      // Perfect Brace is now "an ACTIVE response to this specific tell" (any
+      // moment of the visible startup), not a late-frame timing trick. So the
+      // CPU has to decide, once per technique, whether this Plant is a real
+      // read (→ PERFECT BRACE) or a prediction it already committed to
+      // (→ ordinary RESISTED). Same rates the old final-window trick produced.
+      aiState.clinchBracePerfect =
+        aiState.clinchBraceDecision === "plant" &&
+        (DIFF_KEY === "HARD" || DIFF_KEY === "IMPOSSIBLE") &&
+        chance(DIFF_KEY === "IMPOSSIBLE" ? 0.45 : 0.22);
       aiState.clinchBraceReadyTime =
         currentTime +
         randomInRange(
@@ -2019,26 +2029,26 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
     ) {
       const towardKeyBrace = cpu.x < opponent.x ? "d" : "a";
       const awayKeyBrace = cpu.x < opponent.x ? "a" : "d";
-      // Hard/Impossible sometimes delay the Plant press into the Perfect Brace
-      // window instead of holding from reaction start.
-      const animMs = opponent.clinchThrowType === "pull" ? 250 : 220;
       const throwStart = opponent.clinchThrowStartTime || currentTime;
-      const perfectWindowStart = throwStart + Math.max(0, animMs - 100);
-      const wantPerfect =
-        (DIFF_KEY === "HARD" || DIFF_KEY === "IMPOSSIBLE") &&
-        chance(DIFF_KEY === "IMPOSSIBLE" ? 0.45 : 0.22);
-
-      if (wantPerfect && currentTime < perfectWindowStart) {
-        // Wait in neutral / prior stance until the window — then tap Plant.
-        return;
-      }
 
       cpu.keys[awayKeyBrace] = true;
       cpu.keys[towardKeyBrace] = false;
       cpu.keys.s = true;
-      // Rising-edge stamp for Perfect Brace (CPU path has no socket events).
+      // Plant activation stamp (the CPU has no socket events to stamp from).
+      // An active read lands inside the readable startup; a prediction is
+      // stamped before the tell so it classifies as passive Plant.
+      //
+      // The CPU spends the same authoritative Brace attempt cycle as a human: it
+      // may only stamp when beginBraceAttempt succeeds, so it cannot fish for
+      // reads a player would be locked out of. Failing the cycle leaves it in
+      // passive held Plant, exactly like a player caught mid-settle.
       if (!cpu.clinchBraceSimTime || cpu.clinchBraceSimTime < throwStart) {
-        cpu.clinchBraceSimTime = currentTime;
+        const stampAt = aiState.clinchBracePerfect
+          ? Math.max(throwStart, currentTime)
+          : throwStart - 1;
+        if (beginBraceAttempt(cpu, Math.min(stampAt, currentTime))) {
+          cpu.clinchBraceSimTime = stampAt;
+        }
       }
       return;
     }
@@ -2047,6 +2057,7 @@ function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
   } else if (aiState.clinchBraceForThrowStart) {
     aiState.clinchBraceForThrowStart = 0;
     aiState.clinchBraceDecision = null;
+    aiState.clinchBracePerfect = false;
     aiState.clinchBraceReadyTime = 0;
   }
   if (opponent.isClinchClashing) {

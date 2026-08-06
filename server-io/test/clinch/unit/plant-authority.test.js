@@ -6,7 +6,7 @@ const {
   CLINCH_DRIVE_PLANT_CANCEL_MS,
   CLINCH_THROW_ANIMATION_MS,
   CLINCH_PULL_ANIMATION_MS,
-  CLINCH_PERFECT_BRACE_WINDOW_MS,
+  CLINCH_BRACE_IMPACT_SLACK_MS,
   CLINCH_BRACE_LATCH_MS,
 } = require("../../../constants");
 const {
@@ -50,7 +50,9 @@ describe("plant authority vs raw intent", () => {
   it("constants match expected production timings", () => {
     assert.equal(CLINCH_DRIVE_PLANT_CANCEL_MS, 90);
     assert.equal(CLINCH_BRACE_LATCH_MS, 150);
-    assert.equal(CLINCH_PERFECT_BRACE_WINDOW_MS, 100);
+    // The retired final-window model is gone: the reaction opportunity is the
+    // whole startup, plus one tick of slack past impact for input granularity.
+    assert.equal(CLINCH_BRACE_IMPACT_SLACK_MS, 16);
   });
 
   it("raw Plant intent is true while cancel is still pending", () => {
@@ -196,11 +198,31 @@ describe("brace latch", () => {
     assert.equal(d.perfectBrace, true);
   });
 
-  it("latch expired before impact → technique not braced", () => {
+  it("early in-startup Brace survives latch expiry (no reaction dead zone)", () => {
     const throwStart = 1000;
     const anim = CLINCH_THROW_ANIMATION_MS;
     const impact = throwStart + anim;
-    const activateAt = impact - 200;
+    // Reacted 20ms into the tell, then released. The 150ms latch runs out
+    // 50ms before impact — the honest reaction must still be Perfect Brace.
+    const activateAt = throwStart + 20;
+    assert.ok(activateAt + CLINCH_BRACE_LATCH_MS < impact);
+    const { actor, target } = makePair({
+      defenderKeys: {},
+      braceSimTime: activateAt,
+      latchUntil: activateAt + CLINCH_BRACE_LATCH_MS,
+      throwStart,
+    });
+    const d = getClinchThrowDefense(actor, target, impact, anim);
+    assert.equal(d.bracing, false, "passive hold has lapsed");
+    assert.equal(d.latched, false);
+    assert.equal(d.perfectBrace, true, "active response does not expire");
+  });
+
+  it("passive Plant established before the tell, then released → no defense", () => {
+    const throwStart = 1000;
+    const anim = CLINCH_THROW_ANIMATION_MS;
+    const impact = throwStart + anim;
+    const activateAt = throwStart - 200; // predictive, not a response
     const { actor, target } = makePair({
       defenderKeys: {},
       braceSimTime: activateAt,

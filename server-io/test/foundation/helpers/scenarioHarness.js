@@ -24,6 +24,7 @@ const {
   PALM_THRUST_ACTIVE_MS,
   PALM_THRUST_HOLD_MS,
   PALM_THRUST_END_RECOVERY_MS,
+  PALM_THRUST_POWER,
   CHARGED_STARTUP_MS,
   GRAB_STARTUP_MS,
   SIDESTEP_STARTUP_MS,
@@ -219,6 +220,10 @@ function armPalmPhase(player, phase, now, opts = {}) {
   player.isPalmThrust = true;
   player.isSlapAttack = false;
   player.attackType = "charged";
+  // Production executePalmThrust sets this (charged-path power read). Palm vs
+  // slap is timing winner/trade — charge % no longer decides that matchup.
+  player.chargeAttackPower =
+    opts.power != null ? opts.power : PALM_THRUST_POWER;
   player.chargingFacingDirection = player.facing;
   player.currentAction = "palm";
   if (phase === "startup") {
@@ -559,6 +564,7 @@ module.exports = {
   advanceSim,
   stepPushbox,
   stepCollisionBothOrders,
+  checkCollision,
   armSlapPhase,
   armPalmPhase,
   armChargedPhase,

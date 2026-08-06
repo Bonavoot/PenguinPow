@@ -21,6 +21,9 @@ const {
   CHARGED_STARTUP_MS,
   AP_LATE_PARRY_MS,
   GRAB_SLAP_CATCH_RANGE,
+  PALM_THRUST_STARTUP_MS,
+  PALM_THRUST_ACTIVE_MS,
+  PALM_THRUST_POWER,
 } = require("../../../constants");
 
 /** Past slap startup + open-hit grace so processHit is not deferred. */
@@ -129,8 +132,27 @@ function armCharged(
 }
 
 function armPalm(player, opts = {}) {
-  armCharged(player, { power: 35, ...opts });
+  const t = opts.now != null ? opts.now : 0;
+  const startOffset =
+    opts.startOffset != null
+      ? opts.startOffset
+      : PALM_THRUST_STARTUP_MS + 5;
+  // Palm-native arm — do not inherit charged-headbutt startup clocks.
+  // Production sets startupEndTime; without it checkCollision uses
+  // CHARGED_STARTUP_MS and falsely treats live palms as still in startup.
+  player.isAttacking = true;
+  player.isSlapAttack = false;
   player.isPalmThrust = true;
+  player.attackType = "charged";
+  player.chargeAttackPower =
+    opts.power != null ? opts.power : PALM_THRUST_POWER;
+  player.isInStartupFrames = false;
+  player.attackStartTime = t - startOffset;
+  player.startupEndTime = player.attackStartTime + PALM_THRUST_STARTUP_MS;
+  player.attackEndTime =
+    player.attackStartTime + PALM_THRUST_STARTUP_MS + PALM_THRUST_ACTIVE_MS;
+  player.chargedActiveEndTime = player.attackEndTime;
+  player.chargingFacingDirection = player.facing;
   player.movementVelocity = 0;
   return player;
 }

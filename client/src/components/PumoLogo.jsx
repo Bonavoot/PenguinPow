@@ -21,7 +21,9 @@ const Mark = styled.h1`
   align-items: center;
   gap: 0;
   margin: 0;
-  padding: 0.08em 0.12em 0.07em 0.08em;
+  /* Symmetric pad — asymmetric right pad was shifting the flex box
+   * center away from the painted mark (rule / CONNECTING looked off). */
+  padding: 0.08em 0.1em 0.07em;
   font-family: ${FONT_DISPLAY};
   font-size: ${(p) => p.$fontSize};
   font-weight: 400;
@@ -56,14 +58,23 @@ const Word = styled.span`
 /*
  * Stack line boxes are 1.8em (2 × lh 0.9), but Bungee's ! ink only fills
  * ~80% of the em — size up so the painted glyph spans the stack.
+ *
+ * scaleX does not affect layout. Without a compensating margin, the flex
+ * item keeps the full unscaled advance and parents that center on the mark
+ * (BrandRule, CONNECTING, etc.) sit right of the painted logo.
+ * Bungee "!" advance is ~0.55em at this size (stroke included).
  */
+const BANG_SCALE_X = 0.78;
+const BANG_ADVANCE_EM = 0.55;
+
 const Bang = styled.span`
   display: block;
   margin-left: -0.02em;
+  margin-right: calc(${BANG_ADVANCE_EM}em * (${BANG_SCALE_X} - 1));
   color: #fa3232;
   font-size: 2.25em;
   line-height: 1;
-  transform: scaleX(0.78);
+  transform: scaleX(${BANG_SCALE_X});
   transform-origin: left center;
   ${LOGO_STROKE}
 `;

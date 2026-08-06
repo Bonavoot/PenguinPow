@@ -20,6 +20,7 @@ const {
 const {
   isActionFacingOwnershipV2Enabled,
   getActionFacingLock,
+  updateActionFacingLockDirection,
   releaseActionFacingLock,
   ACTION_FACING_OWNER,
   ACTION_FACING_RELEASE,
@@ -158,6 +159,60 @@ function clearOrphanPullFacingLocks(player1, player2) {
 }
 
 /**
+ * After a sidestep, a still-moving charged lunge can flip who is left/right
+ * underneath a just-acquired action facing lock. During the short track window
+ * stamped at sidestep end, retarget that lock toward the opponent from live X.
+ *
+ * Non-side-switch (and any case where relative sides didn't change): desired
+ * facing equals the lock → no-op.
+ */
+function retargetPostSidestepActionFacing(player, opponent, nowSim) {
+  if (!player || !opponent) return false;
+  if (player.atTheRopesFacingDirection != null) return false;
+  const until = player.postSidestepFacingTrackUntil || 0;
+  if (!until || typeof nowSim !== "number" || nowSim >= until) return false;
+
+  const desired = facingTowardOpponent(player, opponent);
+  if (desired !== 1 && desired !== -1) return false;
+
+  let changed = false;
+
+  if (isActionFacingOwnershipV2Enabled()) {
+    const lock = getActionFacingLock(player);
+    if (lock && lock.direction !== desired) {
+      updateActionFacingLockDirection(player, desired, {
+        force: true,
+        syncLegacy: true,
+      });
+      changed = true;
+    }
+  }
+
+  // Legacy soft locks (and V2 dual-write leftovers) — only nudge when present.
+  if (
+    player.slapFacingDirection != null &&
+    player.slapFacingDirection !== desired
+  ) {
+    player.slapFacingDirection = desired;
+    changed = true;
+  }
+  if (
+    player.chargingFacingDirection != null &&
+    player.chargingFacingDirection !== desired
+  ) {
+    player.chargingFacingDirection = desired;
+    changed = true;
+  }
+
+  if (player.facing !== desired) {
+    player.facing = desired;
+    changed = true;
+  }
+
+  return changed;
+}
+
+/**
  * Apply the hard rule to one player relative to their opponent.
  * @returns {boolean} true if facing was changed
  */
@@ -174,8 +229,9 @@ function enforcePlayerFacing(player, opponent) {
 /**
  * Enforce facing for both fighters. Safe to call every tick after movement.
  * When both are in hitstun, leave both alone (neither should auto-correct).
+ * @param {number} [nowSim] - room sim clock; enables post-sidestep lock retarget
  */
-function enforcePairFacing(player1, player2) {
+function enforcePairFacing(player1, player2, nowSim) {
   if (!player1 || !player2) return;
 
   // Safety: never keep pull destination locks after the yank flags are gone.
@@ -185,6 +241,11 @@ function enforcePairFacing(player1, player2) {
     return;
   }
 
+  // Retarget BEFORE getLockedFacing reapplies frozen action directions, so a
+  // post-sidestep slap/charge lock can follow a charged lunge side-flip.
+  retargetPostSidestepActionFacing(player1, player2, nowSim);
+  retargetPostSidestepActionFacing(player2, player1, nowSim);
+
   enforcePlayerFacing(player1, player2);
   enforcePlayerFacing(player2, player1);
 }
@@ -193,6 +254,7 @@ module.exports = {
   facingTowardOpponent,
   getLockedFacing,
   clearOrphanPullFacingLocks,
+  retargetPostSidestepActionFacing,
   enforcePlayerFacing,
   enforcePairFacing,
 };

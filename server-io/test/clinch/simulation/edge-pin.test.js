@@ -4,7 +4,9 @@ const { describe, it, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   CLINCH_EDGE_PIN_HOLD_MS,
+  CLINCH_EDGE_PIN_OPEN_HOLD_MS,
   CLINCH_EDGE_ZONE_THRESHOLD,
+  CLINCH_THROW_CLASH_WINDOW_MS,
 } = require("../../../constants");
 const {
   createClinchScenario,
@@ -34,6 +36,17 @@ function startRightEdgePin(s) {
   s.stepOnce();
 }
 
+/** Keep driving the victim into the wall for `ms`, returning early on ring-out. */
+function driveInto(s, ms, perTick) {
+  const end = s.now() + ms;
+  while (s.now() < end && !s.room.gameOver) {
+    s.setCommittedDrive(s.grabber);
+    if (perTick) perTick(s);
+    else s.holdNeutral(s.grabbed);
+    s.advance(Math.min(s.tickMs, end - s.now()));
+  }
+}
+
 describe("Edge pin behavior", () => {
   it(`pin hold is ${CLINCH_EDGE_PIN_HOLD_MS}ms`, () => {
     assert.equal(CLINCH_EDGE_PIN_HOLD_MS, 1500);
@@ -42,14 +55,8 @@ describe("Edge pin behavior", () => {
   it("healthy defender accumulates pin; ring-out after hold duration", () => {
     const s = sc();
     startRightEdgePin(s);
-    assert.ok(s.grabbed.clinchEdgePinStart > 0 || s.grabber.isEdgePushing);
-    // Keep driving for the hold duration
-    const start = s.now();
-    while (s.now() - start < CLINCH_EDGE_PIN_HOLD_MS + 50 && !s.room.gameOver) {
-      s.setCommittedDrive(s.grabber);
-      s.holdNeutral(s.grabbed);
-      s.advance(s.tickMs);
-    }
+    assert.ok(s.grabbed.clinchEdgePinHeldMs > 0 || s.grabber.isEdgePushing);
+    driveInto(s, CLINCH_EDGE_PIN_HOLD_MS + 50);
     assert.equal(s.room.gameOver, true, "pin hold should force ring-out");
   });
 
@@ -66,71 +73,132 @@ describe("Edge pin behavior", () => {
     assert.equal(s.room.gameOver, true);
   });
 
-  it("instant ring-out when victim is Open", () => {
+  it(`Open victim uses the reduced ${CLINCH_EDGE_PIN_OPEN_HOLD_MS}ms hold, not an instant force-out`, () => {
     const s = sc();
     s.setOpen(s.grabbed, s.now() + 2000);
     startRightEdgePin(s);
-    assert.equal(s.room.gameOver, true);
+    assert.equal(
+      s.room.gameOver,
+      false,
+      "Open at the tawara is near-terminal, but the pusher must still drive"
+    );
+    driveInto(s, CLINCH_EDGE_PIN_OPEN_HOLD_MS - 60);
+    assert.equal(s.room.gameOver, false, "not yet — hold is unfinished");
+    driveInto(s, 90);
+    assert.equal(s.room.gameOver, true, "reduced hold completes");
+  });
+
+  it("an Open victim still outlasts the pin if the pusher stops driving", () => {
+    const s = sc();
+    s.setOpen(s.grabbed, s.now() + 2000);
+    startRightEdgePin(s);
+    driveInto(s, CLINCH_EDGE_PIN_OPEN_HOLD_MS - 100);
+    // Pusher eases off — accrued pin is gone, no free force-out.
+    s.holdNeutral(s.grabber);
+    s.stepOnce();
+    assert.equal(s.grabbed.clinchEdgePinHeldMs, 0);
+    assert.equal(s.room.gameOver, false);
   });
 
   it("pin cancels when shove stops", () => {
     const s = sc();
     startRightEdgePin(s);
-    const pinStart = s.grabbed.clinchEdgePinStart;
-    assert.ok(pinStart > 0);
+    assert.ok(s.grabbed.clinchEdgePinHeldMs > 0);
     s.holdNeutral(s.grabber);
     s.stepOnce();
-    assert.equal(s.grabbed.clinchEdgePinStart, 0);
+    assert.equal(s.grabbed.clinchEdgePinHeldMs, 0);
     assert.equal(s.room.gameOver, false);
   });
 
   it("1 tick before hold expires: no ring-out yet", () => {
     const s = sc();
-    s.placeVictimAtRightEdge();
-    s.setCommittedDrive(s.grabber);
-    s.holdNeutral(s.grabbed);
-    s.stepOnce();
-    const pinStart = s.grabbed.clinchEdgePinStart;
-    assert.ok(pinStart > 0);
-    // Advance to 1ms before expiry
-    const target = pinStart + CLINCH_EDGE_PIN_HOLD_MS - 1;
-    while (s.now() < target && !s.room.gameOver) {
-      s.setCommittedDrive(s.grabber);
-      s.holdNeutral(s.grabbed);
-      const step = Math.min(s.tickMs, target - s.now());
-      s.advance(step);
+    startRightEdgePin(s);
+    assert.ok(s.grabbed.clinchEdgePinHeldMs > 0);
+    // Drive until one more tick would cross the requirement.
+    while (
+      !s.room.gameOver &&
+      s.grabbed.clinchEdgePinHeldMs + s.tickMs < CLINCH_EDGE_PIN_HOLD_MS
+    ) {
+      driveInto(s, s.tickMs);
     }
     assert.equal(s.room.gameOver, false);
-    // Cross the boundary
-    s.setCommittedDrive(s.grabber);
-    s.holdNeutral(s.grabbed);
-    s.advance(s.tickMs + 2);
+    assert.ok(s.grabbed.clinchEdgePinHeldMs < CLINCH_EDGE_PIN_HOLD_MS);
+    driveInto(s, s.tickMs * 2);
     assert.equal(s.room.gameOver, true);
   });
 
-  it("victim stops being Open on pin-resolution tick → hold path (not instant) if still healthy", () => {
+  describe("REGRESSION: a technique cannot be used to stall the tawara", () => {
+    it("a buffered technique request does not wipe accrued pin", () => {
+      const s = sc();
+      startRightEdgePin(s);
+      driveInto(s, 600);
+      const held = s.grabbed.clinchEdgePinHeldMs;
+      assert.ok(held > 500, "pin accrued while genuinely pinned");
+
+      // The burst-push cancel path: a pending request ends the burst so the
+      // technique can process. It used to clearEdgePinHold() here, which turned a
+      // buffered technique into a free "get off the tawara" button.
+      s.grabber.isGrabPushing = true;
+      s.setThrowRequest(s.grabbed, "throw", s.now());
+      s.stepOnce();
+      assert.equal(s.grabber.isGrabPushing, false, "burst still cancels");
+      assert.ok(
+        s.grabbed.clinchEdgePinHeldMs >= held,
+        `pin must survive the request (was ${held}, now ${s.grabbed.clinchEdgePinHeldMs})`
+      );
+    });
+
+    it("a technique in startup pauses the pin instead of crediting or wiping it", () => {
+      const s = sc();
+      startRightEdgePin(s);
+      driveInto(s, 400);
+      const held = s.grabbed.clinchEdgePinHeldMs;
+      assert.ok(held > 300, "pin accrued while genuinely pinned");
+
+      // Victim commits a technique: the drive is suspended for its startup.
+      s.commitTechniqueNow(s.grabbed, "throw");
+      assert.equal(s.grabbed.clinchThrowActive, true);
+      s.advance(150);
+      assert.equal(
+        s.grabbed.clinchEdgePinHeldMs,
+        held,
+        "no free hold time for the pusher, and no reset for the victim"
+      );
+    });
+
+    it("escaping the boundary clears the pin (the honest way out)", () => {
+      const s = sc();
+      startRightEdgePin(s);
+      driveInto(s, 500);
+      assert.ok(s.grabbed.clinchEdgePinHeldMs > 400);
+      // Move the victim off the wall: the pin condition is simply false now.
+      s.setPosition(s.grabbed, MAP_RIGHT_BOUNDARY - 200);
+      s.setPosition(s.grabber, s.grabbed.x - 72);
+      s.setCommittedDrive(s.grabber);
+      s.advance(CLINCH_THROW_CLASH_WINDOW_MS);
+      assert.equal(s.grabbed.clinchEdgePinHeldMs, 0);
+      assert.equal(s.room.gameOver, false);
+    });
+  });
+
+  it("recovering from Open mid-pin restores the full hold requirement", () => {
     const s = sc();
     s.placeVictimAtRightEdge();
-    s.setOpen(s.grabbed, s.now() + 1);
+    s.setOpen(s.grabbed, s.now() + 5000);
     s.setCommittedDrive(s.grabber);
     s.holdNeutral(s.grabbed);
-    // First tick: still Open → instant
     s.stepOnce();
-    // If Open until was in the past relative to applyClinchOpen timeout — we set flag directly.
-    // Clearing Open before drive:
-    s.dispose();
-    scenarios.pop();
-
-    const s2 = sc();
-    s2.placeVictimAtRightEdge();
-    s2.setOpen(s2.grabbed, s2.now() + 5000);
-    // Clear Open on the exact tick before pin check
-    s2.clearOpen(s2.grabbed);
-    s2.setCommittedDrive(s2.grabber);
-    s2.holdNeutral(s2.grabbed);
-    s2.stepOnce();
-    assert.equal(s2.room.gameOver, false, "healthy non-Open starts hold, not instant");
-    assert.ok(s2.grabbed.clinchEdgePinStart > 0);
+    driveInto(s, CLINCH_EDGE_PIN_OPEN_HOLD_MS - 100);
+    assert.equal(s.room.gameOver, false);
+    // Recovery lands before the reduced hold completes → back to the long hold.
+    s.clearOpen(s.grabbed);
+    driveInto(s, 200);
+    assert.equal(
+      s.room.gameOver,
+      false,
+      "no longer helpless, so the reduced hold no longer applies"
+    );
+    assert.ok(s.grabbed.clinchEdgePinHeldMs > CLINCH_EDGE_PIN_OPEN_HOLD_MS);
   });
 
   it("victim stops being gassed on pin tick → no instant if stamina > 0", () => {
@@ -143,7 +211,7 @@ describe("Edge pin behavior", () => {
     s.holdNeutral(s.grabbed);
     s.stepOnce();
     assert.equal(s.room.gameOver, false);
-    assert.ok(s.grabbed.clinchEdgePinStart > 0);
+    assert.ok(s.grabbed.clinchEdgePinHeldMs > 0);
   });
 
   it("regaining stamina on pin tick: 0→1 before drive avoids instant", () => {
@@ -183,7 +251,7 @@ describe("Edge pin behavior", () => {
     s.holdNeutral(s.grabbed);
     s.stepOnce();
     assert.equal(s.room.gameOver, false);
-    assert.ok(s.grabbed.clinchEdgePinStart > 0);
+    assert.ok(s.grabbed.clinchEdgePinHeldMs > 0);
   });
 
   it("role swap: left-edge pin is symmetric", () => {

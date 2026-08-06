@@ -456,8 +456,15 @@ describe("struck-limb hold — Phase 4B generic limb stamp", () => {
       /String\(victimLimbVariant\) === "true" \? palmThrust : null/,
       "palm_recovery must hold the extended art ONLY for the authorized hold variant"
     );
-    // The renderer's own active branch returns the same sprite constant.
-    assert.match(src, /if \(palmThrustFrame === 3\) return palmThrustStartup;\s*\n\s*return palmThrust;/);
+    // The renderer's own active branch: smear lead-in, startup pose on recovery.
+    assert.match(
+      src,
+      /if \(palmThrustFrame === 0\) return palmThrustSmear;/
+    );
+    assert.match(
+      src,
+      /if \(palmThrustFrame === 3\) return palmThrustStartup;\s*\n\s*return palmThrust;/
+    );
     assert.ok(
       src.includes("export const getStruckSlapLimbSrc = getStruckLimbPoseSrc"),
       "the Phase 4A export name must keep working"

@@ -27,11 +27,17 @@ export function facingKeys(facing) {
 export function classifyMouse1Strike(keys, facing) {
   if (facing == null) return { command: "slap", relativeDir: "neutral" };
   const { forwardKey, backKey } = facingKeys(facing);
+  // S+forward wins even with A+D overlap (matches server charge priority).
   if (keys?.s && keys?.[forwardKey]) {
     return { command: "charge_start", relativeDir: "forward" };
   }
-  if (keys?.[backKey] && !keys?.[forwardKey]) {
-    return { command: "palm_thrust", relativeDir: "back" };
+  // Back alone OR A+D overlap → palm. Matches server: releasing forward a
+  // frame late while already holding back must not predict a slap.
+  if (keys?.[backKey]) {
+    return {
+      command: "palm_thrust",
+      relativeDir: keys?.[forwardKey] ? "ambiguous" : "back",
+    };
   }
   return {
     command: "slap",

@@ -76,6 +76,7 @@ const {
   PALM_THRUST_HIT_RECOVERY_MS,
   PALM_THRUST_KB_VELOCITY,
   PALM_THRUST_ACTIVE_MS,
+  PALM_THRUST_STARTUP_MS,
   LOW_KICK_HIT_RECOVERY_MS,
   LOW_KICK_HITBOX_DISTANCE_VALUE,
   LOW_KICK_KB_VELOCITY,
@@ -118,6 +119,11 @@ const {
   GUARD_CRUSH_STUN_MS,
   SLAP_TRADE_WINDOW_MS,
   SLAP_TRADE_KNOCKBACK,
+  PALM_TRADE_WINDOW_MS,
+  PALM_TRADE_KNOCKBACK,
+  PALM_VS_SLAP_TRADE_WINDOW_MS,
+  PALM_VS_SLAP_TRADE_KB_ON_SLAPPER,
+  PALM_VS_SLAP_TRADE_KB_ON_PALM,
 } = require("./constants");
 
 const {
@@ -512,11 +518,15 @@ function checkCollision(player, otherPlayer, rooms, io) {
   
   // Fallback: Check startup timing if flag not set (for backward compatibility).
   // Pulled from shared constants — single source of truth, no drift.
+  // Palm rides attackType "charged" but has its own (shorter) startup — never
+  // use CHARGED_STARTUP_MS for an isPalmThrust attacker.
   if (player.isAttacking && player.attackStartTime && !player.startupEndTime) {
     const startupDelay =
       player.attackType === "slap"
         ? SLAP_STARTUP_MS
-        : CHARGED_STARTUP_MS;
+        : player.isPalmThrust
+          ? PALM_THRUST_STARTUP_MS
+          : CHARGED_STARTUP_MS;
     const attackAge = simNowForPlayer(player) - player.attackStartTime;
 
     if (attackAge < startupDelay) {
@@ -863,8 +873,15 @@ function checkCollision(player, otherPlayer, rooms, io) {
         otherPlayer.attackType === "charged" &&
         !otherPlayer.isInStartupFrames
       ) {
+        // Palm vs slap: timing winner / rare trade — not charge-power priority.
+        if (otherPlayer.isPalmThrust) {
+          resolvePalmVersusSlap(otherPlayer, player, rooms, io, now);
+          consumeStrikeContactOverride(player);
+          return;
+        }
+
         // Phase 13A (V2): flying headbutt uses physical first-contact (not
-        // CHARGE_PRIORITY_THRESHOLD). Palm keeps the legacy threshold path.
+        // CHARGE_PRIORITY_THRESHOLD).
         if (
           isCombatContactFidelityV2Enabled() &&
           isChargedHeadbuttActive(otherPlayer)
@@ -894,12 +911,12 @@ function checkCollision(player, otherPlayer, rooms, io) {
           return;
         }
 
-        // Legacy / palm: charge-power threshold defer.
+        // Legacy headbutt: charge-power threshold defer.
         if (
           (otherPlayer.chargeAttackPower || 0) >= CHARGE_PRIORITY_THRESHOLD
         ) {
           const chargedHitboxDist = getConnectDistance(
-            otherPlayer.isPalmThrust ? "palm" : "charged",
+            "charged",
             otherPlayer,
             player
           );
@@ -913,17 +930,17 @@ function checkCollision(player, otherPlayer, rooms, io) {
             if (isCombatContactFidelityV2Enabled()) {
               consumeLosingAttackInstance(player, {
                 winner: otherPlayer,
-                winnerMove: otherPlayer.isPalmThrust ? "palm" : "charged",
+                winnerMove: "charged",
                 loserMove: "slap",
                 outcome: CONTACT_OUTCOME.PRIORITY_LOSS,
                 interactionType: "SLAP_VS_CHARGED",
                 interruptionReason: "CHARGED_PRIORITY",
-                strikeKind: otherPlayer.isPalmThrust ? "palm" : "charged",
+                strikeKind: "charged",
                 winnerIsAttacker: true,
               });
             }
             consumeStrikeContactOverride(player);
-            return; // Charged/palm priority — that branch will process the hit
+            return; // Charged priority — that branch will process the hit
           }
         }
       }
@@ -1094,9 +1111,19 @@ function checkCollision(player, otherPlayer, rooms, io) {
     }
     if (player.isAttacking && otherPlayer.isAttacking) {
       if (otherPlayer.attackType === "charged") {
-        // === CHARGED vs CHARGED ===
+        // === PALM vs PALM ===
+        // Timing priority / rare same-tick trade. Design reference: slap
+        // winner/trade — but palm-native helpers only (no slap trade path).
+        // Charge clash is reserved for headbutt collisions.
+        if (player.isPalmThrust && otherPlayer.isPalmThrust) {
+          resolvePalmVersusPalm(player, otherPlayer, rooms, io, now);
+          consumeStrikeContactOverride(player);
+          return;
+        }
+
+        // === CHARGED vs CHARGED (or palm vs headbutt) ===
         // Thick Blubber is grabs-only now — it does NOT influence a charge
-        // clash. Two charged attacks always resolve as a clash.
+        // clash. Two charged headbutts (and palm↔headbutt) resolve as a clash.
         const currentRoom = rooms.find((room) =>
           room.players.some((p) => p.id === player.id)
         );
@@ -1110,9 +1137,14 @@ function checkCollision(player, otherPlayer, rooms, io) {
         }
         consumeStrikeContactOverride(player);
       } else if (otherPlayer.attackType === "slap") {
-        // === CHARGED vs SLAP ===
-        // Phase 13A (V2): flying headbutt → physical first-contact. Palm keeps
-        // the legacy charge-power threshold.
+        // === CHARGED / PALM vs SLAP ===
+        // Palm: timing winner / trade (same language as slap-slap / palm-palm).
+        // Flying headbutt (V2): physical first-contact. Legacy charged: threshold.
+        if (player.isPalmThrust) {
+          resolvePalmVersusSlap(player, otherPlayer, rooms, io, now);
+          consumeStrikeContactOverride(player);
+          return;
+        }
         if (
           isCombatContactFidelityV2Enabled() &&
           isChargedHeadbuttActive(player)
@@ -1142,26 +1174,46 @@ function checkCollision(player, otherPlayer, rooms, io) {
         const chargeLevel = player.chargeAttackPower || 0;
         const slapTipLive = isSlapTipLive(otherPlayer, now);
         if (chargeLevel >= CHARGE_PRIORITY_THRESHOLD || !slapTipLive) {
-          // Charged/palm priority, OR slap tip already dead (recovery/startup):
-          // resolve the charged/palm hit — never cancel into a non-tip slap.
+          // Charged priority, OR slap tip already dead (recovery/startup):
+          // resolve the charged hit — never cancel into a non-tip slap.
           processHit(player, otherPlayer, rooms, io);
         } else if (isCombatContactFidelityV2Enabled()) {
-          // Live slap tip beats under-threshold charged/palm.
-          consumeLosingAttackInstance(player, {
-            winner: otherPlayer,
-            winnerMove: "slap",
-            loserMove: player.isPalmThrust ? "palm" : "charged",
-            outcome: CONTACT_OUTCOME.PRIORITY_LOSS,
-            interactionType: "SLAP_VS_CHARGED",
-            interruptionReason: "SLAP_BEATS_CHARGED",
-            strikeKind: "slap",
-            winnerIsAttacker: true,
-          });
+          // Live slap tip beats under-threshold charged. Commit the slap hit
+          // HERE (same pattern as slap-vs-slap) — do not only consume the
+          // loser and hope the slap branch still sees an exposed limb after
+          // the charged flag was cleared (player-order orphan miss).
+          if (isSlapTipLive(otherPlayer, now)) {
+            const reciprocal = querySlapOffensiveContact(
+              otherPlayer,
+              player,
+              now
+            );
+            if (reciprocal.connects) {
+              if (reciprocal.winner) {
+                stampStrikeContactOverride(otherPlayer, reciprocal.winner);
+              }
+              processHit(otherPlayer, player, rooms, io, {
+                skipSlapOpenHitGrace: true,
+              });
+            }
+          }
+          if (player.isAttacking) {
+            consumeLosingAttackInstance(player, {
+              winner: otherPlayer,
+              winnerMove: "slap",
+              loserMove: "charged",
+              outcome: CONTACT_OUTCOME.PRIORITY_LOSS,
+              interactionType: "SLAP_VS_CHARGED",
+              interruptionReason: "SLAP_BEATS_CHARGED",
+              strikeKind: "slap",
+              winnerIsAttacker: true,
+            });
+          }
           consumeStrikeContactOverride(player);
+          otherPlayer.lastCheckedAttackTime = otherPlayer.attackStartTime;
         } else {
           consumeStrikeContactOverride(player);
         }
-        // Below threshold vs live slap tip: skip — the slap branch handles it.
       } else {
         processHit(player, otherPlayer, rooms, io);
       }
@@ -1169,6 +1221,456 @@ function checkCollision(player, otherPlayer, rooms, io) {
       processHit(player, otherPlayer, rooms, io);
     }
   }
+}
+
+// ── PALM vs PALM ────────────────────────────────────────────────────────────
+// Palm-native timing priority. Design reference: slap winner/trade rarity —
+// same-tick window only — but these helpers never call slap trade / slap tip
+// queries / applyTradeHit.
+
+function isPalmThrustHitboxLive(attacker, simTime) {
+  if (!attacker || !attacker.isPalmThrust || !attacker.isAttacking) return false;
+  if (attacker.attackType !== "charged") return false;
+  if (attacker.isInStartupFrames) return false;
+  if (
+    attacker.chargedActiveEndTime &&
+    simTime > attacker.chargedActiveEndTime
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Reciprocal palm contact candidate for palm-vs-palm priority. Parallel in
+ * *structure* to slap's reciprocal check; palm reach + palm authored hurt only.
+ */
+function queryPalmOffensiveContact(attacker, victim, simTime) {
+  const empty = (reason) => ({
+    connects: false,
+    bodyEligible: false,
+    limbOnly: false,
+    opponentInFront: false,
+    winner: null,
+    limb: null,
+    reason,
+  });
+  if (!attacker || !victim) return empty("no_fighters");
+  if (!isPalmThrustHitboxLive(attacker, simTime)) return empty("palm_not_active");
+
+  const deltaX = victim.x - attacker.x;
+  const attackDir = attacker.facing === 1 ? -1 : 1;
+  const opponentInFront = deltaX * attackDir >= 0;
+  const horizontalDistance = Math.abs(deltaX);
+  const hitboxDistance = getConnectDistance("palm", attacker, victim);
+  const bodyEligible =
+    opponentInFront &&
+    isWithinConnectRange(horizontalDistance, hitboxDistance);
+  const palmHurt = resolveAuthoredSlapHurtContact(attacker, victim, {
+    simTime,
+    attackKind: "palm",
+    bodyEligible,
+    bodyContactX: getContactSeamX(attacker, victim, "palm"),
+    bodyDist: horizontalDistance,
+    attackDir,
+  });
+  const limbOnly =
+    palmHurt.mode === "authored_slap_hurtbox_v1" &&
+    palmHurt.connect &&
+    !bodyEligible &&
+    opponentInFront &&
+    !!palmHurt.limb;
+  const connects = !!(bodyEligible || limbOnly);
+  return {
+    connects,
+    bodyEligible,
+    limbOnly,
+    opponentInFront,
+    winner: connects ? palmHurt.winner : null,
+    limb: palmHurt.limb,
+    reason: connects
+      ? limbOnly
+        ? "limb_only"
+        : "body"
+      : !opponentInFront
+        ? "not_in_front"
+        : "no_contact",
+  };
+}
+
+/**
+ * Resolve two active palm thrusts that both have contact this snapshot.
+ * Caller already confirmed current palm has a connect candidate.
+ */
+function resolvePalmVersusPalm(player, otherPlayer, rooms, io, now) {
+  // Live palm vs palm still in startup → clean counter-hit (no clash cancel).
+  if (otherPlayer.isInStartupFrames) {
+    processHit(player, otherPlayer, rooms, io);
+    return;
+  }
+
+  const reciprocal = queryPalmOffensiveContact(otherPlayer, player, now);
+  if (!reciprocal.connects) {
+    // Unilateral: current connects, other palm does not → land the palm.
+    processHit(player, otherPlayer, rooms, io);
+    return;
+  }
+
+  const diff =
+    (player.attackStartTime || 0) - (otherPlayer.attackStartTime || 0);
+
+  if (Math.abs(diff) <= PALM_TRADE_WINDOW_MS) {
+    resolvePalmTrade(player, otherPlayer, rooms, io);
+    return;
+  }
+
+  if (diff > 0) {
+    // Later palm loses — commit earlier hit first, then stuff later.
+    if (reciprocal.winner) {
+      stampStrikeContactOverride(otherPlayer, reciprocal.winner);
+    }
+    processHit(otherPlayer, player, rooms, io);
+    if (isCombatContactFidelityV2Enabled() && player.isAttacking) {
+      consumeLosingAttackInstance(player, {
+        winner: otherPlayer,
+        winnerMove: "palm",
+        loserMove: "palm",
+        outcome: CONTACT_OUTCOME.PRIORITY_LOSS,
+        interactionType: "PALM_VS_PALM",
+        interruptionReason: "LATER_PALM_STUFFED",
+        strikeKind: "palm",
+      });
+    }
+    // Winner's own checkCollision later this tick must not reset isAlreadyHit.
+    otherPlayer.lastCheckedAttackTime = otherPlayer.attackStartTime;
+    return;
+  }
+
+  // Current palm earlier with reciprocal contact → full palm hit.
+  processHit(player, otherPlayer, rooms, io);
+}
+
+/**
+ * One palm-flavored trade hit on `victim` (struck by `attacker`). Used for
+ * palm-vs-palm ties and (with knockback override) the slapper side of a
+ * palm-vs-slap trade. Default shove is PALM_TRADE_KNOCKBACK — not full palm burst.
+ */
+function applyPalmTradeHit(victim, attacker, room, io, opts = {}) {
+  const currentTime = simNow(room);
+  const knockbackDirection = attacker.x < victim.x ? 1 : -1;
+  const tradeKb =
+    opts.knockback != null ? opts.knockback : PALM_TRADE_KNOCKBACK;
+
+  const palmDrain = MASTERY_P2_POSTURE
+    ? BALANCE_PALM_HIT_DRAIN_P2
+    : BALANCE_CHARGED_HIT_DRAIN;
+  victim.balance = Math.max(0, victim.balance - palmDrain);
+  victim.stamina = Math.max(
+    0,
+    victim.stamina - PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN
+  );
+
+  clearAllActionStates(victim);
+  victim.y = GROUND_LEVEL;
+  victim.cadenceChain = 0;
+  if (!victim.isAtTheRopes && !victim.atTheRopesFacingDirection) {
+    victim.facing = attacker.x < victim.x ? 1 : -1;
+  }
+  acquireHitstunFacingOwner(victim, victim.facing);
+
+  const tradeContactX = getContactSeamX(attacker, victim, "palm");
+
+  victim.isHit = true;
+  victim.isAlreadyHit = true;
+  victim.lastHitType = "charged";
+  victim.hitCounter = (victim.hitCounter || 0) + 1;
+  victim.isSlapKnockback = true;
+  victim.isChargedKnockback = false;
+  victim.isBurstKnockback = true;
+  victim.burstKnockbackStartTime = currentTime;
+
+  const distToBoundaryInKbDir =
+    knockbackDirection > 0
+      ? MAP_RIGHT_BOUNDARY - victim.x
+      : victim.x - MAP_LEFT_BOUNDARY;
+  victim.slapKnockbackCanRingOut =
+    distToBoundaryInKbDir <= slapKillBand(attacker, victim);
+
+  victim.knockbackVelocity = {
+    x: knockbackDirection * tradeKb,
+    y: 0,
+  };
+  victim.movementVelocity = 0;
+  victim.lastHitTime = currentTime;
+  victim.inputLockUntil = Math.max(
+    victim.inputLockUntil || 0,
+    currentTime + BURST_STUN_MS
+  );
+
+  timeoutManager.clearPlayerSpecific(victim.id, "hitStateReset");
+  const tradeHitstunId = beginHitstunLifecycle(victim);
+  setPlayerTimeout(
+    victim.id,
+    () => {
+      if (
+        isActionLifecycleOwnershipV2Enabled() &&
+        !assertLifecycleCallback(
+          victim,
+          LIFECYCLE_DOMAIN.REACTION,
+          tradeHitstunId,
+          "palm_trade_hitStateReset"
+        )
+      ) {
+        return;
+      }
+      if (Math.abs(victim.knockbackVelocity.x) > 0.01) {
+        victim.movementVelocity = victim.knockbackVelocity.x;
+      }
+      victim.knockbackVelocity.x = 0;
+      victim.isHit = false;
+      victim.isAlreadyHit = false;
+      victim.isSlapKnockback = false;
+      victim.isBurstKnockback = false;
+      victim.burstKnockbackStartTime = 0;
+      victim.slapKnockbackCanRingOut = false;
+      if (isActionFacingOwnershipV2Enabled()) {
+        releaseActionFacingLock(victim, {
+          expectedInstanceId: victim.hitstunFacingInstanceId,
+          expectedOwnerType: ACTION_FACING_OWNER.HITSTUN,
+          reason: ACTION_FACING_RELEASE.RECOVERY_COMPLETE,
+          clearLegacy: false,
+        });
+        victim.hitstunFacingInstanceId = null;
+      }
+      if (isActionLifecycleOwnershipV2Enabled()) {
+        completeLifecycleOwner(
+          victim,
+          LIFECYCLE_DOMAIN.REACTION,
+          tradeHitstunId,
+          { reason: "PALM_TRADE_HITSTUN_COMPLETE" }
+        );
+        markLifecycleControlRestore(
+          victim,
+          LIFECYCLE_DOMAIN.REACTION,
+          tradeHitstunId
+        );
+        victim.hitstunLifecycleInstanceId = null;
+      }
+    },
+    BURST_STUN_MS,
+    "hitStateReset"
+  );
+
+  const attackerPlayerNumber =
+    room.players.findIndex((p) => p.id === attacker.id) + 1;
+  const tradeHitId = Math.random().toString(36).substr(2, 9);
+  const tradePresentation = buildGroundStrikeContactPresentation({
+    eventType: PRESENTATION_EVENT_TYPE.GS_HIT,
+    attacker,
+    defender: victim,
+    contactX: tradeContactX,
+    isSlapAttack: false,
+    hitId: tradeHitId,
+    salt: "palm_trade",
+  });
+  io.in(room.id).emit(
+    "player_hit",
+    attachCombatPresentation(
+      {
+        x: victim.x,
+        y: victim.y,
+        facing: victim.facing,
+        attackType: "charged",
+        isPalmThrust: true,
+        chargePercentage: 0,
+        timestamp: Date.now(),
+        hitId: tradeHitId,
+        isCounterHit: false,
+        isPunish: false,
+        showCounterBanner: false,
+        showPunishBanner: false,
+        attackerPlayerNumber,
+        cinematicKill: false,
+        knockbackDirection,
+        isArmorBreak: false,
+        isPowered: false,
+        attackerId: attacker.id,
+        victimId: victim.id,
+        isCadence: false,
+        cadenceChain: 0,
+        momentumHit: false,
+        braked: false,
+        contactX: tradeContactX,
+        contactY: victim.y,
+      },
+      tradePresentation
+    )
+  );
+}
+
+/** Genuine same-tick palm tie → both take a palm trade hit; one shared freeze. */
+function resolvePalmTrade(player1, player2, rooms, io) {
+  const room = rooms.find((r) => r.players.some((p) => p.id === player1.id));
+  if (!room) return;
+
+  if (isCombatContactFidelityV2Enabled()) {
+    const interactionId = mintInteractionId("pvt");
+    consumeLosingAttackInstance(player1, {
+      winner: player2,
+      winnerMove: "palm",
+      loserMove: "palm",
+      outcome: CONTACT_OUTCOME.TRADE,
+      interactionType: "PALM_VS_PALM",
+      interruptionReason: "SIMULTANEOUS_CONTACT",
+      interactionId,
+      stopVelocity: true,
+    });
+    consumeLosingAttackInstance(player2, {
+      winner: player1,
+      winnerMove: "palm",
+      loserMove: "palm",
+      outcome: CONTACT_OUTCOME.TRADE,
+      interactionType: "PALM_VS_PALM",
+      interruptionReason: "SIMULTANEOUS_CONTACT",
+      interactionId,
+      stopVelocity: true,
+    });
+  }
+
+  applyPalmTradeHit(player1, player2, room, io);
+  applyPalmTradeHit(player2, player1, room, io);
+  triggerHitstopAndEmit(io, room, HITSTOP_BURST_MS, "palm");
+}
+
+// ── PALM vs SLAP ────────────────────────────────────────────────────────────
+// Timing priority / rare same-tick trade. Design reference: slap-vs-slap and
+// palm-vs-palm. Palm does NOT win via CHARGE_PRIORITY_THRESHOLD.
+
+/**
+ * Resolve an active palm thrust against an active slap when at least one side
+ * already has a connect candidate this tick. Order-independent.
+ */
+function resolvePalmVersusSlap(palm, slap, rooms, io, now) {
+  if (!palm || !slap) return;
+  if (!palm.isAttacking || !palm.isPalmThrust) return;
+  if (palm.attackType !== "charged") return;
+
+  const palmContact = queryPalmOffensiveContact(palm, slap, now);
+  const slapContact = isSlapTipLive(slap, now)
+    ? querySlapOffensiveContact(slap, palm, now)
+    : { connects: false, winner: null };
+
+  if (!palmContact.connects && !slapContact.connects) {
+    return;
+  }
+
+  // Unilateral: only one tip has a real connect this snapshot.
+  if (palmContact.connects && !slapContact.connects) {
+    if (palmContact.winner) {
+      stampStrikeContactOverride(palm, palmContact.winner);
+    }
+    processHit(palm, slap, rooms, io);
+    return;
+  }
+  if (!palmContact.connects && slapContact.connects) {
+    if (slapContact.winner) {
+      stampStrikeContactOverride(slap, slapContact.winner);
+    }
+    processHit(slap, palm, rooms, io, { skipSlapOpenHitGrace: true });
+    return;
+  }
+
+  // Reciprocal contact: earlier attackStartTime wins; near-simultaneous trades.
+  const diff = (palm.attackStartTime || 0) - (slap.attackStartTime || 0);
+
+  if (Math.abs(diff) <= PALM_VS_SLAP_TRADE_WINDOW_MS) {
+    resolvePalmSlapTrade(palm, slap, rooms, io);
+    return;
+  }
+
+  if (diff > 0) {
+    // Later palm loses — commit slap hit first, then stuff palm.
+    if (slapContact.winner) {
+      stampStrikeContactOverride(slap, slapContact.winner);
+    }
+    processHit(slap, palm, rooms, io, { skipSlapOpenHitGrace: true });
+    if (isCombatContactFidelityV2Enabled() && palm.isAttacking) {
+      consumeLosingAttackInstance(palm, {
+        winner: slap,
+        winnerMove: "slap",
+        loserMove: "palm",
+        outcome: CONTACT_OUTCOME.PRIORITY_LOSS,
+        interactionType: "PALM_VS_SLAP",
+        interruptionReason: "LATER_PALM_STUFFED",
+        strikeKind: "palm",
+      });
+    }
+    slap.lastCheckedAttackTime = slap.attackStartTime;
+    return;
+  }
+
+  // Earlier palm wins clean.
+  if (palmContact.winner) {
+    stampStrikeContactOverride(palm, palmContact.winner);
+  }
+  processHit(palm, slap, rooms, io);
+  if (isCombatContactFidelityV2Enabled() && slap.isAttacking) {
+    consumeLosingAttackInstance(slap, {
+      winner: palm,
+      winnerMove: "palm",
+      loserMove: "slap",
+      outcome: CONTACT_OUTCOME.PRIORITY_LOSS,
+      interactionType: "PALM_VS_SLAP",
+      interruptionReason: "LATER_SLAP_STUFFED",
+      strikeKind: "slap",
+    });
+  }
+  palm.lastCheckedAttackTime = palm.attackStartTime;
+}
+
+/** Near-simultaneous palm ↔ slap: slap trade hit on palm + palm trade hit on slap. */
+function resolvePalmSlapTrade(palm, slap, rooms, io) {
+  const room = rooms.find((r) => r.players.some((p) => p.id === palm.id));
+  if (!room) return;
+
+  if (isCombatContactFidelityV2Enabled()) {
+    const interactionId = mintInteractionId("pvs");
+    consumeLosingAttackInstance(palm, {
+      winner: slap,
+      winnerMove: "slap",
+      loserMove: "palm",
+      outcome: CONTACT_OUTCOME.TRADE,
+      interactionType: "PALM_VS_SLAP",
+      interruptionReason: "SIMULTANEOUS_CONTACT",
+      interactionId,
+      stopVelocity: true,
+    });
+    consumeLosingAttackInstance(slap, {
+      winner: palm,
+      winnerMove: "palm",
+      loserMove: "slap",
+      outcome: CONTACT_OUTCOME.TRADE,
+      interactionType: "PALM_VS_SLAP",
+      interruptionReason: "SIMULTANEOUS_CONTACT",
+      interactionId,
+      stopVelocity: true,
+    });
+  }
+
+  // Asymmetric: slapper eats the heavier palm-flavored shove; palm gets a
+  // lighter slap-flavored space-reset (not the full slap-vs-slap trade KB).
+  applyTradeHit(palm, slap, room, io, {
+    knockback: PALM_VS_SLAP_TRADE_KB_ON_PALM,
+  });
+  applyPalmTradeHit(slap, palm, room, io, {
+    knockback: PALM_VS_SLAP_TRADE_KB_ON_SLAPPER,
+  });
+  triggerHitstopAndEmit(
+    io,
+    room,
+    Math.max(HITSTOP_SLAP_MS, HITSTOP_BURST_MS),
+    "palm"
+  );
 }
 
 // ── SLAP TRADE ──────────────────────────────────────────────────────────────
@@ -1179,9 +1681,11 @@ function checkCollision(player, otherPlayer, rooms, io) {
 // knockback + boundary logic converts a boundary-side victim into a ring-out —
 // and since both players are shoved toward OPPOSITE ropes while inside slap
 // range of each other, at most ONE can ever be in kill range (no double-KO).
-function applyTradeHit(victim, attacker, room, io) {
+function applyTradeHit(victim, attacker, room, io, opts = {}) {
   const currentTime = simNow(room);
   const knockbackDirection = attacker.x < victim.x ? 1 : -1; // shove victim away from attacker
+  const tradeKb =
+    opts.knockback != null ? opts.knockback : SLAP_TRADE_KNOCKBACK;
 
   const slapDrain = MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN;
   victim.balance = Math.max(0, victim.balance - slapDrain);
@@ -1215,7 +1719,7 @@ function applyTradeHit(victim, attacker, room, io) {
   // Hard mutual shove (not the normal on-hit drift) so a trade SPACES both
   // players out of slap range — they must re-approach, which breaks the +0
   // "sync-lock" that would otherwise make synced mashers re-trade every cycle.
-  victim.knockbackVelocity = { x: knockbackDirection * SLAP_TRADE_KNOCKBACK, y: 0 };
+  victim.knockbackVelocity = { x: knockbackDirection * tradeKb, y: 0 };
   victim.movementVelocity = 0;
   victim.lastHitTime = currentTime;
   victim.inputLockUntil = Math.max(victim.inputLockUntil || 0, currentTime + SLAP_MIN_HITSTUN_MS);
@@ -1558,6 +2062,9 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
     p.attackEndTime = 0;
     p.chargedAttackHit = false;
     p.isSlapAttack = false;
+    p.isPalmThrust = false;
+    p.palmThrustVisualUntil = 0;
+    p.chargedActiveEndTime = 0;
     p.isInStartupFrames = false;
     p.startupEndTime = 0;
   });
@@ -4060,6 +4567,8 @@ module.exports = {
   resolveSlapTrade,
   resolveSlapChargedTrade,
   resolveSlapChargedFromLunge,
+  resolvePalmTrade,
+  resolvePalmVersusSlap,
   resolveChargeClash,
   // Callout partition helper — tests only; not a gameplay entry point.
   evaluateHitCallouts,

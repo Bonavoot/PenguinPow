@@ -96,6 +96,7 @@ import "./theme.css";
 import { SERVER_BROADCAST_HZ, DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY, isOutsideDohyo } from "../constants";
 import {
   SLAP_ANIM,
+  PALM_THRUST_ANIM,
   AP_WHIFF_RECOVERY_MS,
 } from "../config/combatTiming";
 import {
@@ -752,25 +753,12 @@ const GameFighter = ({
   const lastFlapSHeldRef = useRef(false);
   const FLAP_WINGBEAT_MS = 90; // ~down-stroke hold (snappy wing flap)
 
-  // OPEN-PALM THRUST animation: a client-driven forward-only timeline anchored
-  // to the rising edge of isPalmThrust (server keeps the flag true from startup
-  // through recovery). Frame boundaries are cumulative ms since that edge —
-  // tuned to the move's ~90ms startup / ~90ms active cadence, holding the
-  // active strike longest and the smear shortest per the move's feel:
-  //   [0,       STARTUP)  → 0 startup (windup)
-  //   [STARTUP, SMEAR)    → 1 smear   (whoosh, shortest)
-  //   [SMEAR,   ACTIVE)   → 2 active  (strike, held the longest)
-  //   [ACTIVE,  ∞)        → 3 recovery(reuses the startup pose, brief tail)
-  // Held forward-only so the differing hit vs whiff recovery lengths can't
-  // desync the sequence — whichever ends first just drops the flag. The active
-  // strike owns the bulk of the move; recovery is only a short settle before
-  // the flag drops (on-hit recovery is short enough it may skip recovery
-  // entirely and cut straight to the idle/recovering pose).
-  // Flag lifetime on the server is ~500ms whiff / ~380ms hit. The pre-active
-  // smear and the recovery smear are both kept EXTREMELY short (brief flashes)
-  // so the active strike dominates: a ~24ms smear lead-in, then active until
-  // ~460ms, leaving only a ~40ms recovery smear flash on whiff (hit is short
-  // enough it cuts straight to idle).
+  // OPEN-PALM THRUST animation: client-driven timeline anchored to the rising
+  // edge of isPalmThrust. Boundaries from config/combatTiming.js — short smear
+  // lead-in, early strike pose (snappy paint; server hitbox is still 90ms):
+  //   [0,       STARTUP_END) → 0/1 smear
+  //   [SMEAR,   ACTIVE_END)  → 2 strike (held through active + visual hold)
+  //   [ACTIVE,  ∞)           → 3 recovery (startup pose settle)
   const palmThrustAnimRef = useRef({
     startedAt: 0,
     fxId: 0,
@@ -779,11 +767,6 @@ const GameFighter = ({
     freezeEnd: 0,
     lastHitstopUntil: 0,
   });
-  const PALM_THRUST_ANIM = {
-    STARTUP_END: 20,
-    SMEAR_END: 40,
-    ACTIVE_END: 460,
-  };
 
   // SLAP animation: client-driven windup → smear → hit → recovery.
   // Boundaries from config/combatTiming.js (mirrors server SLAP_*_MS):
@@ -6849,12 +6832,11 @@ const GameFighter = ({
   // the buffered cones. The counter changes on every execution → one cone
   // per thrust, always.
   //
-  // The preset carries its own lead delay so the cone bloom lands as the arm
-  // reaches full extension (~end of the ~90ms startup). We center on the
-  // sprite exactly like the hit-spark (x + 70 + facingOffsetPx), and pass
-  // dir = -facing — the authoritative forward screen-x direction (see the
-  // auto-facing in gameFunctions) — so the cone always erupts toward the
-  // opponent, never backward.
+  // Cone fires on server palmThrustFxId confirm (already ~a network hop into
+  // the move) — no extra lead. We center on the sprite exactly like the
+  // hit-spark (x + 70 + facingOffsetPx), and pass dir = -facing — the
+  // authoritative forward screen-x direction (see the auto-facing in
+  // gameFunctions) — so the cone always erupts toward the opponent.
   // ─────────────────────────────────────────────────────────────────
   const prevPalmThrustFxId = useRef(null);
   useEffect(() => {
@@ -8772,6 +8754,8 @@ const GameFighter = ({
     $clinchThrowFailStagger: penguin.clinchThrowFailStagger,
     $isClinchOpen: !!(penguin.isClinchOpen || penguin.clinchThrowFailStagger),
     $isClinchPerfectBracing: !!penguin.isClinchPerfectBracing,
+    $clinchBracePhase: penguin.clinchBracePhase || null,
+    $clinchThrowAnimMs: penguin.clinchThrowAnimMs || 0,
     $isClinchCommittedDrive: !!penguin.isClinchCommittedDrive,
     $inClinch: penguin.inClinch,
     $hasDeepGrip: penguin.hasDeepGrip,

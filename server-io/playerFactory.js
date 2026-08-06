@@ -171,6 +171,8 @@ function createInitialPlayerState(overrides = {}) {
     sidestepTargetX: 0,
     sidestepRecoveryStartX: 0,
     sidestepRecoveryTargetX: 0,
+    // Sim deadline: retarget action facing locks if sides flip after sidestep end
+    postSidestepFacingTrackUntil: 0,
     isSidestepHitReturn: false,
     sidestepHitReturnStartTime: 0,
     sidestepHitReturnStartY: 0,
@@ -488,7 +490,10 @@ function createInitialPlayerState(overrides = {}) {
     grabActionType: null,
     lastGrabPushStaminaDrainTime: 0,
     isAtBoundaryDuringGrab: false,
-    clinchEdgePinStart: 0,
+    // Accumulated ms actually spent pinned against the tawara by an opponent's
+    // drive. Advances only on ticks where the drive is real; reset only by
+    // leaving the boundary or the pusher easing off — never by an input.
+    clinchEdgePinHeldMs: 0,
     grabDurationPaused: false,
     grabDurationPausedAt: 0,
     grabPushEndTime: 0,
@@ -521,6 +526,14 @@ function createInitialPlayerState(overrides = {}) {
     clinchPushLossStart: 0,
     clinchBraceSimTime: 0,
     clinchBraceLatchUntil: 0, // Throw/Pull brace grace after Plant release
+    // "<actorId>:<clinchThrowStartTime>" while a fresh Brace is armed against
+    // that specific incoming technique. Survives key release until impact.
+    clinchBraceArmedTechnique: null,
+    // Brace attempt cycle: sim time of the current attempt's press. ACTIVE for
+    // CLINCH_BRACE_ACTIVE_MS, then SETTLE, then READY for a genuinely new edge.
+    clinchBraceAttemptStart: 0,
+    clinchBraceAttemptRefunded: false,
+    clinchBracePhase: null, // 'active' | 'settle' | null — presentation mirror
     clinchBracePressGameTime: 0,
     clinchThrowArcDistance: 0,
     clinchThrowArcHeight: 0,
@@ -530,6 +543,8 @@ function createInitialPlayerState(overrides = {}) {
     isPostureBroken: false,
     deepGripPushStart: 0,
     clinchPushRampStart: 0,
+    // Eased 0..1 weight for the Open-punish shove (no velocity snap at Open's edges)
+    clinchOpenPunishBlend: 0,
     postGrabInputBuffer: false,
     grabImmune: false,
     grabImmuneEndTime: 0,
@@ -575,6 +590,7 @@ function createInitialPlayerState(overrides = {}) {
     clinchThrowActive: false,
     clinchThrowType: null,
     clinchThrowStartTime: 0,
+    clinchThrowAnimMs: 0,
     clinchThrowCooldown: false, // retired (Open/recovery); kept for safe cleanup
     clinchThrowUsedDeepGrip: false,
     clinchThrowWasCounter: false,

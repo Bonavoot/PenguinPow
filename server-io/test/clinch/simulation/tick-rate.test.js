@@ -112,27 +112,33 @@ describe("Tick-rate sensitivity", () => {
     assert.equal(s.grabber.inClinch, false);
   });
 
-  it("edge pin hold expiry across coarse ticks", () => {
-    const s = sc({ tickMs: 33 });
-    s.placeVictimAtRightEdge();
-    s.setCommittedDrive(s.grabber);
-    s.holdNeutral(s.grabbed);
-    s.stepOnce();
-    const pinStart = s.grabbed.clinchEdgePinStart;
-    assert.ok(pinStart > 0);
-    while (
-      s.now() < pinStart + CLINCH_EDGE_PIN_HOLD_MS &&
-      !s.room.gameOver
-    ) {
-      s.setCommittedDrive(s.grabber);
-      s.holdNeutral(s.grabbed);
-      s.advance(33, { tickMs: 33 });
-    }
-    if (!s.room.gameOver) {
+  // The pin hold accumulates delta rather than reading a start stamp, so a coarse
+  // tick must reach the same total in the same wall-clock time — one long tick
+  // credits exactly as much pin as two short ones.
+  it("edge pin hold expiry is tick-rate independent", () => {
+    function timeToRingOut(tickMs) {
+      const s = sc({ tickMs });
+      s.placeVictimAtRightEdge();
       s.setCommittedDrive(s.grabber);
       s.holdNeutral(s.grabbed);
       s.stepOnce();
+      assert.ok(s.grabbed.clinchEdgePinHeldMs > 0, `pin starts at ${tickMs}ms`);
+      const t0 = s.now();
+      while (!s.room.gameOver && s.now() - t0 < CLINCH_EDGE_PIN_HOLD_MS * 2) {
+        s.setCommittedDrive(s.grabber);
+        s.holdNeutral(s.grabbed);
+        s.advance(tickMs, { tickMs });
+      }
+      assert.equal(s.room.gameOver, true, `ring-out fired at ${tickMs}ms ticks`);
+      return s.now() - t0;
     }
-    assert.equal(s.room.gameOver, true);
+
+    const coarse = timeToRingOut(33);
+    const fine = timeToRingOut(8);
+    assert.ok(
+      Math.abs(coarse - fine) <= 66,
+      `hold duration must not depend on tick size (33ms: ${coarse}, 8ms: ${fine})`
+    );
+    assert.ok(coarse >= CLINCH_EDGE_PIN_HOLD_MS - 33);
   });
 });

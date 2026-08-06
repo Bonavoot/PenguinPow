@@ -8,6 +8,7 @@ export const STRIKE_CHORD_MS = 50;
 
 export const SWING_STARTUP_MS = Object.freeze({
   slap: 55,
+  /** MUST match server-io/constants.js PALM_THRUST_STARTUP_MS */
   palm: 90,
   lowKick: 95,
   /** Hitbox startup only — NOT the charged lunge whoosh seam. */

@@ -661,6 +661,7 @@ function resetRoomAndPlayers(room, io) {
     player.clinchShoveLead = null;
     player.deepGripPushStart = 0;
     player.clinchPushRampStart = 0;
+    player.clinchOpenPunishBlend = 0;
     player.grabCounterAttempted = false;
     player.grabCounterInput = null;
     player.isThrowTeching = false;

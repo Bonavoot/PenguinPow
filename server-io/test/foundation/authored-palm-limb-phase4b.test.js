@@ -6,7 +6,7 @@
  * Phase 4A proved the principle on slap. Phase 4B extends it to the open-palm
  * thrust, whose extended arm is the game's most visible whiff-punish target:
  *
- *   palm_active   — the 90ms strike window.
+ *   palm_active   — the PALM_THRUST_ACTIVE_MS strike window.
  *   palm_recovery — ONLY while the arm is still held out (PALM_THRUST_HOLD_MS
  *                   into recovery). After that the art retracts to the ready
  *                   stance and there is no honest limb-only window left.
@@ -40,6 +40,7 @@ const {
   stepCollisionBothOrders,
   placeAtGap,
   clearActionState,
+  checkCollision,
   PALM_THRUST_HOLD_MS,
   SLAP_STARTUP_MS,
   SLAP_ACTIVE_MS,
@@ -66,11 +67,17 @@ const authoredCatalog = require("../../../shared/combatVolumeAuthored.json");
 /** Sub-pixel guard for float round-trips through placeAtGap. Not a tolerance. */
 const BOUNDARY_NUDGE = 1e-6;
 
-/** Deep-active slap attacker: past the late-parry grace, tip genuinely live. */
+/**
+ * Deep-active slap attacker: past the late-parry grace, tip genuinely live.
+ * Starts clearly earlier than a typical active palm (palm arms at
+ * now - PALM_THRUST_STARTUP_MS - 5) so slap→palm limb fixtures still resolve
+ * as the slap punish under palm-vs-slap timing priority — not a palm counter.
+ */
 function armDeepSlapActive(p, now) {
   armSlapPhase(p, "active", now);
   p.isInStartupFrames = false;
-  p.attackStartTime = now - SLAP_STARTUP_MS - AP_LATE_PARRY_MS - 20;
+  // ~160ms into the slap — still inside SLAP_ACTIVE, earlier than palm active.
+  p.attackStartTime = now - SLAP_STARTUP_MS - AP_LATE_PARRY_MS - 60;
   p.slapActiveEndTime = p.attackStartTime + SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
   p.attackEndTime = p.slapActiveEndTime + SLAP_RECOVERY_MS;
 }
@@ -88,6 +95,15 @@ function armPalmVictim(victim, attacker, now, phase, opts) {
 function lastHit(io) {
   const h = io.last("player_hit");
   return h ? h.payload : null;
+}
+
+/** Slap is the attacker under test; palm limb is the target. Resolve only
+ *  slap → palm so player-array order cannot invert a mutual tip exchange
+ *  (active palm + active slap at limb spacing). */
+function stepSlapIntoPalm(s, attacker, victim) {
+  if (attacker.isAttacking) {
+    checkCollision(attacker, victim, s.rooms, s.io);
+  }
 }
 
 /**
@@ -328,12 +344,12 @@ describe("Phase 4B — palm limb contact boundary", () => {
     });
 
     it(`${tag}: connects at the visible-touch boundary`, () => {
-      const { s, now, victim } = palmScenario(row);
+      const { s, now, victim, attacker } = palmScenario(row);
       // BOUNDARY_NUDGE only absorbs the IEEE754 error of the root round-trip
       // (placeAtGap recomputes both roots from a midpoint, which can land the
       // touching edges ~1e-13 apart). Contact itself is exact-touch inclusive.
       placeAtGap(s, limbReachGap("slap", victim, now) - BOUNDARY_NUDGE);
-      stepCollisionBothOrders(s);
+      stepSlapIntoPalm(s, attacker, victim);
       assert.equal(victim.isHit, true, `${tag}: must connect at the arm tip`);
       const p = lastHit(s.io);
       assert.equal(p.victimHurtRegion, "frontArm");
@@ -343,9 +359,9 @@ describe("Phase 4B — palm limb contact boundary", () => {
     });
 
     it(`${tag}: misses just beyond the documented epsilon`, () => {
-      const { s, now, victim } = palmScenario(row);
+      const { s, now, victim, attacker } = palmScenario(row);
       placeAtGap(s, limbReachGap("slap", victim, now) + CONTACT_SNAP_EPSILON + 1);
-      stepCollisionBothOrders(s);
+      stepSlapIntoPalm(s, attacker, victim);
       assert.equal(victim.isHit, false, `${tag}: empty air must stay a whiff`);
       assert.equal(lastHit(s.io), null);
       s.dispose();
@@ -357,7 +373,7 @@ describe("Phase 4B — palm limb contact boundary", () => {
       assert.ok(gap != null, `${tag}: band required`);
       placeAtGap(s, gap);
       const attackerXBefore = attacker.x;
-      stepCollisionBothOrders(s);
+      stepSlapIntoPalm(s, attacker, victim);
       assert.equal(victim.isHit, true);
       assert.equal(
         attacker.x,
