@@ -4,8 +4,9 @@ import styled, { keyframes, css } from "styled-components";
 import { drawBalanceGauge } from "./balanceGaugeDraw";
 import { C, FONT_DISPLAY, FONT_KANJI, HUD } from "./menuTheme";
 
-/* Compact secondary meter — stamina stays the hero, posture stays loud. */
-const GAUGE_HEIGHT = "clamp(16px, 2.15cqh, 21px)";
+/* Compact secondary meter — stamina stays the hero, posture stays loud.
+ * Exported so the match clock can share the same rhythm token. */
+export const GAUGE_HEIGHT = "clamp(16px, 2.15cqh, 21px)";
 
 /* MASTERY Phase 5 (5.2): broken-posture HUD pulse. */
 const posturePulse = keyframes`

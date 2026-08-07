@@ -30,6 +30,9 @@ import { keyframes } from "styled-components";
  * Display face stays "Bungee" for brand / menus / combat callouts.
  * (Dela Gothic One was trialed for callouts; it fought the HUD and
  * looked soft under transforms — callouts share Bungee with UiPlayerInfo.)
+ * Bout clock stays on Chillax (the HUD face). Sibling/scoreboard faces
+ * kept reading as a different game; same-family + bold tabular numerals
+ * keeps the timer in the band without a foreign type voice.
  * Kanji accents stay "Noto Serif JP" / "Noto Sans JP".
  */
 export const FONT_BODY = `"Space Grotesk", "Inter", system-ui, sans-serif`;
@@ -39,6 +42,8 @@ export const FONT_COMBAT = FONT_DISPLAY;
 export const FONT_KANJI = `"Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif`;
 /** HUD / menu interface face — matches --font-ui in typography.css */
 export const FONT_UI = `"Chillax", system-ui, sans-serif`;
+/** Match-clock / bout timer face — same family as FONT_UI */
+export const FONT_CLOCK = FONT_UI;
 
 /*
  * Chillax tops out at 700 — map black/extrabold onto bold so callers
@@ -307,6 +312,16 @@ export const HUD = {
   chrome: "#f5ecd9",              // = C.cream
   // Reserved for ONE meaning: this slot is empty or unavailable.
   chromeDim: "#b3a992",
+  /*
+   * Hero type only — the shikona and the bout clock.
+   *
+   * One step brighter than the chrome, so the largest type on the band is
+   * also the lightest value on it. Both used to be exactly `chrome`,
+   * which meant the biggest element and a 2px border were the same
+   * colour and the names never claimed the top of the hierarchy. Hue is
+   * spoken for (jade, ice, vermillion, gold), so value is what's left.
+   */
+  heroType: "#fffaf0",
   keyline: "rgba(3, 5, 10, 0.92)", // dark ring outside every cream stroke
   well: "#0a0d15",                // substrate a fill sits directly against
 
@@ -320,9 +335,16 @@ export const HUD = {
    * each side was 27% of the whole object and the gauge read as mostly
    * frame. `strokeThin` keeps the border a similar FRACTION of the
    * smaller element instead of a similar number of pixels.
+   *
+   * Both came down again once the inner ink keyline landed. With ink on
+   * BOTH sides, the border assembly is keyline + cream + keyline, and the
+   * ink is doing the shape-defining — so the cream between them is
+   * carrying less and can afford to be lighter. Left at its old weight
+   * the stack ran ~4.2px a side on a 29px bar, which is a third of the
+   * bar spent on chrome.
    */
-  stroke: "clamp(1.4px, 0.15cqw, 2.2px)",
-  strokeThin: "clamp(1px, 0.11cqw, 1.5px)",
+  stroke: "clamp(1.2px, 0.13cqw, 1.9px)",
+  strokeThin: "clamp(1px, 0.1cqw, 1.3px)",
 };
 
 // ============================================

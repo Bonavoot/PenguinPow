@@ -19,13 +19,13 @@ import { BOUT_SECONDS, CLOCK_URGENT_AT } from "../config/boutClock";
 import { getPowerUpTypeColor } from "../config/powerUpConfig";
 import {
   C,
+  FONT_CLOCK,
   FONT_DISPLAY,
   FONT_KANJI,
   FONT_RENDER,
   FONT_UI,
   FONT_WEIGHT,
   HUD,
-  TEXT_SHADOW_DISPLAY,
   TEXT_SHADOW_UI,
   TRACK,
 } from "./menuTheme";
@@ -60,9 +60,9 @@ const WELL = HUD.well;
 const STROKE = HUD.stroke;
 const ALARM = C.vermillionBright;
 
-/* Shared vertical rhythm. CENTER_MIDLINE_TOP is derived from these, so
- * the round medallion and wing rails stay locked to the stamina midline
- * at every viewport size — change a value here, never in two places. */
+/* Shared vertical rhythm. STAMINA_MIDLINE_TOP / CLOCK_MIDLINE_TOP are
+ * derived from these, so the match clock stays locked to the gauge
+ * stack at every viewport size — change a value here, never in two places. */
 const HUD_PAD_TOP = "clamp(12px, 1.7cqh, 20px)";
 /* Tracks NAME_SIZE's unit (cqw, not cqh) at a fixed ~1.29x ratio, so the
  * row is always taller than the shikona at every viewport. If this used
@@ -423,8 +423,8 @@ const PlayerWing = styled.div`
 // NAME BANNER  —  sumo shikona-style plate
 // ============================================
 
-/* Fixed height (not min-height) so CENTER_MIDLINE_TOP's arithmetic is
- * exact — the round medallion is positioned off that sum. */
+/* Fixed height (not min-height) so STAMINA_MIDLINE_TOP's arithmetic is
+ * exact — the match clock is positioned off that sum. */
 const NameBanner = styled.div`
   display: flex;
   /* Bottom-aligned, not centered. The row is taller than the type so the
@@ -471,9 +471,20 @@ const FighterName = styled.div`
   font-family: ${FONT_UI};
   font-weight: ${FONT_WEIGHT.bold};
   font-size: ${NAME_SIZE};
-  color: ${C.cream};
+  /* Brighter than the chrome, and contoured like the clock.
+   *
+   * At plain C.cream the shikona was the exact same colour as a 2px
+   * border, so the biggest thing on the band never claimed the top of the
+   * hierarchy — hue is spoken for by the fills, which leaves value.
+   *
+   * The stroke is in em, not px: FitFighterName rewrites font-size inline
+   * to fit long shikona, and a fixed px contour would turn chunky on a
+   * name that shrank to 12px. In em it thins with the type. */
+  color: ${HUD.heroType};
   ${FONT_RENDER}
-  text-shadow: ${TEXT_SHADOW_DISPLAY};
+  -webkit-text-stroke: 0.07em rgba(4, 6, 12, 0.95);
+  paint-order: stroke fill;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   letter-spacing: ${TRACK.meta};
   text-transform: uppercase;
   line-height: 1;
@@ -1501,13 +1512,18 @@ const PowerUpChargeMark = styled.span`
 // CENTER ROUND / DAY — lacquered broadcast seal
 // ============================================
 
-/* Shared Y for the day/round mark + wing rail — stamina-bar midline. */
-const CENTER_MIDLINE_TOP = `
+/* Stamina-bar midline — kept as the arithmetic base for the clock seat. */
+const STAMINA_MIDLINE_TOP = `
   ${HUD_PAD_TOP} + ${NAME_ROW_H} + ${NAME_GAP} +
   ${STROKE} + (${BAR_H} * 0.5)
 `;
 
-/* Match clock — bare numerals on the stamina midline. No ring, no rail,
+/* Clock Y — stamina midline, then a small optical lift. Chillax's digit
+ * em-box carries extra space above the caps, so a pure -50% translate
+ * reads as low-biased on the hero bar; pull it up a hair. */
+const CLOCK_MIDLINE_TOP = STAMINA_MIDLINE_TOP;
+
+/* Match clock — bare numerals between the wing gauges. No ring, no rail,
  * no caption.
  *
  * The center used to hold a round/day counter, which is information you
@@ -1517,9 +1533,11 @@ const CENTER_MIDLINE_TOP = `
  * around it is what makes it read without a container. */
 const MatchClock = styled.div`
   position: absolute;
-  top: calc(${CENTER_MIDLINE_TOP});
+  top: calc(${CLOCK_MIDLINE_TOP});
   left: 50%;
-  transform: translate(-50%, -50%);
+  /* -50% centers the box; the extra -0.08em lifts the digit ink so it
+   * no longer reads low against the stamina frame. */
+  transform: translate(-50%, calc(-50% - 0.08em));
   /* Above the player wings so the digits stay readable over bar tips. */
   z-index: 3;
   pointer-events: none;
@@ -1527,35 +1545,39 @@ const MatchClock = styled.div`
   opacity: ${(p) => (p.$matchOver ? 0.7 : 1)};
   transition: opacity 260ms ease;
 
-  /* Bungee, not the interface face.
+  /* Chillax Bold — same face as the HUD labels.
    *
    * The clock is the only permanent numeral on the band and it sits in
    * ~134px of deliberately empty space between the two wings (they cap
-   * at 560px each). At the interface face's weight and size it read as a
-   * label that had wandered into the middle rather than the thing the
-   * negative space was cleared for. Bungee is the game's display face —
-   * the same one HAKKI-YOI and the kimarite callouts use — so the clock
-   * now belongs to the broadcast, and it is sized to actually occupy the
-   * gap it was given. */
-  font-family: ${FONT_DISPLAY};
-  font-weight: 400;
-  /* Scaled against the stamina FRAME, not the empty gap: the cap height
-   * lands about 1.15x the bar's height, which is roughly the proportion
-   * the reference broadcast UI uses. Sized to the gap instead (5.5cqw,
-   * ~72px) the numeral overshot the band top and bottom and the two bars
-   * looked like they were skewering it. */
-  font-size: clamp(26px, 4.2cqw, 54px);
+   * at 560px each). Separate "timer fonts" kept pulling the band into
+   * industrial / futuristic territory; staying on Chillax keeps the
+   * chrome one voice. Size + weight + tabular nums do the instrument job. */
+  font-family: ${FONT_CLOCK};
+  font-weight: ${FONT_WEIGHT.bold};
+  /* Sized against the dual-gauge column: a hair taller than the stamina
+   * frame alone so the numeral spans into the balance lane without
+   * overshooting the band. */
+  font-size: clamp(30px, 4.8cqw, 60px);
   line-height: 1;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.04em;
+  /* Cancel trailing track so the digit cluster sits optically centered
+   * in the positioned box (same trick as RankText). */
+  text-indent: 0.04em;
   /* Uniform digit widths so the count doesn't jitter as it ticks. No
    * min-width needed — the element is centered on its own box by the
    * translate, so a one-digit count stays centered on its own. */
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
   text-align: center;
   ${FONT_RENDER}
 
-  color: ${(p) => (p.$urgent ? C.vermillionBright : C.cream)};
-  text-shadow: ${TEXT_SHADOW_DISPLAY};
+  color: ${(p) => (p.$urgent ? C.vermillionBright : HUD.heroType)};
+  /* Black contour — thicker than the in-bar YOU label so the cream
+   * digits hold over crowd / bar tips. Stroke behind fill so Chillax
+   * keeps its weight. */
+  -webkit-text-stroke: clamp(1.6px, 0.2cqw, 2.6px) rgba(4, 6, 12, 0.95);
+  paint-order: stroke fill;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
   transition: color 200ms ease, opacity 260ms ease;
 
   ${(p) =>
