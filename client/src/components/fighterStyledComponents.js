@@ -1779,6 +1779,54 @@ export const YouLabel = styled.div
   }
 `;
 
+/* Judges' score over a wrestler's head at TIME'S UP.
+ *
+ * Only appears on a time-expired bout, and only for the ~3s the result
+ * callout is up, so it never competes with live combat. Same world
+ * anchoring as YouLabel: the wrestlers are frozen by then, so this can
+ * sit on React state instead of joining the rAF tracking loop.
+ *
+ * The number is the whole explanation of the decision — bigger wins,
+ * always, on either side of the dohyo — so the winner's plaque is the
+ * loud one and the loser's is stated plainly rather than crossed out. */
+const hanteiScoreIn = keyframes`
+  0%   { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.86); }
+  22%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  82%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(1); }
+`;
+
+export const HanteiScoreTag = styled.div
+  .withConfig({
+    shouldForwardProp: (prop) => !["x", "y", "$won"].includes(prop),
+  })
+  .attrs((props) => ({
+    style: {
+      position: "absolute",
+      bottom: `${(props.y / 720) * 100 + 24}%`,
+      left: `${(props.x / 1280) * 100}%`,
+    },
+  }))`
+  z-index: 1001;
+  pointer-events: none;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  animation: ${hanteiScoreIn} 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.black};
+  font-size: ${(p) =>
+    p.$won ? "clamp(22px, 2.5cqw, 38px)" : "clamp(16px, 1.8cqw, 27px)"};
+  line-height: 1;
+  color: ${(p) => (p.$won ? "#fbf8f2" : "#c3cbd8")};
+  -webkit-text-stroke: clamp(1.5px, 0.2cqw, 2.6px) rgba(6, 8, 14, 0.92);
+  paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45), 0 3px 12px rgba(0, 0, 0, 0.7);
+`;
+
 const snowballSpin = keyframes`
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }

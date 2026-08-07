@@ -27,7 +27,6 @@ const {
   CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC,
   CLINCH_PUSH_BALANCE_DRAIN_SELF_PER_SEC,
   CLINCH_PUSH_VS_PLANT_SPEED_MULT,
-  CLINCH_PLANT_BALANCE_REGEN_PER_SEC,
   CLINCH_PLANT_STAMINA_DRAIN_INTERVAL,
   CLINCH_NEUTRAL_STAMINA_REGEN_PER_SEC,
   CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL,
@@ -158,6 +157,7 @@ const {
   emitThrottledScreenShake,
   emitStaminaBlocked,
   tryEnterGassed,
+  applyBalanceDamage,
   timeoutManager,
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
@@ -1208,8 +1208,8 @@ function updateGrabActions(player, room, io, delta, rooms) {
     player.clinchJoltStartTime = 0;
     opponent.clinchJoltStartTime = 0;
 
-    player.balance = Math.max(0, player.balance - CLINCH_JOLT_MUTUAL_BALANCE);
-    opponent.balance = Math.max(0, opponent.balance - CLINCH_JOLT_MUTUAL_BALANCE);
+    applyBalanceDamage(player, CLINCH_JOLT_MUTUAL_BALANCE, now);
+    applyBalanceDamage(opponent, CLINCH_JOLT_MUTUAL_BALANCE, now);
 
     player.isBeingClinchJolted = true;
     opponent.isBeingClinchJolted = true;
@@ -1319,10 +1319,10 @@ function updateGrabActions(player, room, io, delta, rooms) {
       balanceDmg = Math.round(balanceDmg * gassedMult);
       pushDist = Math.round(pushDist * gassedMult);
 
-      target.balance = Math.max(0, target.balance - balanceDmg);
+      applyBalanceDamage(target, balanceDmg, now);
 
       if (targetCommitted) {
-        jolter.balance = Math.max(0, jolter.balance - CLINCH_JOLT_SELF_BALANCE_VS_PUSH);
+        applyBalanceDamage(jolter, CLINCH_JOLT_SELF_BALANCE_VS_PUSH, now);
         applyClinchOpen(
           jolter,
           Math.max(CLINCH_OPEN_JOLT_INTO_DRIVE_MS, CLINCH_JOLT_RECOVERY_MS),
@@ -1520,8 +1520,8 @@ function updateGrabActions(player, room, io, delta, rooms) {
         opponent.clinchClashStartTime = now;
         player.stamina = Math.max(0, player.stamina - CLINCH_TUMBLE_STAMINA_COST);
         opponent.stamina = Math.max(0, opponent.stamina - CLINCH_TUMBLE_STAMINA_COST);
-        player.balance = Math.max(0, player.balance - CLINCH_TUMBLE_BALANCE_DRAIN);
-        opponent.balance = Math.max(0, opponent.balance - CLINCH_TUMBLE_BALANCE_DRAIN);
+        applyBalanceDamage(player, CLINCH_TUMBLE_BALANCE_DRAIN, now);
+        applyBalanceDamage(opponent, CLINCH_TUMBLE_BALANCE_DRAIN, now);
         // Discrete TECH presentation at clash start (not per-tick). Reuses
         // clinch_callout transport with type grab_tech — HUD handler ignores it.
         {
@@ -1690,7 +1690,7 @@ function updateGrabActions(player, room, io, delta, rooms) {
         : CLINCH_EDGE_THROW_DRAIN_BONUS;
     }
     const balanceDrain = stanceDrain + edgeBonus;
-    target.balance = Math.max(0, target.balance - balanceDrain);
+    applyBalanceDamage(target, balanceDrain, now);
     // Remember for resist refund: successful Plant keeps only plant-tier (+ edge).
     actor.clinchThrowInitiationDrain = balanceDrain;
     actor.clinchThrowInitiationEdgeBonus = edgeBonus;
@@ -1785,12 +1785,17 @@ function updateGrabActions(player, room, io, delta, rooms) {
   }
 
   // --- Balance and stamina effects ---
-  // Identity: pressure taxes the LOSER. Pusher self-stam is a light lean (~2/s).
-  // Plant is a paid brake (stam upkeep under push ≈ 4.5/s, bal regen nets ~0 mid-ring).
+  // Identity: clinch is a posture cash-out (no regen). Pressure taxes the LOSER.
+  // Pusher self-stam is a light lean (~2/s). Plant is a paid brake that LOCKS
+  // posture against continuous push drain (stam upkeep under push ≈ 4.5/s).
 
   // Grabber pushing
   if (grabberAction === "push") {
-    player.balance = Math.max(0, player.balance - CLINCH_PUSH_BALANCE_DRAIN_SELF_PER_SEC * deltaSec);
+    applyBalanceDamage(
+      player,
+      CLINCH_PUSH_BALANCE_DRAIN_SELF_PER_SEC * deltaSec,
+      now
+    );
 
     // Light lean cost (not the old 6.7/s "punished for winning" tax)
     if (!player.lastGrabStaminaDrainTime) player.lastGrabStaminaDrainTime = now;
@@ -1800,10 +1805,15 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
 
     if (opponentAction !== "push") {
-      const edgeMult = isInEdgeZone(opponent.x) ? CLINCH_EDGE_BALANCE_DRAIN_MULT : 1;
-      opponent.balance = Math.max(0, opponent.balance - CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC * edgeMult * deltaSec);
-      // Neutral: pressure spends THEIR tank. Planters pay via plant upkeep.
+      // Plant locks posture vs push pressure — skip opponent balance drain.
       if (opponentAction !== "plant") {
+        const edgeMult = isInEdgeZone(opponent.x) ? CLINCH_EDGE_BALANCE_DRAIN_MULT : 1;
+        applyBalanceDamage(
+          opponent,
+          CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC * edgeMult * deltaSec,
+          now
+        );
+        // Neutral: pressure spends THEIR tank. Planters pay via plant upkeep.
         if (!opponent.lastGrabPushStaminaDrainTime) opponent.lastGrabPushStaminaDrainTime = now;
         if (now - opponent.lastGrabPushStaminaDrainTime >= CLINCH_PUSH_OPPONENT_STAMINA_DRAIN_INTERVAL) {
           opponent.stamina = Math.max(0, opponent.stamina - 1);
@@ -1813,11 +1823,8 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
   }
 
-  // Grabber planting — brake: regen bal, pay stam (more under push)
+  // Grabber planting — brake: lock posture, pay stam (more under push)
   if (grabberAction === "plant") {
-    if (!player.clinchJoltPlantInterrupt) {
-      player.balance = Math.min(BALANCE_MAX, player.balance + CLINCH_PLANT_BALANCE_REGEN_PER_SEC * deltaSec);
-    }
     const drainInterval = opponentAction === "push"
       ? CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL
       : CLINCH_PLANT_STAMINA_DRAIN_INTERVAL;
@@ -1830,7 +1837,11 @@ function updateGrabActions(player, room, io, delta, rooms) {
 
   // Opponent pushing (only if they have grip)
   if (opponentAction === "push") {
-    opponent.balance = Math.max(0, opponent.balance - CLINCH_PUSH_BALANCE_DRAIN_SELF_PER_SEC * deltaSec);
+    applyBalanceDamage(
+      opponent,
+      CLINCH_PUSH_BALANCE_DRAIN_SELF_PER_SEC * deltaSec,
+      now
+    );
 
     if (!opponent.lastGrabStaminaDrainTime) opponent.lastGrabStaminaDrainTime = now;
     if (now - opponent.lastGrabStaminaDrainTime >= CLINCH_PUSH_SELF_STAMINA_DRAIN_INTERVAL) {
@@ -1839,9 +1850,14 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
 
     if (grabberAction !== "push") {
-      const edgeMult = isInEdgeZone(player.x) ? CLINCH_EDGE_BALANCE_DRAIN_MULT : 1;
-      player.balance = Math.max(0, player.balance - CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC * edgeMult * deltaSec);
+      // Plant locks posture vs push pressure — skip grabber balance drain.
       if (grabberAction !== "plant") {
+        const edgeMult = isInEdgeZone(player.x) ? CLINCH_EDGE_BALANCE_DRAIN_MULT : 1;
+        applyBalanceDamage(
+          player,
+          CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC * edgeMult * deltaSec,
+          now
+        );
         if (!player.lastGrabPushStaminaDrainTime) player.lastGrabPushStaminaDrainTime = now;
         if (now - player.lastGrabPushStaminaDrainTime >= CLINCH_PUSH_OPPONENT_STAMINA_DRAIN_INTERVAL) {
           player.stamina = Math.max(0, player.stamina - 1);
@@ -1851,11 +1867,8 @@ function updateGrabActions(player, room, io, delta, rooms) {
     }
   }
 
-  // Opponent planting — brake: regen bal, pay stam (more under push)
+  // Opponent planting — brake: lock posture, pay stam (more under push)
   if (opponentAction === "plant") {
-    if (!opponent.clinchJoltPlantInterrupt) {
-      opponent.balance = Math.min(BALANCE_MAX, opponent.balance + CLINCH_PLANT_BALANCE_REGEN_PER_SEC * deltaSec);
-    }
     const drainInterval = grabberAction === "push"
       ? CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL
       : CLINCH_PLANT_STAMINA_DRAIN_INTERVAL;
@@ -1973,9 +1986,10 @@ function updateGrabActions(player, room, io, delta, rooms) {
     if (t > 0) {
       const loser = speed >= 0 ? opponent : player;
       const edgeMult = isInEdgeZone(loser.x) ? CLINCH_EDGE_BALANCE_DRAIN_MULT : 1;
-      loser.balance = Math.max(
-        0,
-        loser.balance - CLINCH_PUSH_VS_PUSH_LOSER_BAL_DRAIN_PER_SEC * t * edgeMult * deltaSec
+      applyBalanceDamage(
+        loser,
+        CLINCH_PUSH_VS_PUSH_LOSER_BAL_DRAIN_PER_SEC * t * edgeMult * deltaSec,
+        now
       );
       loser.stamina = Math.max(
         0,
@@ -2329,12 +2343,12 @@ function resolveClinchThrow(actor, target, room, io, rooms) {
       initiationEdgeBonus
     );
     if (CLINCH_THROW_FAIL_BALANCE_DRAIN > 0) {
-      target.balance = Math.max(0, target.balance - CLINCH_THROW_FAIL_BALANCE_DRAIN);
+      applyBalanceDamage(target, CLINCH_THROW_FAIL_BALANCE_DRAIN, impactNow);
     }
     const selfBalDrain = actionType === "pull"
       ? CLINCH_PULL_FAIL_SELF_BALANCE_DRAIN
       : CLINCH_THROW_FAIL_SELF_BALANCE_DRAIN;
-    actor.balance = Math.max(0, actor.balance - selfBalDrain);
+    applyBalanceDamage(actor, selfBalDrain, impactNow);
     actor.stamina = Math.max(0, actor.stamina - CLINCH_THROW_FAIL_STAMINA_COST);
   };
 

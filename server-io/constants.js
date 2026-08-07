@@ -779,10 +779,9 @@ const PARRY_SUCCESS_DURATION = 500; // How long the parry success pose is held
 const RAW_PARRY_STAMINA_COST = 12; // Meaningful cost — whiffed parries sting (was 5)
 const RAW_PARRY_STAMINA_REFUND = 12; // Full refund on success — correct reads are free (was 5)
 
-// Perfect parry balance reward: only granted on perfect (100ms window) parries.
-// More than the 8 you'd have lost from eating the slap, so a perfect read is a net
-// defensive gain. Capped well below clinch throw thresholds so it can't trivialize pressure.
-const PERFECT_PARRY_BALANCE_REFUND = 12;
+// Perfect parry posture refund REMOVED — posture is hit-or-disengage only
+// (Halo delay regen). Kept at 0 so any leftover callers are no-ops.
+const PERFECT_PARRY_BALANCE_REFUND = 0;
 
 // ============================================
 // GUARD & PARRY (Space) — one stance, three outcomes
@@ -800,7 +799,8 @@ const PERFECT_PARRY_BALANCE_REFUND = 12;
 //     ring-reset. Graded by how dead-on the tap was:
 //        – REGULAR: small settle + balance drain, ~neutral frames.
 //        – PERFECT (inner PERFECT_PARRY_WINDOW): slightly farther settle + bigger
-//          balance drain + balance refund + real frame advantage (one free button).
+//          attacker balance drain + real frame advantage (one free button).
+//          Parrier gets NO posture refund (Halo regen only).
 //     If the attacker's balance is already inside the KILL band AND the parry
 //     is PERFECT, it becomes the lethal slap-down (pull cinematic). Regular
 //     parries never finish the round.
@@ -868,8 +868,8 @@ const AP_PERFECT_KILL_THRESHOLD = 12;
 // Balance drained from the parried attacker. The parry is the game's dedicated
 // POSTURE tool — it bites posture HARDER than a raw slap (BALANCE_SLAP_HIT_DRAIN_P2),
 // so it's worth throwing on a high-posture opponent for the damage, not only the kill.
-const AP_BALANCE_DRAIN = 12;          // Regular parry
-const AP_PERFECT_BALANCE_DRAIN = 18;  // Perfect parry — a real posture swing
+const AP_BALANCE_DRAIN = 7;           // Regular parry (was 12; ~40% less)
+const AP_PERFECT_BALANCE_DRAIN = 11;  // Perfect parry (was 18; ~40% less)
 // Attacker SHOVE on a parry. Delivered via the smooth "slap-parry" slide
 // (slapParryKnockbackVelocity, friction SLAP_PARRY_KB_FRICTION ≈ 0.82) so the
 // attacker slides back in their ATTACK/recovery pose — NOT a hit reaction. Travel
@@ -886,9 +886,9 @@ const AP_HITSTOP_MS = 110;
 // so the match briefly bows to the read (above palm/flap burst weight).
 const AP_PERFECT_HITSTOP_MS = 210;
 const AP_KILL_HITSTOP_MS = 550;      // Presentation tier — matches CINEMATIC_KILL_HITSTOP_MS
-// PERFECT-only balance refund to the PARRIER: a dead-on read is a net posture
-// GAIN, not just mitigation. Sits below clinch thresholds so it can't trivialize pressure.
-const AP_PERFECT_BALANCE_REFUND = 12;
+// PERFECT-only balance refund to the PARRIER — removed (Halo posture regen).
+// Attacker still eats AP_PERFECT_BALANCE_DRAIN. Constant kept at 0 for callers.
+const AP_PERFECT_BALANCE_REFUND = 0;
 // Attacker lockout after being parried, keyed to the move they committed, and
 // rendered in the move's OWN recovery pose (NOT hit.png). A slap recovers
 // ~with the parrier (regular = near-neutral by design — a slap is too fast to
@@ -1103,7 +1103,14 @@ const PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN = 2;
 // Balance System — clinch throw/kill-throw gating
 // ============================================
 const BALANCE_MAX = 100;
-const BALANCE_PASSIVE_REGEN_PER_SEC = 5;        // +5/sec in neutral
+// Halo-style open-field posture regen: damage sticks until the fighter goes
+// BALANCE_REGEN_DELAY_MS without taking ANY posture damage, then snaps back at
+// BALANCE_REGEN_PER_SEC. Any new posture damage (hit, chip, clinch drain, etc.)
+// stops active regen and restarts the delay. No regen while inClinch.
+const BALANCE_REGEN_DELAY_MS = 1750;
+const BALANCE_REGEN_PER_SEC = 35;
+// Legacy drip rates (unused by the live tick — kept for reference / old docs).
+const BALANCE_PASSIVE_REGEN_PER_SEC = 5;
 const BALANCE_SLAP_HIT_DRAIN = 8;               // Balance lost when hit by a slap
 const BALANCE_CHARGED_HIT_DRAIN = 15;           // Balance lost when hit by a charged attack (primary hit tax; stam is a light chip)
 
@@ -1124,9 +1131,11 @@ const CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC = 12; // Balance drain on oppon
 const CLINCH_PUSH_BALANCE_DRAIN_SELF_PER_SEC = 4;     // Balance drain on pusher (leaning forward)
 const CLINCH_PUSH_VS_PLANT_SPEED_MULT = 0.3;    // Push speed multiplied by this when opponent plants (70% reduction)
 
-// Clinch plant — paid BRAKE: slow the walk + regen bal for a throw/break window.
-// Regen 12 vs push drain 12 = net 0 mid-ring (buys time, not a free posture win).
-// Edge (1.5× drain) still loses bal. Under push, plant stam upkeep is real (~4.5/s).
+// Clinch plant — paid BRAKE: slow the walk + LOCK posture (no gain, no push drain).
+// Clinch is a posture cash-out: never regen inside clinch. Plant preserves the
+// bank against continuous push pressure; discrete punishes (jolt/throw) can still
+// tax it. Under push, plant stam upkeep is real (~4.5/s).
+// Legacy plant regen rate (unused — plant no longer regenerates balance).
 const CLINCH_PLANT_BALANCE_REGEN_PER_SEC = 12;
 const CLINCH_PLANT_STAMINA_DRAIN_INTERVAL = 1000; // -1 / 1000ms idle plant ≈ 1/s
 const CLINCH_PLANT_STAMINA_DRAIN_PUSHED_INTERVAL = 220; // -1 / 220ms under push ≈ 4.5/s (was 2/s)
@@ -1693,14 +1702,17 @@ const POSTURE_RECOVER_THRESHOLD = 45;    // balance > this ⇒ isPostureBroken =
 // 2.2 Drains & regen — the hand-fight now has an arc. These SHADOW today's
 // BALANCE_* constants and are substituted ONLY while the flag is on (LOUD ship
 // values; SAFE fallbacks noted). Counter-hits multiply the posture drain by
-// POSTURE_COUNTER_DRAIN_MULT (their frame bonus is unchanged). Perfect parry's
-// existing +12 balance refund is kept as-is (it's now a posture swing for free).
+// POSTURE_COUNTER_DRAIN_MULT (their frame bonus is unchanged). Open-field regen
+// is Halo-style (BALANCE_REGEN_DELAY_MS + BALANCE_REGEN_PER_SEC); perfect parry
+// no longer refunds posture.
 const BALANCE_SLAP_HIT_DRAIN_P2 = 7;        // was 12 — a single slap chipped posture absurdly fast (a few slaps ≈ a break). 7 makes the slap a POKE that chips; posture pressure now comes from reads (AP, palm, counters), not raw mash.
 const BALANCE_CHARGED_HIT_DRAIN_P2 = 18;    // today 15; SAFE 16
 const BALANCE_PALM_HIT_DRAIN_P2 = 20;       // today 15 (charged); SAFE 18 — the posture-breaker identity
-const BALANCE_PASSIVE_REGEN_PER_SEC_P2 = 6; // today 5;  SAFE 5 — disengaging resets the war a touch faster
+// Legacy drip (replaced by Halo BALANCE_REGEN_PER_SEC + BALANCE_REGEN_DELAY_MS).
+const BALANCE_PASSIVE_REGEN_PER_SEC_P2 = 6;
 // Gassed taxes posture recovery but does not freeze it — stamina exhaustion
-// shouldn't hard-lock an unrelated resource. Clinch still fully banks pressure.
+// shouldn't hard-lock an unrelated resource. Clinch still fully banks pressure
+// (no open-field regen while inClinch; plant locks vs push rather than regens).
 const BALANCE_GASSED_REGEN_MULT = 0.5;
 const POSTURE_COUNTER_DRAIN_MULT = 1.5;     // counter-hits drain ×1.5 posture
 
@@ -2245,6 +2257,8 @@ module.exports = {
 
   // Balance system
   BALANCE_MAX,
+  BALANCE_REGEN_DELAY_MS,
+  BALANCE_REGEN_PER_SEC,
   BALANCE_PASSIVE_REGEN_PER_SEC,
   BALANCE_SLAP_HIT_DRAIN,
   BALANCE_CHARGED_HIT_DRAIN,

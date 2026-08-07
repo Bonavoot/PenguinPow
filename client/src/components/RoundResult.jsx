@@ -16,6 +16,13 @@ const WIN_TYPE_CONFIG = {
   snowball: { english: "RING OUT!", japanese: "場外" },
   pumoClone: { english: "RING OUT!", japanese: "場外" },
   ringOut: { english: "RING OUT!", japanese: "場外" },
+  /* Clock ran out. The headline is the same for both outcomes because in
+     sumo the callout names the FINISH, not the winner — who won is told
+     by the judges' scores standing over the wrestlers' heads. The
+     kimarite line is what separates a decision (hantei) from a dead heat
+     that has to be fought again (torinaoshi). */
+  timeExpired: { english: "TIME'S UP!", japanese: "判定" },
+  torinaoshi: { english: "TIME'S UP!", japanese: "取り直し" },
 };
 
 /**

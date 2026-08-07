@@ -98,6 +98,7 @@ const {
   markLifecycleControlRestore,
 } = require("./actionLifecycleOwnership");
 
+const { BOUT_SECONDS, tachiaiStartAt } = require("./boutClock");
 const {
   GROUND_LEVEL,
   HITBOX_DISTANCE_VALUE,
@@ -439,7 +440,51 @@ function cleanupGrabStates(player, opponent) {
   opponent.actionLockUntil = 0;
 }
 
-function handleWinCondition(room, loser, winner, io, winType) {
+/**
+ * Arm the bout clock. Called at HAKKI-YOI, when the wrestlers can first
+ * act — not at the walk-up, so the ceremony never burns bout time.
+ *
+ * The deadline is stored in room.simTime rather than wall time because
+ * simTime is the pausable clock: hitstop and freeze frames stop it, and
+ * a bout should not lose time to frames nobody could act on.
+ */
+function startBoutClock(room) {
+  room.boutEndsAtSim = simNow(room) + BOUT_SECONDS * 1000;
+  // Seeded, not null: the caller emits BOUT_SECONDS alongside game_start,
+  // and the first tick would otherwise re-send the same number.
+  room.boutSecondsShown = BOUT_SECONDS;
+}
+
+/**
+ * Torinaoshi — the bout was a dead heat, so nobody is awarded and it is
+ * fought again.
+ *
+ * Deliberately NOT routed through handleWinCondition: there is no winner
+ * to hand a fall to, no kimarite to record, and no match-end to test.
+ * All this needs to do is stop the bout and set gameOverTime, which arms
+ * the existing 2s auto-reset in the tick loop. resetRoomAndPlayers
+ * already deletes winnerId/loserId, so leaving them unset is safe.
+ */
+function handleBoutDraw(room, io, scores) {
+  if (room.gameOver) return;
+  room.gameOver = true;
+  room.players.forEach((p) => {
+    p.y = GROUND_LEVEL;
+    p.knockbackVelocity = { x: 0, y: 0 };
+    p.movementVelocity = 0;
+  });
+  io.in(room.id).emit("bout_draw", { hanteiScores: scores });
+  if (!room.gameOverTime) {
+    room.gameOverTime = simNow(room);
+  }
+}
+
+/**
+ * @param {object} [extra] merged into the `game_over` payload. Used by the
+ *   time-expired path to ship both hantei scores, so the client can print
+ *   them over the wrestlers' heads without recomputing the decision.
+ */
+function handleWinCondition(room, loser, winner, io, winType, extra) {
   if (room.gameOver) return; // Prevent multiple win declarations
 
   room.gameOver = true;
@@ -900,6 +945,7 @@ function handleWinCondition(room, loser, winner, io, winType) {
     },
     wins: winCount,
     winType: winType || "ringOut",
+    ...(extra || {}),
   });
   room.winnerId = winner.id;
   room.loserId = loser.id;
@@ -1749,7 +1795,9 @@ function handleReadyPositions(room, player1, player2, io) {
       // Start a timer to trigger hakkiyoi after players are ready
       // (sim clock — index.js tick also reads readyStartTime against room.simTime)
       if (!room.readyStartTime) {
-        room.readyStartTime = simNow(room);
+        // May seed slightly ahead so the bout card isn't clipped on the
+        // no-salt path — see tachiaiStartAt.
+        room.readyStartTime = tachiaiStartAt(simNow(room), room.boutCardAtSim);
       }
 
       const currentTime = simNow(room);
@@ -1774,6 +1822,8 @@ function handleReadyPositions(room, player1, player2, io) {
         room.gameStart = true;
         // Audit log opens here (idempotent across rounds within a match).
         openAuditLog(room);
+        startBoutClock(room);
+        io.in(room.id).emit("bout_clock", BOUT_SECONDS);
         room.hakkiyoiCount = 1;
         // Reset canMoveToReady for both players when game starts
         player1.canMoveToReady = false;
@@ -2995,6 +3045,8 @@ function resolveMatadorPull(matador, grabber, room, io) {
 module.exports = {
   cleanupGrabStates,
   handleWinCondition,
+  handleBoutDraw,
+  startBoutClock,
   executeSlapAttack,
   executePalmThrust,
   executeLowKick,

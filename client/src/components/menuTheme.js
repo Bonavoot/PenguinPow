@@ -252,7 +252,7 @@ export const C = {
 
   // Posture — cool composure blue for throws / parries. Smooth ice fill
   // (not jade liquid like stamina). Drops into gold* throw range, then
-  // vermillion kill.
+  // vermillion as it nears empty (zero is the cliff).
   posture: "#6fa9c4",            // rgb(111, 169, 196) — composure blue
   postureBright: "#8fbed4",      // rgb(143, 190, 212) — soft tip
   postureMid: "#5a93ae",         // rgb(90, 147, 174)  — slight depth
@@ -281,6 +281,48 @@ export const C = {
   indigo: "#1f2a4d",
   indigoBright: "#3a4a85",
   indigoGlow: "rgba(94, 122, 200, 0.45)",
+};
+
+// ============================================
+// IN-MATCH HUD CHROME
+// ============================================
+
+/*
+ * The in-match band (UiPlayerInfo, BalanceGauge, boon strip) is built
+ * from ONE structural color used at full opacity, over a dark keyline
+ * that lets it hold its edge against any stage.
+ *
+ * The opacity rule is the important part. A translucent structural
+ * color over a moving crowd changes hue along its own length, so the
+ * chrome stops describing a shape and starts looking like a wash —
+ * which is what a HUD full of 28-42% gold and cream hairlines looked
+ * like. Saturated color on the band belongs to fills only.
+ */
+export const HUD = {
+  // Every structural stroke on the band, at full opacity, no exceptions.
+  // Using a second, quieter cream for "small" or "secondary" objects was
+  // the wrong axis: it made the posture frame look like a different
+  // material from the stamina frame sitting 8px above it. Size and
+  // position carry hierarchy; the stroke color does not.
+  chrome: "#f5ecd9",              // = C.cream
+  // Reserved for ONE meaning: this slot is empty or unavailable.
+  chromeDim: "#b3a992",
+  keyline: "rgba(3, 5, 10, 0.92)", // dark ring outside every cream stroke
+  well: "#0a0d15",                // substrate a fill sits directly against
+
+  /*
+   * Two weights, one color. Hierarchy on this band is carried by how
+   * HEAVY a stroke is, never by how bright it is — a dimmer cream just
+   * looks like a different material sitting next to the first one.
+   *
+   * `stroke` is sized against the stamina bar. Reusing it on the posture
+   * gauge was the mistake: that bar is 16px tall, so a 2.2px stroke on
+   * each side was 27% of the whole object and the gauge read as mostly
+   * frame. `strokeThin` keeps the border a similar FRACTION of the
+   * smaller element instead of a similar number of pixels.
+   */
+  stroke: "clamp(1.4px, 0.15cqw, 2.2px)",
+  strokeThin: "clamp(1px, 0.11cqw, 1.5px)",
 };
 
 // ============================================

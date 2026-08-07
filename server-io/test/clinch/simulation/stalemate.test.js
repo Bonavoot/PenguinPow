@@ -33,12 +33,11 @@ describe("Stalemate resolution", () => {
     const start = s.grabber.clinchStalemateStart;
     assert.ok(start > 0);
 
-    // Advance just shy of expiration without meaningful movement
-    // Freeze positions by not pushing; plant regen may change balance enough to reset!
-    // Neutral both to avoid balance regen threshold resets.
+    // Advance just shy of expiration without meaningful movement.
+    // Neutral both — clinch has no posture regen; pin balance anyway so a
+    // stray resource tick can't reset the stalemate threshold.
     s.holdNeutral(s.grabber);
     s.holdNeutral(s.grabbed);
-    // Snapshot and pin balance so regen doesn't reset timer
     const pinBal = () => {
       s.grabber.balance = s.grabber.clinchStalemateLastBalance;
       s.grabbed.balance = s.grabbed.balance;

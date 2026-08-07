@@ -13,9 +13,7 @@ const {
   PARRY_SUCCESS_DURATION,
   RAW_PARRY_KNOCKBACK, RAW_PARRY_SLAP_KNOCKBACK,
   RAW_PARRY_STAMINA_REFUND, RAW_PARRY_COOLDOWN_MS,
-  PERFECT_PARRY_BALANCE_REFUND,
   PERFECT_PARRY_ATTACKER_STUN_MAX, PERFECT_PARRY_KNOCKBACK_MAX,
-  PERFECT_PARRY_BALANCE_REFUND_MAX,
   SLAP_TIP_POSTURE_MULT, SLAP_TIP_HITSTOP_BONUS_MS, SLAP_TIP_FEEL_THRESHOLD,
   SLAP_TIP_DRIFT_MULT,
   CLASH_MARGIN_MIN_MS, CLASH_MARGIN_MAX_MS,
@@ -26,7 +24,7 @@ const {
   HITSTOP_SLAP_MS, HITSTOP_BURST_MS, HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
   SLAP_HIT_VICTIM_STAMINA_DRAIN, CHARGED_HIT_VICTIM_STAMINA_DRAIN,
   PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN,
-  BALANCE_MAX, BALANCE_SLAP_HIT_DRAIN, BALANCE_CHARGED_HIT_DRAIN,
+  BALANCE_SLAP_HIT_DRAIN, BALANCE_CHARGED_HIT_DRAIN,
   BALANCE_SLAP_HIT_DRAIN_P2, BALANCE_CHARGED_HIT_DRAIN_P2, BALANCE_PALM_HIT_DRAIN_P2,
   BALANCE_SLAP_HIT_DRAIN_ENHANCED, CADENCE_STEP_IN_MULT,
   POSTURE_COUNTER_DRAIN_MULT,
@@ -99,7 +97,6 @@ const {
   AP_HITSTOP_MS,
   AP_PERFECT_HITSTOP_MS,
   AP_KILL_HITSTOP_MS,
-  AP_PERFECT_BALANCE_REFUND,
   AP_STAGGER_SLAP_MS,
   AP_STAGGER_PALM_MS,
   AP_STAGGER_FLAP_MS,
@@ -157,6 +154,7 @@ const {
   alignedEntryVelocity,
   grantAttackParryFlurryCover,
   isInDodgeStrikeIFrames,
+  applyBalanceDamage,
 } = require("./gameUtils");
 
 const {
@@ -450,7 +448,8 @@ function gradePerfectParry(parryDuration) {
     quality,
     attackerStun: lerp(PERFECT_PARRY_ATTACKER_STUN_DURATION, PERFECT_PARRY_ATTACKER_STUN_MAX),
     parryShove: lerp(PERFECT_PARRY_KNOCKBACK, PERFECT_PARRY_KNOCKBACK_MAX),
-    postureRefund: Math.round(lerp(PERFECT_PARRY_BALANCE_REFUND, PERFECT_PARRY_BALANCE_REFUND_MAX)),
+    // Posture refund removed (Halo regen); kept at 0 for API stability.
+    postureRefund: 0,
   };
 }
 
@@ -1364,7 +1363,7 @@ function applyPalmTradeHit(victim, attacker, room, io, opts = {}) {
   const palmDrain = MASTERY_P2_POSTURE
     ? BALANCE_PALM_HIT_DRAIN_P2
     : BALANCE_CHARGED_HIT_DRAIN;
-  victim.balance = Math.max(0, victim.balance - palmDrain);
+  applyBalanceDamage(victim, palmDrain, currentTime);
   victim.stamina = Math.max(
     0,
     victim.stamina - PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN
@@ -1688,7 +1687,7 @@ function applyTradeHit(victim, attacker, room, io, opts = {}) {
     opts.knockback != null ? opts.knockback : SLAP_TRADE_KNOCKBACK;
 
   const slapDrain = MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN;
-  victim.balance = Math.max(0, victim.balance - slapDrain);
+  applyBalanceDamage(victim, slapDrain, currentTime);
   victim.stamina = Math.max(0, victim.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
 
   clearAllActionStates(victim);
@@ -1885,7 +1884,7 @@ function resolveSlapChargedTrade(slapper, charged, rooms, io, meta = {}) {
   const chargedDrain = MASTERY_P2_POSTURE
     ? BALANCE_CHARGED_HIT_DRAIN_P2
     : BALANCE_CHARGED_HIT_DRAIN;
-  slapper.balance = Math.max(0, slapper.balance - chargedDrain);
+  applyBalanceDamage(slapper, chargedDrain, currentTime);
   slapper.stamina = Math.max(
     0,
     slapper.stamina - CHARGED_HIT_VICTIM_STAMINA_DRAIN
@@ -2435,7 +2434,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       const pushback = isPalm ? GUARD_PALM_PUSHBACK : GUARD_SLAP_PUSHBACK;
       const guardPushDir = parrier.x < attacker.x ? -1 : 1;
 
-      parrier.balance = Math.max(0, parrier.balance - chip);
+      applyBalanceDamage(parrier, chip, currentTime);
       parrier.stamina = Math.max(0, parrier.stamina - stamDrain);
       parrier.slapParryKnockbackVelocity = pushback * guardPushDir;
       // One chip per attack: the per-attack isAlreadyHit reset (top of
@@ -2666,7 +2665,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       timeoutManager.clearPlayerSpecific(attacker.id, "parryStaggerReset");
 
       const drain = isPerfect ? AP_PERFECT_BALANCE_DRAIN : AP_BALANCE_DRAIN;
-      attacker.balance = Math.max(0, attacker.balance - drain);
+      applyBalanceDamage(attacker, drain, currentTime);
 
       const shove = isPerfect ? AP_PERFECT_ATTACKER_KNOCKBACK : AP_ATTACKER_KNOCKBACK;
       // Lockout keyed to the committed move. A slap recovers ~with the parrier
@@ -2804,12 +2803,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       // Tap-every-slap: next rising-edge re-arm (after a real release) may extend.
       grantAttackParryFlurryCover(parrier, currentTime, staggerMs);
 
-      let perfectBalanceGain = 0;
-      if (isPerfect) {
-        const before = parrier.balance;
-        parrier.balance = Math.min(BALANCE_MAX, parrier.balance + AP_PERFECT_BALANCE_REFUND);
-        perfectBalanceGain = parrier.balance - before;
-      }
+      // Perfect parry no longer refunds posture — Halo delay regen only.
+      const perfectBalanceGain = 0;
 
       // Shared plant for regular + perfect. isApPostParryLocked survives flurry
       // re-taps (which clear success pose only).
@@ -3038,7 +3033,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       let kickDrain = LOW_KICK_BALANCE_DRAIN;
       if (victimWasDefending) kickDrain = LOW_KICK_BALANCE_DRAIN_VS_PARRY;
       else if (isCounterHit) kickDrain = LOW_KICK_BALANCE_DRAIN_COUNTER;
-      otherPlayer.balance = Math.max(0, otherPlayer.balance - kickDrain * postureCounterMult);
+      applyBalanceDamage(otherPlayer, kickDrain * postureCounterMult, currentTime);
     } else if (isSlapAttack) {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
       // MASTERY Phase 3: an enhanced (cadence) slap breaks posture harder than a
@@ -3051,15 +3046,15 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       // MASTERY Phase 4 (4.2): tipQuality ramps posture drain (spacing reward);
       // deep/point-blank is baseline. tipPostureMult === 1 with the flag off.
       const slapDrain = slapDrainBase * postureCounterMult * tipPostureMult;
-      otherPlayer.balance = Math.max(0, otherPlayer.balance - slapDrain);
+      applyBalanceDamage(otherPlayer, slapDrain, currentTime);
     } else if (player.isPalmThrust) {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN);
       const palmDrain = (MASTERY_P2_POSTURE ? BALANCE_PALM_HIT_DRAIN_P2 : BALANCE_CHARGED_HIT_DRAIN) * postureCounterMult;
-      otherPlayer.balance = Math.max(0, otherPlayer.balance - palmDrain);
+      applyBalanceDamage(otherPlayer, palmDrain, currentTime);
     } else {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - CHARGED_HIT_VICTIM_STAMINA_DRAIN);
       const chargedDrain = (MASTERY_P2_POSTURE ? BALANCE_CHARGED_HIT_DRAIN_P2 : BALANCE_CHARGED_HIT_DRAIN) * postureCounterMult;
-      otherPlayer.balance = Math.max(0, otherPlayer.balance - chargedDrain);
+      applyBalanceDamage(otherPlayer, chargedDrain, currentTime);
     }
 
     // Update opponent's facing direction based on attacker's position
@@ -4042,7 +4037,7 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
   // ── NON-LETHAL: drain + defender reward; attacker consequence differs by flag ──
   const drain = isPerfect ? AP_PERFECT_BALANCE_DRAIN : AP_BALANCE_DRAIN;
   const shove = isPerfect ? AP_PERFECT_ATTACKER_KNOCKBACK : AP_ATTACKER_KNOCKBACK;
-  flapper.balance = Math.max(0, flapper.balance - drain);
+  applyBalanceDamage(flapper, drain, currentTime);
   flapper.knockbackVelocity = { x: 0, y: 0 };
   flapper.isHit = false;
   flapper.isParryKnockback = false;
@@ -4072,7 +4067,7 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
   }
 
   // Parrier reward. Same as slap AP: continued hold after a land → GUARD
-  // (one timed window per press). Perfect refunds balance. Chain increments.
+  // (one timed window per press). Perfect no longer refunds posture. Chain increments.
   const stillHolding = opponent.isCPU ? !!opponent.keys.s : !!opponent.keys[" "];
   opponent.stamina = Math.max(0, opponent.stamina - AP_STAMINA_COST);
   opponent.apActiveUntil = 0;
@@ -4094,12 +4089,7 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
   opponent.apRecoveryUntil = 0;
   grantAttackParryFlurryCover(opponent, currentTime, AP_STAGGER_FLAP_MS);
 
-  let perfectBalanceGain = 0;
-  if (isPerfect) {
-    const before = opponent.balance;
-    opponent.balance = Math.min(BALANCE_MAX, opponent.balance + AP_PERFECT_BALANCE_REFUND);
-    perfectBalanceGain = opponent.balance - before;
-  }
+  const perfectBalanceGain = 0;
 
   opponent.isApPostParryLocked = true;
   opponent.apPostParryLockUntil = currentTime + AP_SUCCESS_RECOVERY_MS;
@@ -4430,11 +4420,11 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   // MASTERY Phase 2 (2.2): slap-class posture drain; COUNTER ×1.5 with flag on.
   const postureCounterMult =
     MASTERY_P2_POSTURE && isCounterHit ? POSTURE_COUNTER_DRAIN_MULT : 1;
-  opponent.balance = Math.max(
-    0,
-    opponent.balance -
-      (MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN) *
-        postureCounterMult
+  applyBalanceDamage(
+    opponent,
+    (MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN) *
+      postureCounterMult,
+    currentTime
   );
 
   setKnockbackImmunity(opponent);

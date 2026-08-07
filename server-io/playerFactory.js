@@ -52,6 +52,8 @@ function createInitialPlayerState(overrides = {}) {
     // === Resources ===
     stamina: 100,
     balance: 100,
+    // Sim time of last posture (balance) damage — gates Halo-style regen.
+    lastPostureDamageTime: 0,
     isGassed: false,
     gassedUntil: 0,
     // Eligible-time accumulator toward the next stamina regen pulse (per fighter).

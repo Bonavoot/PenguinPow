@@ -4,7 +4,6 @@ const {
   POWER_UP_TYPES,
   PERFECT_PARRY_WINDOW, PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK,
   RAW_PARRY_STAMINA_REFUND, PARRY_SUCCESS_DURATION,
-  PERFECT_PARRY_BALANCE_REFUND, BALANCE_MAX,
   SIDESTEP_HIT_RETURN_BASE_MS,
   SIDESTEP_HIT_RETURN_MIN_MS,
   SLAP_KILL_RANGE,
@@ -393,13 +392,8 @@ function updateProjectiles(room, io, delta) {
           // Refund parry stamina cost on any successful parry
           opponent.stamina = Math.min(100, opponent.stamina + RAW_PARRY_STAMINA_REFUND);
 
-          // Perfect parries also refund balance — net defensive gain on a correct read
-          let perfectParryBalanceGain = 0;
-          if (isPerfectParry) {
-            const balanceBefore = opponent.balance;
-            opponent.balance = Math.min(BALANCE_MAX, opponent.balance + PERFECT_PARRY_BALANCE_REFUND);
-            perfectParryBalanceGain = opponent.balance - balanceBefore;
-          }
+          // Perfect parry no longer refunds posture — Halo delay regen only.
+          const perfectParryBalanceGain = 0;
 
           if (canReflect) {
             // Perfect parry on non-reflected snowball: reflect it back!

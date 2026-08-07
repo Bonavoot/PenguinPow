@@ -1,6 +1,13 @@
 import PropTypes from "prop-types";
-import React, { useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import styled, { keyframes, css } from "styled-components";
+
 import happyFeetIcon from "../assets/happy-feet.png";
 import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
@@ -8,6 +15,8 @@ import pumoArmyIcon from "./pumo-army-icon.png";
 import thickBlubberIcon from "../assets/thick-blubber-icon.png";
 import flapIcon from "../assets/flap-icon.png";
 import shatterPalmIcon from "../assets/shatter-palm-icon.png";
+import { BOUT_SECONDS, CLOCK_URGENT_AT } from "../config/boutClock";
+import { getPowerUpTypeColor } from "../config/powerUpConfig";
 import {
   C,
   FONT_DISPLAY,
@@ -15,7 +24,7 @@ import {
   FONT_RENDER,
   FONT_UI,
   FONT_WEIGHT,
-  TEXT_SHADOW_COMBAT,
+  HUD,
   TEXT_SHADOW_DISPLAY,
   TEXT_SHADOW_UI,
   TRACK,
@@ -23,42 +32,82 @@ import {
 import BalanceGauge from "./BalanceGauge";
 
 /*
- * Pumo Pumo HUD — "Ice Dohyo Broadcast" chrome.
+ * Pumo Pumo HUD — "cream chrome" broadcast band.
  *
- * Palette: ink / cream / gold / ice / stam / vermillion (menuTheme).
- * Lacquered sumi plates + gold-leaf hairlines + frost edge catches.
+ * One structural color (washi cream), always OPAQUE, always wrapped in a
+ * dark keyline so the silhouette holds over a packed crowd. Fills touch
+ * the stroke directly — no inset track, no inner radius, no gloss. The
+ * only saturated color on the band is the fill itself: jade stamina, ice
+ * posture, vermillion alarm. Gold is demoted to three accents — rank
+ * type, won rounds, and the push-war lead ring.
  *
- * Stamina fill is smooth jade liquid (stam*) — vitality you spend.
- * Posture is a compact secondary ice meter with throw/kill notches
- * (ice → gold → vermillion) — composure for grabs. Danger / gassed stay
- * vermillion.
+ * The disc capping each bar's outer end and the center round medallion
+ * share a diameter, so the band reads as one continuous run of hardware
+ * from screen edge to screen edge rather than five floating widgets.
+ *
+ * Stamina is the hero. Posture is a segmented secondary meter
+ * (ice → gold → vermillion) — composure for grabs.
  */
+
+// ============================================
+// CHROME TOKENS
+// ============================================
+
+const CHROME = HUD.chrome;
+const CHROME_DIM = HUD.chromeDim;
+const KEYLINE = HUD.keyline;
+const WELL = HUD.well;
+const STROKE = HUD.stroke;
+const ALARM = C.vermillionBright;
+
+/* Shared vertical rhythm. CENTER_MIDLINE_TOP is derived from these, so
+ * the round medallion and wing rails stay locked to the stamina midline
+ * at every viewport size — change a value here, never in two places. */
+const HUD_PAD_TOP = "clamp(12px, 1.7cqh, 20px)";
+/* Tracks NAME_SIZE's unit (cqw, not cqh) at a fixed ~1.29x ratio, so the
+ * row is always taller than the shikona at every viewport. If this used
+ * cqh it would fall below the type on wide-short windows and NameBlock's
+ * overflow:hidden would clip the glyphs. */
+const NAME_SIZE = "clamp(14px, 1.95cqw, 24px)";
+const NAME_ROW_H = "clamp(18px, 2.5cqw, 31px)";
+const NAME_GAP = "clamp(4px, 0.6cqh, 8px)";
+/* Horizontal gutter between items in the name row. BarRowSpacer has to
+ * subtract it — see the comment there. */
+const NAME_ROW_GAP = "clamp(5px, 0.6cqw, 10px)";
+/* Text margin inside the stamina track. The shikona above the bar, the
+ * in-bar labels, and the rank plaque below all share it, so the wing has
+ * one typographic column from top to bottom.
+ *
+ * Tightened once the slot was detached: it had been widened purely so
+ * the shikona would clear a slot that overhung the bar's start, and with
+ * a real gutter there that job is done by the gutter. It only has to be
+ * a text margin now. */
+const BAR_TEXT_INSET = "clamp(6px, 0.85cqw, 12px)";
+/* Footprint reserved for the rank, independent of what is in it today.
+ * Per-rank badge art is coming and will be larger than a text chip; the
+ * lane is sized for that now so nothing below has to move later. */
+const RANK_ROW_H = "clamp(17px, 1.7cqw, 24px)";
+const BAR_H = "clamp(22px, 4cqh, 40px)";
+
+/* Slot stands apart from the bar with a real gutter. It briefly bit into
+ * the bar's outer end so the two would read as one assembly, but a slot
+ * fused to the bar reads as part of the meter — as if the icon were the
+ * bar's endcap — and it left the shikona nowhere clean to start. Overhung
+ * top and bottom, separated by a gutter, it is plainly its own object
+ * sitting alongside. */
+const SLOT = "clamp(30px, 3.9cqw, 46px)";
+const SLOT_GAP = "clamp(5px, 0.62cqw, 9px)";
+/* Horizontal room consumed before the stamina bar's border begins. */
+const RAIL_LEAD = `calc(${SLOT} + ${SLOT_GAP})`;
 
 // ============================================
 // ANIMATIONS
 // ============================================
 
-const flashRedPulse = keyframes`
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
-`;
-
-const pulseWin = keyframes`
-  0% { transform: scale(1); }
-  50% { transform: scale(1.18); }
-  100% { transform: scale(1); }
-`;
-
 /* Sweeping brass shine across the balance fill */
 const iceShimmer = keyframes`
   0%   { transform: translateX(-120%); }
   100% { transform: translateX(220%); }
-`;
-
-/* Satin pearl sweep across the stamina fill */
-const emberShimmer = keyframes`
-  0%   { transform: translateX(-120%); }
-  100% { transform: translateX(250%); }
 `;
 
 /* Pulsing glow overlay during stamina regeneration */
@@ -94,6 +143,29 @@ const parryRefundFlash = keyframes`
 const dangerFramePulse = keyframes`
   0%, 100% { filter: brightness(1)    saturate(1); }
   50%      { filter: brightness(1.18) saturate(1.2); }
+`;
+
+/* Blinking warning light on the stroke — cream, vermillion, cream.
+ *
+ * A statically vermillion border was the first attempt and it failed for
+ * a real reason: at the same value as the fill it erased the bar's
+ * silhouette, and two nearly identical reds touching read as a smear
+ * instead of an alarm. Dropping it entirely lost the alert.
+ *
+ * Alternating is what fixes it. It is the SAME vermillion, but it can
+ * never sit merged with the fill for more than half a cycle, and the
+ * cream half restores the edge — so the bar keeps its shape while the
+ * blink does the shouting. The plateaus are long and the crossfade
+ * between them short, so it reads as a lamp switching rather than a
+ * colour breathing.
+ *
+ * Always run on the SAME duration as the brightness pulse beside it.
+ * On different periods the two drift and the bar looks chaotic instead
+ * of alarmed. */
+const dangerBorderFlash = keyframes`
+  0%,  42%  { border-color: ${CHROME}; }
+  54%, 96%  { border-color: ${ALARM}; }
+  100%      { border-color: ${CHROME}; }
 `;
 
 /* Quick pulse alarm — strobes the red wash dim → bright → dim on a
@@ -175,12 +247,6 @@ const recoveryTextPop = keyframes`
   }
 `;
 
-/* Subtle vertical wobble on the fill's top edge — tells the eye "this is alive" */
-const fillWobble = keyframes`
-  0%, 100% { transform: translateY(0)    scaleY(1);     }
-  50%      { transform: translateY(-0.5px) scaleY(1.02); }
-`;
-
 /* Impact strike — a thin sharp vertical hairline at the trailing edge of
  * the stamina fill. Replaces the previous radial-blob ImpactSpark which
  * (a) lagged behind the bar's width transition because it was positioned
@@ -208,36 +274,6 @@ const frameShake = keyframes`
   45%      { transform: translate(-1px, -0.5px); }
   60%      { transform: translate(1px, 0.5px); }
   80%      { transform: translate(-0.5px, 0); }
-`;
-
-/* Ascending icy mist particle — used in regen overlay */
-const mistRise = keyframes`
-  0% {
-    opacity: 0;
-    transform: translateY(0) scale(0.6);
-  }
-  20% {
-    opacity: 0.85;
-    transform: translateY(-30%) scale(0.9);
-  }
-  70% {
-    opacity: 0.45;
-    transform: translateY(-110%) scale(1.05);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-160%) scale(0.7);
-  }
-`;
-
-/* Chevron scroll pattern for regen — subtle directional energy */
-const chevronScrollRight = keyframes`
-  from { background-position: 0 0; }
-  to   { background-position: 22px 0; }
-`;
-const chevronScrollLeft = keyframes`
-  from { background-position: 0 0; }
-  to   { background-position: -22px 0; }
 `;
 
 /* Slow horizontal drift on the gassed slash overlay — keeps the strain
@@ -327,8 +363,8 @@ const HudShell = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding: clamp(7px, 1.2cqh, 12px) clamp(6px, 1cqw, 14px);
-  padding-top: clamp(24px, 3cqh, 34px);
+  padding: 0 clamp(6px, 1cqw, 14px) clamp(7px, 1.2cqh, 12px);
+  padding-top: ${HUD_PAD_TOP};
   opacity: ${(p) => (p.$matchOver ? 0.88 : 1)};
   filter: ${(p) =>
     p.$matchOver
@@ -345,43 +381,22 @@ const HudShell = styled.div`
     opacity 260ms ease,
     filter 260ms ease;
 
-  background:
-    /* Cool frost wash — ties the letterbox to the ice dohyo instead of
-       a generic black cinema bar. */
-    linear-gradient(
-      180deg,
-      rgba(18, 32, 48, 0.22) 0%,
-      rgba(12, 22, 36, 0.1) 28%,
-      transparent 62%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(6, 8, 14, 0.92) 0%,
-      rgba(6, 8, 14, 0.78) 18%,
-      rgba(6, 8, 14, 0.48) 46%,
-      rgba(6, 8, 14, 0.2) 72%,
-      rgba(6, 8, 14, 0.06) 88%,
-      transparent 100%
-    );
-
-  /* Thin gold-leaf rule at the very top — broadcast frame, not a panel. */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 8%;
-    right: 8%;
-    height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(232, 197, 71, 0.15) 18%,
-      rgba(232, 197, 71, 0.42) 50%,
-      rgba(232, 197, 71, 0.15) 82%,
-      transparent 100%
-    );
-    pointer-events: none;
-  }
+  /* Whisper of a scrim, not a cinema bar.
+   *
+   * The old version opened at 92% black and every piece of chrome was
+   * translucent, so the scrim was doing the legibility work that the
+   * chrome should do — and because content started 24px below an opaque
+   * black edge, the band read as floating in a letterbox rather than
+   * attached to the screen. Now that every stroke is opaque cream over a
+   * dark keyline, the band carries itself and this only has to knock
+   * back a bright stage behind the type. */
+  background: linear-gradient(
+    180deg,
+    rgba(6, 8, 14, 0.46) 0%,
+    rgba(6, 8, 14, 0.3) 38%,
+    rgba(6, 8, 14, 0.11) 70%,
+    transparent 100%
+  );
 `;
 
 // ============================================
@@ -394,6 +409,11 @@ const PlayerWing = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0;
+  /* Above the center wing rail so bar frames cover wing tips that
+   * reach under the borders — wings read as coming OUT of the bars,
+   * never painted on top of them. */
+  position: relative;
+  z-index: 2;
   transition: opacity 240ms ease, filter 240ms ease;
   opacity: ${(p) => (p.$matchOver ? 0.93 : 1)};
   filter: ${(p) => (p.$matchOver ? "brightness(0.94)" : "none")};
@@ -403,34 +423,54 @@ const PlayerWing = styled.div`
 // NAME BANNER  —  sumo shikona-style plate
 // ============================================
 
+/* Fixed height (not min-height) so CENTER_MIDLINE_TOP's arithmetic is
+ * exact — the round medallion is positioned off that sum. */
 const NameBanner = styled.div`
   display: flex;
-  align-items: center;
+  /* Bottom-aligned, not centered. The row is taller than the type so the
+   * shikona can never be clipped, but centering left it floating in that
+   * slack; sitting it on the row's floor puts the name a few px closer to
+   * the bar it labels, and drops the score marks onto the same line. */
+  align-items: flex-end;
   width: 100%;
-  gap: clamp(4px, 0.5cqw, 8px);
+  gap: ${NAME_ROW_GAP};
   flex-direction: ${(p) => (p.$isRight ? "row" : "row-reverse")};
   background: none;
-  min-height: clamp(18px, 2.2cqh, 26px);
+  height: ${NAME_ROW_H};
   box-sizing: border-box;
   padding: 0;
   position: relative;
-  margin-bottom: ${gaugeStripGap};
+  margin-bottom: ${NAME_GAP};
 `;
 
 const NameBlock = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  justify-content: center;
   align-items: ${(p) => (p.$isRight ? "flex-end" : "flex-start")};
-  align-self: ${(p) => (p.$alignToMarkBottom ? "flex-end" : "auto")};
   min-width: 0;
   flex: 1;
+  overflow: hidden;
 `;
 
+/*
+ * Shikona type — starts at the HUD clamp, then FitFighterName measures
+ * and writes an exact px size so the full name always fits (same approach
+ * as PreMatchScreen — never ellipsis / clip).
+ *
+ * Sized up ~35% from the previous clamp. The shikona is the only element
+ * on the band allowed to be big; everything else sits around 9-11px. A
+ * wide gap between the largest and second-largest type is most of what
+ * separates a designed HUD from a row of same-size labels — and the
+ * extra mass above the bar is what anchors the band to the top edge, so
+ * the bar can sit where it does without looking like it floated up there.
+ */
 const FighterName = styled.div`
+  width: 100%;
+  min-width: 0;
   font-family: ${FONT_UI};
   font-weight: ${FONT_WEIGHT.bold};
-  font-size: clamp(11px, 1.55cqw, 19px);
+  font-size: ${NAME_SIZE};
   color: ${C.cream};
   ${FONT_RENDER}
   text-shadow: ${TEXT_SHADOW_DISPLAY};
@@ -439,88 +479,139 @@ const FighterName = styled.div`
   line-height: 1;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-align: ${(p) => (p.$isRight ? "right" : "left")};
 `;
+
+const NAME_MIN_PX = 9;
+
+/** Shrink font (then scaleX as a last resort) so the full name stays visible. */
+function FitFighterName({ children, isRight = false }) {
+  const ref = useRef(null);
+  const side = isRight ? "right" : "left";
+
+  const fit = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    el.style.fontSize = "";
+    el.style.transform = "";
+    el.style.letterSpacing = "";
+
+    const avail = el.clientWidth;
+    if (avail <= 0) return;
+
+    const maxPx = parseFloat(getComputedStyle(el).fontSize);
+    if (!maxPx) return;
+
+    let natural = el.scrollWidth;
+    if (natural <= avail + 1) return;
+
+    let next = maxPx * (avail / natural);
+    if (next < NAME_MIN_PX) {
+      el.style.fontSize = `${NAME_MIN_PX}px`;
+      el.style.letterSpacing = "0.04em";
+      natural = el.scrollWidth;
+      if (natural > avail + 1) {
+        const sx = avail / natural;
+        el.style.transform = `scaleX(${sx})`;
+        el.style.transformOrigin =
+          side === "right" ? "right center" : "left center";
+      }
+      return;
+    }
+
+    el.style.fontSize = `${next}px`;
+    if (next < maxPx * 0.72) el.style.letterSpacing = "0.04em";
+
+    // Second pass — letter-spacing / subpixel can still overhang.
+    if (el.scrollWidth > avail + 1) {
+      next = Math.max(NAME_MIN_PX, next * (avail / el.scrollWidth));
+      el.style.fontSize = `${next}px`;
+      if (el.scrollWidth > avail + 1) {
+        const sx = avail / el.scrollWidth;
+        el.style.transform = `scaleX(${sx})`;
+        el.style.transformOrigin =
+          side === "right" ? "right center" : "left center";
+      }
+    }
+  }, [children, side]);
+
+  useLayoutEffect(() => {
+    fit();
+    const el = ref.current;
+    if (!el) return undefined;
+
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    if (el.parentElement) ro.observe(el.parentElement);
+
+    let cancelled = false;
+    const onFonts = () => {
+      if (!cancelled) fit();
+    };
+    document.fonts?.ready?.then(onFonts);
+    window.addEventListener("resize", fit);
+
+    return () => {
+      cancelled = true;
+      ro.disconnect();
+      window.removeEventListener("resize", fit);
+    };
+  }, [fit]);
+
+  return (
+    <FighterName
+      ref={ref}
+      $isRight={isRight}
+      title={typeof children === "string" ? children : undefined}
+    >
+      {children}
+    </FighterName>
+  );
+}
+
+FitFighterName.propTypes = {
+  children: PropTypes.node,
+  isRight: PropTypes.bool,
+};
 
 // ============================================
 // RANK PLAQUE — sumo banzuke-style ranking plate
 // ============================================
 
-/* Sumo banzuke plate — lacquered ink with a gold-leaf hairline.
+/* Banzuke plaque — placeholder for the per-rank badge art.
  *
- * Side ornaments are thin gold ticks (not brackets / rivets) so the
- * plate reads as a printed banzuke entry without competing with the
- * stamina bar for "premium hardware" attention. */
+ * Fills the rank lane rather than hugging its text, and carries a
+ * min-width, so a short rank and a long one occupy the same footprint
+ * and the eventual artwork has a reserved shape to land in. Flat ink,
+ * cream hairline, gold type — quiet, because it is the lowest and least
+ * urgent thing on the wing. */
 const RankPlaque = styled.div`
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(5px, 0.55cqw, 9px);
-  padding: ${(p) =>
-    p.$compact
-      ? "clamp(3px, 0.4cqh, 6px) clamp(8px, 1cqw, 14px)"
-      : "clamp(4px, 0.55cqh, 8px) clamp(12px, 1.5cqw, 22px)"};
-  position: relative;
-
-  background:
-    repeating-linear-gradient(
-      90deg,
-      transparent 0px,
-      transparent 2px,
-      rgba(245, 236, 217, 0.028) 2px,
-      rgba(245, 236, 217, 0.028) 3px
-    ),
-    repeating-linear-gradient(
-      0deg,
-      transparent 0px,
-      transparent 4px,
-      rgba(245, 236, 217, 0.018) 4px,
-      rgba(245, 236, 217, 0.018) 5px
-    ),
-    linear-gradient(
-      180deg,
-      rgba(22, 28, 40, 0.96) 0%,
-      rgba(12, 16, 26, 0.98) 48%,
-      rgba(8, 10, 18, 0.96) 100%
-    );
-  border-radius: 3px;
-  border: 1px solid rgba(232, 197, 71, 0.42);
-  box-shadow:
-    0 2px 10px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 246, 210, 0.14),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.4);
-
-  &::before,
-  &::after {
-    content: "";
-    width: 2px;
-    height: 55%;
-    border-radius: 1px;
-    background: linear-gradient(
-      180deg,
-      transparent 0%,
-      rgba(232, 197, 71, 0.55) 30%,
-      rgba(232, 197, 71, 0.75) 50%,
-      rgba(232, 197, 71, 0.55) 70%,
-      transparent 100%
-    );
-    flex-shrink: 0;
-  }
+  flex-shrink: 0;
+  box-sizing: border-box;
+  height: 100%;
+  min-width: clamp(64px, 7.5cqw, 108px);
+  padding: 0 clamp(6px, 0.8cqw, 11px);
+  background: rgba(9, 12, 20, 0.94);
+  border: ${HUD.strokeThin} solid ${CHROME};
+  box-shadow: 0 0 0 1px ${KEYLINE};
 `;
 
 const RankText = styled.div`
   font-family: ${FONT_UI};
   font-weight: ${FONT_WEIGHT.black};
-  font-size: clamp(10px, 1.2cqw, 14px);
+  font-size: clamp(8px, 0.92cqw, 11px);
   color: ${C.gold};
   text-transform: uppercase;
   letter-spacing: 0.1em;
+  /* Cancel the trailing track so the label stays optically centered. */
+  text-indent: 0.1em;
   line-height: 1;
   ${FONT_RENDER}
-  text-shadow:
-    ${TEXT_SHADOW_UI},
-    0 0 8px rgba(232, 197, 71, 0.18);
+  text-shadow: ${TEXT_SHADOW_UI};
   white-space: nowrap;
 `;
 
@@ -528,16 +619,6 @@ const RankText = styled.div`
 // STAMINA BAR  — THE HERO OF THE HUD
 // ============================================
 
-/* Stamina bar frame — lacquered track with a frost/gold hairline.
- *
- * Deliberately NOT the old chiseled brass ring + corner rivets. Those
- * read as arcade-cabinet cosplay. This is a tighter broadcast gauge:
- * cream/ice hairline by default, vermillion when gassed/danger, inset
- * catch-light so the bar lifts off the dohyo, quiet L-brackets at the
- * outer corners for a ceremonial frame without hardware clutter.
- *
- * Fill + impact strike + gassed overlay still carry the bar's identity;
- * the frame just stops looking like a placeholder rectangle. */
 const shoveWinPulse = keyframes`
   0%, 100% { filter: brightness(1) saturate(1); }
   50% { filter: brightness(1.12) saturate(1.15); }
@@ -566,102 +647,60 @@ const ShoveLeadTag = styled.div`
   text-shadow: ${TEXT_SHADOW_UI};
 `;
 
+/* Stamina bar frame — opaque cream stroke over a dark keyline.
+ *
+ * The previous frame was a 1.5px gold hairline at 38% alpha with L-shaped
+ * corner brackets. Two problems, both fatal at HUD scale: a translucent
+ * structural color sitting over a crowd of penguins literally changes hue
+ * along its own length, and the brackets were ornament competing with the
+ * one thing the frame has to do, which is describe a hard edge.
+ *
+ * Now: opaque cream, hard corners, and a 1px near-black keyline ringing
+ * the outside so the cream survives whichever stage is behind it.
+ *
+ * Danger and gassed don't set a static stroke color — they BLINK it, via
+ * dangerBorderFlash below. A stroke parked on vermillion is the same
+ * value as the fill behind it and erases the bar's silhouette; blinking
+ * the same vermillion against cream keeps the alert and the edge both.
+ * Gold for a winning push war is the only state that holds the stroke at
+ * a fixed color, because nothing else on the bar is gold. */
 const BarFrame = styled.div`
   position: relative;
   flex: 1;
   min-width: 0;
-  border-radius: 4px;
-  border: 1.5px solid ${(p) =>
-    p.$gassed
-      ? "rgba(216, 59, 39, 0.95)"
-      : p.$danger
-        ? "rgba(238, 81, 65, 0.85)"
-        : p.$shoveLead > 0
-          ? "rgba(232, 197, 71, 0.92)"
-          : p.$shoveLead < 0
-            ? "rgba(200, 120, 100, 0.75)"
-            : p.$shoveLead === 0 && p.$shoveActive
-              ? "rgba(170, 190, 210, 0.65)"
-              : "rgba(232, 197, 71, 0.38)"};
+  border-radius: 0;
+  border: ${STROKE} solid ${(p) =>
+    p.$shoveLead > 0
+      ? C.gold
+      : p.$shoveLead < 0
+        ? CHROME_DIM
+        : CHROME};
   box-shadow:
-    0 clamp(2px, 0.18cqw, 4px) clamp(10px, 0.85cqw, 18px) rgba(0, 0, 0, 0.58),
-    0 0 0 1px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 246, 210, 0.16),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+    0 0 0 1px ${KEYLINE},
+    0 clamp(1px, 0.12cqw, 3px) clamp(5px, 0.5cqw, 10px) rgba(0, 0, 0, 0.55);
   opacity: ${(p) => (p.$matchOver ? 0.95 : 1)};
-  transition: border-color 240ms ease, opacity 220ms ease, box-shadow 240ms ease;
+  transition: border-color 240ms ease, opacity 220ms ease;
   overflow: visible;
-
-  /* Quiet corner brackets — outer corners only (away from center screen). */
-  &::before,
-  &::after {
-    content: "";
-    position: absolute;
-    width: clamp(7px, 0.7cqw, 11px);
-    height: clamp(7px, 0.7cqw, 11px);
-    pointer-events: none;
-    z-index: 3;
-    opacity: ${(p) => (p.$gassed || p.$danger ? 0.35 : 0.7)};
-    border-color: ${(p) =>
-      p.$gassed || p.$danger
-        ? "rgba(238, 81, 65, 0.85)"
-        : "rgba(232, 197, 71, 0.7)"};
-    border-style: solid;
-    border-width: 0;
-  }
-
-  ${(p) =>
-    p.$isRight
-      ? css`
-          &::before {
-            top: -1px;
-            right: -1px;
-            border-top-width: 1.5px;
-            border-right-width: 1.5px;
-            border-top-right-radius: 3px;
-          }
-          &::after {
-            bottom: -1px;
-            right: -1px;
-            border-bottom-width: 1.5px;
-            border-right-width: 1.5px;
-            border-bottom-right-radius: 3px;
-          }
-        `
-      : css`
-          &::before {
-            top: -1px;
-            left: -1px;
-            border-top-width: 1.5px;
-            border-left-width: 1.5px;
-            border-top-left-radius: 3px;
-          }
-          &::after {
-            bottom: -1px;
-            left: -1px;
-            border-bottom-width: 1.5px;
-            border-left-width: 1.5px;
-            border-bottom-left-radius: 3px;
-          }
-        `}
 
   ${(p) => {
     const gassedDur = p.$matchOver ? "2.4s" : "1.6s";
     const dangerDur = p.$matchOver ? "1.15s" : "0.7s";
+    const gassedAlarm = css`${gassedFramePulse} ${gassedDur} ease-in-out infinite, ${dangerBorderFlash} ${gassedDur} linear infinite`;
+    const dangerAlarm = css`${dangerFramePulse} ${dangerDur} ease-in-out infinite, ${dangerBorderFlash} ${dangerDur} linear infinite`;
     if (p.$shake && p.$gassed) {
-      return css`animation: ${frameShake} 0.32s ease-out, ${gassedFramePulse} ${gassedDur} ease-in-out infinite;`;
+      return css`animation: ${frameShake} 0.32s ease-out, ${gassedAlarm};`;
     }
     if (p.$shake && p.$danger) {
-      return css`animation: ${frameShake} 0.32s ease-out, ${dangerFramePulse} ${dangerDur} ease-in-out infinite;`;
+      return css`animation: ${frameShake} 0.32s ease-out, ${dangerAlarm};`;
     }
     if (p.$shake) {
       return css`animation: ${frameShake} 0.32s ease-out;`;
     }
     if (p.$gassed) {
-      return css`animation: ${gassedFramePulse} ${gassedDur} ease-in-out infinite;`;
+      return css`animation: ${gassedAlarm};`;
     }
     if (p.$danger) {
-      return css`animation: ${dangerFramePulse} ${dangerDur} ease-in-out infinite;`;
+      return css`animation: ${dangerAlarm};`;
     }
     if (p.$shoveLead > 0 && !p.$matchOver) {
       return css`animation: ${shoveWinPulse} 0.9s ease-in-out infinite;`;
@@ -670,146 +709,88 @@ const BarFrame = styled.div`
   }}
 `;
 
-/* Dark inner track — stamina gauge with a quiet jade well tint */
+/* Dark well the fill sits directly against — flat, no jade tint, no
+ * directional gradient. Anything painted here shows through as a muddy
+ * mid-tone between the cream stroke and the fill.
+ *
+ * The 1px ink border is the INNER half of the keyline pair. Every actor,
+ * prop and crowd member in this game is drawn with a black contour, so
+ * cream with ink on both sides is the chrome speaking the same language
+ * as the art instead of floating on top of it. It also stops the jade
+ * from touching the cream directly — two bright values sharing an
+ * antialiased edge shimmer — and it keeps the fill visually separate
+ * from the frame during the danger blink, when the stroke and the fill
+ * are briefly the same red. Not the old 2px moat: that had its own
+ * radius and read as a gap with the fill dropped into it. At exactly 1px
+ * this is a drawn line, not a space. */
 const BarTrack = styled.div`
   position: relative;
+  box-sizing: border-box;
   width: 100%;
-  height: clamp(22px, 4cqh, 40px);
-  border-radius: 3px;
+  height: ${BAR_H};
+  border: 1px solid ${KEYLINE};
+  border-radius: 0;
   overflow: hidden;
-
-  background:
-    linear-gradient(
-      180deg,
-      rgba(61, 184, 106, 0.06) 0%,
-      transparent 45%
-    ),
-    linear-gradient(
-      ${(p) => (p.$isRight ? "280deg" : "100deg")},
-      rgba(4, 6, 12, 0.98) 0%,
-      rgba(8, 10, 16, 0.96) 50%,
-      rgba(12, 14, 22, 0.94) 100%
-    );
-  box-shadow:
-    inset 0 2px 7px rgba(0, 0, 0, 0.65),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.3);
+  background: ${WELL};
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55);
 `;
 
-/* Stamina gauge tally — kanji-style tick. A short top notch + a longer
- * bottom stem evokes a hand-cut tally mark on a banzuke, giving the bar
- * more identity than the previous plain 1px line while staying subtle. */
+/* Quarter dividers — dark keylines cutting the full height of the bar,
+ * painted OVER the fill (they used to sit under it at z-index 1, where
+ * the fill hid them exactly when you needed them).
+ *
+ * Dark rather than cream because the stamina bar is usually mostly full:
+ * the divider has to contrast with the jade, not with the empty well. */
 const StaTickMark = styled.div`
   position: absolute;
-  top: 2px;
-  bottom: 2px;
+  top: 0;
+  bottom: 0;
   left: ${(p) => p.$pct}%;
   transform: translateX(-50%);
-  width: 2px;
-  z-index: 1;
+  width: 1.5px;
+  z-index: 4;
   pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.0) 0%,
-    rgba(255, 255, 255, 0.22) 18%,
-    rgba(255, 255, 255, 0.18) 78%,
-    rgba(0, 0, 0, 0.35) 100%
-  );
-  box-shadow:
-    -1px 0 0 rgba(0, 0, 0, 0.18),
-     1px 0 0 rgba(255, 255, 255, 0.06);
-
-  /* Tiny notch cap on top — sells the "tally mark" feel. */
-  &::before {
-    content: "";
-    position: absolute;
-    top: -1px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 4px;
-    height: 2px;
-    background: rgba(255, 255, 255, 0.28);
-    border-radius: 1px;
-  }
+  background: rgba(5, 8, 14, 0.55);
 `;
 
-/* Smooth jade stamina fill — liquid energy vs posture's stance plates.
+/* Jade stamina fill — flush to the stroke, flat, one hue ramp.
  *
- * Bright enough to read as vitality, without a heavy neon bloom.
- * Regen overlays still punch via success* flashes on top.
+ * This is the change that stops the bar looking cheap. It used to be
+ * inset 2px on all four sides with its own 2px radius nested inside the
+ * frame's 4px radius, which read as a green pill dropped into a tray:
+ * the dark moat between stroke and fill was a mid-tone wedged between
+ * the two strongest values on the band, killing the contrast of both,
+ * and when the bar drained you couldn't tell the gutter from the empty
+ * track. Now the fill IS the shape — inset 0, radius 0, so at full
+ * stamina the well is completely invisible.
  *
- * Danger: vermillion ramp (unchanged semantics). */
+ * Everything decorative is gone with it: the mint lip highlight, the
+ * travelling sheen, the outer glow, the idle wobble, and the danger
+ * opacity flash (which faded the fill to 55% and read as the bar
+ * disappearing rather than as an alarm). Danger is carried by the hue
+ * ramp plus the frame's vermillion stroke. */
 const BarFill = styled.div.attrs((p) => ({
   style: {
-    width: `calc(${p.$stamina}% - 4px)`,
+    width: `${p.$stamina}%`,
   },
 }))`
   position: absolute;
-  top: 2px;
-  bottom: 2px;
-  ${(p) => (p.$isRight ? "left: 2px;" : "right: 2px;")}
-  border-radius: 2px;
+  top: 0;
+  bottom: 0;
+  ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
+  border-radius: 0;
   transition: width 0.3s ease;
   z-index: 2;
   overflow: hidden;
-  transform-origin: ${(p) => (p.$isRight ? "left center" : "right center")};
 
   background: ${(p) =>
     p.$danger
       ? p.$isRight
-        ? "linear-gradient(90deg, #8f1515 0%, #c41e1e 35%, #e23a3a 70%, #f07171 100%)"
-        : "linear-gradient(90deg, #f07171 0%, #e23a3a 30%, #c41e1e 65%, #8f1515 100%)"
+        ? "linear-gradient(90deg, #8f1515 0%, #c41e1e 45%, #e23a3a 100%)"
+        : "linear-gradient(90deg, #e23a3a 0%, #c41e1e 55%, #8f1515 100%)"
       : p.$isRight
         ? `linear-gradient(90deg, ${C.stamMid} 0%, ${C.stam} 45%, ${C.stamBright} 100%)`
         : `linear-gradient(90deg, ${C.stamBright} 0%, ${C.stam} 55%, ${C.stamMid} 100%)`};
-
-  box-shadow: ${(p) =>
-    p.$danger
-      ? "inset 0 1px 0 rgba(255, 200, 190, 0.28), inset 0 -2px 4px rgba(80, 10, 10, 0.35), inset 0 0 5px rgba(255, 100, 100, 0.18)"
-      : `inset 0 1px 0 rgba(220, 255, 236, 0.35), inset 0 -1px 3px rgba(10, 60, 30, 0.2), 0 0 5px ${C.stamGlow}`};
-
-  animation: ${(p) =>
-    p.$danger
-      ? css`${flashRedPulse} 0.6s ease-in-out infinite`
-      : css`${fillWobble} 2.4s ease-in-out infinite`};
-
-  /* Soft mint catch on the upper lip. */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 40%;
-    background: linear-gradient(
-      180deg,
-      rgba(230, 255, 240, 0.3) 0%,
-      rgba(95, 217, 138, 0.08) 55%,
-      transparent 100%
-    );
-    border-radius: 2px 2px 0 0;
-    pointer-events: none;
-  }
-
-  /* Soft energy sweep. */
-  &::after {
-    content: "";
-    position: absolute;
-    top: 0; bottom: 0;
-    left: 0;
-    width: 34%;
-    background: linear-gradient(
-      103deg,
-      transparent 0%,
-      transparent 32%,
-      rgba(200, 255, 220, 0.12) 44%,
-      rgba(255, 255, 255, 0.16) 50%,
-      rgba(200, 255, 220, 0.12) 56%,
-      transparent 68%,
-      transparent 100%
-    );
-    animation: ${emberShimmer} 3.6s ease-in-out infinite;
-    animation-delay: ${(p) => (p.$isRight ? "2s" : "0s")};
-    pointer-events: none;
-    opacity: ${(p) => (p.$danger ? 0 : 1)};
-  }
 `;
 
 /* Impact strike — crisp 2px cream hairline pinned to the trailing edge
@@ -856,164 +837,69 @@ const ImpactStrike = styled.div`
  * without piling on extra glass effects. */
 const BarGhost = styled.div.attrs((p) => ({
   style: {
-    width: `calc(${p.$stamina}% - 4px)`,
+    width: `${p.$stamina}%`,
     transition: p.$catching
       ? "width 0.55s ease-out"
       : "width 0.05s linear",
   },
 }))`
   position: absolute;
-  top: 2px;
-  bottom: 2px;
-  ${(p) => (p.$isRight ? "left: 2px;" : "right: 2px;")}
-  border-radius: 2px;
+  top: 0;
+  bottom: 0;
+  ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
+  border-radius: 0;
   z-index: 1;
   pointer-events: none;
-
-  background: linear-gradient(
-    180deg,
-    rgba(220, 226, 238, 0.72) 0%,
-    rgba(178, 188, 206, 0.55) 60%,
-    rgba(110, 122, 142, 0.35) 100%
-  );
-
-  opacity: 0.78;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
-
-  /* Single thin top edge highlight so the ghost has a defined upper edge
-   * but doesn't bloom into a glass shine. */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 32%;
-    background: linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.32) 0%,
-      transparent 100%
-    );
-    border-radius: 2px 2px 0 0;
-    pointer-events: none;
-  }
-
-  /* (The diagonal moving sweep was removed — created a glint that fought
-   * the impact spark during damage.) */
+  background: #8d97a8;
 `;
 
-/* Regen overlay — "catch your breath" treatment.
+/* Regen overlay — "catch your breath".
  *
- * Three layered visuals replace the old flat green tint:
- *   1. Soft green-mint base wash    — keeps the existing readability
- *   2. Directional chevron pattern  — slow scrolling ↑↑↑ inside the bar,
- *                                     hinting at ascending energy
- *   3. Ascending icy mist particles — small white-blue puffs rise and
- *                                     dissolve (this is the "penguin
- *                                     breathing cold air" beat)
- *
- * Sits over the live fill but under the parry-refund flash. */
+ * Was a green wash plus scrolling chevrons plus three rising blurred
+ * mist particles, layered and screen-blended. At a bar height of ~24px
+ * none of that detail resolved; it just summed to a green smear with a
+ * blur cost. One flat mint wash, brightest at the leading edge where
+ * stamina is being added, pulsing gently. Sits over the live fill but
+ * under the parry-refund flash. */
 const RegenGlow = styled.div.attrs((p) => ({
   style: {
-    width: `calc(${p.$stamina}% - 4px)`,
+    width: `${p.$stamina}%`,
   },
 }))`
   position: absolute;
-  top: 2px;
-  bottom: 2px;
-  ${(p) => (p.$isRight ? "left: 2px;" : "right: 2px;")}
-  border-radius: 2px;
+  top: 0;
+  bottom: 0;
+  ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
+  border-radius: 0;
   z-index: 3;
   pointer-events: none;
   transition: width 0.3s ease;
-  overflow: hidden;
 
   background: linear-gradient(
     ${(p) => (p.$isRight ? "270deg" : "90deg")},
-    rgba(52, 211, 153, 0.06) 0%,
-    rgba(52, 211, 153, 0.18) 40%,
-    rgba(52, 211, 153, 0.32) 75%,
-    rgba(74, 222, 170, 0.45) 100%
+    rgba(52, 211, 153, 0.04) 0%,
+    rgba(52, 211, 153, 0.2) 55%,
+    rgba(120, 240, 190, 0.5) 100%
   );
 
-  box-shadow:
-    inset 0 0 10px rgba(52, 211, 153, 0.22),
-    inset ${(p) => (p.$isRight ? "-6px" : "6px")} 0 14px rgba(52, 211, 153, 0.28);
-
   animation: ${regenPulse} 0.9s ease-in-out infinite;
-
-  /* Scrolling chevron pattern — built from a repeating linear gradient that
-   * paints angled stripes. Direction matches the regen flow (toward the
-   * leading edge of the fill). Subtle opacity so it never dominates. */
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image: repeating-linear-gradient(
-      ${(p) => (p.$isRight ? "65deg" : "115deg")},
-      rgba(225, 255, 241, 0.0) 0px,
-      rgba(225, 255, 241, 0.0) 7px,
-      rgba(225, 255, 241, 0.22) 8px,
-      rgba(225, 255, 241, 0.22) 10px,
-      rgba(225, 255, 241, 0.0) 11px,
-      rgba(225, 255, 241, 0.0) 22px
-    );
-    background-size: 22px 100%;
-    animation: ${(p) => (p.$isRight ? chevronScrollLeft : chevronScrollRight)}
-      0.8s linear infinite;
-    pointer-events: none;
-    mix-blend-mode: screen;
-  }
-
-  /* Ascending mist particles — three soft white-blue dots that rise and
-   * dissolve. Positioned along the fill so they read as breath rising
-   * out of multiple points. Stacked on ::after so we get all three from
-   * a single pseudo via radial-gradient stacking. */
-  &::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image:
-      radial-gradient(circle at 0 100%,
-        rgba(225, 255, 241, 0.85) 0%,
-        rgba(168, 224, 255, 0.55) 30%,
-        rgba(168, 224, 255, 0) 60%),
-      radial-gradient(circle at 0 100%,
-        rgba(225, 255, 241, 0.75) 0%,
-        rgba(168, 224, 255, 0.45) 30%,
-        rgba(168, 224, 255, 0) 60%),
-      radial-gradient(circle at 0 100%,
-        rgba(225, 255, 241, 0.7) 0%,
-        rgba(168, 224, 255, 0.4) 30%,
-        rgba(168, 224, 255, 0) 60%);
-    background-size: 6px 6px, 5px 5px, 4px 4px;
-    background-repeat: no-repeat;
-    background-position: 25% 90%, 55% 90%, 80% 90%;
-    animation: ${mistRise} 1.4s ease-out infinite;
-    filter: blur(0.4px);
-    pointer-events: none;
-  }
 `;
 
-/* Instant bright green flash overlay for parry stamina refund — sized to current fill */
+/* Instant bright green flash overlay for parry stamina refund */
 const ParryRefundFlash = styled.div.attrs((p) => ({
   style: {
-    width: `calc(${p.$stamina}% - 4px)`,
+    width: `${p.$stamina}%`,
   },
 }))`
   position: absolute;
-  top: 2px;
-  bottom: 2px;
-  ${(p) => (p.$isRight ? "left: 2px;" : "right: 2px;")}
-  border-radius: 2px;
+  top: 0;
+  bottom: 0;
+  ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
+  border-radius: 0;
   z-index: 6;
   pointer-events: none;
   transition: width 0.3s ease;
-  background: linear-gradient(
-    180deg,
-    rgba(74, 255, 160, 0.5) 0%,
-    rgba(52, 211, 153, 0.7) 40%,
-    rgba(16, 185, 129, 0.7) 60%,
-    rgba(52, 211, 153, 0.5) 100%
-  );
+  background: rgba(74, 255, 160, 0.62);
   animation: ${parryRefundFlash} 0.5s ease-out forwards;
 `;
 
@@ -1060,7 +946,7 @@ const GassedOverlay = styled.div`
   bottom: 0;
   left: 0;
   right: 0;
-  border-radius: 3px;
+  border-radius: 0;
   z-index: 5;
   pointer-events: none;
   overflow: hidden;
@@ -1188,7 +1074,7 @@ const GassedText = styled.span`
   background: ${C.vermillion};
   padding: clamp(2px, 0.3cqh, 4px) clamp(10px, 1.4cqw, 20px);
   border: 1.5px solid ${C.vermillionDeep};
-  border-radius: 2px;
+  border-radius: 0;
   text-shadow: 0 1px 0 rgba(70, 18, 8, 0.6);
   box-shadow:
     0 2px 6px rgba(0, 0, 0, 0.55),
@@ -1217,7 +1103,7 @@ const RecoveryFlash = styled.div`
   bottom: 0;
   left: 0;
   right: 0;
-  border-radius: 3px;
+  border-radius: 0;
   z-index: 7;
   pointer-events: none;
   background: linear-gradient(180deg,
@@ -1268,59 +1154,64 @@ const RecoveryText = styled.span`
 `;
 
 
-/* STA label inside the bar */
-const BarLabel = styled.div`
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  ${(p) => (p.$isRight ? "left: clamp(6px, 1cqw, 14px);" : "right: clamp(6px, 1cqw, 14px);")}
-  font-family: ${FONT_UI};
-  font-weight: ${FONT_WEIGHT.bold};
-  font-size: clamp(8px, 0.95cqw, 12px);
-  color: rgba(245, 236, 217, 0.82);
-  text-transform: uppercase;
-  letter-spacing: ${TRACK.label};
-  ${FONT_RENDER}
-  text-shadow: ${TEXT_SHADOW_UI};
-  z-index: 6;
-  pointer-events: none;
-  user-select: none;
-`;
-
 /* "YOU" — bare in-bar type on the outer end of the local stamina track.
- * No plate, no border: hard shelf only (no 4-way stroke + soft bloom). */
+ *
+ * Ink-outlined, because this label sits on the one background in the HUD
+ * that inverts underneath it. It rides the OUTER end of the bar, which
+ * is the end that empties first, so it starts life on bright jade and
+ * ends it on the near-black well. White-on-mint was the hard-to-read
+ * case — two light values with only a soft drop shadow between them —
+ * and simply going dark would fail just as badly once the bar drains.
+ *
+ * A hard contour is the only treatment that survives both. `paint-order`
+ * puts the stroke behind the fill so the letterforms keep their full
+ * weight instead of being eaten from the outside in, and cream rather
+ * than pure white keeps it in the band's palette. */
 const YouLabel = styled.div`
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
   ${(p) =>
     p.$isRight
-      ? "right: clamp(6px, 0.9cqw, 14px);"
-      : "left: clamp(6px, 0.9cqw, 14px);"}
+      ? css`right: ${BAR_TEXT_INSET};`
+      : css`left: ${BAR_TEXT_INSET};`}
   z-index: 6;
   font-family: ${FONT_UI};
-  font-weight: ${FONT_WEIGHT.bold};
-  font-size: clamp(8px, 0.95cqw, 12px);
-  color: rgba(255, 255, 255, 0.92);
+  font-weight: ${FONT_WEIGHT.black};
+  font-size: clamp(9px, 1.05cqw, 13px);
+  color: ${CHROME};
   letter-spacing: ${TRACK.meta};
   /* Cancel trailing tracking so the glyph cluster doesn't look right-heavy. */
   margin-inline-end: -0.08em;
   line-height: 1;
   ${FONT_RENDER}
-  text-shadow: ${TEXT_SHADOW_COMBAT};
+  -webkit-text-stroke: clamp(1.4px, 0.16cqw, 2.2px) rgba(4, 6, 12, 0.95);
+  paint-order: stroke fill;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
   pointer-events: none;
   user-select: none;
 `;
 
 // ============================================
-// POWER-UP — medal / charm style
+// POWER-UP — disc capping the bar's outer end
 // ============================================
 
-const SLOT_SIZE = `clamp(34px, 4.5cqw, 54px)`;
-
-/* Invisible spacer to align rank plaque & name with stamina bar (same width as PowerUpSlot) */
+/* Invisible spacer that sets where the shikona starts.
+ *
+ * Not the bar's outer edge — the name lines up with the type INSIDE the
+ * bar ("YOU", the push-war tag), and with the rank plaque below it. One
+ * shared left margin for everything on this wing that is set in type,
+ * which reads as the shikona belonging to the bar rather than being
+ * parked next to the slot.
+ *
+ * RAIL_LEAD clears the slot and its gutter to reach the bar's border,
+ * STROKE crosses it, BAR_TEXT_INSET is the track's text margin, and the
+ * name row's own gutter is subtracted because the row adds one back
+ * between this spacer and the name. */
 const BarRowSpacer = styled.div`
-  width: ${SLOT_SIZE};
+  width: calc(
+    ${RAIL_LEAD} + ${STROKE} + ${BAR_TEXT_INSET} - ${NAME_ROW_GAP}
+  );
   flex-shrink: 0;
   min-height: 0;
 `;
@@ -1340,24 +1231,36 @@ const GaugeStack = styled.div`
 `;
 
 /* Balance strip — inner half of the gauge stack (toward center).
- * Outer half is reserved for BASHO boons via BoonAnchor — keep these
- * widths matched so they never collide. */
+ * Outer half is the rank lane — keep these widths matched. */
 const BalStripWrap = styled.div`
   width: 50%;
   align-self: ${(p) => (p.$isRight ? "flex-start" : "flex-end")};
   margin-top: ${gaugeStripGap};
 `;
 
-/* BASHO boons — outer half of the gauge stack; out of flow so
- * stamina / posture / power slot stay put. */
-const BoonAnchor = styled.div`
+/* Top of the sub-bar lane: posture on the inner half, rank on the outer. */
+const SUB_ROW_TOP = `calc(${BAR_H} + ${STROKE} * 2 + ${gaugeStripGap})`;
+
+/* Rank lane — outer half of the gauge stack, opposite the posture bar.
+ *
+ * The rank used to ride in the name row next to the shikona, which put
+ * it a few pixels from the round score AND moved it depending on mode:
+ * versus has three star marks to its inside, BASHO has none, so the same
+ * plaque sat in two different places depending on what you were playing.
+ *
+ * Out here it is pinned to one spot in every mode — the outer end of the
+ * lane under the bar, the far corner of the wing, diagonally opposite
+ * the score. It also fills the only genuinely dead space left on the
+ * band: in versus this half of the row was empty. Height is RESERVED
+ * rather than fitted, so the real per-rank badge art can drop in without
+ * moving the boons below it. */
+const RankAnchor = styled.div`
   position: absolute;
-  top: calc(clamp(22px, 4cqh, 40px) + ${gaugeStripGap});
+  top: ${SUB_ROW_TOP};
   width: 50%;
+  height: ${RANK_ROW_H};
   display: flex;
-  align-items: flex-start;
-  flex-shrink: 0;
-  overflow: visible;
+  align-items: center;
   pointer-events: none;
   z-index: 2;
 
@@ -1365,97 +1268,194 @@ const BoonAnchor = styled.div`
     p.$isRight
       ? css`
           right: 0;
-          padding-right: clamp(4px, 0.55cqw, 8px);
           justify-content: flex-end;
+          padding-right: ${BAR_TEXT_INSET};
         `
       : css`
           left: 0;
-          padding-left: clamp(4px, 0.55cqw, 8px);
+          padding-left: ${BAR_TEXT_INSET};
         `}
-
-  & > * {
-    pointer-events: auto;
-  }
 `;
 
-/* Rank plaque — tucked below balance (non-BASHO layout). */
-const SubBarRow = styled.div`
-  display: flex;
-  flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
-  align-items: center;
-  gap: clamp(12px, 2cqw, 24px);
-  margin-top: clamp(-4px, -0.4cqh, -2px);
+/* BASHO boons — a CEREMONY element, not a combat one.
+ *
+ * These are the only thing on the band that is static for the whole run:
+ * you draft them, they never change during a bout, and they are passive,
+ * so you feel them rather than read them. Everything else here is live
+ * state. Giving reference information permanent space in the most
+ * expensive real estate in the game is what made every placement fight
+ * for room — and the boons are also the only element with no upper bound
+ * on its count, which is what forced them onto a tier of their own where
+ * they read as stickers floating under the band.
+ *
+ * So they show through the walk-up, while the bout card is playing and
+ * nothing is competing for attention, and fade at HAKKI-YOI. During the
+ * fight the BASHO band is identical to the versus band. No cap on how
+ * many you can draft, and you saw them three seconds before the tachiai.
+ *
+ * Still full wing width and indented to BAR_TEXT_INSET, so a long draft
+ * runs along the same column as the rank, shikona and in-bar labels. */
+const BoonAnchor = styled.div`
+  position: absolute;
+  top: calc(${SUB_ROW_TOP} + ${RANK_ROW_H} + clamp(10px, 1.4cqh, 18px));
   width: 100%;
+  display: flex;
+  align-items: flex-start;
+  flex-shrink: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 2;
+
+  opacity: ${(p) => (p.$visible ? 1 : 0)};
+  transform: translateY(${(p) => (p.$visible ? "0" : "-4px")});
+  transition: opacity 260ms ease, transform 260ms ease;
+
+  ${(p) =>
+    p.$isRight
+      ? css`
+          right: 0;
+          justify-content: flex-end;
+          padding-right: ${BAR_TEXT_INSET};
+        `
+      : css`
+          left: 0;
+          padding-left: ${BAR_TEXT_INSET};
+        `}
 `;
 
-/* Row that holds the stamina bar + power-up icon side-by-side */
+/* Row that holds the stamina bar + the power-up slot, with a gutter
+ * between them. */
 const BarRow = styled.div`
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex-direction: ${(p) => (p.$isRight ? "row" : "row-reverse")};
-  gap: clamp(4px, 0.5cqw, 8px);
+  gap: ${SLOT_GAP};
   width: 100%;
 `;
 
-/* Power-up panel — visibly DEMOTED from the stamina BarFrame.
- *
- * Previously this slot used the *same* chiseled treatment as the
- * BarFrame (gold leaf ring + ink underlayer + corner rivets), which
- * meant the HUD had two pieces of "premium hardware" competing for
- * the eye instead of one hero. The stamina bar is the hero; the
- * power-up slot is supporting hardware and should read as such.
- *
- * Stripped to:
- *   - single 1px cream-faint border (no double-band ring)
- *   - one quiet drop shadow (no gold halo)
- *   - inner shadow for the recessed inset feel (kept — it stops the
- *     icon from looking pasted on)
- *   - no corner rivets
- *
- * The slot's tinted background gradient + the icon do all the work
- * of communicating which power-up is equipped.
- *
- * One-shot activation pulse:
- * The slot does a single soft scale + brightness pulse the moment a
- * new power-up is assigned to it. This is the smallest possible
- * "you've been handed a new tool" beat — not an infinite glow, not
- * a particle burst, not a flashing border. Just one settle. It
- * exists because without it the icon would silently appear in the
- * slot during the round-start sequence and the player might never
- * register that the slot changed state.
- *
- * Triggering: the JSX render sites pass a stable `key` derived from
- * the active power-up name. When the power-up changes (null → snowball,
- * or snowball → pumo_army between matches), React unmounts the slot
- * and mounts a new one — which re-runs the `slotMountPulse` keyframe
- * from scratch. When only the cooldown state changes within a single
- * power-up, the key is unchanged, no remount happens, no pulse runs.
- * Empty slots ($active falsy) opt out of the animation entirely. */
-/* Activation pulse — confident landing, no overshoot.
- *
- * First pass used a cubic-bezier(0.34, 1.56, 0.64, 1) overshoot that
- * rebounded past 1.0 to 1.05 before settling. That was the same
- * cartoon-physics rubber-band vocabulary the round announcement
- * animations were using, and on a HUD element it reads as the slot
- * "boinging" into place — wrong tone for a sumo broadcast UI.
- *
- * New recipe: one ease-out from 0.94 → 1.0 with a brightness flash
- * from 1.35 → 1.0. The element grows into its final scale and the
- * brightness drops off — reads as "this slot just lit up" rather
- * than "this slot bounced in". 0.35s total, fast enough to not
- * pull focus away from gameplay, slow enough to be felt. */
+/* Activation pulse — one confident landing, no overshoot. Fires when a
+ * new power-up is assigned (the render sites key the disc on the active
+ * power-up name, so a change remounts it and replays this). */
 const slotMountPulse = keyframes`
   0%   { transform: scale(0.94); filter: brightness(1.35); }
   100% { transform: scale(1);    filter: brightness(1); }
 `;
 
+/* Cooldown shuttle — a gold bar tracking the slot's bottom edge.
+ *
+ * Indeterminate on purpose: the server sends cooldown as a boolean with
+ * no remaining time, so a true progress wipe isn't possible yet. If a
+ * remaining-time value ever lands, replace this with a bottom-anchored
+ * bar whose width is the actual percentage. */
+/* Travel is expressed in the bar's OWN width so it stays inside the tile
+ * without an overflow:hidden that would clip the charge pip. */
+const cooldownShuttle = keyframes`
+  0%   { transform: translateX(0%); }
+  50%  { transform: translateX(81.8%); }
+  100% { transform: translateX(0%); }
+`;
+
+/* The slot. Square again — the circle read as a portrait bezel, and this
+ * is an item, not a character.
+ *
+ * The fix that mattered was never the shape: it was that this used
+ * `align-self: stretch` inside a row whose height came from the gauge
+ * stack, so it was being sized by the posture strip on the far side of
+ * the column and its center landed ~9px BELOW the stamina bar's center.
+ * That sag was the "positioned weird". It is now a fixed square centered
+ * on the bar's midline by construction.
+ *
+ * Background is the power-up's own type color straight from
+ * powerUpConfig — the same `main` fill over a `deep` bottom shade the
+ * draft icons use — so an equipped power-up looks identical everywhere
+ * it appears in the game. The cream stroke keeps it on the band. */
+const PowerUpSlot = styled.div`
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: ${SLOT};
+  height: ${SLOT};
+  align-self: flex-start;
+  /* Centers on the stamina FRAME's midline (track height plus the top
+   * stroke), not on the row. The overhang above and below the bar is
+   * what ties the slot to it now that they no longer touch. */
+  margin-top: calc(${STROKE} + (${BAR_H} / 2) - (${SLOT} / 2));
+  border-radius: 0;
+  overflow: visible;
+
+  border: ${STROKE} solid ${(p) => (p.$active ? CHROME : CHROME_DIM)};
+  background: ${(p) => {
+    if (!p.$active) return WELL;
+    // On cooldown the tile drops to the deep shade of its own hue, so
+    // you still read WHICH power-up it is while it recharges.
+    return p.$cooldown ? p.$color.deep : p.$color.main;
+  }};
+  /* Flat type color, no bottom shade. The draft icons use an inset
+   * deep-shade underline, but at HUD size inside a cream stroke that
+   * read as a stray rule under the tile rather than as depth.
+   *
+   * Ink on both sides of the cream, same as the stamina bar. */
+  box-shadow:
+    inset 0 0 0 1px ${KEYLINE},
+    0 0 0 1px ${KEYLINE},
+    0 clamp(1px, 0.12cqw, 3px) clamp(5px, 0.5cqw, 10px) rgba(0, 0, 0, 0.55);
+  transition: border-color 200ms ease, background-color 200ms ease;
+
+  /* Empty BASHO slot — one cream stroke through the tile. */
+  ${(p) =>
+    !p.$active &&
+    p.$bashoNa &&
+    css`
+      &::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 78%;
+        height: 1.5px;
+        background: ${CHROME_DIM};
+        transform: translate(-50%, -50%) rotate(-42deg);
+        pointer-events: none;
+      }
+    `}
+
+  ${(p) =>
+    p.$cooldown &&
+    css`
+      &::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        width: 55%;
+        height: clamp(2px, 0.25cqw, 4px);
+        background: ${C.gold};
+        animation: ${cooldownShuttle} 1.5s ease-in-out infinite;
+        pointer-events: none;
+      }
+    `}
+
+  ${(p) =>
+    p.$active &&
+    css`
+      animation: ${slotMountPulse} 0.35s ease-out;
+    `}
+`;
+
+/* Icon fills the slot. It used to sit at roughly 40% of its tile with
+ * dead padding all around, which is a large part of why the slot read as
+ * an afterthought — the reference portrait fills its shape and overflows. */
 const PowerUpIconFrame = styled.div`
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: clamp(26px, 3.5cqw, 42px);
-  height: clamp(26px, 3.5cqw, 42px);
+  width: 78%;
+  height: 78%;
   flex-shrink: 0;
 
   img {
@@ -1466,148 +1466,103 @@ const PowerUpIconFrame = styled.div`
     object-fit: contain;
     position: relative;
     z-index: 1;
+    /* Slight shadow so light artwork still separates from a saturated
+     * type-color tile (snowball on ice blue, shatter palm on yellow). */
     filter: ${(p) =>
-      p.$cooldown ? "brightness(0.5) grayscale(0.35)" : "brightness(1)"};
+      p.$cooldown
+        ? "brightness(0.6) grayscale(0.55) drop-shadow(0 1px 1px rgba(0,0,0,0.4))"
+        : "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45))"};
   }
 `;
 
-/* Charge count — stroked numeral at the bottom-right of the icon frame
-   (same vocabulary as boon stack marks). Sits outside the artwork. */
+/* Charge count — cream pip straddling the bottom of the ring, ink
+ * numeral. Same cream-substrate logic as the round cells. */
 const PowerUpChargeMark = styled.span`
   position: absolute;
-  bottom: clamp(-6px, -0.5cqw, -3px);
-  right: clamp(-3px, -0.3cqw, -1px);
+  bottom: calc(-1 * clamp(5px, 0.62cqw, 8px));
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: clamp(11px, 1.35cqw, 16px);
+  padding: 0 2px;
+  text-align: center;
   font-family: ${FONT_UI};
   font-weight: ${FONT_WEIGHT.black};
-  font-size: clamp(10px, 1.05cqw, 13px);
-  line-height: 1;
-  color: #fff;
+  font-size: clamp(8px, 0.95cqw, 11px);
+  line-height: clamp(10px, 1.24cqw, 16px);
+  color: #0a0d15;
+  background: ${CHROME};
+  box-shadow: 0 0 0 1px ${KEYLINE};
   ${FONT_RENDER}
-  text-shadow: ${TEXT_SHADOW_COMBAT};
   pointer-events: none;
-  z-index: 3;
-`;
-
-const PowerUpSlot = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: ${SLOT_SIZE};
-  align-self: stretch;
-  border-radius: 4px;
-  box-sizing: border-box;
-  position: relative;
-  transition: all 0.25s ease;
-  flex-shrink: 0;
-  /* Clip only the BASHO N/A strike — charge mark sits outside the frame. */
-  overflow: ${(p) => (!p.$active && p.$bashoNa ? "hidden" : "visible")};
-
-  border: 1px solid
-    ${(p) =>
-      !p.$active && p.$bashoNa
-        ? "rgba(245, 236, 217, 0.2)"
-        : p.$active
-          ? "rgba(232, 197, 71, 0.4)"
-          : "rgba(245, 236, 217, 0.28)"};
-  border-style: ${(p) => (!p.$active && p.$bashoNa ? "dashed" : "solid")};
-
-  background: ${(p) => {
-    if (!p.$active)
-      return `
-        linear-gradient(180deg, rgba(126, 203, 240, 0.06) 0%, transparent 40%),
-        linear-gradient(145deg, rgba(14, 18, 28, 0.98), rgba(6, 8, 14, 0.97), rgba(4, 6, 10, 0.96))
-      `;
-    if (p.$cooldown)
-      return "linear-gradient(135deg, #4a5568, #2d3748)";
-    switch (p.$active) {
-      case "speed":
-        return "linear-gradient(145deg, #4de0ff 0%, #00a8e0 45%, #0066cc 100%)";
-      case "power":
-        return "linear-gradient(145deg, #ffb0c0 0%, #ff8fa3 40%, #dc2626 100%)";
-      case "snowball":
-        return "linear-gradient(145deg, #f4fcff 0%, #c8ebf8 42%, #6eb8d8 100%)";
-      case "pumo_army":
-        return "linear-gradient(145deg, #ffd9a0 0%, #ffb040 45%, #e07000 100%)";
-      case "thick_blubber":
-        return "linear-gradient(145deg, #ff7aa8 0%, #ff5087 45%, #a01f4a 100%)";
-      case "flap":
-        return "linear-gradient(145deg, #6af0d4 0%, #34e0c0 45%, #15705f 100%)";
-      case "shatter_palm":
-        return "linear-gradient(145deg, #fff6c8 0%, #ffe056 45%, #e0a010 100%)";
-      default:
-        return "linear-gradient(145deg, #6c757d, #343a40)";
-    }
-  }};
-
-  box-shadow:
-    0 clamp(2px, 0.18cqw, 4px) clamp(10px, 0.85cqw, 18px) rgba(0, 0, 0, 0.55),
-    0 0 0 1px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    inset 0 -2px 5px rgba(0, 0, 0, 0.35);
-
-  opacity: ${(p) => (p.$active ? 1 : 0.78)};
-
-  /* BASHO empty slot — reads as "no active" rather than a dead black tile. */
-  ${(p) =>
-    !p.$active &&
-    p.$bashoNa &&
-    css`
-      &::before {
-        content: "";
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        width: 82%;
-        height: 1px;
-        background: rgba(245, 236, 217, 0.2);
-        transform: translate(-50%, -50%) rotate(-42deg);
-        pointer-events: none;
-        z-index: 0;
-      }
-    `}
-
-  /* Activation pulse — fires once on mount of an active slot (see the
-     comment above the styled-component for triggering details). Empty
-     slots skip the animation entirely; otherwise every empty slot in
-     the match would also pulse on its first appearance, which would
-     be the opposite of the signal we want. */
-  ${(p) =>
-    p.$active &&
-    css`
-      animation: ${slotMountPulse} 0.35s ease-out;
-    `}
+  z-index: 5;
 `;
 
 // ============================================
 // CENTER ROUND / DAY — lacquered broadcast seal
 // ============================================
 
-/* Center day/round — bare broadcast numerals, no plate.
+/* Shared Y for the day/round mark + wing rail — stamina-bar midline. */
+const CENTER_MIDLINE_TOP = `
+  ${HUD_PAD_TOP} + ${NAME_ROW_H} + ${NAME_GAP} +
+  ${STROKE} + (${BAR_H} * 0.5)
+`;
+
+/* Match clock — bare numerals on the stamina midline. No ring, no rail,
+ * no caption.
  *
- * The lacquered box fought the rank plaques for center-screen space and
- * read as a floating UI card rather than match chrome. Fixed width keeps
- * 1-digit and 2-digit days from shifting the wings; the type does the work. */
-const CenterRound = styled.div`
+ * The center used to hold a round/day counter, which is information you
+ * need once at the top of a bout and never again; it has moved to a card
+ * that plays before HANDS DOWN. The clock is the opposite — it's the one
+ * thing worth a permanent seat between the bars, and the negative space
+ * around it is what makes it read without a container. */
+const MatchClock = styled.div`
   position: absolute;
-  /* Anchor on the stamina-bar midline (HudShell pad + name row + gaps +
-     half bar height), then translateY(-50%) so the numeral stack centers
-     on the bar rather than floating in the top letterbox. */
-  top: calc(
-    clamp(24px, 3cqh, 34px) + clamp(18px, 2.2cqh, 26px) +
-      clamp(8px, 1cqh, 14px) + clamp(4px, 0.55cqh, 8px) +
-      (clamp(22px, 4cqh, 40px) * 0.5)
-  );
+  top: calc(${CENTER_MIDLINE_TOP});
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 1001;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  /* Above the player wings so the digits stay readable over bar tips. */
+  z-index: 3;
   pointer-events: none;
+  user-select: none;
   opacity: ${(p) => (p.$matchOver ? 0.7 : 1)};
   transition: opacity 260ms ease;
-  box-sizing: border-box;
-  width: clamp(52px, 6.5cqw, 78px);
+
+  /* Bungee, not the interface face.
+   *
+   * The clock is the only permanent numeral on the band and it sits in
+   * ~134px of deliberately empty space between the two wings (they cap
+   * at 560px each). At the interface face's weight and size it read as a
+   * label that had wandered into the middle rather than the thing the
+   * negative space was cleared for. Bungee is the game's display face —
+   * the same one HAKKI-YOI and the kimarite callouts use — so the clock
+   * now belongs to the broadcast, and it is sized to actually occupy the
+   * gap it was given. */
+  font-family: ${FONT_DISPLAY};
+  font-weight: 400;
+  /* Scaled against the stamina FRAME, not the empty gap: the cap height
+   * lands about 1.15x the bar's height, which is roughly the proportion
+   * the reference broadcast UI uses. Sized to the gap instead (5.5cqw,
+   * ~72px) the numeral overshot the band top and bottom and the two bars
+   * looked like they were skewering it. */
+  font-size: clamp(26px, 4.2cqw, 54px);
+  line-height: 1;
+  letter-spacing: 0.01em;
+  /* Uniform digit widths so the count doesn't jitter as it ticks. No
+   * min-width needed — the element is centered on its own box by the
+   * translate, so a one-digit count stays centered on its own. */
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  ${FONT_RENDER}
+
+  color: ${(p) => (p.$urgent ? C.vermillionBright : C.cream)};
+  text-shadow: ${TEXT_SHADOW_DISPLAY};
+  transition: color 200ms ease, opacity 260ms ease;
+
+  ${(p) =>
+    p.$urgent &&
+    css`
+      animation: ${dangerFramePulse} 0.5s ease-in-out infinite;
+    `}
 `;
 
 // ============================================
@@ -1619,55 +1574,52 @@ const CenterRound = styled.div`
  * also sits closest to "PLAYER 1". Without this, P2's stones fill from
  * the center of the screen outward while P1's fill from the name
  * outward, breaking the mirrored symmetry across the HUD. */
+const STAR_MAX = "clamp(11px, 1.35cqw, 17px)";
+const STAR_PIP = "clamp(6px, 0.72cqw, 9px)";
+
+/* Fixed height so the row doesn't reflow when a mark grows on resolution. */
 const WinLossRow = styled.div`
   display: flex;
   flex-direction: ${(p) => (p.$isRight ? "row" : "row-reverse")};
   align-items: center;
-  gap: clamp(3px, 0.4cqw, 6px);
+  height: ${STAR_MAX};
+  gap: clamp(4px, 0.5cqw, 7px);
   justify-content: ${(p) => (p.$isRight ? "flex-start" : "flex-end")};
 `;
 
-/* Traditional go-stones: white = win, black = loss.
+/* Star marks — shiroboshi / kuroboshi, the banzuke's own notation.
  *
- * When a stone is freshly placed (round just ended), a one-shot ::after
- * ring expands outward like a stone being dropped on a goban — sells
- * the moment of round resolution without needing extra DOM. */
+ * A bout in sumo is recorded as a white star for a win and a black star
+ * for a loss, so the score keeps the circle the rest of the band gave up
+ * and the round cells become the one genuinely round thing on the HUD.
+ *
+ * Unplayed bouts are a small cream pip. When a round resolves the pip
+ * GROWS into a full star — white for the win, ink-in-a-cream-ring for
+ * the loss — which turns the score update into a real beat instead of a
+ * silent recolor. The size change is a transition, not a keyframe, so it
+ * plays whenever the prop flips and costs nothing while idle. */
 const GoStone = styled.div`
-  width: clamp(9px, 1.3cqw, 17px);
-  height: clamp(9px, 1.3cqw, 17px);
-  border-radius: 50%;
   position: relative;
   z-index: 1;
-  transition: transform 0.3s ease;
+  box-sizing: border-box;
+  border-radius: 50%;
+  flex-shrink: 0;
+  width: ${(p) => (p.$isEmpty ? STAR_PIP : STAR_MAX)};
+  height: ${(p) => (p.$isEmpty ? STAR_PIP : STAR_MAX)};
+  transition: width 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    height 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 200ms ease;
 
+  border: ${(p) => (p.$isEmpty || p.$isWin ? "0" : `1.5px solid ${CHROME}`)};
   background: ${(p) => {
-    if (p.$isEmpty)
-      return "linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02))";
-    return p.$isWin
-      ? "radial-gradient(55% 55% at 32% 32%, #fff 0%, #f0f0f0 55%, #d8d8d8 100%)"
-      : "radial-gradient(55% 55% at 32% 32%, #555 0%, #1a1a1a 55%, #050505 100%)";
+    if (p.$isEmpty) return CHROME;
+    return p.$isWin ? "#fbf8f2" : "#080a10";
   }};
+  /* A white star needs the dark keyline to hold its edge; a black star
+   * already has the cream ring doing that job. */
+  box-shadow: 0 0 0 1px ${KEYLINE};
 
-  border: ${(p) => {
-    if (p.$isEmpty) return "clamp(1.5px, 0.12cqw, 2.5px) solid rgba(255, 255, 255, 0.35)";
-    return p.$isWin
-      ? "clamp(2px, 0.16cqw, 4px) solid rgba(255, 255, 255, 0.9)"
-      : "clamp(2px, 0.16cqw, 4px) solid rgba(255, 255, 255, 0.5)";
-  }};
-
-  box-shadow: ${(p) => {
-    if (p.$isEmpty) return "inset 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 4px rgba(255, 255, 255, 0.08)";
-    return p.$isWin
-      ? "0 0 8px rgba(255, 255, 255, 0.65), 0 0 3px rgba(232, 197, 71, 0.4), inset 0 -1px 2px rgba(0, 0, 0, 0.15)"
-      : "0 0 5px rgba(232, 197, 71, 0.32), 0 0 2px rgba(232, 197, 71, 0.22), inset 0 1px 3px rgba(60, 60, 60, 0.45)";
-  }};
-
-  animation: ${(p) =>
-    p.$isWin && !p.$isEmpty ? pulseWin : "none"} 2s infinite;
-
-  /* Place ripple — only renders when this stone was just dropped (the
-   * parent tracks roundHistory length and passes $ripple to the newest
-   * stone). The ::after expands outward and fades. */
+  /* Place ripple — only on the star that was just awarded. */
   ${(p) =>
     p.$ripple &&
     css`
@@ -1679,63 +1631,13 @@ const GoStone = styled.div`
         width: 100%;
         height: 100%;
         border-radius: 50%;
-        border: 2px solid
-          ${p.$isWin
-            ? "rgba(255, 255, 255, 0.85)"
-            : "rgba(245, 236, 217, 0.55)"};
-        box-shadow: 0 0 10px
-          ${p.$isWin
-            ? "rgba(255, 246, 194, 0.6)"
-            : "rgba(232, 197, 71, 0.45)"};
+        border: 1.5px solid ${p.$isWin ? "#fbf8f2" : CHROME};
         animation: ${stonePlaceRipple} 0.7s ease-out forwards;
         pointer-events: none;
       }
     `}
 `;
 
-/* Center round counter — uses the canonical theme gold (`C.gold` /
- * #e8c547) for the surrounding glow halos so the center indicator and
- * the chiseled bar frame ring speak the same gold tone.
- *
- * Halo intensities dialed back from the previous version so the round
- * counter no longer "blooms" against the dark backdrop above the
- * dohyo. Just one short ambient halo + the strong drop shadow that
- * lifts the digit off the scene. */
-/* Round number — arabic numerals.
- *
- * Tried roman numerals (I / II / III) for one pass to rhyme with the
- * banzuke vocabulary. Reverted: Bungee renders the roman numerals as
- * three identical vertical bars (II = ‖, III = ‖‖‖) with no shape
- * differentiation. At HUD scale that becomes a column of indistinct
- * pipes — visually unreadable and competing badly with the other
- * Bungee type on the HUD. Arabic 1/2/3 in this same font has
- * actually-distinct glyph shapes and reads at a glance. The
- * "ceremonial enumeration" idea wasn't worth the legibility loss. */
-const RoundNum = styled.div`
-  font-family: ${FONT_UI};
-  font-weight: ${FONT_WEIGHT.black};
-  font-size: clamp(24px, 4cqw, 56px);
-  color: #f3ede2;
-  ${FONT_RENDER}
-  text-shadow: ${TEXT_SHADOW_DISPLAY};
-  line-height: 1;
-  user-select: none;
-  width: 100%;
-  text-align: center;
-`;
-
-const RoundText = styled.div`
-  font-family: ${FONT_UI};
-  font-weight: ${FONT_WEIGHT.medium};
-  font-size: clamp(7px, 0.9cqw, 12px);
-  color: rgba(232, 197, 71, 0.78);
-  text-transform: uppercase;
-  letter-spacing: ${TRACK.label};
-  text-indent: ${TRACK.label};
-  ${FONT_RENDER}
-  text-shadow: ${TEXT_SHADOW_UI};
-  margin-top: clamp(1px, 0.2cqh, 3px);
-`;
 
 // ============================================
 // CONSTANTS
@@ -1796,13 +1698,15 @@ const UiPlayerInfo = ({
   matchOver = false,
   player1TopMarks = undefined,
   player2TopMarks = undefined,
-  centerContent = undefined,
+  secondsRemaining = null,
   player2Name = "PLAYER 2",
-  nameAlignToMarkBottom = false,
   bashoPowerUpSlots = false,
-  rankInTopMarks = false,
+  showRoundMarks = true,
   player1SubMarks = undefined,
   player2SubMarks = undefined,
+  /* Sub-marks (BASHO boons) ride the pre-bout ceremony and clear at
+   * HAKKI-YOI — see BoonAnchor. */
+  subMarksVisible = true,
 }) => {
   const s1 = clampStamina(player1Stamina);
   const s2 = clampStamina(player2Stamina);
@@ -2262,7 +2166,13 @@ const UiPlayerInfo = ({
 
 
   // ── Derived match state ──
-  const currentRound = Math.min(roundHistory.length + 1, 3);
+  /* Server-driven: GameFighter feeds this from `bout_clock`, which only
+   * fires on whole-second changes. BOUT_SECONDS is just the pre-tachiai
+   * parking value. */
+  const clockSeconds = Math.max(
+    0,
+    Math.ceil(secondsRemaining ?? BOUT_SECONDS)
+  );
 
   const renderCenterMarks = (playerName) => {
     const marks = [];
@@ -2356,21 +2266,24 @@ const UiPlayerInfo = ({
   const p2ShoveActive = player2ShoveLead === 0 || player2ShoveLead === 1 || player2ShoveLead === -1;
   const shoveTag = (lead) => (lead > 0 ? "PUSH" : lead < 0 ? "BACK" : "EVEN");
 
-  const renderRankPlaque = (label, compact = false) => (
-    <RankPlaque $compact={compact}>
+  const renderRankPlaque = (label) => (
+    <RankPlaque>
       <RankText>{(label || "JONOKUCHI").toUpperCase()}</RankText>
     </RankPlaque>
   );
 
+  /* BASHO runs one bout per day, so it has no round score to show and
+   * passes showRoundMarks={false}. Rank is no longer swapped in here —
+   * it lives beside the shikona in both modes. */
   const renderP1TopMarks = () => {
-    if (rankInTopMarks) return renderRankPlaque(player1RankLabel, true);
     if (player1TopMarks !== undefined) return player1TopMarks;
+    if (!showRoundMarks) return null;
     return renderCenterMarks("player1");
   };
 
   const renderP2TopMarks = () => {
-    if (rankInTopMarks) return renderRankPlaque(player2RankLabel, true);
     if (player2TopMarks !== undefined) return player2TopMarks;
+    if (!showRoundMarks) return null;
     return renderCenterMarks("player2");
   };
 
@@ -2382,8 +2295,8 @@ const UiPlayerInfo = ({
           <WinLossRow $isRight={false}>
             {renderP1TopMarks()}
           </WinLossRow>
-          <NameBlock $isRight={false} $alignToMarkBottom={nameAlignToMarkBottom}>
-            <FighterName>PLAYER 1</FighterName>
+          <NameBlock $isRight={false}>
+            <FitFighterName>PLAYER 1</FitFighterName>
           </NameBlock>
           <BarRowSpacer />
         </NameBanner>
@@ -2469,17 +2382,23 @@ const UiPlayerInfo = ({
                 deepGripHold={player1HasDeepGrip}
               />
             </BalStripWrap>
+            <RankAnchor $isRight={false}>
+              {renderRankPlaque(player1RankLabel)}
+            </RankAnchor>
             {player1SubMarks && (
-              <BoonAnchor $isRight={false}>{player1SubMarks}</BoonAnchor>
+              <BoonAnchor $isRight={false} $visible={subMarksVisible}>
+                {player1SubMarks}
+              </BoonAnchor>
             )}
           </GaugeStack>
           <PowerUpSlot
-            /* Stable on cooldown / charge-count changes, changes only
-               when the assigned power-up itself changes. Drives the
-               one-shot slotMountPulse — see the styled-component
-               comment for the full rationale. */
+            /* Stable across cooldown / charge-count changes; changes only
+               when the assigned power-up itself changes, which remounts
+               the slot and replays the one-shot activation pulse. */
             key={`p1-pu-${player1ActivePowerUp || "empty"}`}
+            $isRight={false}
             $active={player1ActivePowerUp}
+            $color={getPowerUpTypeColor(player1ActivePowerUp)}
             $bashoNa={bashoPowerUpSlots}
             $cooldown={getPowerUpIsOnCooldown(
               player1ActivePowerUp,
@@ -2501,36 +2420,28 @@ const UiPlayerInfo = ({
                   src={getPowerUpIcon(player1ActivePowerUp)}
                   alt={player1ActivePowerUp}
                 />
-                {renderPowerUpChargeMark(
-                  player1ActivePowerUp,
-                  player1SnowballThrowsRemaining,
-                  player1PumoArmySpawnsRemaining
-                )}
               </PowerUpIconFrame>
+            )}
+            {renderPowerUpChargeMark(
+              player1ActivePowerUp,
+              player1SnowballThrowsRemaining,
+              player1PumoArmySpawnsRemaining
             )}
           </PowerUpSlot>
         </BarRow>
-
-        {!rankInTopMarks && (
-          <SubBarRow $isRight={false}>
-            <BarRowSpacer />
-            {renderRankPlaque(player1RankLabel)}
-          </SubBarRow>
-        )}
       </PlayerWing>
 
-      {/* ═══ CENTER ROUND ═══ */}
-      <CenterRound
+      {/* ═══ CENTER CLOCK ═══ */}
+      <MatchClock
         $matchOver={matchOver}
-        $customCenter={centerContent != null}
+        /* A bout that ended ON the clock parks at 0, and the match-over
+         * screen sits above the band — a red 0 strobing behind the winner
+         * card is the clock still shouting after the bout is decided. */
+        $urgent={!matchOver && clockSeconds <= CLOCK_URGENT_AT}
+        aria-label={`${clockSeconds} seconds remaining`}
       >
-        {centerContent ?? (
-          <>
-            <RoundNum>{currentRound}</RoundNum>
-            <RoundText>ROUND</RoundText>
-          </>
-        )}
-      </CenterRound>
+        {clockSeconds}
+      </MatchClock>
 
       {/* ═══ PLAYER 2 — West (Nishi) ═══ */}
       <PlayerWing $matchOver={matchOver}>
@@ -2538,8 +2449,10 @@ const UiPlayerInfo = ({
           <WinLossRow $isRight={true}>
             {renderP2TopMarks()}
           </WinLossRow>
-          <NameBlock $isRight={true} $alignToMarkBottom={nameAlignToMarkBottom}>
-            <FighterName>{player2Name.toUpperCase()}</FighterName>
+          <NameBlock $isRight={true}>
+            <FitFighterName isRight>
+              {player2Name.toUpperCase()}
+            </FitFighterName>
           </NameBlock>
           <BarRowSpacer />
         </NameBanner>
@@ -2625,13 +2538,20 @@ const UiPlayerInfo = ({
                 deepGripHold={player2HasDeepGrip}
               />
             </BalStripWrap>
+            <RankAnchor $isRight={true}>
+              {renderRankPlaque(player2RankLabel)}
+            </RankAnchor>
             {player2SubMarks && (
-              <BoonAnchor $isRight={true}>{player2SubMarks}</BoonAnchor>
+              <BoonAnchor $isRight={true} $visible={subMarksVisible}>
+                {player2SubMarks}
+              </BoonAnchor>
             )}
           </GaugeStack>
           <PowerUpSlot
             key={`p2-pu-${player2ActivePowerUp || "empty"}`}
+            $isRight={true}
             $active={player2ActivePowerUp}
+            $color={getPowerUpTypeColor(player2ActivePowerUp)}
             $bashoNa={bashoPowerUpSlots}
             $cooldown={getPowerUpIsOnCooldown(
               player2ActivePowerUp,
@@ -2653,22 +2573,15 @@ const UiPlayerInfo = ({
                   src={getPowerUpIcon(player2ActivePowerUp)}
                   alt={player2ActivePowerUp}
                 />
-                {renderPowerUpChargeMark(
-                  player2ActivePowerUp,
-                  player2SnowballThrowsRemaining,
-                  player2PumoArmySpawnsRemaining
-                )}
               </PowerUpIconFrame>
+            )}
+            {renderPowerUpChargeMark(
+              player2ActivePowerUp,
+              player2SnowballThrowsRemaining,
+              player2PumoArmySpawnsRemaining
             )}
           </PowerUpSlot>
         </BarRow>
-
-        {!rankInTopMarks && (
-          <SubBarRow $isRight={true}>
-            <BarRowSpacer />
-            {renderRankPlaque(player2RankLabel)}
-          </SubBarRow>
-        )}
       </PlayerWing>
     </HudShell>
   );
@@ -2711,13 +2624,13 @@ UiPlayerInfo.propTypes = {
   matchOver: PropTypes.bool,
   player1TopMarks: PropTypes.node,
   player2TopMarks: PropTypes.node,
-  centerContent: PropTypes.node,
+  secondsRemaining: PropTypes.number,
   player2Name: PropTypes.string,
-  nameAlignToMarkBottom: PropTypes.bool,
   bashoPowerUpSlots: PropTypes.bool,
-  rankInTopMarks: PropTypes.bool,
+  showRoundMarks: PropTypes.bool,
   player1SubMarks: PropTypes.node,
   player2SubMarks: PropTypes.node,
+  subMarksVisible: PropTypes.bool,
 };
 
 export default React.memo(UiPlayerInfo);

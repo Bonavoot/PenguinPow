@@ -2295,6 +2295,26 @@ function tryEnterGassed(player, now) {
   return true;
 }
 
+/**
+ * Apply posture (balance) damage and stamp the Halo regen delay.
+ * ANY positive posture loss must go through here so regen stops / the 1.75s
+ * delay restarts. Returns the amount actually removed (after floor at 0).
+ */
+function applyBalanceDamage(player, amount, simTime) {
+  if (!player || !(amount > 0)) return 0;
+  const before =
+    typeof player.balance === "number" ? player.balance : 0;
+  const next = Math.max(0, before - amount);
+  const dealt = before - next;
+  if (dealt > 0) {
+    player.balance = next;
+    if (typeof simTime === "number") {
+      player.lastPostureDamageTime = simTime;
+    }
+  }
+  return dealt;
+}
+
 // Socket.io instance for "OUT OF STAMINA" feedback (injected from index.js).
 let staminaBlockedIo = null;
 
@@ -2540,6 +2560,7 @@ module.exports = {
   isOutsideDohyo,
   clampStaminaValue,
   tryEnterGassed,
+  applyBalanceDamage,
   setStaminaBlockedIo,
   emitStaminaBlocked,
   isNearDohyoEdge,

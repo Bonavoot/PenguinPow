@@ -1,6 +1,7 @@
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { FONT_DISPLAY } from "./menuTheme";
+import { BOUT_CARD_SECONDS } from "../config/boutClock";
 import {
   GYOJI_CENTER_PCT,
   GYOJI_MOUTH_BOTTOM,
@@ -17,6 +18,9 @@ export const ANNOUNCE_Y = "clamp(100px, 28cqh, 190px)";
 /** Pro fight-call budget: snap → brief hold → gone as play opens. */
 export const DEFAULT_HAKKIYOI_DURATION = 0.75;
 export const DEFAULT_TEWOTSUITE_DURATION = 2;
+/** Bout card rides the walk-up and must be gone before HANDS DOWN.
+ *  Server holds the tachiai to match — see config/boutClock.js. */
+export const DEFAULT_BOUTCARD_DURATION = BOUT_CARD_SECONDS;
 
 /*
  * Restored working widths (pre diagonal-tail / vw revision), then scaled:
@@ -88,6 +92,21 @@ const brushReveal = keyframes`
   22%  { clip-path: inset(0 0% 0 0); opacity: 0.85; }
   70%  { clip-path: inset(0 0% 0 0); opacity: 0.85; }
   100% { clip-path: inset(0 0% 0 0); opacity: 0; }
+`;
+
+/* Bout card — deliberately NOT slamIn.
+ *
+ * This is a title card during the walk-up, not a call. HAKKI-YOI punches
+ * because it releases the tachiai; if the card punched too, the round
+ * would open with two impacts and the actual start would land softer
+ * than the announcement that preceded it. So the card rises and settles,
+ * holds while the wrestlers walk on, and is gone before the Gyoji speaks.
+ */
+const boutCardIn = keyframes`
+  0%   { opacity: 0; transform: translate(-50%, -50%) translateY(9px); }
+  16%  { opacity: 1; transform: translate(-50%, -50%) translateY(0); }
+  74%  { opacity: 1; transform: translate(-50%, -50%) translateY(0); }
+  100% { opacity: 0; transform: translate(-50%, -50%) translateY(-5px); }
 `;
 
 // ============================================
@@ -238,6 +257,74 @@ const HakkiyoiText = styled.div`
 `;
 
 // ============================================
+// BOUT CARD — "DAY 7" / "ROUND 2" / "FINAL ROUND"
+// ============================================
+
+/* Cream, not gold. Gold on this screen belongs to HAKKI-YOI, and the
+ * card has to sit a clear step below it or the ceremony peaks early —
+ * hence smaller type, no screen flash, no vignette, no gold leaf. It
+ * carries the round number the HUD used to park in the center all bout
+ * long, which is information you want once and then never again.
+ *
+ * FINAL ROUND goes vermillion: it is the only bout where the card is
+ * telling you something about stakes rather than just counting. */
+const BoutCardText = styled.div`
+  position: absolute;
+  top: ${ANNOUNCE_Y};
+  left: 50%;
+  z-index: 1004;
+  pointer-events: none;
+
+  font-family: ${FONT_DISPLAY}, "Impact", sans-serif;
+  font-size: clamp(1.5rem, 4.1cqw, 3.5rem);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  /* Cancel the trailing track so a centered string stays centered. */
+  text-indent: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+
+  color: ${(p) => (p.$final ? "#ff7a63" : "#f5ecd9")};
+  -webkit-text-stroke: clamp(1px, 0.14cqw, 1.8px) rgba(18, 12, 6, 0.92);
+  text-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.4),
+    0 3px 12px rgba(0, 0, 0, 0.7);
+
+  animation: ${css`
+      ${boutCardIn}`} ${(p) => p.$duration} cubic-bezier(0.16, 1, 0.3, 1)
+    forwards;
+
+  @media (max-width: 600px) {
+    font-size: clamp(1.1rem, 3.6cqw, 2rem);
+    letter-spacing: 0.14em;
+    text-indent: 0.14em;
+  }
+`;
+
+/* Hairline under the card — same brush reveal as HAKKI-YOI's rule, in
+ * cream so the two calls read as the same set with different ranks. */
+const BoutCardRule = styled.div`
+  position: absolute;
+  top: calc(${ANNOUNCE_Y} + clamp(15px, 2.3cqh, 28px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: clamp(96px, 15cqw, 190px);
+  height: 1.5px;
+  pointer-events: none;
+  z-index: 1003;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(245, 236, 217, 0.2) 18%,
+    rgba(245, 236, 217, 0.75) 50%,
+    rgba(245, 236, 217, 0.2) 82%,
+    transparent 100%
+  );
+  animation: ${brushReveal} ${(p) => p.$duration} ease-out forwards;
+`;
+
+// ============================================
 // HANDS DOWN — V2 bubble shell (geometry frozen)
 // ============================================
 
@@ -303,13 +390,34 @@ const SrOnly = styled.span`
 // COMPONENT
 // ============================================
 
-const SumoGameAnnouncement = ({ type = "hakkiyoi", duration = null }) => {
+const DEFAULT_DURATIONS = {
+  hakkiyoi: DEFAULT_HAKKIYOI_DURATION,
+  tewotsuite: DEFAULT_TEWOTSUITE_DURATION,
+  boutcard: DEFAULT_BOUTCARD_DURATION,
+};
+
+const SumoGameAnnouncement = ({
+  type = "hakkiyoi",
+  duration = null,
+  label = "",
+  final = false,
+}) => {
   const actualDuration =
-    duration ??
-    (type === "hakkiyoi"
-      ? DEFAULT_HAKKIYOI_DURATION
-      : DEFAULT_TEWOTSUITE_DURATION);
+    duration ?? DEFAULT_DURATIONS[type] ?? DEFAULT_TEWOTSUITE_DURATION;
   const durationStr = `${actualDuration}s`;
+
+  // ─── BOUT CARD — quiet title over the walk-up ───
+  if (type === "boutcard") {
+    if (!label) return null;
+    return (
+      <>
+        <BoutCardText $duration={durationStr} $final={final}>
+          {label}
+        </BoutCardText>
+        <BoutCardRule $duration={durationStr} aria-hidden />
+      </>
+    );
+  }
 
   // ─── HAKKIYOI — containerless pre-bubble presentation ───
   if (type === "hakkiyoi") {
@@ -346,8 +454,12 @@ const SumoGameAnnouncement = ({ type = "hakkiyoi", duration = null }) => {
 };
 
 SumoGameAnnouncement.propTypes = {
-  type: PropTypes.oneOf(["hakkiyoi", "tewotsuite"]),
+  type: PropTypes.oneOf(["hakkiyoi", "tewotsuite", "boutcard"]),
   duration: PropTypes.number,
+  /** boutcard only — "DAY 7" / "ROUND 2" / "FINAL ROUND". */
+  label: PropTypes.string,
+  /** boutcard only — vermillion treatment for the decider. */
+  final: PropTypes.bool,
 };
 
 export default SumoGameAnnouncement;

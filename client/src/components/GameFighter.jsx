@@ -46,9 +46,11 @@ import SnowballImpactEffect from "./SnowballImpactEffect";
 import PumoCloneSpawnEffect from "./PumoCloneSpawnEffect";
 import SlapHitSpriteEffect from "./SlapHitSpriteEffect";
 import SumoGameAnnouncement, {
+  DEFAULT_BOUTCARD_DURATION,
   DEFAULT_HAKKIYOI_DURATION,
   DEFAULT_TEWOTSUITE_DURATION,
 } from "./SumoGameAnnouncement";
+import { BOUT_SECONDS } from "../config/boutClock";
 import {
   recolorImage,
   getCachedRecoloredImage,
@@ -288,6 +290,7 @@ import {
   CountdownTimer,
   SaltBasket,
   YouLabel,
+  HanteiScoreTag,
   SnowballWrapper,
   SnowballProjectileImg,
   PumoClone,
@@ -2257,6 +2260,17 @@ const GameFighter = ({
   const [gameOver, setGameOver] = useState(false);
   const [showRoundResult, setShowRoundResult] = useState(false); // Deferred from gameOver to prevent freeze
   const [winType, setWinType] = useState(null);
+  /* Bout clock is server-driven: `bout_clock` only fires when the whole
+     second changes, so this holds the last value the server sent. */
+  const [boutSeconds, setBoutSeconds] = useState(BOUT_SECONDS);
+  const [boutCard, setBoutCard] = useState(null);
+  /* False through the walk-up, true from HAKKI-YOI until the next reset.
+     Drives ceremony-only HUD content (BASHO boons) off the band once the
+     wrestlers can actually act. */
+  const [boutLive, setBoutLive] = useState(false);
+  /* {player1, player2} 0-100 judges' scores — set only on a time-expired
+     bout, printed over each wrestler's head with the result. */
+  const [hanteiScores, setHanteiScores] = useState(null);
   const showRoundResultRafRef = useRef(null); // Track rAF so we can cancel on reset
   // PERFORMANCE: Pre-warm RoundResult styled-components CSS on mount.
   // Rendering both variants (victory/defeat) for 1 frame forces styled-components to
@@ -5158,6 +5172,11 @@ const GameFighter = ({
       setGameOver(data);
       setShowRoundResult(false);
       setWinType(null);
+      setHanteiScores(null);
+      // Park the clock at full for the walk-up. The server re-arms it at
+      // HAKKI-YOI and its first `bout_clock` will overwrite this.
+      setBoutSeconds(BOUT_SECONDS);
+      setBoutLive(false);
       if (showRoundResultRafRef.current) {
         cancelAnimationFrame(showRoundResultRafRef.current);
         showRoundResultRafRef.current = null;
@@ -5238,6 +5257,10 @@ const GameFighter = ({
 
     const handleGyojiCall = (call) => {
       setGyojiCall(call);
+      // Hard guarantee the bout card and HANDS DOWN never share the
+      // screen: whatever the ceremony timings drift to, the card is gone
+      // the moment the Gyoji speaks.
+      setBoutCard(null);
 
       const tid = setTimeout(() => {
         setGyojiCall(null);
@@ -5246,10 +5269,47 @@ const GameFighter = ({
     };
     socket.on("gyoji_call", handleGyojiCall);
 
+    /* Bout card — "DAY 7" / "ROUND 2" / "FINAL ROUND". Server fires it
+       once per bout when the walk to the tachiai begins, so it always
+       clears well before the Gyoji's HANDS DOWN. */
+    const handleBoutCard = (card) => {
+      if (!card || !card.label) return;
+      setBoutCard(card);
+      const tid = setTimeout(() => {
+        setBoutCard(null);
+      }, Math.round(DEFAULT_BOUTCARD_DURATION * 1000) + 50);
+      pendingSocketTimeouts.current.push(tid);
+    };
+    socket.on("bout_card", handleBoutCard);
+
+    /* Only the integer second, and only when it changes — the server is
+       the only clock, so there is nothing to count down locally. */
+    const handleBoutClock = (seconds) => {
+      if (typeof seconds === "number") setBoutSeconds(seconds);
+    };
+    socket.on("bout_clock", handleBoutClock);
+
+    /* Torinaoshi — the clock ran out on a dead heat. No winner, no fall
+       awarded; the bout is simply fought again after the usual reset. */
+    const handleBoutDraw = (data) => {
+      setHanteiScores(data?.hanteiScores || null);
+      setWinType("torinaoshi");
+      setGameOver(true);
+      showRoundResultRafRef.current = requestAnimationFrame(() => {
+        showRoundResultRafRef.current = requestAnimationFrame(() => {
+          setShowRoundResult(true);
+          showRoundResultRafRef.current = null;
+        });
+      });
+    };
+    socket.on("bout_draw", handleBoutDraw);
+
     const handleGameStart = () => {
       setGyojiCall(null); // Clear any lingering gyoji call
       setGyojiState("ready");
       setHakkiyoi(true);
+      // Ceremony over — BASHO boons fade off the band here.
+      setBoutLive(true);
       setRawParryEffectPosition(null); // Clear any leftover parry effects
       setSnowballImpactPosition(null);
       setBlockingEffectPosition(null);
@@ -5304,6 +5364,9 @@ const GameFighter = ({
       setGameOver(data.isGameOver);
       setWinner(data.winner);
       setWinType(data.winType || "ringOut");
+      // Only the time-expired path carries these; every other kimarite
+      // leaves them null and the head plaques stay off.
+      setHanteiScores(data.hanteiScores || null);
 
       predictedState.current = {
         isSlapAttack: false,
@@ -5416,6 +5479,11 @@ const GameFighter = ({
       setPlayerTwoWinCount(0);
       setRoundHistory([]);
       setMatchOver(false);
+      // A match that ended on TIME'S UP never runs game_reset, so the
+      // judges' scores and the expired clock would survive into the
+      // rematch's first bout.
+      setHanteiScores(null);
+      setBoutSeconds(BOUT_SECONDS);
       matchEndingRef.current = false;
       battleMusicRoundRef.current = 0;
       if (!opponentDisconnected) {
@@ -5462,6 +5530,9 @@ const GameFighter = ({
       }
       socket.off("snowball_hit", handleSnowballHit);
       socket.off("gyoji_call", handleGyojiCall);
+      socket.off("bout_card", handleBoutCard);
+      socket.off("bout_clock", handleBoutClock);
+      socket.off("bout_draw", handleBoutDraw);
       socket.off("game_start", handleGameStart);
       socket.off("game_reset", handleGameReset);
       socket.off("game_over", handleGameOver);
@@ -8859,6 +8930,8 @@ const GameFighter = ({
             );
 
             const hudProps = {
+              secondsRemaining: boutSeconds,
+              subMarksVisible: !boutLive,
               playerOneWinCount,
               playerTwoWinCount,
               roundHistory,
@@ -8952,6 +9025,21 @@ const GameFighter = ({
           document.getElementById("game-ceremony")
         )}
 
+      {/* Bout card — screen space like HAKKI-YOI (not #game-ceremony), so
+          the camera's walk-up pan doesn't drag the title around. */}
+      {index === 0 &&
+        boutCard &&
+        document.getElementById("game-hud") &&
+        createPortal(
+          <SumoGameAnnouncement
+            type="boutcard"
+            label={boutCard.label}
+            final={boutCard.final}
+            duration={DEFAULT_BOUTCARD_DURATION}
+          />,
+          document.getElementById("game-hud")
+        )}
+
       {/* Screen-space HUD: portalled outside the scene so it never zooms.
           NOTE: UiPlayerInfo → #game-hud-info (under actors). Side combat
           plaques → #game-hud-callouts (also under actors). Center callouts /
@@ -8985,7 +9073,14 @@ const GameFighter = ({
               );
             })()}
             {index === 0 && showRoundResult && !matchOver && (
-              <RoundResult isVictory={winner.id === localId} winType={winType} />
+              <RoundResult
+                /* A torinaoshi has no winner, so `winner` is stale from
+                   the previous bout — nobody gets the victory palette. */
+                isVictory={
+                  winType !== "torinaoshi" && winner.id === localId
+                }
+                winType={winType}
+              />
             )}
             {index === 0 && matchOver && !isBashoMatch && (
               <MatchOver
@@ -9055,8 +9150,31 @@ const GameFighter = ({
             type="tewotsuite"
             duration={DEFAULT_TEWOTSUITE_DURATION}
           />
+          <SumoGameAnnouncement
+            type="boutcard"
+            label="ROUND 1"
+            duration={DEFAULT_BOUTCARD_DURATION}
+          />
         </div>
       )}
+      {/* Judges' score — one per wrestler, keyed off `penguin.fighter`
+          rather than `index` so a disconnect placeholder shifting the
+          player array can never swap the two numbers. */}
+      {showRoundResult && hanteiScores && !matchOver && (
+        <HanteiScoreTag
+          x={displayPosition.x}
+          y={displayPosition.y}
+          $won={
+            winType !== "torinaoshi" && winner.id === penguin.id
+          }
+          aria-label="Judges' score"
+        >
+          {penguin.fighter === "player 2"
+            ? hanteiScores.player2
+            : hanteiScores.player1}
+        </HanteiScoreTag>
+      )}
+
       {penguin.id === localId &&
         !hakkiyoi &&
         gyojiState === "idle" &&

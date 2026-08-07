@@ -2,21 +2,26 @@ import PropTypes from "prop-types";
 import React, { useMemo } from "react";
 import UiPlayerInfo from "./UiPlayerInfo";
 import BashoBoonStrip from "./BashoBoonStrip";
-import BashoDayHud from "./BashoDayHud";
 import { getBashoPassiveDraft } from "../config/powerUpConfig";
 
 /*
  * BASHO-only HUD wrapper around UiPlayerInfo.
  *
- * Rank sits in the name row beside the shikona; passive boons overlay the
- * gauge column at balance-bar height without shifting stamina/balance/power-up.
- * Draft actives render in the power-up slot beside stamina.
+ * Shares the base HUD's skeleton exactly — rank beside the shikona, slot
+ * capping the stamina bar, bout clock in the center — and only differs
+ * in content: one bout per day means no round score, and passive boons
+ * overlay the gauge column at posture height. Draft actives render in
+ * the slot.
+ *
+ * `bashoDay` is still accepted (it rides the rest spread) but currently
+ * renders nowhere: it used to be the center numeral, and the center now
+ * belongs to the bout clock. It is destined for the bout card that plays
+ * ahead of HANDS DOWN, which lands with the timer work.
  */
 
 const UiPlayerInfoBasho = ({
   bashoDraftedPowerUps = [],
   bashoOpponentPowerUps = [],
-  bashoDay = 1,
   bashoOpponentName = null,
   isPlayer1Local = true,
   matchOver = false,
@@ -37,10 +42,8 @@ const UiPlayerInfoBasho = ({
       isPlayer1Local={isPlayer1Local}
       matchOver={matchOver}
       bashoPowerUpSlots
-      rankInTopMarks
-      nameAlignToMarkBottom
+      showRoundMarks={false}
       player2Name={bashoOpponentName || "CPU"}
-      centerContent={<BashoDayHud day={bashoDay} />}
       player1SubMarks={
         playerPassiveBoons.length > 0 ? (
           <BashoBoonStrip

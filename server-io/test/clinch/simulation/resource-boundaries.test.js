@@ -14,7 +14,7 @@ const {
   CLINCH_JOLT_BALANCE_VS_PLANT,
   GRAB_BREAK_STAMINA_COST,
   CLINCH_EDGE_THROW_DRAIN_BONUS,
-  CLINCH_PLANT_BALANCE_REGEN_PER_SEC,
+  CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC,
   BALANCE_MAX,
 } = require("../../../constants");
 const { createClinchScenario } = require("../harness");
@@ -151,26 +151,36 @@ describe("Resource boundary tests", () => {
     });
   });
 
-  describe("Plant regen", () => {
-    it("Plant regenerates balance at CLINCH_PLANT_BALANCE_REGEN_PER_SEC", () => {
+  describe("Plant posture lock", () => {
+    it("Plant does not regenerate balance", () => {
       const s = sc({ p1Balance: 50 });
       s.setActivePlant(s.grabber, s.now());
       s.holdNeutral(s.grabbed);
       const before = s.grabber.balance;
       s.advance(1000);
-      const gained = s.grabber.balance - before;
-      assert.ok(
-        Math.abs(gained - CLINCH_PLANT_BALANCE_REGEN_PER_SEC) < 0.5,
-        `gained ${gained}`
+      assert.equal(s.grabber.balance, before, "plant must not gain posture");
+    });
+
+    it("Plant locks balance against continuous push drain", () => {
+      const s = sc({ p1Balance: 50, p2Balance: 80 });
+      s.setActivePlant(s.grabber, s.now());
+      s.setCommittedDrive(s.grabbed, s.grabber);
+      const before = s.grabber.balance;
+      s.advance(1000);
+      assert.equal(
+        s.grabber.balance,
+        before,
+        `plant should preserve posture under push; got ${s.grabber.balance} (push drain would be ~${CLINCH_PUSH_BALANCE_DRAIN_OPPONENT_PER_SEC}/s)`
       );
     });
 
-    it("balance capped at BALANCE_MAX", () => {
+    it("balance stays at or below BALANCE_MAX while planting", () => {
       const s = sc({ p1Balance: BALANCE_MAX - 1 });
       s.setActivePlant(s.grabber, s.now());
       s.holdNeutral(s.grabbed);
       s.advance(2000);
       assert.ok(s.grabber.balance <= BALANCE_MAX);
+      assert.equal(s.grabber.balance, BALANCE_MAX - 1);
     });
   });
 

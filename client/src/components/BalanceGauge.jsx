@@ -2,10 +2,10 @@ import PropTypes from "prop-types";
 import { useEffect, useRef } from "react";
 import styled, { keyframes, css } from "styled-components";
 import { drawBalanceGauge } from "./balanceGaugeDraw";
-import { C, FONT_DISPLAY, FONT_KANJI } from "./menuTheme";
+import { C, FONT_DISPLAY, FONT_KANJI, HUD } from "./menuTheme";
 
-/* Compact secondary meter — stamina stays the hero. */
-const GAUGE_HEIGHT = "clamp(14px, 1.9cqh, 18px)";
+/* Compact secondary meter — stamina stays the hero, posture stays loud. */
+const GAUGE_HEIGHT = "clamp(16px, 2.15cqh, 21px)";
 
 /* MASTERY Phase 5 (5.2): broken-posture HUD pulse. */
 const posturePulse = keyframes`
@@ -26,6 +26,14 @@ const tipDrainFlinch = keyframes`
   100% { opacity: 0; box-shadow: 0 0 0 0 rgba(255, 120, 80, 0); transform: scale(1); }
 `;
 
+/* Frame lives in CSS, fill lives in canvas.
+ *
+ * The frame used to be stroked inside the canvas at a fixed 1.25px line
+ * width against a device-pixel backing store, so on a 2x display it
+ * rendered at 0.6 CSS px of translucent blue — the reason this gauge
+ * read as the weakest object on the band. Drawing it here instead means
+ * it is literally the same declaration as the stamina bar's frame:
+ * opaque cream, hard corners, dark keyline. */
 const GaugeShell = styled.div`
   flex: 1;
   min-width: 0;
@@ -33,6 +41,13 @@ const GaugeShell = styled.div`
   align-items: center;
   height: ${GAUGE_HEIGHT};
   position: relative;
+  box-sizing: border-box;
+  border-radius: 0;
+  border: ${HUD.strokeThin} solid
+    ${(p) => (p.$danger || p.$broken ? C.vermillionBright : HUD.chrome)};
+  background: ${HUD.well};
+  box-shadow: 0 0 0 1px ${HUD.keyline};
+  transition: border-color 200ms ease;
   transform-origin: ${(p) => (p.$isRight ? "right center" : "left center")};
   ${(p) =>
     p.$broken
@@ -44,8 +59,8 @@ const GaugeShell = styled.div`
 
 const TipDrainFlash = styled.div`
   position: absolute;
-  inset: -1px;
-  border-radius: 3px;
+  inset: 0;
+  border-radius: 0;
   pointer-events: none;
   z-index: 3;
   animation: ${tipDrainFlinch} 0.42s cubic-bezier(0.2, 0.85, 0.25, 1) both;
@@ -64,32 +79,15 @@ const GaugeCanvas = styled.canvas`
   pointer-events: none;
 `;
 
-const BalLabel = styled.div`
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  height: ${GAUGE_HEIGHT};
-  font-family: ${FONT_DISPLAY};
-  font-size: clamp(7px, 0.78cqw, 9.5px);
-  color: rgba(245, 236, 217, 0.72);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin-inline-end: -0.1em;
-  line-height: 1;
-  transform: translateY(0.5px);
-  text-shadow:
-    0 0 8px rgba(0, 0, 0, 0.75),
-    1px 1px 2px rgba(0, 0, 0, 1);
-  user-select: none;
-  pointer-events: none;
-`;
-
+/* No "POSTURE" label. It sat in a fixed position under a fixed bar and
+ * repeated on both wings, which is four words of permanent text buying
+ * nothing — the gauge's position and color already identify it, the same
+ * way no fighting game labels its drive meter. */
 const Strip = styled.div`
   display: flex;
   align-items: center;
   width: 100%;
   min-width: 0;
-  gap: clamp(4px, 0.5cqw, 7px);
   flex-direction: ${(p) => (p.$isRight ? "row-reverse" : "row")};
 `;
 
@@ -113,7 +111,7 @@ const DeepGripChip = styled.div`
   align-items: center;
   gap: clamp(2px, 0.3cqw, 4px);
   padding: clamp(1px, 0.2cqh, 3px) clamp(4px, 0.6cqw, 8px);
-  border-radius: 2px;
+  border-radius: 0;
   font-family: ${FONT_DISPLAY};
   font-size: clamp(6.5px, 0.78cqw, 9.5px);
   letter-spacing: 0.12em;
@@ -130,21 +128,13 @@ const DeepGripChip = styled.div`
     p.$mode === "hold"
       ? css`
           color: #2a1f04;
-          background: linear-gradient(180deg, #f3dd7a 0%, ${C.gold} 55%, #b98f13 100%);
-          border: 1px solid #7a5c0c;
-          box-shadow:
-            0 1px 4px rgba(0, 0, 0, 0.55),
-            inset 0 1px 0 rgba(255, 250, 220, 0.55);
-          text-shadow: 0 1px 0 rgba(255, 246, 200, 0.5);
+          background: ${C.gold};
+          border: 1px solid ${HUD.keyline};
         `
       : css`
           color: ${C.cream};
-          background: linear-gradient(180deg, #d98a2a 0%, #b4611a 55%, #7e3d12 100%);
-          border: 1px solid #5c2c0d;
-          box-shadow:
-            0 1px 4px rgba(0, 0, 0, 0.55),
-            inset 0 1px 0 rgba(255, 220, 170, 0.35);
-          text-shadow: 0 1px 1px rgba(50, 20, 6, 0.7);
+          background: #a8541a;
+          border: 1px solid ${HUD.keyline};
         `}
 `;
 
@@ -222,7 +212,9 @@ const BalanceGauge = ({
     if (!ctx) return undefined;
 
     const resize = () => {
-      const rect = shell.getBoundingClientRect();
+      // Measure the CANVAS, not the shell: the shell now carries the
+      // cream border, so its border-box is wider than the drawing area.
+      const rect = canvas.getBoundingClientRect();
       const dpr = getCanvasDpr();
       const w = Math.max(1, Math.floor(rect.width * dpr));
       const h = Math.max(1, Math.floor(rect.height * dpr));
@@ -271,6 +263,9 @@ const BalanceGauge = ({
       drawBalanceGauge(ctx, {
         width: canvas.width,
         height: canvas.height,
+        // Segment dividers are drawn at a real CSS pixel width, so the
+        // renderer needs to know the backing-store scale.
+        dpr: getCanvasDpr(),
         balance: st.displayBalance,
         isRight,
         danger,
@@ -295,8 +290,12 @@ const BalanceGauge = ({
 
   return (
     <Strip $isRight={isRight}>
-      <BalLabel>POSTURE</BalLabel>
-      <GaugeShell ref={shellRef} $broken={broken} $isRight={isRight}>
+      <GaugeShell
+        ref={shellRef}
+        $broken={broken}
+        $danger={danger}
+        $isRight={isRight}
+      >
         <GaugeCanvas ref={canvasRef} aria-hidden="true" />
         {drainKey > 0 && <TipDrainFlash key={`tip-drain-${drainKey}`} />}
         {gripMode && (

@@ -66,8 +66,8 @@ const {
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, DODGE_STAMINA_COST,
   GASSED_RECOVERY_STAMINA,
   GASSED_RECOVERY_STAMINA_IN_CLINCH, COUNTER_GRAB_BALANCE_DEBUFF,
-  BALANCE_MAX, BALANCE_PASSIVE_REGEN_PER_SEC,
-  BALANCE_PASSIVE_REGEN_PER_SEC_P2, BALANCE_GASSED_REGEN_MULT,
+  BALANCE_MAX, BALANCE_REGEN_DELAY_MS, BALANCE_REGEN_PER_SEC,
+  BALANCE_GASSED_REGEN_MULT,
   POSTURE_BREAK_THRESHOLD, POSTURE_RECOVER_THRESHOLD,
   HITSTOP_GRAB_MS, HITSTOP_THROW_MS, SLAP_PARRY_KB_FRICTION,
   BURST_KB_FRICTION,
@@ -141,11 +141,22 @@ const {
   armSlideJumpFlapCharges,
   cancelPendingSlapWork,
   stampMomentumWindow,
+  applyBalanceDamage,
 } = require("./gameUtils");
+
+const {
+  BOUT_SECONDS,
+  describeBout,
+  resolveHantei,
+  ringFromBoundaries,
+  tachiaiStartAt,
+} = require("./boutClock");
 
 // Import game functions
 const {
   handleWinCondition,
+  handleBoutDraw,
+  startBoutClock,
   executeSlapAttack,
   executeChargedAttack,
   executePalmThrust,
@@ -800,7 +811,9 @@ function tick(delta) {
       ) {
         const currentTime = now;
         if (!room.readyStartTime) {
-          room.readyStartTime = currentTime;
+          // May seed slightly ahead so the bout card isn't clipped on the
+          // no-salt path — see tachiaiStartAt.
+          room.readyStartTime = tachiaiStartAt(currentTime, room.boutCardAtSim);
         }
 
         const elapsedTime = currentTime - room.readyStartTime;
@@ -824,7 +837,9 @@ function tick(delta) {
           room.gameStart = true;
           // Audit log opens here (idempotent across rounds within a match).
           openAuditLog(room);
+          startBoutClock(room);
           io.in(room.id).emit("game_start", true);
+          io.in(room.id).emit("bout_clock", BOUT_SECONDS);
           player1.isReady = false;
           player2.isReady = false;
           // Only reset mouse1PressTime if the player wasn't already charging
@@ -1589,7 +1604,7 @@ function tick(delta) {
 
               if (wasOpponentRawParrying) {
                 opponent.isArmClamped = true;
-                opponent.balance = Math.max(0, opponent.balance - COUNTER_GRAB_BALANCE_DEBUFF);
+                applyBalanceDamage(opponent, COUNTER_GRAB_BALANCE_DEBUFF, now);
                 const grabberPlayerNumber = room.players.indexOf(player) === 0 ? 1 : 2;
                 const centerX = (player.x + opponent.x) / 2;
                 const centerY = (player.y + opponent.y) / 2;
@@ -1873,18 +1888,25 @@ function tick(delta) {
         }
       }
 
-      // Balance regen — passive in neutral; clinch still banks pressure (no regen).
-      // Gassed halves posture regen instead of freezing it — stamina exhaustion
-      // shouldn't hard-lock an unrelated resource. Flag off ⇒ today's rate.
+      // Balance regen — Halo armor style. Damage sticks until the fighter goes
+      // BALANCE_REGEN_DELAY_MS without ANY posture damage, then snaps back fast.
+      // A new hit during regen stops it and restarts the delay. Clinch is a
+      // cash-out zone: no regen while inClinch (plant locks vs push instead).
       if (player.balance < BALANCE_MAX && !room.gameOver && !player.inClinch) {
-        const deltaSec = delta / 1000;
-        let balanceRegen = MASTERY_P2_POSTURE
-          ? BALANCE_PASSIVE_REGEN_PER_SEC_P2
-          : BALANCE_PASSIVE_REGEN_PER_SEC;
-        // BASHO BALANCE attribute scales balance regen rate (1.0 for non-BASHO).
-        balanceRegen *= player.statMods?.balanceRegen ?? 1;
-        if (player.isGassed) balanceRegen *= BALANCE_GASSED_REGEN_MULT;
-        player.balance = Math.min(BALANCE_MAX, player.balance + balanceRegen * deltaSec);
+        const lastDmg = player.lastPostureDamageTime || 0;
+        const delayElapsed =
+          lastDmg === 0 || room.simTime - lastDmg >= BALANCE_REGEN_DELAY_MS;
+        if (delayElapsed) {
+          const deltaSec = delta / 1000;
+          let balanceRegen = BALANCE_REGEN_PER_SEC;
+          // BASHO BALANCE attribute scales balance regen rate (1.0 for non-BASHO).
+          balanceRegen *= player.statMods?.balanceRegen ?? 1;
+          if (player.isGassed) balanceRegen *= BALANCE_GASSED_REGEN_MULT;
+          player.balance = Math.min(
+            BALANCE_MAX,
+            player.balance + balanceRegen * deltaSec
+          );
+        }
       }
 
       // MASTERY Phase 2 (2.1): derive the broken-posture "openable" tell from
@@ -3359,7 +3381,7 @@ function tick(delta) {
 
           if (wasOpponentRawParrying) {
             opponent.isArmClamped = true;
-            opponent.balance = Math.max(0, opponent.balance - COUNTER_GRAB_BALANCE_DEBUFF);
+            applyBalanceDamage(opponent, COUNTER_GRAB_BALANCE_DEBUFF, now);
             // Counter Grab: grabbed their raw parry — CLAMPED FX + "Counter Grab" banner
             const grabberPlayerNumber = room.players.indexOf(player) === 0 ? 1 : 2;
             const centerX = (player.x + opponent.x) / 2;
@@ -4389,6 +4411,86 @@ function tick(delta) {
     // (Player loop is outside the early hitstop pair-block, so resolve from room.)
     if (room.players.length === 2 && !isRoomInHitstop(room)) {
       enforcePairFacing(room.players[0], room.players[1], now);
+    }
+
+    // ── BOUT CARD ──
+    // "DAY 7" / "ROUND 2" / "FINAL ROUND", once per bout.
+    //
+    // Fires at the START of the salt throw, which buys the card the full
+    // 1483ms salt animation PLUS the walk to the tachiai before the Gyoji
+    // calls HANDS DOWN. The first pass waited for the salt to FINISH
+    // (canMoveToReady) and the card was still on screen when the bubble
+    // popped. canMoveToReady and readyStartTime stay as backstops for any
+    // mode that skips the ritual — and the client hides the card the
+    // instant gyoji_call lands, so the two can never overlap regardless
+    // of how the timings drift.
+    if (
+      !room.boutCardSent &&
+      !room.gameStart &&
+      !room.gameOver &&
+      room.players.length === 2 &&
+      (room.players.some((p) => p.isThrowingSalt) ||
+        room.players.every((p) => p.canMoveToReady) ||
+        room.readyStartTime)
+    ) {
+      room.boutCardSent = true;
+      room.boutCardAtSim = now;
+      io.in(room.id).emit(
+        "bout_card",
+        describeBout({
+          matchMode: room.matchMode,
+          bashoBout: room.bashoBout,
+          bashoTotalBouts: room.bashoTotalBouts,
+          winsP1: (room.players[0].wins || []).length,
+          winsP2: (room.players[1].wins || []).length,
+        })
+      );
+    }
+
+    // ── BOUT CLOCK ──
+    // Armed at HAKKI-YOI (startBoutClock). Only the integer second is sent,
+    // and only when it changes, so a bout costs ~60 tiny packets total and
+    // the client needs no countdown of its own to stay in step.
+    if (
+      room.gameStart &&
+      !room.gameOver &&
+      !room.matchOver &&
+      room.boutEndsAtSim &&
+      // A disconnect mid-bout leaves one player; the decision needs both.
+      room.players.length === 2
+    ) {
+      const msLeft = room.boutEndsAtSim - now;
+      const secondsLeft = Math.max(0, Math.ceil(msLeft / 1000));
+      if (secondsLeft !== room.boutSecondsShown) {
+        room.boutSecondsShown = secondsLeft;
+        io.in(room.id).emit("bout_clock", secondsLeft);
+      }
+
+      if (msLeft <= 0) {
+        // Resolve by fighter identity, not array order: the client reads
+        // scores.player1 / scores.player2 off `penguin.fighter`, so the
+        // two must not be able to disagree about who is who.
+        const p1 =
+          room.players.find((p) => p.fighter === "player 1") ||
+          room.players[0];
+        const p2 =
+          room.players.find((p) => p.fighter === "player 2") ||
+          room.players[1];
+        const ring = ringFromBoundaries(
+          MAP_LEFT_BOUNDARY,
+          MAP_RIGHT_BOUNDARY
+        );
+        const { winner, scores } = resolveHantei(p1, p2, ring);
+        if (winner) {
+          const champ = winner === "player1" ? p1 : p2;
+          const fallen = winner === "player1" ? p2 : p1;
+          handleWinCondition(room, fallen, champ, io, "timeExpired", {
+            hanteiScores: scores,
+          });
+        } else {
+          handleBoutDraw(room, io, scores);
+        }
+      }
     }
 
     // ROOM-LEVEL SAFETY: Check game reset outside player loop

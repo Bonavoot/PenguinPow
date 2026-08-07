@@ -339,6 +339,13 @@ function resetRoomAndPlayers(room, io) {
   room.gameOver = false;
   room.hakkiyoiCount = 0;
   room.gameOverTime = null;
+  // Bout clock is re-armed at the next HAKKI-YOI, and the card re-fires
+  // when the wrestlers start their walk. Both must clear here or the
+  // next bout inherits an already-expired deadline and ends instantly.
+  room.boutEndsAtSim = null;
+  room.boutSecondsShown = null;
+  room.boutCardSent = false;
+  room.boutCardAtSim = null;
   delete room.winnerId;
   delete room.loserId;
   room.previousPlayerStates = [null, null];
@@ -565,6 +572,7 @@ function resetRoomAndPlayers(room, io) {
     player.isDead = false;
     player.stamina = 100;
     player.balance = 100;
+    player.lastPostureDamageTime = 0;
     // Posture tell is derived from balance each tick, but clear it explicitly
     // so a broken-posture flag can't linger across the walk-up / HAKKIYOI.
     player.isPostureBroken = false;
