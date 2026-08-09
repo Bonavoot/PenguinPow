@@ -664,12 +664,8 @@ function resetRoomAndPlayers(room, io) {
     player.clinchThrowFailStagger = false;
     player.isClinchOpen = false;
     player.clinchOpenHideStars = false;
-    player.clinchOpenUntil = 0;
     player.hasDeepGrip = false;
     player.clinchShoveLead = null;
-    player.deepGripPushStart = 0;
-    player.clinchPushRampStart = 0;
-    player.clinchOpenPunishBlend = 0;
     player.grabCounterAttempted = false;
     player.grabCounterInput = null;
     player.isThrowTeching = false;
@@ -745,7 +741,6 @@ function resetRoomAndPlayers(room, io) {
     player.knockbackImmune = false;
     player.knockbackImmuneEndTime = 0;
     player.clinchBreakRequest = false;
-    player.clinchBreakRequestTime = 0;
     player.grabImmune = false;
     player.grabImmuneEndTime = 0;
     player.isCinematicKillVictim = false;

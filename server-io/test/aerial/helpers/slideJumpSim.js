@@ -94,7 +94,7 @@ const {
   stepParriedRecoil,
   applyOffensiveAerialTouchdownHandoff,
 } = require("../../../offensiveAerialReaction");
-const { createMockIo } = require("../../clinch/harness/mockIo");
+const { createMockIo } = require("../../helpers/mockIo");
 const { computeOffensiveAerialContact } = require("../../../offensiveAerialContact");
 
 const TICK_MS = 1000 / TICK_RATE;

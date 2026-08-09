@@ -26,6 +26,7 @@ const {
   PALM_THRUST_KB_VELOCITY,
   CHARGE_CLASH_RECOVERY_DURATION,
 } = require("../../constants");
+const { pxToKbVelocity, profileFor } = require("../../momentumTransfer");
 
 const scenarios = [];
 afterEach(() => {
@@ -75,10 +76,19 @@ describe("palm vs palm — timing priority / trade", () => {
     assert.equal(hit.isPalmThrust, true);
     assert.equal(hit.attackerId, s.left.id);
     assert.equal(hit.victimId, s.right.id);
-    // Clean palm delivers burst shove at/above trade KB, not clash recovery.
+    // MOMENTUM TRANSFER: a rooted palm with no carried speed resolves at its
+    // floor, so the old "at least trade KB" comparison no longer holds — a
+    // trade is a mutual reset and is deliberately larger than a flat-footed
+    // clean hit. The contract that still matters is that a clean palm sends
+    // meaningfully further than a slap does from the same standing start.
     assert.ok(
-      Math.abs(s.right.knockbackVelocity.x) >= PALM_TRADE_KNOCKBACK - 0.01,
-      "winner palm should deliver real palm-tier shove"
+      Math.abs(s.right.knockbackVelocity.x) >=
+        pxToKbVelocity(profileFor("palm").floor) - 0.01,
+      "winner palm should deliver at least a palm-floor shove"
+    );
+    assert.ok(
+      profileFor("palm").floor > profileFor("slap").floor,
+      "palm must out-send a slap from a standing start"
     );
     assert.ok(!s.left.isRecovering, "winner must not enter charge-clash recovery");
     assert.notEqual(

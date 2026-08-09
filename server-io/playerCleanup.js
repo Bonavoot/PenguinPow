@@ -22,12 +22,8 @@ function cleanupPlayerStates(player) {
   player.clinchThrowFailStagger = false;
   player.isClinchOpen = false;
   player.clinchOpenHideStars = false;
-  player.clinchOpenUntil = 0;
   player.hasDeepGrip = false;
   player.clinchShoveLead = null;
-  player.deepGripPushStart = 0;
-  player.clinchPushRampStart = 0;
-  player.clinchOpenPunishBlend = 0;
   player.isThrowing = false;
   player.isBeingThrown = false;
   player.isAttacking = false;
@@ -179,15 +175,9 @@ function cleanupPlayerStates(player) {
   // Clean up clinch jolt states
   player.isClinchJolting = false;
   player.clinchJoltRecovery = false;
-  player.clinchJoltCooldown = false;
-  player.clinchJoltStartTime = 0;
   player.isBeingClinchJolted = false;
-  player.clinchJoltPlantInterrupt = false;
   player.isClinchJoltClashing = false;
   player.clinchJoltRequest = false;
-  player.clinchJoltRequestTime = 0;
-  player.clinchJoltRecoilStart = 0;
-  player.clinchJoltPlantInterruptStart = 0;
 
   // Clean up power-up related states
   player.activePowerUp = null;
@@ -216,9 +206,6 @@ function cleanupOpponentStates(opponent) {
     opponent.isArmClamped = false;
     opponent.clinchThrowFailStagger = false;
     opponent.hasDeepGrip = false;
-    opponent.deepGripPushStart = 0;
-    opponent.clinchPushRampStart = 0;
-    opponent.clinchOpenPunishBlend = 0;
     opponent.isBeingPushed = false;
     opponent.isBeingPulled = false;
     opponent.isBeingThrown = false;

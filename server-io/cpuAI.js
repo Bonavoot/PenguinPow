@@ -12,12 +12,11 @@ const { ROPE_JUMP_BOUNDARY_ZONE,
         RAW_PARRY_STAMINA_COST, POWER_UP_TYPES, SLAP_KILL_RANGE,
         PALM_THRUST_STAMINA_COST,
         CLINCH_THROW_KILL_THRESHOLD,
-        GRAB_BREAK_STAMINA_COST,
-        CLINCH_LIGHT_DRIVE_MS,
+        CMD_DRIVE_DISTANCE_MIN, CMD_DRIVE_DISTANCE_MAX,
         FLAP_CHARGE_COOLDOWN_MS, FLAP_STAMINA_COST,
         SLAP_TOTAL_MS, CADENCE_WINDOW_MS,
         CPU_CADENCE_EASY, CPU_CADENCE_NORMAL, CPU_CADENCE_HARD, CPU_CADENCE_IMPOSSIBLE,
-        BALANCE_MAX, GRAB_BREAK_REACTION_LOCK_MS,
+        BALANCE_MAX,
         ICE_SLIDE_BRAKE_ARM_MS, ICE_SLIDE_REVERSE_SPEED_MAX,
         ICE_SLIDE_REVERSE_BUFFER_MS, SLIDE_JUMP_MIN_MS,
         DODGE_TRAVEL_DISTANCE, CHARGE_FULL_POWER_MS,
@@ -30,7 +29,8 @@ const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
         tryIceSlideReverse } = require("./gameUtils");
 const { getConnectDistance, attackKindFromPlayer } = require("./strikeContact");
 const { startRopeJump } = require("./ropeJumpStart");
-const { beginBraceAttempt } = require("./grabActionSystem");
+const { CMD_GRAB_VARIANT } = require("./commandGrabInput");
+const { postureScaled } = require("./commandGrabSystem");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum, Phase 2: posture, Phase 3: cadence).
 const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P3_CADENCE } = require("./masteryFlags");
@@ -74,11 +74,8 @@ const AI_CONFIG = {
   DECISION_COOLDOWN: 120,  // Minimum time between major decisions
   
   // Stamina thresholds
-  GRAB_BREAK_STAMINA: GRAB_BREAK_STAMINA_COST, // Matches live clinch break cost
   DODGE_STAMINA_COST: 4,   // Matches new DODGE_STAMINA_COST constant
   LOW_STAMINA_THRESHOLD: 25, // Opponent considered low stamina
-  CLINCH_STAMINA_DESPERATE: 20, // Near-gas — never Plant to "recover"
-  CLINCH_STAMINA_LOW: 40,       // Prefer neutral breathing / light drive over Plant
   
   // Movement
   STRAFE_CHANGE_INTERVAL: 350, // How often to change strafe direction
@@ -145,19 +142,6 @@ const AI_CONFIG = {
   PRESSURE_DECAY_TIME: 2500,       // How long the defensive boost lasts after last hit (ms)
 
   // Clinch system intelligence
-  CLINCH_GRIP_UP_DELAY_MIN: 200,       // Min delay before gripping up when grabbed
-  CLINCH_GRIP_UP_DELAY_MAX: 500,       // Max delay before gripping up
-  CLINCH_ACTION_INTERVAL_MIN: 600,     // Min interval between throw/pull evaluations
-  CLINCH_ACTION_INTERVAL_MAX: 1400,    // Max interval between evaluations
-  CLINCH_KILL_ACTION_INTERVAL_MIN: 250, // Faster evaluation when opponent is in kill zone
-  CLINCH_KILL_ACTION_INTERVAL_MAX: 600,
-  CLINCH_THROW_REACTION_MIN: 150,      // Min reaction delay before executing a clinch action
-  CLINCH_THROW_REACTION_MAX: 400,      // Max reaction delay
-  CLINCH_THROW_CHANCE_KILL: 0.85,      // Chance to attempt action when opponent is in kill zone
-  CLINCH_THROW_CHANCE_LAND: 0.45,      // Chance to attempt action in land zone (balance 15-50)
-  CLINCH_THROW_CHANCE_FAIL: 0.12,      // Chance to attempt action in fail zone (drains balance)
-  CLINCH_PUSH_PLANT_INTERVAL_MIN: 300, // Min duration before re-evaluating push/plant
-  CLINCH_PUSH_PLANT_INTERVAL_MAX: 800, // Max duration
 
   // === FLAP power-up: offense (CPU piloting its own flight) ===
   FLAP_USE_CHANCE: 0.45,        // Base chance to commit a liftoff when a good engage window appears
@@ -259,17 +243,12 @@ const AI_CONFIG = {
 //   burstCountMin/Max        — clamps committed slap-burst length
 //   ringOutMult              — scales ring-out conversion aggression
 //   palmEdgeMult/palmPokeMult — scales edge-finish / anti-mash palm
-//   clinchKillMult/clinchLandMult — scales clinch throw convert rates
+//   clinchKillMult/clinchLandMult — command-grab variant READ ACCURACY (lethal /
+//                              ordinary). Low tiers misread which grab converts.
 //   edgeGrabMult             — scales grab-when-opponent-near-edge rates
 //   offenseGrabMult          — scales mid-screen / general grab offense
 //   diChance                 — chance to hold correct knockback DI
-//   grabBreakChance          — chance to input the correct grab-break
 //   usePowerUps              — may use snowball/army/flap offensively
-//   gripUpMult               — multiplier on clinch grip-up delay (lower = grips
-//                              up faster, so it can defend/break a grab sooner)
-//   clinchEscapeBoost        — multiplier on edge-escape throw/pull chance in clinch
-//   clinchBreakEscape        — will spend a defensive clinch BREAK to escape a
-//                              losing clinch near the edge (tech-out, avoid death)
 //   perfectParry             — tightens parry hold toward the perfect-parry window
 //   whiffPunish              — reliably punishes the human's recovery/whiff/endlag
 const DIFFICULTY_PROFILES = {
@@ -290,9 +269,6 @@ const DIFFICULTY_PROFILES = {
     parryPunishDelayMin: 280,
     parryPunishDelayMax: 420,
     usePowerUps: false,
-    gripUpMult: 1,
-    clinchEscapeBoost: 1,
-    clinchBreakEscape: false,
     perfectParry: false,
     whiffPunish: false,
     // Conversion dials — still fighty, not cruel
@@ -310,7 +286,6 @@ const DIFFICULTY_PROFILES = {
     edgeGrabMult: 0.40,
     offenseGrabMult: 0.55,
     diChance: 0.55,
-    grabBreakChance: 0.28,
   },
   NORMAL: {
     // Competent mid — can fight and sometimes convert, but stays human under fire.
@@ -327,9 +302,6 @@ const DIFFICULTY_PROFILES = {
     parryPunishDelayMin: 200,
     parryPunishDelayMax: 320,
     usePowerUps: true,
-    gripUpMult: 1,
-    clinchEscapeBoost: 1,
-    clinchBreakEscape: false,
     perfectParry: false,
     whiffPunish: false,
     pressureJitterMin: 35,
@@ -346,7 +318,6 @@ const DIFFICULTY_PROFILES = {
     edgeGrabMult: 0.75,
     offenseGrabMult: 0.80,
     diChance: 0.80,
-    grabBreakChance: 0.40,
   },
   HARD: {
     // Identity profile — resolves to the literal AI_CONFIG baseline below.
@@ -364,9 +335,6 @@ const DIFFICULTY_PROFILES = {
     parryPunishDelayMin: 160,
     parryPunishDelayMax: 260,
     usePowerUps: true,
-    gripUpMult: 1,
-    clinchEscapeBoost: 1,
-    clinchBreakEscape: false,
     perfectParry: false,
     whiffPunish: false,
     pressureJitterMin: 0,
@@ -383,7 +351,6 @@ const DIFFICULTY_PROFILES = {
     edgeGrabMult: 1,
     offenseGrabMult: 1,
     diChance: 1,
-    grabBreakChance: 0.50,
   },
   IMPOSSIBLE: {
     missChance: 0.02, // virtually never whiffs a reaction
@@ -399,9 +366,6 @@ const DIFFICULTY_PROFILES = {
     parryPunishDelayMin: 130,
     parryPunishDelayMax: 200,
     usePowerUps: true,
-    gripUpMult: 0.4, // grips up fast so it isn't free-thrown out of a grab
-    clinchEscapeBoost: 1.6, // fights its way off the edge in clinch
-    clinchBreakEscape: true, // techs out of a lethal clinch instead of dying
     perfectParry: true, // times parries into the perfect-parry punish window
     whiffPunish: true, // capitalizes on the human's recovery frames
     // Conversion stays at HARD identity — cruelty comes from reaction mastery.
@@ -419,7 +383,6 @@ const DIFFICULTY_PROFILES = {
     edgeGrabMult: 1,
     offenseGrabMult: 1,
     diChance: 1,
-    grabBreakChance: 0.50,
   },
 };
 
@@ -490,44 +453,6 @@ function cancelEasyGrabDummyPush(cpu, human) {
   }
 }
 
-// If a grab connects, dump the clinch ASAP (no throw/pull/push).
-function runEasyGrabDummyClinchEscape(cpu, human, aiState, currentTime) {
-  topUpEasyGrabDummy(cpu);
-  resetAllKeys(cpu);
-  cancelEasyGrabDummyPush(cpu, human);
-
-  // No clinch verbs — clear any pending throw/pull intent.
-  cpu.clinchThrowRequest = null;
-  cpu.clinchJoltRequest = false;
-  aiState.clinchThrowPending = null;
-  aiState.clinchThrowExecuteTime = 0;
-  aiState.clinchPushPlantDecision = null;
-  aiState.clinchLightDrivePulse = false;
-  aiState.clinchClampHoldPlant = false;
-  aiState.clinchClampPlantUntil = 0;
-
-  // Reaction lock must expire before break/jolt is accepted.
-  const gripAt = cpu.gripAcquiredTime || 0;
-  if (gripAt && currentTime - gripAt < GRAB_BREAK_REACTION_LOCK_MS) {
-    aiState.lastActionType = "grab_dummy_wait_break_lock";
-    return;
-  }
-
-  if (
-    cpu.hasGrip &&
-    human &&
-    human.hasGrip &&
-    !cpu.clinchBreakRequest &&
-    !cpu.isGrabBreaking &&
-    !cpu.isGrabBreakCountered &&
-    !cpu.isGrabBreakSeparating
-  ) {
-    cpu.clinchBreakRequest = true;
-    cpu.clinchBreakRequestTime = currentTime;
-    aiState.lastActionType = "grab_dummy_break";
-  }
-}
-
 // Grab-only + infinite resources training dummy (Easy only, gated by flag above).
 // Walks in and spam-grabs so you can lab MATADOR. No slap / parry / dodge / charge.
 // On connect: never push / never clinch actions — grab-break ASAP.
@@ -542,14 +467,14 @@ function runEasyGrabMatadorDummy(cpu, human, aiState, currentTime, distance) {
   aiState.commitAction = null;
   aiState.commitCount = 0;
 
-  // Grab connected → dump clinch immediately (no push / throw / pull).
+  // Grab in progress → the command grab resolves itself; the dummy just waits.
   if (
     cpu.inClinch ||
     cpu.isGrabbing ||
     cpu.isBeingGrabbed ||
     (human && human.inClinch)
   ) {
-    runEasyGrabDummyClinchEscape(cpu, human, aiState, currentTime);
+    resetAllKeys(cpu);
     return;
   }
 
@@ -608,13 +533,12 @@ const LADDER_NUM_DIALS = [
   "missChance", "pressureMiss", "jitterMin", "jitterMax", "decisionCooldown",
   "parryMult", "dodgeMult", "snowballParryMult", "flapDefMult", "parryPunishChance",
   "parryPunishDelayMin", "parryPunishDelayMax",
-  "gripUpMult", "clinchEscapeBoost",
-  // Conversion / fairness dials (EASY→HARD curve; HARD/IMPOSSIBLE identity)
+    // Conversion / fairness dials (EASY→HARD curve; HARD/IMPOSSIBLE identity)
   "pressureJitterMin", "pressureJitterMax", "pressureHitThreshold",
   "burstChanceMult", "burstCountMin", "burstCountMax",
   "ringOutMult", "palmEdgeMult", "palmPokeMult",
   "clinchKillMult", "clinchLandMult", "edgeGrabMult", "offenseGrabMult",
-  "diChance", "grabBreakChance",
+  "diChance",
 ];
 
 // Clamp a preferred slap-burst length into the active difficulty's burst window.
@@ -653,7 +577,6 @@ function resolveDifficultyByLadder(L) {
   const out = {};
   for (const k of LADDER_NUM_DIALS) out[k] = A[k] + (B[k] - A[k]) * t;
   out.usePowerUps = x >= 0.25;
-  out.clinchBreakEscape = x >= 0.8;
   out.perfectParry = x >= 0.85;
   out.whiffPunish = x >= 0.85;
   _ladderCache[bucket] = out;
@@ -809,23 +732,22 @@ const CORNER_POLICY = {
   counter:  { escape: 0.25, palm: 0.25, parry: 0.40, fight: 0.05, grab: 0.05 },
   brawler:  { escape: 0.10, palm: 0.15, parry: 0.10, fight: 0.55, grab: 0.10 },
 };
-// Clinch style (spec 4.2, the 4th decision moment). NOT a weight row — a set of
-// LEANS applied to the existing handleClinchBehavior rolls: grappler grips up
-// fast and prefers pull; pusher pushes (vs plant) and jolts; counter breaks
-// early; brawler is jolt-happy. `balanced` is all-neutral (mult 1 / bias 0), so a
-// non-archetype CPU takes the exact legacy clinch path (byte-identical rolls).
-//   gripUpMult — scales the grip-up delay (<1 = grips up sooner)
-//   joltMult   — scales the clinch-jolt probability
-//   pushBias   — added to the neutral push-vs-plant coin (higher = pushes more)
-//   pullBias   — shifts throw-decision toward pull (higher = more pull)
-//   breakEager — counter's early defensive clinch break (raises chance + lowers
-//                the balance-deficit threshold that triggers it)
+// Grab style (spec 4.2, the 4th decision moment). NOT a weight row — a pair of
+// LEANS applied to the command-grab variant read: a grappler reaches for the Pull,
+// a pusher for the Drive. `balanced` is neutral (bias 0), so a non-archetype CPU
+// reads purely from the situation.
+//
+// This used to carry gripUpMult / joltMult / breakEager as well; all three existed
+// only to shade the mutual clinch subgame's rolls and had no meaning once the grab
+// resolved into one chosen action.
+//   pushBias — leans the neutral read toward DRIVE
+//   pullBias — leans the finisher read toward PULL over THROW
 const CLINCH_STYLE = {
-  balanced: { gripUpMult: 1.0,  joltMult: 1.0,  pushBias: 0.0,   pullBias: 0.0,  breakEager: 0.0 },
-  pusher:   { gripUpMult: 1.0,  joltMult: 1.25, pushBias: 0.20,  pullBias: -0.15, breakEager: 0.0 },
-  grappler: { gripUpMult: 0.7,  joltMult: 0.8,  pushBias: -0.05, pullBias: 0.30, breakEager: 0.0 },
-  counter:  { gripUpMult: 1.1,  joltMult: 0.7,  pushBias: -0.12, pullBias: 0.0,  breakEager: 0.30 },
-  brawler:  { gripUpMult: 0.9,  joltMult: 1.6,  pushBias: 0.10,  pullBias: 0.0,  breakEager: 0.0 },
+  balanced: { pushBias: 0.0,   pullBias: 0.0 },
+  pusher:   { pushBias: 0.20,  pullBias: -0.15 },
+  grappler: { pushBias: -0.05, pullBias: 0.30 },
+  counter:  { pushBias: -0.12, pullBias: 0.0 },
+  brawler:  { pushBias: 0.10,  pullBias: 0.0 },
 };
 
 // ============================================================================
@@ -928,12 +850,6 @@ function getAIState(playerId) {
       fReleaseTime: 0,
       // Power-up usage tracking
       lastPowerUpTime: 0,
-      // Grab break timing
-      grabStartedTime: 0,
-      // Grab decision tracking
-      grabDecisionMade: false,
-      grabStrategy: null, // 'push', 'throw', 'pull'
-      grabActionDelay: 0, // Reaction delay before executing pull/throw interrupt
       // Snowball defense tracking
       lastSnowballReactionTime: 0,
       // === Commitment system ===
@@ -960,9 +876,6 @@ function getAIState(playerId) {
       grabApproachIntent: false,
       grabApproachIntentUntil: 0,
       // === Grab break REACT (not predict): wait for grab action, then 50/50 react ===
-      grabBreakReactionDecided: false,
-      grabBreakReactS: false,       // true = press S when we see throw
-      grabBreakReactDirection: false, // true = press direction when we see pull
       // === Push resistance: dig in during grab push with a human-like delay ===
       grabResistStartTime: 0,
       // === Post-clinch-break "thinking" delay ===
@@ -993,18 +906,6 @@ function getAIState(playerId) {
       consecutiveHitsTaken: 0,
       lastHitTime: 0,
       wasHitLastCheck: false,
-      // === Clinch system tracking ===
-      clinchGripUpTime: 0,
-      clinchLastThrowCheck: 0,
-      clinchThrowPending: null,
-      clinchThrowExecuteTime: 0,
-      clinchPushPlantDecision: null,
-      clinchPushPlantUntil: 0,
-      clinchLightDrivePulse: false, // true after a short Light Drive → force neutral breath
-      clinchClampHoldPlant: false,  // sticky Plant while arm-clamped (offense locked)
-      clinchClampPlantUntil: 0,
-      // Defensive clinch-break (high-tier tech-out) interval gate
-      lastClinchBreakCheck: 0,
       // === FLAP power-up tracking ===
       spaceReleaseTime: 0,       // Release timer for the Space (flap) key press
       lastFlapTime: 0,           // Last liftoff attempt (cooldown gate)
@@ -1713,27 +1614,13 @@ function updateCPUAI(cpu, human, room, currentTime) {
     aiState.grabApproachIntent = false;
   }
 
-  // HIGHEST PRIORITY: Clinch behavior (mutual grab system)
+  // HIGHEST PRIORITY: a grab is in progress. There is nothing to decide once a
+  // command grab connects — the variant was chosen before the grab and the server
+  // resolves it. Release everything so the CPU isn't holding directions that do
+  // nothing.
   if (cpu.inClinch && (cpu.isGrabbing || cpu.isBeingGrabbed)) {
-    handleClinchBehavior(cpu, human, aiState, currentTime);
+    resetAllKeys(cpu);
     return;
-  }
-  // Clean up clinch state when not in clinch
-  if (!cpu.inClinch && !cpu.isGrabbing && !cpu.isBeingGrabbed) {
-    aiState.clinchGripUpTime = 0;
-    aiState.clinchLastThrowCheck = 0;
-    aiState.clinchThrowPending = null;
-    aiState.clinchThrowExecuteTime = 0;
-    aiState.clinchPushPlantDecision = null;
-    aiState.clinchPushPlantUntil = 0;
-    aiState.clinchLightDrivePulse = false;
-    aiState.clinchClampHoldPlant = false;
-    aiState.clinchClampPlantUntil = 0;
-    aiState.lastClinchBreakCheck = 0;
-    aiState.grabDecisionMade = false;
-    aiState.grabStrategy = null;
-    aiState.grabActionDelay = 0;
-    aiState.grabStartedTime = 0;
   }
 
   // Being grabbed outside clinch (edge case) — don't act
@@ -1920,509 +1807,75 @@ function updateCPUAI(cpu, human, room, currentTime) {
   }
 }
 
-// Handle grab break by REACTING to the grab action (no prediction).
-// While being grabbed, CPU does not press any counter key until it sees the grab action (W throw or A/D pull).
-// 500ms window: when human does W (throw) → 50% CPU presses S; when human does A/D (pull) → 50% CPU presses correct direction.
-function handleGrabBreak(cpu, grabber, aiState, currentTime) {
-  if (!cpu.isBeingGrabbed || cpu.grabCounterAttempted) return;
-
-  // Pull counter key is determined by GRABBER's facing (matches server: counterKey = player.facing === -1 ? 'd' : 'a')
-  const pullCounterKey = grabber.facing === -1 ? 'd' : 'a';
-
-  // No grab action yet (grabber is just pushing) — resist the push by pressing toward grabber
-  if (!grabber.isAttemptingGrabThrow && !grabber.isAttemptingPull) {
-    aiState.grabBreakReactionDecided = false;
-    aiState.grabBreakReactS = false;
-    aiState.grabBreakReactDirection = false;
-    resetAllKeys(cpu);
-
-    // Resist push after a human-like delay (150-300ms after grab starts)
-    if (!aiState.grabResistStartTime) {
-      aiState.grabResistStartTime = currentTime + randomInRange(150, 300);
-    }
-    if (currentTime >= aiState.grabResistStartTime) {
-      const pushResistKey = grabber.facing === -1 ? 'a' : 'd';
-      cpu.keys[pushResistKey] = true;
-    }
-    return;
-  }
-
-  // We see a grab action — react once with the correct counter.
-  // HARD+ stays 50/50; EASY/NORMAL break less often (easier to throw them).
-  resetAllKeys(cpu);
-  const breakChance = typeof DIFF.grabBreakChance === "number" ? DIFF.grabBreakChance : 0.50;
-
-  if (grabber.isAttemptingGrabThrow) {
-    if (!aiState.grabBreakReactionDecided) {
-      aiState.grabBreakReactionDecided = true;
-      aiState.grabBreakReactS = Math.random() < breakChance;
-    }
-    if (aiState.grabBreakReactS) cpu.keys.s = true;
-  } else if (grabber.isAttemptingPull) {
-    if (!aiState.grabBreakReactionDecided) {
-      aiState.grabBreakReactionDecided = true;
-      aiState.grabBreakReactDirection = Math.random() < breakChance;
-    }
-    if (aiState.grabBreakReactDirection) cpu.keys[pullCounterKey] = true;
-  }
-}
-
-// === Clinch behavior: push/plant/throw/pull decisions ===
-// Handles both roles: grabber (isGrabbing) and grabbed (isBeingGrabbed).
-// Reads opponent balance + position to pick optimal clinch actions.
-function handleClinchBehavior(cpu, opponent, aiState, currentTime) {
-  resetAllKeys(cpu);
-
-  // PHASE 4.2: per-archetype clinch leans. balanced = neutral (identity), so a
-  // non-archetype CPU runs the exact legacy clinch rolls below.
+// ============================================================================
+// COMMAND GRAB — variant choice
+// ============================================================================
+// Under the command grab there is nothing to decide after a grab connects, so the
+// whole clinch brain collapses into one question asked BEFORE the grab: which of
+// the three grabs converts best from here?
+//
+//   DRIVE  carries toward the rope; only lethal if the carry actually reaches it
+//   THROW  kills anywhere below the posture line; otherwise repositions
+//   PULL   side switch — the escape when the CPU's own back is to the rope
+//
+// Difficulty is expressed as READ ACCURACY, not as a smaller toolkit: every tier
+// owns all three grabs (curriculum verb gating is deliberately not applied here),
+// but a low tier often picks the wrong one. That reuses the existing clinch
+// conversion dials rather than adding a new difficulty surface.
+function chooseCommandGrabVariant(cpu, opponent) {
+  const V = CMD_GRAB_VARIANT;
+  if (!opponent) return V.DRIVE;
   const CS = CLINCH_STYLE[PERS_KEY] || CLINCH_STYLE.balanced;
 
-  // During own committed technique / Open / jolt, wait it out
-  if (cpu.clinchThrowActive || cpu.isClinchClashing || cpu.isClinchThrowing ||
-      cpu.isClinchOpen || cpu.clinchThrowFailStagger ||
-      cpu.isGrabSeparating ||
-      cpu.isClinchJolting || cpu.isClinchJoltClashing || cpu.isBeingClinchJolted) {
-    return;
+  const balance = typeof opponent.balance === "number" ? opponent.balance : 100;
+  const lethal = balance < CLINCH_THROW_KILL_THRESHOLD;
+
+  // A Drive pushes the victim AWAY from the CPU, so the rope that matters is the
+  // one on the victim's far side — not simply their nearest edge.
+  const driveDir = opponent.x >= cpu.x ? 1 : -1;
+  const ropeGap =
+    driveDir > 0 ? distanceToRightEdge(opponent) : distanceToLeftEdge(opponent);
+  const reach = postureScaled(
+    balance,
+    CMD_DRIVE_DISTANCE_MIN,
+    CMD_DRIVE_DISTANCE_MAX
+  );
+  // The carry must reach the rope with real carry still owed, or it releases them
+  // pinned instead of forcing them out. The ease-out curve spends most of its
+  // distance early, so require contact inside ~90% of the travel.
+  const driveForcesOut = ropeGap <= reach * 0.9;
+
+  // The CPU's own back is to the rope opposite the victim.
+  const ownBackGap =
+    driveDir > 0 ? distanceToLeftEdge(cpu) : distanceToRightEdge(cpu);
+  const cornered = ownBackGap < AI_CONFIG.CORNER_CRITICAL_ZONE;
+
+  // Read accuracy borrows the tuned conversion dials: EASY 0.45/0.70 → IMPOSSIBLE 1.
+  const accuracy = clampChance(
+    lethal ? diffMult("clinchKillMult") : diffMult("clinchLandMult")
+  );
+  if (!chance(accuracy)) {
+    // Misread: commit to something plausible but not the best answer here.
+    const roll = Math.random();
+    if (roll < 0.5) return V.DRIVE;
+    return roll < 0.78 ? V.THROW : V.PULL;
   }
 
-  // Opponent technique startup — maybe Plant (not a perfect human read).
-  // Roll once per technique with a short reaction delay so throws can land
-  // when the CPU whiffs the brace or is late.
-  if (opponent.clinchThrowActive || opponent.isClinchThrowing) {
-    const throwStamp =
-      opponent.clinchThrowStartTime || opponent.clinchThrowRequestTime || 0;
-    if (aiState.clinchBraceForThrowStart !== throwStamp) {
-      aiState.clinchBraceForThrowStart = throwStamp;
-      // Easy ~35%, Normal ~55%, Hard ~72%, Impossible ~88%
-      const braceChance = clampChance(
-        0.35 +
-          (DIFF_KEY === "EASY"
-            ? 0
-            : DIFF_KEY === "NORMAL"
-              ? 0.2
-              : DIFF_KEY === "HARD"
-                ? 0.37
-                : 0.53) +
-          CS.breakEager * 0.08
-      );
-      aiState.clinchBraceDecision = chance(braceChance) ? "plant" : "whiff";
-      // Perfect Brace is now "an ACTIVE response to this specific tell" (any
-      // moment of the visible startup), not a late-frame timing trick. So the
-      // CPU has to decide, once per technique, whether this Plant is a real
-      // read (→ PERFECT BRACE) or a prediction it already committed to
-      // (→ ordinary RESISTED). Same rates the old final-window trick produced.
-      aiState.clinchBracePerfect =
-        aiState.clinchBraceDecision === "plant" &&
-        (DIFF_KEY === "HARD" || DIFF_KEY === "IMPOSSIBLE") &&
-        chance(DIFF_KEY === "IMPOSSIBLE" ? 0.45 : 0.22);
-      aiState.clinchBraceReadyTime =
-        currentTime +
-        randomInRange(
-          Math.max(40, DIFF.jitterMin || 0),
-          Math.max(90, (DIFF.jitterMax || 80) + 60)
-        );
-    }
-
-    if (
-      aiState.clinchBraceDecision === "plant" &&
-      currentTime >= (aiState.clinchBraceReadyTime || 0)
-    ) {
-      const towardKeyBrace = cpu.x < opponent.x ? "d" : "a";
-      const awayKeyBrace = cpu.x < opponent.x ? "a" : "d";
-      const throwStart = opponent.clinchThrowStartTime || currentTime;
-
-      cpu.keys[awayKeyBrace] = true;
-      cpu.keys[towardKeyBrace] = false;
-      cpu.keys.s = true;
-      // Plant activation stamp (the CPU has no socket events to stamp from).
-      // An active read lands inside the readable startup; a prediction is
-      // stamped before the tell so it classifies as passive Plant.
-      //
-      // The CPU spends the same authoritative Brace attempt cycle as a human: it
-      // may only stamp when beginBraceAttempt succeeds, so it cannot fish for
-      // reads a player would be locked out of. Failing the cycle leaves it in
-      // passive held Plant, exactly like a player caught mid-settle.
-      if (!cpu.clinchBraceSimTime || cpu.clinchBraceSimTime < throwStart) {
-        const stampAt = aiState.clinchBracePerfect
-          ? Math.max(throwStart, currentTime)
-          : throwStart - 1;
-        if (beginBraceAttempt(cpu, Math.min(stampAt, currentTime))) {
-          cpu.clinchBraceSimTime = stampAt;
-        }
-      }
-      return;
-    }
-    // Whiff / still reacting — stay committed to prior stance (don't auto-plant)
-    return;
-  } else if (aiState.clinchBraceForThrowStart) {
-    aiState.clinchBraceForThrowStart = 0;
-    aiState.clinchBraceDecision = null;
-    aiState.clinchBracePerfect = false;
-    aiState.clinchBraceReadyTime = 0;
-  }
-  if (opponent.isClinchClashing) {
-    return;
+  if (lethal) {
+    // Force-out is the surest finish when it is available; otherwise a throw kills
+    // from anywhere. pullBias lets a grappler pick the belly-slam instead.
+    if (driveForcesOut) return V.DRIVE;
+    return chance(clampChance(0.72 - CS.pullBias)) ? V.THROW : V.PULL;
   }
 
-  // During burst push as grabber: let the short auto-shove ride.
-  // ARM CLAMP exception: convert mid-burst is allowed (victim offense locked;
-  // they can still Plant-brace). Cancels Phase A the same way as human input.
-  if (cpu.isGrabPushing && !opponent.isArmClamped) {
-    return;
-  }
+  // Cornered with no force-out available: reverse the geometry instead of feeding
+  // the opponent more ring.
+  if (cornered && !driveForcesOut) return V.PULL;
+  if (driveForcesOut) return V.DRIVE;
 
-  // Positional awareness (toward/away relative to opponent position, not facing)
-  const towardKey = cpu.x < opponent.x ? 'd' : 'a';
-  const awayKey = cpu.x < opponent.x ? 'a' : 'd';
-
-  // ARM CLAMP: offense locked for the punish burst. Plant brace remains —
-  // sticky hold so a convert throw isn't automatic vs CPU either.
-  if (cpu.isArmClamped) {
-    if (!aiState.clinchClampPlantUntil || currentTime > aiState.clinchClampPlantUntil) {
-      aiState.clinchClampPlantUntil = currentTime + randomInRange(280, 650);
-      const plantChance = clampChance(
-        0.40 +
-          (DIFF_KEY === "EASY"
-            ? -0.15
-            : DIFF_KEY === "NORMAL"
-              ? 0
-              : DIFF_KEY === "HARD"
-                ? 0.18
-                : 0.32) +
-          CS.breakEager * 0.1
-      );
-      aiState.clinchClampHoldPlant = hasVerb("plant") && chance(plantChance);
-    }
-    if (aiState.clinchClampHoldPlant) {
-      cpu.keys[awayKey] = true;
-      cpu.keys[towardKey] = false;
-      cpu.keys.s = true;
-    }
-    return;
-  } else if (aiState.clinchClampHoldPlant || aiState.clinchClampPlantUntil) {
-    aiState.clinchClampHoldPlant = false;
-    aiState.clinchClampPlantUntil = 0;
-  }
-  const cpuDistLeft = cpu.x - MAP_LEFT_BOUNDARY;
-  const cpuDistRight = MAP_RIGHT_BOUNDARY - cpu.x;
-  const oppDistLeft = opponent.x - MAP_LEFT_BOUNDARY;
-  const oppDistRight = MAP_RIGHT_BOUNDARY - opponent.x;
-  const cpuNearestEdge = Math.min(cpuDistLeft, cpuDistRight);
-  const oppNearestEdge = Math.min(oppDistLeft, oppDistRight);
-
-  // --- THROW / PULL DECISION ---
-  // Grip is automatic on clinch connect — no grip-up delay.
-  const opponentBalance = opponent.balance;
-  const cpuBalance = cpu.balance;
-  const cpuStamina = cpu.stamina;
-
-  // PHASE 4.3: throw/pull are gated by the clinchThrow verb (Sandanme+). A
-  // lower-division CPU can only push/plant in the clinch.
-  const canRequestAction = cpu.hasGrip && !cpu.clinchThrowActive &&
-                           !cpu.clinchThrowRequest &&
-                           !cpu.isClinchClashing &&
-                           !cpu.clinchThrowFailStagger && !cpu.isClinchOpen &&
-                           !cpu.clinchJoltRecovery &&
-                           hasVerb("clinchThrow");
-  // Clinch Flow: every undefended technique lands. Plant resists unless Deep Grip.
-  const opponentPlanting = opponent.clinchAction === "plant" || opponent.isClinchPlanting;
-  const canLand = !opponentPlanting || !!cpu.hasDeepGrip;
-  const canKill = opponentBalance < CLINCH_THROW_KILL_THRESHOLD;
-
-  // Detect when CPU is the one pinned at the boundary (closer to edge than opponent)
-  const cpuBackedToEdge = cpuNearestEdge < AI_CONFIG.EDGE_DANGER_ZONE && cpuNearestEdge < oppNearestEdge;
-
-  // --- DEFENSIVE CLINCH BREAK (tech out of a lethal clinch) ---
-  // High-tier only. When pinned at the edge and LOSING the balance war, the CPU
-  // would otherwise get shoved/thrown out with no escape (it never broke clinch
-  // before). Also fires when stamina is collapsing under edge pressure — Plant
-  // does NOT recover stam (it drains), and gassing at the edge enables instant
-  // ring-out. Spend Break only when affordable. Gated/interval-limited so it
-  // can't be spammed. Mirrors the human input gates.
-  const opponentPushingNow =
-    opponent.clinchAction === "push" || opponent.isClinchPushing;
-  const canAffordBreak = cpuStamina >= GRAB_BREAK_STAMINA_COST + 5;
-  const losingBalanceWar =
-    // CS.breakEager: the counter bails earlier (threshold 8 → ~2) — "breaks early".
-    opponentBalance > cpuBalance + (8 - CS.breakEager * 20);
-  const breakToAvoidGas =
-    cpuStamina < AI_CONFIG.CLINCH_STAMINA_LOW &&
-    opponentPushingNow &&
-    !losingBalanceWar; // already covered by balance branch; this is the gas read
-  if (
-    DIFF.clinchBreakEscape &&
-    cpu.hasGrip &&
-    opponent.hasGrip &&
-    cpuBackedToEdge &&
-    (losingBalanceWar || breakToAvoidGas) &&
-    canAffordBreak &&
-    !cpu.isGassed &&
-    !cpu.clinchThrowActive &&
-    !cpu.isClinchClashing &&
-    !cpu.isClinchJolting && !cpu.isClinchJoltClashing &&
-    !cpu.clinchThrowFailStagger && !cpu.isClinchOpen &&
-    !cpu.clinchBreakRequest && !cpu.isGrabBreaking && !cpu.isGrabBreakCountered &&
-    !cpu.isGrabBreakSeparating &&
-    (!cpu.gripAcquiredTime || currentTime - cpu.gripAcquiredTime >= GRAB_BREAK_REACTION_LOCK_MS)
-  ) {
-    if (currentTime - (aiState.lastClinchBreakCheck || 0) > 450) {
-      aiState.lastClinchBreakCheck = currentTime;
-      const breakChance = breakToAvoidGas
-        ? clampChance(0.55 + CS.breakEager)
-        : clampChance(0.75 + CS.breakEager);
-      if (chance(breakChance)) {
-        cpu.clinchBreakRequest = true;
-        cpu.clinchBreakRequestTime = currentTime;
-        aiState.lastActionType = breakToAvoidGas
-          ? "clinch_break_gas_escape"
-          : "clinch_break_escape";
-        return;
-      }
-    }
-  }
-
-  // --- EDGE ESCAPE URGENCY ---
-  // When backed against the boundary, throw/pull to escape instead of getting pushed off
-  if (cpuBackedToEdge && canRequestAction && !aiState.clinchThrowPending) {
-    const staminaDesperate = cpuStamina < 15;
-    const staminaCritical = cpuStamina < 35;
-    const edgeCheckInterval = staminaDesperate ? 150 : staminaCritical ? 300 : 500;
-
-    if (currentTime - (aiState.clinchLastThrowCheck || 0) > edgeCheckInterval) {
-      aiState.clinchLastThrowCheck = currentTime;
-      const escapeChance = clampChance(
-        (staminaDesperate ? 0.9 : staminaCritical ? 0.7 : 0.4) *
-          DIFF.clinchEscapeBoost
-      );
-
-      if (chance(escapeChance)) {
-        const action = chance(0.6) ? "throw" : "pull";
-        const escapeDelay = staminaDesperate
-          ? randomInRange(80, 180)
-          : randomInRange(AI_CONFIG.CLINCH_THROW_REACTION_MIN, AI_CONFIG.CLINCH_THROW_REACTION_MAX);
-        aiState.clinchThrowPending = action;
-        aiState.clinchThrowExecuteTime = currentTime + escapeDelay;
-      }
-    }
-  }
-
-  // --- NORMAL THROW / PULL DECISION (when not in edge-escape) ---
-  if (!aiState.clinchLastThrowCheck) aiState.clinchLastThrowCheck = 0;
-  const checkInterval = canKill
-    ? randomInRange(AI_CONFIG.CLINCH_KILL_ACTION_INTERVAL_MIN, AI_CONFIG.CLINCH_KILL_ACTION_INTERVAL_MAX)
-    : randomInRange(AI_CONFIG.CLINCH_ACTION_INTERVAL_MIN, AI_CONFIG.CLINCH_ACTION_INTERVAL_MAX);
-  const shouldCheckThrow = currentTime - aiState.clinchLastThrowCheck > checkInterval;
-
-  if (canRequestAction && shouldCheckThrow && !aiState.clinchThrowPending) {
-    aiState.clinchLastThrowCheck = currentTime;
-    const aggMult = getAggressionMultiplier(aiState);
-
-    if (canKill && canLand && chance(AI_CONFIG.CLINCH_THROW_CHANCE_KILL * Math.min(aggMult.grab, 1.3) * diffMult("clinchKillMult"))) {
-      // CS.pullBias: grappler favors pull over the raw throw; pusher the reverse.
-      const action = chance(clampChance(0.55 - CS.pullBias)) ? "throw" : "pull";
-      aiState.clinchThrowPending = action;
-      aiState.clinchThrowExecuteTime = currentTime + randomInRange(
-        AI_CONFIG.CLINCH_THROW_REACTION_MIN,
-        AI_CONFIG.CLINCH_THROW_REACTION_MAX
-      );
-    } else if (canLand && chance(AI_CONFIG.CLINCH_THROW_CHANCE_LAND * Math.min(aggMult.grab, 1.3) * diffMult("clinchLandMult"))) {
-      const roll = Math.random();
-      let action = null;
-      // CS.pullBias shrinks the throw slice for grappler (spills into pull).
-      if (roll < 0.55 - CS.pullBias) action = "throw";
-      else if (roll < 0.85) action = "pull";
-      if (action) {
-        aiState.clinchThrowPending = action;
-        aiState.clinchThrowExecuteTime = currentTime + randomInRange(
-          AI_CONFIG.CLINCH_THROW_REACTION_MIN + 50,
-          AI_CONFIG.CLINCH_THROW_REACTION_MAX + 100
-        );
-      }
-    } else if (!canLand && chance(AI_CONFIG.CLINCH_THROW_CHANCE_FAIL * Math.min(aggMult.grab, 1.3) * 0.35)) {
-      // Opponent is planting without our Deep Grip — rare bait; usually jolt instead.
-      if (cpuBalance > 40 && cpu.hasDeepGrip) {
-        const action = chance(0.6) ? "throw" : "pull";
-        aiState.clinchThrowPending = action;
-        aiState.clinchThrowExecuteTime = currentTime + randomInRange(
-          AI_CONFIG.CLINCH_THROW_REACTION_MIN + 100,
-          AI_CONFIG.CLINCH_THROW_REACTION_MAX + 200
-        );
-      }
-    } else if (
-      // Low stam: spend a preemptive technique while meters still allow it,
-      // instead of grinding into Plant (which drains stam further).
-      canLand &&
-      cpuStamina < AI_CONFIG.CLINCH_STAMINA_LOW &&
-      cpuBalance > opponentBalance + 8 &&
-      chance(clampChance(0.40 * Math.min(aggMult.grab, 1.3)))
-    ) {
-      const action = chance(clampChance(0.55 - CS.pullBias)) ? "throw" : "pull";
-      aiState.clinchThrowPending = action;
-      aiState.clinchThrowExecuteTime = currentTime + randomInRange(
-        AI_CONFIG.CLINCH_THROW_REACTION_MIN,
-        AI_CONFIG.CLINCH_THROW_REACTION_MAX
-      );
-    }
-  }
-
-  // Execute pending throw/pull after reaction delay
-  if (aiState.clinchThrowPending && currentTime >= aiState.clinchThrowExecuteTime) {
-    if (canRequestAction) {
-      // PHASE 4.3: pull (Makushita+) falls back to a plain throw when the CPU's
-      // kit doesn't include it yet.
-      let act = aiState.clinchThrowPending;
-      if (act === "pull" && !hasVerb("pull")) act = "throw";
-      if (act === "lift") act = "throw"; // legacy: lift removed
-      cpu.clinchThrowRequest = act;
-      cpu.clinchThrowRequestTime = currentTime;
-    }
-    aiState.clinchThrowPending = null;
-    aiState.clinchThrowExecuteTime = 0;
-  }
-
-  // --- CLINCH JOLT DECISION (Mouse1 during clinch) ---
-  // PHASE 4.3: clinch jolt is a Makushita+ verb.
-  const canJolt = hasVerb("jolt") &&
-                  cpu.hasGrip && !cpu.isClinchJolting && !cpu.clinchJoltRecovery &&
-                  !cpu.clinchThrowActive && !cpu.isClinchClashing &&
-                  !cpu.clinchJoltRequest && !cpu.isResistingThrow && !cpu.isResistingPull &&
-                  !cpu.clinchThrowFailStagger && !cpu.isClinchOpen && cpuStamina >= 10;
-
-  if (canJolt && !aiState.clinchJoltPending && !aiState.clinchThrowPending && !cpu.clinchThrowRequest) {
-    const joltCheckInterval = 1600;
-    if (!aiState.clinchLastJoltCheck) aiState.clinchLastJoltCheck = 0;
-    if (currentTime - aiState.clinchLastJoltCheck > joltCheckInterval) {
-      aiState.clinchLastJoltCheck = currentTime;
-
-      const opponentPlanting = opponent.clinchAction === "plant" || opponent.isClinchPlanting;
-      const opponentPushing = opponent.clinchAction === "push" || opponent.isClinchPushing;
-      const opponentNeutral = !opponentPlanting && !opponentPushing;
-
-      let joltChance = 0;
-      if (opponentPlanting) {
-        joltChance = 0.55;
-      } else if (opponentNeutral) {
-        joltChance = 0.10;
-      } else if (opponentPushing) {
-        joltChance = 0.0;
-      }
-
-      // CS.joltMult: brawler is jolt-happy (1.6), counter/grappler calmer.
-      if (chance(clampChance(joltChance * CS.joltMult))) {
-        aiState.clinchJoltPending = true;
-        aiState.clinchJoltExecuteTime = currentTime + randomInRange(200, 400);
-      }
-    }
-  }
-
-  if (aiState.clinchJoltPending && currentTime >= aiState.clinchJoltExecuteTime) {
-    if (canJolt) {
-      cpu.clinchJoltRequest = true;
-      cpu.clinchJoltRequestTime = currentTime;
-    }
-    aiState.clinchJoltPending = false;
-    aiState.clinchJoltExecuteTime = 0;
-  }
-
-  // --- PUSH / PLANT / NEUTRAL DECISION (set keys for getClinchAction to read) ---
-  // Resource identity (live): Stamina walks. Balance throws. Plant buys time.
-  // Plant drains stamina (more under push) and regenerates Balance — it does NOT
-  // recover stamina. Neutral is the only clinch stance that breathes stam back.
-  // Stay neutral when a throw/jolt is pending or just submitted (avoid push penalty on throw)
-  if (aiState.clinchThrowPending || cpu.clinchThrowRequest || aiState.clinchJoltPending || cpu.clinchJoltRequest) {
-    return;
-  }
-
-  // Re-evaluate push/plant/neutral at intervals to avoid jittery tick-by-tick flipping
-  if (!aiState.clinchPushPlantUntil || currentTime > aiState.clinchPushPlantUntil) {
-    const opponentNearEdge = oppNearestEdge < AI_CONFIG.EDGE_DANGER_ZONE;
-    const balanceAdvantage = cpuBalance - opponentBalance;
-    const staminaDesperate = cpuStamina < AI_CONFIG.CLINCH_STAMINA_DESPERATE;
-    const staminaLow = cpuStamina < AI_CONFIG.CLINCH_STAMINA_LOW;
-    const balanceCritical = cpuBalance < 25;
-    // Plant is a paid brake — only spend stam when Balance preservation matters.
-    const plantWorthStaminaTax =
-      balanceCritical && cpuStamina > 12 && !cpu.isGassed;
-
-    let holdMs = randomInRange(
-      AI_CONFIG.CLINCH_PUSH_PLANT_INTERVAL_MIN,
-      AI_CONFIG.CLINCH_PUSH_PLANT_INTERVAL_MAX
-    );
-
-    if (cpuBackedToEdge) {
-      // Edge: never Plant because stam is low — gassing enables instant ring-out.
-      // Resist with push, or breathe in neutral if not under a shove and meters
-      // are collapsing. Plant only when Balance itself is the lethal threat.
-      aiState.clinchLightDrivePulse = false;
-      if (plantWorthStaminaTax && !staminaDesperate) {
-        aiState.clinchPushPlantDecision = "plant";
-      } else if (staminaDesperate && !opponentPushingNow) {
-        aiState.clinchPushPlantDecision = "neutral";
-      } else {
-        aiState.clinchPushPlantDecision = "push";
-      }
-    } else if (opponentNearEdge && cpuBalance > 30 && !staminaDesperate) {
-      // Opponent near edge — push harder (edge zone amplifies balance drain)
-      aiState.clinchPushPlantDecision = "push";
-      aiState.clinchLightDrivePulse = false;
-    } else if (plantWorthStaminaTax && !opponentNearEdge && !staminaDesperate) {
-      aiState.clinchPushPlantDecision = "plant";
-      aiState.clinchLightDrivePulse = false;
-    } else if (staminaLow) {
-      // Low stam: breathe (neutral), poke with a short Light Drive, or last-ditch
-      // Plant only if Balance is about to open a kill. Never Plant to "recover".
-      if (plantWorthStaminaTax && staminaDesperate) {
-        aiState.clinchPushPlantDecision = "plant";
-        aiState.clinchLightDrivePulse = false;
-      } else if (aiState.clinchLightDrivePulse) {
-        // Forced breath after a Light Drive so hold-time can't chain into Commit.
-        aiState.clinchPushPlantDecision = "neutral";
-        aiState.clinchLightDrivePulse = false;
-        holdMs = randomInRange(220, 420);
-      } else if (
-        (opponentPushingNow && cpuStamina >= AI_CONFIG.CLINCH_STAMINA_DESPERATE) ||
-        (!opponentPushingNow && balanceAdvantage > 5 && chance(0.35))
-      ) {
-        // Light Drive pulse — release before CLINCH_LIGHT_DRIVE_MS commits it.
-        aiState.clinchPushPlantDecision = "push";
-        aiState.clinchLightDrivePulse = true;
-        holdMs = randomInRange(140, Math.max(160, CLINCH_LIGHT_DRIVE_MS - 40));
-      } else {
-        aiState.clinchPushPlantDecision = "neutral";
-        aiState.clinchLightDrivePulse = false;
-      }
-    } else if (balanceAdvantage > 10) {
-      aiState.clinchPushPlantDecision = "push";
-      aiState.clinchLightDrivePulse = false;
-    } else if (chance(clampChance(0.60 + CS.pushBias))) {
-      // CS.pushBias: pusher leans push (0.80), counter leans plant (0.48).
-      aiState.clinchPushPlantDecision = "push";
-      aiState.clinchLightDrivePulse = false;
-    } else if (chance(0.55)) {
-      aiState.clinchPushPlantDecision = "plant";
-      aiState.clinchLightDrivePulse = false;
-    } else {
-      aiState.clinchPushPlantDecision = "neutral";
-      aiState.clinchLightDrivePulse = false;
-    }
-
-    aiState.clinchPushPlantUntil = currentTime + holdMs;
-  }
-
-  // PHASE 4.3: plant is a Jonidan+ verb — a Jonokuchi CPU only knows how to push.
-  if (aiState.clinchPushPlantDecision === "plant" && !hasVerb("plant")) {
-    aiState.clinchPushPlantDecision =
-      cpuStamina < AI_CONFIG.CLINCH_STAMINA_LOW ? "neutral" : "push";
-  }
-
-  // Apply the push/plant/neutral decision via keys (neutral = no stance keys)
-  if (aiState.clinchPushPlantDecision === "push") {
-    cpu.keys[towardKey] = true;
-  } else if (aiState.clinchPushPlantDecision === "plant") {
-    cpu.keys.s = true;
-    cpu.keys[awayKey] = true;
-  }
-
+  // Neutral: Drive is the default pressure tool. pushBias leans it further.
+  if (chance(clampChance(0.62 + CS.pushBias))) return V.DRIVE;
+  return chance(clampChance(0.6 - CS.pullBias)) ? V.THROW : V.PULL;
 }
 
 // DI (Directional Influence) — EASY/NORMAL sometimes freeze or DI wrong so
@@ -4262,86 +3715,6 @@ function handleCommitment(cpu, human, aiState, currentTime, distance) {
   return false;
 }
 
-// === Handle grab decision with position-aware strategy ===
-// Push sends opponent toward the boundary CPU is facing.
-// Throw (W) sends opponent behind CPU. Pull (backward) switches sides.
-// Key rules:
-//   - If push would pin opponent at the front edge → ALWAYS push (never interrupt)
-//   - Only throw/pull if CPU's back is near the boundary (escape the edge)
-//   - In the middle → push (favored) or pull occasionally
-function handleGrabDecision(cpu, human, aiState, currentTime) {
-  const cpuFacingLeft = cpu.facing === 1;
-  
-  cpu.keys.a = false;
-  cpu.keys.d = false;
-  cpu.keys.w = false;
-  cpu.keys.s = false;
-  cpu.keys.shift = false;
-  cpu.keys.e = false;
-  cpu.keys.mouse1 = false;
-  cpu.keys.mouse2 = false;
-  
-  if (cpu.isAttemptingGrabThrow || cpu.isAttemptingPull) {
-    return;
-  }
-  
-  if (!cpu.grabStartTime) return;
-  
-  if (!aiState.grabDecisionMade) {
-    aiState.grabDecisionMade = true;
-    
-    const distBehind = distanceToBehind(cpu);
-    const distFront = distanceToFront(cpu);
-    
-    const EDGE_PIN_THRESHOLD = 280;
-    const BACK_DANGER_THRESHOLD = 250;
-    
-    if (distFront < EDGE_PIN_THRESHOLD) {
-      // Push will pin opponent at the front edge — never interrupt, just let it ride
-      aiState.grabStrategy = 'push';
-    } else if (distBehind < BACK_DANGER_THRESHOLD) {
-      // CPU's back is near the boundary — throw or pull to escape the edge
-      let throwScore = 50 + randomInRange(0, 20);
-      let pullScore = 40 + randomInRange(0, 20);
-      
-      if (distBehind < 150) throwScore += 15;
-      
-      const aggMult = getAggressionMultiplier(aiState);
-      throwScore *= aggMult.grab;
-      pullScore *= aggMult.grab;
-      
-      aiState.grabStrategy = throwScore >= pullScore ? 'throw' : 'pull';
-    } else {
-      // Middle of the map — push (favored) or pull as a mix-up
-      let pushScore = 55 + randomInRange(0, 20);
-      let pullScore = 30 + randomInRange(0, 20);
-      
-      const aggMult = getAggressionMultiplier(aiState);
-      pushScore *= aggMult.attack;
-      pullScore *= aggMult.grab;
-      
-      aiState.grabStrategy = pushScore >= pullScore ? 'push' : 'pull';
-    }
-    
-    aiState.grabActionDelay = currentTime + randomInRange(200, 350);
-  }
-  
-  if (aiState.grabStrategy === 'push') {
-    return;
-  }
-  
-  if (currentTime < (aiState.grabActionDelay || 0)) {
-    return;
-  }
-  
-  if (aiState.grabStrategy === 'throw') {
-    cpu.keys.w = true;
-  } else if (aiState.grabStrategy === 'pull') {
-    const backwardKey = cpuFacingLeft ? 'd' : 'a';
-    cpu.keys[backwardKey] = true;
-  }
-}
-
 // handleHit3Charge removed — hit 3 no longer part of slap string
 
 // === OVERHAULED: Close range combat — commit to actions, don't always back off ===
@@ -4923,7 +4296,15 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       canPlayerUseAction(cpu)) {
     
     beginGrabStartup(cpu, room);
-    
+
+    // COMMAND GRAB: the CPU has no input packet, so beginGrabStartup's key-based
+    // selection always resolves to DRIVE. Overwrite it with a deliberate read.
+    // Set AFTER beginGrabStartup (which stamps its own default) and before the
+    // startup-end lock in index.js, so it behaves exactly like a human's choice.
+    if (opponent) {
+      cpu.grabVariant = chooseCommandGrabVariant(cpu, opponent);
+    }
+
     if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
     else Object.assign(cpu._prevKeys, cpu.keys);
     return;
@@ -5225,4 +4606,6 @@ module.exports = {
   processCPUInputs,
   clearAIState,
   AI_CONFIG,
+  // Test helper — command grab variant read, exercised without a full tick.
+  chooseCommandGrabVariant,
 };

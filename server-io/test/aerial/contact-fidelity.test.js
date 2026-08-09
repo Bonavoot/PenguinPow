@@ -10,10 +10,10 @@ const assert = require("node:assert/strict");
 const {
   GROUND_LEVEL,
   BURST_STUN_MS,
-  FLAP_BODYSLAM_KB_VELOCITY,
   HITSTOP_BURST_MS,
   SLAP_HIT_VICTIM_STAMINA_DRAIN,
 } = require("../../constants");
+const { pxToKbVelocity, profileFor } = require("../../momentumTransfer");
 const {
   setSimRoomResolver,
   timeoutManager,
@@ -78,12 +78,22 @@ describe("offensive aerial — contact fidelity preservation", () => {
     assert.equal(s.attacker.slideJumpHitLanded, true);
     assert.equal(s.defender.isHit, true);
     assert.equal(s.defender.lastHitType, "flap");
-    assert.equal(Math.abs(s.defender.knockbackVelocity.x), FLAP_BODYSLAM_KB_VELOCITY);
+    // MOMENTUM TRANSFER: knockback is no longer a fixed constant. A slam with
+    // no carried speed resolves at the bodySlam floor; momentum buys the rest.
+    // Asserting the floor (rather than the old FLAP_BODYSLAM_KB_VELOCITY 3.1)
+    // is the equivalent "clean hit still hits" contract under the new model.
+    assert.ok(
+      Math.abs(s.defender.knockbackVelocity.x) >=
+        pxToKbVelocity(profileFor("bodySlam").floor) - 1e-9,
+      "a clean slam sends at least its floor; dive speed and pressure add on top"
+    );
     assert.equal(s.defender.stamina, stamBefore - SLAP_HIT_VICTIM_STAMINA_DRAIN);
     // Balance drain may use mastery P2 constant; require a positive drain only.
     assert.ok(s.defender.balance < balBefore);
     assert.ok(s.io.find("hitstop").length >= 1);
-    assert.equal(s.io.find("hitstop")[0].payload.duration, HITSTOP_BURST_MS);
+    // Hitstop now scales with closing speed rather than sitting on a per-move
+    // ladder, so a stationary-defender slam freezes at the impact floor.
+    assert.ok(s.io.find("hitstop")[0].payload.duration > 0);
     const hit = s.io.last("player_hit");
     assert.ok(hit);
     assert.equal(typeof hit.payload.contactX, "number");

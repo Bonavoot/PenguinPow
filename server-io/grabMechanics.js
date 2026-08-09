@@ -2,24 +2,14 @@ const {
   GRAB_STATES,
   GROUND_LEVEL,
   GRAB_WHIFF_RECOVERY_MS,
-  CLINCH_SEPARATION_DISTANCE,
-  CLINCH_SEPARATION_TWEEN_DURATION,
-  CLINCH_SEPARATION_INPUT_LOCK_MS,
-  CLINCH_ATTACHED_DISTANCE,
-  HITSTOP_GRAB_MS,
 } = require("./constants");
 
 const {
-  MAP_LEFT_BOUNDARY,
-  MAP_RIGHT_BOUNDARY,
   setPlayerTimeout,
-  simNow,
   simNowForPlayer,
   timeoutManager,
-  triggerHitstopAndEmit,
 } = require("./gameUtils");
 
-const { cleanupGrabStates, activateBufferedInputAfterGrab } = require("./gameFunctions");
 const { facingTowardOpponent } = require("./facingSystem");
 
 function correctFacingAfterGrabOrThrow(player, opponent) {
@@ -32,114 +22,9 @@ function correctFacingAfterGrabOrThrow(player, opponent) {
   }
 }
 
-// Mutual grab: both grab at once → same clinch as a normal connect, but
-// neither side gets the Phase A burst (no one won the initiate). No special
-// tech pose / TECH VFX — the missing shove is the tell. (Headbonk art later.)
-function executeGrabTech(player1, player2, room, io) {
-  player1.isGrabStartup = false;
-  player1.isGrabbingMovement = false;
-  player1.isWhiffingGrab = false;
-  player1.grabMovementVelocity = 0;
-  player1.grabState = GRAB_STATES.INITIAL;
-  player1.grabAttemptType = null;
-  player1.y = GROUND_LEVEL;
-
-  player2.isGrabStartup = false;
-  player2.isGrabbingMovement = false;
-  player2.isWhiffingGrab = false;
-  player2.grabMovementVelocity = 0;
-  player2.grabState = GRAB_STATES.INITIAL;
-  player2.grabAttemptType = null;
-  player2.y = GROUND_LEVEL;
-
-  player1.movementVelocity = 0;
-  player2.movementVelocity = 0;
-  player1.isStrafing = false;
-  player2.isStrafing = false;
-
-  timeoutManager.clearPlayerSpecific(player1.id, "grabMovementTimeout");
-  timeoutManager.clearPlayerSpecific(player2.id, "grabMovementTimeout");
-
-  player1.isGrabTeching = false;
-  player2.isGrabTeching = false;
-  player1.grabTechRole = null;
-  player2.grabTechRole = null;
-
-  // Same hitstop as a normal grab — not a special "TECH" beat.
-  triggerHitstopAndEmit(io, room, HITSTOP_GRAB_MS, "grab");
-
-  const clinchNow = simNow(room);
-  player1.isGrabbing = true;
-  player1.grabStartTime = clinchNow;
-  player1.grabbedOpponent = player2.id;
-  player1.hasGrip = true;
-  player1.inClinch = true;
-  player1.clinchAction = "neutral";
-  player1.gripAcquiredTime = clinchNow;
-  player1.clinchBeltRequiresM2Release = false;
-  // No Phase A burst — simultaneous initiate.
-  player1.isGrabPushing = false;
-  player1.grabPushStartTime = 0;
-
-  player2.isBeingGrabbed = true;
-  player2.hasGrip = true;
-  player2.inClinch = true;
-  player2.clinchAction = "neutral";
-  player2.gripAcquiredTime = clinchNow;
-  player2.clinchBeltRequiresM2Release = false;
-  player2.isBeingGrabPushed = false;
-
-  const dist = CLINCH_ATTACHED_DISTANCE * (player2.sizeMultiplier || 1);
-  if (player1.x < player2.x) {
-    player2.x = player1.x + dist;
-  } else {
-    player2.x = player1.x - dist;
-  }
-
-  correctFacingAfterGrabOrThrow(player1, player2);
-}
-
-// Stalemate forced separation: both players pushed apart, clinch ends.
-function executeClinchSeparation(grabber, opponent, room, io) {
-  cleanupGrabStates(grabber, opponent);
-
-  grabber.isGrabSeparating = true;
-  opponent.isGrabSeparating = true;
-
-  const dir = grabber.x < opponent.x ? -1 : 1;
-  grabber.movementVelocity = dir * 1.0;
-  opponent.movementVelocity = -dir * 1.0;
-  grabber.isStrafing = false;
-  opponent.isStrafing = false;
-
-  const lockUntil = simNow(room) + CLINCH_SEPARATION_INPUT_LOCK_MS;
-  grabber.inputLockUntil = Math.max(grabber.inputLockUntil || 0, lockUntil);
-  opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, lockUntil);
-
-  correctFacingAfterGrabOrThrow(grabber, opponent);
-
-  const cleanupSep = (p) => {
-    setPlayerTimeout(p.id, () => {
-      p.isGrabSeparating = false;
-      activateBufferedInputAfterGrab(p, [room]);
-    }, 300, "clinchSepAnim");
-  };
-  cleanupSep(grabber);
-  cleanupSep(opponent);
-
-  grabber.grabCooldown = true;
-  opponent.grabCooldown = true;
-  setPlayerTimeout(grabber.id, () => { grabber.grabCooldown = false; }, 500, "clinchSepCooldown");
-  setPlayerTimeout(opponent.id, () => { opponent.grabCooldown = false; }, 500, "clinchSepCooldown");
-
-  io.in(room.id).emit("grab_separate", {
-    grabberId: grabber.id,
-    opponentId: opponent.id,
-    grabberX: grabber.x,
-    opponentX: opponent.x,
-  });
-}
-
+// A grab that never found anything. Fully vulnerable for the whole recovery —
+// this window is the primary answer to a fished grab, so it is deliberately long
+// (450ms, nearly twice a full slap cycle).
 function executeGrabWhiff(player) {
   player.isGrabStartup = false;
   player.isGrabbingMovement = false;
@@ -177,7 +62,5 @@ function executeGrabWhiff(player) {
 
 module.exports = {
   correctFacingAfterGrabOrThrow,
-  executeClinchSeparation,
-  executeGrabTech,
   executeGrabWhiff,
 };

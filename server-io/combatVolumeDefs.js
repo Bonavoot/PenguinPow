@@ -58,7 +58,8 @@ function inferAuthoredPhase(player, simTime) {
   if (!player) return COMBAT_PHASE.NEUTRAL;
   if (player.isDead || player.isAtTheRopes) return COMBAT_PHASE.INCAPACITATED;
   if (player.isHit || player.isRawParryStun) return COMBAT_PHASE.HITSTUN;
-  if (player.isClinchOpen || player.clinchThrowFailStagger) return COMBAT_PHASE.OPEN;
+  // No OPEN producer: the command grab has no punishable post-connect Open state.
+  // See the matching note in combatVolumeQuery.inferCombatPhase.
   if (player.inClinch) return COMBAT_PHASE.CLINCHED;
 
   if (player.isSidestepping) {

@@ -2851,6 +2851,15 @@ const PRESETS = {
   // `speed` 0–1 controls spawn count/size. Puffs are dropped in place and linger
   // so the trail builds up behind the moving player, then each puff fades individually.
   grabPushTrail(engine, { x, y, direction, speed }) {
+    // FACING CONVENTION (see clinchStrainSweat): the pushed player faces their
+    // pusher, so away-from-pusher — the direction they are being driven — is
+    // +facing. `direction` is that facing, hence travel = dir and the ground they
+    // are losing streams out BEHIND them at -dir.
+    //
+    // This used to be symmetric: `dir` was read and then never used, so the trail
+    // spread evenly and carried no directional information at all. Biasing it
+    // backward is what makes a drive read as "that one is being driven THAT way"
+    // rather than as a puff of dust between two similar sprites.
     const dir = direction || 1;
     const footX = x;
     const footY = GAME_H - y;
@@ -2861,9 +2870,11 @@ const PRESETS = {
     for (let i = 0; i < puffCount; i++) {
       const size = rand(20, 34) * (0.6 + s * 0.4);
       engine.spawn({
-        x: footX + rand(-10, 10),
+        // Puffs are laid down slightly behind the feet and drift further back, so
+        // the trail builds up along the path already travelled.
+        x: footX - dir * rand(2, 14) * (0.5 + s * 0.5) + rand(-6, 6),
         y: footY - size / 2 + rand(-4, 2),
-        vx: rand(-4, 4),
+        vx: -dir * rand(6, 22) * s + rand(-3, 3),
         vy: rand(-5, -1),
         gravity: 1,
         drag: 0.98,
@@ -2879,14 +2890,16 @@ const PRESETS = {
       });
     }
 
-    const chipCount = s > 0.3 ? 2 : 1;
+    // Ice chips scrape out from under the braced feet and fly BACKWARD along the
+    // travel — the fast, high-contrast part of the read.
+    const chipCount = s > 0.3 ? 3 : 2;
     for (let i = 0; i < chipCount; i++) {
-      const angle = rand(-0.8, 0.8);
-      const chipSpeed = rand(15, 50) * s;
+      const angle = rand(-0.55, 0.55);
+      const chipSpeed = rand(25, 70) * s;
       engine.spawn({
-        x: footX + rand(-8, 8),
+        x: footX - dir * rand(0, 10) + rand(-5, 5),
         y: footY - rand(1, 5),
-        vx: Math.cos(angle) * chipSpeed + rand(-8, 8),
+        vx: -dir * Math.cos(angle) * chipSpeed + rand(-6, 6),
         vy: -Math.abs(Math.sin(angle)) * chipSpeed * 0.4 + rand(-12, -3),
         gravity: 200,
         drag: 0.94,

@@ -38,6 +38,7 @@ const {
 // MASTERY OVERHAUL feature flags (Phase 1: momentum inheritance, Phase 3: cadence,
 // Phase 4: analog resolutions).
 const { MASTERY_P1_MOMENTUM, MASTERY_P3_CADENCE } = require("./masteryFlags");
+const { grantedVelocityNow, isRidingHitSlide } = require("./momentumTransfer");
 
 // Aerial landing Phase A.3.1 / A.3.2 — settle ownership + recovery monitoring.
 const {
@@ -163,29 +164,14 @@ function cleanupGrabStates(player, opponent) {
   // a fresh clinch, silently blocking their jolt for the cooldown duration.
   for (const p of [player, opponent]) {
     timeoutManager.clearPlayerSpecific(p.id, "clinchJoltRecovery");
-    timeoutManager.clearPlayerSpecific(p.id, "clinchJoltCooldown");
     timeoutManager.clearPlayerSpecific(p.id, "clinchThrowFailStagger");
-    timeoutManager.clearPlayerSpecific(p.id, "clinchPerfectBraceFlash");
     p.isArmClamped = false;
     p.clinchThrowFailStagger = false;
     p.isClinchOpen = false;
     p.clinchOpenHideStars = false;
-    p.clinchOpenUntil = 0;
-    p.clinchThrowUsedDeepGrip = false;
-    p.clinchThrowWasCounter = false;
-    p.clinchThrowKillBalance = null;
-    p.clinchThrowInitiationDrain = 0;
-    p.clinchThrowInitiationEdgeBonus = 0;
     p.isClinchCommittedDrive = false;
     p.isClinchPerfectBracing = false;
-    p.clinchDriveHoldStart = 0;
-    p.clinchDrivePlantCancelUntil = 0;
-    p.clinchPushLossStart = 0;
     p.clinchBraceSimTime = 0;
-    p.clinchBraceLatchUntil = 0;
-    p.clinchBraceArmedTechnique = null;
-    p.clinchBraceAttemptStart = 0;
-    p.clinchBraceAttemptRefunded = false;
     p.clinchBracePhase = null;
     p.clinchBracePressGameTime = 0;
     p.clinchBracePressReceiptGameNow = 0;
@@ -196,9 +182,31 @@ function cleanupGrabStates(player, opponent) {
     p.lastTrustedPressGameTime = 0;
     p.hasDeepGrip = false;
     p.clinchShoveLead = null;
-    p.deepGripPushStart = 0;
-    p.clinchPushRampStart = 0;
-    p.clinchOpenPunishBlend = 0;
+    // COMMAND GRAB: the post-connect phase machine and its variant selection must
+    // not survive into the next engagement (a stale phase would otherwise resolve
+    // a grab that already ended).
+    timeoutManager.clearPlayerSpecific(p.id, "cmdDriveRelease");
+    p.cmdGrabCinchFromX = null;
+    p.cmdGrabCinchToX = null;
+    p.cmdGrabVictimCinchFromX = null;
+    p.cmdGrabVictimCinchToX = null;
+    p.cmdGrabPhase = null;
+    p.cmdGrabPhaseStart = 0;
+    p.cmdGrabVariant = null;
+    p.cmdGrabKillBalance = null;
+    p.cmdGrabVictimBalance = null;
+    p.cmdGrabCarryStartX = 0;
+    p.cmdGrabCarryTargetX = 0;
+    p.cmdGrabCarryDuration = 0;
+    p.cmdGrabCarryDir = 0;
+    p.cmdGrabCarryAttachFrom = null;
+    p.cmdGrabCarryAttachTo = null;
+    p.cmdGrabAtRope = false;
+    p.cmdGrabEdgeWaiver = false;
+    p.cmdGrabConnectGap = 0;
+    p.grabVariant = null;
+    p.grabVariantLocked = false;
+    p.grabVariantThrowForbidden = false;
   }
 
   // Clean up grabber states
@@ -257,25 +265,11 @@ function cleanupGrabStates(player, opponent) {
   player.inClinch = false;
   player.clinchInstanceId = null;
   player.clinchAction = null;
-  player.clinchOpponent = null;
-  player.clinchStalemateStart = 0;
-  player.clinchStalemateLastX = 0;
-  player.clinchStalemateLastBalance = 0;
   // Clinch throw/pull cleanup
   player.clinchThrowRequest = null;
-  player.clinchThrowRequestTime = 0;
-  player.clinchThrowActive = false;
-  player.clinchThrowType = null;
   player.clinchThrowAnimMs = 0;
-  player.clinchThrowStartTime = 0;
-  player.clinchThrowCooldown = false;
-  player.clinchThrowUsedDeepGrip = false;
-  player.clinchThrowKillBalance = null;
-  player.clinchThrowInitiationDrain = 0;
-  player.clinchThrowInitiationEdgeBonus = 0;
   player.isClinchThrowing = false;
   player.isClinchClashing = false;
-  player.clinchClashStartTime = 0;
   player.clinchMouse2BufferTime = 0;
   player.clinchWTapTime = 0;
   player.clinchAwayTapTime = 0;
@@ -288,17 +282,9 @@ function cleanupGrabStates(player, opponent) {
   player.isResistingPull = false;
   player.isClinchOpen = false;
   player.clinchOpenHideStars = false;
-  player.clinchOpenUntil = 0;
   player.isClinchCommittedDrive = false;
   player.isClinchPerfectBracing = false;
-  player.clinchDriveHoldStart = 0;
-  player.clinchDrivePlantCancelUntil = 0;
-  player.clinchPushLossStart = 0;
   player.clinchBraceSimTime = 0;
-  player.clinchBraceLatchUntil = 0;
-  player.clinchBraceArmedTechnique = null;
-  player.clinchBraceAttemptStart = 0;
-  player.clinchBraceAttemptRefunded = false;
   player.clinchBracePhase = null;
   player.clinchBracePressGameTime = 0;
   player.clinchBracePressReceiptGameNow = 0;
@@ -306,18 +292,11 @@ function cleanupGrabStates(player, opponent) {
   // Clinch jolt cleanup
   player.isClinchJolting = false;
   player.clinchJoltRecovery = false;
-  player.clinchJoltCooldown = false;
-  player.clinchJoltStartTime = 0;
   player.isBeingClinchJolted = false;
-  player.clinchJoltPlantInterrupt = false;
   player.isClinchJoltClashing = false;
   player.clinchJoltRequest = false;
-  player.clinchJoltRequestTime = 0;
-  player.clinchJoltRecoilStart = 0;
-  player.clinchJoltPlantInterruptStart = 0;
   // Clinch break cleanup
   player.clinchBreakRequest = false;
-  player.clinchBreakRequestTime = 0;
   // Clear action lock so grab/other actions aren't blocked after grab ends
   player.actionLockUntil = 0;
 
@@ -375,25 +354,11 @@ function cleanupGrabStates(player, opponent) {
   opponent.inClinch = false;
   opponent.clinchInstanceId = null;
   opponent.clinchAction = null;
-  opponent.clinchOpponent = null;
-  opponent.clinchStalemateStart = 0;
-  opponent.clinchStalemateLastX = 0;
-  opponent.clinchStalemateLastBalance = 0;
   // Clinch throw/pull cleanup
   opponent.clinchThrowRequest = null;
-  opponent.clinchThrowRequestTime = 0;
-  opponent.clinchThrowActive = false;
-  opponent.clinchThrowType = null;
   opponent.clinchThrowAnimMs = 0;
-  opponent.clinchThrowStartTime = 0;
-  opponent.clinchThrowCooldown = false;
-  opponent.clinchThrowUsedDeepGrip = false;
-  opponent.clinchThrowKillBalance = null;
-  opponent.clinchThrowInitiationDrain = 0;
-  opponent.clinchThrowInitiationEdgeBonus = 0;
   opponent.isClinchThrowing = false;
   opponent.isClinchClashing = false;
-  opponent.clinchClashStartTime = 0;
   opponent.clinchMouse2BufferTime = 0;
   opponent.clinchWTapTime = 0;
   opponent.clinchAwayTapTime = 0;
@@ -406,17 +371,9 @@ function cleanupGrabStates(player, opponent) {
   opponent.isResistingPull = false;
   opponent.isClinchOpen = false;
   opponent.clinchOpenHideStars = false;
-  opponent.clinchOpenUntil = 0;
   opponent.isClinchCommittedDrive = false;
   opponent.isClinchPerfectBracing = false;
-  opponent.clinchDriveHoldStart = 0;
-  opponent.clinchDrivePlantCancelUntil = 0;
-  opponent.clinchPushLossStart = 0;
   opponent.clinchBraceSimTime = 0;
-  opponent.clinchBraceLatchUntil = 0;
-  opponent.clinchBraceArmedTechnique = null;
-  opponent.clinchBraceAttemptStart = 0;
-  opponent.clinchBraceAttemptRefunded = false;
   opponent.clinchBracePhase = null;
   opponent.clinchBracePressGameTime = 0;
   opponent.clinchBracePressReceiptGameNow = 0;
@@ -424,18 +381,11 @@ function cleanupGrabStates(player, opponent) {
   // Clinch jolt cleanup
   opponent.isClinchJolting = false;
   opponent.clinchJoltRecovery = false;
-  opponent.clinchJoltCooldown = false;
-  opponent.clinchJoltStartTime = 0;
   opponent.isBeingClinchJolted = false;
-  opponent.clinchJoltPlantInterrupt = false;
   opponent.isClinchJoltClashing = false;
   opponent.clinchJoltRequest = false;
-  opponent.clinchJoltRequestTime = 0;
-  opponent.clinchJoltRecoilStart = 0;
-  opponent.clinchJoltPlantInterruptStart = 0;
   // Clinch break cleanup
   opponent.clinchBreakRequest = false;
-  opponent.clinchBreakRequestTime = 0;
   // Clear action lock so grab/other actions aren't blocked after grab ends
   opponent.actionLockUntil = 0;
 }
@@ -854,39 +804,17 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
     // stick through the result screen and into the next round/bout.
     p.clinchShoveLead = null;
     p.hasDeepGrip = false;
-    p.deepGripPushStart = 0;
-    p.clinchPushRampStart = 0;
-    p.clinchOpenPunishBlend = 0;
-    p.clinchStalemateStart = 0;
     p.clinchThrowRequest = null;
-    p.clinchThrowRequestTime = 0;
-    p.clinchThrowActive = false;
-    p.clinchThrowType = null;
     p.clinchThrowAnimMs = 0;
-    p.clinchThrowStartTime = 0;
-    p.clinchThrowCooldown = false;
-    p.clinchThrowUsedDeepGrip = false;
-    p.clinchThrowKillBalance = null;
-    p.clinchThrowInitiationDrain = 0;
-    p.clinchThrowInitiationEdgeBonus = 0;
     p.isClinchThrowing = false;
     p.isClinchClashing = false;
-    p.clinchClashStartTime = 0;
     p.isClinchPushing = false;
     p.isClinchPlanting = false;
     p.isClinchOpen = false;
     p.clinchOpenHideStars = false;
-    p.clinchOpenUntil = 0;
     p.isClinchCommittedDrive = false;
     p.isClinchPerfectBracing = false;
-    p.clinchDriveHoldStart = 0;
-    p.clinchDrivePlantCancelUntil = 0;
-    p.clinchPushLossStart = 0;
     p.clinchBraceSimTime = 0;
-    p.clinchBraceLatchUntil = 0;
-    p.clinchBraceArmedTechnique = null;
-    p.clinchBraceAttemptStart = 0;
-    p.clinchBraceAttemptRefunded = false;
     p.clinchBracePhase = null;
     p.clinchBracePressGameTime = 0;
     p.clinchThrowArcDistance = 0;
@@ -895,15 +823,9 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
     p.isResistingPull = false;
     p.isClinchJolting = false;
     p.clinchJoltRecovery = false;
-    p.clinchJoltCooldown = false;
-    p.clinchJoltStartTime = 0;
     p.isBeingClinchJolted = false;
-    p.clinchJoltPlantInterrupt = false;
     p.isClinchJoltClashing = false;
     p.clinchJoltRequest = false;
-    p.clinchJoltRequestTime = 0;
-    p.clinchJoltRecoilStart = 0;
-    p.clinchJoltPlantInterruptStart = 0;
 
     p.pendingSlapCount = 0;
     p.slapAnimationToggle = 0;
@@ -1057,8 +979,20 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
           SLAP_SLIDE_MIN,
           Math.min(1.0 + K_SLAP_INHERIT * aligned, SLAP_SLIDE_MAX)
         );
-        // Consumed by the on-hit ground transfer (processHit slap branch).
-        player.slapEntryAligned = Math.max(0, aligned);
+        // Consumed by the on-hit momentum transfer (processHit slap branch) as
+        // `vSelf`. Engine-granted velocity is subtracted here: mid-flurry the
+        // attacker is carrying their own chase push from the previous hit, and
+        // counting that as offence would make every slap power up the next one
+        // until mashing pinned the send cap.
+        //
+        // Consequence worth knowing: because the slap slide ignores movement
+        // input, a fighter mid-flurry has no earned momentum at all, so every
+        // flurry slap pays the floor. Throwing a heavy slap means breaking off,
+        // rebuilding speed, and re-engaging — pressure to chip, commitment to
+        // convert.
+        const grantedNow = grantedVelocityNow(player, simNowForPlayer(player));
+        const earnedAligned = aligned - alignedEntryVelocity(grantedNow, slideDirection);
+        player.slapEntryAligned = Math.max(0, earnedAligned);
       } else {
         player.slapEntryAligned = 0;
       }
@@ -1076,7 +1010,19 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
         slapSlideVelocity *= bashoSlideBoost;
       }
 
-      player.movementVelocity = slideDirection * slapSlideVelocity;
+      // A slap must never BRAKE an approach. This used to assign outright, so
+      // sliding in at full speed (2.4) and slapping snapped you down to
+      // SLAP_SLIDE_MAX (2.0) — an instant slowdown on the exact input that is
+      // supposed to convert your momentum. Worse, across consecutive slaps it
+      // sawtoothed: set, decay ~26% over the cycle, snap back, decay again,
+      // which reads as a hiccup on every slap rather than one continuous slide.
+      //
+      // Taking the larger of the two keeps the slide monotonic — the slap adds
+      // to what you built and the gaps between slaps are just ice doing its
+      // job, which is the intended shape.
+      const carriedForward = (player.movementVelocity || 0) * slideDirection;
+      player.movementVelocity =
+        slideDirection * Math.max(slapSlideVelocity, Math.max(0, carriedForward));
       player.isSlapSliding = true;
     }
   }
@@ -1366,8 +1312,29 @@ function executePalmThrust(player, rooms) {
     });
   }
 
-  // Rooted: no forward slide, ever.
-  player.movementVelocity = 0;
+  // BUG FIX: the palm is rooted, so zeroing movementVelocity here meant the
+  // on-hit momentum transfer sampled ZERO and every palm resolved at its
+  // floor regardless of how it was set up. Playtest: "the palm thrust is also
+  // super lame knockback."
+  //
+  // Snapshot the speed carried INTO the stance first. Being rooted is about
+  // the palm not travelling; it should not erase the momentum you spent
+  // building before you planted. A palm out of a slide now sends hard, a
+  // flat-footed one pays the floor.
+  const palmFacingDir = player.facing === 1 ? -1 : 1;
+  player.palmEntryAligned = Math.max(
+    0,
+    (player.movementVelocity || 0) * palmFacingDir -
+      Math.max(0, grantedVelocityNow(player, simNowForPlayer(player)) * palmFacingDir)
+  );
+
+  // Rooted: no forward slide of its own. But a fighter who is currently being
+  // shoved does NOT get to delete that shove by pressing a button — that would
+  // be a strictly better DI than DI. Keep any slide that was inflicted on them;
+  // the palm only suppresses the momentum the palm itself would have added.
+  if (!isRidingHitSlide(player, simNowForPlayer(player))) {
+    player.movementVelocity = 0;
+  }
   player.isSlapSliding = false;
   player.isStrafing = false;
   player.isBraking = false;
@@ -1627,6 +1594,13 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   player.attackEndTime = nowSim + attackDuration;
   player.attackType = "charged";
   player.chargeAttackPower = chargePercentage;
+  // Dedicated snapshot for the momentum transfer. `chargeAttackPower` is
+  // cleared from six different places (socketHandlers, collisionSystem), and if
+  // any of them fires before the hit resolves the transfer samples zero charge
+  // and every release lands at the floor — which is exactly the "all charge
+  // powers hit the same, and all weak" report. This field is written once at
+  // release and read once on contact.
+  player.chargedReleasePower = Math.max(0, Math.min(chargePercentage, 100));
 
   // Set attack state
   player.isAttacking = true;

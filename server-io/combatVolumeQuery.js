@@ -117,7 +117,10 @@ function inferCombatPhase(player, simTime) {
   if (!player) return COMBAT_PHASE.NEUTRAL;
   if (player.isDead || player.isAtTheRopes) return COMBAT_PHASE.INCAPACITATED;
   if (player.isHit || player.isRawParryStun) return COMBAT_PHASE.HITSTUN;
-  if (player.isClinchOpen || player.clinchThrowFailStagger) return COMBAT_PHASE.OPEN;
+  // COMBAT_PHASE.OPEN used to be produced here from the clinch's punishable Open
+  // state. The command grab has no Open — a grab is uninterruptible from connect to
+  // release — so nothing produces that phase now. The enum value is kept as
+  // vocabulary; if a future move needs a "fully exposed" phase, produce it here.
   if (player.inClinch) return COMBAT_PHASE.CLINCHED;
   if (
     player.isDodging ||

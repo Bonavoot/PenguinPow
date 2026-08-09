@@ -28,7 +28,7 @@ const {
 
 /** Past slap startup + open-hit grace so processHit is not deferred. */
 const SLAP_ACTIVE_TEST_OFFSET = SLAP_STARTUP_MS + AP_LATE_PARRY_MS + 15;
-const { createMockIo } = require("../../clinch/harness/mockIo");
+const { createMockIo } = require("../../helpers/mockIo");
 
 let harnessId = 0;
 

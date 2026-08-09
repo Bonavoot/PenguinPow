@@ -10,8 +10,6 @@ const {
   RAW_PARRY_REARM_STAMINA_COST, RAW_PARRY_REARM_INTERVAL_MS,
   CHARGE_FULL_POWER_MS,
   LOW_KICK_ENABLED,
-  GRAB_BREAK_REACTION_LOCK_MS,
-  CLINCH_THROW_CHORD_WINDOW_MS,
   INPUT_CLOCK_OFFSET_MAX_DELTA_MS,
 } = require("./constants");
 
@@ -33,8 +31,6 @@ const {
   simNowForPlayer,
   logVerbInitiation,
   lagCompensatedParryStart,
-  lagCompensatedClinchInputStart,
-  lagCompensatedClinchBraceStart,
   updatePlayerNetEstimate,
   clampTrustedPressGameTime,
   canArmAttackParry,
@@ -90,7 +86,10 @@ const {
 } = require("./inputCommandTrace");
 
 const { startRopeJump } = require("./ropeJumpStart");
-const { beginBraceAttempt } = require("./grabActionSystem");
+const {
+  noteGrabVariantEdges,
+  updateGrabVariant,
+} = require("./commandGrabInput");
 
 const {
   LOBBY_COLORS,
@@ -477,7 +476,8 @@ function processInputPacket(room, player, data, io, rooms) {
         player.isGrabFrontalForceOut || player.isBeingGrabFrontalForceOut) {
       return true;
     }
-    // Block all actions during clinch (push/plant/neutral handled by clinch system)
+    // Block all actions while a grab is resolving — the command grab owns the
+    // fighter from connect through release.
     if (player.inClinch) {
       return true;
     }
@@ -556,6 +556,22 @@ function processInputPacket(room, player, data, io, rooms) {
 
     // Phase 16 — stamp A/D taps for short palm chord window (V2 + diagnostics).
     stampDirectionTaps(player, simNowForPlayer(player));
+
+    // COMMAND GRAB: record the direction stamps the variant selector reads. Held W
+    // refreshes every packet (so an ongoing hold always outranks a stale tap);
+    // A/D only stamp on the rising edge, which is what makes Back tap-only.
+    noteGrabVariantEdges(player, simNowForPlayer(player), {
+      wJustPressed: !!rising.w,
+      aJustPressed: !!rising.a,
+      dJustPressed: !!rising.d,
+    });
+    // Still in startup → the variant may still change (last press wins).
+    if (player.isGrabStartup) {
+      updateGrabVariant(
+        player,
+        room.players.find((p) => p.id !== player.id)
+      );
+    }
     if (isInputCommandTraceEnabled() && (rising.a || rising.d || rising.mouse1 || rising.mouse2 || rising.shift || rising.w)) {
       pushInputCommandTrace(player.id, INPUT_COMMAND_STAGE.PHYSICAL_EDGE, {
         rising: Object.keys(rising).filter((k) => rising[k]),
@@ -1224,7 +1240,13 @@ function processInputPacket(room, player, data, io, rooms) {
     const nearLeftBound = player.x - MAP_LEFT_BOUNDARY < ROPE_JUMP_BOUNDARY_ZONE;
     const nearRightBound = MAP_RIGHT_BOUNDARY - player.x < ROPE_JUMP_BOUNDARY_ZONE;
     const forwardHeld = (nearLeftBound && player.keys.d) || (nearRightBound && player.keys.a);
-    const wantsRopeJump = player.keys.w && forwardHeld && (nearLeftBound || nearRightBound);
+    // COMMAND GRAB: M2 claims W as the Throw variant, so a grab being initiated (or
+    // already in startup) outranks rope-jump. Narrow by design — mouse2JustPressed
+    // is an edge, not a hold, so a cornered player who isn't grabbing keeps the escape.
+    const grabClaimsW =
+      player.mouse2JustPressed || player.isGrabStartup;
+    const wantsRopeJump =
+      player.keys.w && forwardHeld && (nearLeftBound || nearRightBound) && !grabClaimsW;
 
     if (
       wantsRopeJump &&
@@ -1338,257 +1360,10 @@ function processInputPacket(room, player, data, io, rooms) {
     player.mouse1ConsumedUntilRelease = false;
   }
 
-  // === CLINCH JOLT: Mouse1 while in clinch with grip ===
-  // ARM CLAMP: offense locked — clamped victims cannot jolt (Plant still ok).
-  // Reaction lock: same fresh-press floor as grab break — slap-mash Mouse1
-  // edges that land right after grip connect are discarded (no latch).
-  if (
-    player.mouse1JustPressed && player.hasGrip && player.inClinch &&
-    !player.isArmClamped &&
-    !player.isClinchJolting && !player.clinchJoltRecovery &&
-    !player.clinchThrowActive && !player.isClinchClashing &&
-    !player.isResistingThrow && !player.isResistingPull &&
-    !player.isClinchJoltClashing && !player.clinchJoltRequest &&
-    !player.clinchThrowFailStagger && !player.isClinchOpen
-  ) {
-    const joltNow = simNowForPlayer(player);
-    const gripAt = player.gripAcquiredTime || 0;
-    if (!gripAt || joltNow - gripAt >= GRAB_BREAK_REACTION_LOCK_MS) {
-      player.clinchJoltRequest = true;
-      player.clinchJoltRequestTime = joltNow;
-    }
-  }
-
-  // === CLINCH BREAK: Spacebar while in mutual clinch (both have grip on connect) ===
-  // Defensive escape — costs heavy stamina (no posture), soft-gated
-  // (under-budget breakers self-gas). Does NOT require holding M2.
-  // ARM CLAMP: offense locked — clamped victims cannot break (Plant still ok).
-  // Reaction lock: Space during the first window after grip connect is ignored
-  // (no latch) so late open-game parries don't become breaks.
-  // GASSED: hard-locked — surface the same "OUT OF STAMINA" cue as dodge/flap.
-  // Break interrupts opposing technique startup (throw/pull) — expensive escape.
-  // Blocked only by own committed throw / Open / jolt / already-breaking.
-  // Gates must stay in sync with grabActionSystem break resolution.
-  if (
-    player.spaceJustPressed && player.hasGrip && player.inClinch &&
-    !player.isArmClamped &&
-    !player.isGassed &&
-    !player.clinchThrowActive && !player.isClinchClashing &&
-    !player.isClinchJolting && !player.isClinchJoltClashing && !player.clinchJoltRecovery &&
-    !player.clinchThrowFailStagger && !player.isClinchOpen &&
-    !player.clinchBreakRequest && !player.isGrabBreaking && !player.isGrabBreakCountered &&
-    !player.isGrabBreakSeparating
-  ) {
-    const breakNow = simNowForPlayer(player);
-    const gripAt = player.gripAcquiredTime || 0;
-    if (!gripAt || breakNow - gripAt >= GRAB_BREAK_REACTION_LOCK_MS) {
-      const otherPlayer = room.players.find((p) => p.id !== player.id);
-      if (otherPlayer && otherPlayer.hasGrip) {
-        player.clinchBreakRequest = true;
-        player.clinchBreakRequestTime = breakNow;
-      }
-    }
-  } else if (
-    player.spaceJustPressed && player.hasGrip && player.inClinch &&
-    !player.isArmClamped &&
-    player.isGassed &&
-    !player.clinchThrowActive && !player.isClinchClashing &&
-    !player.isClinchJolting && !player.isClinchJoltClashing && !player.clinchJoltRecovery &&
-    !player.clinchThrowFailStagger && !player.isClinchOpen &&
-    !player.isGrabBreaking && !player.isGrabBreakCountered &&
-    !player.isGrabBreakSeparating
-  ) {
-    const otherPlayer = room.players.find((p) => p.id !== player.id);
-    if (otherPlayer && otherPlayer.hasGrip) {
-      emitStaminaBlocked(player, "grabBreak", io);
-    }
-  }
-
-  // === CLINCH PERFECT BRACE: rising Plant intent while a technique is incoming ===
-  // Stamp lag-compensated press time so the final-window check is ping-fair.
-  if (player.inClinch && player.hasGrip && !player.isClinchOpen && !player.clinchThrowFailStagger) {
-    const otherForBrace = room.players.find((p) => p.id !== player.id);
-    if (otherForBrace) {
-      const awayKey = player.x < otherForBrace.x ? "a" : "d";
-      const awayEdge = awayKey === "a" ? player.aJustPressed : player.dJustPressed;
-      const plantEdge = !!(awayEdge || player.sJustPressed);
-      const towardKey = awayKey === "a" ? "d" : "a";
-      const towardHeld = !!player.keys[towardKey];
-      if (plantEdge && !towardHeld) {
-        // One press = one Brace attempt. Back and S share the cycle, so
-        // alternating them cannot bypass it, and an edge arriving during
-        // ACTIVE/SETTLE is inert: no stamp, nothing queued, cycle untouched.
-        // Passive held Plant is unaffected — isActivelyPlanting reads intent,
-        // not this stamp — so mid-settle still resists a raw technique.
-        // Record the trusted press time FIRST — lagCompensatedClinchBraceStart
-        // reads it to backdate the stamp.
-        const completingKey = awayEdge ? awayKey : "s";
-        const pressGameTime = pressGameTimeFromEvents(player, data, completingKey);
-        const prevPressGameTime = player.clinchBracePressGameTime;
-        const prevPressReceipt = player.clinchBracePressReceiptGameNow;
-        if (pressGameTime) {
-          player.clinchBracePressGameTime = pressGameTime;
-          player.clinchBracePressReceiptGameNow = data._receiptGameNow || gameNow();
-        }
-        const braceNow = simNowForPlayer(player);
-        const stampAt = lagCompensatedClinchBraceStart(player, braceNow);
-        // The cycle is anchored to the lag-compensated moment the brace really
-        // began, so a laggy player is neither penalised nor handed extra time.
-        if (beginBraceAttempt(player, Math.min(stampAt, braceNow))) {
-          player.clinchBraceSimTime = stampAt;
-        } else {
-          // Inert edge: leave no trace at all. Restoring the press bookkeeping
-          // keeps a mashed input from quietly re-dating the previous attempt.
-          player.clinchBracePressGameTime = prevPressGameTime;
-          player.clinchBracePressReceiptGameNow = prevPressReceipt;
-        }
-      }
-    }
-  }
-
-  // === CLINCH THROW/PULL: Mouse2 + direction chord (either order) ===
-  //   THROW — M2 + W
-  //   PULL  — M2 + away
-  // Either input can be the tap that completes the chord while the other is
-  // held or was tapped within the window. Clinch pose is always belt grip;
-  // M2 alone does not change pose.
-  // Tradeoff: holding away (Plant) + tapping M2 will pull — plant with S
-  // if you only want to brace.
-  //
-  // Grab-initiate M2 must NOT feed the throw chord. A tap that starts a grab
-  // is grab-only; instant throw on connect requires M2 still held when W/away
-  // edges, or a fresh M2 retap in clinch with the dir input.
-  // ARM CLAMP: offense locked — clamped victims cannot throw/pull (Plant still ok).
-  if (player.wJustPressed) {
-    player.clinchWTapTime = simNowForPlayer(player);
-  }
-  {
-    const otherForAway = room.players.find((p) => p.id !== player.id);
-    if (otherForAway) {
-      const awayKey = player.x < otherForAway.x ? "a" : "d";
-      const awayJustPressed = awayKey === "a" ? player.aJustPressed : player.dJustPressed;
-      if (awayJustPressed) player.clinchAwayTapTime = simNowForPlayer(player);
-    }
-  }
-  // Only clinch M2 presses arm the throw buffer — never grab-startup taps.
-  if (
-    player.mouse2JustPressed &&
-    player.hasGrip &&
-    player.inClinch
-  ) {
-    player.clinchMouse2BufferTime = simNowForPlayer(player);
-  }
-
-  {
-    // Only count attempts that involve M2 or W (not bare Plant A/D taps).
-    const clinchChordAttempt =
-      player.inClinch &&
-      (player.mouse2JustPressed ||
-        player.wJustPressed ||
-        ((player.aJustPressed || player.dJustPressed) &&
-          (!!player.keys.mouse2 || !!player.clinchMouse2BufferTime)));
-    if (
-      player.hasGrip && player.inClinch &&
-      !player.isArmClamped &&
-      !player.clinchThrowActive && !player.isClinchClashing &&
-      !player.clinchThrowRequest &&
-      !player.clinchThrowFailStagger && !player.isClinchOpen &&
-      !player.isResistingThrow && !player.isResistingPull &&
-      !player.clinchJoltRecovery
-    ) {
-      const otherPlayer = room.players.find((p) => p.id !== player.id);
-      if (otherPlayer) {
-        const nowSim = simNowForPlayer(player);
-        const chord = CLINCH_THROW_CHORD_WINDOW_MS;
-        const awayKey = player.x < otherPlayer.x ? "a" : "d";
-        const awayEdge = awayKey === "a" ? player.aJustPressed : player.dJustPressed;
-        const awayHeld = !!player.keys[awayKey];
-        const wHeld = !!player.keys.w;
-        const m2Down = !!player.keys.mouse2;
-        const m2TapRecent =
-          !!player.clinchMouse2BufferTime && nowSim - player.clinchMouse2BufferTime < chord;
-        const wTapRecent =
-          !!player.clinchWTapTime && nowSim - player.clinchWTapTime < chord;
-        const awayTapRecent =
-          !!player.clinchAwayTapTime && nowSim - player.clinchAwayTapTime < chord;
-        const m2Ready = m2Down || m2TapRecent;
-        // Direction is "ready" if rising now, tapped recently, OR currently held
-        // (so M2 can complete a chord that started from a held dir).
-        const wReady = player.wJustPressed || wTapRecent || wHeld;
-        const awayReady = awayEdge || awayTapRecent || awayHeld;
-
-        let request = null;
-        let completingKey = null;
-        // Prefer the input that just edged as the completing key (fairer lag-comp).
-        if (m2Ready && player.wJustPressed) {
-          request = "throw";
-          completingKey = "w";
-        } else if (m2Ready && awayEdge) {
-          request = "pull";
-          completingKey = awayKey;
-        } else if (player.mouse2JustPressed && wReady) {
-          request = "throw";
-          completingKey = "mouse2";
-        } else if (player.mouse2JustPressed && awayReady) {
-          request = "pull";
-          completingKey = "mouse2";
-        }
-
-        if (request) {
-          const pressGameTime = pressGameTimeFromEvents(player, data, completingKey);
-          if (pressGameTime) {
-            player.clinchTechniquePressGameTime = pressGameTime;
-            player.clinchTechniquePressReceiptGameNow = data._receiptGameNow || gameNow();
-          }
-
-          player.clinchThrowRequest = request;
-          player.clinchThrowRequestTime = lagCompensatedClinchInputStart(player, nowSim);
-          player.clinchMouse2BufferTime = 0;
-          player.clinchWTapTime = 0;
-          player.clinchAwayTapTime = 0;
-          noteCommandAccept(player, request === "throw" ? "clinch_throw" : "clinch_pull", {
-            relativeDir: request === "pull" ? RELATIVE_DIR.BACK : RELATIVE_DIR.FORWARD,
-          });
-          if (isInputCommandTraceEnabled()) {
-            pushInputCommandTrace(player.id, INPUT_COMMAND_STAGE.COMMAND_ACCEPTED, {
-              command: request,
-              hasDeepGrip: !!player.hasDeepGrip,
-              clinchInstanceId: player.clinchInstanceId || null,
-            });
-          }
-        } else if (clinchChordAttempt && (player.mouse2JustPressed || m2Ready)) {
-          noteCommandReject(player, INPUT_REJECT.COMMAND_NOT_RECOGNIZED, {
-            command: "clinch_technique",
-          });
-        }
-      }
-    } else if (clinchChordAttempt) {
-      // Distinguish ineligibility from silent loss (Deep Grip does not bypass these).
-      let reason = INPUT_REJECT.ELIGIBILITY_FAILED;
-      if (!player.inClinch || !player.hasGrip) reason = INPUT_REJECT.NOT_IN_CLINCH;
-      else if (player.isArmClamped) reason = INPUT_REJECT.ARM_CLAMPED;
-      else if (player.isClinchOpen || player.clinchThrowFailStagger) {
-        reason = INPUT_REJECT.THROW_RECOVERY_ACTIVE;
-      } else if (player.clinchThrowActive || player.isClinchClashing) {
-        reason = INPUT_REJECT.TECHNIQUE_ACTIVE;
-      } else if (player.clinchJoltRecovery) reason = INPUT_REJECT.JOLT_RECOVERY;
-      else if (player.clinchThrowRequest) reason = INPUT_REJECT.DUPLICATE_COMMAND;
-      noteCommandReject(player, reason, { command: "clinch_technique" });
-      if (isInputCommandTraceEnabled()) {
-        pushInputCommandTrace(player.id, INPUT_COMMAND_STAGE.COMMAND_REJECTED, {
-          command: "clinch_technique",
-          reason,
-          hasDeepGrip: !!player.hasDeepGrip,
-          concept: "COMMAND_RECOGNIZED_BUT_INELIGIBLE",
-        });
-      }
-    }
-  }
-
-  // NOTE: The legacy W-throw and pull-reversal grab paths were removed.
-  // Every successful grab now enters the clinch (inClinch = true is set at
-  // grab connect), so any branch gated on `isGrabbing && !inClinch` was
-  // unreachable. Clinch throws/pulls live in grabActionSystem.js.
+  // Clinch inputs (Jolt / Break / Perfect Brace / the M2+direction throw-pull
+  // chord) lived here. All four fed the mutual clinch subgame, which the command
+  // grab replaced: which grab you get is now decided at the M2 edge by
+  // commandGrabInput, and nothing is interruptible after it connects.
 
   // Handle grab attacks — instant grab with no forward movement
   // Use mouse2JustPressed to prevent grab from triggering when key is held through other actions

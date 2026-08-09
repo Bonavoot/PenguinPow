@@ -12,6 +12,10 @@ import { FONT_DISPLAY, FONT_UI, FONT_WEIGHT, TEXT_SHADOW_COMBAT, TEXT_SHADOW_COM
 // invisible and keeps soles glued to GROUND_LEVEL.
 export const FIGHTER_SOLE_TRANSFORM_ORIGIN = "50% calc(100% - 2.1%)";
 
+// Scales hitSquash / hitSquashContainer / burstHitSquash deformation.
+// 1 = authored keyframe amplitudes; 0.9 ≈ 10% less dramatic.
+export const IMPACT_SQUASH_INTENSITY = 0.9;
+
 const validProps = [
   "src",
   "style",
@@ -811,8 +815,9 @@ export const StyledImage = styled("img")
       // player_hit payload — attack type / counter / punish / momentum).
       // The hitSquash-family keyframes multiply every deviation from the
       // identity pose by this, so a counter charged slam visibly deforms
-      // the victim far more than a poke. 1 = the legacy fixed squash.
-      "--impact-amp": props.$impactAmp ?? 1,
+      // the victim far more than a poke. IMPACT_SQUASH_INTENSITY dials the
+      // whole family quieter without changing relative grading.
+      "--impact-amp": (props.$impactAmp ?? 1) * IMPACT_SQUASH_INTENSITY,
       transform:
         props.$isAtTheRopes && props.$fighter === "player 1"
           ? props.$facing === 1
@@ -1587,7 +1592,7 @@ export const AnimatedFighterContainer = styled.div
         "--facing": props.$facing === 1 ? "1" : "-1",
         // Per-hit reaction amplitude — same contract as StyledImage's var
         // (hitSquashContainer / burstHitSquash keyframes scale with it).
-        "--impact-amp": props.$impactAmp ?? 1,
+        "--impact-amp": (props.$impactAmp ?? 1) * IMPACT_SQUASH_INTENSITY,
         transform: `scaleX(${finalScaleX}) scaleY(${sidestepScale})`,
         overflow: "hidden",
         zIndex: isOutsideDohyo(props.$x, props.$y)

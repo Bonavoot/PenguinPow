@@ -172,6 +172,11 @@ const {
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum inheritance; Phase 2: posture).
 const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P5_ASSISTS } = require("./masteryFlags");
+const {
+  KB_FRICTION,
+  DI_FRICTION_FACTOR,
+  SLAP_SLIDE_CONTACT_DAMP,
+} = require("./momentumTransfer");
 
 // Import fighter_action packet builder (Phase 5 seq/keyframe/resync)
 const { buildFighterActionPacket } = require("./fighterBroadcast");
@@ -179,8 +184,6 @@ const { buildFighterActionPacket } = require("./fighterBroadcast");
 // Import grab mechanics
 const {
   correctFacingAfterGrabOrThrow,
-  executeClinchSeparation,
-  executeGrabTech,
   executeGrabWhiff,
 } = require("./grabMechanics");
 
@@ -293,8 +296,13 @@ const {
 // Import projectile updates (snowballs + pumo army)
 const { updateProjectiles } = require("./projectileUpdates");
 
-// Import grab action system
-const { updateGrabActions, grantDeepGrip } = require("./grabActionSystem");
+// Command grab — owns everything after a grab connects.
+const { lockGrabVariant } = require("./commandGrabInput");
+const {
+  beginCommandGrab,
+  updateCommandGrab,
+  executeCommandGrabClash,
+} = require("./commandGrabSystem");
 
 // Import per-match input audit log
 const { openLog: openAuditLog } = require("./inputAuditLog");
@@ -1263,30 +1271,26 @@ function tick(delta) {
               // gameOver — that fires later in the same tick loop).
               player.knockbackVelocity.x *= PAST_MAP_DIRT_KB_FRICTION;
             } else {
+              // MOMENTUM TRANSFER — one friction for knockback and free glide.
+              // The old per-move split (burst 0.982 / slap 0.97 / charged 0.96)
+              // meant a shove's reach depended on WHICH MOVE threw it rather
+              // than how hard it landed. Sharing ICE_COAST_FRICTION also makes
+              // the hitstun-end handoff continuous: a shove flows into a glide
+              // with no speed discontinuity, which is where the ice feel lives.
+              //
+              // DI stays a per-tick friction multiplier, universal across every
+              // knockback type. Burst and charged used to lock it out; there is
+              // no longer a reason to, since kill speed is governed by the
+              // floor/ceiling values rather than by removing the defender's
+              // control of their own slide.
               const knockbackDirection = player.knockbackVelocity.x > 0 ? 1 : -1;
-              const isHoldingOpposite = (knockbackDirection > 0 && player.keys.a && !player.keys.d) || 
-                                        (knockbackDirection < 0 && player.keys.d && !player.keys.a);
-              const DI_FRICTION_BONUS = 0.96;
-              
-              if (player.isBurstKnockback) {
-                // Single smooth ice-slide decay (matches ICE_COAST_FRICTION) so
-                // the forced shove flows seamlessly into the DI-able coast that
-                // follows — one continuous slide instead of pop-then-brake.
-                player.knockbackVelocity.x *= BURST_KB_FRICTION;
-              } else if (player.isSlapKnockback) {
-                player.knockbackVelocity.x *= 0.97;
-              } else {
-                player.knockbackVelocity.x *= 0.96;
-              }
-              // Burst + charged launches lock out DI for the forced window
-              // (authoritative headbutt / palm shove). Ice coast after hitstun
-              // remains DI-able via movementVelocity handoff.
-              if (
-                isHoldingOpposite &&
-                !player.isBurstKnockback &&
-                !player.isChargedKnockback
-              ) {
-                player.knockbackVelocity.x *= DI_FRICTION_BONUS;
+              const isHoldingOpposite =
+                (knockbackDirection > 0 && player.keys.a && !player.keys.d) ||
+                (knockbackDirection < 0 && player.keys.d && !player.keys.a);
+
+              player.knockbackVelocity.x *= KB_FRICTION;
+              if (isHoldingOpposite) {
+                player.knockbackVelocity.x *= DI_FRICTION_FACTOR;
               }
             }
 
@@ -1415,6 +1419,12 @@ function tick(delta) {
           const lungeDir = -player.facing; // facing 1=left, -1=right
           const newX = player.x + lungeDir * lungePerTick;
           player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
+        } else if (elapsed >= startupMs) {
+          // Startup over — the grab is active, so the variant stops being revisable.
+          // Locking here rather than at connect is what stops a grab being held out
+          // and having its variant chosen on the frame contact is seen. When already
+          // in range (connect on the first active tick) these are the same instant.
+          lockGrabVariant(player);
         }
 
         // THROW-CATCH / CONNECT WINDOW: begins late in startup
@@ -1487,7 +1497,10 @@ function tick(delta) {
             if ((opponent.isGrabStartup || opponent.isGrabTeching) &&
                 !opponent.isWhiffingGrab && !opponent.isGrabWhiffRecovery &&
                 !opponentWouldWhiff) {
-              executeGrabTech(player, opponent, room, io);
+              // A simultaneous grab is a mutual whiff, not a shared clinch entry.
+              // Nobody won the initiate, so nobody gets a reset to fish for —
+              // both eat the ordinary grab whiff recovery.
+              executeCommandGrabClash(player, opponent, room, io);
               return;
             }
 
@@ -1550,40 +1563,28 @@ function tick(delta) {
                 player.grabApproachSpeed = Math.max(player.grabApproachSpeed || 0, GRAB_CATCH_MIN_BURST_SPEED);
               }
 
-              // Mutual clinch on connect — both have grip automatically.
-              // No grip-up required; short Phase A burst is the first-grab reward.
+              // Grip on connect — both sides. This is a presentation state that
+              // lasts only as long as the grab action (belt-grip read → variant →
+              // resolution), not an open-ended subgame.
               player.hasGrip = true;
               player.inClinch = true;
-              player.clinchAction = "push";
               player.gripAcquiredTime = now;
-              player.clinchBeltRequiresM2Release = false;
               opponent.hasGrip = true;
               opponent.inClinch = true;
-              opponent.clinchAction = "neutral";
               opponent.gripAcquiredTime = now;
-              opponent.clinchBeltRequiresM2Release = false;
 
-              // MASTERY Phase 2 (2.3): yotsu conversion. Catching a
-              // broken-posture victim grants the grabber DEEP GRIP on connect
-              // and floors the Phase A burst so the shove visibly bites — the
-              // striking setup that broke posture pays off in the clinch.
-              // Flag off / posture intact ⇒ no change.
+              // MASTERY Phase 2 (2.3): yotsu conversion. Catching a broken-posture
+              // victim floors the approach speed, which now feeds the Drive carry
+              // distance — the striking setup that broke posture pays off in a
+              // longer drive. Deep Grip used to be granted here too; it was retired
+              // with the clinch subgame it arbitrated, and posture already scales
+              // every grab's travel directly.
               if (MASTERY_P2_POSTURE && opponent.isPostureBroken) {
                 player.grabApproachSpeed = Math.max(
                   player.grabApproachSpeed || 0,
                   GRAB_CATCH_MIN_BURST_SPEED
                 );
-                grantDeepGrip(player, opponent, room, io, "posture");
               }
-
-              // IMMEDIATE PUSH (auto-burst)
-              player.isGrabPushing = true;
-              player.isGrabWalking = true;
-              player.grabActionType = "push";
-              player.grabDecisionMade = true;
-              player.grabPushStartTime = 0;
-              player.grabPushEndTime = 0;
-              opponent.isBeingGrabPushed = true;
 
               player.grabActionStartTime = 0;
               player.grabDurationPaused = false;
@@ -1603,7 +1604,11 @@ function tick(delta) {
               opponent.isCounterGrabbed = wasOpponentRawParrying;
 
               if (wasOpponentRawParrying) {
-                opponent.isArmClamped = true;
+                // ARM CLAMP used to lock the victim's clinch offense; there is no
+                // post-connect offense left to lock. The counter-grab still pays
+                // off, and more directly: the posture debuff feeds the
+                // posture-scaled travel, so grabbing a parry carries and throws
+                // further on its own.
                 applyBalanceDamage(opponent, COUNTER_GRAB_BALANCE_DEBUFF, now);
                 const grabberPlayerNumber = room.players.indexOf(player) === 0 ? 1 : 2;
                 const centerX = (player.x + opponent.x) / 2;
@@ -1673,6 +1678,12 @@ function tick(delta) {
               } else {
                 player.grabFacingDirection = player.facing;
               }
+
+              // Open the belt-grip read beat and commit the variant locked at the
+              // end of startup. Runs last so it sees the fully-established grip
+              // state (including a counter-grab).
+              lockGrabVariant(player);
+              beginCommandGrab(player, opponent, room, io);
             } else if (withinConnectWindow) {
               // In range but ungrabbable (charged/palm, immune, etc.) — retest.
               return;
@@ -3232,232 +3243,7 @@ function tick(delta) {
       }
 
       // Grab Movement
-      if (player.isGrabbingMovement) {
-        const opponent = room.players.find((p) => p.id !== player.id);
-
-        // ── Mutual grab during the lunge phase → both enter the clinch with grips. ──
-        // The old "mash to win" clash was removed; simultaneous grabs now resolve
-        // deterministically via the same path used for simultaneous grab startups
-        // (see executeGrabTech). Single source of truth for the mutual-grab outcome.
-        if (
-          opponent &&
-          opponent.isGrabbingMovement &&
-          !player.isBeingGrabbed &&
-          !opponent.isBeingGrabbed &&
-          !player.isThrowing &&
-          !opponent.isThrowing &&
-          !player.isBeingThrown &&
-          !opponent.isBeingThrown &&
-          isOpponentCloseEnoughForGrab(player, opponent)
-        ) {
-          executeGrabTech(player, opponent, room, io);
-          return;
-        }
-
-        // Move forward during grab movement (after startup hop). Same clamped
-        // locomotion multiplier as walking (1.0 for stock PvP/VS CPU).
-        let currentSpeedFactor = speedFactor * getEffectiveMoveSpeedMult(player);
-
-        // Calculate new position with grab movement
-        const newX =
-          player.x +
-          player.grabMovementDirection *
-            delta *
-            currentSpeedFactor *
-            player.grabMovementVelocity;
-
-        // Calculate boundaries
-        const sizeOffset = 0;
-        const leftBoundary = MAP_LEFT_BOUNDARY + sizeOffset;
-        const rightBoundary = MAP_RIGHT_BOUNDARY - sizeOffset;
-
-        // Update position within boundaries
-        if (newX >= leftBoundary && newX <= rightBoundary) {
-          player.x = newX;
-        } else {
-          // Stop at boundary
-          player.x = newX < leftBoundary ? leftBoundary : rightBoundary;
-        }
-
-        // Continuously check for grab opportunity during movement (only if opponent is not also grabbing)
-        // Also require opponent to be in front of the grabber - prevents grabbing players
-        // who have dodged through and are now behind the grabbing player
-        if (
-          opponent &&
-          !opponent.isGrabbingMovement &&
-          !(opponent.isRopeJumping && opponent.ropeJumpPhase === "active") &&
-          !(opponent.isFlapping && opponent.flapPhase === "flight") &&
-          !(opponent.isSlideJumping && opponent.slideJumpPhase === "flight") &&
-          isOpponentCloseEnoughForGrab(player, opponent) &&
-          isOpponentInFrontOfGrabber(player, opponent) &&
-          !opponent.isBeingThrown &&
-          !opponent.isAttacking &&
-          !opponent.isBeingGrabbed &&
-          !player.isBeingGrabbed &&
-          !player.throwTechCooldown &&
-          !(opponent.grabImmune && now < opponent.grabImmuneEndTime)
-        ) {
-          // MATADOR: grab-movement connect into live grab-parry → instant pull.
-          if (opponent.isMatadorParrying) {
-            resolveMatadorPull(opponent, player, room, io);
-            return;
-          }
-
-          // Successful grab - stop all movement and initiate grab
-          // NOTE: grabApproachSpeed was already captured at grab startup (E press)
-
-          player.isGrabbingMovement = false;
-          player.grabMovementVelocity = 0;
-          player.movementVelocity = 0;
-          player.isStrafing = false;
-          // Transition state out of attempting
-          player.grabState = GRAB_STATES.INITIAL;
-          player.grabAttemptType = null;
-
-          // Start the actual grab
-          player.isGrabbing = true;
-          player.grabStartTime = now;
-          player.grabbedOpponent = opponent.id;
-
-          // PHASE 3.2 — "caught the henka": floor the Phase A approach speed when
-          // the grab connects on a victim still in sidestep-recovery / rope-jump
-          // landing, so the read visibly bursts them back cornerward.
-          if (opponent.isSidestepRecovery ||
-              (opponent.isRopeJumping && opponent.ropeJumpPhase === "landing")) {
-            player.grabApproachSpeed = Math.max(player.grabApproachSpeed || 0, GRAB_CATCH_MIN_BURST_SPEED);
-          }
-
-          // Mutual clinch on connect — both have grip automatically.
-          player.hasGrip = true;
-          player.inClinch = true;
-          player.clinchAction = "push";
-          player.gripAcquiredTime = now;
-          player.clinchBeltRequiresM2Release = false;
-          opponent.hasGrip = true;
-          opponent.inClinch = true;
-          opponent.clinchAction = "neutral";
-          opponent.gripAcquiredTime = now;
-          opponent.clinchBeltRequiresM2Release = false;
-
-          // MASTERY Phase 2 (2.3): yotsu conversion (grab-movement connect
-          // path — mirrors the grab-startup connect above). A broken-posture
-          // victim hands the grabber deep grip on connect + a floored Phase A
-          // burst. Flag off / posture intact ⇒ no change.
-          if (MASTERY_P2_POSTURE && opponent.isPostureBroken) {
-            player.grabApproachSpeed = Math.max(
-              player.grabApproachSpeed || 0,
-              GRAB_CATCH_MIN_BURST_SPEED
-            );
-            grantDeepGrip(player, opponent, room, io, "posture");
-          }
-
-          // IMMEDIATE PUSH: Push starts right away (processed after hitstop)
-          // No decision window — push is the default, pull/throw interrupt it
-          player.isGrabPushing = true;
-          player.isGrabWalking = true;
-          player.grabActionType = "push";
-          player.grabDecisionMade = true;
-          player.grabPushStartTime = 0; // Initialized on first tick after hitstop
-          player.grabPushEndTime = 0;
-          opponent.isBeingGrabPushed = true;
-
-          // Reset remaining grab action state
-          player.grabActionStartTime = 0;
-          player.grabDurationPaused = false;
-          player.grabDurationPausedAt = 0;
-          player.isAtBoundaryDuringGrab = false;
-          player.lastGrabPushStaminaDrainTime = 0;
-          player.isAttemptingPull = false;
-          player.isAttemptingGrabThrow = false;
-          
-          // COUNTER GRAB: grab landed while the opponent was raw-parrying (grabbing
-          // during recovery does NOT count — normal grab only).
-          // ARM CLAMP: strong advantage — victim offense locked during the Phase A
-          // burst / convert window; Plant brace remains (not a free/untechable
-          // throw). Clears on burst end, boundary, or once the filed technique
-          // is no longer pending/active.
-          const wasOpponentRawParrying = opponent.isRawParrying;
-          opponent.isCounterGrabbed = wasOpponentRawParrying;
-
-          if (wasOpponentRawParrying) {
-            opponent.isArmClamped = true;
-            applyBalanceDamage(opponent, COUNTER_GRAB_BALANCE_DEBUFF, now);
-            // Counter Grab: grabbed their raw parry — CLAMPED FX + "Counter Grab" banner
-            const grabberPlayerNumber = room.players.indexOf(player) === 0 ? 1 : 2;
-            const centerX = (player.x + opponent.x) / 2;
-            const centerY = (player.y + opponent.y) / 2;
-            const counterId = `counter-grab-${now}-${Math.random().toString(36).substr(2, 9)}`;
-            const clinchId = ensureClinchInstanceId(player, opponent, now);
-            io.in(room.id).emit(
-              "counter_grab",
-              attachCombatPresentation(
-                {
-                  type: "counter_grab",
-                  grabberId: player.id,
-                  grabbedId: opponent.id,
-                  grabberX: player.x,
-                  grabbedX: opponent.x,
-                  x: centerX,
-                  y: centerY,
-                  grabberPlayerNumber,
-                  counterId,
-                },
-                buildClinchPresentation({
-                  interactionType: CLINCH_INTERACTION.COUNTER_GRAB,
-                  clinchInstanceId: clinchId,
-                  actionInstanceId: counterId,
-                  initiator: player,
-                  responder: opponent,
-                  outcome: "COUNTER_GRAB",
-                  contactX: opponent.x,
-                  contactY: CLINCH_EFFECT_MID_Y,
-                  salt: "counter_grab",
-                })
-              )
-            );
-          }
-          
-          // Clear parry success state when starting a grab
-          player.isRawParrySuccess = false;
-          player.isPerfectRawParrySuccess = false;
-          
-          // CRITICAL: Clear ALL action states when being grabbed
-          clearAllActionStates(opponent);
-          opponent.y = GROUND_LEVEL;
-          opponent.isBeingGrabbed = true;
-          opponent.isBeingGrabPushed = false;
-          opponent.lastGrabPushStaminaDrainTime = 0;
-
-          // Latch-tier hitstop — brief "got you" on grab connect
-          triggerHitstopAndEmit(io, room, HITSTOP_GRAB_MS, "grab");
-          
-          // If opponent was at the ropes, clear that state but keep the facing direction locked
-          if (opponent.isAtTheRopes) {
-            timeoutManager.clearPlayerSpecific(opponent.id, "atTheRopesTimeout");
-            opponent.isAtTheRopes = false;
-            opponent.atTheRopesStartTime = 0;
-            // Keep atTheRopesFacingDirection - this will lock their facing during the grab
-          }
-          
-          // Clear all input keys except spacebar (for grab break - unless counter grabbed)
-          opponent.keys.shift = false;
-          opponent.keys.w = false;
-          opponent.keys.a = false;
-          opponent.keys.s = false;
-          opponent.keys.d = false;
-          opponent.keys.e = false;
-          opponent.keys.f = false;
-          opponent.keys.mouse1 = false;
-          opponent.keys.mouse2 = false;
-
-          // Set grab facing direction
-          if (player.isChargingAttack) {
-            player.grabFacingDirection = player.chargingFacingDirection;
-          } else {
-            player.grabFacingDirection = player.facing;
-          }
-        }
-      }
+      // (Legacy duplicate grab-connect path removed — isGrabbingMovement was never set.)
 
       // AP / MATADOR SM before movement: Space-up must drop stance this tick so we
       // never walk a frame in blocking stance (old flurry-linger moonwalk).
@@ -3843,7 +3629,17 @@ function tick(delta) {
               const opponent = room.players.find((p) => p.id !== player.id);
               let effectiveVelocity = player.movementVelocity;
               if (opponent && arePlayersColliding(player, opponent)) {
-                effectiveVelocity *= 0.3;
+                // Contact damp. This used to cut the slide to 30%, which is a
+                // 70% brake applied EXACTLY while you are in slapping range —
+                // so forward movement got suppressed during each slap and
+                // released between them. Playtest read it as the movement
+                // happening "in between each slap" instead of on it, with a
+                // hiccup on every connect.
+                //
+                // Pushbox separation already prevents fighters passing through
+                // each other, so this only needs to take the edge off the
+                // shove, not stop it.
+                effectiveVelocity *= SLAP_SLIDE_CONTACT_DAMP;
               }
               newX = player.x + delta * speedFactor * effectiveVelocity;
             } else {
@@ -3923,8 +3719,10 @@ function tick(delta) {
           player.isFlapping // Block ground strafing during flap (air control is separate)
         ) {
           player.isStrafing = false;
-          // Don't immediately stop on ice unless hit or rope jumping
-          if (!player.isHit && !player.isRopeJumping) {
+          // Don't immediately stop on ice unless hit or rope jumping.
+          // Slap slide already coasts via getIceFriction(slapSlideCommitted) —
+          // skip this extra decay so the committed step-in isn't double-killed.
+          if (!player.isHit && !player.isRopeJumping && !player.isSlapSliding) {
             player.movementVelocity *= MOVEMENT_FRICTION;
           }
           // Also clear grab walking if no movement conditions are met
@@ -4283,8 +4081,8 @@ function tick(delta) {
         }
       }
 
-      // Grab action system (push, pull, throw during grab)
-      updateGrabActions(player, room, io, delta, rooms);
+      // Post-connect grab authority.
+      updateCommandGrab(player, room, io, delta, rooms);
 
 
       // Apply locomotion speed effect. One authoritative, clamped multiplier

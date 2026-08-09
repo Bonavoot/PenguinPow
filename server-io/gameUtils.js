@@ -67,6 +67,9 @@ const {
 const { appendVerbInit, AUDIT_ENABLED } = require("./inputAuditLog");
 
 const { MASTERY_P1_MOMENTUM } = require("./masteryFlags");
+const { handoffVelocity } = require("./momentumTransfer");
+// Constants-only module — safe to require here without a cycle.
+const { stampGrabVariant } = require("./commandGrabInput");
 const {
   OFFENSIVE_AERIAL_OUTCOME,
   OFFENSIVE_AERIAL_CLEANUP_STAGE,
@@ -1763,6 +1766,9 @@ function beginGrabStartup(player, room) {
 
   // Slap clears ice slide the instant isAttacking latches; grab must do the
   // same explicitly — isGrabStartup was never on the ice-slide interrupt list.
+  // Captured first: while sliding, W belongs to slide-jump, so a slide-grab is
+  // never a Throw (see resolveGrabVariant's forbidThrow).
+  const wasIceSliding = !!player.isIceSliding;
   clearIceSlideState(player);
 
   clearChargeState(player, true);
@@ -1786,12 +1792,17 @@ function beginGrabStartup(player, room) {
   logVerbInitiation(room, player, "grab", entryVel);
 
   // Face the opponent so the lunge commits toward them (mirrors slap).
-  if (room && Array.isArray(room.players)) {
-    const opponent = room.players.find((p) => p.id !== player.id);
-    if (opponent && player.atTheRopesFacingDirection == null) {
-      player.facing = player.x < opponent.x ? -1 : 1;
-    }
+  const grabOpponent =
+    room && Array.isArray(room.players)
+      ? room.players.find((p) => p.id !== player.id)
+      : null;
+  if (grabOpponent && player.atTheRopesFacingDirection == null) {
+    player.facing = player.x < grabOpponent.x ? -1 : 1;
   }
+
+  // COMMAND GRAB: which grab this is gets decided here from the direction around
+  // the M2 edge, and stays revisable until the grab goes active. Harmless with
+  stampGrabVariant(player, grabOpponent, now, wasIceSliding);
   if (isActionFacingOwnershipV2Enabled()) {
     const grabId = mintActionFacingInstanceId(
       player,
@@ -2044,7 +2055,14 @@ function endHitKnockback(player) {
     return;
   }
   if (Math.abs(player.knockbackVelocity?.x || 0) > 0.01) {
-    player.movementVelocity = player.knockbackVelocity.x;
+    // DISTANCE-PRESERVING HANDOFF. This used to assign the leftover knockback
+    // velocity straight across. Because the coast channel decays ~4x slower
+    // than the knockback channel it came from, that residual silently
+    // travelled ~3.9x further than it had left to run — most of why a passive
+    // victim ate 385px from a palm thrust while a braking one ate 107px.
+    // Scaling by the friction ratio makes the glide carry exactly the distance
+    // the shove still owed, so an authored number stays the number.
+    player.movementVelocity = handoffVelocity(player.knockbackVelocity.x);
   }
   player.knockbackVelocity.x = 0;
   player.isHit = false;
@@ -2069,7 +2087,8 @@ function endHitKnockback(player) {
 function finishAirHitFallLanding(player) {
   if (!player) return;
   if (Math.abs(player.knockbackVelocity?.x || 0) > 0.01) {
-    player.movementVelocity = player.knockbackVelocity.x;
+    // Same distance-preserving conversion as endHitKnockback.
+    player.movementVelocity = handoffVelocity(player.knockbackVelocity.x);
   }
   player.knockbackVelocity.x = 0;
   player.isSlapKnockback = false;

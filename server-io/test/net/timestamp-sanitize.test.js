@@ -6,14 +6,14 @@ const {
   MAX_PARRY_BACKDATE_MS,
   INPUT_BACKDATE_MIN_MS,
   INPUT_PRESS_MONOTONIC_SLACK_MS,
-} = require("../../../constants");
+} = require("../../constants");
 const {
   clampTrustedPressGameTime,
   getPlayerInputBackdateCapMs,
   resolvePlayerNetRttMs,
   lagCompensatedFromPress,
   updatePlayerNetEstimate,
-} = require("../../../gameUtils");
+} = require("../../gameUtils");
 
 describe("timestamp sanitization (clinch-relevant)", () => {
   let player;

@@ -229,6 +229,11 @@ function acquireHitstunFacingOwner(victim, direction) {
 // MASTERY OVERHAUL feature flags (Phase 1: momentum; Phase 2: posture;
 // Phase 3: cadence; Phase 4: analog resolutions & risk dials).
 const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P3_CADENCE, MASTERY_P4_ANALOG, MASTERY_P5_ASSISTS } = require("./masteryFlags");
+const MomentumTransfer = require("./momentumTransfer");
+const { handoffVelocity, SLAP_CHASE_RATIO, CHASE_SPEED_CAP } = MomentumTransfer;
+// Dive speed is raw px/tick; this converts it into the same 0..V_REF scale
+// ground moves use, tuned so a terminal-velocity dive lands near the top.
+const DIVE_MOMENTUM_SCALE = 0.45;
 
 const {
   grabCatchesSlap,
@@ -1423,7 +1428,7 @@ function applyPalmTradeHit(victim, attacker, room, io, opts = {}) {
         return;
       }
       if (Math.abs(victim.knockbackVelocity.x) > 0.01) {
-        victim.movementVelocity = victim.knockbackVelocity.x;
+        victim.movementVelocity = handoffVelocity(victim.knockbackVelocity.x);
       }
       victim.knockbackVelocity.x = 0;
       victim.isHit = false;
@@ -1743,7 +1748,7 @@ function applyTradeHit(victim, attacker, room, io, opts = {}) {
       // the shove flows into a smooth slide-to-stop — exactly like a normal slap
       // victim. Without this the trade slide hard-stopped and read as "no slide".
       if (Math.abs(victim.knockbackVelocity.x) > 0.01) {
-        victim.movementVelocity = victim.knockbackVelocity.x;
+        victim.movementVelocity = handoffVelocity(victim.knockbackVelocity.x);
       }
       victim.knockbackVelocity.x = 0;
       victim.isHit = false;
@@ -1930,7 +1935,7 @@ function resolveSlapChargedTrade(slapper, charged, rooms, io, meta = {}) {
         return;
       }
       if (Math.abs(slapper.knockbackVelocity.x) > 0.01) {
-        slapper.movementVelocity = slapper.knockbackVelocity.x;
+        slapper.movementVelocity = handoffVelocity(slapper.knockbackVelocity.x);
       }
       slapper.knockbackVelocity.x = 0;
       slapper.isHit = false;
@@ -3045,15 +3050,48 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           : (MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN);
       // MASTERY Phase 4 (4.2): tipQuality ramps posture drain (spacing reward);
       // deep/point-blank is baseline. tipPostureMult === 1 with the flag off.
-      const slapDrain = slapDrainBase * postureCounterMult * tipPostureMult;
+      // POSTURE ON THE IMPACT CHANNEL. Flat per-move constants meant a
+      // flat-footed poke and a full-speed collision chipped identically, and
+      // once compounding started landing whole barrages the strikes were
+      // breaking posture far too fast. Chip now scales with how hard the
+      // collision actually was, and the per-move bases are calibrated down so
+      // GRABS are the posture breaker (see CMD_*_POSTURE_CHIP).
+      //
+      // Sampled locally because this block runs before the transfer resolves.
+      const postureCloseDir = player.facing === 1 ? -1 : 1;
+      const postureVClose = MomentumTransfer.sampleClosingSpeed(
+        player,
+        otherPlayer,
+        postureCloseDir,
+        currentTime
+      );
+      const slapDrain =
+        MomentumTransfer.postureChipForMove("slap", postureVClose) *
+        (slapDrainBase / (MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN)) *
+        postureCounterMult *
+        tipPostureMult;
       applyBalanceDamage(otherPlayer, slapDrain, currentTime);
     } else if (player.isPalmThrust) {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN);
-      const palmDrain = (MASTERY_P2_POSTURE ? BALANCE_PALM_HIT_DRAIN_P2 : BALANCE_CHARGED_HIT_DRAIN) * postureCounterMult;
+      const palmVClose = MomentumTransfer.sampleClosingSpeed(
+        player,
+        otherPlayer,
+        player.facing === 1 ? -1 : 1,
+        currentTime
+      );
+      const palmDrain =
+        MomentumTransfer.postureChipForMove("palm", palmVClose) * postureCounterMult;
       applyBalanceDamage(otherPlayer, palmDrain, currentTime);
     } else {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - CHARGED_HIT_VICTIM_STAMINA_DRAIN);
-      const chargedDrain = (MASTERY_P2_POSTURE ? BALANCE_CHARGED_HIT_DRAIN_P2 : BALANCE_CHARGED_HIT_DRAIN) * postureCounterMult;
+      const chargedVClose = MomentumTransfer.sampleClosingSpeed(
+        player,
+        otherPlayer,
+        player.facing === 1 ? -1 : 1,
+        currentTime
+      );
+      const chargedDrain =
+        MomentumTransfer.postureChipForMove("charged", chargedVClose) * postureCounterMult;
       applyBalanceDamage(otherPlayer, chargedDrain, currentTime);
     }
 
@@ -3161,7 +3199,13 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     finalKnockbackMultiplier *= bashoKbFactor;
 
     let isCinematicKill = false;
+    // Set by whichever move branch resolves below; feeds the impact channel
+    // (hitstop, posture chip) and the presentation payload so the client can
+    // scale shake/VFX/SFX to what actually happened rather than to a per-move
+    // constant. Null for branches that do not deal knockback.
+    let lastTransfer = null;
     const knockbackAllowed = canApplyKnockback(otherPlayer);
+
 
     if (knockbackAllowed || isSlapAttack || isLowKick) {
       if (isSlapAttack) {
@@ -3234,13 +3278,44 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           // MASTERY Phase 1: the drift also inherits the attacker's entry
           // (slapMomentumMult, 1.2) AND the victim's into/brace momentum
           // (victimKbScale, 1.3), capped in total. Flag off ⇒ today's formula.
-          otherPlayer.knockbackVelocity.x = MASTERY_P1_MOMENTUM
-            ? pushDirection *
-              Math.min(
-                SLAP_ONHIT_VICTIM_DRIFT * slapMomentumMult * finalKnockbackMultiplier * victimKbScale * cadenceStepMult * tipDriftMult,
-                SLAP_ONHIT_VICTIM_DRIFT_CAP
-              )
-            : pushDirection * SLAP_ONHIT_VICTIM_DRIFT * finalKnockbackMultiplier * cadenceStepMult * tipDriftMult;
+        // ── MOMENTUM TRANSFER ────────────────────────────────────────────
+        // Distance comes from the attacker's EARNED speed at press time, not
+        // from a fixed drift constant. `slapEntryAligned` is already the
+        // press-time snapshot (gameFunctions.js), which is also what makes
+        // this latency-fair: the send matches the speed the attacker saw on
+        // their own screen, not the decayed speed the packet arrived with.
+        //
+        // finalKnockbackMultiplier still carries counter / GORED / POWER /
+        // BASHO scaling; cadence and tip bonuses ride along as before. The
+        // per-hit caps (SLAP_ONHIT_VICTIM_DRIFT_CAP, victimKbScale) are gone —
+        // MAX_SEND_PX in applyTransferImpulse is the only ceiling now.
+        const slapTransfer = MomentumTransfer.resolveTransfer({
+          attacker: player,
+          victim: otherPlayer,
+          moveKey: "slap",
+          dirToVictim: pushDirection,
+          nowSim: currentTime,
+          mult: finalKnockbackMultiplier * cadenceStepMult * tipDriftMult,
+          selfOverride: Math.max(0, player.slapEntryAligned || 0),
+        });
+        otherPlayer.knockbackVelocity.x = slapTransfer.velocity;
+        lastTransfer = slapTransfer;
+
+        // CHASE. The attacker's forward push now tracks the victim's actual
+        // drift so the pair stays glued at any momentum level — a flat
+        // constant would fall out of range on a big send and overrun on a
+        // small one. Converted through handoffVelocity because chase lives in
+        // the coast channel while the send lives in the knockback channel.
+        //
+        // CRITICAL: credited as GRANTED. This velocity moves the attacker but
+        // must never count as offence for the next slap, or each hit would
+        // power up the one after it and mashing would spiral (see
+        // momentumTransfer §granted-velocity, and the regression test).
+        const rawChase = handoffVelocity(slapTransfer.velocity) * SLAP_CHASE_RATIO;
+        const chase =
+          Math.sign(rawChase) * Math.min(Math.abs(rawChase), CHASE_SPEED_CAP);
+        player.movementVelocity = chase;
+        MomentumTransfer.creditGrantedVelocity(player, chase, currentTime);
         }
 
       } else if (isLowKick) {
@@ -3251,13 +3326,18 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         otherPlayer.isBurstKnockback = true;
         otherPlayer.isChargedKnockback = false;
         otherPlayer.burstKnockbackStartTime = currentTime;
-        otherPlayer.knockbackVelocity.x =
-          knockbackDirection *
-          LOW_KICK_KB_VELOCITY *
-          bashoKbFactor *
-          (isGored ? GORED_KB_MULT : 1);
+        const lowKickTransfer = MomentumTransfer.resolveTransfer({
+          attacker: player,
+          victim: otherPlayer,
+          moveKey: "lowKick",
+          dirToVictim: knockbackDirection,
+          nowSim: currentTime,
+          mult: bashoKbFactor * (isGored ? GORED_KB_MULT : 1),
+        });
+        otherPlayer.knockbackVelocity.x = lowKickTransfer.velocity;
         otherPlayer.knockbackVelocity.y = 0;
         otherPlayer.movementVelocity = 0;
+        lastTransfer = lowKickTransfer;
         otherPlayer.slapKnockbackCanRingOut = false;
 
         player.movementVelocity = 0;
@@ -3289,15 +3369,33 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         // strike. This IS the palm's momentum treatment (it deliberately skips
         // the generic 1.3 victim scale to avoid double-counting closing speed).
         // Flag off / closing speed 0 ⇒ today's PALM_THRUST_KB_VELOCITY.
-        const palmBase = MASTERY_P1_MOMENTUM
-          ? Math.min(
-              PALM_THRUST_KB_VELOCITY + K_PALM_MATADOR * Math.max(0, victimIntoHit),
-              PALM_MATADOR_KB_CAP
-            )
-          : PALM_THRUST_KB_VELOCITY;
-        otherPlayer.knockbackVelocity.x = knockbackDirection * palmBase * bashoKbFactor;
+        // ── MOMENTUM TRANSFER ────────────────────────────────────────────
+        // The palm is rooted, so its `vSelf` is whatever speed it carried into
+        // the stance — a palm thrown out of a slide sends, a flat-footed one
+        // pays the floor.
+        //
+        // The matador bonus (K_PALM_MATADOR / PALM_MATADOR_KB_CAP) is retired
+        // rather than ported. It existed to turn a charging victim's own speed
+        // into extra distance, which is exactly what the impact channel now
+        // does for every move: a victim running onto a palm produces maximum
+        // closing speed, so it lands with the biggest hitstop and the biggest
+        // posture chip in the game. Punishing a charge stops being a palm
+        // special case and becomes a property of collisions.
+        const palmTransfer = MomentumTransfer.resolveTransfer({
+          attacker: player,
+          victim: otherPlayer,
+          moveKey: "palm",
+          dirToVictim: knockbackDirection,
+          nowSim: currentTime,
+          mult: bashoKbFactor,
+          // Press-time snapshot taken before the palm roots itself — see
+          // gameFunctions.js. Without it the palm always read zero speed.
+          selfOverride: Math.max(0, player.palmEntryAligned || 0),
+        });
+        otherPlayer.knockbackVelocity.x = palmTransfer.velocity;
         otherPlayer.knockbackVelocity.y = 0;
         otherPlayer.movementVelocity = 0;
+        lastTransfer = palmTransfer;
 
         const distanceToBoundaryInKbDir =
           knockbackDirection > 0
@@ -3393,9 +3491,59 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         // resolved at the connect position, so this only changes carry distance
         // (rope clamps still apply). victimKbScale is exactly 1 when the flag is
         // off ⇒ byte-identical.
-        otherPlayer.knockbackVelocity.x =
-          2.7 * knockbackDirection * finalKnockbackMultiplier * kbBoost * victimKbScale;
+        // ── MOMENTUM TRANSFER ────────────────────────────────────────────
+        // The charged headbutt is the one move whose `vSelf` is manufactured by
+        // the move itself: the lunge speed already scales with charge
+        // (1.5 → 7.0, index.js), so charge buys momentum which buys distance.
+        // That is the intended shape — it makes the headbutt the game's
+        // momentum GENERATOR rather than a second physics system.
+        //
+        // victimKbScale is retired: a victim charging in now feeds the impact
+        // channel (hitstop + posture), not the distance channel. kbBoost keeps
+        // the cinematic KO flying out of frame.
+        // BUG FIX: the charged lunge advances `x` directly (index.js, via
+        // `lungeSpeed`) and never writes `movementVelocity`. So sampling the
+        // attacker's speed the normal way read ZERO, and every charged hit —
+        // including a full 100% release — resolved at its floor. Playtest:
+        // "the charged attack may as well not even be an attack anymore. Even
+        // at full charge it hits like a wet noodle."
+        //
+        // Mapped from charge fraction rather than raw lunge speed. The raw
+        // lunge runs 1.5→7.0, but V_REF is 2.4, so passing it directly pinned
+        // the curve at roughly 50% charge and every release above that was
+        // identical. Mapping the charge fraction across the full range keeps
+        // the whole charge meter meaningful: 110px at 0%, 234px at 50%, 460px
+        // at 100%.
+        // Prefer the release snapshot (gameFunctions), fall back to the live
+        // field. Both are 0-100.
+        const releasePct = Number.isFinite(player.chargedReleasePower)
+          ? player.chargedReleasePower
+          : Number(chargePercentage) || 0;
+        const chargeFraction = Math.max(0, Math.min(releasePct / 100, 1));
+        const chargedLungeSpeed = MomentumTransfer.V_REF * chargeFraction;
+        // DISTANCE MULT DELIBERATELY EXCLUDES the charge component.
+        // `finalKnockbackMultiplier` runs 0.45 (0% charge) → 1.2 (100%), and is
+        // still needed as-is for `chargedKillReach()` below. But charge already
+        // scales distance through `vSelf`, so passing it here double-counted at
+        // the top and CRUSHED the bottom — a 0% charge came out at 49px, well
+        // under a slap. Divide the charge term back out and keep only the
+        // earned multipliers (counter / GORED / POWER / BASHO).
+        const chargeDistanceTerm = 0.45 + Math.pow(chargeFraction, 1.3) * 0.75;
+        const chargedEarnedMult =
+          chargeDistanceTerm > 0 ? finalKnockbackMultiplier / chargeDistanceTerm : 1;
+
+        const chargedTransfer = MomentumTransfer.resolveTransfer({
+          attacker: player,
+          victim: otherPlayer,
+          moveKey: "charged",
+          dirToVictim: knockbackDirection,
+          nowSim: currentTime,
+          mult: chargedEarnedMult * kbBoost,
+          selfOverride: chargedLungeSpeed,
+        });
+        otherPlayer.knockbackVelocity.x = chargedTransfer.velocity;
         otherPlayer.movementVelocity = 0;
+        lastTransfer = chargedTransfer;
 
         // Plant through impact (Honda headbutt) — no attacker bounce-back.
         // Palm / cinematic already held ground; normal charged hits do too.
@@ -3478,6 +3626,27 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
               isLowKick: !!isLowKick,
               // Drives the client charged-hit shake scaling (heavier charge = bigger crunch).
               chargePercentage: isSlapAttack ? 0 : chargePercentage,
+              // ── MOMENTUM TELEMETRY (client presentation) ──────────────────
+              // The escalation and the momentum bonus are both real but
+              // currently INVISIBLE: every slap in a barrage plays the same
+              // animation, same VFX, same freeze, and only the slide distance
+              // differs. Playtest: "the ramp up seems invisible if there is
+              // one, like all back to back hits feel somewhat similar."
+              //
+              // These let the client sell it. `power` (0..1) is the distance
+              // channel — scale spark size, trail length, squash. `impact`
+              // (0..1) is the collision channel — scale shake and SFX weight.
+              // They deliberately disagree: a slide-in on a stationary target
+              // is high power / low impact; a head-on is the reverse.
+              // `pressureStep` is the Nth consecutive connect, for a visibly
+              // building tell (bigger spark / rising pitch each hit).
+              momentumPower: lastTransfer ? lastTransfer.telemetry.power : 0,
+              momentumImpact: lastTransfer ? lastTransfer.telemetry.impact : 0,
+              momentumSendPx: lastTransfer ? lastTransfer.telemetry.sendPx : 0,
+              momentumSelfSpeed: lastTransfer
+                ? Number((lastTransfer.vSelf || 0).toFixed(2))
+                : 0,
+              pressureStep: lastTransfer ? lastTransfer.pressureStep || 1 : 1,
               timestamp: Date.now(),
               hitId,
               // Drives hit VFX styling (counter = special color, punish = label
@@ -3634,27 +3803,55 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         // Freeze = rarity × impact. Symmetric sim pause keeps frame advantage.
         // Slap = light flurry; palm = medium-heavy; charged scales 160→280.
         // ============================================
-        if (isSlapAttack || isLowKick) {
-          // Light-strike tier. Low kick shares slap freeze (not charged weight).
-          // EXPOSED / tip bonuses are additive — special, not a new tier.
+        // ── IMPACT CHANNEL ───────────────────────────────────────────────
+        // Hitstop stops being a property of WHICH MOVE and becomes a property
+        // of HOW HARD THE COLLISION WAS. The old fixed ladder (slap 70 / burst
+        // 160 / charged 160-280) meant a flat-footed poke and a full-speed
+        // head-on collision froze identically as long as the same button threw
+        // them — which is the single biggest reason light hits and heavy reads
+        // felt interchangeable.
+        //
+        // This also protects against the redesign's main risk. Floors deliver
+        // far less ground than the legacy no-input numbers, so if displacement
+        // were the only impact cue, light hits would read as BROKEN rather than
+        // LIGHT. Scaling freeze with closing speed gives the game a dynamic
+        // range it never had: 45ms for a standing tick, 260ms for a tachi-ai.
+        if (lastTransfer && (isSlapAttack || isLowKick || player.isPalmThrust)) {
+          const impactHitstop =
+            lastTransfer.hitstopMs +
+            (isGored ? GORED_HITSTOP_BONUS_MS : 0) +
+            (isSlapAttack ? tipHitstopBonus : 0);
+          triggerHitstopAndEmit(
+            io,
+            currentRoom,
+            impactHitstop,
+            player.isPalmThrust ? "burst" : "slap"
+          );
+
+          // Screen shake stays client-side (useCamera). It previously keyed off
+          // knockback magnitude alone; the player_hit payload now carries the
+          // impact/power split so shake can track the collision rather than the
+          // send. See client wiring.
+        } else if (isSlapAttack || isLowKick) {
+          // No transfer resolved (knockback immunity suppressed it) — keep the
+          // confirm readable with the legacy light freeze.
           const slapHitstop =
             HITSTOP_SLAP_MS +
             (isGored ? GORED_HITSTOP_BONUS_MS : 0) +
             (isSlapAttack ? tipHitstopBonus : 0);
           triggerHitstopAndEmit(io, currentRoom, slapHitstop, "slap");
-
-          // Screen shake is handled client-side by useCamera (driven by hitCounter +
-          // knockback magnitude) — no need to double-shake from the server here.
         } else if (player.isPalmThrust) {
-          // Medium-heavy burst — heavier than slap, below perfect/full-charge.
           const palmHitstop =
             HITSTOP_BURST_MS + (isGored ? GORED_HITSTOP_BONUS_MS : 0);
           triggerHitstopAndEmit(io, currentRoom, palmHitstop, "slap");
         } else {
-          // Charged: confirm-floor → skill/max. Cinematic kill = presentation tier.
+          // Charged: cinematic KO keeps its authored presentation freeze;
+          // everything else rides the impact channel like the other strikes.
           const hitstopDuration = isCinematicKill
             ? CINEMATIC_KILL_HITSTOP_MS
-            : getChargedHitstop(chargePercentage / 100) +
+            : (lastTransfer
+                ? lastTransfer.hitstopMs
+                : getChargedHitstop(chargePercentage / 100)) +
               (isGored ? GORED_HITSTOP_BONUS_MS : 0);
           triggerHitstopAndEmit(io, currentRoom, hitstopDuration, isCinematicKill ? "cinematic_kill" : "charged");
 
@@ -4351,8 +4548,33 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   opponent.hitCounter = (opponent.hitCounter || 0) + 1;
   opponent.isBurstKnockback = true;
   opponent.burstKnockbackStartTime = currentTime;
-  opponent.knockbackVelocity.x =
-    knockbackDirection * FLAP_BODYSLAM_KB_VELOCITY * flapKbScale * flapReadMult;
+  // A dive's momentum is mostly VERTICAL. Sampling horizontal speed the way a
+  // ground strike does made a straight-down slam resolve at its floor — the
+  // attacker kept more momentum than the victim received, which playtest
+  // spotted immediately ("the body slam is moving ME more than the opponent").
+  //
+  // Use the full flight speed instead: falling fast IS the commitment, and a
+  // shallow drop should land soft while a committed dive sends. Scaled so a
+  // terminal-velocity dive lands near the top of the range without pinning it.
+  const diveSpeedPxPerTick = Math.hypot(
+    flapper.slideJumpVelocityX || 0,
+    flapper.slideJumpVelocityY || 0
+  );
+  const diveMomentum = Math.min(
+    MomentumTransfer.V_REF,
+    (diveSpeedPxPerTick / MomentumTransfer.PX_PER_VELOCITY_TICK) * DIVE_MOMENTUM_SCALE
+  );
+
+  const slamTransfer = MomentumTransfer.resolveTransfer({
+    attacker: flapper,
+    victim: opponent,
+    moveKey: "bodySlam",
+    dirToVictim: knockbackDirection,
+    nowSim: currentTime,
+    mult: flapKbScale * flapReadMult,
+    selfOverride: diveMomentum,
+  });
+  opponent.knockbackVelocity.x = slamTransfer.velocity;
   opponent.knockbackVelocity.y = 0;
   opponent.movementVelocity = 0;
 

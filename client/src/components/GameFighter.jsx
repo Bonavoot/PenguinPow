@@ -3965,27 +3965,54 @@ const GameFighter = ({
         // camera, so we skip here to avoid stepping on it.
         if (index === 0 && !data.cinematicKill) {
           const shakeDir = data.knockbackDirection || (data.facing === 1 ? -1 : 1);
+
+          // ── MOMENTUM-SCALED SHAKE ────────────────────────────────────────
+          // The server sends two independent channels per hit:
+          //   momentumPower  (0..1) how far this hit SENDS them  — the ramp
+          //   momentumImpact (0..1) how hard the COLLISION was   — the crunch
+          // They deliberately disagree: a slide-in on a stationary target is
+          // high power / low impact; a head-on is the reverse. Blending both
+          // is what makes a 4th chained slap visibly heavier than the 1st,
+          // which is otherwise invisible — the sends quadruple across a
+          // barrage but every hit used to shake identically.
+          const mPower = Math.max(0, Math.min(data.momentumPower || 0, 1));
+          const mImpact = Math.max(0, Math.min(data.momentumImpact || 0, 1));
+          const momentumScale = (base, powerW = 0.55, impactW = 0.35) =>
+            base * (1 + powerW * mPower + impactW * mImpact);
+
           if (data.isGored) {
             // EXPOSED (matador punish) — heavier crack than a normal slap/charge.
             addShake("slap_parry", { dirX: shakeDir, scale: 0.95 });
           } else if (data.isPalmThrust) {
             // Palm is a planted burst — use throw-landing weight, not charged crunch.
-            addShake("throw_landing", { dirX: shakeDir, scale: 1.05 });
+            addShake("throw_landing", {
+              dirX: shakeDir,
+              scale: momentumScale(1.05),
+            });
           } else if (data.attackType === "charged") {
-            const chargeScale =
-              0.8 + Math.min((data.chargePercentage || 0) / 100, 1) * 0.45;
-            addShake("charged_hit", { scale: chargeScale, dirX: shakeDir });
+            // Charge already scales the send, so power carries the curve here
+            // rather than reading chargePercentage a second time.
+            addShake("charged_hit", {
+              scale: momentumScale(0.8, 0.5, 0.3),
+              dirX: shakeDir,
+            });
           } else if (data.attackType === "flap") {
             // Belly-slam (flap / slide-jump dive) — heavier plant than a slap poke.
-            addShake("throw_landing", { dirX: shakeDir, scale: 1.15 });
+            addShake("throw_landing", {
+              dirX: shakeDir,
+              scale: momentumScale(1.15),
+            });
           } else {
-            // MASTERY Phase 5 (5.2): a momentum hit (dash-in / carried speed)
-            // punches the camera harder than a flat-footed slap. Tip spacing
-            // gets a snappier crack (lighter than momentum weight). Server-gated.
-            let slapShake = 1;
-            if (data.momentumHit) slapShake = 1.4;
-            else if (data.tipSlap) slapShake = 1.15 + (data.tipQuality || 0.45) * 0.1;
-            addShake("slap_hit", { dirX: shakeDir, scale: slapShake });
+            // Slaps: base stays light so a poke reads as a poke, but a chained
+            // or dash-in slap escalates continuously instead of flipping a
+            // binary `momentumHit` flag. Tip spacing keeps its snappier crack.
+            const tipBonus = data.tipSlap
+              ? 0.15 + (data.tipQuality || 0.45) * 0.1
+              : 0;
+            addShake("slap_hit", {
+              dirX: shakeDir,
+              scale: momentumScale(1 + tipBonus),
+            });
           }
         }
 
@@ -4278,8 +4305,24 @@ const GameFighter = ({
           // the incoming shove ("dig-in" against it). Both reuse the existing
           // skid preset and only fire on server-gated flags ⇒ nothing extra with
           // the flag off.
-          if (data.momentumHit) {
-            emitParticles("slapSkidDust", { x: data.x + skidDir * 6, y: data.y, dir: skidDir });
+          // MOMENTUM SKID. Deliberately reuses the existing skid preset rather
+          // than introducing a new effect: on an ice game, "how much ice got
+          // kicked up" is the natural read for "how hard were they sent", and
+          // scaling approved art can't look bolted on the way a new emitter
+          // would. This replaces a binary momentumHit puff, which meant the
+          // 1st and 4th slap of a barrage threw identical spray despite the
+          // sends quadrupling.
+          //
+          // Capped at two extra puffs on purpose — enough to read as an
+          // escalating spray, not enough to become a particle storm.
+          const skidPower = Math.max(0, Math.min(data.momentumPower || 0, 1));
+          const extraSkids = skidPower > 0.66 ? 2 : skidPower > 0.33 ? 1 : 0;
+          for (let i = 1; i <= extraSkids; i++) {
+            emitParticles("slapSkidDust", {
+              x: data.x + skidDir * (6 * i),
+              y: data.y,
+              dir: skidDir,
+            });
           }
           if (data.braked) {
             emitParticles("slapSkidDust", { x: data.x, y: data.y, dir: -skidDir });
@@ -4303,7 +4346,12 @@ const GameFighter = ({
           if (data.isCounterHit) amp += 0.2;
           else if (data.isPunish) amp += 0.15;
           if (data.isArmorBreak) amp += 0.15;
-          if (data.momentumHit) amp += 0.12;
+          // Continuous rather than a binary momentumHit bump, so the crumple
+          // deepens across a barrage the same way the send does. Both channels
+          // contribute: how far they were sent, and how hard the collision was.
+          amp +=
+            0.22 * Math.max(0, Math.min(data.momentumPower || 0, 1)) +
+            0.14 * Math.max(0, Math.min(data.momentumImpact || 0, 1));
           if (data.tipSlap) amp += 0.08;
           // Braked knockback = the victim dug in — displacement is the tell
           // that shrinks, so the body deformation shrinks with it.

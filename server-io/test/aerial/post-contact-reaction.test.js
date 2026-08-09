@@ -10,11 +10,11 @@ const assert = require("node:assert/strict");
 const {
   GROUND_LEVEL,
   AP_STAGGER_FLAP_MS,
-  FLAP_BODYSLAM_KB_VELOCITY,
   HITSTOP_BURST_MS,
   SLAP_HIT_VICTIM_STAMINA_DRAIN,
   BURST_STUN_MS,
 } = require("../../constants");
+const { pxToKbVelocity, profileFor } = require("../../momentumTransfer");
 const {
   setSimRoomResolver,
   timeoutManager,
@@ -126,8 +126,15 @@ describe("offensive aerial — Phase 4 flag ON reactions", () => {
     );
     assert.equal(s.attacker.slideJumpHitLanded, true);
     assert.equal(s.defender.stamina, stam - SLAP_HIT_VICTIM_STAMINA_DRAIN);
-    assert.equal(Math.abs(s.defender.knockbackVelocity.x), FLAP_BODYSLAM_KB_VELOCITY);
-    assert.equal(s.io.find("hitstop")[0].payload.duration, HITSTOP_BURST_MS);
+    // MOMENTUM TRANSFER: a slam with no carried speed resolves at the bodySlam
+    // floor rather than the retired fixed FLAP_BODYSLAM_KB_VELOCITY, and
+    // hitstop scales with closing speed instead of the per-move ladder.
+    assert.ok(
+      Math.abs(s.defender.knockbackVelocity.x) >=
+        pxToKbVelocity(profileFor("bodySlam").floor) - 1e-9,
+      "a clean slam sends at least its floor; dive speed and pressure add on top"
+    );
+    assert.ok(s.io.find("hitstop")[0].payload.duration > 0);
     assert.equal(s.attacker.isSlideJumping, true);
     assert.ok(s.attacker.y > GROUND_LEVEL);
   });

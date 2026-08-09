@@ -58,7 +58,7 @@ const {
   queryCombatVolumes,
   queryCandidateContacts,
 } = require("../../../combatVolumeQuery");
-const { createMockIo } = require("../../clinch/harness/mockIo");
+const { createMockIo } = require("../../helpers/mockIo");
 
 const DEFAULT_TICK_MS = 1000 / TICK_RATE;
 let harnessId = 0;

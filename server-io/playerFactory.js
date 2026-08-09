@@ -473,6 +473,35 @@ function createInitialPlayerState(overrides = {}) {
     // on-hit ground-transfer inheritance in processHit (gated by MASTERY_P1_MOMENTUM).
     slapEntryAligned: 0,
 
+    // === Command grab ===
+    // Variant selection: stamped at the M2 edge, revisable until the grab goes
+    // active. grabW/A/DTapTime feed the selector; held W refreshes its own stamp.
+    grabVariant: null,
+    grabVariantLocked: false,
+    grabVariantThrowForbidden: false,
+    grabWTapTime: 0,
+    grabATapTime: 0,
+    grabDTapTime: 0,
+    // Post-connect phase machine: belt-grip read → variant → (Drive only) carry.
+    cmdGrabPhase: null,
+    cmdGrabPhaseStart: 0,
+    cmdGrabVariant: null,
+    cmdGrabKillBalance: null,
+    cmdGrabVictimBalance: null,
+    cmdGrabCarryStartX: 0,
+    cmdGrabCarryTargetX: 0,
+    cmdGrabCarryDuration: 0,
+    cmdGrabCarryDir: 0,
+    cmdGrabCarryAttachFrom: null,
+    cmdGrabCarryAttachTo: null,
+    cmdGrabAtRope: false,
+    cmdGrabEdgeWaiver: false,
+    cmdGrabConnectGap: 0,
+    cmdGrabCinchFromX: null,
+    cmdGrabCinchToX: null,
+    cmdGrabVictimCinchFromX: null,
+    cmdGrabVictimCinchToX: null,
+
     // === Grab actions (push/pull/separate) ===
     isGrabPushing: false,
     isBeingGrabPushed: false,
@@ -518,23 +547,15 @@ function createInitialPlayerState(overrides = {}) {
     clinchThrowFailStagger: false,
     isClinchOpen: false,
     clinchOpenHideStars: false,
-    clinchOpenUntil: 0,
     hasDeepGrip: false,
     clinchShoveLead: null,
     isClinchCommittedDrive: false,
     isClinchPerfectBracing: false,
-    clinchDriveHoldStart: 0,
-    clinchDrivePlantCancelUntil: 0,
-    clinchPushLossStart: 0,
     clinchBraceSimTime: 0,
-    clinchBraceLatchUntil: 0, // Throw/Pull brace grace after Plant release
     // "<actorId>:<clinchThrowStartTime>" while a fresh Brace is armed against
     // that specific incoming technique. Survives key release until impact.
-    clinchBraceArmedTechnique: null,
     // Brace attempt cycle: sim time of the current attempt's press. ACTIVE for
     // CLINCH_BRACE_ACTIVE_MS, then SETTLE, then READY for a genuinely new edge.
-    clinchBraceAttemptStart: 0,
-    clinchBraceAttemptRefunded: false,
     clinchBracePhase: null, // 'active' | 'settle' | null — presentation mirror
     clinchBracePressGameTime: 0,
     clinchThrowArcDistance: 0,
@@ -543,10 +564,7 @@ function createInitialPlayerState(overrides = {}) {
     // derived from `balance` each tick behind MASTERY_P2_POSTURE (false when
     // the flag is off).
     isPostureBroken: false,
-    deepGripPushStart: 0,
-    clinchPushRampStart: 0,
     // Eased 0..1 weight for the Open-punish shove (no velocity snap at Open's edges)
-    clinchOpenPunishBlend: 0,
     postGrabInputBuffer: false,
     grabImmune: false,
     grabImmuneEndTime: 0,
@@ -559,12 +577,7 @@ function createInitialPlayerState(overrides = {}) {
     clinchAttachDistance: 0,
     inClinch: false,
     clinchAction: null,
-    clinchOpponent: null,
-    clinchStalemateStart: 0,
-    clinchStalemateLastX: 0,
-    clinchStalemateLastBalance: 0,
     clinchBreakRequest: false,
-    clinchBreakRequestTime: 0,
     isClinchPushing: false,
     isClinchPlanting: false,
     lastPlantStaminaDrainTime: 0,
@@ -588,20 +601,11 @@ function createInitialPlayerState(overrides = {}) {
     _lastInputCommandAcceptAt: 0,
     _lastInputCommandMeta: null,
     clinchThrowRequest: null,
-    clinchThrowRequestTime: 0,
-    clinchThrowActive: false,
-    clinchThrowType: null,
-    clinchThrowStartTime: 0,
     clinchThrowAnimMs: 0,
     clinchThrowCooldown: false, // retired (Open/recovery); kept for safe cleanup
-    clinchThrowUsedDeepGrip: false,
-    clinchThrowWasCounter: false,
     clinchThrowKillBalance: null, // Balance at technique commit (pre-initiation drain); kill check only
-    clinchThrowInitiationDrain: 0, // Stance+edge drain applied at commit (resist refunds excess)
-    clinchThrowInitiationEdgeBonus: 0,
     isClinchThrowing: false,
     isClinchClashing: false,
-    clinchClashStartTime: 0,
     // Presentation-only clinch ownership id (not gameplay authority).
     clinchInstanceId: null,
     isClinchKillThrowVictim: false,
@@ -611,14 +615,9 @@ function createInitialPlayerState(overrides = {}) {
     isClinchJolting: false,
     clinchJoltRecovery: false,
     clinchJoltCooldown: false, // retired; kept for safe cleanup
-    clinchJoltStartTime: 0,
     isBeingClinchJolted: false,
-    clinchJoltPlantInterrupt: false,
     isClinchJoltClashing: false,
     clinchJoltRequest: false,
-    clinchJoltRequestTime: 0,
-    clinchJoltRecoilStart: 0,
-    clinchJoltPlantInterruptStart: 0,
 
     // === Power-ups ===
     isThrowingSalt: false,

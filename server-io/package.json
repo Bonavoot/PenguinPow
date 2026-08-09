@@ -11,11 +11,11 @@
     "test:presentation": "node --test 'test/presentation/**/*.test.js'",
     "test:pose": "node --test 'test/pose/**/*.test.js'",
     "test:foundation": "node --test 'test/foundation/**/*.test.js'",
-    "test:clinch": "node --test 'test/clinch/**/*.test.js'",
-    "test:clinch:network": "node --test 'test/clinch/integration/network-timestamp.test.js' 'test/clinch/unit/timestamp-sanitize.test.js'",
-    "test:clinch:watch": "node --test --watch 'test/clinch/**/*.test.js'",
-    "test:clinch:coverage": "node --test --experimental-test-coverage --test-coverage-include='grabActionSystem.js' --test-coverage-include='gameUtils.js' --test-coverage-include='socketHandlers.js' --test-coverage-include='grabMechanics.js' 'test/clinch/**/*.test.js'",
-    "test:clinch:plant-cancel-legacy": "node scripts/test-drive-plant-cancel-defense.js"
+    "test:commandGrab": "node --test 'test/commandGrab/**/*.test.js'",
+    "test:commandGrab:watch": "node --test --watch 'test/commandGrab/**/*.test.js'",
+    "test:commandGrab:coverage": "node --test --experimental-test-coverage --test-coverage-include='commandGrabSystem.js' --test-coverage-include='commandGrabInput.js' --test-coverage-include='gameUtils.js' --test-coverage-include='socketHandlers.js' --test-coverage-include='grabMechanics.js' 'test/commandGrab/**/*.test.js'",
+    "test:net": "node --test 'test/net/**/*.test.js'",
+    "test:input": "node --test 'test/input/**/*.test.js'"
   },
   "dependencies": {
     "cors": "^2.8.5",

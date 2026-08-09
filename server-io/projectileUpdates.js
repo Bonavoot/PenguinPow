@@ -32,6 +32,7 @@ const {
   consumeHitAbsorption,
   timeoutManager,
 } = require("./gameUtils");
+const MomentumTransfer = require("./momentumTransfer");
 const {
   DEFENSE_TYPE,
   PROJECTILE_TYPE,
@@ -299,7 +300,15 @@ function updateProjectiles(room, io, delta) {
             targetPlayer.slapKnockbackCanRingOut =
               distanceToBoundaryInKbDir <= SLAP_KILL_RANGE;
 
-            targetPlayer.knockbackVelocity.x = knockbackDirection * 1.55;
+            // Projectiles carry no live attacker momentum at impact, so they
+            // resolve at their floor. They stay a chip/spacing tool rather
+            // than a positional one, which is the intended identity.
+            targetPlayer.knockbackVelocity.x =
+              MomentumTransfer.applyTransferImpulse(
+                targetPlayer,
+                MomentumTransfer.profileFor("snowball").floor,
+                knockbackDirection
+              ).velocity;
             targetPlayer.movementVelocity = 0;
             if (hitFromAir) applyAirHitKnockbackBoost(targetPlayer, airCarryX);
 
@@ -719,7 +728,12 @@ function updateProjectiles(room, io, delta) {
             opponent.slapKnockbackCanRingOut =
               distanceToBoundaryInKbDir <= SLAP_KILL_RANGE;
 
-            opponent.knockbackVelocity.x = knockbackDirection * 1.6;
+            opponent.knockbackVelocity.x =
+              MomentumTransfer.applyTransferImpulse(
+                opponent,
+                MomentumTransfer.profileFor("pumoClone").floor,
+                knockbackDirection
+              ).velocity;
             opponent.movementVelocity = 0;
             if (hitFromAir) applyAirHitKnockbackBoost(opponent, airCarryX);
 

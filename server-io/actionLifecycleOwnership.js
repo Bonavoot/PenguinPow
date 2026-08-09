@@ -72,8 +72,11 @@ const LIFECYCLE_TIMEOUT_NAMES = Object.freeze([
   "atTheRopesTimeout",
   "grabWhiffRecovery",
   "chargeCancelledClear",
-  "clinchThrowFailStagger",
-  "clinchJoltRecovery",
+  // Command grab. Replaces the old clinchThrowFailStagger / clinchJoltRecovery
+  // timeouts, which belonged to the Open and jolt states the clinch subgame owned.
+  "cmdDriveRelease",
+  "cmdGrabClashPose",
+  "cmdGrabClashSeparate",
 ]);
 
 function mintLifecycleInstanceId(player, ownerType) {

@@ -299,30 +299,47 @@ describe("Phase 16 — rejection reasons + trace bound", () => {
   });
 });
 
-describe("Phase 16 — clinch contract constants", () => {
-  it("Deep Grip contract: consumed on commit; Perfect Brace beats it; Plant loses to it", () => {
-    // Documented in resolveClinchThrow — assert constants still match design.
-    const {
-      CLINCH_THROW_CHORD_WINDOW_MS,
-      CLINCH_THROW_LAND_THRESHOLD,
-    } = require("../../constants");
-    assert.equal(CLINCH_THROW_CHORD_WINDOW_MS, 220);
-    assert.equal(CLINCH_THROW_LAND_THRESHOLD, 0);
-  });
-
-  it("clinchThrowCooldown is retired (never read as a gate)", () => {
+describe("command grab input contract", () => {
+  // Replaces the old Phase 16 clinch-contract block. That asserted the Deep Grip /
+  // Perfect Brace / chord-window contract, all of which belonged to the mutual
+  // clinch subgame and no longer exist. What still needs guarding is the boundary
+  // this file cares about: grab variant selection must stay OUT of the strike
+  // command path, and the input layer must not regrow a post-connect grab decision.
+  it("variant selection is owned by commandGrabInput, not the strike chord path", () => {
     const fs = require("fs");
     const path = require("path");
-    const grab = fs.readFileSync(
-      path.join(__dirname, "../../grabActionSystem.js"),
+    const reliability = fs.readFileSync(
+      path.join(__dirname, "../../inputCommandReliability.js"),
       "utf8"
     );
+    assert.equal(
+      /grabVariant/.test(reliability),
+      false,
+      "the palm/direction chord layer must not reach into grab variant selection"
+    );
+  });
+
+  it("the input layer files no post-connect grab decision", () => {
+    // The command grab is uninterruptible once it connects: no Brace, no Jolt, no
+    // post-connect Break. If any of those request fields reappear in the socket
+    // path, a reaction-based answer has been reintroduced by accident.
+    const fs = require("fs");
+    const path = require("path");
     const sock = fs.readFileSync(
       path.join(__dirname, "../../socketHandlers.js"),
       "utf8"
     );
-    // May appear in cleanup assignments, but must not gate commits.
-    assert.equal(/if\s*\([^)]*clinchThrowCooldown/.test(grab), false);
-    assert.equal(/if\s*\([^)]*clinchThrowCooldown/.test(sock), false);
+    for (const field of [
+      "clinchJoltRequest",
+      "clinchBreakRequest",
+      "clinchThrowRequest",
+      "clinchBraceSimTime",
+    ]) {
+      assert.equal(
+        sock.includes(field),
+        false,
+        `${field} is a post-connect clinch decision and must stay deleted`
+      );
+    }
   });
 });

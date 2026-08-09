@@ -20,7 +20,7 @@ const {
   createFoundationScenario,
   armChargedPhase,
 } = require("./helpers/scenarioHarness");
-const { makeInputPacket } = require("../clinch/harness/networkQueue");
+const { makeInputPacket } = require("../helpers/networkQueue");
 const { createInitialKeys } = require("../../playerFactory");
 
 const live = [];
