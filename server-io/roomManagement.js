@@ -605,6 +605,8 @@ function resetRoomAndPlayers(room, io) {
     player.lastSlapHitLandedTime = 0;
     player.pendingSlapCount = 0;
     player.pendingPalmThrust = false;
+    player.pendingGrab = false;
+    player.pendingGrabPressTime = 0;
     player.slapAnimationToggle = 0;
     player.currentSlapHitConnected = false;
     player.slapOpenHitPending = false;
@@ -708,6 +710,8 @@ function resetRoomAndPlayers(room, io) {
     player.grabBreakSepDuration = 0;
     player.grabBreakStartX = undefined;
     player.grabBreakTargetX = undefined;
+    player.grabBreakSepCurve = null;
+    player.isGrabSeparatePalm = false;
     player.isGrabBellyFlopping = false;
     player.isBeingGrabBellyFlopped = false;
     player.isGrabFrontalForceOut = false;

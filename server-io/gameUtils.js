@@ -70,6 +70,7 @@ const { MASTERY_P1_MOMENTUM } = require("./masteryFlags");
 const { handoffVelocity } = require("./momentumTransfer");
 // Constants-only module — safe to require here without a cycle.
 const { stampGrabVariant } = require("./commandGrabInput");
+const { getGrabLungeImpulse } = require("./combatHelpers");
 const {
   OFFENSIVE_AERIAL_OUTCOME,
   OFFENSIVE_AERIAL_CLEANUP_STAGE,
@@ -1799,6 +1800,12 @@ function beginGrabStartup(player, room) {
   if (grabOpponent && player.atTheRopesFacingDirection == null) {
     player.facing = player.x < grabOpponent.x ? -1 : 1;
   }
+
+  // Shove off into the dive. This is the whole move's movement — one impulse,
+  // after which friction owns the trajectory, so the grab keeps travelling through
+  // its active frames and skids out through the whiff. Set after facing resolves,
+  // because the direction of the dive is the direction we just committed to.
+  player.grabMovementVelocity = -player.facing * getGrabLungeImpulse();
 
   // COMMAND GRAB: which grab this is gets decided here from the direction around
   // the M2 edge, and stays revisable until the grab goes active. Harmless with

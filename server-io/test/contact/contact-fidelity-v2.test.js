@@ -27,8 +27,13 @@ const {
   runBothCollisionOrders,
   CHARGE_PRIORITY_THRESHOLD,
 } = require("./helpers/contactSim");
-const { grabCatchesSlap } = require("../../combatHelpers");
-const { LOW_KICK_ENABLED } = require("../../constants");
+const {
+  LOW_KICK_ENABLED,
+  GRAB_STARTUP_DURATION_MS,
+  SLAP_STARTUP_MS,
+  SLAP_ACTIVE_MS,
+  SLAP_TOTAL_MS,
+} = require("../../constants");
 
 const scenarios = [];
 afterEach(() => {
@@ -188,48 +193,75 @@ describe("Phase 13 — Slap vs Charged (V2)", () => {
 describe("Phase 13 — Grab vs Slap (V2)", () => {
   beforeEach(() => setCombatContactFidelityV2ForTests(true));
 
-  it("Grab-beats-Slap: losing slap hitbox dies on catch resolution", () => {
-    const s = sc({ gap: 60 });
-    const now = s.room.simTime;
-    armSlap(s.right, { now });
-    armGrabStartup(s.left, { now });
-    s.left.facing = -1;
-    s.right.facing = 1;
-    s.right.x = s.left.x + 90;
-    assert.equal(grabCatchesSlap(s.left, s.right, now), true);
-    runBothCollisionOrders(s.left, s.right, s.rooms, s.io);
-    // Slap cannot remain active after catch suppress.
-    assert.equal(s.right.isAttacking, false);
-    assert.equal(s.right.isSlapAttack, false);
-    assert.equal(s.right._combatContactConsumed, true);
-    assert.equal(
-      s.right._lastCombatContactResolution?.outcome,
-      CONTACT_OUTCOME.GRAB_CATCH
-    );
-  });
+  // The grab used to win here via throw-catch armor from 70ms into startup.
+  // That armor is gone: the startup is short enough that the grab does not need
+  // it, and every frame of it is now hittable. A slap in range always wins.
+  for (const phase of [
+    { label: "first frame", elapsed: 0 },
+    { label: "mid startup", elapsed: Math.round(GRAB_STARTUP_DURATION_MS / 2) },
+    { label: "last frame", elapsed: GRAB_STARTUP_DURATION_MS - 1 },
+  ]) {
+    it(`Slap stuffs grab startup at ${phase.label}`, () => {
+      const s = sc({ gap: 60 });
+      const now = s.room.simTime;
+      armSlap(s.right, { now });
+      armGrabStartup(s.left, { now, elapsed: phase.elapsed });
+      s.left.facing = -1;
+      s.right.facing = 1;
+      s.right.x = s.left.x + 90;
+      runBothCollisionOrders(s.left, s.right, s.rooms, s.io);
+      assert.equal(s.left.isHit, true, `${phase.label}: grabber must be hit`);
+      assert.equal(
+        s.left.isGrabStartup,
+        false,
+        `${phase.label}: grab must be interrupted`
+      );
+      assert.notEqual(
+        s.right._lastCombatContactResolution?.outcome,
+        CONTACT_OUTCOME.GRAB_CATCH,
+        `${phase.label}: no catch outcome may be produced`
+      );
+    });
+  }
 
-  it("just-outside grab catch range still allows slap (no range extend)", () => {
+  it("out of range, the slap leaves the grab startup alone", () => {
     const s = sc({ gap: 80 });
     const now = s.room.simTime;
     armSlap(s.right, { now });
     armGrabStartup(s.left, { now });
-    // Far outside grab catch
     s.right.x = s.left.x + 400;
     s.left.facing = -1;
     s.right.facing = 1;
-    assert.equal(grabCatchesSlap(s.left, s.right, now), false);
     runBothCollisionOrders(s.left, s.right, s.rooms, s.io);
-    // Slap was not in range either — neither consumed via grab catch
-    assert.notEqual(
-      s.right._lastCombatContactResolution?.outcome,
-      CONTACT_OUTCOME.GRAB_CATCH
-    );
+    assert.equal(s.left.isHit, false, "nothing reached the grabber");
+    assert.equal(s.left.isGrabStartup, true, "grab survives to its active frames");
   });
 });
 
 describe("Phase 13 — compatibility invariants", () => {
   it("low kick remains disabled", () => {
     assert.equal(LOW_KICK_ENABLED, false);
+  });
+
+  // The grab carries no armor, so its whole startup has to fit inside the gap a
+  // slap masher leaves between active windows — that is the entire reason the
+  // startup is as short as it is. If this fails, a point-blank grab has become
+  // arithmetically impossible again, and the only real fixes are a shorter
+  // startup or reintroducing armor.
+  it("grab startup fits inside the gap between mashed slap active windows", () => {
+    const activeEnd = SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
+    const nextActiveStart = SLAP_TOTAL_MS + SLAP_STARTUP_MS;
+    const gap = nextActiveStart - activeEnd;
+    assert.ok(
+      GRAB_STARTUP_DURATION_MS < gap,
+      `grab startup ${GRAB_STARTUP_DURATION_MS}ms must fit the ${gap}ms slap gap`
+    );
+    // And it has to leave a window a human can hit, not a frame-perfect one.
+    const pressWindow = gap - GRAB_STARTUP_DURATION_MS;
+    assert.ok(
+      pressWindow >= 30,
+      `press window is only ${pressWindow}ms — under two frames`
+    );
   });
 
   it("V2 off does not consume on priority defer", () => {

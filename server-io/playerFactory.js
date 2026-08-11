@@ -244,6 +244,8 @@ function createInitialPlayerState(overrides = {}) {
     pendingSlapCount: 0,       // 1-press input buffer for responsiveness
     pendingSlapPressTime: 0,   // MASTERY Phase 3: simNow the buffered/direct slap press was queued (cadence gap source)
     pendingPalmThrust: false,  // back+mouse1 pressed mid-slap → thrust fires at cycle end (instead of another slap)
+    pendingGrab: false,        // mouse2 pressed mid-slap → grab fires at cycle end (parity with the slap/palm follow-ups)
+    pendingGrabPressTime: 0,   // simNow the mid-slap grab was queued — later press wins when a slap is queued too
     slapAnimationToggle: 0,    // Cosmetic slap1 ↔ slap2 alternation
     currentSlapHitConnected: false,
     slapOpenHitPending: false, // set during AP late-parry grace when already in range
@@ -540,6 +542,11 @@ function createInitialPlayerState(overrides = {}) {
     grabBreakSepDuration: 0,
     grabBreakStartX: 0,
     grabBreakTargetX: 0,
+    // Overrides the separation tween's default hit curve. See SEPARATION_EASE.
+    grabBreakSepCurve: null,
+    // Presentation only: the fighter being shoved off plays the palm-thrust
+    // animation as the shove. No hitbox, no move — see releaseDrive.
+    isGrabSeparatePalm: false,
     grabCounterAttempted: false,
     grabCounterInput: null,
     isCounterGrabbed: false,

@@ -29,6 +29,7 @@ const {
   CLINCH_THROW_KILL_THRESHOLD,
   CLINCH_THROW_DISTANCE_MIN,
   CLINCH_THROW_DISTANCE_MAX,
+  GRAB_RANGE,
 } = require("../../constants");
 
 test("command grab connect beat", async (t) => {
@@ -118,12 +119,17 @@ test("command grab connect beat", async (t) => {
   });
 
   await t.test("a far connect cinches into grip spacing, never snaps", () => {
-    // A grab can connect anywhere inside GRAB_RANGE (146) while grip spacing is
-    // ~61px. Closing that instantly would teleport the victim on the first tick.
-    const s = createCommandGrabScenario({ variant: "throw", connectGap: 140 });
+    // A grab can connect anywhere inside GRAB_RANGE while grip spacing is ~61px.
+    // Closing that instantly would teleport the victim on the first tick.
+    //
+    // Derived from GRAB_RANGE rather than hardcoded, so widening the grab's reach
+    // keeps this exercising the actual worst case instead of quietly testing a
+    // comfortable mid-range connect.
+    const farGap = GRAB_RANGE - 1;
+    const s = createCommandGrabScenario({ variant: "throw", connectGap: farGap });
     s.connect();
     assert.ok(
-      Math.abs(s.gap() - 140) < 0.001,
+      Math.abs(s.gap() - farGap) < 0.001,
       "connect must preserve the gap the grab actually landed at"
     );
     const victimStartX = s.victim.x;
@@ -132,7 +138,7 @@ test("command grab connect beat", async (t) => {
     s.advance(s.tickMs);
     const afterOne = s.gap();
     assert.ok(
-      afterOne < 140 && afterOne > s.settledAttach,
+      afterOne < farGap && afterOne > s.settledAttach,
       `first tick must move partway, got ${afterOne}`
     );
     assert.ok(

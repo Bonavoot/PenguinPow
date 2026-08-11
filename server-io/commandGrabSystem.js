@@ -20,11 +20,10 @@
 // Break and no Brace — so its only job is legibility, which is why it is 130ms
 // rather than the 220/250ms the old technique tells needed to host a defence.
 //
-// Below the lethal line (CLINCH_THROW_KILL_THRESHOLD, measured at connect) every
-// grab ends the round, each with its own kimarite: Drive by oshidashi at the rope,
-// Throw by a nage, Pull by the belly-slam. Lethality is a property of the victim's
-// posture, never of the attacker's strength — a gassed attacker gets a much
-// shorter carry but keeps every kill.
+// Throw / pull end the round below the lethal posture line
+// (CLINCH_THROW_KILL_THRESHOLD, measured at connect). Drive does NOT — its rope
+// KO is stamina-gated (gassed / empty tank), so slap/palm own the posture finish
+// and drive owns the tank finish. A gassed attacker still gets a shorter carry.
 //
 // The Drive carry is a SERVER-STAMPED TWEEN (start time, duration, start X, target
 // X) rather than per-tick input-driven displacement. That is deliberate: the old
@@ -53,9 +52,11 @@ const {
   CMD_DRIVE_APPROACH_REF_SPEED,
   CMD_DRIVE_APPROACH_BONUS_MAX,
   CMD_DRIVE_CINCH_FRACTION,
-  CMD_DRIVE_EDGE_FORCE_OUT_FRACTION,
+  CMD_DRIVE_EDGE_STAMINA_DRAIN_PER_SEC,
   CMD_DRIVE_RELEASE_SEPARATION,
   CMD_DRIVE_RELEASE_TWEEN_MS,
+  CMD_DRIVE_RELEASE_VICTIM_SHARE,
+  CMD_DRIVE_RELEASE_POSE_DROP_FRACTION,
   CMD_PULL_POSTURE_CHIP,
   CMD_THROW_POSTURE_CHIP,
   CMD_DRIVE_ATTACKER_RECOVERY_MS,
@@ -99,6 +100,7 @@ const {
   triggerHitstopAndEmit,
   emitThrottledScreenShake,
   applyBalanceDamage,
+  tryEnterGassed,
   timeoutManager,
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
@@ -194,7 +196,7 @@ function connectHitstopMsFor(variant) {
   return Number.isFinite(ms) ? ms : 0;
 }
 
-// A grab can connect anywhere inside GRAB_RANGE (146) while settled grip spacing is
+// A grab can connect anywhere inside GRAB_RANGE (175) while settled grip spacing is
 // only ~61px, so a max-range connect leaves the fighters visibly apart. That gap is
 // closed across the read beat rather than snapped.
 //
@@ -430,7 +432,7 @@ function updateCommandGrab(grabber, room, io, delta, rooms) {
   }
 
   if (grabber.cmdGrabPhase === CMD_PHASE.CARRY) {
-    advanceDriveCarry(grabber, victim, room, io, rooms, now);
+    advanceDriveCarry(grabber, victim, room, io, rooms, now, delta);
     return;
   }
 }
@@ -449,11 +451,11 @@ function resolveVariant(grabber, victim, room, io, rooms) {
     resolvePull(grabber, victim, room, io, isKill);
     return;
   }
-  beginDriveCarry(grabber, victim, room, isKill);
+  beginDriveCarry(grabber, victim, room);
 }
 
 // ── DRIVE ───────────────────────────────────────────────────────────────────
-function beginDriveCarry(grabber, victim, room, isKill) {
+function beginDriveCarry(grabber, victim, room) {
   const now = simNow(room);
   const dir = grabber.x < victim.x ? 1 : -1;
   // ── MOMENTUM TRANSFER: DRIVE SPENDS YOUR OWN SPEED ───────────────────────
@@ -515,10 +517,10 @@ function beginDriveCarry(grabber, victim, room, isKill) {
   // advancing, and the victim simply advances a little slower until the gap is gone.
   grabber.cmdGrabCarryAttachFrom = Math.abs(grabber.x - victim.x);
   grabber.cmdGrabCarryAttachTo = attachDistanceFor(victim);
-  // A lethal or gassed victim cannot hold the tawara at all, so rope contact ends
-  // it regardless of how much carry is left. Everyone else has to be driven there
-  // with real carry still owed (CMD_DRIVE_EDGE_FORCE_OUT_MS).
-  grabber.cmdGrabEdgeWaiver = !!isKill || !!victim.isGassed || victim.stamina <= 0;
+  // Drive rope KO is stamina-gated only (gassed / empty tank). Posture lethal
+  // is throw/pull's job — drive must not skip slap/palm's composure game.
+  // Refreshed live while pinned so a mid-push gas-out can still finish them.
+  grabber.cmdGrabEdgeWaiver = !!victim.isGassed || victim.stamina <= 0;
 
   applyCarryPoses(grabber, victim);
 }
@@ -550,7 +552,7 @@ function applyCarryPoses(grabber, victim) {
   victim.isResistingPull = false;
 }
 
-function advanceDriveCarry(grabber, victim, room, io, rooms, now) {
+function advanceDriveCarry(grabber, victim, room, io, rooms, now, delta) {
   const duration = grabber.cmdGrabCarryDuration || CMD_DRIVE_CARRY_MS;
   const elapsed = now - (grabber.cmdGrabPhaseStart || now);
   const t = duration > 0 ? Math.min(1, elapsed / duration) : 1;
@@ -586,29 +588,32 @@ function advanceDriveCarry(grabber, victim, room, io, rooms, now) {
   const atRope = dir > 0 ? victimX >= ropeX : victimX <= ropeX;
 
   if (atRope && !room.gameOver) {
-    // Measured in DISTANCE owed, not time — see CMD_DRIVE_EDGE_FORCE_OUT_FRACTION.
-    const remainingFraction = 1 - eased;
-    if (
-      grabber.cmdGrabEdgeWaiver ||
-      remainingFraction >= CMD_DRIVE_EDGE_FORCE_OUT_FRACTION
-    ) {
-      // Pin the pair at the rope for the force-out pose, then hand off.
-      victim.x = ropeX;
-      grabber.x = ropeX - dir * attach;
-      grabber.isEdgePushing = true;
-      victim.isBeingEdgePushed = true;
-      clearCommandGrabState(grabber);
-      triggerRingOut(grabber, victim, room, io, rooms, dir);
-      return;
-    }
-    // Not enough carry left to force them out — hold them pinned against the rope
-    // for the remainder, then release. That pin IS the reward: they end the
-    // exchange with their back to the tawara.
+    // Always pin at the tawara. Ring-out only if already gassed / empty tank,
+    // or if the clamp stamina tax gases them while carry is still running.
+    // Carry-fraction auto-KO is retired — entry speed buys shove length, not
+    // a free win (same clamp-unless-threshold idea as slap/palm).
     victim.x = ropeX;
     grabber.x = ropeX - dir * attach;
     grabber.cmdGrabAtRope = true;
     grabber.isEdgePushing = true;
     victim.isBeingEdgePushed = true;
+
+    const dtSec = Math.max(0, Number(delta) || 0) / 1000;
+    if (dtSec > 0 && (victim.stamina || 0) > 0) {
+      victim.stamina = Math.max(
+        0,
+        victim.stamina - CMD_DRIVE_EDGE_STAMINA_DRAIN_PER_SEC * dtSec
+      );
+      tryEnterGassed(victim, now);
+    }
+
+    grabber.cmdGrabEdgeWaiver =
+      !!victim.isGassed || (victim.stamina || 0) <= 0;
+    if (grabber.cmdGrabEdgeWaiver) {
+      clearCommandGrabState(grabber);
+      triggerRingOut(grabber, victim, room, io, rooms, dir);
+      return;
+    }
   } else {
     grabber.isEdgePushing = false;
     victim.isBeingEdgePushed = false;
@@ -643,11 +648,21 @@ function releaseDrive(grabber, victim, room, io, dir) {
 
   const clamp = (x) =>
     Math.max(MAP_LEFT_BOUNDARY, Math.min(MAP_RIGHT_BOUNDARY, x));
-  // Victim continues away from the grabber; grabber retreats the other way.
-  const victimWantX = victim.x + dir * (needed / 2);
+  // Victim continues away from the grabber; grabber gives up a little ground. The
+  // split is heavily weighted to the victim (CMD_DRIVE_RELEASE_VICTIM_SHARE) so the
+  // release reads as one fighter shoving the other off — an even split made the
+  // winner of the drive retreat exactly as far as the loser, which looked like
+  // magnetic repulsion rather than a shove.
+  const victimWantX = victim.x + dir * (needed * CMD_DRIVE_RELEASE_VICTIM_SHARE);
   const victimTargetX = clamp(victimWantX);
   const victimShortfall = Math.abs(victimWantX - victimTargetX);
-  const grabberTargetX = clamp(grabber.x - dir * (needed / 2 + victimShortfall));
+  // Boundary-aware, as before: whatever the victim cannot travel because they are
+  // pinned against the tawara is handed to the grabber, so a rope pin survives.
+  const grabberTargetX = clamp(
+    grabber.x -
+      dir *
+        (needed * (1 - CMD_DRIVE_RELEASE_VICTIM_SHARE) + victimShortfall)
+  );
 
   clearActionPoses(grabber, victim);
   clearCommandGrabState(grabber);
@@ -657,12 +672,13 @@ function releaseDrive(grabber, victim, room, io, dir) {
   // next both standing upright facing the camera at a distance, which read as the
   // fighters forgetting they were mid-exchange.
   //
-  // So the carry postures are HELD through the separation slide — pusher still
-  // leaning in, pushed still braced — and only dropped when the slide ends. That
-  // turns the release into "shoved off and skidding apart" instead of a teleport to
-  // idle. Deliberately NOT isGrabSeparating: that flag forces a front-facing pose
-  // that wins the sprite chain over both carry poses. Gating is covered by
-  // inputLockUntil + isRecovering below.
+  // So the grabber's carry posture is HELD through the separation slide — still
+  // leaning in — and only dropped part-way through it. That turns the release
+  // into "shoved off and skidding apart" instead of a teleport to idle. The
+  // victim gets the palm animation over the top of theirs (below), so their
+  // brace here is really only the floor under it. Deliberately NOT
+  // isGrabSeparating: that flag forces a front-facing pose that wins the sprite
+  // chain over everything. Gating is inputLockUntil + isRecovering below.
   applyCarryPoses(grabber, victim);
   for (const [p, targetX] of [
     [grabber, grabberTargetX],
@@ -673,23 +689,50 @@ function releaseDrive(grabber, victim, room, io, dir) {
     p.grabBreakSepDuration = CMD_DRIVE_RELEASE_TWEEN_MS;
     p.grabBreakStartX = p.x;
     p.grabBreakTargetX = targetX;
+    // Build out of the palms instead of exploding off the first frame — see
+    // CMD_DRIVE_RELEASE_TWEEN_MS. Every other user of this tween is modelling a
+    // hit, so the shared default front-loads all its speed; only this opts out.
+    p.grabBreakSepCurve = "shove";
     p.movementVelocity = 0;
     p.knockbackVelocity.x = 0;
     p.knockbackVelocity.y = 0;
     p.isStrafing = false;
   }
 
+  // The loser shoves the winner off with both hands — the palm-thrust animation
+  // as pure presentation, no hitbox, no move. It replaces a static braced pose
+  // held rigid for the whole slide with something that has a windup, an extend
+  // and a settle, so the separation reads as caused by the fighter being pushed
+  // rather than as the two of them being pulled apart by the engine. The client
+  // paces the four frames across exactly this tween (GRAB_SEPARATE_PALM_ANIM).
+  victim.isGrabSeparatePalm = true;
+
   // Attacker leaves ~60ms negative: past SLAP_STARTUP_MS so a jab would win the
   // exchange, but the gap means the practical result is a neutral reset with the
   // attacker holding spacing initiative — no free re-grab, no free hit.
-  const lockUntil = now + CMD_DRIVE_RELEASE_TWEEN_MS;
-  grabber.inputLockUntil = Math.max(grabber.inputLockUntil || 0, lockUntil);
-  victim.inputLockUntil = Math.max(victim.inputLockUntil || 0, lockUntil);
+  //
+  // Locked per-side, NOT to a shared tween-length lock. A flat lock for both
+  // capped the defender at the attacker's number and ate most of the deficit;
+  // now each side's lock is its own recovery, so the 60ms is real. The defender
+  // comes free ~6px before their slide settles, which the tween just finishes.
+  grabber.inputLockUntil = Math.max(
+    grabber.inputLockUntil || 0,
+    now + CMD_DRIVE_ATTACKER_RECOVERY_MS
+  );
+  victim.inputLockUntil = Math.max(
+    victim.inputLockUntil || 0,
+    now + CMD_DRIVE_DEFENDER_RECOVERY_MS
+  );
   beginGrabRecovery(grabber, CMD_DRIVE_ATTACKER_RECOVERY_MS, now);
   beginGrabRecovery(victim, CMD_DRIVE_DEFENDER_RECOVERY_MS, now);
 
   correctFacingAfterGrabOrThrow(grabber, victim);
 
+  // Drop the carry postures BEFORE the slide finishes, not on the frame it stops.
+  // Both landing together is what made the release read as a teleport to idle:
+  // nothing was moving to absorb the sprite change. Off-setting them means the
+  // pose flips while the fighters are still travelling, and the travel ends on a
+  // pose that is already settled.
   setPlayerTimeout(
     grabber.id,
     () => {
@@ -698,7 +741,7 @@ function releaseDrive(grabber, victim, room, io, dir) {
       victim.isClinchPlanting = false;
       grabber.isClinchPlanting = false;
     },
-    CMD_DRIVE_RELEASE_TWEEN_MS,
+    Math.round(CMD_DRIVE_RELEASE_TWEEN_MS * CMD_DRIVE_RELEASE_POSE_DROP_FRACTION),
     "cmdDriveRelease"
   );
 

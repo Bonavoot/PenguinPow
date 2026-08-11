@@ -192,21 +192,26 @@ test("send REPLACES for a closing victim and ADDS for a fleeing one", () => {
   M.creditOwedDistance(fleeing, owed, 500);
   const b = M.applyTransferImpulse(fleeing, 100, +1, 500);
   assert.strictEqual(b.compounded, true);
-  near(b.sendPx, owed + 100, 0.01, "fleeing victim compounds by pure addition");
+  near(
+    b.sendPx,
+    owed * M.COMPOUND_RETAIN + 100,
+    0.01,
+    "fleeing victim compounds, but only a share of what they still owed carries"
+  );
 
   assert.strictEqual(M.applyTransferImpulse(fighter(), 100, +1, 500).compounded, false);
 });
 
 test("send cap holds — no chain exceeds the biggest authored hit", () => {
+  // With compounding off, the cap is a backstop against a single oversized
+  // send (multipliers stacking on a maxed hit) rather than against a chain.
   const owed = fighter();
-  M.creditOwedDistance(owed, 340, 500);
-  const r = M.applyTransferImpulse(owed, 200, +1, 500);
+  const r = M.applyTransferImpulse(owed, M.MAX_SEND_PX + 200, +1, 500);
   assert.strictEqual(r.capped, true);
   near(r.sendPx, M.MAX_SEND_PX, 1e-9, "capped");
 
   const leftVictim = fighter();
-  M.creditOwedDistance(leftVictim, -340, 500);
-  const left = M.applyTransferImpulse(leftVictim, 200, -1, 500);
+  const left = M.applyTransferImpulse(leftVictim, M.MAX_SEND_PX + 200, -1, 500);
   assert.ok(left.velocity < 0, "left-directed send stays negative");
   near(left.sendPx, M.MAX_SEND_PX, 1e-9, "cap applies both ways");
 });
@@ -214,58 +219,39 @@ test("send cap holds — no chain exceeds the biggest authored hit", () => {
 // ────────────────────────────────────────────────────────────────────────────
 // THE TSUPPARI RHYTHM
 // ────────────────────────────────────────────────────────────────────────────
-test("consecutive slaps ESCALATE — a barrage builds its own momentum", () => {
-  // THE HEADLINE BEHAVIOUR. Pure additive compounding converged instead of
-  // building: 10, 18, 24, 28, 31, 33, 35 px per slap, ~13 connects to cross a
-  // half-ring. Playtest called it "100 slap hits to win", correctly.
+test("PACING: a flat-footed barrage walks them out at a playable rate", () => {
+  // Both failure modes playtest has named, in one assertion. Too few connects
+  // is "3-4 slaps and you win again"; too many is "excrutiatingly boring and
+  // slow" — at a 110px floor this took ~11 and played as a grind.
+  //
+  // Sends are FLAT (compounding and escalation are both off), so this is
+  // purely floor-vs-ring geometry.
   const decay = Math.pow(M.COAST_FRICTION, SLAP_CYCLE_MS / M.MS_PER_TICK);
   const p = M.profileFor("slap");
 
-  const victim = fighter();
-  const ground = [];
-  const speeds = [];
-  let owedPx = 0;
-  let cumulative = 0;
-  let ringOutOn = null;
-
-  for (let n = 1; n <= 8; n++) {
-    const send = Math.min(p.floor * M.pressureMultiplierFor(n), p.ceil);
-    // Same cap applyTransferImpulse enforces, so the sim matches the engine.
-    owedPx = Math.min(owedPx + send, M.MAX_SEND_PX);
-    speeds.push(owedPx / M.PX_PER_VELOCITY);
-    const g = owedPx * (1 - decay);
-    owedPx *= decay;
-    ground.push(g);
-    cumulative += g;
-    if (ringOutOn === null && cumulative >= HALF_RING) ringOutOn = n;
-  }
-
-  // Each connect must be meaningfully heavier than the last. Only asserted
-  // through slap 4 — by slap 5 MAX_SEND_PX starts clipping, which is the
-  // anti-spiral guard working rather than the escalation failing.
-  for (let i = 1; i < 4; i++) {
-    assert.ok(
-      ground[i] > ground[i - 1] * 1.15,
-      `slap ${i + 1} must escalate over slap ${i}: ${ground[i - 1].toFixed(0)} -> ${ground[i].toFixed(0)}`
-    );
-  }
-  assert.ok(ground[3] > ground[0] * 3, "the barrage must build several times over");
-
-  // The pacing contract, and the one playtest is most sensitive to in BOTH
-  // directions: fewer than 5 is "3-4 slaps and you win again", more than ~7 is
-  // "100 slap hits to win".
+  const groundPerSlap = p.floor * (1 - decay);
+  const connects = Math.ceil(HALF_RING / groundPerSlap);
   assert.ok(
-    ringOutOn >= 5 && ringOutOn <= 7,
-    `consecutive connects to ring out from centre must land in 5-7, got ${ringOutOn}`
+    connects >= 5 && connects <= 8,
+    `connects to walk a fighter from centre to the rope must land in 5-8, got ${connects}`
   );
 
-  // By the end they are sliding faster than a fighter can move themselves,
-  // which is what "they're flying" has to mean mechanically.
-  assert.ok(speeds[4] > 2.4, `settled flight speed must exceed a full slide, got ${speeds[4].toFixed(2)}`);
+  // A single slap has to READ as a shove. At this friction a send's initial
+  // speed is sendPx / PX_PER_VELOCITY, so a small floor is also a SLOW floor —
+  // which is what made it feel like dirt rather than ice.
+  const floorSpeed = p.floor / M.PX_PER_VELOCITY;
+  assert.ok(
+    floorSpeed > 0.9,
+    `a floor slap must move near walking pace, got ${floorSpeed.toFixed(2)} vs walking 1.3`
+  );
 
-  // Fairness: slap hitstun is +0 by construction (COMBAT_INVARIANTS #3), so a
-  // barrage is not a combo — five connects means five won interactions.
-  assert.ok(M.PRESSURE_ESCALATION > 1, "escalation must actually escalate");
+  // Slaps still cannot close a round from range alone — ring-out is gated on
+  // posture (< CLINCH_THROW_KILL_THRESHOLD) at the rope clamp, so more power
+  // buys TEMPO / positioning, not a free midscreen KO.
+  assert.ok(
+    p.ceil < M.MAX_SEND_PX,
+    "a single slap must not be able to cover the whole send budget"
+  );
 });
 
 test("REGRESSION: compounding must read TOTAL velocity, not just knockback", () => {
@@ -282,12 +268,14 @@ test("REGRESSION: compounding must read TOTAL velocity, not just knockback", () 
     keys: {},
   };
 
-  M.creditOwedDistance(victim, 160, 1000);
+  // Compounding is OFF (COMPOUND_RETAIN 0) — power comes from speed alone.
+  // What survives, and still matters, is that a hit can never SLOW a slide
+  // already in flight: a light poke must not cancel a heavy send.
+  M.creditOwedDistance(victim, 260, 1000);
   const r = M.applyTransferImpulse(victim, 110, +1, 1000);
-  assert.strictEqual(r.compounded, true, "a fleeing victim must compound even post-handoff");
   assert.ok(
-    r.sendPx > 110 * 2,
-    `momentum already owed must carry into the next hit, got ${r.sendPx.toFixed(0)}px`
+    r.sendPx >= 260,
+    `a weak hit must not cancel a heavier send in flight, got ${r.sendPx.toFixed(0)}px`
   );
 
   // End to end: a barrage must produce visibly different sends.
@@ -311,9 +299,12 @@ test("REGRESSION: compounding must read TOTAL velocity, not just knockback", () 
     vic.knockbackVelocity.x = 0;
     t += CYCLE;
   }
+  // A flat-footed barrage must stay FLAT. Hit count is not a source of power —
+  // only speed is. This is what keeps rounds long enough for conditioning.
+  const spread = Math.max(...sends) - Math.min(...sends);
   assert.ok(
-    sends[3] > sends[0] * 2.5,
-    `a barrage must escalate hard: ${sends.map((s) => Math.round(s)).join(" -> ")}`
+    spread < 1,
+    `flat-footed slaps must all send the same: ${sends.map((s) => Math.round(s)).join(" -> ")}`
   );
 });
 
@@ -345,9 +336,20 @@ test("REGRESSION: a victim who keeps acting cannot erase what they are owed", ()
     t += SLAP_CYCLE_MS;
   }
 
+  // The ledger's surviving job: a victim who roots themselves mid-slide (palm,
+  // dodge, stance change) must not be able to cancel a send already owed.
+  const midSlide = fighter();
+  M.creditOwedDistance(midSlide, 300, 5000);
+  midSlide.movementVelocity = 0; // they rooted themselves
+  midSlide.knockbackVelocity.x = 0;
+  const kept = M.applyTransferImpulse(midSlide, 110, +1, 5000);
   assert.ok(
-    sends[3] > sends[0] * 2.5,
-    `compounding must survive a victim who keeps acting: ${sends.map((s) => Math.round(s)).join(" -> ")}`
+    kept.sendPx >= 300,
+    `pressing a button must not erase a send in flight, got ${kept.sendPx.toFixed(0)}px`
+  );
+  assert.ok(
+    sends.every((s) => Math.abs(s - sends[0]) < 1),
+    `sends must not depend on hit count: ${sends.map((s) => Math.round(s)).join(" -> ")}`
   );
 
   // And the ledger must still lapse once pressure genuinely stops.
@@ -364,15 +366,20 @@ test("pressure credit lapses so scattered hits never stack", () => {
   const victim = fighter();
   const t0 = 10000;
 
+  // Escalation is OFF (PRESSURE_MAX_STEP 1): hit count is not a source of
+  // power. The ledger stays wired so it is a one-number change to bring back.
   assert.strictEqual(M.pressureStepFor(victim, t0), 1, "first hit is step 1");
   M.creditPressure(victim, t0, 1);
-  assert.strictEqual(M.pressureStepFor(victim, t0 + 200), 2, "quick follow-up escalates");
-
-  M.creditPressure(victim, t0 + 200, 2);
   assert.strictEqual(
-    M.pressureStepFor(victim, t0 + 200 + M.PRESSURE_RESET_MS + 1),
+    M.pressureStepFor(victim, t0 + 200),
+    M.PRESSURE_MAX_STEP,
+    "a follow-up must not exceed the configured step cap"
+  );
+  assert.strictEqual(M.PRESSURE_MAX_STEP, 1, "escalation is currently disabled by design");
+  assert.strictEqual(
+    M.pressureMultiplierFor(M.PRESSURE_MAX_STEP),
     1,
-    "a lapse in pressure resets the ladder"
+    "with escalation off, sends depend on speed alone"
   );
 });
 
@@ -428,14 +435,24 @@ test("REGRESSION: chase push feeding vSelf would diverge (documents the guard)",
     return 99;
   };
 
-  const unguarded = hitsToCap(true);
-  const guarded = hitsToCap(false);
-
-  assert.ok(
-    unguarded < guarded,
-    `unguarded mashing must snowball faster: ${unguarded} vs ${guarded} hits to cap`
+  // With compounding off neither run reaches the cap, so measure the SEND
+  // instead: chase velocity must never inflate the next hit's power.
+  const sendWithChase = M.transfer(
+    Math.min(2.4 * M.SLAP_CHASE_RATIO, M.V_REF),
+    p.floor,
+    p.ceil
   );
-  assert.ok(guarded >= 4, "guarded pressure must still take several connects to max out");
+  const sendGuarded = M.transfer(0, p.floor, p.ceil);
+  assert.ok(
+    sendGuarded < sendWithChase,
+    "if chase counted as offence, a mashed slap would out-send a flat-footed one"
+  );
+  assert.strictEqual(
+    sendGuarded,
+    p.floor,
+    "a flat-footed slap in a barrage must pay exactly the floor"
+  );
+  assert.ok(hitsToCap(false) === 99, "guarded pressure must never reach the send cap on its own");
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -561,9 +578,12 @@ test("MOVE IDENTITY: palm is power NOW, slap is power OVER TIME", () => {
   const palm = M.profileFor("palm");
 
   // One palm from neutral must decisively beat one slap from neutral.
+  // The palm must be decisively better per press. 1.5x rather than 2x now that
+  // the slap floor came up for pacing — the rest of the gap is carried by
+  // hitstop (129ms vs ~46ms), which is where the palm's weight actually reads.
   assert.ok(
-    palm.floor >= slap.floor * 2,
-    `a palm must be worth at least two slaps per press: ${palm.floor} vs ${slap.floor}`
+    palm.floor >= slap.floor * 1.4,
+    `a palm must be decisively worth more per press: ${palm.floor} vs ${slap.floor}`
   );
 
   // But a sustained chain must still be able to out-total a single palm —

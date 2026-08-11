@@ -39,6 +39,11 @@ function executeGrabWhiff(player) {
   player.lastGrabAttemptTime = 0;
   player.lastThrowAttemptTime = 0;
 
+  // movementVelocity is the WALKING channel and must die here — you don't get to
+  // keep strafing out of a blown grab. grabMovementVelocity is deliberately left
+  // alone: that's the dive's own momentum, and killing it was what made a whiffed
+  // grab stop dead mid-lunge. It bleeds off under friction across the recovery, so
+  // the miss carries you past your opponent instead of parking you in front of them.
   player.movementVelocity = 0;
   player.isStrafing = false;
 

@@ -15,12 +15,11 @@ const { getConnectDistance } = require("../../../strikeContact");
 const {
   GROUND_LEVEL,
   GRAB_STARTUP_DURATION_MS,
-  GRAB_THROW_CATCH_START_MS,
   CHARGE_PRIORITY_THRESHOLD,
   SLAP_STARTUP_MS,
   CHARGED_STARTUP_MS,
   AP_LATE_PARRY_MS,
-  GRAB_SLAP_CATCH_RANGE,
+  GRAB_RANGE,
   PALM_THRUST_STARTUP_MS,
   PALM_THRUST_ACTIVE_MS,
   PALM_THRUST_POWER,
@@ -157,9 +156,11 @@ function armPalm(player, opts = {}) {
   return player;
 }
 
+// Defaults to mid-startup, which is now a fully hittable frame like every other
+// frame of startup — the grab carries no armor at any point on its timeline.
 function armGrabStartup(
   player,
-  { elapsed = GRAB_THROW_CATCH_START_MS + 10, now } = {}
+  { elapsed = Math.round(GRAB_STARTUP_DURATION_MS / 2), now } = {}
 ) {
   const t = now != null ? now : 0;
   player.isGrabStartup = true;
@@ -173,10 +174,9 @@ function armGrabStartup(
 function placeInConnectRange(attacker, defender, kind = "slap") {
   const dist = getConnectDistance(kind, attacker, defender);
   const dir = attacker.facing === 1 ? -1 : 1; // world travel toward facing
-  // Park comfortably inside tip connect (and inside grab catch when used).
-  const grabCatch =
-    GRAB_SLAP_CATCH_RANGE * (attacker.sizeMultiplier || 1) - 8;
-  const targetGap = Math.min(Math.max(40, dist - 20), Math.max(40, grabCatch));
+  // Park comfortably inside tip connect (and inside grab range when used).
+  const grabReach = GRAB_RANGE * (attacker.sizeMultiplier || 1) - 8;
+  const targetGap = Math.min(Math.max(40, dist - 20), Math.max(40, grabReach));
   defender.x = attacker.x + dir * targetGap;
   // Keep facing each other
   if (attacker.x < defender.x) {
@@ -226,7 +226,6 @@ module.exports = {
   runBothCollisionOrders,
   snapshotOutcome,
   CHARGE_PRIORITY_THRESHOLD,
-  GRAB_THROW_CATCH_START_MS,
   SLAP_ACTIVE_TEST_OFFSET,
   processHit,
   checkCollision,

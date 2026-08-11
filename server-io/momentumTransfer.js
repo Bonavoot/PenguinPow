@@ -157,6 +157,22 @@ function isDirectionallyInfluencing(victim, awayDir) {
 // multiplier is steeper — ground per slap runs 29, 56, 82, 111, ring-out on 5.
 const PRESSURE_ESCALATION = 1.2;
 
+// Escalation is a ONE-TIME step-up, not a ladder. Connecting a second time
+// raises the send; connecting a fifth time does not raise it further.
+//
+// Unbounded escalation made pressure snowball, which ended rounds before the
+// match had a chance to develop — playtest: "rounds end way too quick... my
+// game barely allows any time for conditioning before good gameplay even
+// happens." A plateau is also better for the DEFENDER: after a couple of
+// connects the situation stops getting worse, so eating a hit is survivable
+// and reads are still worth making. A snowball punishes one mistake with the
+// round.
+// 1 = escalation OFF. Same reasoning as COMPOUND_RETAIN: a hit's power should
+// come from the speed behind it, not from how many hits preceded it. The
+// plumbing stays wired so this is a one-number change if pressure-based
+// escalation is ever wanted back.
+const PRESSURE_MAX_STEP = 1;
+
 // Consecutive-hit credit lapses if pressure drops. Roughly two slap cycles —
 // long enough that a blocked or spaced beat does not reset a real barrage,
 // short enough that hits scattered across a round never stack.
@@ -167,7 +183,7 @@ function pressureStepFor(victim, nowSim) {
   if (!victim) return 1;
   const last = victim.pressureLastHitAt || 0;
   if (!last || (nowSim || 0) - last > PRESSURE_RESET_MS) return 1;
-  return Math.max(1, (victim.pressureCount || 0) + 1);
+  return Math.min(PRESSURE_MAX_STEP, Math.max(1, (victim.pressureCount || 0) + 1));
 }
 
 /** Multiplier applied to a send for being the Nth consecutive connect. */
@@ -211,12 +227,42 @@ const MAX_SEND_PX = 450;
 // top of the real ice curve pushes the recurrence close to unstable.
 const COMPOUND_GAIN = 0;
 
+// Share of the still-owed distance that carries into the next hit.
+//
+// This, not the escalation multiplier, is what was ending rounds early —
+// capping escalation alone changed a centre-to-rope barrage from 5 connects to
+// 5. Full retention meant every hit stacked on the last and the sequence
+// accelerated indefinitely.
+//
+// At 0.7 the barrage plateaus instead of snowballing: ground per slap runs
+// 29, 49, 60, 65, 68, 70 and settles. Pressure still builds, and it still
+// converts, but a defender who has eaten three slaps knows the fourth is not
+// going to be worse — which is the stable situation conditioning needs.
+// ZERO — compounding is off. Power comes from SPEED, and from nothing else.
+//
+// Carrying owed distance between hits meant a slap's strength depended on how
+// many slaps preceded it, which is a second, competing source of power next to
+// momentum. It also ended rounds before a match could develop. With this at 0
+// each hit is judged purely on the speed behind it, which is the single rule
+// this whole system exists to express.
+//
+// Note the max() in applyTransferImpulse: a hit can never REDUCE an existing
+// slide, so a light slap cannot cancel a palm's send.
+const COMPOUND_RETAIN = 0;
+
 // How hard the attacker follows their own send. >1 closes distance so mash
 // pressure glues instead of soft-whiffing; the old flat 1.35-vs-1.0 constant
 // pair did this too, but could not stay glued once sends started varying with
 // momentum. Tracking the victim's drift keeps the gap stable at any speed.
 // Always credited as granted velocity — chase is never offence.
 const SLAP_CHASE_RATIO = 1.15;
+
+// The slap's own forward step-in, applied on hit AND whiff so the move reads
+// the same either way. Flat on purpose: the old formula scaled it with carried
+// speed, which quietly turned the step-in into a second compounding channel.
+// Always credited as granted velocity, so it can never power the next slap.
+// ~31px of ground across a slap cycle — a step, not a dash.
+const SLAP_STEP_IN_VELOCITY = 0.75;
 
 // A chase must never move you faster than you could move yourself. Without
 // this, an escalating barrage flung the attacker to ~3.25 — above their own
@@ -276,7 +322,20 @@ const MOVE_TRANSFER = {
   //     100px -> 0.62 initial (half walking, a visible shove)
   //     170px -> 1.06 initial (near walking, a real slide)
   //     320px -> 1.99 initial (faster than walking, a launch)
-  slap: { floor: 110, ceil: 320, guaranteed: false },
+  // Raised from 110/320. At 110 a flat-footed barrage needed ~11 connects to
+  // walk someone from centre to the rope, which played as a grind — playtest:
+  // "the pacing and weakness of the slapattacks make the game excrutiatingly
+  // boring and slow." At 165 that becomes ~7, and the floor's initial speed
+  // (1.03) finally sits near walking pace, so a single slap reads as a shove
+  // rather than a nudge.
+  //
+  // This is safer than it looks for round length: SLAP_KILL_RANGE is 25px, so
+  // slaps still cannot ring anyone out except right at the rope. More power
+  // means reaching the interesting part FASTER, not winning faster.
+  //
+  // Ceiling stays under the palm's 400 so the heavy still out-sends the light
+  // at every momentum level (see the MOVE IDENTITY tests).
+  slap: { floor: 165, ceil: 380, guaranteed: false },
 
   // Heavy, rooted, committal — and the answer to "why press this instead of
   // slapping?". Its identity is POWER NOW versus the slap's POWER OVER TIME:
@@ -465,7 +524,13 @@ function applyTransferImpulse(victim, sendPx, awayDir, nowSim) {
   const owedPx = owedDistanceNow(victim, nowSim) * dir;
   const wasFleeing = owedPx > 0;
 
-  let totalPx = wasFleeing ? owedPx * (1 + COMPOUND_GAIN) + send : send;
+  // A hit must never SLOW an existing slide, so take the larger of the two.
+  // With COMPOUND_RETAIN at 0 this is simply max(send, owed): each hit stands
+  // on its own speed, but a weak poke cannot cancel a heavy send already in
+  // flight.
+  let totalPx = wasFleeing
+    ? Math.max(owedPx * COMPOUND_RETAIN * (1 + COMPOUND_GAIN) + send, owedPx)
+    : send;
   const capped = totalPx > MAX_SEND_PX;
   if (capped) totalPx = MAX_SEND_PX;
 
@@ -786,7 +851,10 @@ module.exports = {
   MOMENTUM_CURVE,
   MAX_SEND_PX,
   COMPOUND_GAIN,
+  COMPOUND_RETAIN,
+  PRESSURE_MAX_STEP,
   SLAP_CHASE_RATIO,
+  SLAP_STEP_IN_VELOCITY,
   CHASE_SPEED_CAP,
   SLAP_SLIDE_CONTACT_DAMP,
   V_IMPACT_REF,

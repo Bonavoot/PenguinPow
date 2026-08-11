@@ -78,7 +78,7 @@ Legend for volume columns: **P** pushbox, **HB** hurt volume, **HIT** offensive 
 | Palm thrust | 90 | 90 | hold 260 + end 60; hit recover 200 | tip rail | Y* | body half | **N** | tip | N |
 | Charged headbutt | 150 | 200–450 | hit recover 280; clash 450 | tip + earliest surface | yield on lunge | body half | **N** | tip | N |
 | Low kick | 95 / 85 / 300 (whiff) | | hit recover 180 | fixed reach 142 | Y | body | **N** | scalar | N |
-| Grab startup | 145 | 110 connect | whiff recover 450 | center dist `GRAB_RANGE` 146 | special | body | N | N | Y |
+| Grab startup | 85 | 110 connect | whiff recover 450 | center dist `GRAB_RANGE` 175 | special | body | N | N | Y |
 | Dodge | 50 / 210 / 0 + 100 CD | | | travel target; strike i-frames 40 ms | off while dodge | — | N | N | grabs beat |
 | Sidestep | 50 / **400** / 150 | | | fixed arc; settle if pass | off while `isSidestepping` | — | N | N | track rules |
 | Space AP / Matador | AP active 180; whiff 300 | | success plant 200 | parry windows | Y | body | N | N | Matador vs grab |
@@ -120,7 +120,7 @@ Facing during committed travel: `actionFacingOwnership` (dodge/sidestep/strikes 
 - **Pushbox:** 1D grounded interval; half-width = `HITBOX_DISTANCE_VALUE` (65) × `sizeMultiplier` (`pushboxGeometry.js`).
 - **Body “hurt” depth for strikes:** same constant via `getVictimBodyHalf` in `strikeContact.js` — **coupled to pushbox**.
 - **Strike hit surfaces:** art-tip sprite px → world tip → `getConnectDistance` / park / seam (slap, palm, charged).
-- **Grabbox:** scalar center-distance `GRAB_RANGE = 146` (plus sidestep track range 400, or 220 if `MASTERY_P5_ASSISTS`).
+- **Grabbox:** scalar center-distance `GRAB_RANGE = 175` — deliberately ~33px past the slap's 142.4 connect, so the grab has a spacing band where the jab cannot answer it (plus sidestep track range 400, or 220 if `MASTERY_P5_ASSISTS`).
 - **Low kick (disabled):** fixed `LOW_KICK_HITBOX_DISTANCE_VALUE = 142`, not tip rail.
 - **Aerial body slam:** separate aerial contact path.
 - **Clinch attach:** clinch-owned distances, not generic pushbox.

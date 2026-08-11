@@ -40,6 +40,9 @@ const HIT_FX = {
       // punish still win the status slot when both apply.
       tip:
         "brightness(1.28) saturate(0.85) drop-shadow(0 0 0.55cqw rgba(255, 248, 230, 0.95)) drop-shadow(0 0 0.9cqw rgba(180, 230, 255, 0.45))",
+      // Rope-clamp slap — hotter white punch so the posture grind reads.
+      ropeEdge:
+        "brightness(1.4) saturate(0.9) drop-shadow(0 0 0.65cqw rgba(255, 250, 235, 1)) drop-shadow(0 0 1.1cqw rgba(160, 220, 255, 0.55))",
       counter:
         "hue-rotate(-52deg) saturate(2) brightness(1.15) drop-shadow(0 0 0.4cqw rgba(255, 70, 55, 0.8))",
       punish:
@@ -51,6 +54,7 @@ const HIT_FX = {
       // status-color at the contact point (that fought counter/punish reads).
     },
     tipSizeCqw: 13.4, // slightly larger pop on clean tip connects
+    edgeSizeCqw: 15.2, // fatter burst on rope-clamp slaps
   },
   charged: {
     src: chargedHitSheet,
@@ -113,11 +117,13 @@ HIT_FX.lowKick = {
 
 // Map hit status → filter key. Shared across sheets (each sheet supplies its own
 // CSS for the key). Power water (isPowered) is intentionally treated as normal.
-// Tip is a spacing tell — only wins when no higher-priority status color applies.
+// Tip / rope-edge are spacing/pressure tells — only win when no higher-priority
+// status color applies. Counter/punish still own the slot when both apply.
 const resolveStatusKey = (position) => {
   if (position.isArmorBreak) return "armorBreak";
   if (position.isCounterHit) return "counter";
   if (position.isPunish) return "punish";
+  if (position.isRopeEdgeSlap) return "ropeEdge";
   if (position.isTipSlap) return "tip";
   return "normal";
 };
@@ -212,9 +218,11 @@ const HitBurst = ({ effect, onDone }) => {
   const dirX = effect.seamAnchored ? 0 : cfg.dirXPct;
 
   const size =
-    effect.statusKey === "tip" && cfg.tipSizeCqw
-      ? cfg.tipSizeCqw
-      : cfg.sizeCqw;
+    effect.statusKey === "ropeEdge" && cfg.edgeSizeCqw
+      ? cfg.edgeSizeCqw
+      : effect.statusKey === "tip" && cfg.tipSizeCqw
+        ? cfg.tipSizeCqw
+        : cfg.sizeCqw;
 
   return (
     <SpriteContainer
@@ -281,6 +289,7 @@ const SlapHitSpriteEffect = ({ position }) => {
     position?.isArmorBreak,
     position?.isPowered,
     position?.isTipSlap,
+    position?.isRopeEdgeSlap,
   ]);
 
   const handleDone = (effectId) => {
@@ -315,6 +324,7 @@ SlapHitSpriteEffect.propTypes = {
     isArmorBreak: PropTypes.bool,
     isPowered: PropTypes.bool,
     isTipSlap: PropTypes.bool,
+    isRopeEdgeSlap: PropTypes.bool,
   }),
 };
 

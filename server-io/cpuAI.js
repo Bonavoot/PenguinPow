@@ -55,8 +55,12 @@ const AI_CONFIG = {
   // at use-time (tip ~133px @ 0.85). SLAP_RANGE is the "close pocket" band only.
   SLAP_RANGE: 140,         // ≈ tip connect + slack — close-range offense pocket
   SLAP_REACH_SLACK: 10,    // Extra px past connect for ice drift into ACTIVE
-  GRAB_RANGE: 135,
-  GRAB_APPROACH_RANGE: 165,
+  // Tracks the real GRAB_RANGE (175) with ~11px of slack for ice drift, same as the
+  // 135/146 pairing it replaces. Sitting at the old 135 would now park the CPU deep
+  // inside slap reach (142.4) to grab from a distance the grab out-ranges by 33px —
+  // i.e. volunteering to be jabbed out of every attempt.
+  GRAB_RANGE: 164,
+  GRAB_APPROACH_RANGE: 195,
   MID_RANGE: 185,          // Scaled for camera zoom (was 250)
   CHARGED_ATTACK_RANGE: 200, // Adjusted for buffed charged hitbox (~106px)
   

@@ -44,8 +44,8 @@ const {
   CHARGED_STARTUP_MS, CHARGED_ACTIVE_MS,
   GRAB_WALK_SPEED_MULTIPLIER, GRAB_WALK_ACCEL_MULTIPLIER,
   CHARGE_FULL_POWER_MS,
-  GRAB_STARTUP_DURATION_MS, GRAB_ACTIVE_MS, GRAB_THROW_CATCH_START_MS,
-  GRAB_STARTUP_HOP_HEIGHT, GRAB_LUNGE_DISTANCE, SLAP_ATTACK_STARTUP_MS,
+  GRAB_STARTUP_DURATION_MS, GRAB_ACTIVE_MS,
+  GRAB_STARTUP_HOP_HEIGHT, GRAB_LUNGE_FRICTION, SLAP_ATTACK_STARTUP_MS,
   GRAB_WHIFF_RECOVERY_MS, GRAB_CATCH_MIN_BURST_SPEED,
   GRAB_BREAK_STAMINA_COST, GRAB_BREAK_FORCED_DISTANCE,
   GRAB_BREAK_TWEEN_DURATION, GRAB_BREAK_RESIDUAL_VEL,
@@ -229,7 +229,7 @@ const {
 const {
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
-  grabCatchesSlap,
+  grabSeparationEase,
 } = require("./combatHelpers");
 
 // Import CPU AI
@@ -1013,6 +1013,13 @@ function tick(delta) {
         player.grabImmune = false;
       }
 
+      // Self-heal: the shove-off pose exists only for as long as the shove does.
+      // Anything that tears the tween down out of band (boundary swap fixups,
+      // a round reset mid-slide) would otherwise strand the palms extended.
+      if (player.isGrabSeparatePalm && !player.isGrabBreakSeparating) {
+        player.isGrabSeparatePalm = false;
+      }
+
       // Smooth grab-break separation tween overrides other movement for its duration
       if (player.isGrabBreakSeparating) {
         const elapsed = now - (player.grabBreakSepStartTime || now);
@@ -1021,12 +1028,14 @@ function tick(delta) {
         const targetX = player.grabBreakTargetX ?? player.x;
         const t = duration > 0 ? Math.min(1, elapsed / duration) : 1;
         const isBoundarySwap = player.isBoundaryPullSwap;
-        // Boundary swap: ease-in-out so both players cross at t=0.5 (aligned with arc peak)
-        // Everything else (incl. the kill pull belly-slide) uses a friction ease-out:
-        // moves quickest at contact, then decelerates to a stop like sliding on ice.
-        const eased = isBoundarySwap
-          ? (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
-          : 1 - Math.pow(1 - t, 3);
+        // Default is the hit curve — quickest at contact, decelerating to a stop
+        // like sliding on ice. A tween that stamped its own curve (the drive
+        // release asks for "shove") keeps it; the boundary swap needs its
+        // crossing at t=0.5 to line up with the arc peak.
+        const eased = grabSeparationEase(
+          t,
+          player.grabBreakSepCurve || (isBoundarySwap ? "swap" : "hit")
+        );
         let newX = startX + (targetX - startX) * eased;
 
         // For pull reversal, clamp to a margin inside boundaries so they stop before the edge
@@ -1121,6 +1130,10 @@ function tick(delta) {
           player.grabBreakSepDuration = 0;
           player.grabBreakStartX = undefined;
           player.grabBreakTargetX = undefined;
+          player.grabBreakSepCurve = null;
+          // The shove-off pose lives exactly as long as the shove. Cleared here
+          // rather than on a timer so it can never outlive an early-ended tween.
+          player.isGrabSeparatePalm = false;
 
           // Grab tech: feed residual velocity into ice sliding after forced separation
           if (player.grabTechResidualVel) {
@@ -1307,13 +1320,14 @@ function tick(delta) {
               }
             }
 
-            // Slap rope resistance: unless this hit was armed for a ring-out
-            // (connected within the kill zone — see processHit), the rope
-            // catches the victim at the edge instead of letting the knockback
-            // carry them out. Same buffer logic as the parry clamp. Hitstun is
-            // timer-based, so stopping the slide here changes only the victim's
-            // resting POSITION, never the recovery timing — frame advantage
-            // stays identical to any other slap, keeping the exchange neutral.
+            // Slap/palm rope resistance: unless this hit was armed for a
+            // ring-out (victim posture was already < CLINCH_THROW_KILL_THRESHOLD
+            // BEFORE the hit's drain — see processHit), the rope catches
+            // them at the edge instead of letting the knockback carry them
+            // out. Same buffer logic as the parry clamp. Hitstun is
+            // timer-based, so stopping the slide here changes only the
+            // victim's resting POSITION, never the recovery timing — frame
+            // advantage stays identical, keeping the exchange neutral.
             if (player.isSlapKnockback && !player.slapKnockbackCanRingOut) {
               const clampedX = Math.max(
                 MAP_LEFT_BOUNDARY + SLAP_ROPE_RESIST_BUFFER,
@@ -1408,18 +1422,47 @@ function tick(delta) {
         executeInputBuffer(player, rooms);
       }
 
-      // Handle grab startup — lunge forward during startup, then range check at the end.
+      // ── GRAB DIVE ───────────────────────────────────────────────────────
+      // One impulse is stamped at grab start (beginGrabStartup); from here it is
+      // pure friction, integrated exactly like every other moving thing on this
+      // ice. Deliberately runs across the WHOLE dive — startup, active frames AND
+      // whiff recovery — not just startup.
+      //
+      // That span is the point. The old fixed-distance version stopped the instant
+      // startup ended, which turned the 110ms active window into a stationary
+      // suction field (stand still, grab anyone who wanders inside GRAB_RANGE) and
+      // made a whiffed grab stop dead as though it hit a wall. Carrying the
+      // momentum makes the active window a moving body that catches what it runs
+      // into, and makes the whiff a skid — the punish window reading as a punish.
+      if (
+        player.grabMovementVelocity &&
+        (player.isGrabStartup ||
+          player.isWhiffingGrab ||
+          player.isGrabWhiffRecovery)
+      ) {
+        player.x = Math.max(
+          MAP_LEFT_BOUNDARY,
+          Math.min(
+            player.x + delta * speedFactor * player.grabMovementVelocity,
+            MAP_RIGHT_BOUNDARY
+          )
+        );
+        player.grabMovementVelocity *= GRAB_LUNGE_FRICTION;
+        if (Math.abs(player.grabMovementVelocity) < MIN_MOVEMENT_THRESHOLD) {
+          player.grabMovementVelocity = 0;
+        }
+      } else if (player.grabMovementVelocity) {
+        // Left every dive state — connected, got hit out of it, teched. Self-heal
+        // so a stale impulse can never leak into a later action's movement.
+        player.grabMovementVelocity = 0;
+      }
+
+      // Handle grab startup — dive carries it forward, then range check at the end.
       if (player.isGrabStartup) {
         const elapsed = room.simTime - player.grabStartupStartTime;
         const startupMs = player.grabStartupDuration || GRAB_STARTUP_DURATION_MS;
 
-        // Apply forward lunge movement each tick during startup (fixed range).
-        if (elapsed < startupMs && GRAB_LUNGE_DISTANCE > 0) {
-          const lungePerTick = GRAB_LUNGE_DISTANCE / (startupMs / delta);
-          const lungeDir = -player.facing; // facing 1=left, -1=right
-          const newX = player.x + lungeDir * lungePerTick;
-          player.x = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
-        } else if (elapsed >= startupMs) {
+        if (elapsed >= startupMs) {
           // Startup over — the grab is active, so the variant stops being revisable.
           // Locking here rather than at connect is what stops a grab being held out
           // and having its variant chosen on the frame contact is seen. When already
@@ -1427,12 +1470,10 @@ function tick(delta) {
           lockGrabVariant(player);
         }
 
-        // THROW-CATCH / CONNECT WINDOW: begins late in startup
-        // (GRAB_THROW_CATCH_START_MS) through active end — not only after full
-        // startup. Early startup stays stuffable; once catch frames are live,
-        // connect can happen the same tick (including through a slap) so we
-        // never suppress a slap without clinching.
-        if (elapsed >= GRAB_THROW_CATCH_START_MS) {
+        // CONNECT WINDOW: startup end through active end. Startup itself is
+        // fully hittable — the grab carries no armor, so it only lands in a gap
+        // between the opponent's active frames.
+        if (elapsed >= startupMs) {
           const withinConnectWindow = elapsed < startupMs + GRAB_ACTIVE_MS;
           const opponent = room.players.find((p) => p.id !== player.id);
 
@@ -1515,15 +1556,11 @@ function tick(delta) {
               !player.isBeingGrabbed &&
               !player.throwTechCooldown &&
               !opponentGrabImmune;
-            // COMMAND GRAB CATCH: late-startup + active throw-catch vs slap
-            // (see grabCatchesSlap). Early startup is hittable; catch connects
-            // same tick so slap never ghosts inside the body.
-            const grabWinsVsSlap = grabCatchesSlap(player, opponent, now);
-            // Charged / palm / low kick still block connect while attacking —
-            // only slap is catchable on throw-catch frames.
+            // Any live attack blocks the connect — slap included, now that the
+            // throw-catch is gone. A grab that reaches active frames while the
+            // opponent is still swinging simply does not connect.
             const canConnect =
-              opponentGrabbableNeutral &&
-              (!opponent.isAttacking || grabWinsVsSlap);
+              opponentGrabbableNeutral && !opponent.isAttacking;
 
             if (canConnect) {
               // MATADOR: grab would have connected into a live grab-parry →
@@ -1699,7 +1736,7 @@ function tick(delta) {
             executeGrabWhiff(player);
           }
         } else {
-          // Early startup (before throw-catch) — lunge only, fully hittable
+          // Startup — lunge only, fully hittable on every frame.
           return;
         }
       }
@@ -4165,6 +4202,10 @@ function tick(delta) {
       if (!(player.isAttacking && player.attackType === "slap")) {
         if (player.pendingSlapCount > 0) player.pendingSlapCount = 0;
         if (player.pendingPalmThrust) player.pendingPalmThrust = false;
+        if (player.pendingGrab) {
+          player.pendingGrab = false;
+          player.pendingGrabPressTime = 0;
+        }
       }
 
       // SELF-HEAL: at-the-ropes is a fixed-duration stun cleared by a named

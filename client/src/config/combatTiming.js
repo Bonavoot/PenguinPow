@@ -43,6 +43,30 @@ export const PALM_THRUST_ANIM = {
   ACTIVE_END: 460,
 };
 
+/**
+ * The same four palm poses, re-paced for the command-grab Drive release, where
+ * they are borrowed as presentation: the fighter who just got driven shoves the
+ * winner off with both hands. Server sets `isGrabSeparatePalm` — there is no
+ * palm thrust move happening, so PALM_THRUST_ANIM's timings do not apply.
+ *
+ * The real thrust holds the strike pose for 460ms because a thrust is a long
+ * commitment you need to read. Borrowing that here would spend the whole
+ * separation on one frame — extend, hold, cut to idle — which is the static
+ * pose problem this was meant to solve. So the beats are packed to fit inside
+ * CMD_DRIVE_RELEASE_TWEEN_MS (240) with the settle landing BEFORE the slide
+ * stops, letting the fighter arrive already back in stance instead of snapping
+ * out of an extended arm.
+ *
+ * MUST stay under server-io/constants.js CMD_DRIVE_RELEASE_TWEEN_MS.
+ */
+export const GRAB_SEPARATE_PALM_ANIM = {
+  STARTUP_END: 40,
+  SMEAR_END: 80,
+  // Palms are extended across the tween's ease-in-out peak (t=0.5 → 120ms), so
+  // the fastest part of the shove happens while the hands are actually out.
+  ACTIVE_END: 190,
+};
+
 /** Sidestep active — MUST match server-io/constants.js SIDESTEP_ACTIVE_MS. */
 export const SIDESTEP_ACTIVE_MS = 400;
 export const SIDESTEP_STARTUP_MS = 50;

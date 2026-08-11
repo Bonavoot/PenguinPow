@@ -3,7 +3,7 @@
 /**
  * Outcome-aware physical contact resolution (Phase 13).
  *
- * Sits between existing outcome arbitration (checkCollision / grabCatchesSlap)
+ * Sits between existing outcome arbitration (checkCollision)
  * and reaction/presentation. Does NOT re-decide winners — only makes the
  * approved outcome reach a coherent contact + interruption moment.
  *

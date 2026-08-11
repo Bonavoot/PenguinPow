@@ -96,7 +96,7 @@ export function clearLocalStrikePhaseHints() {
 const DESIGN_W = 1280;
 const DESIGN_H = 720;
 const HITBOX_HALF = 65;
-const GRAB_RANGE = 146;
+const GRAB_RANGE = 175; // mirror of server-io/constants.js GRAB_RANGE
 const GROUND_LEVEL = 286;
 const DISPLAY_WIDTH_FRAC = 0.123;
 const SPRITE_WORLD_SIZE = DESIGN_W * DISPLAY_WIDTH_FRAC;

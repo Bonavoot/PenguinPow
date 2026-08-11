@@ -385,6 +385,8 @@ function processInputPacket(room, player, data, io, rooms) {
       // (cap 1 — pure responsiveness, the follow-up is fully contestable).
       // Back held (without forward) instead queues a palm thrust follow-up so
       // the player can flow from slap pressure into a rooted thrust.
+      // Mouse2 queues the grab the same way — the generic inputBuffer below is
+      // unreachable while a slap is in flight, so without this the press dies.
       if (player.isAttacking && player.attackType === "slap") {
         if (rising.mouse1) {
           const fwdK = player.facing === -1 ? "d" : "a";
@@ -397,6 +399,10 @@ function processInputPacket(room, player, data, io, rooms) {
             // reads it to grade cadence. Late & precise ⇒ enhanced follow-up.
             player.pendingSlapPressTime = simNowForPlayer(player);
           }
+        }
+        if (rising.mouse2 && !player.inClinch) {
+          player.pendingGrab = true;
+          player.pendingGrabPressTime = simNowForPlayer(player);
         }
       } else {
         // Non-slap states: use generic inputBuffer
@@ -1388,6 +1394,19 @@ function processInputPacket(room, player, data, io, rooms) {
     // Begin startup with forward lunge — clears ice slide + inherits slide
     // momentum (see beginGrabStartup). Tick loop applies lunge → connect/whiff/tech.
     beginGrabStartup(player, room);
+  } else if (
+    player.mouse2JustPressed &&
+    player.isAttacking &&
+    player.attackType === "slap" &&
+    !player.inClinch
+  ) {
+    // Mid-slap M2 queues the grab for cycle end, mirroring how mouse1 queues the
+    // next slap / palm thrust. A slap sets neither isRecovering nor
+    // actionLockUntil, so shouldBlockAction() is false and the generic
+    // inputBuffer never sees this press — the queue is what keeps M1→M2 from
+    // silently dropping the grab. Eligibility is re-checked at cycle end.
+    player.pendingGrab = true;
+    player.pendingGrabPressTime = simNowForPlayer(player);
   }
 }
 

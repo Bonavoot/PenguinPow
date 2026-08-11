@@ -20,8 +20,6 @@ const {
   snapshotOutcome,
   CHARGE_PRIORITY_THRESHOLD,
 } = require("./helpers/contactSim");
-const { grabCatchesSlap } = require("../../combatHelpers");
-
 const scenarios = [];
 afterEach(() => {
   setCombatContactFidelityV2ForTests(null);
@@ -74,13 +72,15 @@ describe("Phase 13 — baseline outcome preservation", () => {
       assert.equal(s.right.isHit, false, "charged winner must not be hit");
     });
 
-    it("grabCatchesSlap is true in throw-catch window with active slap", () => {
+    it("Slap stuffs grab startup — no throw-catch armor anywhere on it", () => {
       const s = sc({ gap: 80 });
       const now = s.room.simTime;
       armSlap(s.right, { now });
       armGrabStartup(s.left, { now });
       placeInConnectRange(s.right, s.left, "slap");
-      assert.equal(grabCatchesSlap(s.left, s.right, now), true);
+      runBothCollisionOrders(s.left, s.right, s.rooms, s.io);
+      assert.equal(s.left.isHit, true, "grabber must eat the slap");
+      assert.equal(s.left.isGrabStartup, false, "grab must be interrupted");
     });
 
     it("Slap vs Slap earlier start wins", () => {

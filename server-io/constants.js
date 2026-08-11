@@ -54,7 +54,11 @@ const DELTA_TRACKED_PROPS = [
   'isAttemptingGrabThrow', 'isInRitualPhase',
   'isGrabPushing', 'isBeingGrabPushed', 'isEdgePushing', 'isBeingEdgePushed',
   'isAttemptingPull', 'isBeingPullReversaled',
-  'isGrabSeparating', 'isGrabBellyFlopping', 'isBeingGrabBellyFlopped',
+  'isGrabSeparating',
+  // Drive release presentation: the shoved fighter plays the palm-thrust
+  // animation while they slide. Pose only — never an attack (see releaseDrive).
+  'isGrabSeparatePalm',
+  'isGrabBellyFlopping', 'isBeingGrabBellyFlopped',
   'isGrabFrontalForceOut', 'isBeingGrabFrontalForceOut',
   'knockbackVelocity',
   // Parry/guard shove slide (separate from isHit knockback). Client prediction
@@ -196,14 +200,43 @@ const SLAP_PARRY_KNOCKBACK_LOSER = 5.0; // Was 3.5 — harder shove ends the war
 const SLAP_PARRY_KNOCKBACK_NEUTRAL = 2.8; // Was 2.0 — ties also create real space
 const SLAP_PARRY_KB_FRICTION = 0.82; // Strong friction — quick settle after the shove
 // Instant separation snap on clash resolve — expand centers to this gap BEFORE
-// hitstop. Must sit CLEAR of slap reach (~138) so post-clash mash doesn't
+// hitstop. Must sit CLEAR of slap reach (142.4) so post-clash mash doesn't
 // instantly re-clang; never pulls closer.
+//
+// Deliberately left INSIDE the new GRAB_RANGE (175): a clash should reset the jab
+// war without resetting the round, so the pocket survives and the fighter with
+// advantage keeps a grab option. Raising this past 175 would turn every clash into
+// a full neutral reset, which is the opposite of what the parry is for.
 const SLAP_PARRY_TIP_SEPARATION = 165;
 
-const GRAB_RANGE = 146; // Command grab range — same +16 past pushbox overhang as before
-// Slap-catch uses full grab range. (A tighter pocket made tip-range slap
-// spacing un-grabbable while slap could still stuff — feel was too weak.)
-const GRAB_SLAP_CATCH_RANGE = GRAB_RANGE;
+// Command grab range. This is the number that decides whether the grab has a home,
+// so it is worth being explicit about the geometry it sits in:
+//
+//   130    pushboxes touching (HITBOX_DISTANCE_VALUE * 2)
+//   142.4  slap connects (strikeContact.getConnectDistance("slap"), art tip + body half)
+//   175    grab connects  ← here
+//
+// At the old 146 the grab out-reached the slap by THREE AND A HALF PIXELS. Combined
+// with the 85ms startup only fitting a 45ms window inside a slap masher's 130ms gap,
+// the move had nowhere to live: no spacing where it was safe and a 3-frame window
+// where it was on time. That is what the deleted grab-catches-slap armor was
+// silently paying for — the armor was not flavor, it was the only reason grabs
+// connected at all. Removing it without fixing the geometry is what made grabs read
+// as flailing.
+//
+// 175 buys ~33px of reach past the slap, which is the whole point: at that spacing a
+// slap physically cannot touch you, so the 45ms frame window stops mattering. The
+// grab wins by standing where the jab does not reach, not by out-prioritising it.
+// Concretely it turns the band of launch distances that both reach AND stay outside
+// slap reach from 3.6px wide (unusable) into ~33px (a quarter of a body width — a
+// spacing you can actually see and hold).
+//
+// Double-anchored so it doesn't read as a taste number: 175 + GRAB_LUNGE_DISTANCE
+// (44) = 219px of total threat, which is within 2px of the 221 this move threatened
+// before the startup rework (146 + the old 75 lunge). Reach and lunge swapped roles.
+// The grab menaces from the same distance it always did; it just now CONNECTS from
+// outside jab range instead of inside it.
+const GRAB_RANGE = 175;
 
 // ============================================
 // FRAME DATA SYSTEM — Formal startup/active/recovery for every move
@@ -259,17 +292,33 @@ const BURST_KB_FRICTION = 0.982;           // Per-tick decay during the forced w
 
 // ─── SLAP ROPE RESISTANCE ───────────────────────────────────────────────
 // Real-sumo rope feel: a slap can only send the opponent OUT if the hit
-// connected while they were already near the boundary (the "kill zone").
-// From mid-ring, the rope catches them — the victim is stopped at the edge
-// instead of being knocked through it. Evaluated PER HIT at connect time
-// (using the victim's distance to the boundary in the knockback direction),
-// so repeated slaps naturally walk the opponent into the zone first. There
-// is NO bypass — not even on a punish. Slap rings out ONLY inside this band.
+// Positional kill band retained for flap / projectiles.
+// Slap + palm ring-out are posture-gated on PRE-HIT balance
+// (< CLINCH_THROW_KILL_THRESHOLD). The hit that brings them under still clamps;
+// the next strike while lethal can KO.
 const SLAP_KILL_RANGE = 25;
 // Where a rope-caught victim comes to rest, measured INWARD from the boundary.
 // Keeps them a few px off the literal edge (not pixel-perfect on the rope) and
 // safely short of the ring-out line so the win check never trips on a save.
 const SLAP_ROPE_RESIST_BUFFER = 12;
+// Shared slap/palm edge pressure: victim already within this distance of the
+// boundary they're being knocked toward counts as "on the clamp."
+// Sized above SLAP_ROPE_RESIST_BUFFER so a parked clamp victim (~12px in)
+// always qualifies, with a little slack for coast settle.
+const SLAP_ROPE_EDGE_ZONE = 28;
+// Rope grind station — mid-ring slaps stay light chips; clamp hits are where
+// posture actually drains toward the <15 ring-out gate. 1.9 still felt like
+// a long poke string at the ropes; 2.8 makes ~4–6 edge connects matter.
+const SLAP_EDGE_POSTURE_MULT = 2.8;
+// Palm already chips harder than slap mid-ring; at the clamp this mult lands
+// slightly above a single edge slap (~1.15–1.25× across typical closing speeds)
+// so palm stays the heavier confirm without skipping the posture gate.
+const PALM_EDGE_POSTURE_MULT = 1.4;
+// Sharp crack for rope-clamp slap/palm — heavier than a mid-ring poke,
+// short enough that a barrage doesn't read as a hitch. Weight is sold by
+// client juice (SFX layers, squash, spark, shake), not by a long freeze.
+const SLAP_EDGE_HITSTOP_MS = 110;
+const PALM_EDGE_HITSTOP_MS = 130;
 
 // ── ON-HIT GROUND TRANSFER (the slap's entire reward) ───────────────────────
 // On connect BOTH slide toward the victim's rope, but the attacker carries a
@@ -364,16 +413,21 @@ const LOW_KICK_BALANCE_DRAIN = 12;      // Above slap (~7), under palm (20)
 const LOW_KICK_BALANCE_DRAIN_VS_PARRY = 16; // Bonus for beating Space
 const LOW_KICK_BALANCE_DRAIN_COUNTER = 16;
 
-const GRAB_STARTUP_MS = 145;      // Readable telegraph. Early startup is
-                                  // stuffable; throw-catch begins late in
-                                  // startup (see GRAB_THROW_CATCH_START_MS).
-const GRAB_ACTIVE_MS = 110;       // Grab connect / slap-catch window
-// When throw-catch vs slap begins (ms after grab press). Must be ≤ slap
-// recovery (75ms) so a grab pressed on slap recovery can reach catch before
-// the next mashed slap stuffs you — otherwise PB slap mash makes grab
-// mathematically impossible (startup 145 > recovery 75). Early window
-// stays hittable so meaty/react slaps still beat raw grab attempts.
-const GRAB_THROW_CATCH_START_MS = 70;
+// Grab is FAST and UNARMORED: every frame of startup is hittable, so a grab
+// only lands in a GAP between the opponent's active frames. Any live hitbox
+// that reaches you stuffs it — no special case, and nothing that changes the
+// outcome while looking identical.
+//
+// The startup value falls out of that model rather than from taste. A perfect
+// slap masher leaves a 130ms gap (active 55→185, next active at 315) and the
+// WHOLE startup has to fit inside it, so the window of valid press timings is
+// (130 − startup): ~45ms (~3 frames) at 85, opening up much wider against any
+// imperfect human. Past ~130 the grab is arithmetically impossible in the
+// pocket, which is exactly what the old throw-catch armor existed to paper
+// over. Staying above slap's 55ms startup also keeps a simultaneous press
+// resolving slap-first, so the race is legible.
+const GRAB_STARTUP_MS = 85;
+const GRAB_ACTIVE_MS = 110;       // Connect window, opening once startup ends
 
 const DODGE_STARTUP_MS = 50;      // Readable windup/anticipation before the hop (was 20)
 const DODGE_ACTIVE_MS = 210;      // Actual dash movement — lengthened for readability (was 175); speed lowered to keep the same travel distance
@@ -632,15 +686,33 @@ const GRAB_WALK_ACCEL_MULTIPLIER = 0.7; // Slightly lower acceleration than norm
 // Grab startup tuning — lunge forward during startup for better grab range
 const GRAB_STARTUP_DURATION_MS = GRAB_STARTUP_MS; // Uses frame data constant
 const GRAB_STARTUP_HOP_HEIGHT = 0; // No hop — grab is a grounded technique
-const GRAB_LUNGE_DISTANCE = 75; // Pixels of forward movement during grab startup (buffed from 55 — grabs more threatening)
+// ── The dive ────────────────────────────────────────────────────────────────
+// The lunge used to be a fixed distance divided evenly across startup and written
+// straight into player.x — a conveyor belt with no velocity, no friction and no
+// mass. That is why the distance read as arbitrary no matter what number sat here:
+// nothing in the game's physics produced it, so no value could feel earned. It also
+// meant the grab stopped dead the instant startup ended, which made the active
+// window a stationary suction field instead of a moving body.
+//
+// It is now a real impulse into grabMovementVelocity, bled off by friction like
+// everything else that moves on this ice. Distance is emergent; the constant below
+// is the TOTAL travel of an uninterrupted dive, and the impulse is solved backwards
+// from it so the readable number survives while the motion becomes physical.
+//
+// Friction sits between a free coast (ICE_COAST_FRICTION 0.982, which would take
+// ~2.4s to settle — far too floaty to read as a committed dive) and a hard brake
+// (ICE_BRAKE_FRICTION 0.80, which stops so fast it reintroduces the dead stop).
+const GRAB_LUNGE_FRICTION = 0.94;
+// Total travel of a full uninterrupted dive. It splits roughly:
+//   ~31px over startup (85ms)   — the commit, before the grab can catch anything
+//   ~28px over active (110ms)   — still moving, so the grab is a body and not a field
+//   ~43px over whiff recovery   — the skid, which is the punish, not the threat
+// So the part that can actually GRAB you is the first ~59px, right in line with the
+// 75px the pre-rework lunge covered. The rest is follow-through you cannot act
+// during — a liability, which is exactly why a fished grab from max range should
+// leave you sliding past your opponent with 450ms to think about it.
+const GRAB_LUNGE_DISTANCE = 110;
 const SLAP_ATTACK_STARTUP_MS = SLAP_STARTUP_MS; // Uses frame data constant (55ms — all slaps share this startup)
-
-// Grab armor stagger — extends grab startup when armor absorbs a slap, so a
-// chained slap can actually catch the grabber before they connect. Without
-// this, slap chain cycle (~195ms) is too long to fit a second slap inside
-// the 180ms base startup, making armored grabs effectively unbeatable by
-// slaps. 100ms gives a tight-but-real "double slap breaks armor" window.
-const GRAB_STARTUP_ARMOR_STAGGER_MS = 100;
 
 // Grab whiff recovery — big vulnerable window if grab misses
 const GRAB_WHIFF_RECOVERY_MS = 450; // Whiff recovery duration (fully vulnerable to punishment)
@@ -1368,9 +1440,9 @@ const CLINCH_PULL_SWAP_ARC_HEIGHT = 55;          // Hop arc height so pulled pla
 // COMMAND GRAB
 // ============================================
 // M2 / M2+Back / M2+W pick Drive / Pull / Throw at press time; a connect resolves
-// straight into that action. Entry frame data (GRAB_STARTUP_MS 145 / GRAB_RANGE
-// 146 / GRAB_WHIFF_RECOVERY_MS 450) is deliberately unchanged so the neutral game
-// stays where it was tuned — everything here governs what happens AFTER connect.
+// straight into that action. Entry frame data (GRAB_STARTUP_MS / GRAB_RANGE 175 /
+// GRAB_WHIFF_RECOVERY_MS 450) is owned up there — everything here governs what
+// happens AFTER connect.
 const CMD_GRAB_VARIANT = { DRIVE: "drive", PULL: "pull", THROW: "throw" };
 
 // Variant selection window. A direction press this long BEFORE the M2 edge still
@@ -1408,8 +1480,12 @@ const CMD_PULL_LAUNCH_HITSTOP_MS = 0;
 // spacing. Drive has no startup beat to close it in, so it happens on the move.
 const CMD_DRIVE_CINCH_FRACTION = 0.35;
 
-// GRAB_RANGE (146) is more than twice the settled grip distance (~61px), so a grab
+// GRAB_RANGE (175) is nearly three times the settled grip distance (~61px), so a grab
 // can legitimately connect at a range where the fighters are nowhere near touching.
+// This got MORE pronounced when the reach widened, and it is load-bearing for the
+// look of the move: at a max-range connect the grabber closes ~82px of the 114px gap
+// over the read beat, which works out to roughly power-slide speed (~0.48px/ms vs
+// ICE_SLIDE_MAX_SPEED's ~0.44) — a committed slide into the grip, not a snap.
 // The gap closes over the read beat, and this is the GRABBER's share of that close:
 // they lunge into the grip rather than the victim sliding backwards into their
 // hands, which is what made a max-range connect look like grabbing an invisible
@@ -1437,24 +1513,60 @@ const CMD_DRIVE_APPROACH_REF_SPEED = 2.0;
 // Kept small enough that even a lethal-posture slide-in carry stays under half the
 // 595px ring (250 + 45 = 295).
 const CMD_DRIVE_APPROACH_BONUS_MAX = 45;
-// Tawara: force out only if this FRACTION OF THE CARRY DISTANCE is still owed when
-// the victim touches the rope — i.e. you have to have started close enough that the
-// drive still had real travel left in it.
-//
-// Deliberately a distance fraction and not a time budget. Time looks equivalent but
-// isn't: the carry eases out, so it spends most of its distance early, and a
-// remaining-TIME gate of 140ms out of 400ms let a victim reach the rope at 96% of
-// the travel and still be forced out — which made any carry touching the rope an
-// automatic win. A distance gate also can't silently drift if the easing is retuned.
-//
-// At 0.40 a full-posture carry (90px) must connect within ~54px of the rope, which
-// lands almost exactly on the old CLINCH_EDGE_ZONE_THRESHOLD of 60 — you have to
-// already have them in the danger zone. Expect to tune this first.
+// RETIRED as a ring-out gate. Drive KO at the rope is stamina-gated now
+// (gassed / empty tank), matching slap/palm's clamp-unless-threshold pattern.
+// Kept exported so old characterization tests can be rewritten against the new
+// contract without a silent undefined import.
 const CMD_DRIVE_EDGE_FORCE_OUT_FRACTION = 0.4;
-// Release past GRAB_RANGE (146) so there is no free re-grab and no free jab —
-// the anti-loop valve is distance, with the frame deficit as a tiebreaker.
-const CMD_DRIVE_RELEASE_SEPARATION = 164;
-const CMD_DRIVE_RELEASE_TWEEN_MS = 150;
+// While a drive pins the victim against the tawara without a kill waiver,
+// burn their stamina hard. Entry speed still buys carry distance/duration;
+// this tax is how ungassed victims become gassed at the clamp mid-push.
+// ~70/s ⇒ a half-second pin eats ~35 stam — meaningful grind, not instant gas
+// from full, and a low tank converts during the same shove.
+const CMD_DRIVE_EDGE_STAMINA_DRAIN_PER_SEC = 70;
+// Release past GRAB_RANGE so there is no free re-grab and no free jab — the
+// anti-loop valve is distance, with the frame deficit as a tiebreaker. Tracks
+// GRAB_RANGE with the same ~18px of daylight it had at the old 146/164 pairing, so
+// widening the grab's reach can never quietly re-open the drive loop.
+const CMD_DRIVE_RELEASE_SEPARATION = GRAB_RANGE + 18;
+// How long the shove takes. The separation distance is pinned by the anti-loop
+// rule above, so this number alone decides how fast the fighters come apart —
+// and at 150ms it was the fastest movement in the entire game. A cubic ease-out
+// peaks at 3x its own average, which put the victim at ~2.3px/ms out of the
+// grip: five times a power slide, faster than any attack lunge. The eye reads
+// motion that quick as a teleport, not a push.
+//
+// 240ms, paired with the "shove" curve this release stamps on the tween (see
+// SEPARATION_EASE), drops the peak to ~0.74px/ms — about one and a half power
+// slides. Still clearly a shove, but slow enough that you watch it happen.
+//
+// The curve is doing more of that work than the duration is. Both cubics peak
+// at 3x their own average and only disagree about WHEN, so going from ease-out
+// to ease-in-out buys nothing; the sine curve peaks at 1.57x, which is where
+// the actual calm comes from. Retuning the duration without keeping a flat
+// curve will put the snap straight back.
+//
+// Ceiling, not preference: the attacker's recovery matches this window, and
+// v2-defaults asserts a Throw commits more than twice a Drive (520 vs 2x240).
+// Going past ~259 makes the Drive stop being the cheap pressure tool.
+const CMD_DRIVE_RELEASE_TWEEN_MS = 240;
+// Who eats the separation. This used to be a flat 50/50, and that split was the
+// single worst-looking thing about the release: the fighter who just WON the drive
+// got shoved back exactly as far, exactly as fast, arriving at exactly the same
+// instant as the fighter who lost it. Two magnets repelling, not a shove.
+//
+// Derived from the split the slap parry already establishes for winning a physical
+// contest (SLAP_PARRY_KNOCKBACK_WINNER 0.8 against LOSER 5.0 — the winner holds his
+// ground, the loser travels), so shoves resolve the same way everywhere instead of
+// this one place inventing its own physics.
+const CMD_DRIVE_RELEASE_VICTIM_SHARE =
+  SLAP_PARRY_KNOCKBACK_LOSER /
+  (SLAP_PARRY_KNOCKBACK_LOSER + SLAP_PARRY_KNOCKBACK_WINNER);
+// Carry postures drop at this fraction of the slide, NOT at the end of it.
+// Landing the pose swap on the same frame the motion stops is what made the
+// release read as a teleport to idle — the same coincidence that makes the connect
+// pop. Dropping them mid-slide gives the pose change movement to hide inside.
+const CMD_DRIVE_RELEASE_POSE_DROP_FRACTION = 0.6;
 
 // ── Pull / Throw posture chip ───────────────────────────────────────────────
 const CMD_PULL_POSTURE_CHIP = 16;
@@ -1468,8 +1580,15 @@ const CMD_THROW_POSTURE_CHIP = 24;
 // Drive leaves the attacker ~60ms negative: past SLAP_STARTUP_MS (55) so a jab
 // would win the exchange, but they separate out of range so it resolves as a
 // neutral reset with the attacker holding spacing initiative.
-const CMD_DRIVE_ATTACKER_RECOVERY_MS = 170;
-const CMD_DRIVE_DEFENDER_RECOVERY_MS = 110;
+//
+// Both sit ON the release slide (240/180 against a 240ms tween) rather than
+// under it. They used to be 170/110 while a flat 150ms input lock was stamped on
+// TOP of both, which quietly collapsed the real deficit to 20ms — the defender
+// was held past their own recovery just so they wouldn't fight the tween. Sizing
+// the recoveries to the slide means the lock IS the recovery, and the 60ms the
+// comment claims is the 60ms the game actually runs.
+const CMD_DRIVE_ATTACKER_RECOVERY_MS = 240;
+const CMD_DRIVE_DEFENDER_RECOVERY_MS = 180;
 // Throw and Pull are TAILS added after their own travel, not standalone windows.
 // They used to be stacked on top of the full arc/tween — a throw cost 400ms of
 // flight plus 380ms of recovery, nearly a second of lockout for landing a grab.
@@ -1912,8 +2031,6 @@ module.exports = {
   SLAP_PARRY_KB_FRICTION,
   SLAP_PARRY_TIP_SEPARATION,
   GRAB_RANGE,
-  GRAB_SLAP_CATCH_RANGE,
-  GRAB_THROW_CATCH_START_MS,
   DOHYO_FALL_SPEED,
   DOHYO_FALL_DEPTH,
   DOHYO_FALL_HORIZONTAL_RETENTION,
@@ -2005,6 +2122,11 @@ module.exports = {
   BURST_KB_FRICTION,
   SLAP_KILL_RANGE,
   SLAP_ROPE_RESIST_BUFFER,
+  SLAP_ROPE_EDGE_ZONE,
+  SLAP_EDGE_POSTURE_MULT,
+  PALM_EDGE_POSTURE_MULT,
+  SLAP_EDGE_HITSTOP_MS,
+  PALM_EDGE_HITSTOP_MS,
   SLAP_ONHIT_ATTACKER_PUSH,
   SLAP_ONHIT_VICTIM_DRIFT,
   SLAP_COUNTER_HIT_BONUS_MS,
@@ -2074,7 +2196,7 @@ module.exports = {
   GRAB_STARTUP_DURATION_MS,
   GRAB_STARTUP_HOP_HEIGHT,
   GRAB_LUNGE_DISTANCE,
-  GRAB_STARTUP_ARMOR_STAGGER_MS,
+  GRAB_LUNGE_FRICTION,
   SLAP_ATTACK_STARTUP_MS,
   GRAB_WHIFF_RECOVERY_MS,
   GRAB_PULL_ATTEMPT_DISTANCE_MULTIPLIER,
@@ -2281,8 +2403,11 @@ module.exports = {
   CMD_DRIVE_APPROACH_BONUS_MAX,
   CMD_DRIVE_CINCH_FRACTION,
   CMD_DRIVE_EDGE_FORCE_OUT_FRACTION,
+  CMD_DRIVE_EDGE_STAMINA_DRAIN_PER_SEC,
   CMD_DRIVE_RELEASE_SEPARATION,
   CMD_DRIVE_RELEASE_TWEEN_MS,
+  CMD_DRIVE_RELEASE_VICTIM_SHARE,
+  CMD_DRIVE_RELEASE_POSE_DROP_FRACTION,
   CMD_PULL_POSTURE_CHIP,
   CMD_THROW_POSTURE_CHIP,
   CMD_DRIVE_ATTACKER_RECOVERY_MS,

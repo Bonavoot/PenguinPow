@@ -21,7 +21,14 @@ const {
   SLAP_STARTUP_MS,
   AP_LATE_PARRY_MS,
   SLAP_TIP_POCKET_SLACK_PX,
+  SLAP_ROPE_RESIST_BUFFER,
 } = require("./constants");
+
+// Mirror gameUtils map bounds locally — requiring gameUtils here creates a
+// circular dependency (gameUtils → systems → strikeContact) and MAP_* arrive
+// as undefined during module init.
+const MAP_LEFT_BOUNDARY = 340;
+const MAP_RIGHT_BOUNDARY = 935;
 
 // Fighter sprite display width / canvas size → world px per source pixel.
 const SPRITE_PX_TO_WORLD = (1280 * 0.123) / 960;
@@ -176,18 +183,51 @@ function getSlapTipQuality(distance, attacker, victim) {
 }
 
 /**
+ * Rope-rest clamp used by tip park / live extension-sep. Matches the slap/palm
+ * rope-resistance rest in index.js so a hitstop freeze can never pin a fighter
+ * past the map and then snap them inward when hitstop ends.
+ */
+function clampToRopeRest(x) {
+  return Math.max(
+    MAP_LEFT_BOUNDARY + SLAP_ROPE_RESIST_BUFFER,
+    Math.min(x, MAP_RIGHT_BOUNDARY - SLAP_ROPE_RESIST_BUFFER)
+  );
+}
+
+/**
  * Snap the pair to parkDist along the hit axis by moving the victim.
  * Buried overlaps push out; tip-range air gaps pull in — hitstop then freezes
  * a readable contact pose.
+ *
+ * At the tawara the ideal tip spacing often wants the victim PAST the map.
+ * Freezing that X through hitstop then clamping after freeze is the
+ * outside→snap-back bug on rope barrages. Never write past rope rest; if the
+ * rope ate the park, pull the attacker in to keep tip spacing instead.
  */
 function applyContactCorrection(attacker, victim, parkDist) {
   if (!attacker || !victim || !(parkDist > 0)) return false;
   const dx = victim.x - attacker.x;
   const current = Math.abs(dx);
-  if (Math.abs(current - parkDist) <= CONTACT_SNAP_EPSILON) return false;
+  if (Math.abs(current - parkDist) <= CONTACT_SNAP_EPSILON) {
+    // Still clamp — a prior unclamped write / coast can leave them past rest
+    // inside the epsilon band.
+    const clamped = clampToRopeRest(victim.x);
+    if (clamped !== victim.x) {
+      victim.x = clamped;
+      return true;
+    }
+    return false;
+  }
   // If perfectly overlapped, push victim away along attacker facing.
   const pushSign = dx === 0 ? -getAttackDir(attacker) : dx >= 0 ? 1 : -1;
-  victim.x = attacker.x + pushSign * parkDist;
+  const idealVictimX = attacker.x + pushSign * parkDist;
+  const clampedVictimX = clampToRopeRest(idealVictimX);
+  victim.x = clampedVictimX;
+  if (clampedVictimX !== idealVictimX) {
+    // Victim couldn't take the full park — restore tip spacing from the rope
+    // rest by pulling the attacker in (also rope-clamped).
+    attacker.x = clampToRopeRest(victim.x - pushSign * parkDist);
+  }
   return true;
 }
 
@@ -262,7 +302,9 @@ function enforceStrikeExtensionSeparation(attacker, opponent, nowSim) {
 
   const sign = delta >= 0 ? 1 : -1;
   // Move the opponent (attacker stays planted — slap/palm are not lunges).
-  opponent.x = attacker.x + sign * minSep;
+  // Rope-rest clamp: live ACTIVE sep must not shove them past the map either,
+  // or the next park/hitstop freezes an illegal X.
+  opponent.x = clampToRopeRest(attacker.x + sign * minSep);
   return true;
 }
 
@@ -289,6 +331,7 @@ module.exports = {
   getSlapTipQuality,
   isWithinConnectRange,
   getContactSeamX,
+  clampToRopeRest,
   applyContactCorrection,
   enforceStrikeExtensionSeparation,
   attackKindFromPlayer,

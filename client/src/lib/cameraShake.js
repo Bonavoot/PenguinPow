@@ -40,7 +40,19 @@ export const SHAKE_PROFILES = {
   // ── Medium events — rattle + slight roll ──
   rope_landing:    { trauma: 0.52, punch: 0.0, rot: 0.20 },
   throw_landing:   { trauma: 0.55, punch: 0.0, rot: 0.20 },
+  // Legacy / non-hit edge events (danger tell). Combat clamp hits use
+  // rope_clamp_hit — stacking edge_pin on barrages read as a continuous wobble.
   edge_pin:        { trauma: 0.58, punch: 0.0, rot: 0.20 },
+  // Rope-clamp slap/palm — FG-style impact kick: hard directional spike,
+  // NO roll (roll + 22Hz noise was the "weird wobble"), replace-mode so
+  // barrage rehitas crack instead of accumulating into a sustained shake.
+  rope_clamp_hit:  {
+    trauma: 0.82,
+    punch: 0.0,
+    rot: 0.0,
+    replace: true,
+    dirBias: 0.88,
+  },
   clinch_jolt:     { trauma: 0.58, punch: 0.0, rot: 0.28 },
   clinch_tumble:   { trauma: 0.64, punch: 0.0, rot: 0.32 },
   // MATADOR success yank — snappy lateral read, under slap_parry / perfect.
@@ -76,23 +88,42 @@ const state = {
   punch: 0, // current zoom-punch amount, decays in useCamera
   rot: 0, // max roll (deg) for the active shake; cleared when trauma hits 0
   amp: 1, // rendered offset multiplier (kill_throw_land goes >1 for comic slam)
+  dirBias: null, // optional per-impulse override of useCamera's SHAKE_DIR_BIAS
   _dirWeight: 0, // internal: strongest impulse so far owns the recoil direction
 };
 
 // Add a raw trauma impulse. Used directly by the hit-shake path (which derives
 // its own amount/dir/punch from knockback) and indirectly by addShake().
+// `replace: true` snaps trauma to the new spike (keeping a soft floor of the
+// prior value) instead of stacking — required for rapid clamp barrages so
+// each hit reads as a discrete kick, not a sustained wobble.
 export function addTrauma(amount, opts = {}) {
-  const { dirX = 0, punch = 0, rot = 0, amp = 1 } = opts;
-  state.trauma = Math.min(1, state.trauma + amount);
+  const {
+    dirX = 0,
+    punch = 0,
+    rot = 0,
+    amp = 1,
+    replace = false,
+    dirBias = null,
+  } = opts;
+  if (replace) {
+    state.trauma = Math.min(1, Math.max(amount, state.trauma * 0.28));
+  } else {
+    state.trauma = Math.min(1, state.trauma + amount);
+  }
   // Strongest impulse wins the recoil direction (so a big hit isn't overridden
-  // by a tiny one landing a frame later).
-  if (amount >= state._dirWeight) {
+  // by a tiny one landing a frame later). Replace-mode always claims direction
+  // so each clamp rehit kicks along THIS hit's axis.
+  if (replace || amount >= state._dirWeight) {
     state.dirX = Math.sign(dirX) || 0;
     state._dirWeight = amount;
   }
   state.punch = Math.min(PUNCH_CAP, Math.max(state.punch, punch));
-  state.rot = Math.max(state.rot, rot);
+  // Replace-mode overwrites roll (clamp profile wants 0 — don't inherit a
+  // leftover charged-hit roll into the barrage).
+  state.rot = replace ? rot : Math.max(state.rot, rot);
   state.amp = Math.max(state.amp, amp || 1);
+  if (dirBias != null) state.dirBias = dirBias;
 }
 
 // Add a named event's shake using the profile table. `scale` lets a caller
@@ -106,6 +137,8 @@ export function addShake(type, opts = {}) {
     punch: p.punch * scale,
     rot: p.rot,
     amp: p.amp || 1,
+    replace: !!p.replace,
+    dirBias: p.dirBias != null ? p.dirBias : null,
   });
 }
 
@@ -125,5 +158,6 @@ export function resetShakeBias() {
   state.dirX = 0;
   state.rot = 0;
   state.amp = 1;
+  state.dirBias = null;
   state._dirWeight = 0;
 }

@@ -8,6 +8,16 @@ export const SERVER_BROADCAST_HZ = 32;
 // Rope / win line — must match server-io/gameUtils.js (ring-out fires here).
 export const MAP_LEFT_BOUNDARY = 340;
 export const MAP_RIGHT_BOUNDARY = 935;
+// Must match server-io/constants.js SLAP_ROPE_RESIST_BUFFER — non-KO slap/palm
+// rest pose. Client hit-pin uses this so a bad packet can't freeze past the map.
+export const SLAP_ROPE_RESIST_BUFFER = 12;
+
+export function clampToRopeRest(x) {
+  return Math.max(
+    MAP_LEFT_BOUNDARY + SLAP_ROPE_RESIST_BUFFER,
+    Math.min(x, MAP_RIGHT_BOUNDARY - SLAP_ROPE_RESIST_BUFFER)
+  );
+}
 
 // Platform fall-off edge (wider than the rope). Past this, fighters drop
 // behind the dohyo. Must match server-io/gameUtils.js.

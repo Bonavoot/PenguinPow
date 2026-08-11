@@ -19,7 +19,7 @@ const {
   CMD_DRIVE_CARRY_MS,
   CMD_DRIVE_DISTANCE_MIN,
   CMD_DRIVE_DISTANCE_MAX,
-  CMD_DRIVE_EDGE_FORCE_OUT_FRACTION,
+  CMD_DRIVE_EDGE_STAMINA_DRAIN_PER_SEC,
   CMD_DRIVE_CINCH_FRACTION,
   CMD_DRIVE_RELEASE_SEPARATION,
   CMD_DRIVE_ATTACKER_RECOVERY_MS,
@@ -37,10 +37,14 @@ const {
   HITSTOP_THROW_MS,
   GRAB_RANGE,
   GRAB_STARTUP_MS,
+  GRAB_LUNGE_DISTANCE,
+  HITBOX_DISTANCE_VALUE,
   SLAP_STARTUP_MS,
   CLINCH_THROW_KILL_THRESHOLD,
   BALANCE_MAX,
 } = require("../../constants");
+const { getConnectDistance } = require("../../strikeContact");
+const { getGrabThreatTravel } = require("../../combatHelpers");
 const { MAP_LEFT_BOUNDARY, MAP_RIGHT_BOUNDARY } = require("../../gameUtils");
 
 test("command grab defaults", async (t) => {
@@ -72,6 +76,53 @@ test("command grab defaults", async (t) => {
     assert.ok(
       CMD_DRIVE_RELEASE_SEPARATION > GRAB_RANGE,
       "the anti-loop valve is distance: a Drive release must not leave a free re-grab"
+    );
+  });
+
+  await t.test("grab out-reaches the jab by a band you can stand in", () => {
+    // The load-bearing relationship of the entire move, and the one that is easiest
+    // to destroy by accident from the slap side of the ledger.
+    //
+    // The grab carries no armor, and its startup only fits a ~45ms window inside a
+    // slap masher's 130ms gap. Reach is therefore the ONLY thing giving it a home:
+    // past the slap's connect distance the jab physically cannot touch you, so the
+    // frame window stops mattering and the exchange becomes a spacing read instead
+    // of a priority coin-flip. At the old GRAB_RANGE of 146 this band was 3.6px
+    // wide — unstandable — and grabs read as flailing.
+    const dummy = (id) => ({ id, x: 0, facing: -1, sizeMultiplier: 1 });
+    const slapConnect = getConnectDistance("slap", dummy("a"), dummy("b"));
+    const band = GRAB_RANGE - slapConnect;
+
+    assert.ok(
+      band >= HITBOX_DISTANCE_VALUE * 0.4,
+      `grab must out-reach the slap by a visible margin — got ${band.toFixed(1)}px ` +
+        `(grab ${GRAB_RANGE} vs slap ${slapConnect.toFixed(1)}). Below ~26px there ` +
+        `is no spacing a player can hold, and the grab loses its only safe opening.`
+    );
+
+    // Upper bound, so "give it reach" can't drift into "grab is a projectile".
+    //
+    // Threat is reach plus how far the dive carries WHILE IT CAN STILL CATCH —
+    // startup plus active. Not GRAB_LUNGE_DISTANCE, which is the full decay
+    // including the skid through whiff recovery: that tail is travel you cannot
+    // grab during, so counting it would measure commitment as if it were reach.
+    const ringWidth = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
+    const threat = GRAB_RANGE + getGrabThreatTravel();
+    assert.ok(
+      threat < ringWidth * 0.4,
+      `grab threat range ${threat.toFixed(1)} must stay under 40% of the ` +
+        `${ringWidth}px ring — beyond that it stops being an approach tool and ` +
+        `starts covering neutral`
+    );
+
+    // And the skid has to be a real consequence, not a cosmetic nudge: most of the
+    // dive's travel should land AFTER the grab can catch anything, so fishing from
+    // max range carries you past your opponent rather than parking you in front.
+    assert.ok(
+      GRAB_LUNGE_DISTANCE - getGrabThreatTravel() > getGrabThreatTravel() * 0.5,
+      `the whiff skid (${(GRAB_LUNGE_DISTANCE - getGrabThreatTravel()).toFixed(1)}px) ` +
+        `must be substantial next to the ${getGrabThreatTravel().toFixed(1)}px of ` +
+        `threat travel, or a blown grab stops dead where it started`
     );
   });
 
@@ -158,26 +209,16 @@ test("command grab defaults", async (t) => {
     );
   });
 
-  await t.test("the tawara gate demands a real slice of the carry", () => {
-    // Expressed as remaining DISTANCE, not remaining time: the eased carry spends
-    // most of its distance early, so a time budget let almost any rope contact
-    // force out. Too low here and the tawara becomes an auto-win again.
+  await t.test("drive edge KO is stamina-taxed, not carry-fraction gated", () => {
+    // Carry-fraction auto-KO is retired. The clamp burns stamina hard so an
+    // ungassed pin can still convert if the tank empties mid-shove.
     assert.ok(
-      CMD_DRIVE_EDGE_FORCE_OUT_FRACTION >= 0.25,
-      "below ~25% owed, reaching the rope at all is effectively a free win"
+      CMD_DRIVE_EDGE_STAMINA_DRAIN_PER_SEC >= 40,
+      "edge stamina drain must be a real grind station"
     );
     assert.ok(
-      CMD_DRIVE_EDGE_FORCE_OUT_FRACTION < 0.75,
-      "above ~75% owed the force-out would be nearly unreachable"
-    );
-  });
-
-  await t.test("a full-posture force-out demands edge-zone positioning", () => {
-    // The distance the victim may be from the rope and still be forced out.
-    const reach = CMD_DRIVE_DISTANCE_MIN * (1 - CMD_DRIVE_EDGE_FORCE_OUT_FRACTION);
-    assert.ok(
-      reach < 70,
-      `a healthy opponent should have to be inside the danger zone already, got ${reach}px`
+      CMD_DRIVE_EDGE_STAMINA_DRAIN_PER_SEC <= 120,
+      "edge drain should not empty a full tank in a single short pin"
     );
   });
 

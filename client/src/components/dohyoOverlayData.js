@@ -6,7 +6,7 @@ export const CURRENT_DOHYO_VERSION = 4;
 // Baked dohyo overlay knobs — exported from the crowd editor (` key → Dohyo tab).
 // DO NOT manually edit. Use the editor, then EXPORT and replace this object.
 const DOHYO_OVERLAY = {
-  "sizeW": 97.9,
+  "sizeW": 100.3,
   "sizeH": 109.2,
   "posX": 49.4,
   "posY": 69.9,

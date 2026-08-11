@@ -38,7 +38,12 @@ const {
 // MASTERY OVERHAUL feature flags (Phase 1: momentum inheritance, Phase 3: cadence,
 // Phase 4: analog resolutions).
 const { MASTERY_P1_MOMENTUM, MASTERY_P3_CADENCE } = require("./masteryFlags");
-const { grantedVelocityNow, isRidingHitSlide } = require("./momentumTransfer");
+const {
+  grantedVelocityNow,
+  isRidingHitSlide,
+  creditGrantedVelocity,
+  SLAP_STEP_IN_VELOCITY,
+} = require("./momentumTransfer");
 
 // Aerial landing Phase A.3.1 / A.3.2 — settle ownership + recovery monitoring.
 const {
@@ -1020,9 +1025,29 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
       // Taking the larger of the two keeps the slide monotonic — the slap adds
       // to what you built and the gaps between slaps are just ice doing its
       // job, which is the intended shape.
-      const carriedForward = (player.movementVelocity || 0) * slideDirection;
-      player.movementVelocity =
-        slideDirection * Math.max(slapSlideVelocity, Math.max(0, carriedForward));
+      // STEP-IN: a flat, modest lunge that fires identically on hit and on
+      // whiff. It is part of the ANIMATION, not a power source.
+      //
+      // Removing it outright made the slap move you on hit (via the on-hit
+      // chase push) but not on whiff, which read as broken. Restored as a flat
+      // value rather than the old `1.0 + K_SLAP_INHERIT * entry` formula,
+      // because that grew with carried speed and was a second, hidden way for
+      // pressure to compound.
+      //
+      // Two guards keep it honest:
+      //   max() — a slap can never BRAKE an approach. Slide in at 2.4 and you
+      //     keep 2.4; the step-in only ever fills in for standing still.
+      //   granted — only the portion the engine ADDED is credited, so a
+      //     standing step-in cannot power the next slap, while a real slide
+      //     stays fully earned and still buys its momentum bonus.
+      const carriedForward = Math.max(0, (player.movementVelocity || 0) * slideDirection);
+      const stepIn = Math.max(carriedForward, SLAP_STEP_IN_VELOCITY);
+      player.movementVelocity = slideDirection * stepIn;
+      creditGrantedVelocity(
+        player,
+        slideDirection * Math.max(0, stepIn - carriedForward),
+        simNowForPlayer(player)
+      );
       player.isSlapSliding = true;
     }
   }
@@ -1188,8 +1213,47 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
       if (player.pendingPalmThrust && isPlayerValid()) {
         player.pendingPalmThrust = false;
         player.pendingSlapCount = 0;
+        player.pendingGrab = false;
+        player.pendingGrabPressTime = 0;
         executePalmThrust(player, rooms);
         return;
+      }
+
+      // M2 pressed mid-slap → grab at cycle end. Queued as pendingGrab because a
+      // slap in flight makes both the direct M2 handler and the generic
+      // inputBuffer unreachable (slap sets neither isRecovering nor
+      // actionLockUntil), so without the queue the press is silently dropped.
+      // Same contract as the buffered slap: the input always registers, but the
+      // follow-up is fully contestable — slap is +0, so the grab's startup opens
+      // on the same instant the victim becomes actionable. When a slap is queued
+      // too the later press wins, and the loser is discarded rather than
+      // deferred so a queued action can never surface a cycle late.
+      if (player.pendingGrab && isPlayerValid()) {
+        const grabBeatsSlap =
+          player.pendingSlapCount === 0 ||
+          player.pendingGrabPressTime >= player.pendingSlapPressTime;
+        const grabRoom = grabBeatsSlap
+          ? rooms.find((r) => r.players.some((p) => p.id === player.id))
+          : null;
+        if (
+          grabRoom &&
+          canPlayerUseAction(player) &&
+          !player.grabCooldown &&
+          !player.isGrabStartup &&
+          !player.isGrabbingMovement &&
+          !player.isWhiffingGrab &&
+          !player.isGrabWhiffRecovery &&
+          !player.isGrabTeching &&
+          !player.isRawParrying &&
+          !player.isMatadorParrying &&
+          !player.isMatadorWhiffRecovering
+        ) {
+          player.pendingGrab = false;
+          player.pendingGrabPressTime = 0;
+          player.pendingSlapCount = 0;
+          beginGrabStartup(player, grabRoom);
+          return;
+        }
       }
 
       // Buffered press → next slap fires immediately. Pure responsiveness:
@@ -1208,11 +1272,15 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
           const gap = simNowForPlayer(player) - player.pendingSlapPressTime;
           cadenceEnhanced = gap <= CADENCE_WINDOW_MS;
         }
+        player.pendingGrab = false;
+        player.pendingGrabPressTime = 0;
         executeSlapAttack(player, rooms, cadenceEnhanced);
         return;
       }
       player.pendingSlapCount = 0;
       player.pendingPalmThrust = false;
+      player.pendingGrab = false;
+      player.pendingGrabPressTime = 0;
   };
 
   player.slapCycleEndCallback = () => {

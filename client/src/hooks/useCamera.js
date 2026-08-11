@@ -542,8 +542,15 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
           const nx = valueNoise(phase);
           const ny = valueNoise(phase + 37.3); // decorrelated channel
           const nr = valueNoise(phase + 71.7); // decorrelated roll channel
-          const dir = shakeState.dirX * SHAKE_DIR_BIAS;
-          shakeX = (dir + nx * (1 - SHAKE_DIR_BIAS)) * amt * SHAKE_MAX_OFFSET_X * amp;
+          // Per-impulse dirBias (e.g. rope_clamp_hit wants ~0.88) overrides the
+          // default 0.5 blend so FG impact kicks read as directional recoil,
+          // not a noisy wobble.
+          const dirBias =
+            typeof shakeState.dirBias === "number"
+              ? shakeState.dirBias
+              : SHAKE_DIR_BIAS;
+          const dir = shakeState.dirX * dirBias;
+          shakeX = (dir + nx * (1 - dirBias)) * amt * SHAKE_MAX_OFFSET_X * amp;
           shakeY = ny * amt * SHAKE_MAX_OFFSET_Y * amp;
           shakeRot = nr * amt * shakeState.rot;
           // Comic body-slam rumble decays slower so the hit "stays" a beat.

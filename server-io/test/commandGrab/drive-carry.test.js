@@ -7,15 +7,12 @@
  * the rope, then releases. The rules that matter most here are the two that keep
  * it from becoming degenerate:
  *
- *   TAWARA  Reaching the rope only forces out if enough carry DISTANCE is still
- *           owed (CMD_DRIVE_EDGE_FORCE_OUT_FRACTION). Otherwise the victim is
- *           released pinned with their back to the tawara — a real reward, not a
- *           win. A lethal or gassed victim has nothing to hold with, so that
- *           requirement is waived for them.
- *
- *           This gate used to be a remaining-TIME budget, which looked equivalent
- *           but wasn't: the eased carry spends most of its distance early, so
- *           almost any carry that touched the rope forced out. Hence distance.
+ *   TAWARA  Reaching the rope always clamps unless the victim is gassed / at
+ *           empty stamina. Entry speed still buys carry distance/duration, but
+ *           not a free ring-out. While pinned, the victim's stamina burns hard
+ *           so a mid-push gas-out can convert the same shove into a KO.
+ *           Posture lethal does NOT waive — that finish belongs to throw/pull
+ *           (and slap/palm at the clamp).
  *
  *   RELEASE Both fighters slide apart past GRAB_RANGE, so there is no free re-grab
  *           and no free jab. The split is boundary-aware — whatever the victim
@@ -35,15 +32,20 @@ const {
   CMD_DRIVE_GASSED_DISTANCE_MULT,
   CMD_DRIVE_APPROACH_REF_SPEED,
   CMD_DRIVE_APPROACH_BONUS_MAX,
-  CMD_DRIVE_EDGE_FORCE_OUT_FRACTION,
+  CMD_DRIVE_EDGE_STAMINA_DRAIN_PER_SEC,
   CMD_DRIVE_RELEASE_SEPARATION,
   CMD_DRIVE_ATTACKER_RECOVERY_MS,
   CMD_DRIVE_DEFENDER_RECOVERY_MS,
   CMD_DRIVE_RELEASE_TWEEN_MS,
+  CMD_DRIVE_RELEASE_VICTIM_SHARE,
   CLINCH_THROW_KILL_THRESHOLD,
   GRAB_RANGE,
   SLAP_STARTUP_MS,
+  TICK_RATE,
+  ICE_SLIDE_MAX_SPEED,
+  speedFactor,
 } = require("../../constants");
+const { grabSeparationEase } = require("../../combatHelpers");
 const { MAP_RIGHT_BOUNDARY } = require("../../gameUtils");
 const { profileFor } = require("../../momentumTransfer");
 // Mirrors GRAB_POSTURE_MULT_MAX in commandGrabSystem.js.
@@ -214,7 +216,11 @@ test("drive release", async (t) => {
     );
   });
 
-  await t.test("mid-ring, both fighters slide apart roughly evenly", () => {
+  await t.test("mid-ring, the loser eats the separation and the winner holds ground", () => {
+    // Previously asserted an EVEN split, which is what made the release look like
+    // magnetic repulsion: the fighter who won the drive retreated exactly as far as
+    // the one who lost it. The winner still gives a little ground — a shove has a
+    // reaction — but the travel belongs to the victim.
     const s = driveToStartOfCarry({ p2Balance: 100 });
     s.advance(s.grabber.cmdGrabCarryDuration);
     const grabberAtEnd = s.grabber.x;
@@ -222,11 +228,17 @@ test("drive release", async (t) => {
     s.advance(32);
     const grabberMoved = Math.abs((s.grabber.grabBreakTargetX ?? s.grabber.x) - grabberAtEnd);
     const victimMoved = Math.abs((s.victim.grabBreakTargetX ?? s.victim.x) - victimAtEnd);
-    assert.ok(victimMoved > 1, "the victim should slide too, not just the grabber");
-    assert.ok(grabberMoved > 1, "and the grabber should give ground as well");
+    assert.ok(victimMoved > 1, "the victim should slide");
+    assert.ok(grabberMoved > 1, "and the grabber should give some ground, not zero");
     assert.ok(
-      Math.abs(grabberMoved - victimMoved) < 2,
-      `mid-ring the split should be even, got grabber ${grabberMoved} vs victim ${victimMoved}`
+      victimMoved > grabberMoved * 3,
+      `the loser must eat most of the separation, got grabber ${grabberMoved.toFixed(1)} ` +
+        `vs victim ${victimMoved.toFixed(1)}`
+    );
+    const victimShare = victimMoved / (victimMoved + grabberMoved);
+    assert.ok(
+      Math.abs(victimShare - CMD_DRIVE_RELEASE_VICTIM_SHARE) < 0.02,
+      `split should follow CMD_DRIVE_RELEASE_VICTIM_SHARE, got ${victimShare.toFixed(3)}`
     );
   });
 
@@ -254,6 +266,68 @@ test("drive release", async (t) => {
     assert.ok(
       Math.abs(finalGap - CMD_DRIVE_RELEASE_SEPARATION) < 1,
       `the grabber must absorb the victim's shortfall, got gap ${finalGap}`
+    );
+  });
+
+  await t.test("the shove builds — no frame of it outruns the game", () => {
+    // The release used to be the single fastest movement in PenguinPow. A cubic
+    // ease-out peaks at 3x its own average, so 132px in 150ms put the victim at
+    // ~2.3px/ms leaving the grip — five power slides, quicker than any attack
+    // lunge. Motion that fast doesn't read as a push, it reads as a cut.
+    const s = driveToStartOfCarry({ p2Balance: 100 });
+    s.advance(s.grabber.cmdGrabCarryDuration + 32);
+    assert.equal(
+      s.victim.grabBreakSepCurve,
+      "shove",
+      "the release must ask for the shove curve, not the hit curve"
+    );
+
+    const startX = s.victim.grabBreakStartX;
+    const targetX = s.victim.grabBreakTargetX;
+    const duration = s.victim.grabBreakSepDuration;
+    const step = 1000 / TICK_RATE;
+    let peak = 0;
+    let prevX = startX;
+    for (let elapsed = step; elapsed <= duration + step; elapsed += step) {
+      const x =
+        startX +
+        (targetX - startX) *
+          grabSeparationEase(Math.min(1, elapsed / duration), "shove");
+      peak = Math.max(peak, Math.abs(x - prevX) / step);
+      prevX = x;
+    }
+
+    const powerSlide = ICE_SLIDE_MAX_SPEED * speedFactor;
+    assert.ok(
+      peak < powerSlide * 2,
+      `the shove peaks at ${peak.toFixed(2)}px/ms against a ${powerSlide.toFixed(2)}px/ms ` +
+        `power slide — a shove can be forceful without being the fastest thing on the ice`
+    );
+    assert.ok(
+      peak > powerSlide,
+      `...but it still has to hit harder than walking, got ${peak.toFixed(2)}px/ms`
+    );
+    assert.ok(
+      duration >= 200,
+      `the separation has to last long enough to watch, got ${duration}ms`
+    );
+  });
+
+  await t.test("the shoved fighter throws the palms, and drops them with the slide", () => {
+    // Presentation only — the separation is caused by a fighter, not by the
+    // engine pulling two sprites apart. It must never be an actual palm thrust.
+    const s = driveToStartOfCarry({ p2Balance: 100 });
+    s.advance(s.grabber.cmdGrabCarryDuration + 32);
+    assert.equal(s.victim.isGrabSeparatePalm, true, "the loser shoves off");
+    assert.ok(!s.grabber.isGrabSeparatePalm, "the winner does not");
+    assert.ok(
+      !s.victim.isPalmThrust && !s.victim.isAttacking,
+      "the pose must not smuggle in the move that owns it"
+    );
+    assert.equal(
+      s.victim.grabBreakSepDuration,
+      CMD_DRIVE_RELEASE_TWEEN_MS,
+      "the pose is paced against the slide, so they have to be the same window"
     );
   });
 
@@ -290,12 +364,17 @@ test("drive release", async (t) => {
     }
   });
 
-  await t.test("recovery is short, and expires on the sim clock", () => {
+  await t.test("recovery is bounded by the slide, and expires on the sim clock", () => {
     const s = driveToStartOfCarry({ p2Balance: 100 });
     s.advance(s.grabber.cmdGrabCarryDuration + 32);
+    // The lockout spans the separation slide on purpose — you are not free while
+    // you are still visibly coming apart, and pretending otherwise is what let a
+    // player press into a tween that owned their position. What must never
+    // happen is the Drive costing MORE than the motion it produces.
     assert.ok(
-      s.grabber.recoveryDuration <= 200,
-      `landing a grab should not lock you out for long, got ${s.grabber.recoveryDuration}ms`
+      s.grabber.recoveryDuration <= CMD_DRIVE_RELEASE_TWEEN_MS,
+      `the Drive must not outlast its own slide, got ${s.grabber.recoveryDuration}ms ` +
+        `against a ${CMD_DRIVE_RELEASE_TWEEN_MS}ms separation`
     );
     // index.js owns expiry; assert the window is well-formed and finite here.
     assert.ok(
@@ -309,7 +388,7 @@ test("drive release", async (t) => {
     );
   });
 
-  await t.test("both are input-locked for the release tween only", () => {
+  await t.test("input locks are per-side and carry the whole deficit", () => {
     const s = driveToStartOfCarry({ p2Balance: 100 });
     s.advance(s.grabber.cmdGrabCarryDuration + 32);
     const now = s.room.simTime;
@@ -318,6 +397,16 @@ test("drive release", async (t) => {
     assert.ok(
       s.grabber.inputLockUntil <= now + CMD_DRIVE_RELEASE_TWEEN_MS,
       "the release lock must not outlast its own tween"
+    );
+    // The release used to stamp ONE flat lock on both fighters, which capped the
+    // defender at the attacker's number and silently shrank the advertised 60ms
+    // deficit to 20. The locks now ARE the recoveries, so what the constants say
+    // is what the players get.
+    const lockDeficit = s.grabber.inputLockUntil - s.victim.inputLockUntil;
+    assert.equal(
+      lockDeficit,
+      CMD_DRIVE_ATTACKER_RECOVERY_MS - CMD_DRIVE_DEFENDER_RECOVERY_MS,
+      `the defender must actually get their frames back first, got ${lockDeficit}ms`
     );
   });
 });
@@ -337,20 +426,21 @@ test("drive at the tawara", async (t) => {
     return s;
   }
 
-  await t.test("plenty of carry left at the rope → force out", () => {
-    // Victim starts 10px off the rope with a full-length carry owed.
-    const s = driveIntoRope({ ropeGap: 10, p2Balance: 100 });
+  await t.test("healthy tank at the rope → pin, not a win", () => {
+    // Plenty of carry left used to auto-KO; stamina gate must catch that.
+    const s = driveIntoRope({ ropeGap: 10, p2Balance: 100, p2Stamina: 100 });
     assert.equal(s.grabber.cmdGrabPhase, "carry");
+    assert.equal(s.grabber.cmdGrabEdgeWaiver, false);
     s.advance(s.grabber.cmdGrabCarryDuration);
-    assert.equal(s.room.gameOver, true, "should have been forced out");
-    assert.equal(s.grabber.isRingOutPushCutscene, true);
-    assert.equal(s.victim.isRingOutPushCutscene, true);
+    assert.equal(s.room.gameOver, false, "full tank must clamp at the tawara");
+    assert.ok(
+      Math.abs(s.victim.x - MAP_RIGHT_BOUNDARY) < 1,
+      "victim should be released pinned against the tawara"
+    );
   });
 
-  // Stage a carry that only touches the rope near the end of its travel, so less
-  // than CMD_DRIVE_EDGE_FORCE_OUT_FRACTION of the distance is owed at contact.
-  // Carry length depends on posture, so it is measured per-fixture.
-  function stageLateRopeContact(options = {}) {
+  // Stage a carry that reaches the rope (near or far) — used for stamina-gate cases.
+  function stageRopeContact(options = {}) {
     const probe = createCommandGrabScenario({ variant: "drive", ...options });
     probe.connect();
     probe.resolveNow();
@@ -360,84 +450,70 @@ test("drive at the tawara", async (t) => {
     const s = createCommandGrabScenario({
       variant: "drive",
       ...options,
-      midX: MAP_RIGHT_BOUNDARY - probe.settledAttach / 2 - carryDist * 0.97,
+      midX: MAP_RIGHT_BOUNDARY - probe.settledAttach / 2 - carryDist * 0.5,
     });
     s.connect();
     s.resolveNow();
     return s;
   }
-
-  // Mirror: contact early enough that the gate is comfortably satisfied.
-  function stageEarlyRopeContact(options = {}) {
-    const probe = createCommandGrabScenario({ variant: "drive", ...options });
-    probe.connect();
-    probe.resolveNow();
-    const carryDist = Math.abs(
-      probe.grabber.cmdGrabCarryTargetX - probe.grabber.cmdGrabCarryStartX
-    );
-    const owed = CMD_DRIVE_EDGE_FORCE_OUT_FRACTION + 0.15;
-    const s = createCommandGrabScenario({
-      variant: "drive",
-      ...options,
-      midX: MAP_RIGHT_BOUNDARY - probe.settledAttach / 2 - carryDist * (1 - owed),
-    });
-    s.connect();
-    s.resolveNow();
-    return s;
-  }
-
-  await t.test("the gate is a real requirement, not a formality", () => {
-    // The regression this replaces: with a remaining-TIME budget, contact at 97% of
-    // the travel still forced out, making any rope contact an automatic win.
-    const late = stageLateRopeContact({ p2Balance: 100 });
-    late.advance(late.grabber.cmdGrabCarryDuration + 32);
-    assert.equal(late.room.gameOver, false, "late contact must NOT force out");
-
-    const early = stageEarlyRopeContact({ p2Balance: 100 });
-    early.advance(early.grabber.cmdGrabCarryDuration + 32);
-    assert.equal(early.room.gameOver, true, "early contact must force out");
-  });
 
   await t.test("carry expiring at the rope → pinned release, not a win", () => {
-    const s = stageLateRopeContact({ p2Balance: 100 });
+    const s = stageRopeContact({ p2Balance: 100, p2Stamina: 100 });
     assert.equal(s.grabber.cmdGrabEdgeWaiver, false, "healthy victim gets no waiver");
     s.advance(s.grabber.cmdGrabCarryDuration + 32);
-    assert.equal(
-      s.room.gameOver,
-      false,
-      "not enough carry owed at rope contact — this must not be a win"
-    );
+    assert.equal(s.room.gameOver, false, "ungassed drive must not ring out");
     assert.ok(
       Math.abs(s.victim.x - MAP_RIGHT_BOUNDARY) < 1,
       "the victim should be released pinned against the tawara"
     );
   });
 
-  await t.test("a lethal victim is forced out on the same late contact", () => {
-    const s = stageLateRopeContact({
+  await t.test("lethal posture alone does NOT waive the drive clamp", () => {
+    // Posture finish belongs to throw/pull / slap/palm — not drive.
+    const s = stageRopeContact({
       p2Balance: CLINCH_THROW_KILL_THRESHOLD - 1,
+      p2Stamina: 100,
     });
     assert.equal(
       s.grabber.cmdGrabEdgeWaiver,
-      true,
-      "lethal posture waives the remaining-carry requirement"
+      false,
+      "posture lethal must not arm drive rope KO"
     );
     s.advance(s.grabber.cmdGrabCarryDuration + 32);
-    assert.equal(s.room.gameOver, true);
+    assert.equal(s.room.gameOver, false);
   });
 
-  await t.test("a gassed victim is forced out on the same late contact", () => {
-    const s = stageLateRopeContact({ p2Gassed: true, p2Balance: 100 });
+  await t.test("a gassed victim is forced out at the rope", () => {
+    const s = stageRopeContact({ p2Gassed: true, p2Balance: 100, p2Stamina: 0 });
     assert.equal(s.grabber.cmdGrabEdgeWaiver, true);
     s.advance(s.grabber.cmdGrabCarryDuration + 32);
     assert.equal(s.room.gameOver, true);
+    assert.equal(s.grabber.isRingOutPushCutscene, true);
+    assert.equal(s.victim.isRingOutPushCutscene, true);
   });
 
   await t.test("an empty tank waives it too", () => {
-    const s = stageLateRopeContact({ p2Stamina: 0, p2Balance: 100 });
+    const s = stageRopeContact({ p2Stamina: 0, p2Balance: 100 });
     assert.equal(s.grabber.cmdGrabEdgeWaiver, true);
     s.advance(s.grabber.cmdGrabCarryDuration + 32);
     assert.equal(s.room.gameOver, true);
+  });
+
+  await t.test("clamp stamina drain can gas mid-push and convert the KO", () => {
+    // Low tank + early rope contact: edge tax should empty them while carry runs.
+    assert.ok(
+      CMD_DRIVE_EDGE_STAMINA_DRAIN_PER_SEC >= 40,
+      "edge drain must be hard enough to matter during a pin"
+    );
+    const s = driveIntoRope({ ropeGap: 8, p2Balance: 100, p2Stamina: 20 });
+    assert.equal(s.grabber.cmdGrabEdgeWaiver, false);
+    s.advance(s.grabber.cmdGrabCarryDuration + 32);
+    assert.equal(
+      s.room.gameOver,
+      true,
+      "draining to empty/gassed mid-pin should finish the shove"
+    );
+    assert.ok(s.victim.isGassed || s.victim.stamina <= 0);
   });
 
   await t.test("a carry that never reaches the rope is not a win", () => {

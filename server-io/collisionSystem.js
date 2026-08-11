@@ -35,6 +35,12 @@ const {
   CHARGE_CLASH_MIN_KNOCKBACK, CHARGE_CLASH_ADVANTAGE_SCALE,
   CHARGE_PRIORITY_THRESHOLD,
   SLAP_KILL_RANGE,
+  SLAP_ROPE_EDGE_ZONE,
+  SLAP_EDGE_POSTURE_MULT,
+  PALM_EDGE_POSTURE_MULT,
+  SLAP_EDGE_HITSTOP_MS,
+  PALM_EDGE_HITSTOP_MS,
+  CLINCH_THROW_KILL_THRESHOLD,
   BURST_STUN_MS,
   SLAP_ONHIT_ATTACKER_PUSH,
   SLAP_ONHIT_VICTIM_DRIFT,
@@ -236,7 +242,6 @@ const { handoffVelocity, SLAP_CHASE_RATIO, CHASE_SPEED_CAP } = MomentumTransfer;
 const DIVE_MOMENTUM_SCALE = 0.45;
 
 const {
-  grabCatchesSlap,
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
 } = require("./combatHelpers");
@@ -247,6 +252,7 @@ const {
   getSlapTipQuality,
   isWithinConnectRange,
   getContactSeamX,
+  clampToRopeRest,
   applyContactCorrection,
   attackKindFromPlayer,
 } = require("./strikeContact");
@@ -420,14 +426,17 @@ function chargedKillReach(finalMultiplier) {
   return Math.max(0, Math.min(raw, CHARGED_KILL_REACH_CAP));
 }
 
-// MASTERY Phase 2 (2.4) — OSHI conversion. The slap/palm/flap-slam edge kill
-// band EXPANDS with earned quality: the attacker's carried momentum
+// MASTERY Phase 2 (2.4) — OSHI conversion. The palm/flap-slam edge kill band
+// EXPANDS with earned quality: the attacker's carried momentum
 // (slapEntryAligned) plus whether the victim's POSTURE is broken. It can only
 // widen (never shrink) and is hard-capped at KILLBAND_CAP so a wide midscreen
 // no-kill deadzone always survives (invariant #3). Palm/flap carry no
 // slapEntryAligned (rooted / airborne) so their momentum term is 0 — only the
 // posture term widens their band. With the flag OFF this collapses to exactly
 // SLAP_KILL_RANGE (byte-identical, invariants #2 & #4).
+//
+// Slap itself no longer uses this — slap ring-out is posture-gated
+// (slapKnockbackArmedForRingOut). Kept for palm / flap / palm-trade paths.
 function slapKillBand(attacker, victim) {
   if (!MASTERY_P2_POSTURE) return SLAP_KILL_RANGE;
   const aligned = Math.min(attacker.slapEntryAligned || 0, KILLBAND_MOMENTUM_REF);
@@ -436,6 +445,21 @@ function slapKillBand(attacker, victim) {
     KILLBAND_MOMENTUM * (aligned / KILLBAND_MOMENTUM_REF) +
     (victim.isPostureBroken ? KILLBAND_POSTURE : 0);
   return Math.min(band, KILLBAND_CAP);
+}
+
+// Slap/palm rope clamp opens only when posture was ALREADY in the kill-throw
+// band BEFORE this hit's drain. The hit that cracks them under 15 still clamps —
+// the NEXT strike (while still under 15) can ring out. Fairer/readable: the
+// HUD threshold is honest. Entry speed / connect position do not gate it.
+// Pass pre-drain balance when the victim has already been chipped this hit.
+function slapKnockbackArmedForRingOut(victim, preHitBalance) {
+  const balance =
+    typeof preHitBalance === "number"
+      ? preHitBalance
+      : typeof victim.balance === "number"
+        ? victim.balance
+        : 100;
+  return balance < CLINCH_THROW_KILL_THRESHOLD;
 }
 
 // MASTERY Phase 4 (4.1) — PARRY QUALITY CURVE. Inside the perfect window, the
@@ -949,31 +973,9 @@ function checkCollision(player, otherPlayer, rooms, io) {
         }
       }
 
-      // COMMAND GRAB CATCH: late-startup + active throw-catch beats slap in
-      // range. Suppress the slap this tick so grab connect clinches same tick
-      // (takes the active frame). Early grab startup is still stuffed by slap.
-      if (grabCatchesSlap(otherPlayer, player, now)) {
-        // Phase 13: end slap hitbox/pose at catch resolution (limb-capture
-        // remains grab connect; this only stops ghosting through the grabber).
-        if (isCombatContactFidelityV2Enabled()) {
-          consumeLosingAttackInstance(player, {
-            winner: otherPlayer,
-            winnerMove: "grab",
-            loserMove: "slap",
-            outcome: CONTACT_OUTCOME.GRAB_CATCH,
-            interactionType: "GRAB_VS_SLAP",
-            interruptionReason: "GRAB_THROW_CATCH",
-            loserSurface: "attack_limb",
-            winnerSurface: "grab_capture",
-            strikeKind: "slap",
-          });
-        }
-        consumeStrikeContactOverride(player);
-        return; // Throw catch — grab connect will clinch this tick
-      }
-
-      // Slap stuffs early grab startup (before throw-catch frames).
-      // Thick Blubber is the only absorb, resolved grabs-only inside processHit.
+      // Slap stuffs grab startup at ANY point on it — the grab carries no armor,
+      // so a live hitbox in range always wins. Thick Blubber is the only absorb,
+      // resolved grabs-only inside processHit.
       if (eitherHasSlapParryImmunity) {
         consumeStrikeContactOverride(player);
         return;
@@ -1365,6 +1367,9 @@ function applyPalmTradeHit(victim, attacker, room, io, opts = {}) {
   const tradeKb =
     opts.knockback != null ? opts.knockback : PALM_TRADE_KNOCKBACK;
 
+  // Pre-hit posture gate — same next-hit rule as processHit palm/slap.
+  const palmTradePreHitBalance =
+    typeof victim.balance === "number" ? victim.balance : 100;
   const palmDrain = MASTERY_P2_POSTURE
     ? BALANCE_PALM_HIT_DRAIN_P2
     : BALANCE_CHARGED_HIT_DRAIN;
@@ -1392,13 +1397,10 @@ function applyPalmTradeHit(victim, attacker, room, io, opts = {}) {
   victim.isChargedKnockback = false;
   victim.isBurstKnockback = true;
   victim.burstKnockbackStartTime = currentTime;
-
-  const distToBoundaryInKbDir =
-    knockbackDirection > 0
-      ? MAP_RIGHT_BOUNDARY - victim.x
-      : victim.x - MAP_LEFT_BOUNDARY;
-  victim.slapKnockbackCanRingOut =
-    distToBoundaryInKbDir <= slapKillBand(attacker, victim);
+  victim.slapKnockbackCanRingOut = slapKnockbackArmedForRingOut(
+    victim,
+    palmTradePreHitBalance
+  );
 
   victim.knockbackVelocity = {
     x: knockbackDirection * tradeKb,
@@ -1691,6 +1693,9 @@ function applyTradeHit(victim, attacker, room, io, opts = {}) {
   const tradeKb =
     opts.knockback != null ? opts.knockback : SLAP_TRADE_KNOCKBACK;
 
+  // Gate on pre-drain posture — same next-hit rule as processHit slaps.
+  const tradePreHitBalance =
+    typeof victim.balance === "number" ? victim.balance : 100;
   const slapDrain = MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN;
   applyBalanceDamage(victim, slapDrain, currentTime);
   victim.stamina = Math.max(0, victim.stamina - SLAP_HIT_VICTIM_STAMINA_DRAIN);
@@ -1715,10 +1720,11 @@ function applyTradeHit(victim, attacker, room, io, opts = {}) {
   victim.isChargedKnockback = false;
   victim.isBurstKnockback = false;
 
-  const distToBoundaryInKbDir = knockbackDirection > 0
-    ? MAP_RIGHT_BOUNDARY - victim.x
-    : victim.x - MAP_LEFT_BOUNDARY;
-  victim.slapKnockbackCanRingOut = distToBoundaryInKbDir <= slapKillBand(attacker, victim);
+  // Slap trade uses the same posture ring-out gate as a normal slap.
+  victim.slapKnockbackCanRingOut = slapKnockbackArmedForRingOut(
+    victim,
+    tradePreHitBalance
+  );
 
   // Hard mutual shove (not the normal on-hit drift) so a trade SPACES both
   // players out of slap range — they must re-approach, which breaks the +0
@@ -3024,6 +3030,11 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     const tipDriftMult = 1 + (SLAP_TIP_DRIFT_MULT - 1) * tipQuality;
     const tipPostureMult = 1 + (SLAP_TIP_POSTURE_MULT - 1) * tipQuality;
     const tipHitstopBonus = Math.round(SLAP_TIP_HITSTOP_BONUS_MS * tipQuality);
+    // Set in slap/palm posture blocks when the victim is already on the clamp.
+    let isRopeEdgeHit = false;
+    // Slap/palm ring-out arm: sampled BEFORE drain so the hit that cracks
+    // under 15 still clamps; only a follow-up while already lethal can ring out.
+    let postureRingOutArmed = false;
 
     // Light stamina chip on hit; balance (POSTURE) is the primary hit tax.
     // Slap: no stam drain. Charged: ~one slap cost. Palm: even lighter chip.
@@ -3065,22 +3076,40 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         postureCloseDir,
         currentTime
       );
+      // Rope-edge: victim already parked at the clamp they're being shoved
+      // toward. Extra posture tax + juice sell the grind station.
+      const edgeDist =
+        postureCloseDir > 0
+          ? MAP_RIGHT_BOUNDARY - otherPlayer.x
+          : otherPlayer.x - MAP_LEFT_BOUNDARY;
+      isRopeEdgeHit = edgeDist <= SLAP_ROPE_EDGE_ZONE;
+      postureRingOutArmed = slapKnockbackArmedForRingOut(otherPlayer);
       const slapDrain =
         MomentumTransfer.postureChipForMove("slap", postureVClose) *
         (slapDrainBase / (MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN)) *
         postureCounterMult *
-        tipPostureMult;
+        tipPostureMult *
+        (isRopeEdgeHit ? SLAP_EDGE_POSTURE_MULT : 1);
       applyBalanceDamage(otherPlayer, slapDrain, currentTime);
     } else if (player.isPalmThrust) {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN);
+      const palmKbDir = player.facing === 1 ? -1 : 1;
       const palmVClose = MomentumTransfer.sampleClosingSpeed(
         player,
         otherPlayer,
-        player.facing === 1 ? -1 : 1,
+        palmKbDir,
         currentTime
       );
+      const palmEdgeDist =
+        palmKbDir > 0
+          ? MAP_RIGHT_BOUNDARY - otherPlayer.x
+          : otherPlayer.x - MAP_LEFT_BOUNDARY;
+      isRopeEdgeHit = palmEdgeDist <= SLAP_ROPE_EDGE_ZONE;
+      postureRingOutArmed = slapKnockbackArmedForRingOut(otherPlayer);
       const palmDrain =
-        MomentumTransfer.postureChipForMove("palm", palmVClose) * postureCounterMult;
+        MomentumTransfer.postureChipForMove("palm", palmVClose) *
+        postureCounterMult *
+        (isRopeEdgeHit ? PALM_EDGE_POSTURE_MULT : 1);
       applyBalanceDamage(otherPlayer, palmDrain, currentTime);
     } else {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - CHARGED_HIT_VICTIM_STAMINA_DRAIN);
@@ -3257,19 +3286,13 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           // rope-clamp gate can't catch this slap knockback.
           otherPlayer.isChargedKnockback = false;
 
-          // ROPE RESISTANCE GATE (per-hit): a slap may only push the victim
-          // OUT of the ring if the hit landed while they were already within
-          // SLAP_KILL_RANGE of the boundary they're being knocked toward.
-          // No exceptions (punish included) — otherwise the rope catches them
-          // (clamped at the edge in the isHit movement block).
-          const distanceToBoundaryInKbDir = knockbackDirection > 0
-            ? MAP_RIGHT_BOUNDARY - otherPlayer.x
-            : otherPlayer.x - MAP_LEFT_BOUNDARY;
-          // MASTERY Phase 2 (2.4): the kill band expands with the attacker's
-          // carried momentum + the victim's broken posture (flag off ⇒
-          // SLAP_KILL_RANGE, unchanged).
-          otherPlayer.slapKnockbackCanRingOut =
-            distanceToBoundaryInKbDir <= slapKillBand(player, otherPlayer);
+          // ROPE RESISTANCE GATE (per-hit): slap KB always clamps at the rope
+          // unless posture was already < CLINCH_THROW_KILL_THRESHOLD BEFORE
+          // this hit's drain (postureRingOutArmed). The hit that cracks them
+          // under 15 still clamps — next hit while lethal can ring out.
+          // Position / entry speed do not arm the KO (charged keeps its own
+          // kill-reach gate). Otherwise the rope catches them in index.js.
+          otherPlayer.slapKnockbackCanRingOut = postureRingOutArmed;
 
           // GROUND TRANSFER: both slide toward the victim's rope; attacker push
           // is a touch higher so mash pressure chases/glues instead of soft-whiffing.
@@ -3343,44 +3366,20 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         player.movementVelocity = 0;
         player.knockbackVelocity = { x: 0, y: 0 };
       } else if (player.isPalmThrust) {
-        // PALM THRUST: NOT a charged-style finisher. It delivers a burst
-        // knockback with the rope-resistance clamp, so it can only ring a
-        // victim out if they were ALREADY within SLAP_KILL_RANGE of the
-        // boundary they're shoved toward. From mid-ring the rope catches them
-        // at the edge (clamped in the isHit movement block, gated on
-        // isSlapKnockback) — no cinematic KO from range. This keeps the palm
-        // a spacing / wall-carry tool, not a kill move.
+        // PALM THRUST: big committal shove with the same posture ring-out gate
+        // as slap (pre-hit balance < CLINCH_THROW_KILL_THRESHOLD). From mid-ring
+        // / above the lethal line the rope catches them — palm is the heavier
+        // confirm at the clamp, not a skip past slap's composure game.
         isCinematicKill = false;
 
-        // HEAVY single hit — now the game's big committal ground-based shove
-        // (slaps only gain ground; the palm SENDS them). Burst DELIVERY
-        // (isBurstKnockback → smooth ICE_COAST decay) with its own tunable
-        // velocity (PALM_THRUST_KB_VELOCITY). isSlapKnockback + the
-        // SLAP_KILL_RANGE gate still clamp the victim at the boundary unless
-        // they were already in kill range — no midscreen ring-out.
         otherPlayer.isSlapKnockback = true;
         otherPlayer.isBurstKnockback = true;
         otherPlayer.isChargedKnockback = false;
         otherPlayer.burstKnockbackStartTime = currentTime;
-        // MASTERY Phase 1 (1.6): matador. The palm stays rooted, but a read on a
-        // CHARGING opponent turns their own closing speed against them —
-        // victimIntoHit (+) is the victim advancing into the thrust. Capped at
-        // PALM_MATADOR_KB_CAP so the flap body-slam (3.1) stays the heaviest
-        // strike. This IS the palm's momentum treatment (it deliberately skips
-        // the generic 1.3 victim scale to avoid double-counting closing speed).
-        // Flag off / closing speed 0 ⇒ today's PALM_THRUST_KB_VELOCITY.
         // ── MOMENTUM TRANSFER ────────────────────────────────────────────
         // The palm is rooted, so its `vSelf` is whatever speed it carried into
         // the stance — a palm thrown out of a slide sends, a flat-footed one
         // pays the floor.
-        //
-        // The matador bonus (K_PALM_MATADOR / PALM_MATADOR_KB_CAP) is retired
-        // rather than ported. It existed to turn a charging victim's own speed
-        // into extra distance, which is exactly what the impact channel now
-        // does for every move: a victim running onto a palm produces maximum
-        // closing speed, so it lands with the biggest hitstop and the biggest
-        // posture chip in the game. Punishing a charge stops being a palm
-        // special case and becomes a property of collisions.
         const palmTransfer = MomentumTransfer.resolveTransfer({
           attacker: player,
           victim: otherPlayer,
@@ -3396,15 +3395,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         otherPlayer.knockbackVelocity.y = 0;
         otherPlayer.movementVelocity = 0;
         lastTransfer = palmTransfer;
-
-        const distanceToBoundaryInKbDir =
-          knockbackDirection > 0
-            ? MAP_RIGHT_BOUNDARY - otherPlayer.x
-            : otherPlayer.x - MAP_LEFT_BOUNDARY;
-        // MASTERY Phase 2 (2.4): the palm (rooted → no momentum term) still gets
-        // the broken-posture band extension. Flag off ⇒ SLAP_KILL_RANGE.
-        otherPlayer.slapKnockbackCanRingOut =
-          distanceToBoundaryInKbDir <= slapKillBand(player, otherPlayer);
+        otherPlayer.slapKnockbackCanRingOut = postureRingOutArmed;
 
         // Palm holds its ground — no backward recoil on a connected hit.
         player.movementVelocity = 0;
@@ -3554,6 +3545,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
 
       // Keep a floor so post-hit physics can't re-bury the freeze pose.
       // Slap/charged/palm all park via getHitParkDistance; low kick has no tip rail yet.
+      // Rope-rest clamp: never push the victim past the tawara rest for the
+      // hitstop pin (same contract as applyContactCorrection).
       if (!isLowKick) {
         const floorKind = attackKindFromPlayer(player);
         const minSepDist = getHitParkDistance(floorKind, player, otherPlayer);
@@ -3561,8 +3554,12 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         if (currentDist < minSepDist) {
           const deficit = minSepDist - currentDist;
           const pushDir = otherPlayer.x >= player.x ? 1 : -1;
-          otherPlayer.x += pushDir * deficit;
+          otherPlayer.x = clampToRopeRest(otherPlayer.x + pushDir * deficit);
+        } else {
+          otherPlayer.x = clampToRopeRest(otherPlayer.x);
         }
+      } else {
+        otherPlayer.x = clampToRopeRest(otherPlayer.x);
       }
 
       // Immunity refresh only when knockback was actually applied — a no-knockback
@@ -3703,6 +3700,13 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
               // for crack SFX / cooler spark / posture-HUD flinch. Flag off ⇒ 0/false.
               tipQuality,
               tipSlap: isTipSlap,
+              // Rope-edge slap/palm: victim was already on the clamp — client
+              // sells the extra posture tax with heavier shake / crack.
+              ropeEdgeHit:
+                (isSlapAttack || !!player.isPalmThrust) && isRopeEdgeHit,
+              // Legacy alias — older client paths still read ropeEdgeSlap.
+              ropeEdgeSlap:
+                (isSlapAttack || !!player.isPalmThrust) && isRopeEdgeHit,
               victimPlayerNumber:
                 currentRoom.players.findIndex((p) => p.id === otherPlayer.id) + 1,
               // Art-tip contact seam for sparks / banners (replaces magic x+70).
@@ -3817,10 +3821,16 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         // LIGHT. Scaling freeze with closing speed gives the game a dynamic
         // range it never had: 45ms for a standing tick, 260ms for a tachi-ai.
         if (lastTransfer && (isSlapAttack || isLowKick || player.isPalmThrust)) {
-          const impactHitstop =
+          let impactHitstop =
             lastTransfer.hitstopMs +
             (isGored ? GORED_HITSTOP_BONUS_MS : 0) +
             (isSlapAttack ? tipHitstopBonus : 0);
+          // Rope-edge slap/palm: short sharp crack (weight sold client-side).
+          if (isSlapAttack && isRopeEdgeHit) {
+            impactHitstop = Math.max(impactHitstop, SLAP_EDGE_HITSTOP_MS);
+          } else if (player.isPalmThrust && isRopeEdgeHit) {
+            impactHitstop = Math.max(impactHitstop, PALM_EDGE_HITSTOP_MS);
+          }
           triggerHitstopAndEmit(
             io,
             currentRoom,
@@ -3835,14 +3845,20 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         } else if (isSlapAttack || isLowKick) {
           // No transfer resolved (knockback immunity suppressed it) — keep the
           // confirm readable with the legacy light freeze.
-          const slapHitstop =
+          let slapHitstop =
             HITSTOP_SLAP_MS +
             (isGored ? GORED_HITSTOP_BONUS_MS : 0) +
             (isSlapAttack ? tipHitstopBonus : 0);
+          if (isSlapAttack && isRopeEdgeHit) {
+            slapHitstop = Math.max(slapHitstop, SLAP_EDGE_HITSTOP_MS);
+          }
           triggerHitstopAndEmit(io, currentRoom, slapHitstop, "slap");
         } else if (player.isPalmThrust) {
-          const palmHitstop =
+          let palmHitstop =
             HITSTOP_BURST_MS + (isGored ? GORED_HITSTOP_BONUS_MS : 0);
+          if (isRopeEdgeHit) {
+            palmHitstop = Math.max(palmHitstop, PALM_EDGE_HITSTOP_MS);
+          }
           triggerHitstopAndEmit(io, currentRoom, palmHitstop, "slap");
         } else {
           // Charged: cinematic KO keeps its authored presentation freeze;

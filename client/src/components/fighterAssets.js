@@ -442,6 +442,28 @@ export const playSoundVaried = (audioFile, volume = 1.0, duration = null, playba
   return playBuffer(audioFile, volume, duration, playbackRate * pitchShift, false, pan);
 };
 
+// Shared "rope slam" body — placeholder until a dedicated tawara hit exists.
+// Intentionally a charged-hit sample (mild rate), NOT a pitch-mangled slap:
+// it should feel like the RING absorbing the pin, layered under slap/palm
+// attack SFX or alone on a grab-drive clamp.
+//   mode: "hit"   — slap/palm clamp (attack SFX already playing)
+//         "drive" — grab push first contact; quieter solo bed (no attack layer)
+//   rehit: lighter on rapid slap/palm clamp rehitas
+export const playRopeClampBody = (pan = 0, { mode = "hit", rehit = false } = {}) => {
+  const body = pickRandomSound(chargedHitSounds);
+  if (mode === "drive") {
+    // Solo bed under the shove — keep it soft so it doesn't steal the grab.
+    playSound(body, 0.018, null, 0.78, pan);
+    return;
+  }
+  if (rehit) {
+    playSound(body, 0.028, null, 0.82, pan);
+    return;
+  }
+  playSound(body, 0.04, null, 0.82, pan);
+  playSound(body, 0.02, null, 0.7, pan);
+};
+
 export const xToPan = (x, screenWidth = 1100) => {
   return Math.max(-1, Math.min(1, ((x / screenWidth) * 2 - 1) * 0.6));
 };

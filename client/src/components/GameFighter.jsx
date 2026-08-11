@@ -95,10 +95,17 @@ import {
 } from "../combatAudio";
 import SnowEffect from "./SnowEffect";
 import "./theme.css";
-import { SERVER_BROADCAST_HZ, DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY, isOutsideDohyo } from "../constants";
+import {
+  SERVER_BROADCAST_HZ,
+  DOHYO_LEFT_BOUNDARY,
+  DOHYO_RIGHT_BOUNDARY,
+  isOutsideDohyo,
+  clampToRopeRest,
+} from "../constants";
 import {
   SLAP_ANIM,
   PALM_THRUST_ANIM,
+  GRAB_SEPARATE_PALM_ANIM,
   AP_WHIFF_RECOVERY_MS,
 } from "../config/combatTiming";
 import {
@@ -239,6 +246,7 @@ import {
   ritualClapSounds,
   playSound,
   playSoundVaried,
+  playRopeClampBody,
   slapHitSounds,
   slapWhiffSounds,
   chargedHitSounds,
@@ -1022,6 +1030,10 @@ const GameFighter = ({
     isBraking: false,
     timestamp: 0,
   });
+  // After being hit, suppress local grab prediction briefly so M2 mash at the
+  // ropes can't flash grabAttempt between +0 slap hits (server clears grab,
+  // but the next predicted press arrives before isHit does).
+  const grabPredictLockUntilRef = useRef(0);
 
   // Force re-render when predictions change (refs don't trigger re-renders).
   // CRITICAL: predictionVersion is also a dependency of the displayPenguin
@@ -1726,7 +1738,13 @@ const GameFighter = ({
           break;
         }
         case "grab":
-          if (canPredictAction(gameStarted) && !penguin.isChargingAttack && !isLocalParryActive()) {
+          if (
+            canPredictAction(gameStarted) &&
+            !penguin.isChargingAttack &&
+            !isLocalParryActive() &&
+            now >= grabPredictLockUntilRef.current &&
+            !penguin.isHit
+          ) {
             predictedState.current = {
               ...predictedState.current,
               isGrabbing: true,
@@ -2151,11 +2169,19 @@ const GameFighter = ({
       // Guard floor is server-authored (window expired while holding). Don't
       // OR-predict it — the live parry window must keep the parry stance.
       isGuarding: !!penguin.isGuarding,
-      isGrabbing: p.isGrabbing || penguin.isGrabbing,
+      isGrabbing:
+        performance.now() < grabPredictLockUntilRef.current
+          ? !!penguin.isGrabbing
+          : p.isGrabbing || penguin.isGrabbing,
       // ICE PHYSICS: Movement predictions
       isPowerSliding: p.isPowerSliding || penguin.isPowerSliding,
       isBraking: p.isBraking || penguin.isBraking,
     };
+
+    if (penguin.isHit || performance.now() < grabPredictLockUntilRef.current) {
+      merged.isGrabbing = false;
+      predictedState.current.isGrabbing = false;
+    }
 
     if (isInFlapMechanic(penguin)) {
       merged.isSlapAttack = false;
@@ -3352,6 +3378,7 @@ const GameFighter = ({
           snap.p1Gas !== player1Data.isGassed ||
           snap.p2Gas !== player2Data.isGassed ||
           snap.p1Edge !== player1Data.isBeingEdgePushed ||
+          snap.p2Edge !== player2Data.isBeingEdgePushed ||
           // Integer balance — keeps the stance gauge live without per-packet
           // float noise from ALWAYS_SEND balance. Deep Grip flips must sync
           // the victim's throw-gate mark the moment the install lands.
@@ -3385,6 +3412,7 @@ const GameFighter = ({
           snap.p1Gas = player1Data.isGassed;
           snap.p2Gas = player2Data.isGassed;
           snap.p1Edge = player1Data.isBeingEdgePushed;
+          snap.p2Edge = player2Data.isBeingEdgePushed;
           snap.p1Bal = Math.round(player1Data.balance ?? 100);
           snap.p2Bal = Math.round(player2Data.balance ?? 100);
           snap.p1DG = !!player1Data.hasDeepGrip;
@@ -3618,6 +3646,7 @@ const GameFighter = ({
           prev.isAttemptingPull !== newState.isAttemptingPull ||
           prev.isBeingPullReversaled !== newState.isBeingPullReversaled ||
           prev.isGrabSeparating !== newState.isGrabSeparating ||
+          prev.isGrabSeparatePalm !== newState.isGrabSeparatePalm ||
           prev.isGrabBellyFlopping !== newState.isGrabBellyFlopping ||
           prev.isBeingGrabBellyFlopped !== newState.isBeingGrabBellyFlopped ||
           prev.isGrabFrontalForceOut !== newState.isGrabFrontalForceOut ||
@@ -3842,8 +3871,13 @@ const GameFighter = ({
             tier = "charged";
           }
           if (data.cinematicKill) tier = "cinematic";
-          // Tip slap confirm reads a touch sharper than a deep mash connect.
-          if (data.tipSlap && tier === "slap") tier = "tip";
+          // Tip / rope-edge confirm reads a touch sharper than a deep mash connect.
+          if (
+            (data.tipSlap || data.ropeEdgeHit || data.ropeEdgeSlap) &&
+            tier === "slap"
+          ) {
+            tier = "tip";
+          }
           setAttackerConfirmTier(tier);
           if (attackerConfirmTimeoutRef.current) {
             clearTimeout(attackerConfirmTimeoutRef.current);
@@ -3950,13 +3984,45 @@ const GameFighter = ({
         // Victim park pin — data.x is post-contact-correction (tip/palm park).
         // Belly-slam skips victim pin: even a soft server nudge + hard client
         // snap stacked into a visible teleport. Attacker still plants above.
+        // Rope-rest clamp: never freeze a non-KO hit past the map (server also
+        // clamps park; this is belt-and-suspenders against stale packets).
+        // Cinematic / ring-out presentation may legitimately leave the ring.
         if (
           data.victimId &&
           data.victimId === player.id &&
           typeof data.x === "number" &&
           data.attackType !== "flap"
         ) {
-          pinFighterX(data.x, data.y);
+          const pinX = data.cinematicKill
+            ? data.x
+            : clampToRopeRest(data.x);
+          pinFighterX(pinX, data.y);
+
+          // Kill grab-startup pose thrash immediately — don't wait for the
+          // next state delta. Predicted M2 + lingering isGrabStartup/grabState
+          // flash grabAttempt between +0 slap hits at the clamp.
+          predictedState.current = {
+            ...predictedState.current,
+            isGrabbing: false,
+            isAttacking: false,
+            isSlapAttack: false,
+            isPalmThrust: false,
+            isLowKick: false,
+            isChargingAttack: false,
+            timestamp: Date.now(),
+          };
+          grabPredictLockUntilRef.current = performance.now() + 220;
+          setPenguin((prev) => ({
+            ...prev,
+            isGrabbing: false,
+            isGrabStartup: false,
+            isGrabbingMovement: false,
+            grabState: null,
+            grabAttemptType: null,
+            isWhiffingGrab: false,
+            isAttemptingGrabThrow: false,
+          }));
+          setPredictionVersion((v) => v + 1);
         }
 
         // Screen shake — explicit per-hit tiers. Charged attacks get a heavy
@@ -3980,9 +4046,29 @@ const GameFighter = ({
           const momentumScale = (base, powerW = 0.55, impactW = 0.35) =>
             base * (1 + powerW * mPower + impactW * mImpact);
 
+          const isRopeEdge = !!(data.ropeEdgeHit || data.ropeEdgeSlap);
+          const edgeRehit =
+            isRopeEdge &&
+            performance.now() - lastEdgeJuiceAtRef.current < 160;
           if (data.isGored) {
             // EXPOSED (matador punish) — heavier crack than a normal slap/charge.
             addShake("slap_parry", { dirX: shakeDir, scale: 0.95 });
+          } else if (isRopeEdge) {
+            // Rope-clamp — FG impact kick (replace-mode, no roll). Rehitas stay
+            // slightly lighter so the barrage reads as rhythmic cracks, not a
+            // camera seizure.
+            const edgeScale = edgeRehit
+              ? data.isPalmThrust
+                ? 0.92
+                : 0.85
+              : data.isPalmThrust
+                ? 1.08
+                : 1.0;
+            addShake("rope_clamp_hit", {
+              dirX: shakeDir,
+              scale: momentumScale(edgeScale, 0.2, 0.35),
+            });
+            lastEdgeJuiceAtRef.current = performance.now();
           } else if (data.isPalmThrust) {
             // Palm is a planted burst — use throw-landing weight, not charged crunch.
             addShake("throw_landing", {
@@ -4020,9 +4106,14 @@ const GameFighter = ({
           const pan = xToPan(data.x);
           const isLowKickHit =
             data.isLowKick || data.attackType === "lowKick";
+          const isRopeEdge = !!(data.ropeEdgeHit || data.ropeEdgeSlap);
+          const edgeRehit =
+            isRopeEdge &&
+            performance.now() - lastEdgeJuiceAtRef.current < 160;
           if (data.attackType === "slap" || isLowKickHit) {
             const baseSound = pickRandomSound(slapHitSounds);
-            playSoundVaried(baseSound, 0.038, null, 1.0, pan);
+            const edgeVol = isRopeEdge ? 1.25 : 1;
+            playSoundVaried(baseSound, 0.042 * edgeVol, null, 1.0, pan);
             // A5 sound layering — counter / punish gets a second pitched layer
             // on top of the base hit. We don't have unique counter/punish sfx
             // assets so we synthesize them by re-using the same sample at a
@@ -4031,7 +4122,10 @@ const GameFighter = ({
             //   - Punish:  pitched UP,   played simultaneously → adds "crack" snap
             // Both reuse the same selected base sound so the layer sounds like
             // it belongs together, not a separate hit.
-            if (data.isGored) {
+            if (isRopeEdge) {
+              // Rope slam body (shared with palm / drive clamp) under the slap crack.
+              playRopeClampBody(pan, { mode: "hit", rehit: edgeRehit });
+            } else if (data.isGored) {
               // EXPOSED — heavier than counter: deep thud + sharp crack.
               playSound(baseSound, 0.03, null, 0.62, pan);
               playSound(baseSound, 0.024, null, 1.4, pan);
@@ -4070,11 +4164,15 @@ const GameFighter = ({
             }
           } else {
             const baseSound = pickRandomSound(chargedHitSounds);
-            playSound(baseSound, 0.045, null, 1.0, pan);
+            const edgeVol = isRopeEdge ? 1.15 : 1;
+            playSound(baseSound, 0.05 * edgeVol, null, 1.0, pan);
             // Same layering treatment as slaps but slightly louder/wider pitch
             // gap because charged hits already have weight — the layer needs to
             // stand out without overpowering the primary thwack.
-            if (data.isGored) {
+            if (isRopeEdge) {
+              // Same shared rope slam under the palm hit.
+              playRopeClampBody(pan, { mode: "hit", rehit: edgeRehit });
+            } else if (data.isGored) {
               playSound(baseSound, 0.034, null, 0.58, pan);
               playSound(baseSound, 0.028, null, 1.38, pan);
             } else if (data.isCounterHit) {
@@ -4164,6 +4262,7 @@ const GameFighter = ({
               isArmorBreak: data.isArmorBreak || false,
               isPowered: data.isPowered || false,
               isTipSlap: !!data.tipSlap,
+              isRopeEdgeSlap: !!(data.ropeEdgeHit || data.ropeEdgeSlap),
               cinematicKill: data.cinematicKill || false,
               cinematicHitstopMs: data.cinematicKill ? 550 : 0,
               presentationEventId: hitPres?.eventId || null,
@@ -4171,9 +4270,13 @@ const GameFighter = ({
           }
         }
 
-        // Tip posture HUD flinch — victim's gauge flashes so the spacing reward
-        // is visible in the moment, not only as a mysterious later throw setup.
-        if (index === 0 && data.tipSlap && data.attackType === "slap") {
+        // Tip / rope-edge posture HUD flinch — victim's gauge flashes so the
+        // spacing reward or rope posture tax is visible in the moment.
+        if (
+          index === 0 &&
+          (data.tipSlap || data.ropeEdgeHit || data.ropeEdgeSlap) &&
+          (data.attackType === "slap" || data.isPalmThrust)
+        ) {
           const vNum = data.victimPlayerNumber;
           if (vNum === 1) setP1TipDrain(Date.now());
           else if (vNum === 2) setP2TipDrain(Date.now());
@@ -4352,7 +4455,24 @@ const GameFighter = ({
           amp +=
             0.22 * Math.max(0, Math.min(data.momentumPower || 0, 1)) +
             0.14 * Math.max(0, Math.min(data.momentumImpact || 0, 1));
+          const isRopeEdgeVictim = !!(
+            data.ropeEdgeHit || data.ropeEdgeSlap
+          );
+          const edgeRehitVictim =
+            isRopeEdgeVictim &&
+            performance.now() - lastEdgeJuiceAtRef.current < 160;
           if (data.tipSlap) amp += 0.08;
+          if (isRopeEdgeVictim) {
+            // First clamp hit gets the fat crumple; rehitas keep a lighter dent
+            // so the sprite doesn't restart a full squash every 110ms.
+            amp += edgeRehitVictim
+              ? data.isPalmThrust
+                ? 0.18
+                : 0.12
+              : data.isPalmThrust
+                ? 0.4
+                : 0.35;
+          }
           // Braked knockback = the victim dug in — displacement is the tell
           // that shrinks, so the body deformation shrinks with it.
           if (data.braked) amp -= 0.2;
@@ -4366,13 +4486,27 @@ const GameFighter = ({
           data.victimId === player.id &&
           !data.cinematicKill
         ) {
+          const isRopeEdge = !!(data.ropeEdgeHit || data.ropeEdgeSlap);
+          const edgeRehit =
+            isRopeEdge &&
+            performance.now() - lastEdgeJuiceAtRef.current < 160;
           hitJudderRef.current = {
             // Only draws while the display freeze is active; the arm window
             // just needs to outlast the longest non-cinematic hitstop.
             armedUntil: performance.now() + 400,
-            amp: data.attackType === "charged" ? 4 : 3,
+            amp:
+              data.attackType === "charged"
+                ? 4.5
+                : isRopeEdge
+                  ? edgeRehit
+                    ? 2.5
+                    : 4.5
+                  : 3,
             frame: 0,
           };
+          if (isRopeEdge) {
+            lastEdgeJuiceAtRef.current = performance.now();
+          }
         }
 
         // PHASE 4A — arm the struck-limb pose hold. Only GENUINE limb-only
@@ -7124,14 +7258,29 @@ const GameFighter = ({
     };
   }, [isLocalEdgePushed]);
 
-  // Screen shake on initial edge pin
-  const wasEdgePushedRef = useRef(false);
+  // Grab-drive rope clamp — shared rope slam + impact kick the first frame
+  // either fighter pins at the tawara. Heartbeat/vignette stay local-only above.
+  const wasAnyoneEdgePushedRef = useRef(false);
+  const anyoneEdgePushed =
+    !!allPlayersData.player1?.isBeingEdgePushed ||
+    !!allPlayersData.player2?.isBeingEdgePushed;
   useEffect(() => {
-    if (isLocalEdgePushed && !wasEdgePushedRef.current) {
-      addShake("edge_pin");
+    if (index !== 0) return;
+    if (anyoneEdgePushed && !wasAnyoneEdgePushedRef.current) {
+      const victim = allPlayersData.player1?.isBeingEdgePushed
+        ? allPlayersData.player1
+        : allPlayersData.player2;
+      const vx = typeof victim?.x === "number" ? victim.x : 640;
+      const pan = xToPan(vx);
+      const shakeDir = vx < 640 ? -1 : 1;
+      playRopeClampBody(pan, { mode: "drive" });
+      addShake("rope_clamp_hit", {
+        dirX: shakeDir,
+        scale: 1.05,
+      });
     }
-    wasEdgePushedRef.current = isLocalEdgePushed;
-  }, [isLocalEdgePushed]);
+    wasAnyoneEdgePushedRef.current = anyoneEdgePushed;
+  }, [anyoneEdgePushed, index, allPlayersData.player1, allPlayersData.player2]);
 
   useEffect(() => {
     lastDodgeLandState.current = penguin.justLandedFromDodge;
@@ -7461,6 +7610,9 @@ const GameFighter = ({
   // "both statues, then both glide" symmetry — the victim's body VIBRATES from
   // the hit while the attacker holds firm.
   const hitJudderRef = useRef({ armedUntil: 0, amp: 0, frame: 0 });
+  // Rope-edge barrage: full juice on the first clamp hit, then dampen restarts
+  // so rapid rehitas don't vibrate/pop like a broken animation.
+  const lastEdgeJuiceAtRef = useRef(0);
 
   // PROCEDURAL ANIMATION — per-hit reaction grading + attacker recoil.
   // impactAmp feeds the --impact-amp CSS var (fighterStyledComponents): the
@@ -8072,8 +8224,17 @@ const GameFighter = ({
   // the rising edge, so buffered back-to-back thrusts — where isPalmThrust
   // never drops between reps — still replay the full sequence. Ref mutated
   // during render, same pattern as the flap/idle-hold refs.
-  if (displayPenguin.isPalmThrust) {
-    const fxId = penguin.palmThrustFxId || 0;
+  // The command-grab Drive release borrows these same four poses for the
+  // fighter being shoved off (server flag `isGrabSeparatePalm`). It is pose-only
+  // — no thrust is happening — so it runs on its own, tighter frame table that
+  // fits the release slide. It rides this clock so both can never be live at
+  // once and the sequence always restarts from the windup.
+  const inSeparatePalm = !!penguin.isGrabSeparatePalm;
+  const palmPoseActive = displayPenguin.isPalmThrust || inSeparatePalm;
+  if (palmPoseActive) {
+    // Distinct id space from palmThrustFxId so a thrust immediately following a
+    // shove-off (or vice versa) re-anchors instead of inheriting stale elapsed.
+    const fxId = inSeparatePalm ? "sep" : penguin.palmThrustFxId || 0;
     if (
       !palmThrustAnimRef.current.startedAt ||
       fxId !== palmThrustAnimRef.current.fxId
@@ -8088,13 +8249,14 @@ const GameFighter = ({
     palmThrustAnimRef.current.startedAt = 0;
   }
   let palmThrustFrame = 2;
-  if (displayPenguin.isPalmThrust && palmThrustAnimRef.current.startedAt) {
+  if (palmPoseActive && palmThrustAnimRef.current.startedAt) {
+    const anim = inSeparatePalm ? GRAB_SEPARATE_PALM_ANIM : PALM_THRUST_ANIM;
     // Hitstop-aware: the strike frame holds through the on-hit freeze instead of
     // the clock silently advancing past ACTIVE_END while the game is frozen.
     const elapsed = computeAnimElapsed(palmThrustAnimRef.current, performance.now());
-    if (elapsed < PALM_THRUST_ANIM.STARTUP_END) palmThrustFrame = 0;
-    else if (elapsed < PALM_THRUST_ANIM.SMEAR_END) palmThrustFrame = 1;
-    else if (elapsed < PALM_THRUST_ANIM.ACTIVE_END) palmThrustFrame = 2;
+    if (elapsed < anim.STARTUP_END) palmThrustFrame = 0;
+    else if (elapsed < anim.SMEAR_END) palmThrustFrame = 1;
+    else if (elapsed < anim.ACTIVE_END) palmThrustFrame = 2;
     else palmThrustFrame = 3;
   }
 
@@ -8300,7 +8462,11 @@ const GameFighter = ({
     penguin.flapPhase,
     flapFrame,
     flapUseDodgePose,
-    displayPenguin.isPalmThrust,
+    // Drive-release shove-off reuses the palm poses (see palmPoseActive). It
+    // enters through this arg rather than one of its own so it inherits the
+    // palm branch's place in the sprite chain — above isRecovering and the
+    // carry brace, both of which are live on the shoved fighter.
+    palmPoseActive,
     palmThrustFrame,
     displayPenguin.isLowKick,
     // Aerial hit+spin only while thrown AND not yet in the early-landing window.
@@ -8479,7 +8645,7 @@ const GameFighter = ({
   // terminal recovery frame (3) so startup → smear → active advance on their
   // ms boundaries. Frame 3 is a static hold, so it needs no further forcing.
   renderedHitVisualsRef.current.palmThrustAnim =
-    displayPenguin.isPalmThrust && palmThrustFrame < 3;
+    palmPoseActive && palmThrustFrame < 3;
   // SLAP: keep re-rendering while windup → hit are still advancing on their
   // ms boundaries (slapFrame < 3). Frame 3 (recovery / settle-back) is the terminal
   // static hold, so no further forcing is needed — the isSlapAttack drop (→ idle)
