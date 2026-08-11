@@ -41,15 +41,19 @@ const root = ReactDOM.createRoot(document.getElementById("root"));
 Promise.all([
   import("./App.jsx"),
   import("./components/Settings.jsx"),
+  import("./utils/lowSpecMode.js"),
   import("./combatAudio/index.js"),
 ]).then(
   ([
     { default: App },
     { initGlobalVolumeFromSettings },
+    { initLowSpecFromSettings },
     { installAudioTraceGlobal },
   ]) => {
     // Apply saved SFX volume before first cue (preserves mute / non-default).
     initGlobalVolumeFromSettings();
+    // Low Spec Mode before first paint so menu/match skip expensive layers.
+    initLowSpecFromSettings();
     installAudioTraceGlobal();
     root.render(<App />);
   },

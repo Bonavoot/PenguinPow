@@ -44,6 +44,7 @@ import crowdSalarymanSideCheering2 from "../assets/crowd-salaryman-side-cheering
 import CROWD_POSITIONS from "./crowdPositionsData";
 import winnerSound from "../sounds/winner-sound.ogg";
 import { playBuffer, preloadSound } from "../utils/audioEngine";
+import { useLowSpec } from "../utils/lowSpecMode";
 import { bashoCrowdFill } from "../config/bashoConfig";
 
 // Editor (+ dohyo-style.webp) only loads when opened — keeps ~6MB style out of
@@ -740,6 +741,7 @@ const CHEER_TOGGLE_MIN = 200;
 const CHEER_TOGGLE_MAX = 600;
 
 const CrowdLayer = ({ crowdEvent = null, bashoRank = null }) => {
+  const lowSpec = useLowSpec();
   const [crowdPositions, setCrowdPositions] = useState(() => buildCrowd(bashoRank));
   const bashoRankKey = bashoRank
     ? `${bashoRank.division}:${bashoRank.number ?? ""}:${bashoRank.title ?? ""}`
@@ -758,7 +760,12 @@ const CrowdLayer = ({ crowdEvent = null, bashoRank = null }) => {
   const foregroundCrowd = useMemo(() => crowdPositions.filter(m => m.customZIndex !== undefined), [crowdPositions]);
   // Bucket the normal crowd by quantized tier-aware blur for a smooth DoF
   // falloff that follows the two-tier seating (ground bowl + rising deck).
+  // Low Spec: single unblurred plane — DoF blur under camera motion is a top
+  // M1 compositor cost; OFF path is identical to the original banding.
   const crowdBands = useMemo(() => {
+    if (lowSpec) {
+      return [{ blur: 0, members: normalCrowd }];
+    }
     const map = new Map();
     normalCrowd.forEach((m) => {
       const blur =
@@ -772,7 +779,7 @@ const CrowdLayer = ({ crowdEvent = null, bashoRank = null }) => {
     return [...map.entries()]
       .map(([blur, members]) => ({ blur, members }))
       .sort((a, b) => b.blur - a.blur);
-  }, [normalCrowd]);
+  }, [normalCrowd, lowSpec]);
 
   // Active camera-flash sparks (populated on a KO, auto-cleared after the burst).
   const [flashes, setFlashes] = useState([]);
@@ -940,13 +947,15 @@ const CrowdLayer = ({ crowdEvent = null, bashoRank = null }) => {
     return members.map((member) => {
       const crowdType = CROWD_TYPES[member.typeIndex];
       const animOffset = ((member.id * 7) % 10) / 10;
-      const shouldAnimate = member.y < 55;
+      const shouldAnimate = !lowSpec && member.y < 55;
       const needsFilter = crowdType.idle === crowdType.cheering && member.applyDarkFilter;
 
       let filter = "none";
-      if (needsFilter) filter = OYAKATA_FILTER;
-      else if (darken) filter = computeCrowdLightingFilter(member.y, { foreground: true });
-      else filter = computeCrowdLightingFilter(member.y);
+      if (!lowSpec) {
+        if (needsFilter) filter = OYAKATA_FILTER;
+        else if (darken) filter = computeCrowdLightingFilter(member.y, { foreground: true });
+        else filter = computeCrowdLightingFilter(member.y);
+      }
 
       return (
         <CrowdMember
@@ -973,12 +982,19 @@ const CrowdLayer = ({ crowdEvent = null, bashoRank = null }) => {
     <>
       <CrowdContainer>
         <StyleInjector />
-        {/* Already sorted far → near; paint each as one blur plane. */}
-        {crowdBands.map((b) => (
-          <CrowdDofPlane key={b.blur} $blur={b.blur}>
-            {renderCrowdMembers(b.members)}
-          </CrowdDofPlane>
-        ))}
+        {/* Already sorted far → near; paint each as one blur plane.
+            Low Spec: blur=0 plane (no CSS filter) — same member layout. */}
+        {crowdBands.map((b) =>
+          lowSpec || b.blur === 0 ? (
+            <React.Fragment key={`band-${b.blur}`}>
+              {renderCrowdMembers(b.members)}
+            </React.Fragment>
+          ) : (
+            <CrowdDofPlane key={b.blur} $blur={b.blur}>
+              {renderCrowdMembers(b.members)}
+            </CrowdDofPlane>
+          )
+        )}
       </CrowdContainer>
       {foregroundCrowd.length > 0 && (
         <ForegroundCrowdContainer>

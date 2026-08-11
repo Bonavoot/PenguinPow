@@ -53,7 +53,9 @@ const defaultSettings = {
   windowHeight: 1080,
   brightness: 100,
   contrast: 100,
-  volume: 100
+  volume: 100,
+  // Dev performance toggle — OFF keeps full cinematic visuals.
+  lowSpec: false
 };
 
 function loadSettings() {

@@ -33,6 +33,7 @@ import {
   prewarmGyojiOutfit,
 } from "../utils/GyojiRecolorizer";
 import { ParticleProvider } from "../particles/ParticleContext";
+import { useLowSpec } from "../utils/lowSpecMode";
 import {
   registerLocalKeyState,
   unregisterLocalKeyState,
@@ -146,6 +147,7 @@ const Game = ({
   bashoArmed = false,
 }) => {
   const { socket } = useContext(SocketContext);
+  const lowSpec = useLowSpec();
 
   // Phase 5+/soak: one socket listener owns fighter_action merge + fan-out.
   useEffect(() => {
@@ -1198,8 +1200,9 @@ const Game = ({
           {/* Scene-wide ambient snowfall (single system, parallax depth).
               Its internal back/front layers (z40 / z105) straddle the players
               so most snow falls behind them and only sparse foreground bokeh
-              flakes drift in front. */}
-          <SnowEffect mode="snow" />
+              flakes drift in front. Low Spec skips mount (DOM rAF flakes). */}
+          {!lowSpec && <SnowEffect mode="snow" />}
+          {/* god-rays / film-grain also CSS-hidden under html[data-low-spec] */}
           <div className="god-rays" aria-hidden="true"></div>
           <div className="arena-lighting" aria-hidden="true"></div>
         </div>

@@ -1,5 +1,6 @@
 import { DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY } from "../constants";
 import { DASH_SMOKE_SHEET_BASELINE_Y } from "../combatPresentation/movementSmoke";
+import { isLowSpec } from "../utils/lowSpecMode";
 import landingSmokeSheet from "../assets/landing-smoke-effect.png";
 import straightUpSmokeSheet from "../assets/straight-up-smoke-effect.png";
 import tiltedUpSmokeSheet from "../assets/tilted-up-smoke-effect.png";
@@ -486,6 +487,8 @@ function spawnCinematicThrowLandSmoke(
 // scene canvases. 1.5x is visually indistinguishable for soft particles while
 // cutting per-pixel cost roughly in half on common 1920x1080 displays.
 function getCanvasDpr() {
+  // Low Spec: 1× backing store — big fillrate win across 3 full-scene canvases.
+  if (isLowSpec()) return 1;
   const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
   return Math.min(Math.max(dpr, 1), 1.5);
 }
@@ -6016,7 +6019,8 @@ export class ParticleEngine {
 
     ctx.save();
     ctx.globalAlpha = alpha;
-    if (p.blendMode) ctx.globalCompositeOperation = p.blendMode;
+    // Additive ("lighter") is fillrate-heavy on Metal/iGPU — skip in Low Spec.
+    if (p.blendMode && !isLowSpec()) ctx.globalCompositeOperation = p.blendMode;
     ctx.translate(p.x, p.y);
     if (p.rotation) ctx.rotate(p.rotation);
     if (p.stretchX !== 1) ctx.scale(p.stretchX, 1);

@@ -1,6 +1,7 @@
 import { memo, forwardRef } from "react";
 import PropTypes from "prop-types";
 import { isOutsideDohyo } from "../constants";
+import { useLowSpec } from "../utils/lowSpecMode";
 import { SHADOW_GROUND_LEVEL } from "./PlayerShadow";
 
 const GROUND_LEVEL = SHADOW_GROUND_LEVEL;
@@ -103,7 +104,11 @@ const IceReflection = memo(
       },
       ref
     ) => {
+      // Blur + mask + 3D + multiply under camera motion is a top M1 cost.
+      // Keep a hidden host so GameFighter's reflectionDomRef stays valid.
+      const lowSpec = useLowSpec();
       const show =
+        !lowSpec &&
         (bottomPct != null || iceReflectionShouldShow(x, y, { forceHide })) &&
         !!src;
       if (!show) {

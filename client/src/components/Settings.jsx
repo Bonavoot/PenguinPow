@@ -16,6 +16,7 @@ import {
   parseVolumeSetting,
   volumePercentToGain,
 } from "./volumeSettings";
+import { isLowSpec, setLowSpec } from "../utils/lowSpecMode";
 
 // User scale 0–1 preserved across mounts. Buffer SFX route through the
 // master SFX gain (BASE_VOLUME_MULTIPLIER * globalVolume). HTMLAudio paths
@@ -396,6 +397,52 @@ const ProgressFill = styled.div`
   transition: width 0.18s ease;
 `;
 
+const ToggleRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+`;
+
+const ToggleSwitch = styled.button`
+  position: relative;
+  flex-shrink: 0;
+  width: 48px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid ${({ $on }) => ($on ? C.vermillionDeep : C.snowBorder)};
+  background: ${({ $on }) => ($on ? C.vermillion : C.snowPanelDeep)};
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: ${({ $on }) => ($on ? "22px" : "2px")};
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: ${C.cream};
+    box-shadow: 0 1px 3px rgba(15, 29, 46, 0.28);
+    transition: left 0.15s ease;
+  }
+
+  &:hover {
+    background: ${({ $on }) => ($on ? C.vermillionBright : C.snowSoft)};
+  }
+`;
+
+const ToggleState = styled.span`
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
+  font-size: 0.72rem;
+  letter-spacing: ${TRACK.meta};
+  text-transform: uppercase;
+  color: ${({ $on }) => ($on ? C.vermillionDeep : C.inkTextMute)};
+`;
+
 // Common resolution options 1920x1080 and above.
 const resolutionOptions = [
   { width: 1920, height: 1080, label: "1920x1080" },
@@ -410,6 +457,7 @@ const Settings = ({ onClose }) => {
   const [brightness, setBrightness] = useState(100);
   const [contrast, setContrast] = useState(100);
   const [volume, setVolume] = useState(100);
+  const [lowSpec, setLowSpecState] = useState(() => isLowSpec());
   const [displayMode, setDisplayMode] = useState("fullscreen");
   const [selectedResolution, setSelectedResolution] = useState({
     width: 1920,
@@ -485,6 +533,9 @@ const Settings = ({ onClose }) => {
           setContrast(settings.contrast ?? 100);
           // Preserve saved 0 — never use truthy fallback (0 || 100 → 100).
           setVolume(parseVolumeSetting(settings.volume));
+          const nextLowSpec = !!settings.lowSpec;
+          setLowSpecState(nextLowSpec);
+          setLowSpec(nextLowSpec, { persist: true, saveElectron: false });
           setDisplayMode(settings.displayMode || "fullscreen");
           setSelectedResolution({
             width: settings.windowWidth || 1920,
@@ -562,6 +613,13 @@ const Settings = ({ onClose }) => {
     }
   };
 
+  const handleLowSpecToggle = () => {
+    const next = !lowSpec;
+    setLowSpecState(next);
+    // Applies immediately (DOM attribute + subscribers) and persists.
+    setLowSpec(next, { persist: true, saveElectron: true });
+  };
+
   const handleSaveSettings = async () => {
     if (window.electron && window.electron.settings) {
       try {
@@ -569,6 +627,7 @@ const Settings = ({ onClose }) => {
           brightness,
           contrast,
           volume,
+          lowSpec,
           displayMode,
           windowWidth: selectedResolution.width,
           windowHeight: selectedResolution.height,
@@ -576,6 +635,8 @@ const Settings = ({ onClose }) => {
       } catch (error) {
         console.error("Error saving settings:", error);
       }
+    } else {
+      setLowSpec(lowSpec, { persist: true, saveElectron: false });
     }
   };
 
@@ -583,6 +644,8 @@ const Settings = ({ onClose }) => {
     setBrightness(100);
     setContrast(100);
     setVolume(100);
+    setLowSpecState(false);
+    setLowSpec(false, { persist: true, saveElectron: true });
     setDisplayMode("fullscreen");
     setSelectedResolution({ width: 1920, height: 1080 });
 
@@ -593,6 +656,7 @@ const Settings = ({ onClose }) => {
           brightness: 100,
           contrast: 100,
           volume: 100,
+          lowSpec: false,
           displayMode: "fullscreen",
           windowWidth: 1920,
           windowHeight: 1080,
@@ -680,6 +744,31 @@ const Settings = ({ onClose }) => {
             value={volume}
             onChange={(e) => setVolume(Number(e.target.value))}
           />
+        </ControlGroup>
+
+        <ControlGroup>
+          <SectionTitle>
+            Low Spec Mode <SectionTag>Performance</SectionTag>
+          </SectionTitle>
+          <HintText>
+            Turns off expensive cinematic layers (live blurs, crowd DoF, god
+            rays, film grain, ice reflections, menu depth blur, snowfall,
+            additive particle blends). Off = full visuals exactly as authored.
+            Applies immediately — use on weaker machines while developing.
+          </HintText>
+          <ToggleRow>
+            <ToggleState $on={lowSpec}>
+              {lowSpec ? "On — performance" : "Off — full visuals"}
+            </ToggleState>
+            <ToggleSwitch
+              type="button"
+              role="switch"
+              aria-checked={lowSpec}
+              aria-label="Low Spec Mode"
+              $on={lowSpec}
+              onClick={handleLowSpecToggle}
+            />
+          </ToggleRow>
         </ControlGroup>
 
         <Divider />

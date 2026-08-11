@@ -44,7 +44,7 @@ import {
   applyBashoDraftPick,
   normalizeBashoDraftList,
 } from "../config/powerUpConfig";
-import styled, { keyframes } from "styled-components";
+import styled, { css, keyframes } from "styled-components";
 import { SocketContext } from "../SocketContext";
 import { selectGameServer } from "../lib/serverConnection";
 
@@ -81,6 +81,7 @@ import {
   stopBackgroundMusic,
 } from "../utils/soundUtils";
 import Snowfall from "./Snowfall";
+import { useLowSpec } from "../utils/lowSpecMode";
 import PumoLogo from "./PumoLogo";
 
 import {
@@ -144,8 +145,17 @@ const BackgroundPlate = styled.div`
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  animation: ${kenBurns} 40s ease-in-out infinite alternate;
-  will-change: transform;
+  /* Low Spec: freeze Ken Burns — animating a filtered plate forces re-blur. */
+  ${(p) =>
+    p.$lowSpec
+      ? css`
+          animation: none;
+          will-change: auto;
+        `
+      : css`
+          animation: ${kenBurns} 40s ease-in-out infinite alternate;
+          will-change: transform;
+        `}
 `;
 
 const BackgroundImage = styled.img`
@@ -158,8 +168,12 @@ const BackgroundImage = styled.img`
   /*
    * Light global soften — the main "AI coverup": kills hyper-sharp
    * gen artifacts without turning the plate into mud.
+   * Low Spec: same grade, no live blur.
    */
-  filter: saturate(1.06) brightness(0.88) contrast(1.06) blur(0.7px);
+  filter: ${(p) =>
+    p.$lowSpec
+      ? "saturate(1.06) brightness(0.88) contrast(1.06)"
+      : "saturate(1.06) brightness(0.88) contrast(1.06) blur(0.7px)"};
 `;
 
 /*
@@ -673,6 +687,7 @@ const MainMenu = ({
   const [showSettings, setShowSettings] = useState(false);
   const [isCPUMatch, setIsCPUMatch] = useState(false);
   const { socket } = useContext(SocketContext);
+  const lowSpec = useLowSpec();
 
   // ── BASHO run state machine (single-player only; gated from PvP/VS CPU) ──
   const {
@@ -1250,15 +1265,17 @@ const MainMenu = ({
   const renderMainMenu = () => {
     return (
       <MainMenuContainer>
-        <BackgroundPlate aria-hidden>
-          <BackgroundImage src={mainMenuBackground} alt="" />
-          <BackgroundDepth src={mainMenuBackground} alt="" />
+        <BackgroundPlate aria-hidden $lowSpec={lowSpec}>
+          <BackgroundImage src={mainMenuBackground} alt="" $lowSpec={lowSpec} />
+          {!lowSpec && (
+            <BackgroundDepth src={mainMenuBackground} alt="" />
+          )}
         </BackgroundPlate>
-        <AtmosphereGrade aria-hidden />
+        {!lowSpec && <AtmosphereGrade aria-hidden />}
         <AtmosphereHaze aria-hidden />
         <CinematicOverlay />
-        <GrainOverlay aria-hidden />
-        <Snowfall intensity={13} showFrost zIndex={3} />
+        {!lowSpec && <GrainOverlay aria-hidden />}
+        {!lowSpec && <Snowfall intensity={13} showFrost zIndex={3} />}
 
         <TopSlug>
           <SlugText $accent>
