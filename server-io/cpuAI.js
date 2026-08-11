@@ -1023,6 +1023,11 @@ function isOpponentAirborne(human) {
 // Grabs beat dodge at any point — dodge is never safe from grabs
 // Sidestep: grabs track through it by design, but the AI shouldn't react-grab
 // on a dime. Already-in-progress grabs still track; this only blocks NEW attempts.
+//
+// NOTE: human grab startup is still mechanically "grabbable" — overlapping
+// startups clash into a mutual whiff (tech). We do NOT filter that here.
+// Blocking NEW grab *decisions* into a visible startup is handled separately
+// so independent CPU grabs / already-committed approaches can still tech fairly.
 function isOpponentGrabbable(human) {
   return !human.isBeingThrown &&
          !human.isBeingGrabbed &&
@@ -1032,6 +1037,13 @@ function isOpponentGrabbable(human) {
          !human.isGrabBreakSeparating &&
          !human.isSidestepping &&
          !isOpponentAirborne(human);
+}
+
+// True while the human has already committed to a grab. NEW CPU grab decisions
+// must not fire into this — that's the psychic tech-read. CPU grabs that started
+// earlier, or grab-approach intents opened before this flag, may still clash.
+function isHumanGrabCommitted(human) {
+  return !!(human && (human.isGrabStartup || human.isGrabbingMovement));
 }
 
 // Check if the opponent is actively moving away from the CPU
@@ -1061,6 +1073,10 @@ function isGoodGrabOpportunity(cpu, human, distance) {
   // generic path always declines so low ranks commit strikes INTO the parry.
   if (human.isRawParrying) return false;
 
+  // Their grab startup looks like "stationary + in range + committed" — juicy
+  // under the checks below — but grabbing INTO it is a tech-read, not offense.
+  if (isHumanGrabCommitted(human)) return false;
+
   // Opponent is committed to an action (attacking, recovering) — great time to grab
   if (human.isAttacking || human.isRecovering || human.isHit) return true;
   // Opponent is stationary or moving toward us — grab will likely connect
@@ -1079,6 +1095,10 @@ function attemptGrabOrApproach(cpu, human, aiState, currentTime, distance) {
   // rooted parrier was the "CPU freezes / walks into my Space" tell — the
   // dedicated handleParryResponse node is the only path allowed to grab-punish.
   if (human.isRawParrying) return false;
+
+  // No NEW grab / grab-approach once they've already started theirs. (Already-
+  // committed grabApproachIntent may still finish into a fair clash elsewhere.)
+  if (isHumanGrabCommitted(human)) return false;
 
   if (isAtGrabRange(cpu, human) && canGrab(cpu) && isGoodGrabOpportunity(cpu, human, distance)) {
     cpu.keys.mouse2 = true;
@@ -1582,9 +1602,12 @@ function updateCPUAI(cpu, human, room, currentTime) {
   
   // Cancel grab approach if situation changed (hit, grabbed, opponent in i-frames/ungrabable,
   // or they raised a parry/guard — don't keep walking into a rooted Space stance).
+  // Human grab startup does NOT cancel: we committed to grab before they did, so
+  // finishing into a clash is a fair independent tech — not a react-read.
   if (aiState.grabApproachIntent && (
     cpu.isHit || cpu.isBeingGrabbed || cpu.isBeingThrown ||
-    human.isAttacking || human.isRawParrying || !isOpponentGrabbable(human) ||
+    human.isAttacking || human.isRawParrying ||
+    (!isOpponentGrabbable(human) && !isHumanGrabCommitted(human)) ||
     !isFacingOpponent(cpu, human)
   )) {
     aiState.grabApproachIntent = false;
@@ -1593,8 +1616,13 @@ function updateCPUAI(cpu, human, room, currentTime) {
   // GRAB APPROACH: If AI is walking in for a grab, keep going until in range or expired
   if (aiState.grabApproachIntent && currentTime < aiState.grabApproachIntentUntil && canGrab(cpu)) {
     if (isAtGrabRange(cpu, human)) {
-      // Reached point-blank — only execute if it's still a good opportunity
-      if (isGoodGrabOpportunity(cpu, human, Math.abs(cpu.x - human.x))) {
+      // Fire the committed grab. If they started grabbing after we committed,
+      // still press — that's a fair tech. Only abort if the connect is dead.
+      const stillLive =
+        isFacingOpponent(cpu, human) &&
+        !human.isRawParrying &&
+        (isOpponentGrabbable(human) || isHumanGrabCommitted(human));
+      if (stillLive) {
         resetAllKeys(cpu);
         cpu.keys.mouse2 = true;
         aiState.mouse2ReleaseTime = currentTime + 50;
@@ -2157,11 +2185,12 @@ function commitArrivalOffense(cpu, human, aiState, currentTime, distance) {
     return "parry";
   }
 
-  // Point-blank → grab mix
+  // Point-blank → grab mix (never as a react-tech into their already-started grab)
   if (
     distance <= AI_CONFIG.GRAB_RANGE &&
     canGrab(cpu) &&
     isOpponentGrabbable(human) &&
+    !isHumanGrabCommitted(human) &&
     chance(0.30)
   ) {
     cpu.keys.mouse2 = true;
@@ -4278,7 +4307,9 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     clearChargeState(cpu, true);
   }
   
-  // Process grab
+  // Process grab. Decision layer refuses NEW grabs into a visible human startup
+  // (react-tech), but still allows presses from grabs the CPU already committed
+  // to — those clashes are fair techs and must reach beginGrabStartup.
   if (keyJustPressed("mouse2") && 
       !cpu.isAttacking && 
       !cpu.isGrabbing && 
