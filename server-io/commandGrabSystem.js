@@ -594,6 +594,7 @@ function advanceDriveCarry(grabber, victim, room, io, rooms, now, delta) {
     // a free win (same clamp-unless-threshold idea as slap/palm).
     victim.x = ropeX;
     grabber.x = ropeX - dir * attach;
+    const firstRopeContact = !grabber.cmdGrabAtRope;
     grabber.cmdGrabAtRope = true;
     grabber.isEdgePushing = true;
     victim.isBeingEdgePushed = true;
@@ -613,6 +614,19 @@ function advanceDriveCarry(grabber, victim, room, io, rooms, now, delta) {
       clearCommandGrabState(grabber);
       triggerRingOut(grabber, victim, room, io, rooms, dir);
       return;
+    }
+
+    // Fire on the exact clamp tick so client juice isn't waiting on a React
+    // dirty-flag of isBeingEdgePushed (that path landed a beat late).
+    if (firstRopeContact) {
+      io.in(room.id).emit("rope_clamp", {
+        source: "drive",
+        x: ropeX,
+        y: victim.y,
+        dir,
+        victimId: victim.id,
+        grabberId: grabber.id,
+      });
     }
   } else {
     grabber.isEdgePushing = false;

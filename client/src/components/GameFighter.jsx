@@ -4900,7 +4900,7 @@ const GameFighter = ({
 
     let unsubClinchTech = null;
     let handleGrabBreak, handleClinchTech, handleCounterGrab,
-    handleMatadorSuccess, handleStaminaBlocked, handleClinchCallout,
+    handleMatadorSuccess, handleRopeClamp, handleStaminaBlocked, handleClinchCallout,
     handleClinchThrowFail, handleDeepGrip, handlePostureBreak;
     if (index === 0) {
       handleGrabBreak = (data) => {
@@ -5130,6 +5130,26 @@ const GameFighter = ({
         }
       };
       socket.on("matador_success", handleMatadorSuccess);
+
+      // Drive → tawara clamp: server emits on the exact pin tick (not React
+      // isBeingEdgePushed, which was a beat late and read as random noise).
+      handleRopeClamp = (data) => {
+        if (!data || data.source !== "drive") return;
+        const vx = typeof data.x === "number" ? data.x : 640;
+        const pan = xToPan(vx);
+        const shakeDir =
+          typeof data.dir === "number" && data.dir !== 0
+            ? Math.sign(data.dir)
+            : vx < 640
+              ? -1
+              : 1;
+        playRopeClampBody(pan, { mode: "drive" });
+        addShake("rope_clamp_hit", {
+          dirX: shakeDir,
+          scale: 0.85,
+        });
+      };
+      socket.on("rope_clamp", handleRopeClamp);
 
       // Clinch stance-read banners + grab_tech world rings (Phase 8).
       handleClinchCallout = (data) => {
@@ -5704,6 +5724,7 @@ const GameFighter = ({
         if (typeof unsubClinchTech === "function") unsubClinchTech();
         socket.off("counter_grab", handleCounterGrab);
         socket.off("matador_success", handleMatadorSuccess);
+        socket.off("rope_clamp", handleRopeClamp);
         socket.off("stamina_blocked", handleStaminaBlocked);
         socket.off("clinch_callout", handleClinchCallout);
         socket.off("clinch_throw_fail", handleClinchThrowFail);
@@ -7257,30 +7278,6 @@ const GameFighter = ({
       }
     };
   }, [isLocalEdgePushed]);
-
-  // Grab-drive rope clamp — shared rope slam + impact kick the first frame
-  // either fighter pins at the tawara. Heartbeat/vignette stay local-only above.
-  const wasAnyoneEdgePushedRef = useRef(false);
-  const anyoneEdgePushed =
-    !!allPlayersData.player1?.isBeingEdgePushed ||
-    !!allPlayersData.player2?.isBeingEdgePushed;
-  useEffect(() => {
-    if (index !== 0) return;
-    if (anyoneEdgePushed && !wasAnyoneEdgePushedRef.current) {
-      const victim = allPlayersData.player1?.isBeingEdgePushed
-        ? allPlayersData.player1
-        : allPlayersData.player2;
-      const vx = typeof victim?.x === "number" ? victim.x : 640;
-      const pan = xToPan(vx);
-      const shakeDir = vx < 640 ? -1 : 1;
-      playRopeClampBody(pan, { mode: "drive" });
-      addShake("rope_clamp_hit", {
-        dirX: shakeDir,
-        scale: 1.05,
-      });
-    }
-    wasAnyoneEdgePushedRef.current = anyoneEdgePushed;
-  }, [anyoneEdgePushed, index, allPlayersData.player1, allPlayersData.player2]);
 
   useEffect(() => {
     lastDodgeLandState.current = penguin.justLandedFromDodge;

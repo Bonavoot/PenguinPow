@@ -270,7 +270,18 @@ const SLAP_STEP_IN_VELOCITY = 0.75;
 // outrun the pressure. Capping it is what ENDS a barrage naturally: once the
 // victim is flying faster than you can follow, they are out of range and the
 // sequence is over. That self-limit is the anti-mash mechanism.
-const CHASE_SPEED_CAP = ICE_MAX_SPEED;
+//
+// Raised from ICE_MAX_SPEED (walking, 1.3) to ICE_SLIDE_MAX_SPEED (full
+// power-slide, 2.4) — still <= V_REF so "chase never outpaces a real
+// movement speed" holds, but walking-speed pursuit was falling well short of
+// what a momentum-boosted slap (e.g. dodge-slide into slap) actually sends:
+// at vSelf ~1.7 the send already needs ~2.1 to stay glued, more than the old
+// cap could ever deliver, so a solid chunk of ordinary (not even maxed)
+// momentum entries were already softly whiffing their follow-up before this
+// change. The escape valve survives only at the very top of the curve now
+// (send velocities north of ~2.1), instead of kicking in for most
+// non-flat-footed slaps.
+const CHASE_SPEED_CAP = ICE_SLIDE_MAX_SPEED;
 
 // Multiplier on a slap's forward slide while the fighters' pushboxes overlap.
 // Was 0.3 — a 70% brake applied exactly while in slapping range, which
@@ -329,13 +340,22 @@ const MOVE_TRANSFER = {
   // (1.03) finally sits near walking pace, so a single slap reads as a shove
   // rather than a nudge.
   //
+  // Raised again 165 -> 175: every slap (including a flat-footed one) hits a
+  // bit harder without touching the momentum curve or K_SLAP_KB_INHERIT — the
+  // entry-speed REWARD (ceil - floor) is unchanged, only the baseline every
+  // send starts from moved up. Capped here by the MOVE IDENTITY invariant
+  // (palm.floor >= slap.floor * 1.4, see transfer.test.js) — 175 * 1.4 = 245,
+  // comfortably under the palm's 250 floor, so the palm still reads as
+  // decisively heavier per press. Floor cannot go much past ~178 without
+  // also raising the palm to keep that identity intact.
+  //
   // This is safer than it looks for round length: SLAP_KILL_RANGE is 25px, so
   // slaps still cannot ring anyone out except right at the rope. More power
   // means reaching the interesting part FASTER, not winning faster.
   //
   // Ceiling stays under the palm's 400 so the heavy still out-sends the light
   // at every momentum level (see the MOVE IDENTITY tests).
-  slap: { floor: 165, ceil: 380, guaranteed: false },
+  slap: { floor: 175, ceil: 380, guaranteed: false },
 
   // Heavy, rooted, committal — and the answer to "why press this instead of
   // slapping?". Its identity is POWER NOW versus the slap's POWER OVER TIME:
@@ -658,11 +678,20 @@ function hitstopPowerWeightFor(moveKey) {
 function hitstopMsFor(vClose, weight = 1, power = 0, powerWeight = 1) {
   const base =
     HITSTOP_FLOOR_MS + (HITSTOP_CEIL_MS - HITSTOP_FLOOR_MS) * impactScalar(vClose);
+  // weight scales how much freeze a move earns ABOVE the floor (palm should
+  // thud harder than a slap at equal closing speed) — but for a weight < 1
+  // move (slap 0.7, lowKick/snowball/pumoClone) it must not scale the floor
+  // ITSELF below HITSTOP_FLOOR_MS, or the "a poke should read as a poke"
+  // guarantee above silently breaks: a flat-footed slap (vClose≈0, the most
+  // common connect in the game) was resolving to 45*0.7≈32ms — under the
+  // floor it was supposed to never go below. Heavy moves (weight >= 1) are
+  // unaffected: their weighted value already clears the floor on its own.
+  const weighted = base * (weight || 1);
   const powerBonus =
     HITSTOP_POWER_BONUS_MAX_MS *
     Math.max(0, Math.min(power || 0, 1)) *
     Math.max(0, powerWeight);
-  return Math.round(base * (weight || 1) + powerBonus);
+  return Math.round(Math.max(weighted, HITSTOP_FLOOR_MS) + powerBonus);
 }
 
 // Posture chip. Today reaching the lethal line (85 damage vs 35/s regen) needs

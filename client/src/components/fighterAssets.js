@@ -452,8 +452,9 @@ export const playSoundVaried = (audioFile, volume = 1.0, duration = null, playba
 export const playRopeClampBody = (pan = 0, { mode = "hit", rehit = false } = {}) => {
   const body = pickRandomSound(chargedHitSounds);
   if (mode === "drive") {
-    // Solo bed under the shove — keep it soft so it doesn't steal the grab.
-    playSound(body, 0.018, null, 0.78, pan);
+    // Solo bed under the shove — soft, near-natural rate so the transient
+    // lands with the pin (slow rates stretched the attack and felt late).
+    playSound(body, 0.018, null, 0.94, pan);
     return;
   }
   if (rehit) {

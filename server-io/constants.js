@@ -307,13 +307,13 @@ const SLAP_ROPE_RESIST_BUFFER = 12;
 // always qualifies, with a little slack for coast settle.
 const SLAP_ROPE_EDGE_ZONE = 28;
 // Rope grind station — mid-ring slaps stay light chips; clamp hits are where
-// posture actually drains toward the <15 ring-out gate. 1.9 still felt like
-// a long poke string at the ropes; 2.8 makes ~4–6 edge connects matter.
-const SLAP_EDGE_POSTURE_MULT = 2.8;
-// Palm already chips harder than slap mid-ring; at the clamp this mult lands
-// slightly above a single edge slap (~1.15–1.25× across typical closing speeds)
-// so palm stays the heavier confirm without skipping the posture gate.
-const PALM_EDGE_POSTURE_MULT = 1.4;
+// posture actually drains toward the <15 ring-out gate. 2.8 still felt like
+// a long poke string at the ropes; 3.6 makes ~3–5 edge connects matter.
+const SLAP_EDGE_POSTURE_MULT = 3.6;
+// Palm already chips harder than slap mid-ring; at the clamp this mult keeps
+// palm the heavier confirm (~1.25–1.35× a single edge slap across typical
+// closing speeds) without skipping the posture gate.
+const PALM_EDGE_POSTURE_MULT = 1.85;
 // Sharp crack for rope-clamp slap/palm — heavier than a mid-ring poke,
 // short enough that a barrage doesn't read as a hitch. Weight is sold by
 // client juice (SFX layers, squash, spark, shake), not by a long freeze.
