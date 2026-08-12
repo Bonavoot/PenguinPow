@@ -4288,8 +4288,14 @@ function tick(delta) {
 
     // ── BOUT CLOCK ──
     // Armed at HAKKI-YOI (startBoutClock). Only the integer second is sent,
-    // and only when it changes, so a bout costs ~60 tiny packets total and
-    // the client needs no countdown of its own to stay in step.
+    // and only when it changes, so a bout costs ~BOUT_SECONDS tiny packets
+    // and the client needs no countdown of its own to stay in step.
+    //
+    // floor (not ceil): ceil(msLeft/1000) holds the opening digit for a full
+    // second after HAKKI-YOI, which stacked with the walk-up park at
+    // BOUT_SECONDS and read as a 1s-late countdown. floor advances as soon
+    // as each second of fight time has elapsed; the bout still ends on
+    // msLeft <= 0 so duration stays exactly BOUT_SECONDS.
     if (
       room.gameStart &&
       !room.gameOver &&
@@ -4299,7 +4305,7 @@ function tick(delta) {
       room.players.length === 2
     ) {
       const msLeft = room.boutEndsAtSim - now;
-      const secondsLeft = Math.max(0, Math.ceil(msLeft / 1000));
+      const secondsLeft = Math.max(0, Math.floor(msLeft / 1000));
       if (secondsLeft !== room.boutSecondsShown) {
         room.boutSecondsShown = secondsLeft;
         io.in(room.id).emit("bout_clock", secondsLeft);

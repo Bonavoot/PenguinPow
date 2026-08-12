@@ -31,7 +31,7 @@
  */
 
 /** Bout length. Mirrored for display in client/src/config/boutClock.js. */
-const BOUT_SECONDS = 60;
+const BOUT_SECONDS = 30;
 
 /**
  * Bout card animation length. MUST match BOUT_CARD_SECONDS on the client.

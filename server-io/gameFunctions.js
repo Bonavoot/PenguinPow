@@ -405,8 +405,10 @@ function cleanupGrabStates(player, opponent) {
  */
 function startBoutClock(room) {
   room.boutEndsAtSim = simNow(room) + BOUT_SECONDS * 1000;
-  // Seeded, not null: the caller emits BOUT_SECONDS alongside game_start,
-  // and the first tick would otherwise re-send the same number.
+  // Seeded to BOUT_SECONDS: the caller emits that alongside game_start.
+  // The next tick uses floor(msLeft/1000), so within ~1 frame the display
+  // advances to BOUT_SECONDS - 1 and the countdown reads as starting with
+  // the bout instead of sitting on the walk-up park for another second.
   room.boutSecondsShown = BOUT_SECONDS;
 }
 

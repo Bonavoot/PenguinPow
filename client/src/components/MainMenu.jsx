@@ -87,6 +87,8 @@ import PumoLogo from "./PumoLogo";
 import {
   C,
   FONT_BODY,
+  FONT_DISPLAY,
+  FONT_KANJI,
   FONT_UI,
   FONT_WEIGHT,
   TRACK,
@@ -117,6 +119,16 @@ const grainDrift = keyframes`
 const pumoBreathe = keyframes`
   0%, 100% { transform: scaleY(1); }
   50%      { transform: scaleY(1.022); }
+`;
+
+const brushIn = keyframes`
+  from { transform: scaleX(0); opacity: 0; }
+  to   { transform: scaleX(1); opacity: 1; }
+`;
+
+const hintFade = keyframes`
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 `;
 
 // ============================================
@@ -248,8 +260,8 @@ const AtmosphereHaze = styled.div`
 `;
 
 /*
- * Menu rail + cinematic frame — enough obscure to hide plate telltales
- * at the edges without fogging Pumo's feet.
+ * Poster frame — soft letterbox + light left seat for type.
+ * Courtyard stays open; no panel wash.
  */
 const CinematicOverlay = styled.div`
   position: absolute;
@@ -259,30 +271,48 @@ const CinematicOverlay = styled.div`
   background:
     linear-gradient(
       90deg,
-      rgba(4, 6, 10, 0.66) 0%,
-      rgba(4, 6, 10, 0.38) 16%,
-      rgba(4, 6, 10, 0.12) 30%,
-      transparent 46%
+      rgba(4, 6, 10, 0.55) 0%,
+      rgba(4, 6, 10, 0.28) 16%,
+      rgba(4, 6, 10, 0.08) 32%,
+      transparent 48%
     ),
     radial-gradient(
-      ellipse 44% 52% at 70% 60%,
-      rgba(255, 248, 235, 0.06) 0%,
-      transparent 62%
+      ellipse 50% 55% at 78% 62%,
+      rgba(255, 248, 235, 0.05) 0%,
+      transparent 58%
     ),
     radial-gradient(
       ellipse 72% 68% at 52% 42%,
       transparent 0%,
-      rgba(4, 6, 10, 0.14) 58%,
-      rgba(4, 6, 10, 0.52) 100%
+      rgba(4, 6, 10, 0.12) 60%,
+      rgba(4, 6, 10, 0.48) 100%
     ),
     linear-gradient(
       180deg,
-      rgba(4, 6, 10, 0.48) 0%,
-      rgba(4, 6, 10, 0.1) 16%,
-      transparent 42%,
-      rgba(4, 6, 10, 0.1) 80%,
-      rgba(4, 6, 10, 0.36) 100%
+      rgba(4, 6, 10, 0.45) 0%,
+      transparent 20%,
+      transparent 76%,
+      rgba(4, 6, 10, 0.38) 100%
     );
+`;
+
+/* Giant ink watermark — depth behind the title stack (Startup kin). */
+const AtmosphereKanji = styled.div`
+  position: absolute;
+  top: 46%;
+  left: clamp(12px, 2cqw, 40px);
+  transform: translateY(-50%);
+  z-index: 2;
+  font-family: ${FONT_KANJI};
+  font-weight: 700;
+  font-size: clamp(9rem, 28cqh, 18rem);
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: #fff;
+  opacity: 0.045;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
 `;
 
 /* Film grain — the other half of the coverup. */
@@ -366,33 +396,25 @@ const HeroStage = styled.main`
   z-index: 10;
   flex: 1;
   min-height: 0;
-  display: grid;
-  /* Menu rail + wide portrait lane so Pumo can own right-center. */
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.4fr);
-  gap: clamp(8px, 1.5cqw, 24px);
-  padding: clamp(48px, 7cqh, 72px) clamp(28px, 4cqw, 64px)
-    clamp(12px, 2.2cqh, 28px);
-  align-items: stretch;
-
-  @media (max-width: 720px) {
-    grid-template-columns: 1fr;
-    padding-top: clamp(64px, 10cqh, 96px);
-  }
+  display: flex;
+  align-items: center;
+  padding: clamp(56px, 9cqh, 88px) clamp(40px, 5.5cqw, 80px)
+    clamp(48px, 7cqh, 72px);
 `;
 
 /*
- * Fighting-game title stack: logo + vermillion rule + menu as one
- * vertically centered unit. Intentional empty space around the stack —
- * no tagline / rank filler under the brand.
+ * Title stack — festival program over the courtyard.
+ * Negative space is deliberate; density comes from hierarchy,
+ * whisper meta, and ink — not boxes.
  */
 const LeftColumn = styled.div`
+  position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   align-items: flex-start;
-  gap: clamp(22px, 3.2cqh, 36px);
+  gap: clamp(28px, 4.2cqh, 44px);
   min-width: 0;
-  max-width: clamp(320px, 38cqw, 440px);
+  max-width: clamp(300px, 34cqw, 400px);
   will-change: transform, opacity;
   animation: ${slideInLeft} 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) 0.12s both;
 `;
@@ -401,221 +423,177 @@ const BrandBlock = styled.div`
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: clamp(12px, 1.8cqh, 18px);
-  /* Same left rail as MenuButton cursor gutter */
-  padding-left: clamp(16px, 2cqw, 24px);
-`;
-
-/* Structural accent under logo — short vermillion underline with soft seat. */
-const BrandRule = styled.div`
-  width: clamp(56px, 8cqw, 84px);
-  height: 3px;
-  border-radius: 1px;
-  background: ${C.vermillion};
-  box-shadow: 0 0 12px rgba(196, 48, 38, 0.45);
-  opacity: 0;
-  animation: ${fadeIn} 0.4s ease-out 0.4s forwards;
+  /* Logo sits a touch left of the mode column — optical lockup. */
+  margin-left: clamp(-18px, -1.6cqw, -10px);
 `;
 
 const MenuList = styled.nav`
   display: flex;
   flex-direction: column;
-  gap: clamp(10px, 1.6cqh, 16px);
+  align-items: flex-start;
+  gap: clamp(12px, 1.8cqh, 18px);
 `;
 
+/*
+ * Mode rows — open type with a calligraphy brush focus.
+ * Featured mode carries a whisper line; hover draws the same
+ * brush under siblings. No plates, ticks, or glow bars.
+ */
 const MenuButton = styled.button`
   position: relative;
   display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.28em;
   background: none;
   border: none;
-  padding: clamp(2px, 0.4cqh, 5px) clamp(4px, 0.6cqw, 8px)
-    clamp(2px, 0.4cqh, 5px) clamp(16px, 2cqw, 24px);
+  padding: 0 0 0.42em;
   margin: 0;
   cursor: pointer;
-  font-family: ${FONT_UI};
-  font-size: ${(p) =>
-    p.$primary
-      ? "clamp(1.7rem, 2.9cqw, 2.35rem)"
-      : "clamp(1.05rem, 1.7cqw, 1.4rem)"};
-  font-weight: ${(p) =>
-    p.$primary ? FONT_WEIGHT.black : FONT_WEIGHT.bold};
-  letter-spacing: ${TRACK.meta};
-  text-transform: uppercase;
   text-align: left;
-  line-height: 0.95;
-  /* Secondary items sit quieter until hover — clearer fighting-game hierarchy */
-  color: ${(p) => (p.$primary ? C.cream : "rgba(255, 255, 255, 0.78)")};
-  /*
-   * Soft ambient seat — same lesson as SumoAnnouncementBanner.
-   * The old 4-way 1px black stroke + hard shelf made Bungee look
-   * jagged / "sharpness too high" at these sizes.
-   */
-  ${FONT_RENDER}
-  text-shadow: ${TEXT_SHADOW_DISPLAY};
-  transition:
-    transform 0.28s cubic-bezier(0.2, 0.85, 0.2, 1),
-    color 0.2s ease;
   opacity: 0;
   animation: ${slideInLeft} 0.45s ease-out forwards;
   animation-delay: ${(p) => 0.4 + p.$index * 0.07}s;
 
-  &::before {
+  .mode-label {
+    font-family: ${FONT_DISPLAY};
+    font-size: ${(p) =>
+      p.$primary
+        ? "clamp(1.65rem, 2.75cqw, 2.25rem)"
+        : "clamp(1.05rem, 1.65cqw, 1.35rem)"};
+    font-weight: 400;
+    letter-spacing: ${TRACK.display};
+    text-transform: uppercase;
+    line-height: 0.95;
+    color: ${(p) =>
+      p.$primary ? C.cream : "rgba(245, 236, 217, 0.7)"};
+    ${FONT_RENDER}
+    text-shadow: ${(p) =>
+      p.$primary ? TEXT_SHADOW_DISPLAY : TEXT_SHADOW_DISPLAY_SOFT};
+    transition: color 0.22s ease;
+  }
+
+  .mode-hint {
+    font-family: ${FONT_UI};
+    font-weight: ${FONT_WEIGHT.medium};
+    font-size: clamp(0.5rem, 0.78cqw, 0.62rem);
+    letter-spacing: ${TRACK.label};
+    text-transform: uppercase;
+    color: ${C.iceBright};
+    ${FONT_RENDER}
+    text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
+    animation: ${hintFade} 0.4s ease-out 0.7s both;
+  }
+
+  &::after {
     content: "";
     position: absolute;
     left: 0;
-    top: 50%;
-    width: ${(p) => (p.$primary ? "4px" : "3px")};
-    height: ${(p) => (p.$primary ? "0.68em" : "0.7em")};
-    background: ${C.vermillion};
-    border-radius: 1px;
-    box-shadow: 0 0 10px rgba(196, 48, 38, 0.55);
-    transform: ${(p) =>
-      p.$primary
-        ? "translate(0, -50%) scaleY(1)"
-        : "translate(-12px, -50%) scaleY(0.35)"};
-    transform-origin: center;
+    bottom: 0;
+    height: 2px;
+    width: 100%;
+    max-width: ${(p) => (p.$primary ? "4.5em" : "0")};
+    background: linear-gradient(
+      90deg,
+      ${C.vermillionBright} 0%,
+      ${C.vermillion} 55%,
+      transparent 100%
+    );
+    transform-origin: left center;
     opacity: ${(p) => (p.$primary ? 1 : 0)};
     transition:
-      transform 0.32s cubic-bezier(0.25, 0.85, 0.2, 1),
-      opacity 0.22s ease;
+      max-width 0.32s cubic-bezier(0.25, 0.85, 0.2, 1),
+      opacity 0.22s ease,
+      background 0.22s ease;
     pointer-events: none;
+    ${(p) =>
+      p.$primary &&
+      css`
+        animation: ${brushIn} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.75s both;
+      `}
   }
 
-  &:hover {
+  &:hover .mode-label {
     color: ${C.cream};
-    transform: translateX(clamp(6px, 0.9cqw, 12px));
   }
-  &:hover::before {
-    transform: translate(0, -50%) scaleY(1);
+  &:hover::after {
+    max-width: 4.5em;
     opacity: 1;
+    background: linear-gradient(
+      90deg,
+      ${(p) => (p.$primary ? C.vermillionBright : C.iceBright)} 0%,
+      ${(p) => (p.$primary ? C.vermillion : C.ice)} 55%,
+      transparent 100%
+    );
   }
-  &:active {
-    transform: translateX(clamp(3px, 0.5cqw, 6px)) scale(0.99);
+  &:active .mode-label {
+    opacity: 0.88;
   }
 `;
 
 const SystemButton = styled.button`
-  position: relative;
   display: inline-flex;
   align-items: center;
-  align-self: flex-start;
-  margin-top: clamp(10px, 1.8cqh, 18px);
+  margin-top: clamp(6px, 1.2cqh, 12px);
   background: none;
   border: none;
-  padding: clamp(2px, 0.4cqh, 5px) clamp(4px, 0.6cqw, 8px)
-    clamp(2px, 0.4cqh, 5px) clamp(16px, 2cqw, 24px);
+  padding: 0;
   cursor: pointer;
   font-family: ${FONT_UI};
   font-weight: ${FONT_WEIGHT.medium};
-  font-size: clamp(0.72rem, 1.15cqw, 0.92rem);
-  letter-spacing: ${TRACK.meta};
+  font-size: clamp(0.68rem, 1.05cqw, 0.84rem);
+  letter-spacing: ${TRACK.label};
   text-transform: uppercase;
   text-align: left;
-  line-height: 0.95;
-  color: rgba(245, 236, 217, 0.48);
+  line-height: 1;
+  color: rgba(245, 236, 217, 0.4);
   ${FONT_RENDER}
   text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
-  transition:
-    color 0.2s ease,
-    transform 0.28s cubic-bezier(0.2, 0.85, 0.2, 1);
+  transition: color 0.2s ease;
   opacity: 0;
   animation: ${slideInLeft} 0.45s ease-out forwards;
   animation-delay: ${(p) => 0.4 + p.$index * 0.07}s;
 
-  &::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 50%;
-    width: 3px;
-    height: 0.7em;
-    background: ${C.vermillion};
-    border-radius: 1px;
-    transform: translate(-12px, -50%) scaleY(0.35);
-    transform-origin: center;
-    opacity: 0;
-    transition:
-      transform 0.32s cubic-bezier(0.25, 0.85, 0.2, 1),
-      opacity 0.22s ease;
-    pointer-events: none;
-  }
-
   &:hover {
-    color: ${C.cream};
-    transform: translateX(clamp(6px, 0.9cqw, 12px));
-  }
-  &:hover::before {
-    transform: translate(0, -50%) scaleY(1);
-    opacity: 1;
-  }
-  &:active {
-    transform: translateX(clamp(3px, 0.5cqw, 6px)) scale(0.99);
+    color: rgba(245, 236, 217, 0.88);
   }
 `;
 
-const RightColumn = styled.aside`
-  position: relative;
-  height: 100%;
-  min-width: 0;
-
-  @media (max-width: 720px) {
-    display: none;
-  }
-`;
-
+/*
+ * Key-art poster — right third, intentional foot crop,
+ * planted on the snow line. Classic fighting-game title sit.
+ */
 const PumoHeroWrapper = styled.div`
-  /*
-   * Right-third poster crop — feet bleed the frame so placement feels
-   * intentional; contact shadow sells weight on the plate.
-   */
   position: absolute;
-  right: clamp(20px, 3.5cqw, 56px);
-  bottom: clamp(-110px, -15cqh, -64px);
-  height: clamp(420px, 86cqh, 680px);
+  right: clamp(-8px, 0.5cqw, 20px);
+  bottom: clamp(-96px, -12cqh, -52px);
+  height: clamp(460px, 90cqh, 720px);
   width: auto;
   z-index: 4;
   pointer-events: none;
   user-select: none;
-  animation: ${fadeUp} 0.8s ease-out 0.22s backwards;
+  animation: ${fadeUp} 0.85s ease-out 0.18s backwards;
 
-  /* Soft ambient pool under the figure */
-  &::before {
+  &::after {
     content: "";
     position: absolute;
-    left: 10%;
-    right: 12%;
-    bottom: 12%;
-    height: 12%;
+    left: 18%;
+    right: 20%;
+    bottom: 11%;
+    height: 9%;
     background: radial-gradient(
       ellipse at center,
-      rgba(0, 0, 0, 0.42) 0%,
-      rgba(0, 0, 0, 0.16) 48%,
-      transparent 74%
+      rgba(0, 0, 0, 0.45) 0%,
+      rgba(0, 0, 0, 0.14) 48%,
+      transparent 72%
     );
-    filter: blur(14px);
+    filter: blur(12px);
     z-index: 0;
     pointer-events: none;
   }
 
-  /* Tight contact shadow at the feet / crop line */
-  &::after {
-    content: "";
-    position: absolute;
-    left: 22%;
-    right: 24%;
-    bottom: 14%;
-    height: 5%;
-    background: radial-gradient(
-      ellipse at center,
-      rgba(0, 0, 0, 0.62) 0%,
-      rgba(0, 0, 0, 0.22) 42%,
-      transparent 70%
-    );
-    filter: blur(6px);
-    z-index: 0;
-    pointer-events: none;
+  @media (max-width: 720px) {
+    display: none;
   }
 `;
 
@@ -626,13 +604,8 @@ const PumoHero = styled.img`
   height: 100%;
   width: auto;
   transform-origin: center bottom;
-  /*
-   * Settle into the plate without a fake black stroke — the PNG linework
-   * already carries the silhouette; extra 0-blur drop-shadows were
-   * doubling the outline weight at hero scale.
-   */
   filter: brightness(0.98) contrast(1.02) saturate(1.04)
-    drop-shadow(0 14px 24px rgba(0, 0, 0, 0.42));
+    drop-shadow(0 16px 28px rgba(0, 0, 0, 0.4));
   animation: ${pumoBreathe} 2.6s ease-in-out infinite;
 `;
 
@@ -1274,6 +1247,7 @@ const MainMenu = ({
         {!lowSpec && <AtmosphereGrade aria-hidden />}
         <AtmosphereHaze aria-hidden />
         <CinematicOverlay />
+        <AtmosphereKanji aria-hidden>相撲</AtmosphereKanji>
         {!lowSpec && <GrainOverlay aria-hidden />}
         {!lowSpec && <Snowfall intensity={13} showFrost zIndex={3} />}
 
@@ -1299,7 +1273,6 @@ const MainMenu = ({
           <LeftColumn>
             <BrandBlock>
               <PumoLogo size="menu" />
-              <BrandRule aria-hidden />
             </BrandBlock>
 
             <MenuList>
@@ -1309,7 +1282,8 @@ const MainMenu = ({
                 onClick={handleBasho}
                 onMouseEnter={playButtonHoverSound}
               >
-                Basho
+                <span className="mode-label">Basho</span>
+                <span className="mode-hint">Sumo career mode</span>
               </MenuButton>
 
               <MenuButton
@@ -1320,7 +1294,7 @@ const MainMenu = ({
                 }}
                 onMouseEnter={playButtonHoverSound}
               >
-                Custom Match
+                <span className="mode-label">Custom Match</span>
               </MenuButton>
 
               <MenuButton
@@ -1328,7 +1302,7 @@ const MainMenu = ({
                 onClick={handleVsCPU}
                 onMouseEnter={playButtonHoverSound}
               >
-                VS CPU
+                <span className="mode-label">VS CPU</span>
               </MenuButton>
 
               <MenuButton
@@ -1339,7 +1313,7 @@ const MainMenu = ({
                 }}
                 onMouseEnter={playButtonHoverSound}
               >
-                Customize
+                <span className="mode-label">Customize</span>
               </MenuButton>
 
               <SystemButton
@@ -1355,8 +1329,6 @@ const MainMenu = ({
               </SystemButton>
             </MenuList>
           </LeftColumn>
-
-          <RightColumn aria-hidden />
         </HeroStage>
 
         <PumoHeroWrapper>

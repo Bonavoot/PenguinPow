@@ -8,14 +8,14 @@
  * during the walk-up, before the first tick arrives — same mirroring
  * convention as combatTiming.js, and the server value always wins.
  *
- * 60 rather than the arcade-standard 99: a real tachiai-to-decision bout
+ * 30 rather than the arcade-standard 99: a real tachiai-to-decision bout
  * is usually under fifteen seconds, so a 99 count would read as a number
- * that never moves. 60 still almost never expires, but it looks like a
- * clock that could.
+ * that never moves. 30 still covers most exchanges, but it expires often
+ * enough that the clock feels like a real pressure.
  *
  * MUST stay in lockstep with server-io/boutClock.js BOUT_SECONDS.
  */
-export const BOUT_SECONDS = 60;
+export const BOUT_SECONDS = 30;
 
 /** Below this the clock goes vermillion and pulses. */
 export const CLOCK_URGENT_AT = 10;
