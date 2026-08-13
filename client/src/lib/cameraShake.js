@@ -25,8 +25,9 @@
 // spokes), not the camera. Every other profile is punch: 0.
 export const SHAKE_PROFILES = {
   // ── Per-hit tiers (driven by player_hit: attackType) ──
-  // Slap pokes — snappy rattle.
-  slap_hit:        { trauma: 0.40, punch: 0.0, rot: 0.0 },
+  // Slap pokes — snappy directional kick. Replace-mode so a barrage reads as
+  // discrete cracks, not a stacked wobble (same idea as rope_clamp_hit).
+  slap_hit:        { trauma: 0.44, punch: 0.0, rot: 0.0, replace: true, dirBias: 0.72 },
   // Charged hit — heavy crunch + roll + micro zoom-punch (caller scales by charge %).
   charged_hit:     { trauma: 0.92, punch: 0.06, rot: 0.55 },
 

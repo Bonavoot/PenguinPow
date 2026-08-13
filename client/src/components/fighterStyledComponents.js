@@ -144,13 +144,21 @@ export const getFighterPopFilter = (props) => {
     return "none";
   }
 
-  // Subject separation comes from CLARITY + the DoF behind them, NOT a glow.
-  // A warm rim drop-shadow read as a cheesy halo (the cheap-mobile-game tell),
-  // so it's gone. Instead: a tight all-around dark contour that cuts the
-  // (often light) penguin bodies cleanly off the blurred crowd, plus a soft
-  // downward shadow for grounding/weight. Zero color cast — clean cut-out read.
-  const edge = "drop-shadow(0 0 clamp(0.5px, 0.06cqw, 1.5px) rgba(8, 5, 3, 0.6))";
-  const ground = "drop-shadow(0 2px clamp(1px, 0.12cqw, 3px) rgba(0, 0, 0, 0.45))";
+  // Subject separation: a dark cut-out against the crowd's thick outlines.
+  // Keep the blur radius tiny — this is a keyline, not a glow halo.
+  const edge =
+    "drop-shadow(0 0 0.85px rgba(4, 2, 8, 0.96)) drop-shadow(0 0 clamp(1.1px, 0.1cqw, 2.4px) rgba(6, 4, 10, 0.58))";
+  // Off-ice only. On the ice disc, IceReflection is the ground read — a CSS
+  // drop-shadow under the sprite reads as a mat/sticker and fights the puddle.
+  const onIce =
+    props.$onIce === true ||
+    (props.$onIce !== false &&
+      props.$x != null &&
+      props.$y != null &&
+      !isOutsideDohyo(props.$x, props.$y));
+  const ground = onIce
+    ? ""
+    : "drop-shadow(0 2px clamp(1px, 0.12cqw, 3px) rgba(0, 0, 0, 0.45))";
 
   // When the separate grab-arm overlay is stacked on the armless body, ANY
   // body drop-shadow (edge, ground, cool rim) rasterizes under the arm and
@@ -171,7 +179,7 @@ export const getFighterPopFilter = (props) => {
     (props.$isBeingGrabbed && props.$hasGrip);
 
   // Body under a composited arm drops dark cut-out shadows so they don't seam.
-  const base = grabArmComposited ? "" : `${edge} ${ground}`;
+  const base = grabArmComposited ? "" : [edge, ground].filter(Boolean).join(" ");
 
   // Kill-throw victim: skip the soft ground drop-shadow. On a spinning / prone
   // body it reads as a second translucent penguin (the "ghost frame" in the
@@ -244,10 +252,7 @@ export const getFighterPopFilter = (props) => {
       tier === "cinematic" ? "drop-shadow(0 0 18px rgba(255, 220, 100, 1)) drop-shadow(0 0 32px rgba(255, 200, 80, 0.55))"
       : tier === "charged" ? "drop-shadow(0 0 12px rgba(255, 235, 160, 0.9))"
       : tier === "burst"   ? "drop-shadow(0 0 9px rgba(255, 230, 140, 0.78))"
-      // Tip spacing — cooler white/ice rim so a clean tip confirm reads sharper
-      // than a deep mash slap without borrowing charged's warm gold weight.
-      : tier === "tip"     ? "drop-shadow(0 0 8px rgba(230, 248, 255, 0.85)) drop-shadow(0 0 14px rgba(160, 220, 255, 0.4))"
-      :                       "drop-shadow(0 0 6px rgba(255, 245, 220, 0.62))";
+      :                       "drop-shadow(0 0 7px rgba(255, 245, 220, 0.78)) drop-shadow(0 0 12px rgba(255, 220, 160, 0.32))";
     return `${base} ${glow}`;
   }
   // With arm overlay: no dark drop-shadow under the join (see grabArmComposited).
@@ -267,12 +272,11 @@ export const getFighterPopFilter = (props) => {
 // Grab-arm overlay back/down nudge → appended AFTER scaleX so X is local
 // (symmetric "back" per facing) and Y is screen-down. Values come from rAF
 // (--grab-arm-nudge-*) with prop fallbacks for the first paint.
-// Pace the Throw/Pull windup over the technique's authoritative startup so the
-// tell completes on the impact frame. These animations were authored at 1.0s /
-// 0.6s against a 220ms / 250ms startup, so they only ever played the first
-// quarter of their motion — the wind-up barely moved, which is what made the
-// tell hard to read. The server sends the committed duration (clinchThrowAnimMs)
-// so a Deep Grip technique with a different startup stays in sync for free.
+// Pace the Throw/Pull windup over the technique's wall-clock tell so the
+// animation completes on the resolve frame. Command grab stamps
+// clinchThrowAnimMs = connect freeze + startup (CSS runs during hitstop).
+// Kill grabs send a longer value. Fallback 1.0s / 0.6s is only for a missing
+// stamp — it must not be what live grabs play.
 const techniqueTellDuration = (props, fallbackSeconds) => {
   const ms = props.$clinchThrowAnimMs;
   if (!Number.isFinite(ms) || ms <= 0) return `${fallbackSeconds}s`;
@@ -840,10 +844,11 @@ export const StyledImage = styled("img")
       // during a grab). $grabArmLayer carries the resolved z (facing decides
       // which of the two arms wins). Still sinks with the body when outside the
       // ring, so fall through to the normal formula (→ 0) in that case.
-      // Strike layering:
-      //  • Extending slap/palm attacker rises above the opponent so the limb
-      //    paints on top even before hit-confirm (no separate arm art yet).
-      //  • Strike victim sinks under so the limb stays readable on connect.
+      // Strike layering (whole-body — slap/palm bake the limb into the sprite):
+      //  • $strikeExtendZ raises the fighter while the limb is visually out
+      //    (smear + hit pose), not only on confirm. Simultaneous swings use
+      //    first-start / facing-right so they are never equal-z (DOM order).
+      //  • Strike victim still sinks under so the connecting limb stays readable.
       // Parry never sets isHit — defense stays equal-layer.
       zIndex: props.$grabArmLayer && !isOutsideDohyo(props.$x, props.$y)
         ? props.$grabArmLayer
@@ -864,8 +869,8 @@ export const StyledImage = styled("img")
             props.$lastHitType === "lowKick") &&
           !props.$isBeingThrown
         ? 97
-        : props.$isStrikeExtending
-        ? 100
+        : props.$strikeExtendZ
+        ? props.$strikeExtendZ
         : 99,
       // Grab-arm: no rim/status glows (getFighterPopFilter early-outs to none).
       filter: getFighterPopFilter(props),
@@ -961,7 +966,7 @@ export const StyledImage = styled("img")
         // strike CONNECTS (impact resistance — the target has mass). Sits
         // above slapRush/attackPunch so it briefly interrupts the swing loop.
         : props.$attackerRecoil
-        ? "attackerContactRecoil 0.18s cubic-bezier(0.25, 0.9, 0.4, 1)"
+        ? "attackerContactRecoil 0.12s cubic-bezier(0.25, 0.9, 0.4, 1)"
         : props.$isSlideJumping
         ? "slideJumpPop 0.22s cubic-bezier(0.15, 0.85, 0.25, 1) forwards"
         : props.$isDodging

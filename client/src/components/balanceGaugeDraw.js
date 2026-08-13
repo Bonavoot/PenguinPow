@@ -119,7 +119,7 @@ function drawGainVfx(ctx, fx, fy, fw, fh, gainT, isRight) {
   ctx.restore();
 }
 
-/** Tip-slap posture drain — sharp vermillion bite so spacing reward reads now. */
+/** Posture drain — sharp vermillion bite so every chip reads now. */
 function drawDrainVfx(ctx, fx, fy, fw, fh, drainT, isRight) {
   if (drainT == null || drainT < 0 || drainT > 1) return;
   const flash =

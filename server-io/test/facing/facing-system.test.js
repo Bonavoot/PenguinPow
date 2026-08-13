@@ -8,6 +8,7 @@ const {
   enforcePlayerFacing,
   enforcePairFacing,
   retargetPostSidestepActionFacing,
+  retargetChargeHoldFacing,
 } = require("../../facingSystem");
 const {
   setActionFacingOwnershipV2ForTests,
@@ -305,5 +306,61 @@ describe("post-sidestep facing track", () => {
     enforcePairFacing(dodger, attacker, 500);
     assert.equal(getActionFacingLock(dodger).direction, -1);
     assert.equal(dodger.facing, -1);
+  });
+});
+
+describe("charge hold facing", () => {
+  afterEach(() => setActionFacingOwnershipV2ForTests(null));
+
+  it("retargets toward the opponent when they cross during the hold", () => {
+    setActionFacingOwnershipV2ForTests(true);
+    const charger = makePlayer({
+      id: "chg",
+      x: 400,
+      facing: -1,
+      isChargingAttack: true,
+      chargingFacingDirection: -1,
+    });
+    const opp = makePlayer({ id: "opp", x: 500, facing: 1 });
+    const id = mintActionFacingInstanceId(charger, ACTION_FACING_OWNER.CHARGE_HOLD);
+    acquireActionFacingLock(charger, {
+      ownerType: ACTION_FACING_OWNER.CHARGE_HOLD,
+      ownerInstanceId: id,
+      direction: -1,
+      reason: ACTION_FACING_REASON.CHARGE,
+      allowDirectionUpdate: false,
+      supersede: true,
+    });
+
+    opp.x = 200;
+    enforcePairFacing(charger, opp);
+
+    assert.equal(getActionFacingLock(charger).direction, 1);
+    assert.equal(charger.chargingFacingDirection, 1);
+    assert.equal(charger.facing, 1);
+  });
+
+  it("does not retarget a charged lunge already in flight", () => {
+    setActionFacingOwnershipV2ForTests(true);
+    const charger = makePlayer({
+      id: "chg",
+      x: 400,
+      facing: -1,
+      isAttacking: true,
+      chargingFacingDirection: -1,
+    });
+    const opp = makePlayer({ id: "opp", x: 200, facing: 1 });
+    acquireActionFacingLock(charger, {
+      ownerType: ACTION_FACING_OWNER.CHARGED_ATTACK,
+      direction: -1,
+      reason: ACTION_FACING_REASON.TRAVEL,
+      allowDirectionUpdate: false,
+      supersede: true,
+    });
+
+    const changed = retargetChargeHoldFacing(charger, opp);
+    enforcePairFacing(charger, opp);
+    assert.equal(changed, false);
+    assert.equal(charger.facing, -1);
   });
 });

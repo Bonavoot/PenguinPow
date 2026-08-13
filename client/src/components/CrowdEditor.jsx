@@ -1072,7 +1072,6 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
           backgroundSize: "cover",
           backgroundPosition: "center -12%",
           backgroundRepeat: "no-repeat",
-          filter: isDohyoTab ? "var(--arena-map-filter)" : undefined,
           pointerEvents: "none",
         }} />
 
@@ -1184,7 +1183,7 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
           role="presentation"
         />
 
-        {/* Foreground crowd (customZIndex) — in front of dohyo, like live z:2 */}
+        {/* Foreground crowd (customZIndex) — in front of dohyo + ice, like live z:4 */}
         {(!isDohyoTab || showCrowdInDohyoTab) &&
           editorPositions
             .filter((m) => !m._hidden && m.customZIndex !== undefined)

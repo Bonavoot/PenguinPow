@@ -1167,7 +1167,7 @@ const Game = ({
   return (
     <div className="game-wrapper">
       <FontWarmup />
-      <div ref={containerRef} className="game-container look-arcade-punchy">
+      <div ref={containerRef} className="game-container">
         {/* Scene — everything inside moves together when the camera pans/zooms */}
         <div className="game-scene">
           <div className="game-map"></div>
@@ -1183,8 +1183,20 @@ const Game = ({
             className="scene-particles-behind"
             aria-hidden="true"
           />
+          <div className="dohyo-platform-shadow" aria-hidden="true"></div>
           {/* Flat 2× bake (dohyo-display.webp). After knob changes: npm run bake:dohyo */}
           <div className="dohyo-overlay"></div>
+          {/* Ice mask host — tawara interior. In the scene (under gyoji /
+              fighters) so grain/sheen/reflections cannot tint the referee.
+              GameFighter portals IceReflection here. */}
+          <div
+            className={`ice-reflection-clip${
+              showPreMatchScreen ? " is-prematch-hidden" : ""
+            }`}
+            aria-hidden="true"
+          >
+            {!lowSpec && <div className="ice-disc-grain" />}
+          </div>
           {/* Sumo roof fusas hanging over the four dohyo corners.
               Dev: press ~ (Shift+`) to place / resize. */}
           <RoofTassleLayer />
@@ -1197,14 +1209,11 @@ const Game = ({
               — restoring the "fall behind the platform" look. No z-index here so
               the sprite's own z:0 competes directly with the dohyo's z:1. */}
           <div className="fallen-actors" aria-hidden="true"></div>
-          {/* Scene-wide ambient snowfall (single system, parallax depth).
-              Its internal back/front layers (z40 / z105) straddle the players
-              so most snow falls behind them and only sparse foreground bokeh
-              flakes drift in front. Low Spec skips mount (DOM rAF flakes). */}
+          {/* Ambient snowfall behind the wrestlers. Low Spec skips mount. */}
           {!lowSpec && <SnowEffect mode="snow" />}
-          {/* god-rays / film-grain also CSS-hidden under html[data-low-spec] */}
-          <div className="god-rays" aria-hidden="true"></div>
           <div className="arena-lighting" aria-hidden="true"></div>
+          {/* Rafter shafts — world-space, pre-softened plate, opacity only. */}
+          <div className="god-rays" aria-hidden="true"></div>
         </div>
         {/* Screen-space film grain — sits on .game-container (NOT the scene)
             so it's fixed to the lens and never scales/pans with the camera. */}
@@ -1258,10 +1267,6 @@ const Game = ({
                 showPreMatchScreen ? " is-prematch-hidden" : ""
               }`}
             >
-              {/* Ice-disc clip host — GameFighter portals IceReflection here so
-                  reflections can only exist on the blue elliptical ice. Lives
-                  inside .ui so prematch hide applies and coords stay 1:1. */}
-              <div className="ice-reflection-clip" aria-hidden="true" />
               {currentRoom.players
                 .filter((player) => player.id !== "disconnected_placeholder")
                 .map((player, i) => {

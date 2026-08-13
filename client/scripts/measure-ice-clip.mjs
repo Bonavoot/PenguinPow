@@ -1,9 +1,9 @@
 /**
- * Measure the blue ice disc and emit the CSS `.ice-reflection-clip` clip-path
- * that matches it in actor/camera space.
+ * Bake ice-mask.webp (+ ice-rim-mask.webp) from dohyo-display.webp.
  *
- * In-game the dohyo is a flat full-bleed bake (dohyo-display.webp) — ice pixels
- * map 1:1 into 1280×720 actor space.
+ * The mask is the tawara interior (ice + original shikiri-sen). Those
+ * markings stay as painted in the plate — including their crop-stroke.
+ * Hard-filling them white aliased at camera zoom. Not a fitted ellipse.
  *
  * Usage: node scripts/measure-ice-clip.mjs
  *        node scripts/measure-ice-clip.mjs --write
@@ -15,14 +15,16 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DISPLAY = path.join(__dirname, "../src/assets/dohyo-display.webp");
-const STYLE = path.join(__dirname, "../src/assets/dohyo-style.webp");
-const CSS_PATH = path.join(__dirname, "../src/App.css");
+const MASK_OUT = path.join(__dirname, "../src/assets/ice-mask.webp");
+const RIM_OUT = path.join(__dirname, "../src/assets/ice-rim-mask.webp");
 const WRITE = process.argv.includes("--write");
 
-const CW = 1280;
-const CH = 720;
-const EDGE_PAD_PX = 2;
-const SAMPLES = 720;
+// Close must be ≥ half the tachiai width (~39px at 2×) so the white
+// rectangles fill. No extra erode — a 6px erode was the "gap at the rope".
+// 1px dilate after close covers the ice/tawara AA fringe.
+const CLOSE_PX = 24;
+const EDGE_DILATE_PX = 1;
+const RIM_PX = 9; // thin curb lip at 2× (~4.5 game px) — not a blurry brown haze
 
 function rgbToHsl(r, g, b) {
   r /= 255;
@@ -52,179 +54,246 @@ function rgbToHsl(r, g, b) {
   return [h, s, l];
 }
 
+// Match enhance-dohyo.mjs — strict so sky / clothing don't count as ice.
 function isIcePixel(r, g, b, a) {
   if (a < 16) return false;
   const [h, s, l] = rgbToHsl(r, g, b);
   return (
-    b > r + 25 &&
+    b > r + 35 &&
     b > 140 &&
-    g > 110 &&
-    h > 175 &&
-    h < 235 &&
-    s > 0.12 &&
-    l > 0.38 &&
-    l < 0.95 &&
-    !(r > 210 && g > 210 && b > 210)
+    g > 120 &&
+    h > 185 &&
+    h < 230 &&
+    s > 0.22 &&
+    l > 0.32 &&
+    l < 0.9
   );
 }
 
-function padFromCentroid(pts, padPx) {
-  if (padPx <= 0 || pts.length < 3) return pts;
-  let cx = 0;
-  let cy = 0;
-  for (const p of pts) {
-    cx += p.x;
-    cy += p.y;
-  }
-  cx /= pts.length;
-  cy /= pts.length;
-  return pts.map((p) => {
-    const dx = p.x - cx;
-    const dy = p.y - cy;
-    const len = Math.hypot(dx, dy) || 1;
-    return { x: p.x + (dx / len) * padPx, y: p.y + (dy / len) * padPx };
-  });
-}
-
-const SRC = fs.existsSync(DISPLAY) ? DISPLAY : STYLE;
-if (!fs.existsSync(DISPLAY)) {
-  console.warn(
-    "dohyo-display.webp missing — measuring style asset (run bake-dohyo-display.mjs)",
+function isRopePixel(r, g, b, a) {
+  if (a < 16) return false;
+  const [h, s, l] = rgbToHsl(r, g, b);
+  return (
+    r > 145 &&
+    g > 105 &&
+    b < 200 &&
+    r > b + 20 &&
+    g > b + 5 &&
+    h > 12 &&
+    h < 58 &&
+    s > 0.14 &&
+    l > 0.32 &&
+    l < 0.92
   );
 }
 
-const { data, info } = await sharp(SRC)
-  .ensureAlpha()
-  .raw()
-  .toBuffer({ resolveWithObject: true });
-const { width: W, height: H, channels } = info;
+function isWhite(r, g, b) {
+  return r > 210 && g > 210 && b > 210;
+}
 
-const ice = new Uint8Array(W * H);
-let sumX = 0;
-let sumY = 0;
-let n = 0;
-for (let y = 0; y < H; y++) {
-  for (let x = 0; x < W; x++) {
-    const i = (y * W + x) * channels;
-    if (isIcePixel(data[i], data[i + 1], data[i + 2], data[i + 3])) {
-      ice[y * W + x] = 1;
-      sumX += x;
-      sumY += y;
-      n++;
+function dilate1(src, w, h) {
+  const out = new Uint8Array(src);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!src[y * w + x]) continue;
+      if (x > 0) out[y * w + x - 1] = 1;
+      if (x < w - 1) out[y * w + x + 1] = 1;
+      if (y > 0) out[(y - 1) * w + x] = 1;
+      if (y < h - 1) out[(y + 1) * w + x] = 1;
     }
   }
+  return out;
 }
-if (!n) {
-  console.error("No ice pixels found in", SRC);
+
+function invert(src) {
+  const out = new Uint8Array(src.length);
+  for (let i = 0; i < src.length; i++) out[i] = src[i] ? 0 : 1;
+  return out;
+}
+
+function morph(src, w, h, n, erode) {
+  let m = erode ? invert(src) : src;
+  for (let i = 0; i < n; i++) m = dilate1(m, w, h);
+  return erode ? invert(m) : m;
+}
+
+function floodIce(ice, rope, w, h, cx, cy, rx, ry) {
+  const mask = new Uint8Array(w * h);
+  const qx = new Int32Array(w * h);
+  const qy = new Int32Array(w * h);
+  let head = 0;
+  let tail = 0;
+  const sx = Math.floor(cx);
+  const sy = Math.floor(cy);
+  if (sx < 0 || sy < 0 || sx >= w || sy >= h) return mask;
+  if (!ice[sy * w + sx] || rope[sy * w + sx]) return mask;
+  mask[sy * w + sx] = 1;
+  qx[tail] = sx;
+  qy[tail] = sy;
+  tail++;
+  const rxCap = rx * 1.08;
+  const ryCap = ry * 1.08;
+  while (head < tail) {
+    const x = qx[head];
+    const y = qy[head];
+    head++;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const px = x + dx;
+        const py = y + dy;
+        if (px < 0 || py < 0 || px >= w || py >= h) continue;
+        const idx = py * w + px;
+        if (mask[idx] || !ice[idx] || rope[idx]) continue;
+        const enx = (px - cx) / rxCap;
+        const eny = (py - cy) / ryCap;
+        if (enx * enx + eny * eny > 1) continue;
+        mask[idx] = 1;
+        qx[tail] = px;
+        qy[tail] = py;
+        tail++;
+      }
+    }
+  }
+  return mask;
+}
+
+function rimAlpha(interior, w, h, maxD) {
+  const alpha = new Uint8Array(w * h);
+  let layer = interior;
+  for (let d = 0; d < maxD; d++) {
+    const next = morph(layer, w, h, 1, true);
+    const t = 1 - d / maxD;
+    const a = Math.round(255 * Math.pow(t, 2.35));
+    for (let i = 0; i < layer.length; i++) {
+      if (layer[i] && !next[i]) alpha[i] = a;
+    }
+    layer = next;
+  }
+  return alpha;
+}
+
+function count(mask) {
+  let n = 0;
+  for (let i = 0; i < mask.length; i++) if (mask[i]) n++;
+  return n;
+}
+
+function aabb(mask, w, h) {
+  let minX = w;
+  let maxX = 0;
+  let minY = h;
+  let maxY = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!mask[y * w + x]) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  return { minX, maxX, minY, maxY };
+}
+
+if (!fs.existsSync(DISPLAY)) {
+  console.error("Missing dohyo-display.webp — run bake-dohyo-display.mjs first");
   process.exit(1);
 }
 
-const cx = sumX / n;
-const cy = sumY / n;
+const { data, info } = await sharp(DISPLAY)
+  .ensureAlpha()
+  .raw()
+  .toBuffer({ resolveWithObject: true });
+const { width: W, height: H, channels: c } = info;
 
-const radii = [];
-for (let a = 0; a < 360; a++) {
-  const rad = (a * Math.PI) / 180;
-  const dx = Math.cos(rad);
-  const dy = Math.sin(rad);
-  let last = 0;
-  for (let t = 0; t < Math.max(W, H); t += 0.5) {
-    const x = Math.round(cx + dx * t);
-    const y = Math.round(cy + dy * t);
-    if (x < 0 || y < 0 || x >= W || y >= H) break;
-    if (ice[y * W + x]) last = t;
+const ice = new Uint8Array(W * H);
+const rope = new Uint8Array(W * H);
+for (let y = 0; y < H; y++) {
+  for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * c;
+    const idx = y * W + x;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const a = data[i + 3];
+    if (isRopePixel(r, g, b, a)) rope[idx] = 1;
+    else if (isIcePixel(r, g, b, a)) ice[idx] = 1;
   }
-  radii.push(last);
 }
 
-let Scc = 0;
-let Scs = 0;
-let Sss = 0;
-let Sc = 0;
-let Ss = 0;
-for (let a = 0; a < 360; a++) {
-  const r = radii[a];
-  if (r < 10) continue;
-  const th = (a * Math.PI) / 180;
-  const c2 = Math.cos(th) ** 2;
-  const s2 = Math.sin(th) ** 2;
-  const invR2 = 1 / (r * r);
-  Scc += c2 * c2;
-  Scs += c2 * s2;
-  Sss += s2 * s2;
-  Sc += c2 * invR2;
-  Ss += s2 * invR2;
-}
-const det = Scc * Sss - Scs * Scs;
-const u = (Sss * Sc - Scs * Ss) / det;
-const v = (Scc * Ss - Scs * Sc) / det;
-const rxImg = 1 / Math.sqrt(u);
-const ryImg = 1 / Math.sqrt(v);
+// Display plate: ice disc sits around 50% / 60%. Cap is a leak guard only;
+// the flood still requires ice pixels, so it cannot paint tawara / dirt.
+const seedX = W * 0.5;
+const seedY = H * 0.603;
+const capRx = W * 0.28;
+const capRy = H * 0.16;
 
-function toActor(ix, iy) {
-  return { x: (ix / W) * CW, y: (iy / H) * CH };
+let mask = floodIce(ice, rope, W, H, seedX, seedY, capRx, capRy);
+const flooded = count(mask);
+if (flooded < 50_000) {
+  console.error(`Ice flood too small (${flooded} px) — check seed / classifier`);
+  process.exit(1);
 }
 
-const projected = [];
-for (let i = 0; i < SAMPLES; i++) {
-  const th = (i / SAMPLES) * Math.PI * 2;
-  const ix = cx + rxImg * Math.cos(th);
-  const iy = cy + ryImg * Math.sin(th);
-  projected.push(toActor(ix, iy));
+mask = morph(mask, W, H, CLOSE_PX, false);
+mask = morph(mask, W, H, CLOSE_PX, true);
+if (EDGE_DILATE_PX > 0) mask = morph(mask, W, H, EDGE_DILATE_PX, false);
+
+const kept = count(mask);
+const box = aabb(mask, W, H);
+const rim = rimAlpha(mask, W, H, RIM_PX);
+
+let whiteInMask = 0;
+let whiteInIceBox = 0;
+for (let y = box.minY; y <= box.maxY; y++) {
+  for (let x = box.minX; x <= box.maxX; x++) {
+    const i = (y * W + x) * c;
+    if (!isWhite(data[i], data[i + 1], data[i + 2])) continue;
+    whiteInIceBox++;
+    if (mask[y * W + x]) whiteInMask++;
+  }
 }
 
-const ring = padFromCentroid(projected, EDGE_PAD_PX);
-
-const poly = ring
-  .map(
-    (p) =>
-      `${((p.x / CW) * 100).toFixed(3)}% ${((p.y / CH) * 100).toFixed(3)}%`,
-  )
-  .join(", ");
-
-const clipPath = `polygon(${poly})`;
-
-const minX = Math.min(...ring.map((p) => p.x));
-const maxX = Math.max(...ring.map((p) => p.x));
-const minY = Math.min(...ring.map((p) => p.y));
-const maxY = Math.max(...ring.map((p) => p.y));
-
-let longest = 0;
-for (let i = 0; i < ring.length; i++) {
-  const a = ring[i];
-  const b = ring[(i + 1) % ring.length];
-  longest = Math.max(longest, Math.hypot(b.x - a.x, b.y - a.y));
-}
-
-console.log(`Source: ${path.basename(SRC)} (${W}×${H}) — flat bake path`);
-console.log(`Ice pixels: ${n}`);
+console.log(`Source: ${path.basename(DISPLAY)} (${W}×${H})`);
 console.log(
-  `Image ellipse: cx=${((cx / W) * 100).toFixed(2)}% cy=${((cy / H) * 100).toFixed(2)}% rx=${((rxImg / W) * 100).toFixed(2)}% ry=${((ryImg / H) * 100).toFixed(2)}%`,
+  `Ice flood: ${flooded} px; after close ${CLOSE_PX} + edge dilate ${EDGE_DILATE_PX}: ${kept} px`
 );
 console.log(
-  `Actor AABB: x ${((minX / CW) * 100).toFixed(2)}%–${((maxX / CW) * 100).toFixed(2)}%  y ${((minY / CH) * 100).toFixed(2)}%–${((maxY / CH) * 100).toFixed(2)}%`,
+  `Interior AABB: ${((box.minX / W) * 100).toFixed(2)}%–${((box.maxX / W) * 100).toFixed(2)}% x, ` +
+    `${((box.minY / H) * 100).toFixed(2)}%–${((box.maxY / H) * 100).toFixed(2)}% y`
 );
-console.log(
-  `Samples: ${SAMPLES}, longest step: ${((longest / CW) * 100).toFixed(3)}% of width`,
-);
+console.log(`Tachiai white in AABB: ${whiteInMask}/${whiteInIceBox} covered by mask`);
 
 if (WRITE) {
-  let css = fs.readFileSync(CSS_PATH, "utf8");
-  const blockRe = /(\.ice-reflection-clip\s*\{)([\s\S]*?)(\n\})/;
-  if (!blockRe.test(css)) {
-    console.error("Could not find .ice-reflection-clip block in App.css");
-    process.exit(1);
+  const maskBuf = Buffer.alloc(W * H * 4);
+  for (let i = 0; i < W * H; i++) {
+    const o = i * 4;
+    maskBuf[o] = 255;
+    maskBuf[o + 1] = 255;
+    maskBuf[o + 2] = 255;
+    maskBuf[o + 3] = mask[i] ? 255 : 0;
   }
-  const nextBody = `
-  /* Measured ice silhouette from dohyo-display.webp (flat bake) — regenerate:
-     npm run bake:dohyo   or   node scripts/measure-ice-clip.mjs --write */
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 2;
-  clip-path: ${clipPath};
-`;
-  css = css.replace(blockRe, `$1${nextBody}$3`);
-  fs.writeFileSync(CSS_PATH, css);
-  console.log("\nUpdated", path.relative(process.cwd(), CSS_PATH));
+  await sharp(maskBuf, { raw: { width: W, height: H, channels: 4 } })
+    .webp({ lossless: true, alphaQuality: 100, effort: 4 })
+    .toFile(MASK_OUT);
+
+  const rimBuf = Buffer.alloc(W * H * 4);
+  for (let i = 0; i < W * H; i++) {
+    const o = i * 4;
+    rimBuf[o] = 255;
+    rimBuf[o + 1] = 255;
+    rimBuf[o + 2] = 255;
+    rimBuf[o + 3] = rim[i];
+  }
+  await sharp(rimBuf, { raw: { width: W, height: H, channels: 4 } })
+    .webp({ lossless: true, alphaQuality: 100, effort: 4 })
+    .toFile(RIM_OUT);
+
+  const stM = fs.statSync(MASK_OUT);
+  const stR = fs.statSync(RIM_OUT);
+  console.log(`Wrote ${path.basename(MASK_OUT)} (${(stM.size / 1024).toFixed(1)} KB)`);
+  console.log(`Wrote ${path.basename(RIM_OUT)} (${(stR.size / 1024).toFixed(1)} KB)`);
+} else {
+  console.log("Dry run — pass --write to emit ice-mask.webp and ice-rim-mask.webp");
 }

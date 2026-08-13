@@ -365,6 +365,37 @@ function releaseActionFacingLock(player, meta = {}) {
   return { ok: true, released: true };
 }
 
+const STRIKE_FACING_OWNERS = new Set([
+  ACTION_FACING_OWNER.SLAP,
+  ACTION_FACING_OWNER.PALM,
+  ACTION_FACING_OWNER.CHARGED_ATTACK,
+  ACTION_FACING_OWNER.CHARGE_HOLD,
+]);
+
+/**
+ * Drop slap / palm / charged / charge-hold facing when that strike is over
+ * (clash, parry pose-drop, absorb). Does not touch ropes / grab / throw / hitstun.
+ */
+function releaseStrikeFacingLock(player, meta = {}) {
+  if (!player) return;
+  if (isActionFacingOwnershipV2Enabled() || meta.forceV2) {
+    const lock = getActionFacingLock(player);
+    if (lock && STRIKE_FACING_OWNERS.has(lock.ownerType)) {
+      releaseActionFacingLock(player, {
+        expectedInstanceId: lock.ownerInstanceId,
+        expectedOwnerType: lock.ownerType,
+        reason: meta.reason || ACTION_FACING_RELEASE.INTERRUPT,
+        clearLegacy: false,
+        forceV2: meta.forceV2,
+      });
+    }
+  }
+  player.slapFacingDirection = null;
+  player.slapFacingInstanceId = null;
+  player.chargingFacingDirection = null;
+  player.chargeFacingInstanceId = null;
+}
+
 function forceClearActionFacingLock(player, meta = {}) {
   if (!player) return;
   if (player.actionFacingLock) {
@@ -451,6 +482,7 @@ module.exports = {
   acquireActionFacingLock,
   updateActionFacingLockDirection,
   releaseActionFacingLock,
+  releaseStrikeFacingLock,
   forceClearActionFacingLock,
   resolveNeutralFacingAfterAction,
   applyNeutralFacingAfterAction,

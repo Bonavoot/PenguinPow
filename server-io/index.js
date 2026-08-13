@@ -710,18 +710,7 @@ function tick(delta) {
       // handled by the lunge clamp. Safe during game-over (no-op if not attacking).
       // Pass simTime so slap skips the AP late-parry grace (avoids tip-range
       // parking + drift → ghost whiff before the hit is allowed to confirm).
-      //
-      // Snapshot pair spacing BEFORE extension-sep parks the limb at tip-meets-
-      // body. Tip/pocket classification must use this — measuring after the park
-      // made every slap read as a tip connect.
       if (!room.gameOver) {
-        const pairDist = Math.abs(player1.x - player2.x);
-        if (player1.isAttacking && player1.attackType === "slap") {
-          player1.slapSpacingBeforeExtension = pairDist;
-        }
-        if (player2.isAttacking && player2.attackType === "slap") {
-          player2.slapSpacingBeforeExtension = pairDist;
-        }
         enforceStrikeExtensionSeparation(player1, player2, room.simTime);
         enforceStrikeExtensionSeparation(player2, player1, room.simTime);
       }
@@ -1183,6 +1172,12 @@ function tick(delta) {
               player.movementVelocity = 0;
               return;
             }
+            // +0 settle: the yank was the lock. Input locks already dropped;
+            // drop action locks too so the puller is not still jailed when
+            // both buffers fire. Drive may stay minus — it spaces out of
+            // grab range. Pull does not.
+            player.actionLockUntil = 0;
+            if (pullerRef) pullerRef.actionLockUntil = 0;
             // Side-switch settle: pull facing lock cleared above. Re-correct from
             // settled X (mirrors throw land). Clear ropes facing locks in-bounds.
             if (player.x > MAP_LEFT_BOUNDARY && player.x < MAP_RIGHT_BOUNDARY) {
@@ -1806,9 +1801,16 @@ function tick(delta) {
       // Near-edge tension: extra screen shake for dramatic near-ring-out moments.
       // The old "danger_zone" event for slow-mo was removed (no slow-mo system); the
       // dangerZoneTriggered flag now solely gates this once-per-knockback shake.
+      // Slap clamp (bonus posture tax, no ring-out) already has a hit shake —
+      // don't stack a second camera kick on the grind.
       if (isInDangerZone && !player.dangerZoneTriggered) {
         player.dangerZoneTriggered = true;
-        emitThrottledScreenShake(room, io, { type: "danger_zone" });
+        const slapClampNoRingOut =
+          (player.isSlapKnockback || player.lastHitType === "slap") &&
+          !player.slapKnockbackCanRingOut;
+        if (!slapClampNoRingOut) {
+          emitThrottledScreenShake(room, io, { type: "danger_zone" });
+        }
       }
 
       // Reset danger zone flag when player is no longer hit

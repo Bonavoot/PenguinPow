@@ -79,6 +79,59 @@ export const isStruckLimbHoldEligible = (data, playerId) =>
   !data.cinematicKill;
 
 /**
+ * Body slap/palm connect — freeze the pose the victim was DRAWING so the
+ * generic hit sprite cannot eat the contact frame. Limb-only contacts stay
+ * on armStruckLimbHold (server stamp). Never invents a duration.
+ *
+ * @param {*} snapshotSrc sprite the victim was showing before isHit
+ */
+export const armVictimContactHold = (
+  hold,
+  data,
+  playerId,
+  now,
+  hitstopUntil,
+  snapshotSrc
+) => {
+  if (!hold) return false;
+  if (!data || data.victimId !== playerId || data.cinematicKill) {
+    return false;
+  }
+  if (data.limbOnlyContact === true) return false;
+  const isStrike =
+    data.attackType === "slap" || data.isPalmThrust === true;
+  if (!isStrike || !snapshotSrc) {
+    if (data.victimId === playerId) {
+      hold.decision = !isStrike ? "not_strike" : "no_snapshot";
+    }
+    return false;
+  }
+  const eventId = struckLimbEventId(data);
+  if (!eventId || hold.hitId === eventId) {
+    hold.decision = "duplicate";
+    return false;
+  }
+
+  hold.hitId = eventId;
+  hold.src = snapshotSrc;
+  hold.poseKey = "victim_contact";
+  hold.variant = null;
+  hold.family = data.isPalmThrust ? "palm" : "slap";
+  hold.mirrorFacing = null;
+  hold.decision = "armed_contact";
+  if (hitstopUntil > now) {
+    hold.until = hitstopUntil;
+    hold.pendingHitId = null;
+    hold.pendingUntil = 0;
+  } else {
+    hold.until = 0;
+    hold.pendingHitId = eventId;
+    hold.pendingUntil = now + STRUCK_LIMB_HOLD_BRIDGE_MS;
+  }
+  return true;
+};
+
+/**
  * Arm the hold from an authoritative contact stamp.
  *
  * @param {object} hold        mutable hold record (see createStruckLimbHold)

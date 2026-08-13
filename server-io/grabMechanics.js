@@ -11,6 +11,12 @@ const {
 } = require("./gameUtils");
 
 const { facingTowardOpponent } = require("./facingSystem");
+const {
+  isActionFacingOwnershipV2Enabled,
+  releaseActionFacingLock,
+  ACTION_FACING_OWNER,
+  ACTION_FACING_RELEASE,
+} = require("./actionFacingOwnership");
 
 function correctFacingAfterGrabOrThrow(player, opponent) {
   if (!player || !opponent) return;
@@ -22,9 +28,31 @@ function correctFacingAfterGrabOrThrow(player, opponent) {
   }
 }
 
+/** Drop the grab-attempt facing freeze. Connect does this immediately; whiff/clash wait until recovery ends. */
+function releaseGrabStartupFacingLock(player) {
+  if (!player || !isActionFacingOwnershipV2Enabled()) return;
+  releaseActionFacingLock(player, {
+    expectedInstanceId: player.grabFacingInstanceId,
+    expectedOwnerType: ACTION_FACING_OWNER.GRAB_STARTUP,
+    reason: ACTION_FACING_RELEASE.ACTION_END,
+    clearLegacy: false,
+  });
+  player.grabFacingInstanceId = null;
+}
+
+/** Recovery frames are over — drop pose gates and unlock ordinary X facing. */
+function endGrabWhiffRecovery(player) {
+  if (!player) return;
+  player.isGrabWhiffRecovery = false;
+  player.isWhiffingGrab = false;
+  player.grabCooldown = false;
+  releaseGrabStartupFacingLock(player);
+}
+
 // A grab that never found anything. Fully vulnerable for the whole recovery —
 // this window is the primary answer to a fished grab, so it is deliberately long
-// (450ms, nearly twice a full slap cycle).
+// (450ms, nearly twice a full slap cycle). Facing stays frozen at the attempt
+// commit until those recovery frames end.
 function executeGrabWhiff(player) {
   player.isGrabStartup = false;
   player.isGrabbingMovement = false;
@@ -54,9 +82,7 @@ function executeGrabWhiff(player) {
   setPlayerTimeout(
     player.id,
     () => {
-      player.isGrabWhiffRecovery = false;
-      player.isWhiffingGrab = false;
-      player.grabCooldown = false;
+      endGrabWhiffRecovery(player);
     },
     GRAB_WHIFF_RECOVERY_MS,
     "grabWhiffRecovery"
@@ -67,5 +93,7 @@ function executeGrabWhiff(player) {
 
 module.exports = {
   correctFacingAfterGrabOrThrow,
+  releaseGrabStartupFacingLock,
+  endGrabWhiffRecovery,
   executeGrabWhiff,
 };

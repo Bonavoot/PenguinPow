@@ -3,6 +3,7 @@ import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import slapHitSheet from "../assets/slapattack-hit-effect.png";
 import chargedHitSheet from "../assets/charged-attack-hit-effect.png";
+import { getDisplayHitstopUntil } from "../lib/serverClock";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-attack hit-spark config. Each move points at its own sprite sheet with its
@@ -26,20 +27,17 @@ const HIT_FX = {
     grid: 4,
     startFrame: 2, // frames 0–1 are empty windup
     endFrame: 15,
-    durationMs: 300, // 14 frames → ~21ms/frame (~47fps): snappy but readable
-    sizeCqw: 12,
+    durationMs: 200, // dissipation AFTER the hitstop peak-hold
+    sizeCqw: 12.6,
     // Horizontal anchor (% of 1280): base + facing*dir.
     // More negative dirXPct = further toward attacker; less negative = deeper
     // into the opponent. Nudged a touch into the body (was -2.5).
     baseXPct: -5.5,
     dirXPct: -1.5,
     offsetYPct: 0, // vertical nudge (% of 720)
+    peakFrame: 5, // hold this frame through hitstop — the impact money shot
     filters: {
       normal: null, // untouched yellow art
-      // Tip spacing — cooler white-hot pop (not a status color). Counter /
-      // punish still win the status slot when both apply.
-      tip:
-        "brightness(1.28) saturate(0.85) drop-shadow(0 0 0.55cqw rgba(255, 248, 230, 0.95)) drop-shadow(0 0 0.9cqw rgba(180, 230, 255, 0.45))",
       // Rope-clamp slap — hotter white punch so the posture grind reads.
       ropeEdge:
         "brightness(1.4) saturate(0.9) drop-shadow(0 0 0.65cqw rgba(255, 250, 235, 1)) drop-shadow(0 0 1.1cqw rgba(160, 220, 255, 0.55))",
@@ -53,7 +51,6 @@ const HIT_FX = {
       // lives on the attacker hand-flash + rising-pitch crack, not a fifth
       // status-color at the contact point (that fought counter/punish reads).
     },
-    tipSizeCqw: 13.4, // slightly larger pop on clean tip connects
     edgeSizeCqw: 15.2, // fatter burst on rope-clamp slaps
   },
   charged: {
@@ -61,13 +58,14 @@ const HIT_FX = {
     grid: 4,
     startFrame: 1, // frame 0 empty; content 1–15 (peaks early, long fading tail)
     endFrame: 15,
-    durationMs: 420, // slightly longer read so the spark owns the connect frame
+    durationMs: 280, // dissipation after hitstop peak-hold
     sizeCqw: 18, // impact hierarchy: spark louder than lunge trails
     // Same base as slap; dirXPct less negative = deeper into the opponent
     // (more negative = toward attacker). Pushed further in from -3.5.
     baseXPct: -5.5,
     dirXPct: -1.0,
     offsetYPct: 0,
+    peakFrame: 4,
     filters: {
       // Base art is two-toned (red/orange spikes + yellow-white core). A plain
       // hue-rotate turns the red yellow but pushes the already-yellow core into
@@ -97,7 +95,7 @@ const HIT_FX = {
 HIT_FX.slapBurst = {
   ...HIT_FX.slap,
   sizeCqw: 16.5,
-  durationMs: 330,
+  durationMs: 230,
 };
 
 // Flap / slide-jump belly-slam — big burst spark (same weight as slapBurst).
@@ -105,7 +103,7 @@ HIT_FX.slapBurst = {
 HIT_FX.flap = {
   ...HIT_FX.slapBurst,
   sizeCqw: 17.5,
-  durationMs: 340,
+  durationMs: 240,
   offsetYPct: 1.2,
 };
 
@@ -117,14 +115,13 @@ HIT_FX.lowKick = {
 
 // Map hit status → filter key. Shared across sheets (each sheet supplies its own
 // CSS for the key). Power water (isPowered) is intentionally treated as normal.
-// Tip / rope-edge are spacing/pressure tells — only win when no higher-priority
-// status color applies. Counter/punish still own the slot when both apply.
+// Rope-edge is a pressure tell — only wins when no higher-priority status color
+// applies. Counter/punish still own the slot when both apply.
 const resolveStatusKey = (position) => {
   if (position.isArmorBreak) return "armorBreak";
   if (position.isCounterHit) return "counter";
   if (position.isPunish) return "punish";
   if (position.isRopeEdgeSlap) return "ropeEdge";
-  if (position.isTipSlap) return "tip";
   return "normal";
 };
 
@@ -134,8 +131,8 @@ const resolveStatusKey = (position) => {
 // `scale` property so it composes with the container's transform (flip) instead
 // of overwriting it.
 const popIn = keyframes`
-  0%   { scale: 0.78; }
-  45%  { scale: 1.06; }
+  0%   { scale: 0.62; }
+  38%  { scale: 1.14; }
   100% { scale: 1; }
 `;
 
@@ -153,8 +150,8 @@ const SpriteContainer = styled.div`
     scaleX(${(props) => (props.$facing === 1 ? -1 : 1)});
   transform-origin: center;
   scale: 1;
-  animation: ${popIn} 170ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
-  z-index: 101; /* just above the existing HitEffect ring */
+  animation: ${popIn} 110ms cubic-bezier(0.15, 0.9, 0.25, 1) both;
+  z-index: 104; /* above strike-extend bodies (100–101) and HitEffect */
   pointer-events: none;
   background-repeat: no-repeat;
   will-change: background-position, filter, scale;
@@ -181,28 +178,47 @@ const buildFrameStyle = (frame, cfg, statusKey) => {
   return style;
 };
 
-// A single burst instance: steps through its sheet's frames then removes itself.
+// A single burst instance: holds the impact peak through hitstop, then
+// dissipates. Same freeze-then-release as the fighters — the spark is the
+// contact, not a slideshow that plays through the freeze.
+const HITSTOP_BRIDGE_MS = 90;
+
 const HitBurst = ({ effect, onDone }) => {
   const cfg = HIT_FX[effect.attackType];
-  const [frame, setFrame] = useState(cfg.startFrame);
+  const peakFrame = Math.min(
+    cfg.peakFrame ?? cfg.startFrame,
+    cfg.endFrame
+  );
+  const [frame, setFrame] = useState(peakFrame);
   const rafRef = useRef(null);
-  const startRef = useRef(null);
+  const spawnRef = useRef(null);
+  const dissipateStartRef = useRef(null);
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
 
   useEffect(() => {
-    const totalFrames = cfg.endFrame - cfg.startFrame + 1;
-    const frameDuration = cfg.durationMs / totalFrames;
+    const dissipateFrames = cfg.endFrame - peakFrame + 1;
+    const frameDuration = cfg.durationMs / Math.max(1, dissipateFrames);
 
     const step = (t) => {
-      if (startRef.current === null) startRef.current = t;
-      const elapsed = t - startRef.current;
+      if (spawnRef.current === null) spawnRef.current = t;
+      const hsUntil = getDisplayHitstopUntil();
+      const bridging =
+        t - spawnRef.current < HITSTOP_BRIDGE_MS && hsUntil <= t;
+      const frozen = hsUntil > t || bridging;
+      if (frozen) {
+        setFrame(peakFrame);
+        rafRef.current = requestAnimationFrame(step);
+        return;
+      }
+      if (dissipateStartRef.current === null) dissipateStartRef.current = t;
+      const elapsed = t - dissipateStartRef.current;
       const idx = Math.floor(elapsed / frameDuration);
-      if (idx >= totalFrames) {
+      if (idx >= dissipateFrames) {
         onDoneRef.current(effect.id);
         return;
       }
-      setFrame(cfg.startFrame + idx);
+      setFrame(peakFrame + idx);
       rafRef.current = requestAnimationFrame(step);
     };
 
@@ -210,7 +226,7 @@ const HitBurst = ({ effect, onDone }) => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [effect.id, cfg]);
+  }, [effect.id, cfg, peakFrame]);
 
   // Absolute contact seams are already tip-accurate — legacy baseX/dirX were
   // calibrated for victim.x+70 and would shove the spark behind the attacker.
@@ -220,9 +236,7 @@ const HitBurst = ({ effect, onDone }) => {
   const size =
     effect.statusKey === "ropeEdge" && cfg.edgeSizeCqw
       ? cfg.edgeSizeCqw
-      : effect.statusKey === "tip" && cfg.tipSizeCqw
-        ? cfg.tipSizeCqw
-        : cfg.sizeCqw;
+      : cfg.sizeCqw;
 
   return (
     <SpriteContainer
@@ -288,7 +302,6 @@ const SlapHitSpriteEffect = ({ position }) => {
     position?.isPunish,
     position?.isArmorBreak,
     position?.isPowered,
-    position?.isTipSlap,
     position?.isRopeEdgeSlap,
   ]);
 
@@ -323,7 +336,6 @@ SlapHitSpriteEffect.propTypes = {
     isPunish: PropTypes.bool,
     isArmorBreak: PropTypes.bool,
     isPowered: PropTypes.bool,
-    isTipSlap: PropTypes.bool,
     isRopeEdgeSlap: PropTypes.bool,
   }),
 };

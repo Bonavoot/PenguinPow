@@ -14,17 +14,38 @@ const GROUND_LEVEL = SHADOW_GROUND_LEVEL;
  */
 export const ICE_REFLECTION_FOOT_NUDGE_PCT = 2.1;
 
-/** Standing opacity — present but subtle on the ice. */
-export const ICE_REFLECTION_BASE_OPACITY = 0.28;
-/** Quieter while the fighter is in the sidestep depth lane. */
-export const ICE_REFLECTION_SIDESTEP_OPACITY = 0.12;
+/** Standing opacity — colored multiply on cyan ice, not a shadow stain. */
+export const ICE_REFLECTION_BASE_OPACITY = 0.44;
+/**
+ * Near-camera cap (sidestep lane dip toward the viewer). Ice is more
+ * mirror-like at a glancing angle (Fresnel) — the opposite of the old
+ * "quiet the puddle" sidestep dim.
+ */
+export const ICE_REFLECTION_NEAR_OPACITY = 0.58;
+/** Design-px of downward dip that reaches full near Fresnel. */
+export const ICE_REFLECTION_FRESNEL_DIP_PX = 48;
 /** Height above ground (design px) at which the reflection fully fades out. */
 export const ICE_REFLECTION_HEIGHT_FADE_PX = 96;
 
+/** Foreshorten onto the tilted ice — tall enough that belly + mawashi still read. */
+const DEFAULT_SQUASH = 0.45;
+const DEFAULT_PLANE_TIP_DEG = 22;
+
+// Frost at the soles, distance fade in the body — still a flipped silhouette.
+const SHARP_MASK =
+  "linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.9) 8%, rgba(0,0,0,0.5) 28%, rgba(0,0,0,0.1) 44%, transparent 52%)";
+const SOFT_MASK =
+  "linear-gradient(to top, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.2) 10%, rgba(0,0,0,0.68) 28%, rgba(0,0,0,0.5) 54%, rgba(0,0,0,0.16) 74%, transparent 90%)";
+const SHARP_FILTER =
+  "brightness(0.82) contrast(1.22) saturate(1.24) drop-shadow(0.6px 0 0 rgba(70, 190, 255, 0.34)) drop-shadow(-0.45px 0 0 rgba(220, 70, 50, 0.13)) blur(0.4px)";
+const SOFT_FILTER =
+  "brightness(0.72) contrast(1.14) saturate(1.14) blur(1.85px)";
+
 /**
  * Hide when fallen off the platform, or RoundResult force-hides the loser.
- * Overflow onto rope/dirt is handled by the shared `.ice-reflection-clip`
- * ellipse — no per-sprite MAP math.
+ * Overflow onto tawara / dirt / snow is handled by `.ice-reflection-clip`'s
+ * ice-mask.webp — that mask IS the tawara interior (ice + tachiai) measured
+ * from dohyo-display.webp. Gameplay rects (MAP / DOHYO X) are not the ice shape.
  */
 export function iceReflectionShouldShow(x, y, { forceHide = false } = {}) {
   if (forceHide) return false;
@@ -43,11 +64,15 @@ export function iceReflectionBottomY(
   return isSidestepping ? y : GROUND_LEVEL;
 }
 
+/** Actor-space ice disc (matches dohyo-display.webp / ice-mask.webp). */
+const ICE_ELLIPSE_CX = 640;
+const ICE_ELLIPSE_RX = 314;
+
 /**
- * Base opacity × airborne height fade — puddle stays on the ice and softens
- * as the fighter leaves the ground (no floating clone).
+ * Base opacity × airborne height fade, with Fresnel toward camera and
+ * toward the left/right rim of the ice ellipse (more mirror at glancing angles).
  * Always 0 when fallen / force-hidden so the rAF path can hide it immediately.
- * When `pinY` is set (fixed ground actor), skip the airborne fade.
+ * When `pinY` is set (fixed ground actor), skip airborne fade and Fresnel.
  */
 export function iceReflectionOpacity(
   x,
@@ -55,19 +80,83 @@ export function iceReflectionOpacity(
   { isSidestepping = false, forceHide = false, pinY = null } = {}
 ) {
   if (!iceReflectionShouldShow(x, y, { forceHide })) return 0;
-  const base = isSidestepping
-    ? ICE_REFLECTION_SIDESTEP_OPACITY
-    : ICE_REFLECTION_BASE_OPACITY;
-  if (pinY != null) return base;
+  if (pinY != null) return ICE_REFLECTION_BASE_OPACITY;
+  let fresnel = 0;
+  if (isSidestepping) {
+    const dip = Math.max(0, GROUND_LEVEL - y);
+    fresnel = Math.min(1, dip / ICE_REFLECTION_FRESNEL_DIP_PX);
+  }
+  const rim = Math.min(1, Math.abs(x - ICE_ELLIPSE_CX) / ICE_ELLIPSE_RX);
+  fresnel = Math.max(fresnel, rim * 0.45);
+  const base =
+    ICE_REFLECTION_BASE_OPACITY +
+    (ICE_REFLECTION_NEAR_OPACITY - ICE_REFLECTION_BASE_OPACITY) * fresnel;
   const heightAbove = Math.max(0, y - GROUND_LEVEL);
   const fade = Math.max(0, 1 - heightAbove / ICE_REFLECTION_HEIGHT_FADE_PX);
   return base * fade;
 }
 
+function ReflectionSprite({
+  src,
+  isAnimated,
+  frames,
+  duration,
+  loop,
+}) {
+  if (isAnimated && frames > 1) {
+    return (
+      <div style={{ width: "100%", height: "100%", overflow: "hidden" }}>
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          decoding="async"
+          style={{
+            display: "block",
+            height: "100%",
+            width: "auto",
+            maxWidth: "none",
+            backfaceVisibility: "hidden",
+            animation: `spritesheet-${frames} ${duration}s steps(${
+              frames - 1
+            }) ${loop !== false ? "infinite" : "forwards"}`,
+          }}
+        />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      draggable={false}
+      decoding="async"
+      style={{
+        display: "block",
+        width: "100%",
+        height: "100%",
+        objectFit: "contain",
+        objectPosition: "center bottom",
+        backfaceVisibility: "hidden",
+      }}
+    />
+  );
+}
+
+ReflectionSprite.propTypes = {
+  src: PropTypes.string.isRequired,
+  isAnimated: PropTypes.bool,
+  frames: PropTypes.number.isRequired,
+  duration: PropTypes.number.isRequired,
+  loop: PropTypes.bool,
+};
+
 /**
- * Frosted-ice reflection under a fighter — the main ground read on the dohyo.
- * Flipped silhouette, tipped onto the rink plane, pinned when airborne.
- * Must be portaled into `.ice-reflection-clip` so only the ice disc shows it.
+ * Wet-rink reflection under a fighter.
+ *
+ * Must be portaled into `.ice-reflection-clip` — that host's mask is the
+ * tawara interior on dohyo-display.webp (ice + tachiai), so this can only
+ * paint inside the rope. The host lives in .game-scene (under the gyoji).
  */
 const IceReflection = memo(
   forwardRef(
@@ -101,6 +190,8 @@ const IceReflection = memo(
         squash: squashOverride = null,
         planeTipDeg: planeTipOverride = null,
         zIndex = 2,
+        /** Foot AO / wet meniscus / sparkles — off for supporting-cast actors. */
+        contactFx = true,
       },
       ref
     ) => {
@@ -126,10 +217,8 @@ const IceReflection = memo(
       const duration = frames / (fps || 30);
       const face = facing === 1 ? 1 : -1;
 
-      // Foreshorten onto the tilted ice; keep enough height that the body
-      // silhouette still reads (not a foot-smudge).
-      const squash = squashOverride ?? 0.34;
-      const planeTipDeg = planeTipOverride ?? 22;
+      const squash = squashOverride ?? DEFAULT_SQUASH;
+      const planeTipDeg = planeTipOverride ?? DEFAULT_PLANE_TIP_DEG;
       const reflectOpacity =
         opacityOverride != null
           ? opacityOverride
@@ -148,6 +237,21 @@ const IceReflection = memo(
           ? `${bottomPct}%`
           : `${(bottomY / 720) * 100 + ICE_REFLECTION_FOOT_NUDGE_PCT}%`;
 
+      const spriteProps = {
+        src,
+        isAnimated,
+        frames,
+        duration,
+        loop,
+      };
+
+      const maskStyle = (mask) => ({
+        WebkitMaskImage: mask,
+        maskImage: mask,
+        WebkitMaskSize: "100% 100%",
+        maskSize: "100% 100%",
+      });
+
       return (
         <div
           ref={ref}
@@ -158,74 +262,148 @@ const IceReflection = memo(
             bottom,
             width,
             aspectRatio: "1",
-            // Fighters / center anchors: left is the midline. Left-edge anchors
-            // (gyoji) share the sprite's `left` and skip the -50% shift.
             ...(anchorLeftEdge ? {} : { translate: "-50%" }),
             pointerEvents: "none",
-            zIndex,
             opacity: reflectOpacity,
             visibility: "visible",
             display: "block",
-            willChange: "bottom, left, opacity",
           }}
         >
-          <div
-            style={{
-              width: "100%",
-              height: "100%",
-              transform: `perspective(360px) rotateX(${planeTipDeg}deg) scaleX(${face}) scaleY(${-squash})`,
-              transformOrigin: "center bottom",
-              // Strongest at the feet, then a smooth dissolve upward into the ice
-              WebkitMaskImage:
-                "linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.62) 22%, rgba(0,0,0,0.34) 48%, rgba(0,0,0,0.12) 72%, rgba(0,0,0,0) 92%)",
-              maskImage:
-                "linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.62) 22%, rgba(0,0,0,0.34) 48%, rgba(0,0,0,0.12) 72%, rgba(0,0,0,0) 92%)",
-              filter: "brightness(0.55) saturate(0.45) blur(1.15px)",
-              mixBlendMode: "multiply",
-            }}
-          >
-            {isAnimated && frames > 1 ? (
+          {contactFx && (
+            <>
+              {/* Light wrapping through the ice — quiet pool under the body. */}
               <div
                 style={{
-                  width: "100%",
-                  height: "100%",
-                  overflow: "hidden",
+                  position: "absolute",
+                  left: "50%",
+                  bottom: "1.8%",
+                  width: "44%",
+                  height: "8%",
+                  translate: "-50%",
+                  borderRadius: "50%",
+                  zIndex: 1,
+                  pointerEvents: "none",
+                  opacity: 0.28,
+                  background:
+                    "radial-gradient(ellipse at 50% 55%, rgba(186, 226, 255, 0.5) 0%, rgba(140, 198, 240, 0.14) 40%, transparent 68%)",
+                }}
+              />
+              {/* Contact occlusion — tight sole stain, not a blurry oval. */}
+              <div
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  bottom: "1.6%",
+                  width: "26%",
+                  height: "3.6%",
+                  translate: "-50%",
+                  borderRadius: "50%",
+                  zIndex: 1,
+                  pointerEvents: "none",
+                  background:
+                    "radial-gradient(ellipse at 50% 50%, rgba(8, 24, 46, 0.42) 0%, rgba(12, 42, 72, 0.16) 40%, transparent 62%)",
+                }}
+              />
+            </>
+          )}
+
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex,
+              transform: `perspective(360px) rotateX(${planeTipDeg}deg) scaleX(${face}) scaleY(${-squash})`,
+              transformOrigin: "center bottom",
+            }}
+          >
+            {/* Soft body copy — distance blur + slight horizontal ice streak. */}
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                transform: "scaleX(1.08)",
+                transformOrigin: "center bottom",
+                ...maskStyle(SOFT_MASK),
+                filter: SOFT_FILTER,
+                opacity: 0.88,
+              }}
+            >
+              <ReflectionSprite {...spriteProps} />
+            </div>
+            {/* Sharp contact copy — readable color at the soles. */}
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                ...maskStyle(SHARP_MASK),
+                filter: SHARP_FILTER,
+              }}
+            >
+              <ReflectionSprite {...spriteProps} />
+            </div>
+          </div>
+
+          {contactFx && (
+            <>
+              {/* Wet meniscus — hairline where soles meet the ice. */}
+              <div
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  bottom: "2.2%",
+                  width: "38%",
+                  height: "3.2%",
+                  translate: "-50%",
+                  borderRadius: "50%",
+                  zIndex: 6,
+                  pointerEvents: "none",
+                  background:
+                    "radial-gradient(ellipse at 50% 50%, rgba(245, 252, 255, 0.85) 0%, rgba(190, 230, 255, 0.35) 45%, transparent 72%)",
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: 6,
+                  transform: `scaleX(${face})`,
+                  transformOrigin: "center bottom",
+                  pointerEvents: "none",
                 }}
               >
-                <img
-                  src={src}
-                  alt=""
-                  draggable={false}
-                  decoding="async"
+                <span
+                  className="ice-contact-sparkle"
                   style={{
-                    display: "block",
-                    height: "100%",
-                    width: "auto",
-                    maxWidth: "none",
-                    backfaceVisibility: "hidden",
-                    animation: `spritesheet-${frames} ${duration}s steps(${
-                      frames - 1
-                    }) ${loop !== false ? "infinite" : "forwards"}`,
+                    left: "36%",
+                    bottom: "3.4%",
+                    width: "4.2%",
+                    height: "4.2%",
+                    animationDelay: "0s",
+                  }}
+                />
+                <span
+                  className="ice-contact-sparkle"
+                  style={{
+                    left: "58%",
+                    bottom: "2.6%",
+                    width: "3.1%",
+                    height: "3.1%",
+                    animationDelay: "0.85s",
+                  }}
+                />
+                <span
+                  className="ice-contact-sparkle"
+                  style={{
+                    left: "47%",
+                    bottom: "4.8%",
+                    width: "2.4%",
+                    height: "2.4%",
+                    animationDelay: "1.55s",
                   }}
                 />
               </div>
-            ) : (
-              <img
-                src={src}
-                alt=""
-                draggable={false}
-                decoding="async"
-                style={{
-                  display: "block",
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "contain",
-                  objectPosition: "center bottom",
-                  backfaceVisibility: "hidden",
-                }}
-              />
-            )}
-          </div>
+            </>
+          )}
         </div>
       );
     }
@@ -254,6 +432,7 @@ IceReflection.propTypes = {
   squash: PropTypes.number,
   planeTipDeg: PropTypes.number,
   zIndex: PropTypes.number,
+  contactFx: PropTypes.bool,
 };
 
 export default IceReflection;

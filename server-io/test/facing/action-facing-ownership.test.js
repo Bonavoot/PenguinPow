@@ -14,6 +14,7 @@ const {
   acquireActionFacingLock,
   updateActionFacingLockDirection,
   releaseActionFacingLock,
+  releaseStrikeFacingLock,
   forceClearActionFacingLock,
   getActionFacingLock,
   resolveNeutralFacingAfterAction,
@@ -227,6 +228,31 @@ describe("Phase 12 — ownership primitives", () => {
     assert.equal(p.slapFacingDirection, null);
   });
 
+  it("releaseStrikeFacingLock drops slap/palm/charge leftovers, not ropes", () => {
+    const p = makePlayer({ slapFacingDirection: -1, chargingFacingDirection: 1 });
+    acquireActionFacingLock(p, {
+      ownerType: ACTION_FACING_OWNER.SLAP,
+      direction: -1,
+      supersede: true,
+      syncLegacy: false,
+    });
+    releaseStrikeFacingLock(p, { reason: ACTION_FACING_RELEASE.INTERRUPT });
+    assert.equal(getActionFacingLock(p), null);
+    assert.equal(p.slapFacingDirection, null);
+    assert.equal(p.chargingFacingDirection, null);
+
+    const ropes = makePlayer({ atTheRopesFacingDirection: 1 });
+    acquireActionFacingLock(ropes, {
+      ownerType: ACTION_FACING_OWNER.ROPES,
+      direction: 1,
+      supersede: true,
+      syncLegacy: false,
+    });
+    releaseStrikeFacingLock(ropes);
+    assert.equal(getActionFacingLock(ropes).ownerType, ACTION_FACING_OWNER.ROPES);
+    assert.equal(ropes.atTheRopesFacingDirection, 1);
+  });
+
   it("same-center neutral fallback is deterministic", () => {
     const p = makePlayer({
       x: 500,
@@ -353,6 +379,46 @@ describe("Phase 12 — lifecycle handoffs", () => {
     assert.equal(p.facing, 1);
   });
 
+  it("grab startup lock freezes through recovery; unlocks after recovery ends", () => {
+    const { executeGrabWhiff, endGrabWhiffRecovery } = require("../../grabMechanics");
+    const { timeoutManager } = require("../../gameUtils");
+    const p = makePlayer({
+      id: "grabber",
+      x: 500,
+      facing: -1,
+      grabFacingInstanceId: null,
+      isGrabStartup: true,
+      keys: {},
+    });
+    const opp = makePlayer({ id: "o", x: 300, facing: 1 });
+    const id = mintActionFacingInstanceId(p, ACTION_FACING_OWNER.GRAB_STARTUP);
+    p.grabFacingInstanceId = id;
+    acquireActionFacingLock(p, {
+      ownerType: ACTION_FACING_OWNER.GRAB_STARTUP,
+      ownerInstanceId: id,
+      direction: -1,
+      allowDirectionUpdate: false,
+      supersede: true,
+      syncLegacy: false,
+    });
+    enforcePairFacing(p, opp);
+    assert.equal(p.facing, -1, "lunge facing must not flip mid-attempt");
+
+    executeGrabWhiff(p);
+    assert.ok(getActionFacingLock(p), "lock must survive into recovery");
+    assert.equal(p.grabFacingInstanceId, id);
+    enforcePairFacing(p, opp);
+    assert.equal(p.facing, -1, "must not turn during recovery");
+
+    timeoutManager.clearPlayerSpecific(p.id, "grabWhiffRecovery");
+    timeoutManager.clearPlayerSpecific(p.id, "grabMovementTimeout");
+    endGrabWhiffRecovery(p);
+    assert.equal(getActionFacingLock(p), null);
+    assert.equal(p.grabFacingInstanceId, null);
+    enforcePairFacing(p, opp);
+    assert.equal(p.facing, 1);
+  });
+
   it("hitstun end releases HITSTUN owner", () => {
     const p = makePlayer({ isHit: true });
     const id = mintActionFacingInstanceId(p, ACTION_FACING_OWNER.HITSTUN);
@@ -439,5 +505,10 @@ describe("Phase 12 — V2 off preserves legacy getLockedFacing soft fields", () 
   it("isDodging still freezes facing when V2 off", () => {
     const p = makePlayer({ isDodging: true, facing: 1 });
     assert.equal(getLockedFacing(p), 1);
+  });
+
+  it("grab attempt/recovery still freezes facing when V2 off", () => {
+    const p = makePlayer({ isWhiffingGrab: true, facing: -1 });
+    assert.equal(getLockedFacing(p), -1);
   });
 });

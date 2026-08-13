@@ -146,8 +146,7 @@ const PALM_HIT_PARK_OUTSET_PX = 6;
  * Freeze-frame park distance. Hits still CONFIRM at full connectDist.
  * Slap / charged park at tip-meets-body; palm parks a few px outside so the
  * rooted pose reads palm-on-skin. Live extension-sep still uses connect−slack
- * so ice/mash stay hittable — tipQuality samples spacing BEFORE that sep, so
- * a tip park freeze never auto-awards the tip mastery buff.
+ * so ice/mash stay hittable.
  */
 function getHitParkDistance(attackKind, attacker, victim) {
   const connect = getConnectDistance(attackKind, attacker, victim);
@@ -172,6 +171,10 @@ function getSlapPocketDistance(attacker, victim) {
 /**
  * Pocket→poke quality in [0, 1] from a pre-extension-sep spacing sample.
  * 0 = belly-to-belly pressure slap; 1 = art-tip poke at max connect.
+ *
+ * Unused by live combat — the pocket-vs-poke feel package was retired
+ * (every connect already parks at tip-meets-body, so the bonus was invisible).
+ * Kept for debug / rollback.
  */
 function getSlapTipQuality(distance, attacker, victim) {
   if (typeof distance !== "number" || !Number.isFinite(distance)) return 0;

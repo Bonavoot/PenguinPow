@@ -20,7 +20,7 @@ const CURRENT_TASSLE_VERSION = 7;
 
 /* Light arena grade — shaded 3d tassles already carry volume; don't crush it. */
 const TASSLE_FILTER =
-  "brightness(0.88) saturate(0.9) drop-shadow(0 5px 7px rgba(0,0,0,0.45))";
+  "brightness(0.92) saturate(0.96) drop-shadow(0 5px 7px rgba(0,0,0,0.45))";
 /* No color grade — prior brightness/saturate crushed the purple and fought the art. */
 const APRON_FILTER = "drop-shadow(0 4px 6px rgba(0,0,0,0.45))";
 
@@ -36,7 +36,7 @@ const RoofPropsLayer = styled.div`
   position: absolute;
   inset: 0;
   pointer-events: none;
-  /* Above dohyo (z:1), below god-rays (z:7) */
+  /* Above dohyo (z:1), below arena-lighting (z:6) */
   z-index: 3;
   contain: layout style paint;
 `;

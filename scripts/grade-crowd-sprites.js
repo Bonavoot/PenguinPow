@@ -37,11 +37,10 @@ const SPRITES_TO_GRADE = [
   'crowd-salaryman-side-cheering-2.png',
 ];
 
-// Baked filter: saturate(0.84) brightness(0.76) contrast(0.95)
-// This is the combined CrowdContainer filter + per-member normal filter.
-const SAT = 0.84;
-const BRI = 0.76;
-const CON = 0.95;
+// Original sprite color. Dim only — stands sit behind the ring.
+const SAT = 1;
+const BRI = 0.78;
+const CON = 1;
 
 // Precompute the saturation matrix coefficients
 const sr0 = 0.2126 + 0.7874 * SAT;

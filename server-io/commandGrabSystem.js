@@ -12,13 +12,16 @@
 // Shape after connect:
 //
 //   connect ──(HITSTOP_GRAB_MS, sim clock frozen)──▶ STARTUP ──▶ resolve
-//                                                   130ms         │
-//                                    DRIVE ─────────────────────▶ CARRY ──▶ release
+//                                                   per-variant     │
+//                                    DRIVE 0ms ───────────────────▶ CARRY ──▶ release
+//                                    PULL  200 / kill 400
+//                                    THROW 280 / kill 520
 //
 // The STARTUP beat is the belt-grip read: both fighters hold the grip pose while
 // the variant's tell plays. It is uninterruptible — there is no post-connect Grab
-// Break and no Brace — so its only job is legibility, which is why it is 130ms
-// rather than the 220/250ms the old technique tells needed to host a defence.
+// Break and no Brace — so its only job is legibility. Drive has none (a shove
+// must start moving). Pull/Throw hold long enough for the placeholder windup to
+// finish; kill versions hold longer so the finisher reads before travel.
 //
 // Throw / pull end the round below the lethal posture line
 // (CLINCH_THROW_KILL_THRESHOLD, measured at connect). Drive does NOT — its rope
@@ -39,7 +42,10 @@
 const {
   CMD_GRAB_VARIANT,
   CMD_GRAB_CONNECT_STARTUP_MS,
+  CMD_GRAB_KILL_CONNECT_STARTUP_MS,
   CMD_GRAB_CONNECT_HITSTOP_MS,
+  CMD_GRAB_CINCH_MS,
+  HITSTOP_GRAB_MS,
   CMD_THROW_LAUNCH_HITSTOP_MS,
   CMD_PULL_LAUNCH_HITSTOP_MS,
   CMD_GRAB_CINCH_GRABBER_SHARE,
@@ -54,6 +60,7 @@ const {
   CMD_DRIVE_CINCH_FRACTION,
   CMD_DRIVE_EDGE_STAMINA_DRAIN_PER_SEC,
   CMD_DRIVE_RELEASE_SEPARATION,
+  CMD_DRIVE_RELEASE_IMPACT_MS,
   CMD_DRIVE_RELEASE_TWEEN_MS,
   CMD_DRIVE_RELEASE_VICTIM_SHARE,
   CMD_DRIVE_RELEASE_POSE_DROP_FRACTION,
@@ -62,7 +69,6 @@ const {
   CMD_DRIVE_ATTACKER_RECOVERY_MS,
   CMD_DRIVE_DEFENDER_RECOVERY_MS,
   CMD_THROW_RECOVERY_TAIL_MS,
-  CMD_PULL_RECOVERY_TAIL_MS,
   CMD_GRAB_CLASH_HITSTOP_MS,
   CMD_GRAB_CLASH_POSE_MS,
   CMD_GRAB_CLASH_PUSHBACK,
@@ -77,11 +83,9 @@ const {
   CLINCH_THROW_DURATION_MAX_MS,
   CLINCH_THROW_BOUNDARY_MARGIN,
   CLINCH_THROW_MIN_SEPARATION,
-  CLINCH_PULL_DISTANCE_MIN,
-  CLINCH_PULL_DISTANCE_MAX,
-  CLINCH_PULL_TWEEN_DURATION,
-  CLINCH_PULL_INPUT_LOCK_MS,
   CLINCH_PULL_SWAP_TWEEN_DURATION,
+  CMD_PULL_TWEEN_MS,
+  CMD_PULL_INPUT_LOCK_MS,
   CLINCH_KILL_THROW_DURATION_MS,
   CLINCH_KILL_PULL_DISTANCE,
   CLINCH_KILL_PULL_TWEEN_DURATION,
@@ -106,7 +110,10 @@ const {
   MAP_RIGHT_BOUNDARY,
 } = require("./gameUtils");
 
-const { correctFacingAfterGrabOrThrow } = require("./grabMechanics");
+const {
+  correctFacingAfterGrabOrThrow,
+  endGrabWhiffRecovery,
+} = require("./grabMechanics");
 const { cleanupGrabStates, handleWinCondition } = require("./gameFunctions");
 const { triggerRingOut } = require("./ringOutPush");
 const { clearGrabVariant } = require("./commandGrabInput");
@@ -146,7 +153,7 @@ const DRIVE_MAX_CARRY_PX = 310;
 // Target carry pace. Walking is ~240px/s, so this reads as a committed drive
 // (~1.75x walking) rather than a slide that outruns its own animation.
 const DRIVE_CARRY_SPEED_PX_PER_SEC = 420;
-const DRIVE_CARRY_MIN_MS = 300; // short drives still need a readable beat
+const DRIVE_CARRY_MIN_MS = 500; // pocket drive has to last long enough to read
 const DRIVE_CARRY_MAX_MS = 760; // and long ones must still end
 
 const CMD_PHASE = {
@@ -186,8 +193,12 @@ function attachDistanceFor(victim) {
   return CLINCH_ATTACHED_DISTANCE * (victim.sizeMultiplier || 1);
 }
 
-function connectStartupMsFor(variant) {
-  const ms = CMD_GRAB_CONNECT_STARTUP_MS[variant];
+function connectStartupMsFor(variant, isKill = false) {
+  if (variant === CMD_GRAB_VARIANT.DRIVE) return 0;
+  const table = isKill
+    ? CMD_GRAB_KILL_CONNECT_STARTUP_MS
+    : CMD_GRAB_CONNECT_STARTUP_MS;
+  const ms = table[variant];
   return Number.isFinite(ms) ? ms : CMD_GRAB_CONNECT_STARTUP_MS.throw;
 }
 
@@ -196,9 +207,28 @@ function connectHitstopMsFor(variant) {
   return Number.isFinite(ms) ? ms : 0;
 }
 
+// Wall-clock length of the tell, including the connect freeze. CSS animations
+// run on wall time even while simTime is frozen, so this is what the client
+// must play to finish the windup on the resolve frame.
+function grabTellAnimMs(variant, isKill = false) {
+  const startup = connectStartupMsFor(variant, isKill);
+  if (startup <= 0) return 0;
+  return HITSTOP_GRAB_MS + connectHitstopMsFor(variant) + startup;
+}
+
+function stampGrabTellDuration(grabber, variant, isKill) {
+  if (!grabber) return;
+  grabber.clinchThrowAnimMs = grabTellAnimMs(variant, isKill);
+}
+
+function cinchMsFor(variant) {
+  if (variant === CMD_GRAB_VARIANT.DRIVE) return 0;
+  return CMD_GRAB_CINCH_MS;
+}
+
 // A grab can connect anywhere inside GRAB_RANGE (175) while settled grip spacing is
 // only ~61px, so a max-range connect leaves the fighters visibly apart. That gap is
-// closed across the read beat rather than snapped.
+// closed across CMD_GRAB_CINCH_MS rather than snapped or stretched across the tell.
 //
 // Crucially it is closed mostly by moving the GRABBER forward
 // (CMD_GRAB_CINCH_GRABBER_SHARE). Pulling the victim back instead made a long
@@ -219,10 +249,10 @@ function stampCinch(grabber, victim) {
 }
 
 // Ease-out so the grip snaps closed at contact and settles, matching the connect
-// THUNK rather than gliding in at constant speed. Only used by variants that HAVE a
-// startup beat — Drive closes its grip during the carry instead.
-function applyCinch(grabber, victim, elapsed, startupMs) {
-  const t = startupMs > 0 ? Math.max(0, Math.min(1, elapsed / startupMs)) : 1;
+// THUNK rather than gliding in at constant speed. Duration is CMD_GRAB_CINCH_MS,
+// not the tell — Drive closes its grip during the carry instead.
+function applyCinch(grabber, victim, elapsed, cinchMs) {
+  const t = cinchMs > 0 ? Math.max(0, Math.min(1, elapsed / cinchMs)) : 1;
   const eased = 1 - Math.pow(1 - t, 2);
   const lerp = (from, to) =>
     Number.isFinite(from) && Number.isFinite(to) ? from + (to - from) * eased : null;
@@ -269,6 +299,7 @@ function clearCommandGrabState(player) {
   player.cmdGrabPhaseStart = 0;
   player.cmdGrabVariant = null;
   player.cmdGrabKillBalance = null;
+  player.cmdGrabIsKill = false;
   player.cmdGrabVictimBalance = null;
   player.cmdGrabCarryStartX = 0;
   player.cmdGrabCarryTargetX = 0;
@@ -298,7 +329,12 @@ function beginCommandGrab(grabber, victim, room, io) {
   grabber.cmdGrabVariant = variant;
   grabber.cmdGrabKillBalance =
     typeof victim.balance === "number" ? victim.balance : BALANCE_MAX;
+  grabber.cmdGrabIsKill =
+    variant !== CMD_GRAB_VARIANT.DRIVE &&
+    grabber.cmdGrabKillBalance < CLINCH_THROW_KILL_THRESHOLD;
   grabber.cmdGrabAtRope = false;
+
+  stampGrabTellDuration(grabber, variant, grabber.cmdGrabIsKill);
 
   grabber.stamina = Math.max(0, (grabber.stamina || 0) - CMD_GRAB_STAMINA_COST);
 
@@ -311,9 +347,9 @@ function beginCommandGrab(grabber, victim, room, io) {
   applyBalanceDamage(victim, chip, now);
   grabber.cmdGrabVictimBalance =
     typeof victim.balance === "number" ? victim.balance : BALANCE_MAX;
-  // PULL spends the VICTIM's committed speed, so it has to be sampled at the
-  // moment of the grip — by the time the pull resolves the victim is locked and
-  // their velocity has been zeroed. Mirrors `grabApproachSpeed` on the grabber.
+  // Drive counter-charge needs the VICTIM's speed at the grip — by resolve
+  // they are locked and their velocity has been zeroed. Pull does not spend
+  // this; it is a belt tug. Mirrors `grabApproachSpeed` on the grabber.
   {
     const towardGrabber = grabber.x < victim.x ? -1 : 1;
     grabber.cmdGrabVictimApproach = Math.max(
@@ -359,6 +395,7 @@ function applyStartupPoses(grabber, victim) {
     variant === CMD_GRAB_VARIANT.THROW || variant === CMD_GRAB_VARIANT.PULL;
   victim.isResistingThrow = false;
   victim.isResistingPull = false;
+  stampGrabTellDuration(grabber, variant, !!grabber.cmdGrabIsKill);
 }
 
 // Recovery as a real `isRecovering` window, which is the house pattern (palm
@@ -417,13 +454,16 @@ function updateCommandGrab(grabber, room, io, delta, rooms) {
   const elapsed = now - (grabber.cmdGrabPhaseStart || now);
 
   if (grabber.cmdGrabPhase === CMD_PHASE.STARTUP) {
-    const startupMs = connectStartupMsFor(grabber.cmdGrabVariant);
+    const startupMs = connectStartupMsFor(
+      grabber.cmdGrabVariant,
+      !!grabber.cmdGrabIsKill
+    );
     // A zero-length startup must not run the cinch — with t forced to 1 it would
     // snap the grip closed on the first tick, which is the teleport this whole
     // mechanism exists to avoid. Drive closes its grip during the carry instead.
     if (startupMs > 0) {
       applyStartupPoses(grabber, victim);
-      applyCinch(grabber, victim, elapsed, startupMs);
+      applyCinch(grabber, victim, elapsed, cinchMsFor(grabber.cmdGrabVariant));
     }
     if (elapsed >= startupMs) {
       resolveVariant(grabber, victim, room, io, rooms);
@@ -460,16 +500,15 @@ function beginDriveCarry(grabber, victim, room) {
   const dir = grabber.x < victim.x ? 1 : -1;
   // ── MOMENTUM TRANSFER: DRIVE SPENDS YOUR OWN SPEED ───────────────────────
   // Posture used to BE the distance function (110→250 by how broken they were)
-  // with momentum bolted on as a +45px garnish — 29% of a maxed drive, for the
-  // hardest execution in the game. That is backwards. Momentum is now the
-  // whole curve and posture is a multiplier on top.
+  // with momentum bolted on as a +45px garnish. Momentum now buys the ceiling
+  // as a bonus; the floor is a real pocket shove so the button is worth
+  // pressing in close combat, where a run-in is hard to bring in.
   //
-  // A standing drive is worth ~60px, so grab spam is self-punishing without
-  // needing a cooldown to stop it. A full-slide drive rings out from centre.
-  //
-  // Driving INTO a fighter who is charging back at you barely moves them —
-  // that is what stops DRIVE being the universally correct grab and makes PULL
-  // the answer to a committed approach.
+  // A standing drive is worth the profile floor (~160px, ~500ms). A full-slide
+  // drive still rings out from centre. Driving INTO a fighter who is charging
+  // back at you loses the bonus — that is what stops DRIVE being universally
+  // correct. The belt Pull steals their line (side switch); dumping a
+  // committed GRAB is Matador.
   const approach = Math.max(0, grabber.grabApproachSpeed || 0);
   const counterCharge = Math.max(0, grabber.cmdGrabVictimApproach || 0);
   const effectiveApproach = Math.max(
@@ -662,11 +701,10 @@ function releaseDrive(grabber, victim, room, io, dir) {
 
   const clamp = (x) =>
     Math.max(MAP_LEFT_BOUNDARY, Math.min(MAP_RIGHT_BOUNDARY, x));
-  // Victim continues away from the grabber; grabber gives up a little ground. The
-  // split is heavily weighted to the victim (CMD_DRIVE_RELEASE_VICTIM_SHARE) so the
-  // release reads as one fighter shoving the other off — an even split made the
-  // winner of the drive retreat exactly as far as the loser, which looked like
-  // magnetic repulsion rather than a shove.
+  // Victim continues away from the grabber; grabber gives a real step back.
+  // 70/30 (CMD_DRIVE_RELEASE_VICTIM_SHARE) so the victim still travels farther
+  // — an even split read as magnetic repulsion, and an 86/14 slap-parry split
+  // glued the idle pusher to the ice while the victim launched.
   const victimWantX = victim.x + dir * (needed * CMD_DRIVE_RELEASE_VICTIM_SHARE);
   const victimTargetX = clamp(victimWantX);
   const victimShortfall = Math.abs(victimWantX - victimTargetX);
@@ -682,24 +720,24 @@ function releaseDrive(grabber, victim, room, io, dir) {
   clearCommandGrabState(grabber);
   cleanupGrabStates(grabber, victim);
 
-  // The release used to be a single-frame POP: one frame locked in the grip, the
-  // next both standing upright facing the camera at a distance, which read as the
-  // fighters forgetting they were mid-exchange.
+  // Do not re-apply carry poses. The pusher stays in idle — the recovering
+  // placeholder and the drive lean both read as leftover combat poses on a
+  // fighter who is just being shoved off. The victim's palm animation is the
+  // whole visual of the break. Gating is inputLockUntil + isGrabBreakSeparating
+  // (and isRecovering on the victim only). Deliberately NOT isGrabSeparating:
+  // that flag forces a front-facing pose that wins the sprite chain over
+  // everything, including the palms.
   //
-  // So the grabber's carry posture is HELD through the separation slide — still
-  // leaning in — and only dropped part-way through it. That turns the release
-  // into "shoved off and skidding apart" instead of a teleport to idle. The
-  // victim gets the palm animation over the top of theirs (below), so their
-  // brace here is really only the floor under it. Deliberately NOT
-  // isGrabSeparating: that flag forces a front-facing pose that wins the sprite
-  // chain over everything. Gating is inputLockUntil + isRecovering below.
-  applyCarryPoses(grabber, victim);
+  // The slide waits for the palm's active / hit frame. Startup and smear play
+  // in place at the grip; grabSeparationEase already no-ops t < 0, so stamping
+  // grabBreakSepStartTime in the future holds them until impact.
+  const impactAt = now + CMD_DRIVE_RELEASE_IMPACT_MS;
   for (const [p, targetX] of [
     [grabber, grabberTargetX],
     [victim, victimTargetX],
   ]) {
     p.isGrabBreakSeparating = true;
-    p.grabBreakSepStartTime = now;
+    p.grabBreakSepStartTime = impactAt;
     p.grabBreakSepDuration = CMD_DRIVE_RELEASE_TWEEN_MS;
     p.grabBreakStartX = p.x;
     p.grabBreakTargetX = targetX;
@@ -714,39 +752,41 @@ function releaseDrive(grabber, victim, room, io, dir) {
   }
 
   // The loser shoves the winner off with both hands — the palm-thrust animation
-  // as pure presentation, no hitbox, no move. It replaces a static braced pose
-  // held rigid for the whole slide with something that has a windup, an extend
-  // and a settle, so the separation reads as caused by the fighter being pushed
-  // rather than as the two of them being pulled apart by the engine. The client
-  // paces the four frames across exactly this tween (GRAB_SEPARATE_PALM_ANIM).
+  // as pure presentation, no hitbox, no move. Clock starts NOW so startup/smear
+  // play while they are still gripped; the tween starts at impactAt, when the
+  // client is on the active pose (GRAB_SEPARATE_PALM_ANIM.SMEAR_END).
   victim.isGrabSeparatePalm = true;
 
   // Attacker leaves ~60ms negative: past SLAP_STARTUP_MS so a jab would win the
   // exchange, but the gap means the practical result is a neutral reset with the
   // attacker holding spacing initiative — no free re-grab, no free hit.
   //
-  // Locked per-side, NOT to a shared tween-length lock. A flat lock for both
-  // capped the defender at the attacker's number and ate most of the deficit;
-  // now each side's lock is its own recovery, so the 60ms is real. The defender
-  // comes free ~6px before their slide settles, which the tween just finishes.
+  // Recoveries and locks are anchored to IMPACT, not to carry-end. Starting them
+  // at release while the slide waited 80ms left the defender free in grab range
+  // mid-windup. The 60ms deficit is still the post-impact window.
   grabber.inputLockUntil = Math.max(
     grabber.inputLockUntil || 0,
-    now + CMD_DRIVE_ATTACKER_RECOVERY_MS
+    impactAt + CMD_DRIVE_ATTACKER_RECOVERY_MS
   );
   victim.inputLockUntil = Math.max(
     victim.inputLockUntil || 0,
-    now + CMD_DRIVE_DEFENDER_RECOVERY_MS
+    impactAt + CMD_DRIVE_DEFENDER_RECOVERY_MS
   );
-  beginGrabRecovery(grabber, CMD_DRIVE_ATTACKER_RECOVERY_MS, now);
-  beginGrabRecovery(victim, CMD_DRIVE_DEFENDER_RECOVERY_MS, now);
+  grabber.actionLockUntil = Math.max(
+    grabber.actionLockUntil || 0,
+    impactAt + CMD_DRIVE_ATTACKER_RECOVERY_MS
+  );
+  // Pusher: idle. isGrabBreakSeparating already blocks strafe; do not set
+  // isRecovering or the recovering placeholder wins the sprite chain.
+  grabber.isRecovering = false;
+  grabber.recoveryStartTime = 0;
+  grabber.recoveryDuration = 0;
+  beginGrabRecovery(victim, CMD_DRIVE_DEFENDER_RECOVERY_MS, impactAt);
 
   correctFacingAfterGrabOrThrow(grabber, victim);
 
-  // Drop the carry postures BEFORE the slide finishes, not on the frame it stops.
-  // Both landing together is what made the release read as a teleport to idle:
-  // nothing was moving to absorb the sprite change. Off-setting them means the
-  // pose flips while the fighters are still travelling, and the travel ends on a
-  // pose that is already settled.
+  // Safety: if any carry pose leaked through cleanup, drop it mid-slide rather
+  // than on the frame the motion stops (that coincidence reads as a teleport).
   setPlayerTimeout(
     grabber.id,
     () => {
@@ -755,7 +795,8 @@ function releaseDrive(grabber, victim, room, io, dir) {
       victim.isClinchPlanting = false;
       grabber.isClinchPlanting = false;
     },
-    Math.round(CMD_DRIVE_RELEASE_TWEEN_MS * CMD_DRIVE_RELEASE_POSE_DROP_FRACTION),
+    CMD_DRIVE_RELEASE_IMPACT_MS +
+      Math.round(CMD_DRIVE_RELEASE_TWEEN_MS * CMD_DRIVE_RELEASE_POSE_DROP_FRACTION),
     "cmdDriveRelease"
   );
 
@@ -902,28 +943,23 @@ function resolvePull(grabber, victim, room, io, isKill) {
   const balance = grabber.cmdGrabVictimBalance;
   const targetFacingBeforeKill = victim.facing;
   const pullDirection = victim.x < grabber.x ? 1 : -1;
-  // ── MOMENTUM TRANSFER: PULL SPENDS *THEIR* SPEED ─────────────────────────
-  // The mirror of DRIVE, and what completes the triangle. Against a stationary
-  // opponent a pull is a side switch and nothing more — you spent the full grab
-  // commitment to trade places. Against a committed charge it converts their
-  // own momentum and launches them the width of the half-ring, past you, with
-  // the side taken too. This is hatakikomi, and it is the reason a fast
-  // approach cannot be the universally correct way to open.
-  //
-  // Sampled at the grip (cmdGrabVictimApproach), because by now the victim is
-  // locked and their velocity has been zeroed.
+  // ── BELT TUG: authored side-switch, not their run-in ─────────────────────
+  // Pull used to spend cmdGrabVictimApproach and launch a charger the width of
+  // a half-ring. That dump is Matador's — you are parrying a moving grab
+  // attempt. This is a belt pull: yank them past you and steal the line.
+  // Posture walks a tight band so a broken opponent tugs a little further
+  // without the move becoming a second dump.
   const pullDist = isKill
     ? CLINCH_KILL_PULL_DISTANCE
     : Math.round(
-        MomentumTransfer.transfer(
-          Math.max(0, grabber.cmdGrabVictimApproach || 0),
+        postureLerp(
+          balance,
           MomentumTransfer.profileFor("pull").floor,
-          MomentumTransfer.profileFor("pull").ceil,
-          postureLerp(balance, 1, GRAB_POSTURE_MULT_MAX)
+          MomentumTransfer.profileFor("pull").ceil
         )
       );
-  let tweenDuration = isKill ? CLINCH_KILL_PULL_TWEEN_DURATION : CLINCH_PULL_TWEEN_DURATION;
-  let lockMs = isKill ? CLINCH_KILL_PULL_INPUT_LOCK_MS : CLINCH_PULL_INPUT_LOCK_MS;
+  let tweenDuration = isKill ? CLINCH_KILL_PULL_TWEEN_DURATION : CMD_PULL_TWEEN_MS;
+  let lockMs = isKill ? CLINCH_KILL_PULL_INPUT_LOCK_MS : CMD_PULL_INPUT_LOCK_MS;
   let targetX = grabber.x + pullDirection * pullDist;
 
   const leftBound = MAP_LEFT_BOUNDARY + PULL_BOUNDARY_MARGIN;
@@ -970,14 +1006,15 @@ function resolvePull(grabber, victim, room, io, isKill) {
   victim.isStrafing = false;
   grabber.isStrafing = false;
 
-  const lockUntil = now + lockMs;
+  // The yank IS the lock. Both sit on the same clock so settle is +0 — same
+  // contract as a slap. Kill keeps its own cinematic lock, which may outlast
+  // the slide; non-kill matches the tween so a leftover tail cannot jail the
+  // puller in grab range after the victim is already free.
+  const lockUntil = now + (isKill ? lockMs : tweenDuration);
   victim.inputLockUntil = Math.max(victim.inputLockUntil || 0, lockUntil);
   grabber.inputLockUntil = Math.max(grabber.inputLockUntil || 0, lockUntil);
-  // The yank tween is the commitment; the tail only stops it ending on a dime.
-  grabber.actionLockUntil = Math.max(
-    grabber.actionLockUntil || 0,
-    now + lockMs + CMD_PULL_RECOVERY_TAIL_MS
-  );
+  victim.actionLockUntil = Math.max(victim.actionLockUntil || 0, lockUntil);
+  grabber.actionLockUntil = Math.max(grabber.actionLockUntil || 0, lockUntil);
 
   // Face using post-pull destinations — the victim switches sides during the
   // tween, so correcting from current X leaves both facing away after the yank.
@@ -1008,6 +1045,10 @@ function resolvePull(grabber, victim, room, io, isKill) {
   }
   // cleanupGrabStates dropped the startup pull pose — re-arm it for the yank.
   grabber.isAttemptingPull = true;
+  // Keep the tell duration so the client does not fall back to the 600ms
+  // authored cycle and restart the windup mid-yank. `forwards` holds the last
+  // tug frame through the travel.
+  stampGrabTellDuration(grabber, CMD_GRAB_VARIANT.PULL, isKill);
 
   if (isKill) {
     victim.isClinchKillPullVictim = true;
@@ -1053,6 +1094,8 @@ function executeCommandGrabClash(p1, p2, room, io) {
   right.x = mid + attach / 2;
 
   for (const p of [p1, p2]) {
+    // Keep the attempt facing freeze through the clash pose and whiff recovery.
+    // Unlock only when grabWhiffRecovery fires — not at clash start.
     p.isGrabStartup = false;
     p.isGrabbingMovement = false;
     // isWhiffingGrab holds every gameplay gate on its own (movement, action, tech,
@@ -1079,7 +1122,6 @@ function executeCommandGrabClash(p1, p2, room, io) {
     timeoutManager.clearPlayerSpecific(p.id, "grabMovementTimeout");
   }
 
-  correctFacingAfterGrabOrThrow(p1, p2);
   // Freeze then shake: the collision needs to be felt, since the ABSENCE of a shove
   // is the only thing telling both players nobody won the initiate.
   triggerHitstopAndEmit(io, room, CMD_GRAB_CLASH_HITSTOP_MS, "grab");
@@ -1122,9 +1164,7 @@ function executeCommandGrabClash(p1, p2, room, io) {
     setPlayerTimeout(
       p.id,
       () => {
-        p.isWhiffingGrab = false;
-        p.isGrabWhiffRecovery = false;
-        p.grabCooldown = false;
+        endGrabWhiffRecovery(p);
       },
       GRAB_WHIFF_RECOVERY_MS,
       "grabWhiffRecovery"
@@ -1167,4 +1207,6 @@ module.exports = {
   executeCommandGrabClash,
   clearCommandGrabState,
   postureScaled,
+  connectStartupMsFor,
+  grabTellAnimMs,
 };

@@ -381,22 +381,9 @@ const HudShell = styled.div`
     opacity 260ms ease,
     filter 260ms ease;
 
-  /* Whisper of a scrim, not a cinema bar.
-   *
-   * The old version opened at 92% black and every piece of chrome was
-   * translucent, so the scrim was doing the legibility work that the
-   * chrome should do — and because content started 24px below an opaque
-   * black edge, the band read as floating in a letterbox rather than
-   * attached to the screen. Now that every stroke is opaque cream over a
-   * dark keyline, the band carries itself and this only has to knock
-   * back a bright stage behind the type. */
-  background: linear-gradient(
-    180deg,
-    rgba(6, 8, 14, 0.46) 0%,
-    rgba(6, 8, 14, 0.3) 38%,
-    rgba(6, 8, 14, 0.11) 70%,
-    transparent 100%
-  );
+  /* Scrim lives on #game-hud-info::before — behind this whole tree —
+   * so it cannot paint over chrome. Shell stays transparent. */
+  background: none;
 `;
 
 // ============================================
@@ -1572,10 +1559,10 @@ const MatchClock = styled.div`
   ${FONT_RENDER}
 
   color: ${(p) => (p.$urgent ? C.vermillionBright : HUD.heroType)};
-  /* Black contour — thicker than the in-bar YOU label so the cream
-   * digits hold over crowd / bar tips. Stroke behind fill so Chillax
-   * keeps its weight. */
-  -webkit-text-stroke: clamp(1.6px, 0.2cqw, 2.6px) rgba(4, 6, 12, 0.95);
+  /* Black contour — a hair thicker than the two-digit setting so a
+   * lone 8/9 still holds a hard silhouette over crowd faces. Stroke
+   * behind fill so Chillax keeps its weight. */
+  -webkit-text-stroke: clamp(2.4px, 0.3cqw, 3.8px) rgba(4, 6, 12, 0.95);
   paint-order: stroke fill;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
   transition: color 200ms ease, opacity 260ms ease;
@@ -1699,7 +1686,6 @@ const UiPlayerInfo = ({
   player1ParryRefund = 0,
   player1Balance = 100,
   player1BalanceGain = 0,
-  player1TipDrain = 0,
   player1HasDeepGrip = false,
   player1PostureBroken = false,
   player1ShoveLead = null,
@@ -1713,7 +1699,6 @@ const UiPlayerInfo = ({
   player2ParryRefund = 0,
   player2Balance = 100,
   player2BalanceGain = 0,
-  player2TipDrain = 0,
   player2HasDeepGrip = false,
   player2PostureBroken = false,
   player2ShoveLead = null,
@@ -1787,11 +1772,19 @@ const UiPlayerInfo = ({
   const [p2BalGainKey, setP2BalGainKey] = useState(0);
   const p1BalGainTimer = useRef(null);
   const p2BalGainTimer = useRef(null);
-  // Tip-slap posture drain flinch keys (clear after the flash finishes).
-  const [p1TipDrainKey, setP1TipDrainKey] = useState(0);
-  const [p2TipDrainKey, setP2TipDrainKey] = useState(0);
-  const p1TipDrainTimer = useRef(null);
-  const p2TipDrainTimer = useRef(null);
+  // Posture drain flinch — fires on any real chip (slap, palm, grab, clinch
+  // chunk). Remounts per bite so a barrage replays. Small continuous ticks
+  // are gated so the overlay does not strobe.
+  const [p1DrainKey, setP1DrainKey] = useState(0);
+  const [p2DrainKey, setP2DrainKey] = useState(0);
+  const [p1DrainIntensity, setP1DrainIntensity] = useState(1);
+  const [p2DrainIntensity, setP2DrainIntensity] = useState(1);
+  const p1DrainTimer = useRef(null);
+  const p2DrainTimer = useRef(null);
+  const p1PrevBalance = useRef(null);
+  const p2PrevBalance = useRef(null);
+  const p1DrainAt = useRef(0);
+  const p2DrainAt = useRef(0);
 
   // ── Impact feedback (heavy hits) ──
   // Bumping the impact counter remounts the ImpactSpark via `key` so its
@@ -1863,28 +1856,40 @@ const UiPlayerInfo = ({
     };
   }, [player2BalanceGain]);
 
-  // Tip-slap posture drain — brief vermillion bite on the victim's gauge.
+  // Posture drain bite — any drop on the gauge, not a special "tip" class.
   useEffect(() => {
-    if (player1TipDrain > 0) {
-      setP1TipDrainKey(player1TipDrain);
-      if (p1TipDrainTimer.current) clearTimeout(p1TipDrainTimer.current);
-      p1TipDrainTimer.current = setTimeout(() => setP1TipDrainKey(0), 420);
-    }
-    return () => {
-      if (p1TipDrainTimer.current) clearTimeout(p1TipDrainTimer.current);
-    };
-  }, [player1TipDrain]);
+    const prev = p1PrevBalance.current;
+    p1PrevBalance.current = b1;
+    if (prev == null) return;
+    const delta = prev - b1;
+    if (delta < 0.75) return;
+    const now = performance.now();
+    const isChunk = delta >= 2.5;
+    const gate = isChunk ? 150 : 380;
+    if (now - p1DrainAt.current < gate) return;
+    p1DrainAt.current = now;
+    setP1DrainIntensity(Math.max(0.72, Math.min(1, 0.55 + delta / 20)));
+    setP1DrainKey(now);
+    if (p1DrainTimer.current) clearTimeout(p1DrainTimer.current);
+    p1DrainTimer.current = setTimeout(() => setP1DrainKey(0), 420);
+  }, [b1]);
 
   useEffect(() => {
-    if (player2TipDrain > 0) {
-      setP2TipDrainKey(player2TipDrain);
-      if (p2TipDrainTimer.current) clearTimeout(p2TipDrainTimer.current);
-      p2TipDrainTimer.current = setTimeout(() => setP2TipDrainKey(0), 420);
-    }
-    return () => {
-      if (p2TipDrainTimer.current) clearTimeout(p2TipDrainTimer.current);
-    };
-  }, [player2TipDrain]);
+    const prev = p2PrevBalance.current;
+    p2PrevBalance.current = b2;
+    if (prev == null) return;
+    const delta = prev - b2;
+    if (delta < 0.75) return;
+    const now = performance.now();
+    const isChunk = delta >= 2.5;
+    const gate = isChunk ? 150 : 380;
+    if (now - p2DrainAt.current < gate) return;
+    p2DrainAt.current = now;
+    setP2DrainIntensity(Math.max(0.72, Math.min(1, 0.55 + delta / 20)));
+    setP2DrainKey(now);
+    if (p2DrainTimer.current) clearTimeout(p2DrainTimer.current);
+    p2DrainTimer.current = setTimeout(() => setP2DrainKey(0), 420);
+  }, [b2]);
 
   // ── Post-reset throttle bypass ──
   // After a round reset, the first stamina update from the server may arrive
@@ -1907,6 +1912,14 @@ const UiPlayerInfo = ({
     setP2LastDecreaseAt(0);
     p1PrevStamina.current = s1;
     p2PrevStamina.current = s2;
+    p1PrevBalance.current = null;
+    p2PrevBalance.current = null;
+    p1DrainAt.current = 0;
+    p2DrainAt.current = 0;
+    setP1DrainKey(0);
+    setP2DrainKey(0);
+    if (p1DrainTimer.current) clearTimeout(p1DrainTimer.current);
+    if (p2DrainTimer.current) clearTimeout(p2DrainTimer.current);
     p1JustReset.current = true;
     p2JustReset.current = true;
     if (p1GhostTimer.current) clearTimeout(p1GhostTimer.current);
@@ -2399,7 +2412,8 @@ const UiPlayerInfo = ({
                 danger={b1Danger}
                 broken={player1PostureBroken}
                 gainKey={p1BalGainKey}
-                drainKey={p1TipDrainKey}
+                drainKey={p1DrainKey}
+                drainIntensity={p1DrainIntensity}
                 deepGripThreat={player2HasDeepGrip}
                 deepGripHold={player1HasDeepGrip}
               />
@@ -2555,7 +2569,8 @@ const UiPlayerInfo = ({
                 danger={b2Danger}
                 broken={player2PostureBroken}
                 gainKey={p2BalGainKey}
-                drainKey={p2TipDrainKey}
+                drainKey={p2DrainKey}
+                drainIntensity={p2DrainIntensity}
                 deepGripThreat={player1HasDeepGrip}
                 deepGripHold={player2HasDeepGrip}
               />
@@ -2625,7 +2640,6 @@ UiPlayerInfo.propTypes = {
   player1ParryRefund: PropTypes.number,
   player1Balance: PropTypes.number,
   player1BalanceGain: PropTypes.number,
-  player1TipDrain: PropTypes.number,
   player1HasDeepGrip: PropTypes.bool,
   player1PostureBroken: PropTypes.bool,
   player2Stamina: PropTypes.number,
@@ -2638,7 +2652,6 @@ UiPlayerInfo.propTypes = {
   player2ParryRefund: PropTypes.number,
   player2Balance: PropTypes.number,
   player2BalanceGain: PropTypes.number,
-  player2TipDrain: PropTypes.number,
   player2HasDeepGrip: PropTypes.bool,
   player2PostureBroken: PropTypes.bool,
   player1ShoveLead: PropTypes.number,

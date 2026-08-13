@@ -142,7 +142,7 @@ test("momentum curve: walking buys a real but partial share, slide buys all", ()
 // CONTESTED VS GUARANTEED — the grab's reason to exist
 // ────────────────────────────────────────────────────────────────────────────
 test("grabs are guaranteed, strikes are contested", () => {
-  for (const key of ["drive", "pull", "throw"]) {
+  for (const key of ["drive", "pull", "throw", "matador"]) {
     assert.strictEqual(M.profileFor(key).guaranteed, true, `${key} must be guaranteed`);
   }
   for (const key of ["slap", "palm", "charged", "bodySlam"]) {
@@ -166,16 +166,30 @@ test("a maxed drive beats a maxed palm against a defender who DIs", () => {
 });
 
 test("grab profiles hit their designed anchors", () => {
-  const drive = (v) => M.transfer(v, 30, 300);
-  near(drive(0), 30, 0.5, "standing drive is not a threat");
-  near(drive(1.3), 138, 1, "walk-in drive");
-  near(drive(2.4), 300, 0.5, "full-slide drive rings out from centre");
-  assert.ok(drive(2.4) > HALF_RING, "max drive must clear the half-ring");
-  assert.ok(drive(0) < 40, "standing drive must be worth less than a body width");
+  const drive = M.profileFor("drive");
+  const pull = M.profileFor("pull");
+  const matador = M.profileFor("matador");
 
-  const pull = (v) => M.transfer(v, 40, 290);
-  near(pull(0), 40, 0.5, "pull on a stationary target is a side switch");
-  near(pull(2.4), 290, 0.5, "pull on a full charge launches");
+  near(M.transfer(0, drive.floor, drive.ceil), drive.floor, 0.5, "standing drive is a real shove");
+  near(M.transfer(M.V_REF, drive.floor, drive.ceil), drive.ceil, 0.5, "full-slide drive");
+  assert.ok(
+    M.transfer(M.V_REF, drive.floor, drive.ceil) > HALF_RING,
+    "max drive must clear the half-ring"
+  );
+
+  near(M.transfer(0, pull.floor, pull.ceil), pull.floor, 0.5, "belt tug on a healthy opponent");
+  near(
+    M.transfer(M.V_REF, pull.floor, pull.ceil),
+    pull.ceil,
+    0.5,
+    "pull's ceiling is still a side-switch, not a dump"
+  );
+  assert.ok(pull.ceil < HALF_RING * 0.6, "pull must not threaten a half-ring send");
+
+  near(M.transfer(0, matador.floor, matador.ceil), matador.floor, 0.5, "standing-grab matador still dumps");
+  near(M.transfer(M.V_REF, matador.floor, matador.ceil), matador.ceil, 0.5, "slide-in grab buys the ceiling");
+  assert.ok(matador.floor > pull.ceil, "the parry dump is always bigger than the belt tug");
+  assert.ok(matador.floor > 224, "standing matador must out-send the old fixed yank");
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -649,31 +663,54 @@ test("impact weight differentiates feel without granting ground", () => {
 // ────────────────────────────────────────────────────────────────────────────
 // THE TRIANGLE
 // ────────────────────────────────────────────────────────────────────────────
-test("pull spends the VICTIM's momentum, drive spends the attacker's", () => {
+test("matador spends the GRABBER's entry speed, pull does not", () => {
   const now = 5000;
-  const grabber = fighter();
+  const standingGrabber = fighter();
+  const slidingGrabber = fighter({ movementVelocity: 2.4 });
   const charger = fighter({ movementVelocity: -2.4 }); // closing from the right
 
-  const pull = M.resolveTransfer({
-    attacker: grabber,
+  const pullStanding = M.resolveTransfer({
+    attacker: standingGrabber,
     victim: charger,
     moveKey: "pull",
     dirToVictim: +1,
     nowSim: now,
   });
-  const drive = M.resolveTransfer({
-    attacker: grabber,
+  const pullVsCharge = M.resolveTransfer({
+    attacker: standingGrabber,
     victim: charger,
-    moveKey: "drive",
+    moveKey: "pull",
     dirToVictim: +1,
     nowSim: now,
   });
+  near(
+    pullStanding.authoredPx,
+    M.profileFor("pull").floor,
+    1,
+    "a belt tug ignores their charge"
+  );
+  near(
+    pullVsCharge.authoredPx,
+    pullStanding.authoredPx,
+    1,
+    "pull distance must not stretch with the victim's run-in"
+  );
 
-  near(pull.authoredPx, M.profileFor("pull").ceil, 1, "pull converts their charge");
-  near(drive.authoredPx, M.profileFor("drive").floor, 1, "a standing drive stays minimal");
+  const matadorStand = M.transfer(
+    0,
+    M.profileFor("matador").floor,
+    M.profileFor("matador").ceil
+  );
+  const matadorSlide = M.transfer(
+    M.sampleSelfMomentum(slidingGrabber, +1, now),
+    M.profileFor("matador").floor,
+    M.profileFor("matador").ceil
+  );
+  near(matadorStand, M.profileFor("matador").floor, 1, "standing-grab read is the floor");
+  near(matadorSlide, M.profileFor("matador").ceil, 1, "slide-in grab buys the ceiling");
   assert.ok(
-    pull.authoredPx > drive.authoredPx * 5,
-    "PULL must decisively beat DRIVE against a committed charge"
+    matadorSlide > matadorStand * 1.3,
+    "entry speed must be a real reward on the parry dump"
   );
 });
 
@@ -681,39 +718,52 @@ test("GRAB TRIANGLE: each variant answers a different opponent", () => {
   const d = M.profileFor("drive");
   const p = M.profileFor("pull");
   const t = M.profileFor("throw");
+  const m = M.profileFor("matador");
   const DRIVE_COUNTER_CHARGE = 0.6; // mirrors commandGrabSystem
   const drive = (mySpeed, theirCharge = 0) =>
     M.transfer(Math.max(0, mySpeed - DRIVE_COUNTER_CHARGE * theirCharge), d.floor, d.ceil);
-  const pull = (theirCharge) => M.transfer(theirCharge, p.floor, p.ceil);
+  const pull = () => p.floor;
   const thr = (mySpeed) => M.transfer(mySpeed, t.floor, t.ceil);
+  const matador = (theirEntry) => M.transfer(theirEntry, m.floor, m.ceil);
 
-  // Against a STANDING opponent: drive is the payoff if you built speed.
-  assert.ok(drive(M.V_REF) > drive(0) * 4, "momentum must be the whole drive curve");
-  assert.ok(drive(0) < 80, "a standing drive must not be worth throwing — spam dies here");
+  // Against a STANDING opponent: the pocket drive is already a shove. Zooming
+  // in is a dramatic bonus (centre-to-rope), not the thing that makes the
+  // button worth pressing — this game is close combat most of the time.
+  assert.ok(drive(0) >= 150, "a pocket drive must be a real shove, not a nudge");
+  assert.ok(
+    drive(M.V_REF) > drive(0) * 1.5,
+    "momentum is a dramatic bonus on top of a carry that was already worth doing"
+  );
 
-  // Against a CHARGING opponent: pull wins decisively, drive gets eaten.
+  // Pull is the geometry tool, not the anti-charge dump.
+  assert.ok(p.ceil - p.floor <= 50, "pull's band is a tug, not a launch curve");
+  assert.ok(pull() < thr(0), "with no momentum, throw still out-sends a belt tug");
+
+  // Head-on: charging into a Drive still eats the shove.
   const theyCharge = M.V_REF;
   assert.ok(
-    pull(theyCharge) > drive(0, theyCharge) * 4,
-    "PULL must be the answer to a committed charge"
+    drive(M.V_REF, theyCharge) < drive(M.V_REF),
+    "driving into a charge must lose send"
   );
 
-  // Head-on: pull still beats drive, so charging in is not universally correct.
+  // Dumping a committed GRAB is Matador's job.
   assert.ok(
-    pull(theyCharge) > drive(M.V_REF, theyCharge),
-    "a mutual charge must favour the puller"
+    matador(theyCharge) > pull() * 2,
+    "a slide-in grab-parry must dump harder than a belt tug"
+  );
+  assert.ok(
+    matador(0) > p.ceil,
+    "even a standing-grab matador out-sends the biggest belt tug"
   );
 
-  // THROW is the neutral option: best when NEITHER fighter has a momentum edge.
-  assert.ok(
-    thr(0) > drive(0) && thr(0) > pull(0),
-    "with no momentum on either side, throw should be the sensible pick"
-  );
-  // ...but it must not out-scale a committed drive.
+  // THROW is the arc / kill read, not "more pixels than a standing drive."
+  // Drive is the default pocket button and has to be worth pressing without a
+  // run-in. Throw still out-sends a belt tug (above), and must not out-scale a
+  // committed drive.
   assert.ok(thr(M.V_REF) < drive(M.V_REF), "throw must not beat a full-commit drive");
 
   // Grabs stay guaranteed — a carried fighter has no stance to shift.
-  for (const key of ["drive", "pull", "throw"]) {
+  for (const key of ["drive", "pull", "throw", "matador"]) {
     assert.strictEqual(M.profileFor(key).guaranteed, true, `${key} must ignore DI`);
   }
 });

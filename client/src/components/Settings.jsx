@@ -751,10 +751,10 @@ const Settings = ({ onClose }) => {
             Low Spec Mode <SectionTag>Performance</SectionTag>
           </SectionTitle>
           <HintText>
-            Turns off expensive cinematic layers (live blurs, crowd DoF, god
-            rays, film grain, ice reflections, menu depth blur, snowfall,
-            additive particle blends). Off = full visuals exactly as authored.
-            Applies immediately — use on weaker machines while developing.
+            Turns off remaining atmosphere (god rays, film grain, ice extras,
+            snowfall, additive particle blends, menu depth blur). The stadium
+            map and crowd no longer use live blurs — full visuals should be
+            close to this on weaker machines. Off = authored look.
           </HintText>
           <ToggleRow>
             <ToggleState $on={lowSpec}>

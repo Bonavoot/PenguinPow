@@ -17,6 +17,10 @@ const {
 } = require("./combatContactFidelityFlags");
 const { getContactSeamX } = require("./strikeContact");
 const { GROUND_LEVEL } = require("./constants");
+const {
+  releaseStrikeFacingLock,
+  ACTION_FACING_RELEASE,
+} = require("./actionFacingOwnership");
 
 /** Explicit allowlist: states that may be physically pass-through. */
 const INTANGIBLE_PASS_THROUGH = Object.freeze({
@@ -273,6 +277,7 @@ function consumeLosingAttackInstance(player, meta = {}) {
   player.slapOpenHitPending = false;
   player.pendingSlapCount = 0;
   player.pendingPalmThrust = false;
+  releaseStrikeFacingLock(player, { reason: ACTION_FACING_RELEASE.INTERRUPT });
 
   // Stop invalid residual attack travel (charged lunge / slap slide).
   // Do not wipe an already-applied hit knockback.

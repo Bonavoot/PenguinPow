@@ -58,6 +58,8 @@ const {
   ICE_COAST_FRICTION,
   ICE_MAX_SPEED,
   ICE_SLIDE_MAX_SPEED,
+  MATADOR_PULL_DISTANCE,
+  MATADOR_PULL_DISTANCE_MAX,
 } = require("./constants");
 
 // ── Units ───────────────────────────────────────────────────────────────────
@@ -383,13 +385,28 @@ const MOVE_TRANSFER = {
   // distance, but distance that cannot be argued with. A palm sends 300 or 195
   // depending on whether they hold back; a maxed drive sends 300, always.
   //
-  // A standing drive is worth ~1/4 of a body width, so grab spam is
-  // self-punishing without needing a cooldown to stop it.
-  drive: { floor: 60, ceil: 300, guaranteed: true },
+  // Pocket / standing floor has to be a real shove. This game lives in close
+  // combat — approach speed is hard to bring in — so a 60px nudge made the
+  // default grab feel like a punish for pressing it. Momentum still buys the
+  // ceiling (centre-to-rope), but that is a bonus on a carry that was already
+  // worth doing.
+  drive: { floor: 160, ceil: 300, guaranteed: true },
 
-  // PULL spends THEIR momentum (see samplePullMomentum). Against a stationary
-  // opponent it is a side switch; against a committed charge it launches.
-  pull: { floor: 80, ceil: 330, guaranteed: true },
+  // PULL is a belt tug / side-switch. Distance is authored, not earned with
+  // their run-in — dumping a moving grab is Matador's job. Floor→ceil is a
+  // tight posture band so a broken opponent yanks a little further without
+  // the tug becoming a launch. Stays inside grab range: you swap the pocket,
+  // you do not reset the round.
+  pull: { floor: 110, ceil: 150, guaranteed: true },
+
+  // MATADOR spends the GRABBER's entry speed (grabApproachSpeed). A standing
+  // grab still dumps (the floor is the reward for the read); a slide-in grab
+  // buys the ceiling. Guaranteed — they committed to the grab.
+  matador: {
+    floor: MATADOR_PULL_DISTANCE,
+    ceil: MATADOR_PULL_DISTANCE_MAX,
+    guaranteed: true,
+  },
 
   // THROW is the neutral option: highest floor, lowest ceiling, least
   // speed-dependent. What you take when you have not earned a momentum edge.
@@ -464,8 +481,9 @@ function sampleSelfMomentum(attacker, dirToVictim, nowSim) {
 }
 
 /**
- * The victim's EARNED speed toward the attacker. Feeds PULL's distance channel
- * — you cannot pull someone using momentum you just gave them yourself.
+ * The victim's EARNED speed toward the attacker. Kept for callers that still
+ * want that sample; command-grab Pull no longer spends it (belt tug), and
+ * Matador samples the grabber's grabApproachSpeed instead.
  */
 function samplePullMomentum(victim, dirToAttacker, nowSim) {
   return sampleSelfMomentum(victim, dirToAttacker, nowSim);
@@ -797,13 +815,13 @@ function resolveTransfer(opts) {
 
   const profile = profileFor(moveKey);
   const dir = dirToVictim >= 0 ? 1 : -1;
-  const usePull = moveKey === "pull";
 
   let vSelf;
   if (Number.isFinite(selfOverride)) {
     vSelf = Math.max(0, Math.min(selfOverride, V_REF));
-  } else if (usePull) {
-    vSelf = samplePullMomentum(victim, -dir, nowSim);
+  } else if (moveKey === "pull") {
+    // Belt tug — distance is the posture band, not their run-in.
+    vSelf = 0;
   } else {
     vSelf = sampleSelfMomentum(attacker, dir, nowSim);
   }

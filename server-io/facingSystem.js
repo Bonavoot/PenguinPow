@@ -35,6 +35,19 @@ function facingTowardOpponent(player, opponent) {
 }
 
 /**
+ * Snapshot live-X facing for a NEW strike commit (palm / charged release / slap).
+ * Ropes stay frozen. Dodge/sidestep on the opponent must not keep stale facing —
+ * the in-flight lock is what prevents a mid-swing flip, not skipping this snapshot.
+ */
+function commitFacingTowardOpponent(player, opponent) {
+  if (!player || !opponent) return player?.facing ?? -1;
+  if (player.atTheRopesFacingDirection != null) return player.facing;
+  const dir = facingTowardOpponent(player, opponent);
+  player.facing = dir;
+  return dir;
+}
+
+/**
  * If facing must stay fixed for the current action / reaction, return that
  * value. Otherwise return null (caller should face the opponent).
  */
@@ -50,6 +63,17 @@ function getLockedFacing(player) {
       }
       return player.facing;
     }
+  }
+
+  // Grab attempt + whiff/clash recovery: freeze until recovery frames end.
+  // Successful connect clears these flags (and the V2 lock) before clinch.
+  if (
+    player.isGrabStartup ||
+    player.isGrabbingMovement ||
+    player.isWhiffingGrab ||
+    player.isGrabWhiffRecovery
+  ) {
+    return player.facing;
   }
 
   // Cinematic / ring-out: explicit stored facing
@@ -212,6 +236,50 @@ function retargetPostSidestepActionFacing(player, opponent, nowSim) {
   return changed;
 }
 
+function isChargeHoldFacing(player) {
+  if (!player || player.isAttacking) return false;
+  if (isActionFacingOwnershipV2Enabled()) {
+    const lock = getActionFacingLock(player);
+    if (lock && lock.ownerType === ACTION_FACING_OWNER.CHARGE_HOLD) return true;
+  }
+  return !!(player.isChargingAttack && player.chargingFacingDirection != null);
+}
+
+/**
+ * Charge windup is not the lunge. After a sidestep / flap / rope-jump cross-up,
+ * the holder should look at the new side; release then inherits that facing.
+ * CHARGED_ATTACK (the lunge itself) stays frozen.
+ */
+function retargetChargeHoldFacing(player, opponent) {
+  if (!player || !opponent) return false;
+  if (player.atTheRopesFacingDirection != null) return false;
+  if (!isChargeHoldFacing(player)) return false;
+
+  const desired = facingTowardOpponent(player, opponent);
+  if (desired !== 1 && desired !== -1) return false;
+
+  let changed = false;
+  if (isActionFacingOwnershipV2Enabled()) {
+    const lock = getActionFacingLock(player);
+    if (lock && lock.ownerType === ACTION_FACING_OWNER.CHARGE_HOLD && lock.direction !== desired) {
+      updateActionFacingLockDirection(player, desired, {
+        force: true,
+        syncLegacy: true,
+      });
+      changed = true;
+    }
+  }
+  if (player.chargingFacingDirection != null && player.chargingFacingDirection !== desired) {
+    player.chargingFacingDirection = desired;
+    changed = true;
+  }
+  if (player.facing !== desired) {
+    player.facing = desired;
+    changed = true;
+  }
+  return changed;
+}
+
 /**
  * Apply the hard rule to one player relative to their opponent.
  * @returns {boolean} true if facing was changed
@@ -245,6 +313,8 @@ function enforcePairFacing(player1, player2, nowSim) {
   // post-sidestep slap/charge lock can follow a charged lunge side-flip.
   retargetPostSidestepActionFacing(player1, player2, nowSim);
   retargetPostSidestepActionFacing(player2, player1, nowSim);
+  retargetChargeHoldFacing(player1, player2);
+  retargetChargeHoldFacing(player2, player1);
 
   enforcePlayerFacing(player1, player2);
   enforcePlayerFacing(player2, player1);
@@ -252,9 +322,11 @@ function enforcePairFacing(player1, player2, nowSim) {
 
 module.exports = {
   facingTowardOpponent,
+  commitFacingTowardOpponent,
   getLockedFacing,
   clearOrphanPullFacingLocks,
   retargetPostSidestepActionFacing,
+  retargetChargeHoldFacing,
   enforcePlayerFacing,
   enforcePairFacing,
 };

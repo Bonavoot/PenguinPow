@@ -65,18 +65,22 @@ export const PALM_THRUST_ANIM = {
  * The real thrust holds the strike pose for 460ms because a thrust is a long
  * commitment you need to read. Borrowing that here would spend the whole
  * separation on one frame — extend, hold, cut to idle — which is the static
- * pose problem this was meant to solve. So the beats are packed to fit inside
- * CMD_DRIVE_RELEASE_TWEEN_MS (240) with the settle landing BEFORE the slide
- * stops, letting the fighter arrive already back in stance instead of snapping
- * out of an extended arm.
+ * pose problem this was meant to solve. So the beats are packed to fit the
+ * release: startup and smear play IN PLACE, and the slide does not start
+ * until SMEAR_END (the active / hit pose). That delay is
+ * server-io/constants.js CMD_DRIVE_RELEASE_IMPACT_MS — keep them equal.
  *
- * MUST stay under server-io/constants.js CMD_DRIVE_RELEASE_TWEEN_MS.
+ * Settle still lands BEFORE the slide stops, so the fighter arrives already
+ * back in stance instead of snapping out of an extended arm.
+ *
+ * MUST stay under CMD_DRIVE_RELEASE_IMPACT_MS + CMD_DRIVE_RELEASE_TWEEN_MS.
  */
 export const GRAB_SEPARATE_PALM_ANIM = {
   STARTUP_END: 40,
+  // MUST match server-io/constants.js CMD_DRIVE_RELEASE_IMPACT_MS.
   SMEAR_END: 80,
-  // Palms are extended across the tween's ease-in-out peak (t=0.5 → 120ms), so
-  // the fastest part of the shove happens while the hands are actually out.
+  // Palms stay extended into the slide (slide t=0 at SMEAR_END). Settle still
+  // lands before the tween finishes so they arrive already back in stance.
   ACTIVE_END: 190,
 };
 

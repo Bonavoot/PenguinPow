@@ -172,6 +172,50 @@ test("simultaneous grab", async (t) => {
     }
   });
 
+  await t.test("clash keeps grab-attempt facing locked until recovery ends", () => {
+    const {
+      mintActionFacingInstanceId,
+      acquireActionFacingLock,
+      getActionFacingLock,
+      ACTION_FACING_OWNER,
+    } = require("../../actionFacingOwnership");
+    const { enforcePairFacing } = require("../../facingSystem");
+    const s = clashScenario();
+    s.p1.x = 500;
+    s.p2.x = 400;
+    s.p1.facing = -1;
+    s.p2.facing = 1;
+    const committed = { p1: s.p1.facing, p2: s.p2.facing };
+    for (const p of [s.p1, s.p2]) {
+      const id = mintActionFacingInstanceId(p, ACTION_FACING_OWNER.GRAB_STARTUP);
+      p.grabFacingInstanceId = id;
+      acquireActionFacingLock(p, {
+        ownerType: ACTION_FACING_OWNER.GRAB_STARTUP,
+        ownerInstanceId: id,
+        direction: p.facing,
+        allowDirectionUpdate: false,
+        supersede: true,
+        syncLegacy: false,
+      });
+    }
+    executeCommandGrabClash(s.p1, s.p2, s.room, s.io);
+    for (const p of [s.p1, s.p2]) {
+      assert.ok(getActionFacingLock(p), "lock must survive the clash pose");
+      assert.ok(p.grabFacingInstanceId);
+    }
+    enforcePairFacing(s.p1, s.p2);
+    assert.equal(s.p1.facing, committed.p1);
+    assert.equal(s.p2.facing, committed.p2);
+
+    s.advanceTime(GRAB_WHIFF_RECOVERY_MS + 32);
+    for (const p of [s.p1, s.p2]) {
+      assert.equal(getActionFacingLock(p), null);
+      assert.equal(p.grabFacingInstanceId, null);
+    }
+    enforcePairFacing(s.p1, s.p2);
+    assert.notEqual(s.p1.facing, s.p2.facing);
+  });
+
   await t.test("the clash never pushes anyone out of the ring", () => {
     const s = clashScenario();
     s.p1.x = MAP_LEFT_BOUNDARY;

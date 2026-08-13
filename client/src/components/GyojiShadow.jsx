@@ -9,22 +9,44 @@ import {
 
 const GYOJI_WIDTH = `${GYOJI_WIDTH_PCT}%`;
 
-// Lift under the sandals — too low reads "in front of him" on the ice plane;
-// too high mashes into the kimono as a blob.
-const GYOJI_REFLECTION_RAISE_PCT = 3.6;
-
-// Quieter than fighters (0.28) — supporting cast, not a second focal point.
+// Quieter than fighters (0.44) — supporting cast, not a second focal point.
 const GYOJI_REFLECTION_OPACITY = 0.15;
-// Slightly taller foreshorten than fighters so a front-facing figure still
-// reads as a reflection puddle instead of a flat oval smudge.
-const GYOJI_REFLECTION_SQUASH = 0.4;
+const GYOJI_REFLECTION_SQUASH = 0.5;
 
 /**
- * Ice reflection under the gyoji — same treatment as fighters, quieter and
- * planted under the feet. Portaled into `.ice-reflection-clip` so it stays on
- * the ice and stacks under the sprite.
+ * Transparent padding under the painted sandals, as % of the 720-tall arena.
+ * Measured from opaque sole pixels in the 960² sheets (idle is cropped
+ * tighter to the tabi than ready / win). Raise = pad × (1 + squash) plus a
+ * small receding-ice nudge so the flipped soles sit under the real ones.
  */
-const GyojiShadow = ({ src }) => {
+const GYOJI_SOLE_PAD_ARENA_PCT = {
+  idle: 0.51,
+  ready: 1.37,
+  player1Win: 1.26,
+  player2Win: 1.29,
+};
+const GYOJI_REFLECTION_PLANE_NUDGE_PCT = {
+  idle: 1.25,
+  ready: 0,
+  player1Win: 0.2,
+  player2Win: 0.2,
+};
+
+function reflectionRaisePct(pose) {
+  const pad =
+    GYOJI_SOLE_PAD_ARENA_PCT[pose] ?? GYOJI_SOLE_PAD_ARENA_PCT.idle;
+  const nudge =
+    GYOJI_REFLECTION_PLANE_NUDGE_PCT[pose] ??
+    GYOJI_REFLECTION_PLANE_NUDGE_PCT.idle;
+  return pad * (1 + GYOJI_REFLECTION_SQUASH) + nudge;
+}
+
+/**
+ * Ice reflection under the gyoji — same mirror as fighters, quieter and
+ * planted under the feet. No contact sparkles (supporting cast). Portaled
+ * into `.ice-reflection-clip`.
+ */
+const GyojiShadow = ({ pose = "idle", src }) => {
   if (!src) return null;
 
   const iceClipHost =
@@ -40,11 +62,12 @@ const GyojiShadow = ({ src }) => {
       src={src}
       width={GYOJI_WIDTH}
       leftPct={GYOJI_LEFT_PCT}
-      bottomPct={GYOJI_FOOT_BOTTOM_PCT + GYOJI_REFLECTION_RAISE_PCT}
+      bottomPct={GYOJI_FOOT_BOTTOM_PCT + reflectionRaisePct(pose)}
       anchorLeftEdge
       opacity={GYOJI_REFLECTION_OPACITY}
       squash={GYOJI_REFLECTION_SQUASH}
       zIndex={1}
+      contactFx={false}
     />
   );
 
@@ -52,7 +75,7 @@ const GyojiShadow = ({ src }) => {
 };
 
 GyojiShadow.propTypes = {
-  gyojiState: PropTypes.string.isRequired,
+  pose: PropTypes.string,
   src: PropTypes.string,
 };
 

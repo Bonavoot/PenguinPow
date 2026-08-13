@@ -25,9 +25,12 @@ const assert = require("node:assert/strict");
 
 const {
   createFoundationScenario,
+  advanceSim,
 } = require("../foundation/helpers/scenarioHarness");
 const { beginGrabStartup } = require("../../gameUtils");
 const { executeGrabWhiff } = require("../../grabMechanics");
+const { getActionFacingLock } = require("../../actionFacingOwnership");
+const { getLockedFacing, enforcePairFacing } = require("../../facingSystem");
 const {
   getGrabLungeImpulse,
   getGrabLungeTravel,
@@ -176,5 +179,31 @@ describe("grab dive physics", () => {
       "the dive's momentum must survive the whiff so the skid can happen"
     );
     assert.equal(grabber.isGrabWhiffRecovery, true);
+  });
+
+  it("whiff keeps facing locked until recovery frames end", () => {
+    const s = sc();
+    const grabber = s.left;
+    const opponent = s.right;
+    beginGrabStartup(grabber, s.room);
+    const committed = grabber.facing;
+    assert.ok(getActionFacingLock(grabber));
+    assert.equal(getLockedFacing(grabber), committed);
+
+    // Opponent flaps past during the lunge — attempt facing must not flip yet.
+    opponent.x = grabber.x - 80;
+    enforcePairFacing(grabber, opponent);
+    assert.equal(grabber.facing, committed);
+
+    executeGrabWhiff(grabber);
+    assert.ok(getActionFacingLock(grabber), "lock must survive into recovery");
+    enforcePairFacing(grabber, opponent);
+    assert.equal(grabber.facing, committed, "must not turn during recovery");
+
+    advanceSim(s, GRAB_WHIFF_RECOVERY_MS);
+    assert.equal(getActionFacingLock(grabber), null);
+    assert.equal(grabber.grabFacingInstanceId, null);
+    enforcePairFacing(grabber, opponent);
+    assert.equal(grabber.facing, grabber.x < opponent.x ? -1 : 1);
   });
 });

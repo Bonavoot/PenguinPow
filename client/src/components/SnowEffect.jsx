@@ -21,15 +21,14 @@ const getGroundLevel = (depth, screenHeight) => {
 };
 
 // Performance settings
-const MAX_SNOWFLAKES = 62;
+const MAX_SNOWFLAKES = 44;
 const MAX_ENVELOPES = 25;
 
-// Depth threshold: bigger (closer) particles in front of player, smaller (farther) behind.
-// Snow threshold pushed high (0.9) so only the nearest depth band — the big
-// soft foreground-bokeh flakes — renders in front of the wrestlers; the bulk
-// of the snowfield stays BEHIND them so it never muddies the fight read.
-const FRONT_DEPTH_THRESHOLD_SNOW = 0.9;
-const FRONT_DEPTH_THRESHOLD_ENVELOPE = 0.8; // Only really big envelopes in front
+// Snow stays BEHIND the wrestlers. Foreground bokeh flakes sat on the
+// silhouettes and fought readability. Envelopes (win celebration) may still
+// cross in front.
+const FRONT_DEPTH_THRESHOLD_SNOW = 2;
+const FRONT_DEPTH_THRESHOLD_ENVELOPE = 0.8;
 // Player layer in GameFighter is ~95–101; back below, front above
 const Z_BEHIND_PLAYER = 40;
 const Z_IN_FRONT_PLAYER = 105;

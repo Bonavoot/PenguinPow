@@ -14,7 +14,7 @@
 const {
   TICK_RATE,
   CLINCH_ATTACHED_DISTANCE,
-  CMD_GRAB_CONNECT_STARTUP_MS,
+  CLINCH_THROW_KILL_THRESHOLD,
 } = require("../../../constants");
 const {
   createInitialPlayerState,
@@ -30,6 +30,7 @@ const {
 const {
   beginCommandGrab,
   updateCommandGrab,
+  connectStartupMsFor,
 } = require("../../../commandGrabSystem");
 const { createMockIo } = require("../../helpers/mockIo");
 
@@ -195,9 +196,13 @@ function createCommandGrabScenario(options = {}) {
 
     settledAttach,
 
-    // The read beat is per-variant (Drive has none at all), so tests ask the
-    // scenario rather than hard-coding a shared number.
-    startupMs: CMD_GRAB_CONNECT_STARTUP_MS[options.variant || "drive"] ?? 0,
+    // The read beat is per-variant (Drive has none) and longer on a kill
+    // connect, so tests ask the scenario rather than hard-coding a number.
+    startupMs: connectStartupMsFor(
+      options.variant || "drive",
+      (options.variant || "drive") !== "drive" &&
+        (options.p2Balance ?? 100) < CLINCH_THROW_KILL_THRESHOLD
+    ),
 
     /**
      * Advance just far enough for the variant to resolve. Always at least one tick:

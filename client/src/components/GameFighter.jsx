@@ -269,11 +269,24 @@ import getImageSrc, { getStruckSlapLimbSrc } from "./getImageSrc";
 import {
   createStruckLimbHold,
   armStruckLimbHold,
+  armVictimContactHold,
   resolveStruckLimbHold,
   struckLimbHoldNeedsTick,
   resolveFighterDisplaySprite,
   formatStruckLimbHoldHudLine,
 } from "../combatPresentation/struckLimbHold";
+import {
+  createSlapConnectHold,
+  armSlapConnectHold,
+  resolveSlapConnectHold,
+  slapConnectHoldNeedsTick,
+} from "../combatPresentation/slapConnectHold";
+import {
+  isSlapLimbOut,
+  isPalmLimbOut,
+  isOpponentStrikeCompeting,
+  resolveStrikeExtendZ,
+} from "../combatPresentation/strikeLayer";
 import {
   getHatOverlayForSprite,
   getEquippedHeadGearId,
@@ -752,6 +765,7 @@ const GameFighter = ({
   // PERFORMANCE: Sprite animation now handled by CSS (no React state needed)
   // ============================================
   const lastNonIdleSpriteRef = useRef(null);
+  const lastNonHitSpriteRef = useRef(null);
   // Time-based (was render-frame-based): movement no longer re-renders the
   // component, so visual windows are deadlines checked by the rAF loop.
   const idleHoldUntilRef = useRef(0);
@@ -2330,9 +2344,6 @@ const GameFighter = ({
   const [p2ParryRefund, setP2ParryRefund] = useState(0);
   const [p1BalanceGain, setP1BalanceGain] = useState(0);
   const [p2BalanceGain, setP2BalanceGain] = useState(0);
-  // Tip-slap posture drain flinch on the victim's gauge (spacing tell).
-  const [p1TipDrain, setP1TipDrain] = useState(0);
-  const [p2TipDrain, setP2TipDrain] = useState(0);
   const [showStarStunEffect, setShowStarStunEffect] = useState(false);
   const [hasUsedPowerUp, setHasUsedPowerUp] = useState(false);
   const [countdown, setCountdown] = useState(15);
@@ -2929,8 +2940,8 @@ const GameFighter = ({
             isRopeJumping: p.isRopeJumping,
             isFlapping: p.isFlapping,
           };
-          // Ice reflection is clipped to the blue disc by `.ice-reflection-clip`.
-          // Oval only when fallen off the platform or RoundResult loser.
+          // Ice reflection is masked to ice-mask.webp (tawara interior on
+          // dohyo-display.webp — not the MAP/DOHYO rects).
           const roundLoser = isRoundLoserRef.current;
           const shadowY = playerShadowBottomY(newPos.x, newPos.y, shadowFlags);
           const shadowBottom = `${(shadowY / 720) * 100 - 0.2}%`;
@@ -2940,8 +2951,8 @@ const GameFighter = ({
           const showReflect = iceReflectionShouldShow(newPos.x, newPos.y, {
             forceHide: roundLoser,
           });
-          // Reflection pins to the ice (sidestep tracks lane dip) and fades
-          // with height so airborne hops don't float a clone under the feet.
+          // Reflection pins to the ice (sidestep tracks the lane dip / Fresnel)
+          // and fades with height so airborne hops don't float a clone.
           const reflectY = iceReflectionBottomY(newPos.y, {
             isSidestepping: p.isSidestepping,
           });
@@ -3057,6 +3068,11 @@ const GameFighter = ({
           struckLimbHoldRef.current,
           nowMs,
           rendered.struckLimbHold
+        ) ||
+        slapConnectHoldNeedsTick(
+          slapConnectHoldRef.current,
+          nowMs,
+          rendered.slapConnectHold
         ) ||
         (rendered.flapBeat &&
           nowMs >= flapBeatRef.current.startedAt + FLAP_WINGBEAT_MS) ||
@@ -3190,6 +3206,7 @@ const GameFighter = ({
   // in combatPresentation/struckLimbHold (pure + unit-tested); this ref is just
   // the per-fighter record.
   const struckLimbHoldRef = useRef(createStruckLimbHold());
+  const slapConnectHoldRef = useRef(createSlapConnectHold());
 
   // What the last committed render showed (flash/tint/hold/prediction
   // visible) — the rAF loop compares against live deadlines to know when a
@@ -3206,6 +3223,7 @@ const GameFighter = ({
     // Phase 4A struck-limb pose hold is showing — force the release render the
     // moment display hitstop lapses so the extended arm can't outlive the freeze.
     struckLimbHold: false,
+    slapConnectHold: false,
   });
   // Debounce flag for rapid multi-hits (e.g. back-to-back slaps). Only the
   // OPENING hit of a string should flash; subsequent hits within the cooldown
@@ -3635,6 +3653,7 @@ const GameFighter = ({
           prev.isGrabBreaking !== newState.isGrabBreaking ||
           prev.isGrabBreakCountered !== newState.isGrabBreakCountered ||
           prev.isAttemptingGrabThrow !== newState.isAttemptingGrabThrow ||
+          prev.clinchThrowAnimMs !== newState.clinchThrowAnimMs ||
           prev.grabAttemptType !== newState.grabAttemptType ||
           prev.slapAnimation !== newState.slapAnimation ||
           prev.isThrowingSalt !== newState.isThrowingSalt ||
@@ -3871,13 +3890,6 @@ const GameFighter = ({
             tier = "charged";
           }
           if (data.cinematicKill) tier = "cinematic";
-          // Tip / rope-edge confirm reads a touch sharper than a deep mash connect.
-          if (
-            (data.tipSlap || data.ropeEdgeHit || data.ropeEdgeSlap) &&
-            tier === "slap"
-          ) {
-            tier = "tip";
-          }
           setAttackerConfirmTier(tier);
           if (attackerConfirmTimeoutRef.current) {
             clearTimeout(attackerConfirmTimeoutRef.current);
@@ -3887,7 +3899,7 @@ const GameFighter = ({
           const dur =
             tier === "cinematic" ? 280 :
             tier === "charged" ? 200 :
-            tier === "tip" ? 170 : 140;
+            155;
           attackerConfirmTimeoutRef.current = setTimeout(() => {
             setAttackerConfirmTier(null);
             attackerConfirmTimeoutRef.current = null;
@@ -3895,10 +3907,10 @@ const GameFighter = ({
         }
 
         // PROCEDURAL ANIMATION — attacker contact recoil. On connect, the
-        // attacker's body jolts back for ~0.18s (attackerContactRecoil
+        // attacker's body jolts back for ~0.12s (attackerContactRecoil
         // keyframes) before resuming the swing loop. Charged headbutts + belly
         // slams PLANT (no CSS bounce). Cinematic kills keep their scripted pose.
-        // The 200ms auto-clear ends before the fastest slap re-chain.
+        // The 120ms auto-clear ends before the fastest slap re-chain.
         if (
           data.attackerId &&
           data.attackerId === player.id &&
@@ -3913,7 +3925,7 @@ const GameFighter = ({
           attackerRecoilTimeoutRef.current = setTimeout(() => {
             setAttackerRecoil(false);
             attackerRecoilTimeoutRef.current = null;
-          }, 200);
+          }, 120);
         }
 
         // Contact freeze pin — snap interpolated X to the server park pose so
@@ -4053,17 +4065,11 @@ const GameFighter = ({
           if (data.isGored) {
             // EXPOSED (matador punish) — heavier crack than a normal slap/charge.
             addShake("slap_parry", { dirX: shakeDir, scale: 0.95 });
-          } else if (isRopeEdge) {
-            // Rope-clamp — FG impact kick (replace-mode, no roll). Rehitas stay
-            // slightly lighter so the barrage reads as rhythmic cracks, not a
-            // camera seizure.
-            const edgeScale = edgeRehit
-              ? data.isPalmThrust
-                ? 0.92
-                : 0.85
-              : data.isPalmThrust
-                ? 1.08
-                : 1.0;
+          } else if (isRopeEdge && data.isPalmThrust) {
+            // Palm rope-clamp — FG impact kick (replace-mode, no roll).
+            // Slap clamp uses slap_hit below; extra camera on the posture-tax
+            // grind stacked too hard with the normal hit shake.
+            const edgeScale = edgeRehit ? 0.92 : 1.08;
             addShake("rope_clamp_hit", {
               dirX: shakeDir,
               scale: momentumScale(edgeScale, 0.2, 0.35),
@@ -4091,13 +4097,11 @@ const GameFighter = ({
           } else {
             // Slaps: base stays light so a poke reads as a poke, but a chained
             // or dash-in slap escalates continuously instead of flipping a
-            // binary `momentumHit` flag. Tip spacing keeps its snappier crack.
-            const tipBonus = data.tipSlap
-              ? 0.15 + (data.tipQuality || 0.45) * 0.1
-              : 0;
+            // binary `momentumHit` flag. Replace-mode shake (see slap_hit
+            // profile) keeps each connect a discrete crack.
             addShake("slap_hit", {
               dirX: shakeDir,
-              scale: momentumScale(1 + tipBonus),
+              scale: momentumScale(1),
             });
           }
         }
@@ -4154,13 +4158,6 @@ const GameFighter = ({
             // other half of the doubling. Server-gated ⇒ silent with the flag off.
             if (data.momentumHit) {
               playSound(baseSound, 0.012, null, 0.6, pan);
-            }
-            // MASTERY Phase 4 (4.2): tip spacing — pitched-UP crack so a clean
-            // tip connect reads as snappy / precise (opposite of momentum weight).
-            // Scales with tipQuality; silent below the server feel threshold.
-            if (data.tipSlap) {
-              const q = Math.max(0.45, Math.min(1, data.tipQuality || 0.45));
-              playSound(baseSound, 0.016 + q * 0.014, null, 1.22 + q * 0.2, pan);
             }
           } else {
             const baseSound = pickRandomSound(chargedHitSounds);
@@ -4261,25 +4258,12 @@ const GameFighter = ({
               isPunish: data.isPunish || false,
               isArmorBreak: data.isArmorBreak || false,
               isPowered: data.isPowered || false,
-              isTipSlap: !!data.tipSlap,
               isRopeEdgeSlap: !!(data.ropeEdgeHit || data.ropeEdgeSlap),
               cinematicKill: data.cinematicKill || false,
               cinematicHitstopMs: data.cinematicKill ? 550 : 0,
               presentationEventId: hitPres?.eventId || null,
             });
           }
-        }
-
-        // Tip / rope-edge posture HUD flinch — victim's gauge flashes so the
-        // spacing reward or rope posture tax is visible in the moment.
-        if (
-          index === 0 &&
-          (data.tipSlap || data.ropeEdgeHit || data.ropeEdgeSlap) &&
-          (data.attackType === "slap" || data.isPalmThrust)
-        ) {
-          const vNum = data.victimPlayerNumber;
-          if (vNum === 1) setP1TipDrain(Date.now());
-          else if (vNum === 2) setP2TipDrain(Date.now());
         }
 
         // COUNTER HIT / PUNISH side banners — folded into player_hit (were
@@ -4443,6 +4427,8 @@ const GameFighter = ({
             amp = 1.2 + Math.min((data.chargePercentage || 0) / 100, 1) * 0.25;
           } else if (data.attackType === "flap") {
             amp = 1.35;
+          } else if (data.attackType === "slap") {
+            amp = 1.08;
           } else if (data.isLowKick || data.attackType === "lowKick") {
             amp = 0.9;
           }
@@ -4461,7 +4447,6 @@ const GameFighter = ({
           const edgeRehitVictim =
             isRopeEdgeVictim &&
             performance.now() - lastEdgeJuiceAtRef.current < 160;
-          if (data.tipSlap) amp += 0.08;
           if (isRopeEdgeVictim) {
             // First clamp hit gets the fat crumple; rehitas keep a lighter dent
             // so the sprite doesn't restart a full squash every 110ms.
@@ -4510,21 +4495,44 @@ const GameFighter = ({
         }
 
         // PHASE 4A — arm the struck-limb pose hold. Only GENUINE limb-only
-        // contacts qualify (see struckLimbHold); torso and torso-plus-limb body
-        // contacts fall through to the ordinary hit reaction.
-        if (
-          armStruckLimbHold(
+        // contacts qualify (see struckLimbHold). Body slap/palm connects freeze
+        // the pre-hit pose so the generic hit sprite cannot eat the contact frame.
+        {
+          const nowHit = performance.now();
+          const hsUntil = getDisplayHitstopUntil();
+          const limbArmed = armStruckLimbHold(
             struckLimbHoldRef.current,
             data,
             player.id,
-            performance.now(),
-            getDisplayHitstopUntil(),
+            nowHit,
+            hsUntil,
             getStruckSlapLimbSrc
-          )
-        ) {
-          // `isHit` may already have rendered (hitstop-before-event order), so
-          // the swap needs its own render — movement alone doesn't re-render.
-          forceVisualRender();
+          );
+          const snapshot = lastNonHitSpriteRef.current;
+          const contactArmed =
+            !limbArmed &&
+            snapshot &&
+            snapshot !== hitSprite &&
+            armVictimContactHold(
+              struckLimbHoldRef.current,
+              data,
+              player.id,
+              nowHit,
+              hsUntil,
+              snapshot
+            );
+          const connectArmed = armSlapConnectHold(
+            slapConnectHoldRef.current,
+            data,
+            player.id,
+            nowHit,
+            hsUntil
+          );
+          if (limbArmed || contactArmed || connectArmed) {
+            // `isHit` may already have rendered (hitstop-before-event order), so
+            // the swap needs its own render — movement alone doesn't re-render.
+            forceVisualRender();
+          }
         }
 
         // Charged-hit knockback trail (A4): only the victim's GameFighter instance
@@ -7292,6 +7300,18 @@ const GameFighter = ({
     lastGrabState.current = penguin.isGrabbing;
   }, [penguin.isGrabbing]);
 
+  // Drive-release shove-off: a quiet slap-hit tap on the active / hit frame.
+  // Flavor only — no cone, no spark. The shove is not an attack.
+  useEffect(() => {
+    if (!penguin.isGrabSeparatePalm) return;
+    const id = setTimeout(() => {
+      const pos = interpolatedPositionRef.current;
+      const pan = xToPan(pos?.x ?? penguin.x);
+      playSound(pickRandomSound(slapHitSounds), 0.012, null, 1.0, pan);
+    }, GRAB_SEPARATE_PALM_ANIM.SMEAR_END);
+    return () => clearTimeout(id);
+  }, [penguin.isGrabSeparatePalm]);
+
   useEffect(() => {
     if (penguin.isThrowingSnowball && !lastThrowingSnowballState.current) {
       playSound(snowballThrowSound, 0.05);
@@ -8223,9 +8243,10 @@ const GameFighter = ({
   // during render, same pattern as the flap/idle-hold refs.
   // The command-grab Drive release borrows these same four poses for the
   // fighter being shoved off (server flag `isGrabSeparatePalm`). It is pose-only
-  // — no thrust is happening — so it runs on its own, tighter frame table that
-  // fits the release slide. It rides this clock so both can never be live at
-  // once and the sequence always restarts from the windup.
+  // — no thrust is happening — so it runs on its own, tighter frame table.
+  // Startup/smear play in place; the server holds the slide until SMEAR_END.
+  // It rides this clock so both can never be live at once and the sequence
+  // always restarts from the windup.
   const inSeparatePalm = !!penguin.isGrabSeparatePalm;
   const palmPoseActive = displayPenguin.isPalmThrust || inSeparatePalm;
   if (palmPoseActive) {
@@ -8283,6 +8304,14 @@ const GameFighter = ({
     else if (elapsed < SLAP_ANIM.HIT_END) slapFrame = 2; // hit (strike, held)
     else slapFrame = 3; // recovery — settle back to the ready stance (not idle)
   }
+  // Landed slap: hold the extended hit frame through hitstop even if the
+  // director already cut to recovery (late-active tags).
+  const holdSlapHitPose = resolveSlapConnectHold(
+    slapConnectHoldRef.current,
+    performance.now(),
+    getDisplayHitstopUntil()
+  );
+  if (holdSlapHitPose && inSlapPhaseAnim) slapFrame = 2;
   // PHASE 4A — resolve the struck-limb hold for THIS render. The deadline is
   // always the existing display hitstop's, so the pose can never outlive the
   // freeze it belongs to.
@@ -8484,6 +8513,9 @@ const GameFighter = ({
     penguin.offensiveAerialPresentation || null,
     !!penguin.isGrabPushDefeat
   );
+  if (!penguin.isHit && !penguin.isHitFalling) {
+    lastNonHitSpriteRef.current = rawSpriteSrc;
+  }
 
   // Dash frames: the dodge now has real anticipation + landing poses.
   // getImageSrc returns the tucked `dodging` pose for the whole dodge; here we
@@ -8514,7 +8546,11 @@ const GameFighter = ({
   const renderNowMs = performance.now();
   let effectiveSpriteSrc = displaySpriteSrc;
   if (displaySpriteSrc === pumo && lastNonIdleSpriteRef.current) {
-    if (lastNonIdleSpriteRef.current === dodging || lastNonIdleSpriteRef.current === recovering) {
+    if (
+      lastNonIdleSpriteRef.current === dodging ||
+      lastNonIdleSpriteRef.current === recovering ||
+      lastNonIdleSpriteRef.current === grabbingSprite
+    ) {
       lastNonIdleSpriteRef.current = null;
       idleHoldUntilRef.current = 0;
     } else {
@@ -8648,6 +8684,7 @@ const GameFighter = ({
   // static hold, so no further forcing is needed — the isSlapAttack drop (→ idle)
   // or the next slap's slapAnimation change triggers the re-render on its own.
   renderedHitVisualsRef.current.slapAnim = inSlapPhaseAnim && slapFrame < 3;
+  renderedHitVisualsRef.current.slapConnectHold = holdSlapHitPose;
   // RAW PARRY SUCCESS: keep ticking through the local visual hold so
   // block→f1→f2 advances and the pose clears when `until` expires (even if
   // server flags already dropped for a flurry re-tap). Mid-hitstop swaps also
@@ -8928,6 +8965,22 @@ const GameFighter = ({
     });
   }
 
+  // Strike paint order — raise while the limb is visually out, not on confirm.
+  // Opponent flags come from the snapshot ref (live even when UI state is stale).
+  const opponentForStrikeLayer =
+    penguin.fighter === "player 1"
+      ? allPlayersDataRef.current.player2
+      : allPlayersDataRef.current.player1;
+  const strikeExtendZ = resolveStrikeExtendZ({
+    limbOut:
+      (inSlapPhaseAnim && isSlapLimbOut(slapFrame, holdSlapHitPose)) ||
+      (palmPoseActive && isPalmLimbOut(palmThrustFrame)),
+    selfStart: penguin.attackStartTime,
+    opponentCompeting: isOpponentStrikeCompeting(opponentForStrikeLayer),
+    opponentStart: opponentForStrikeLayer?.attackStartTime,
+    facing: penguin.facing ?? -1,
+  });
+
   // Shared style-driving props for the static fighter <img>. Spread into BOTH
   // the body sprite and the grab-arm overlay so the arm inherits the exact same
   // position/facing/animation/filter and stays pixel-locked to the body through
@@ -8958,14 +9011,9 @@ const GameFighter = ({
     $attackerRecoil: attackerRecoil,
     $isDead: penguin.isDead,
     $isSlapAttack: displayPenguin.isSlapAttack,
-    // Limb-out poses: raise z so the slap/palm paints over the opponent body
-    // while extended (separate arm layer would be better long-term; this is the
-    // interim rail that stops "arm behind belly" without new art).
-    $isStrikeExtending:
-      !!(
-        (displayPenguin.isSlapAttack && displayPenguin.isAttacking) ||
-        (displayPenguin.isPalmThrust && displayPenguin.isAttacking)
-      ),
+    // Limb-out z: smear/hit pose (not isAttacking — that's the hitbox and can
+    // die while the arm is still painted). Simultaneous: first swing leads.
+    $strikeExtendZ: strikeExtendZ,
     $isThrowing: penguin.isThrowing,
     $isRingOutThrowCutscene: penguin.isRingOutThrowCutscene,
     $isGrabbing: displayPenguin.isGrabbing,
@@ -9054,6 +9102,7 @@ const GameFighter = ({
     $showClinchKillThrowLanding: showClinchKillThrowLanding,
     $isBeingThrown: penguin.isBeingThrown,
     $isLocalPlayer: penguin.id === localId,
+    $onIce: !isOutsideDohyo(poseResolved.renderX, poseResolved.renderY),
   };
 
   // Update animation state (will start/stop intervals as needed)
@@ -9086,8 +9135,7 @@ const GameFighter = ({
     isOutsideRingNow && typeof document !== "undefined"
       ? document.querySelector(".fallen-actors")
       : null;
-  // Shared ice-disc clip (ellipse). Reflections portal here so they can only
-  // paint on the blue ice, regardless of MAP rope X.
+  // Shared ice-mask host in .game-scene. Pixel mask of the tawara interior.
   const iceClipHost =
     typeof document !== "undefined"
       ? document.querySelector(".ice-reflection-clip")
@@ -9168,7 +9216,6 @@ const GameFighter = ({
               player1ParryRefund: p1ParryRefund,
               player1Balance: allPlayersData.player1?.balance ?? 100,
               player1BalanceGain: p1BalanceGain,
-              player1TipDrain: p1TipDrain,
               player1HasDeepGrip: !!allPlayersData.player1?.hasDeepGrip,
               // Only show PUSH/BACK while actually clinched — defends against
               // a stale clinchShoveLead surviving a push-kill / round freeze.
@@ -9197,7 +9244,6 @@ const GameFighter = ({
               player2ParryRefund: p2ParryRefund,
               player2Balance: allPlayersData.player2?.balance ?? 100,
               player2BalanceGain: p2BalanceGain,
-              player2TipDrain: p2TipDrain,
               player2HasDeepGrip: !!allPlayersData.player2?.hasDeepGrip,
               player2ShoveLead: allPlayersData.player2?.inClinch
                 ? (allPlayersData.player2?.clinchShoveLead ?? null)
@@ -9538,6 +9584,7 @@ const GameFighter = ({
             $fps={spriteConfig?.fps || 30}
             $loop={spriteConfig?.loop !== false}
             $isLocalPlayer={penguin.id === localId}
+            $onIce={!isOutsideDohyo(displayPosition.x, displayPosition.y)}
             $isAtTheRopes={penguin.isAtTheRopes}
             $isGrabBreaking={penguin.isGrabBreaking}
             $isRawParrying={displayPenguin.isRawParrying}

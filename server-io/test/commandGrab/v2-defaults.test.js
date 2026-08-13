@@ -16,6 +16,7 @@ const {
   CMD_GRAB_VARIANT,
   CMD_GRAB_VARIANT_PREBUFFER_MS,
   CMD_GRAB_CONNECT_STARTUP_MS,
+  CMD_GRAB_KILL_CONNECT_STARTUP_MS,
   CMD_DRIVE_CARRY_MS,
   CMD_DRIVE_DISTANCE_MIN,
   CMD_DRIVE_DISTANCE_MAX,
@@ -26,12 +27,14 @@ const {
   CMD_DRIVE_DEFENDER_RECOVERY_MS,
   CMD_THROW_RECOVERY_TAIL_MS,
   CMD_PULL_RECOVERY_TAIL_MS,
+  CMD_PULL_INPUT_LOCK_MS,
+  CMD_PULL_TWEEN_MS,
   CMD_DRIVE_POSTURE_CHIP,
   CMD_GRAB_CONNECT_HITSTOP_MS,
   CMD_THROW_LAUNCH_HITSTOP_MS,
   CMD_PULL_LAUNCH_HITSTOP_MS,
   CMD_GRAB_CINCH_GRABBER_SHARE,
-  CLINCH_PULL_INPUT_LOCK_MS,
+  CMD_GRAB_CINCH_MS,
   CLINCH_THROW_DURATION_MIN_MS,
   HITSTOP_GRAB_MS,
   HITSTOP_THROW_MS,
@@ -42,10 +45,12 @@ const {
   SLAP_STARTUP_MS,
   CLINCH_THROW_KILL_THRESHOLD,
   BALANCE_MAX,
+  DELTA_TRACKED_PROPS,
 } = require("../../constants");
 const { getConnectDistance } = require("../../strikeContact");
 const { getGrabThreatTravel } = require("../../combatHelpers");
 const { MAP_LEFT_BOUNDARY, MAP_RIGHT_BOUNDARY } = require("../../gameUtils");
+const { profileFor } = require("../../momentumTransfer");
 
 test("command grab defaults", async (t) => {
   await t.test("the legacy clinch subgame is gone, not dormant", () => {
@@ -141,20 +146,30 @@ test("command grab defaults", async (t) => {
   });
 
   await t.test("conversions commit far harder than the Drive", () => {
-    // Compared as TOTAL commitment from resolution, because the throw/pull numbers
-    // are tails on top of their own travel, not standalone windows. The relative
-    // order of Pull vs Throw is a tuning detail; what must hold is that Drive is
-    // the safe pressure tool and both conversions spend your turn.
+    // Drive recovery is a post-release window. Throw still pays a tail on top
+    // of the arc. Pull's commitment IS the yank — it settles +0, like a slap.
     const driveTotal = CMD_DRIVE_ATTACKER_RECOVERY_MS;
-    const pullTotal = CLINCH_PULL_INPUT_LOCK_MS + CMD_PULL_RECOVERY_TAIL_MS;
     const throwTotal = CLINCH_THROW_DURATION_MIN_MS + CMD_THROW_RECOVERY_TAIL_MS;
     assert.ok(
-      pullTotal > driveTotal * 2,
-      `Pull should cost far more than a Drive, got ${pullTotal} vs ${driveTotal}`
+      CMD_PULL_TWEEN_MS > driveTotal,
+      `the yank itself must still be a real commitment, got ${CMD_PULL_TWEEN_MS} vs ${driveTotal}`
     );
     assert.ok(
       throwTotal > driveTotal * 2,
       `Throw should cost far more than a Drive, got ${throwTotal} vs ${driveTotal}`
+    );
+  });
+
+  await t.test("Pull settles +0 — the yank is the lock, not a second window", () => {
+    assert.equal(
+      CMD_PULL_INPUT_LOCK_MS,
+      CMD_PULL_TWEEN_MS,
+      "input lock must die with the yank, or the puller is still jailed when the victim is free"
+    );
+    assert.equal(
+      CMD_PULL_RECOVERY_TAIL_MS,
+      0,
+      "a leftover attacker tail is a punish for landing a grab in pocket"
     );
   });
 
@@ -164,10 +179,6 @@ test("command grab defaults", async (t) => {
     assert.ok(
       CMD_THROW_RECOVERY_TAIL_MS < CLINCH_THROW_DURATION_MIN_MS / 2,
       "the throw tail must be a tail, not a second commitment"
-    );
-    assert.ok(
-      CMD_PULL_RECOVERY_TAIL_MS < CLINCH_PULL_INPUT_LOCK_MS / 2,
-      "the pull tail must be a tail, not a second commitment"
     );
   });
 
@@ -232,6 +243,7 @@ test("command grab defaults", async (t) => {
 
   await t.test("read beats are per-variant, and the Drive has none", () => {
     const { drive, pull, throw: thr } = CMD_GRAB_CONNECT_STARTUP_MS;
+    const kill = CMD_GRAB_KILL_CONNECT_STARTUP_MS;
     assert.equal(
       drive,
       0,
@@ -239,8 +251,29 @@ test("command grab defaults", async (t) => {
     );
     assert.ok(pull > 0 && pull < thr, "pull gets a short look, throw the longest");
     assert.ok(
-      thr < 220,
-      "with no Brace to host, the old 220ms technique tell would be dead air"
+      pull >= 160 && pull <= 280,
+      `pull tell ${pull}ms must be a tug, not a pose hold`
+    );
+    assert.ok(
+      thr >= 220 && thr < 400,
+      `throw tell ${thr}ms must be a readable windup, not a cutscene`
+    );
+    assert.ok(kill.drive === 0, "a lethal drive still starts moving immediately");
+    assert.ok(
+      kill.pull > pull && kill.throw > thr,
+      "kill grabs hold longer so the finisher reads before travel"
+    );
+    assert.ok(kill.pull < kill.throw, "kill throw remains the longest look");
+    assert.ok(
+      CMD_GRAB_CINCH_MS < pull,
+      `cinch ${CMD_GRAB_CINCH_MS}ms must finish before the shortest tell, or the pair drifts together through the windup`
+    );
+  });
+
+  await t.test("tell duration rides the delta wire", () => {
+    assert.ok(
+      DELTA_TRACKED_PROPS.includes("clinchThrowAnimMs"),
+      "stamping clinchThrowAnimMs does nothing if the client never receives it"
     );
   });
 
@@ -259,6 +292,23 @@ test("command grab defaults", async (t) => {
       "a single Drive from centre must not reach the rope on its own"
     );
     assert.ok(CMD_DRIVE_DISTANCE_MIN < CMD_DRIVE_DISTANCE_MAX);
+  });
+
+  await t.test("Pull stays a pocket side-switch; Matador is the dump", () => {
+    const pull = profileFor("pull");
+    const matador = profileFor("matador");
+    assert.ok(
+      pull.ceil < GRAB_RANGE,
+      `belt tug ceil ${pull.ceil} must stay inside grab range ${GRAB_RANGE} — swap the pocket, don't reset`
+    );
+    assert.ok(
+      pull.ceil - pull.floor <= 50,
+      "pull's posture band is a tug, not a launch curve"
+    );
+    assert.ok(
+      matador.floor > pull.ceil,
+      "even a standing-grab matador must out-send the biggest belt tug"
+    );
   });
 
   await t.test("a Drive cannot solo-kill a healthy opponent", () => {

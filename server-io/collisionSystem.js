@@ -14,8 +14,6 @@ const {
   RAW_PARRY_KNOCKBACK, RAW_PARRY_SLAP_KNOCKBACK,
   RAW_PARRY_STAMINA_REFUND, RAW_PARRY_COOLDOWN_MS,
   PERFECT_PARRY_ATTACKER_STUN_MAX, PERFECT_PARRY_KNOCKBACK_MAX,
-  SLAP_TIP_POSTURE_MULT, SLAP_TIP_HITSTOP_BONUS_MS, SLAP_TIP_FEEL_THRESHOLD,
-  SLAP_TIP_DRIFT_MULT,
   CLASH_MARGIN_MIN_MS, CLASH_MARGIN_MAX_MS,
   CLASH_LOSER_KB_MIN, CLASH_LOSER_KB_MAX,
   CLASH_WINNER_KB_MAX, CLASH_WINNER_KB_MIN,
@@ -167,6 +165,7 @@ const {
   isActionFacingOwnershipV2Enabled,
   acquireActionFacingLock,
   releaseActionFacingLock,
+  releaseStrikeFacingLock,
   mintActionFacingInstanceId,
   ACTION_FACING_OWNER,
   ACTION_FACING_REASON,
@@ -249,7 +248,6 @@ const {
 const {
   getConnectDistance,
   getHitParkDistance,
-  getSlapTipQuality,
   isWithinConnectRange,
   getContactSeamX,
   clampToRopeRest,
@@ -2066,8 +2064,8 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
     p.isChargingAttack = false;
     p.chargeStartTime = 0;
     p.chargeAttackPower = 0;
-    p.chargingFacingDirection = null;
     p.attackType = null;
+    releaseStrikeFacingLock(p, { reason: ACTION_FACING_RELEASE.INTERRUPT });
     p.attackStartTime = 0;
     p.attackEndTime = 0;
     p.chargedAttackHit = false;
@@ -2244,10 +2242,10 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       player.isAttacking = false;
       player.attackStartTime = 0;
       player.attackEndTime = 0;
-      player.chargingFacingDirection = null;
       player.isChargingAttack = false;
       player.chargeStartTime = 0;
       player.chargeAttackPower = 0;
+      releaseStrikeFacingLock(player, { reason: ACTION_FACING_RELEASE.INTERRUPT });
 
       // Set recovery state for the attacker
       player.isRecovering = true;
@@ -2265,6 +2263,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       player.isAttacking = false;
       player.attackStartTime = 0;
       player.attackEndTime = 0;
+      releaseStrikeFacingLock(player, { reason: ACTION_FACING_RELEASE.INTERRUPT });
     }
 
     // Absorb VFX: the pink "wrap ring" (formerly the grab-armor absorb) is now
@@ -2732,6 +2731,9 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           attacker.isSlapAttack = false;
           attacker.isPalmThrust = false;
           attacker.attackType = null;
+          releaseStrikeFacingLock(attacker, {
+            reason: ACTION_FACING_RELEASE.INTERRUPT,
+          });
           attacker.isRecovering = true;
           attacker.slapParryKnockbackVelocity = shoveVel;
           attacker.inputLockUntil = Math.max(attacker.inputLockUntil || 0, simNow(currentRoom) + staggerMs);
@@ -2888,24 +2890,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     }
   } else {
     // === ROCK-SOLID HIT PROCESSING ===
-    // MASTERY Phase 4 (4.2 pocket vs poke): use spacing snapshotted BEFORE
-    // MUST use pre-sep spacing (index.js slapSpacingBeforeExtension). Live sep
-    // + on-hit park both snap toward tip-meets-body — measuring after either
-    // makes every slap read as tip and breaks mastery. Quality is relative to
-    // pushbox→connect, not absolute px / post-park Δx.
-    const spacingSample =
-      typeof player.slapSpacingBeforeExtension === "number"
-        ? player.slapSpacingBeforeExtension
-        : Math.abs(player.x - otherPlayer.x);
-    const tipQuality =
-      MASTERY_P4_ANALOG && isSlapAttack
-        ? getSlapTipQuality(spacingSample, player, otherPlayer)
-        : 0;
-    const isTipSlap = tipQuality >= SLAP_TIP_FEEL_THRESHOLD;
-
     // Contact rails: snap before KB / hitstop so the freeze frame reads solid.
-    // Slap/charged → tip-meets-body; palm → tip+outset. tipQuality already
-    // latched from slapSpacingBeforeExtension (pre-sep) — park is presentation.
+    // Slap/charged → tip-meets-body; palm → tip+outset. Park is presentation.
     //
     // Phase 4A limb-only: NEVER torso-park. Tip-meets-body parking pulls the
     // limb owner toward the attacker ("suction") even though only frontArm was
@@ -3023,13 +3009,9 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     // Increment hit counter for reliable hit sound triggering
     otherPlayer.hitCounter = (otherPlayer.hitCounter || 0) + 1;
 
-    // Tip/deep (4.2) resolved above from pre-correction spacing so posture/drift
-    // rewards match actual connect depth. Slap ground transfer is scaled by ice
-    // momentum inheritance (Phase 1), not held A/D direction. Drift mult stays
-    // 1.0 (soft-whiff); posture + hitstop scale continuously with tipQuality.
-    const tipDriftMult = 1 + (SLAP_TIP_DRIFT_MULT - 1) * tipQuality;
-    const tipPostureMult = 1 + (SLAP_TIP_POSTURE_MULT - 1) * tipQuality;
-    const tipHitstopBonus = Math.round(SLAP_TIP_HITSTOP_BONUS_MS * tipQuality);
+    // Slap ground transfer is scaled by ice momentum inheritance (Phase 1),
+    // not held A/D direction. Pocket-vs-poke "tip" feel bonuses are retired —
+    // every connect parks at art-tip-meets-body; spacing skill is the hit itself.
     // Set in slap/palm posture blocks when the victim is already on the clamp.
     let isRopeEdgeHit = false;
     // Slap/palm ring-out arm: sampled BEFORE drain so the hit that cracks
@@ -3059,8 +3041,6 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         MASTERY_P3_CADENCE && player.isEnhancedSlap
           ? BALANCE_SLAP_HIT_DRAIN_ENHANCED
           : (MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN);
-      // MASTERY Phase 4 (4.2): tipQuality ramps posture drain (spacing reward);
-      // deep/point-blank is baseline. tipPostureMult === 1 with the flag off.
       // POSTURE ON THE IMPACT CHANNEL. Flat per-move constants meant a
       // flat-footed poke and a full-speed collision chipped identically, and
       // once compounding started landing whole barrages the strikes were
@@ -3088,7 +3068,6 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         MomentumTransfer.postureChipForMove("slap", postureVClose) *
         (slapDrainBase / (MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN)) *
         postureCounterMult *
-        tipPostureMult *
         (isRopeEdgeHit ? SLAP_EDGE_POSTURE_MULT : 1);
       applyBalanceDamage(otherPlayer, slapDrain, currentTime);
     } else if (player.isPalmThrust) {
@@ -3260,9 +3239,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         // on a normal slap ⇒ byte-identical.
         const cadenceStepMult =
           MASTERY_P3_CADENCE && player.isEnhancedSlap ? CADENCE_STEP_IN_MULT : 1;
-        // Tip drift bonus (4.2) rides the victim drift only (tipDriftMult === 1
-        // when deep / flag off). Pair-shift strength comes from ice momentum
-        // (slapMomentumMult) — not held movement keys.
+        // Pair-shift strength comes from ice momentum (slapMomentumMult) —
+        // not held movement keys.
         const attackerPush = MASTERY_P1_MOMENTUM
           ? Math.min(SLAP_ONHIT_ATTACKER_PUSH * slapMomentumMult * cadenceStepMult, SLAP_ONHIT_ATTACKER_PUSH_CAP)
           : Math.min(SLAP_ONHIT_ATTACKER_PUSH * cadenceStepMult, SLAP_ONHIT_ATTACKER_PUSH_CAP);
@@ -3309,7 +3287,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         // their own screen, not the decayed speed the packet arrived with.
         //
         // finalKnockbackMultiplier still carries counter / GORED / POWER /
-        // BASHO scaling; cadence and tip bonuses ride along as before. The
+        // BASHO scaling; cadence rides along as before. The
         // per-hit caps (SLAP_ONHIT_VICTIM_DRIFT_CAP, victimKbScale) are gone —
         // MAX_SEND_PX in applyTransferImpulse is the only ceiling now.
         const slapTransfer = MomentumTransfer.resolveTransfer({
@@ -3318,7 +3296,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           moveKey: "slap",
           dirToVictim: pushDirection,
           nowSim: currentTime,
-          mult: finalKnockbackMultiplier * cadenceStepMult * tipDriftMult,
+          mult: finalKnockbackMultiplier * cadenceStepMult,
           selfOverride: Math.max(0, player.slapEntryAligned || 0),
         });
         otherPlayer.knockbackVelocity.x = slapTransfer.velocity;
@@ -3695,13 +3673,9 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
               // Both false with the flag off ⇒ the client renders today's VFX.
               momentumHit: momentumHitTell,
               braked: MASTERY_P5_ASSISTS && MASTERY_P1_MOMENTUM && victimIntoHit < 0,
-              // MASTERY Phase 4 (4.2): tip spacing tell. tipQuality is continuous
-              // (0–1 across the band); tipSlap is the discrete "you feel it" gate
-              // for crack SFX / cooler spark / posture-HUD flinch. Flag off ⇒ 0/false.
-              tipQuality,
-              tipSlap: isTipSlap,
               // Rope-edge slap/palm: victim was already on the clamp — client
-              // sells the extra posture tax with heavier shake / crack.
+              // sells the extra posture tax with crack SFX / VFX (slap keeps
+              // normal hit shake; palm still uses the heavier clamp kick).
               ropeEdgeHit:
                 (isSlapAttack || !!player.isPalmThrust) && isRopeEdgeHit,
               // Legacy alias — older client paths still read ropeEdgeSlap.
@@ -3823,8 +3797,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         if (lastTransfer && (isSlapAttack || isLowKick || player.isPalmThrust)) {
           let impactHitstop =
             lastTransfer.hitstopMs +
-            (isGored ? GORED_HITSTOP_BONUS_MS : 0) +
-            (isSlapAttack ? tipHitstopBonus : 0);
+            (isGored ? GORED_HITSTOP_BONUS_MS : 0);
           // Rope-edge slap/palm: short sharp crack (weight sold client-side).
           if (isSlapAttack && isRopeEdgeHit) {
             impactHitstop = Math.max(impactHitstop, SLAP_EDGE_HITSTOP_MS);
@@ -3847,8 +3820,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           // confirm readable with the legacy light freeze.
           let slapHitstop =
             HITSTOP_SLAP_MS +
-            (isGored ? GORED_HITSTOP_BONUS_MS : 0) +
-            (isSlapAttack ? tipHitstopBonus : 0);
+            (isGored ? GORED_HITSTOP_BONUS_MS : 0);
           if (isSlapAttack && isRopeEdgeHit) {
             slapHitstop = Math.max(slapHitstop, SLAP_EDGE_HITSTOP_MS);
           }

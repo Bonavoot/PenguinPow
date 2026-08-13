@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import {
   createStruckLimbHold,
   armStruckLimbHold,
+  armVictimContactHold,
   resolveStruckLimbHold,
   struckLimbHoldNeedsTick,
   isStruckLimbHoldEligible,
@@ -799,6 +800,100 @@ describe("struck-limb hold — debug line", () => {
     assert.match(line, /hitstopIn=140ms/);
     // Purely a read: the hold is still exactly as resolved.
     assert.equal(hold.src, "palm-thrust.png");
+    assert.equal(hold.until, 1180);
+  });
+});
+
+describe("armVictimContactHold — body slap/palm freeze", () => {
+  function bodySlap(overrides = {}) {
+    return {
+      hitId: "body-1",
+      victimId: VICTIM,
+      attackerId: ATTACKER,
+      attackType: "slap",
+      limbOnlyContact: false,
+      timestamp: 1000,
+      ...overrides,
+    };
+  }
+
+  it("arms a body slap with the pre-hit snapshot and holds through hitstop", () => {
+    const hold = createStruckLimbHold();
+    assert.equal(
+      armVictimContactHold(hold, bodySlap(), VICTIM, 1000, 1180, "idle.png"),
+      true
+    );
+    assert.equal(hold.decision, "armed_contact");
+    assert.equal(hold.src, "idle.png");
+    assert.equal(hold.family, "slap");
+    assert.equal(resolveStruckLimbHold(hold, 1000, 1180, true), true);
+    assert.equal(resolveFighterDisplaySprite({
+      struckLimbHoldSrc: hold.src,
+      inDashWindup: false,
+      justLandedFromDodge: false,
+      rawSpriteSrc: "hit.png",
+      idleSrc: "pumo.png",
+      recoveringSrc: "recovering.png",
+    }), "idle.png");
+    assert.equal(resolveStruckLimbHold(hold, 1180, 1180, true), false);
+  });
+
+  it("refuses limb-only (those stay on the server-stamp path)", () => {
+    const hold = createStruckLimbHold();
+    assert.equal(
+      armVictimContactHold(
+        hold,
+        bodySlap({ limbOnlyContact: true }),
+        VICTIM,
+        1000,
+        1180,
+        "idle.png"
+      ),
+      false
+    );
+  });
+
+  it("refuses charged / missing snapshot / cinematic", () => {
+    const hold = createStruckLimbHold();
+    assert.equal(
+      armVictimContactHold(
+        hold,
+        bodySlap({ attackType: "charged" }),
+        VICTIM,
+        1000,
+        1180,
+        "idle.png"
+      ),
+      false
+    );
+    assert.equal(
+      armVictimContactHold(hold, bodySlap(), VICTIM, 1000, 1180, null),
+      false
+    );
+    assert.equal(
+      armVictimContactHold(
+        hold,
+        bodySlap({ cinematicKill: true }),
+        VICTIM,
+        1000,
+        1180,
+        "idle.png"
+      ),
+      false
+    );
+  });
+
+  it("duplicate body hit does not restart", () => {
+    const hold = createStruckLimbHold();
+    assert.equal(
+      armVictimContactHold(hold, bodySlap(), VICTIM, 1000, 1180, "walk.png"),
+      true
+    );
+    assert.equal(
+      armVictimContactHold(hold, bodySlap(), VICTIM, 1010, 1400, "other.png"),
+      false
+    );
+    assert.equal(hold.src, "walk.png");
     assert.equal(hold.until, 1180);
   });
 });

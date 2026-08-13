@@ -14,10 +14,12 @@
  *           Posture lethal does NOT waive — that finish belongs to throw/pull
  *           (and slap/palm at the clamp).
  *
- *   RELEASE Both fighters slide apart past GRAB_RANGE, so there is no free re-grab
- *           and no free jab. The split is boundary-aware — whatever the victim
- *           can't travel because they are pinned is handed to the grabber — so a
- *           rope pin survives while a mid-ring release looks symmetric.
+ *   RELEASE Both fighters hold the grip through the palm windup, then slide
+ *           apart past GRAB_RANGE on the palm's active frame, so there is no
+ *           free re-grab and no free jab. The split is boundary-aware — whatever
+ *           the victim can't travel because they are pinned is handed to the
+ *           grabber — so a rope pin survives while a mid-ring release looks
+ *           like a shove. The pusher stays idle; the victim throws the palms.
  */
 
 const test = require("node:test");
@@ -36,6 +38,7 @@ const {
   CMD_DRIVE_RELEASE_SEPARATION,
   CMD_DRIVE_ATTACKER_RECOVERY_MS,
   CMD_DRIVE_DEFENDER_RECOVERY_MS,
+  CMD_DRIVE_RELEASE_IMPACT_MS,
   CMD_DRIVE_RELEASE_TWEEN_MS,
   CMD_DRIVE_RELEASE_VICTIM_SHARE,
   CLINCH_THROW_KILL_THRESHOLD,
@@ -73,6 +76,10 @@ test("drive carry", async (t) => {
       `carry duration must be bounded, got ${s.grabber.cmdGrabCarryDuration}ms`
     );
     assert.ok(
+      s.grabber.cmdGrabCarryDuration >= 480,
+      `a pocket drive must last long enough to read, got ${s.grabber.cmdGrabCarryDuration}ms`
+    );
+    assert.ok(
       s.grabber.cmdGrabCarryTargetX !== s.grabber.cmdGrabCarryStartX,
       "the whole trajectory must be known at resolve time"
     );
@@ -91,12 +98,11 @@ test("drive carry", async (t) => {
     );
     // Posture is no longer the distance FUNCTION — momentum is, and posture is
     // a multiplier on top (GRAB_POSTURE_MULT_MAX). A battered opponent still
-    // travels further from the same input, just by a smaller margin than when
-    // posture drove the whole 110→250 range.
+    // travels further from the same input.
     assert.ok(batteredDist > healthyDist, "low posture must still travel further");
     assert.ok(
       healthyDist >= profileFor("drive").floor - 1,
-      "a standing drive still delivers its floor (deliberately small now)"
+      "a standing drive still delivers its floor — a real shove, not a nudge"
     );
     assert.ok(batteredDist <= CMD_DRIVE_DISTANCE_MAX + 1);
   });
@@ -218,9 +224,9 @@ test("drive release", async (t) => {
 
   await t.test("mid-ring, the loser eats the separation and the winner holds ground", () => {
     // Previously asserted an EVEN split, which is what made the release look like
-    // magnetic repulsion: the fighter who won the drive retreated exactly as far as
-    // the one who lost it. The winner still gives a little ground — a shove has a
-    // reaction — but the travel belongs to the victim.
+    // magnetic repulsion, then an 86/14 slap-parry split that glued the pusher
+    // down while the victim launched. The winner gives a real step back; the
+    // victim still travels farther.
     const s = driveToStartOfCarry({ p2Balance: 100 });
     s.advance(s.grabber.cmdGrabCarryDuration);
     const grabberAtEnd = s.grabber.x;
@@ -231,8 +237,8 @@ test("drive release", async (t) => {
     assert.ok(victimMoved > 1, "the victim should slide");
     assert.ok(grabberMoved > 1, "and the grabber should give some ground, not zero");
     assert.ok(
-      victimMoved > grabberMoved * 3,
-      `the loser must eat most of the separation, got grabber ${grabberMoved.toFixed(1)} ` +
+      victimMoved > grabberMoved * 2,
+      `the loser must still travel farther, got grabber ${grabberMoved.toFixed(1)} ` +
         `vs victim ${victimMoved.toFixed(1)}`
     );
     const victimShare = victimMoved / (victimMoved + grabberMoved);
@@ -313,6 +319,44 @@ test("drive release", async (t) => {
     );
   });
 
+  await t.test("fighters hold the grip until the palm's active frame, then shove", () => {
+    const s = driveToStartOfCarry({ p2Balance: 100 });
+    s.advance(s.grabber.cmdGrabCarryDuration);
+    const grabberAtEnd = s.grabber.x;
+    const victimAtEnd = s.victim.x;
+    s.advance(32);
+    assert.equal(s.victim.isGrabSeparatePalm, true, "windup is already live");
+    assert.ok(
+      Math.abs(s.grabber.x - grabberAtEnd) < 0.5,
+      "no slide during palm startup"
+    );
+    assert.ok(
+      Math.abs(s.victim.x - victimAtEnd) < 0.5,
+      "no slide during palm smear"
+    );
+    assert.equal(
+      s.victim.grabBreakStartX,
+      victimAtEnd,
+      "the tween origin is the grip, not a point already down the slide"
+    );
+    assert.ok(
+      s.victim.grabBreakSepStartTime > s.room.simTime,
+      "the tween is still waiting on the hit frame"
+    );
+    // Harness does not run the index.js integrator; the contract is the stamp.
+    // After the remaining windup, the slide's clock must be live.
+    s.advance(CMD_DRIVE_RELEASE_IMPACT_MS);
+    assert.ok(
+      s.victim.grabBreakSepStartTime <= s.room.simTime,
+      "slide clock starts once the palms are out"
+    );
+    assert.ok(
+      s.victim.grabBreakSepStartTime + s.victim.grabBreakSepDuration >
+        s.room.simTime,
+      "and the shove itself is still running"
+    );
+  });
+
   await t.test("the shoved fighter throws the palms, and drops them with the slide", () => {
     // Presentation only — the separation is caused by a fighter, not by the
     // engine pulling two sprites apart. It must never be an actual palm thrust.
@@ -349,16 +393,21 @@ test("drive release", async (t) => {
 
   await t.test("recovery blocks movement, not just actions", () => {
     // The reported bug: an actionLockUntil alone left the player able to strafe
-    // while unable to dodge, which reads as the game eating inputs. Recovery now
-    // runs as a real isRecovering window, which the movement code already gates on.
+    // while unable to dodge, which reads as the game eating inputs. The victim
+    // still runs a real isRecovering window. The pusher stays idle — movement is
+    // gated by isGrabBreakSeparating + the input lock instead of the recovering
+    // placeholder.
     const s = driveToStartOfCarry({ p2Balance: 100 });
     s.advance(s.grabber.cmdGrabCarryDuration + 32);
+    assert.equal(s.grabber.isRecovering, false, "pusher stays idle, not recovering");
+    assert.equal(s.grabber.isClinchPushing, false, "pusher is not held in the drive lean");
+    assert.equal(s.victim.isRecovering, true, "victim should be in recovery");
+    assert.ok(s.victim.recoveryDuration > 0, "victim needs a recovery duration");
     for (const [p, label] of [
       [s.grabber, "grabber"],
       [s.victim, "victim"],
     ]) {
-      assert.equal(p.isRecovering, true, `${label} should be in recovery`);
-      assert.ok(p.recoveryDuration > 0, `${label} needs a recovery duration`);
+      assert.equal(p.isGrabBreakSeparating, true, `${label} is still in the shove`);
       assert.equal(p.isStrafing, false, `${label} must not be strafing`);
       assert.equal(p.movementVelocity, 0, `${label} must not carry velocity`);
     }
@@ -367,24 +416,24 @@ test("drive release", async (t) => {
   await t.test("recovery is bounded by the slide, and expires on the sim clock", () => {
     const s = driveToStartOfCarry({ p2Balance: 100 });
     s.advance(s.grabber.cmdGrabCarryDuration + 32);
-    // The lockout spans the separation slide on purpose — you are not free while
-    // you are still visibly coming apart, and pretending otherwise is what let a
-    // player press into a tween that owned their position. What must never
-    // happen is the Drive costing MORE than the motion it produces.
+    // Post-impact lockout spans the separation slide — you are not free while
+    // you are still visibly coming apart. What must never happen is the Drive
+    // costing MORE than the motion it produces, counting from the hit frame.
+    assert.equal(
+      s.grabber.isRecovering,
+      false,
+      "the pusher has no recovering window to outlast the slide"
+    );
     assert.ok(
-      s.grabber.recoveryDuration <= CMD_DRIVE_RELEASE_TWEEN_MS,
-      `the Drive must not outlast its own slide, got ${s.grabber.recoveryDuration}ms ` +
+      s.victim.recoveryDuration <= CMD_DRIVE_RELEASE_TWEEN_MS,
+      `the Drive must not outlast its own slide, got ${s.victim.recoveryDuration}ms ` +
         `against a ${CMD_DRIVE_RELEASE_TWEEN_MS}ms separation`
     );
     // index.js owns expiry; assert the window is well-formed and finite here.
     assert.ok(
-      s.grabber.recoveryStartTime > 0 &&
-        s.grabber.recoveryStartTime + s.grabber.recoveryDuration > s.room.simTime,
+      s.victim.recoveryStartTime > 0 &&
+        s.victim.recoveryStartTime + s.victim.recoveryDuration > s.room.simTime,
       "recovery must be a live, bounded window anchored to the sim clock"
-    );
-    assert.ok(
-      s.victim.recoveryDuration < s.grabber.recoveryDuration,
-      "the defender must recover first — that IS the attacker's deficit"
     );
   });
 
@@ -392,16 +441,19 @@ test("drive release", async (t) => {
     const s = driveToStartOfCarry({ p2Balance: 100 });
     s.advance(s.grabber.cmdGrabCarryDuration + 32);
     const now = s.room.simTime;
-    assert.ok(s.grabber.inputLockUntil > now - CMD_DRIVE_RELEASE_TWEEN_MS);
-    assert.ok(s.victim.inputLockUntil > now - CMD_DRIVE_RELEASE_TWEEN_MS);
+    const lockHorizon =
+      CMD_DRIVE_RELEASE_IMPACT_MS + CMD_DRIVE_ATTACKER_RECOVERY_MS;
+    assert.ok(s.grabber.inputLockUntil > now);
+    assert.ok(s.victim.inputLockUntil > now);
     assert.ok(
-      s.grabber.inputLockUntil <= now + CMD_DRIVE_RELEASE_TWEEN_MS,
-      "the release lock must not outlast its own tween"
+      s.grabber.inputLockUntil <= now + lockHorizon,
+      "the release lock must not outlast windup + the attacker's post-impact recovery"
     );
     // The release used to stamp ONE flat lock on both fighters, which capped the
     // defender at the attacker's number and silently shrank the advertised 60ms
     // deficit to 20. The locks now ARE the recoveries, so what the constants say
-    // is what the players get.
+    // is what the players get. Both clocks are offset by the same impact delay,
+    // so the deficit is still the recovery gap.
     const lockDeficit = s.grabber.inputLockUntil - s.victim.inputLockUntil;
     assert.equal(
       lockDeficit,

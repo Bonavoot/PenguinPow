@@ -99,6 +99,7 @@ describe("Phase 13 — body presence vs immunity", () => {
       isAttacking: true,
       isSlapAttack: true,
       attackType: "slap",
+      slapFacingDirection: -1,
       x: 100,
       y: 0,
       facing: -1,
@@ -112,6 +113,7 @@ describe("Phase 13 — body presence vs immunity", () => {
     assert.equal(p.isAttacking, false);
     assert.equal(p.isSlapAttack, false);
     assert.equal(p.movementVelocity, 0);
+    assert.equal(p.slapFacingDirection, null);
     assert.equal(p._combatContactConsumed, true);
   });
 });

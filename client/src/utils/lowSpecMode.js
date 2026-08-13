@@ -1,10 +1,10 @@
 /**
  * Low Spec Mode — development toggle for weaker machines (e.g. M1 MacBook).
  *
- * OFF (default): zero visual change from the full cinematic look.
- * ON: strips expensive CSS filters / atmospheric layers / snow / ice
- *     reflections / additive particle blends. Flip back OFF to restore
- *     everything exactly as authored.
+ * OFF (default): full authored look (baked stadium grade, canvas crowd,
+ * screen-space shafts, grain, snow, ice extras).
+ * ON: strips remaining atmosphere (shafts / grain / snow / ice extras /
+ * additive particle blends / menu depth blur).
  *
  * Persists to localStorage + Electron settings.json when available.
  */

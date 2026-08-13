@@ -43,6 +43,8 @@ const {
   isRidingHitSlide,
   creditGrantedVelocity,
   SLAP_STEP_IN_VELOCITY,
+  transfer,
+  profileFor,
 } = require("./momentumTransfer");
 
 // Aerial landing Phase A.3.1 / A.3.2 — settle ownership + recovery monitoring.
@@ -90,7 +92,7 @@ const {
   ACTION_FACING_REASON,
   ACTION_FACING_RELEASE,
 } = require("./actionFacingOwnership");
-const { facingTowardOpponent } = require("./facingSystem");
+const { facingTowardOpponent, commitFacingTowardOpponent } = require("./facingSystem");
 const {
   isActionLifecycleOwnershipV2Enabled,
 } = require("./actionLifecycleFlags");
@@ -154,7 +156,6 @@ const {
   CLINCH_THROW_MIN_SEPARATION,
   PULL_BOUNDARY_MARGIN,
   MATADOR_HITSTOP_MS,
-  MATADOR_PULL_DISTANCE,
   AP_KILL_HITSTOP_MS,
 } = require("./constants");
 
@@ -920,6 +921,13 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
   // true stops the leak at the source (covers buffered/timer/CPU entry points).
   if (player.isFlapping || player.flapPhase) return;
 
+  // In-flight slap keeps its committed facing. Sidestep / air / rope-jump
+  // cross-ups must not flip this swing; the NEXT executeSlapAttack snapshots
+  // live X. Returning here also stops a mid-string call from restarting the cycle.
+  if (player.isSlapAttack && player.isAttacking) {
+    return;
+  }
+
   // MASTERY Phase 0 telemetry — snapshot entry velocity BEFORE the slide
   // overwrite below (velocity-at-press for the momentum-curve histogram).
   const slapEntryVelocity = player.movementVelocity;
@@ -938,12 +946,14 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
   if (currentRoom) {
     const opponent = currentRoom.players.find((p) => p.id !== player.id);
     if (opponent) {
-      if (!player.slapFacingDirection) {
-        player.slapFacingDirection = player.x < opponent.x ? -1 : 1;
-      }
+      // Every new swing (buffered mash follow-up included) faces from live X.
+      // Reusing slapFacingDirection pinned the whole string to the first slap's
+      // side after a cross-up — spaced taps worked because the cycle could end
+      // and clear the leftover before the next press.
+      player.slapFacingDirection = facingTowardOpponent(player, opponent);
       player.facing = player.slapFacingDirection;
-      // Phase 12 — instance-owned slap commit (chain stages share direction;
-      // new slap mints a new id so an old endSlap cannot clear a newer stage).
+      // Phase 12 — each swing mints a new instance so an old endSlap cannot
+      // clear a newer stage. Direction is this swing's live-X commit.
       if (isActionFacingOwnershipV2Enabled()) {
         const slapId = mintActionFacingInstanceId(
           player,
@@ -1052,10 +1062,6 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
       );
       player.isSlapSliding = true;
     }
-  }
-
-  if (player.isSlapAttack && player.isAttacking) {
-    return;
   }
 
   logVerbInitiation(currentRoom, player, "slap", slapEntryVelocity);
@@ -1355,15 +1361,16 @@ function executePalmThrust(player, rooms) {
 
   const now = simNowForPlayer(player);
 
-  // Auto-correct facing toward the opponent, then lock it for the move so the
-  // thrust always fires the correct way even if inputs jitter.
+  // New palm always faces live X (buffered follow-up after a sidestep/air/
+  // rope-jump cross-up included). Skipping dodge/sidestep here reused stale
+  // facing for the whole thrust. In-flight lock still prevents a mid-poke flip.
   const currentRoom = rooms.find((room) =>
     room.players.some((p) => p.id === player.id)
   );
   if (currentRoom) {
     const opponent = currentRoom.players.find((p) => p.id !== player.id);
-    if (opponent && !opponent.isDodging && !opponent.isSidestepping) {
-      player.facing = player.x < opponent.x ? -1 : 1;
+    if (opponent) {
+      commitFacingTowardOpponent(player, opponent);
     }
   }
   logVerbInitiation(currentRoom, player, "palm", palmEntryVelocity);
@@ -1715,14 +1722,11 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   if (currentRoom) {
     const opponent = currentRoom.players.find((p) => p.id !== player.id);
 
-    // Only auto-correct if opponent exists, is NOT dodging, and hasn't just dodged through us
-    // If opponent is dodging or just crossed through, preserve the original facing direction
-    // so the charged attack continues in its committed direction and whiffs naturally
-    if (opponent && !opponent.isDodging && !opponent.isSidestepping) {
-      const shouldFaceRight = player.x < opponent.x;
-      const correctedFacing = shouldFaceRight ? -1 : 1;
-
-      player.facing = correctedFacing;
+    // Release is a new commit: face live X even if they are still in a
+    // sidestep/dodge arc. The lunge lock below freezes that direction for the
+    // travel — a dodge-through AFTER release still whiffs behind the hitbox.
+    if (opponent) {
+      commitFacingTowardOpponent(player, opponent);
     }
 
     logVerbInitiation(currentRoom, player, "charged", chargedEntryVelocity);
@@ -2886,7 +2890,10 @@ function executeInputBuffer(player, rooms) {
 /**
  * MATADOR success — grab would have connected on a live matador window.
  * Instant pull (no clinch): yank the grabber through the matador to the far
- * side. Land threshold bypassed; kill if grabber balance < CLINCH_THROW_KILL_THRESHOLD.
+ * side, spending the grabber's grabApproachSpeed (the ice they brought into
+ * the attempt). Standing-grab reads still dump (matador floor); a slide-in
+ * grab buys the ceiling. Land threshold bypassed; kill if grabber balance
+ * < CLINCH_THROW_KILL_THRESHOLD.
  *
  * @param {object} matador - defender who armed BACK+SPACE
  * @param {object} grabber - attacker whose grab connected into the matador
@@ -2899,7 +2906,13 @@ function resolveMatadorPull(matador, grabber, room, io) {
   const pullDirection = grabber.x < matador.x ? 1 : -1;
   const isKill =
     grabber.balance < CLINCH_THROW_KILL_THRESHOLD && !room.gameOver;
-  const pullDist = isKill ? CLINCH_KILL_PULL_DISTANCE : MATADOR_PULL_DISTANCE;
+  const grabberApproach = Math.max(0, grabber.grabApproachSpeed || 0);
+  const matadorProfile = profileFor("matador");
+  const pullDist = isKill
+    ? CLINCH_KILL_PULL_DISTANCE
+    : Math.round(
+        transfer(grabberApproach, matadorProfile.floor, matadorProfile.ceil)
+      );
   const pullTweenDur = isKill
     ? CLINCH_KILL_PULL_TWEEN_DURATION
     : CLINCH_PULL_TWEEN_DURATION;

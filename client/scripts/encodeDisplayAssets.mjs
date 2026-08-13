@@ -10,17 +10,11 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import sharp from "sharp";
+import { bakeArenaPresentation } from "./bake-arena-map.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(__dirname, "..");
-const ASSETS = path.join(CLIENT, "src/assets");
 const SOUNDS = path.join(CLIENT, "src/sounds");
-
-const MAP_SRC = path.join(ASSETS, "game-map-444.png");
-const MAP_OUT = path.join(ASSETS, "game-map-444.webp");
-const MAP_W = 3840;
-const MAP_H = 2560;
 
 const BATTLE_WAVS = [
   "battle-music-sound.wav",
@@ -33,18 +27,7 @@ function kb(n) {
 }
 
 async function encodeMap() {
-  if (!fs.existsSync(MAP_SRC)) {
-    throw new Error(`missing map master: ${MAP_SRC}`);
-  }
-  await sharp(MAP_SRC)
-    .resize(MAP_W, MAP_H, { fit: "fill", kernel: sharp.kernel.lanczos3 })
-    .webp({ quality: 88, effort: 5, smartSubsample: true })
-    .toFile(MAP_OUT);
-  const before = fs.statSync(MAP_SRC).size;
-  const after = fs.statSync(MAP_OUT).size;
-  console.log(
-    `map: ${MAP_W}×${MAP_H} webp q88 — ${kb(before)} → ${kb(after)}`,
-  );
+  await bakeArenaPresentation();
 }
 
 function encodeBattleMusic() {

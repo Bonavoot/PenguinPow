@@ -38,7 +38,7 @@ const Gyoji = ({ gyojiState, hakkiyoi }) => {
 
   return (
     <>
-      <GyojiShadow gyojiState={gyojiState} src={imgSrc} />
+      <GyojiShadow pose={sourceKey} src={imgSrc} />
       <img
         src={imgSrc}
         alt="gyoji"

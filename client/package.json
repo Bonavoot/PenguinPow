@@ -12,6 +12,7 @@
     "bake:dohyo-display": "node scripts/bake-dohyo-display.mjs",
     "bake:dohyo": "npm run enhance:dohyo && npm run bake:dohyo-display && node scripts/measure-ice-clip.mjs --write",
     "encode:display": "node scripts/encodeDisplayAssets.mjs",
+    "bake:arena": "node scripts/bake-arena-map.mjs",
     "build": "node scripts/maybeBake.mjs && vite build",
     "lint": "eslint src --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
