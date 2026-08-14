@@ -24,8 +24,9 @@ import {
  * Hierarchy is length + type size + hold, not a lower seat. Both slots
  * share one origin. Cap 2 per side, and only for DIFFERENT types
  * (COUNTER HIT + PUNISH). Same type restrikes the live seat — never
- * a second copy of the same word. The old instance cuts out, a short
- * empty beat, then the wipe plays again. The blink is the confirm.
+ * a second copy of the same word. Same recipe as PERFECT / MATADOR:
+ * the old instance hides in place, the live slab stays up, and a
+ * scale punch marks the confirm. No blink, no wipe replay.
  *
  * Hype (PERFECT / MATADOR) lives on SumoHypeStamp, above this rail.
  *
@@ -216,7 +217,8 @@ const useAnnouncementRail = (isLeftSide, type) => {
 
 // ============================================
 // ANIMATIONS
-// Fill wipes. Type snaps. The slab may nudge — it never scales the glyphs.
+// Fresh: fill wipes, type snaps. Restrike: the slab stays and punches
+// (same scale confirm as SumoHypeStamp). Exit: fill wipes away.
 // ============================================
 
 const CLIP_OPEN = "0";
@@ -253,6 +255,12 @@ const textSnapOff = keyframes`
   100% { opacity: 0; }
 `;
 
+const restrikePunch = keyframes`
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.08); }
+  100% { transform: scale(1); }
+`;
+
 // ============================================
 // LAYOUT
 // ============================================
@@ -283,13 +291,21 @@ const BannerWrapper = styled.div`
 
 const EXIT_DURATION_S = ANNOUNCEMENT_EXIT_S;
 const REPLACE_ENTER_DELAY_S = 0.05;
-const RESTRIKE_GAP_S = 0.06;
+const RESTRIKE_S = 0.12;
 const MIN_HOLD_S = ANNOUNCEMENT_MIN_HOLD_S;
 const WIPE_IN_S = 0.14;
 const TEXT_SNAP_DELAY_S = 0.08;
 
 const BannerMotion = styled.div`
   position: relative;
+  transform-origin: ${(p) => (p.$isLeftSide ? "right center" : "left center")};
+  ${(p) =>
+    p.$handoff === "restrike" &&
+    !p.$evicted &&
+    css`
+      animation: ${restrikePunch} ${RESTRIKE_S}s
+        cubic-bezier(0.2, 0.9, 0.22, 1) both;
+    `}
 `;
 
 const Slab = styled.div`
@@ -339,16 +355,19 @@ const FillWipe = styled.div`
 
     const isRestrike = p.$handoff === "restrike";
     const isReplace = p.$handoff === "replace";
-    const enterDelay = isReplace
-      ? REPLACE_ENTER_DELAY_S
-      : isRestrike
-        ? RESTRIKE_GAP_S
-        : 0;
+    const enterDelay = isReplace ? REPLACE_ENTER_DELAY_S : 0;
     const hold =
       Math.max(
         MIN_HOLD_S,
         (p.$duration || ANNOUNCEMENT_DURATION_S) - EXIT_DURATION_S,
       ) + enterDelay;
+
+    if (isRestrike) {
+      return css`
+        animation: ${wipeOut} ${EXIT_DURATION_S}s ease-in forwards;
+        animation-delay: ${hold}s;
+      `;
+    }
 
     return css`
       animation:
@@ -389,17 +408,20 @@ const MainText = styled.div`
 
     const isRestrike = p.$handoff === "restrike";
     const isReplace = p.$handoff === "replace";
-    const enterDelay = isReplace
-      ? REPLACE_ENTER_DELAY_S
-      : isRestrike
-        ? RESTRIKE_GAP_S
-        : 0;
+    const enterDelay = isReplace ? REPLACE_ENTER_DELAY_S : 0;
     const snapDelay = enterDelay + TEXT_SNAP_DELAY_S;
     const hold =
       Math.max(
         MIN_HOLD_S,
         (p.$duration || ANNOUNCEMENT_DURATION_S) - EXIT_DURATION_S,
       ) + enterDelay;
+
+    if (isRestrike) {
+      return css`
+        animation: ${textSnapOff} 0.04s linear forwards;
+        animation-delay: ${hold}s;
+      `;
+    }
 
     return css`
       animation:
@@ -463,7 +485,11 @@ const SumoAnnouncementBanner = ({
       $slotReady={slotReady}
       $evictedByRestrike={evictedByRestrike}
     >
-      <BannerMotion>
+      <BannerMotion
+        $isLeftSide={isLeftSide}
+        $handoff={handoff}
+        $evicted={evicted}
+      >
         <Slab $isLeftSide={isLeftSide} $type={type}>
           <FillWipe
             $isLeftSide={isLeftSide}
