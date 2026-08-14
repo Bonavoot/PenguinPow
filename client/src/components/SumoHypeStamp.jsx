@@ -1,73 +1,53 @@
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
+import { FONT_DISPLAY, FONT_RENDER } from "./menuTheme";
 import {
-  C,
-  FONT_DISPLAY,
-  FONT_KANJI,
-  TEXT_SHADOW_COMBAT,
-} from "./menuTheme";
+  CALLOUT_CREAM,
+  withSpacedBang,
+} from "./calloutPrimitives";
 
 /*
- * SumoHypeStamp — floating overprint mark for hype moments.
+ * SumoHypeStamp — combo-counter register.
  *
- * Two registers:
- *   hero  — PERFECT / MATADOR: circular hanko seal + bigger ink press
- *   mark  — MATADOR BREAK: cut-through stamp
- *   (COUNTER GRAB / GRAB BREAK live on the info rail with COUNTER HIT.)
+ * PERFECT (timed attack parry) and MATADOR (grab-line parry) sit above the
+ * combat rail, where other fighting games put the hit counter. The word
+ * is the object: oversized cream Bungee, no underline. Color lives in a
+ * glow stroke on the glyphs — ice on Perfect, yellow on Matador.
  *
- * Band: ~26–44cqh. Info rail starts ~54cqh.
+ * Band: ~24–40cqh. Combat rail starts ~59cqh.
  */
 
-export const HYPE_DURATION_S = 1.25;
-export const HYPE_DURATION_MS = 1250;
+export const HYPE_DURATION_S = 1.45;
+export const HYPE_DURATION_MS = 1450;
 
 const HYPE_THEMES = {
-  // Ice cyan — same pigment family as perfect-parry VFX rings/sparks.
-  // Hero seal structure (ring + ghost) still differentiates it from utility stamps.
   perfect: {
-    color: "#9ae8f5",
-    deep: C.iceDeep,
-    kanji: "極",
     label: "PERFECT",
-    hero: true,
+    stroke: "#3ec8f0",
+    glow: "rgba(70, 210, 255, 0.9)",
   },
-  // Clinch Flow Perfect Brace — warm gold seal (same hero register as PERFECT)
   perfectbrace: {
-    color: "#f0d078",
-    deep: "#5a3a08",
-    kanji: "構",
     label: "PERFECT BRACE",
-    hero: true,
+    stroke: "#f0d24a",
+    glow: "rgba(255, 220, 90, 0.9)",
   },
   matador: {
-    color: "#f0d060",
-    deep: "#6e4a10",
-    kanji: "誘",
     label: "MATADOR",
-    hero: true,
+    stroke: "#f0d24a",
+    glow: "rgba(255, 220, 90, 0.9)",
   },
   matadorbreak: {
-    color: "#ff9628",
-    deep: "#7a3208",
-    kanji: "破",
     label: "MATADOR BREAK",
-    hero: false,
+    stroke: "#ff9a3a",
+    glow: "rgba(255, 160, 60, 0.9)",
   },
 };
 
 const getTheme = (type) => HYPE_THEMES[type] || HYPE_THEMES.perfect;
 
-const withSpacedBang = (text) => {
-  if (typeof text !== "string") return text;
-  if (/\u00A0!+\s*$/.test(text) || /\s!+\s*$/.test(text)) {
-    return text.replace(/\s*!+\s*$/, "\u00A0!");
-  }
-  return `${text.replace(/\s*!+\s*$/, "")}\u00A0!`;
-};
-
 // ============================================
-// SIDE HYPE RAIL
+// SIDE HYPE RAIL — one mark per side
 // ============================================
 
 const activeHypeRails = { left: null, right: null };
@@ -133,43 +113,31 @@ const useHypeRail = (isLeftSide, type) => {
 // ANIMATIONS
 // ============================================
 
-const stampIn = keyframes`
-  0%   { opacity: 0; transform: translateY(-10px) scale(1.08); }
-  60%  { opacity: 1; transform: translateY(2px) scale(0.99); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
+const markIn = keyframes`
+  0%   { transform: translateY(-16px); }
+  62%  { transform: translateY(3px); }
+  100% { transform: translateY(0); }
 `;
 
-const stampRestrike = keyframes`
-  0%   { opacity: 0.75; transform: scale(0.96); }
-  45%  { opacity: 1; transform: scale(1.04); }
-  100% { opacity: 1; transform: scale(1); }
+const markRestrike = keyframes`
+  0%   { transform: translateY(0); }
+  40%  { transform: translateY(-6px); }
+  100% { transform: translateY(0); }
 `;
 
-const stampOut = keyframes`
-  0%   { opacity: 1; transform: translateY(0) scale(1); }
-  100% { opacity: 0; transform: translateY(-10px) scale(0.96); }
+const markReplaceOut = keyframes`
+  0%   { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-12px); }
 `;
 
-const stampReplaceOut = keyframes`
-  0%   { opacity: 1; transform: translateY(0) scale(1); }
-  100% { opacity: 0; transform: translateY(-14px) scale(0.92); }
+const wordSlam = keyframes`
+  0%   { opacity: 0; transform: translateY(-10px); }
+  100% { opacity: 1; transform: translateY(0); }
 `;
 
-const kanjiPress = keyframes`
-  0%   { opacity: 0; transform: scale(1.45) rotate(-14deg); }
-  50%  { opacity: 1; transform: scale(0.96) rotate(-7deg); }
-  100% { opacity: 1; transform: scale(1) rotate(-8deg); }
-`;
-
-const sealIn = keyframes`
-  0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.25) rotate(-20deg); }
-  55%  { opacity: 1; transform: translate(-50%, -50%) scale(0.97) rotate(-6deg); }
-  100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(-8deg); }
-`;
-
-const labelSettle = keyframes`
-  0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.08); }
-  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+const wordOff = keyframes`
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
 `;
 
 // ============================================
@@ -179,9 +147,12 @@ const labelSettle = keyframes`
 const StampWrapper = styled.div`
   position: absolute;
   top: clamp(155px, 26cqh, 210px);
-  ${(p) => (p.$isLeftSide ? "left: 2.5%;" : "right: 2.5%;")}
+  ${(p) =>
+    p.$isLeftSide
+      ? css`left: clamp(8px, 1.15cqw, 16px);`
+      : css`right: clamp(8px, 1.15cqw, 16px);`}
   pointer-events: none;
-  z-index: 221;
+  z-index: 222;
   display: flex;
   justify-content: ${(p) => (p.$isLeftSide ? "flex-start" : "flex-end")};
 
@@ -190,201 +161,67 @@ const StampWrapper = styled.div`
   }
 `;
 
-const EXIT_S = 0.24;
+const EXIT_S = 0.2;
 const REPLACE_EXIT_S = 0.14;
 const RESTRIKE_S = 0.16;
 
 const StampMotion = styled.div`
   position: relative;
-  transform-origin: center center;
+  width: max-content;
   ${(p) => {
     if (p.$evicted) {
       return css`
-        animation: ${stampReplaceOut} ${REPLACE_EXIT_S}s
+        animation: ${markReplaceOut} ${REPLACE_EXIT_S}s
           cubic-bezier(0.4, 0, 1, 1) forwards;
       `;
     }
 
-    const enter = p.$restrike ? stampRestrike : stampIn;
-    const enterDur = p.$restrike ? RESTRIKE_S : 0.2;
-    const hold = Math.max(0.45, (p.$duration || HYPE_DURATION_S) - EXIT_S);
+    const enter = p.$restrike ? markRestrike : markIn;
+    const enterDur = p.$restrike ? RESTRIKE_S : 0.22;
 
     return css`
-      animation:
-        ${enter} ${enterDur}s cubic-bezier(0.18, 0.85, 0.22, 1) both,
-        ${stampOut} ${EXIT_S}s ease-in forwards;
-      animation-delay: 0s, ${hold}s;
+      animation: ${enter} ${enterDur}s cubic-bezier(0.18, 0.85, 0.22, 1) both;
     `;
   }}
 `;
 
-const InkSeat = styled.div`
-  position: absolute;
-  z-index: 0;
-  left: 50%;
-  top: 50%;
-  width: ${(p) => (getTheme(p.$type).hero ? "140%" : "125%")};
-  height: ${(p) => (getTheme(p.$type).hero ? "105%" : "90%")};
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  background: ${(p) => {
-    const { deep, hero } = getTheme(p.$type);
-    const core = hero ? 88 : 80;
-    return css`radial-gradient(
-      ellipse 52% 46% at 50% 50%,
-      color-mix(in srgb, ${deep} ${core}%, #050608) 0%,
-      rgba(5, 6, 8, 0.88) 42%,
-      transparent 65%
-    )`;
-  }};
-`;
-
-const Mark = styled.div`
-  position: relative;
-  z-index: 1;
-  overflow: visible;
-  /* Wider for single-line labels; shorter so the ink seat hugs the word. */
-  width: ${(p) =>
-    getTheme(p.$type).hero
-      ? "clamp(168px, 18.5cqw, 230px)"
-      : "clamp(155px, 17cqw, 210px)"};
-  height: ${(p) =>
-    getTheme(p.$type).hero
-      ? "clamp(100px, 12cqh, 132px)"
-      : "clamp(86px, 10cqh, 112px)"};
-`;
-
-/* Circular hanko ring — hero stamps only. */
-const SealRing = styled.div`
-  position: absolute;
-  left: 50%;
-  top: 48%;
-  z-index: 1;
-  width: 78%;
-  aspect-ratio: 1;
-  border: 3px solid ${(p) => getTheme(p.$type).color};
-  border-radius: 50%;
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, ${(p) => getTheme(p.$type).color} 35%, transparent),
-    0 2px 0 rgba(0, 0, 0, 0.55);
-  opacity: 0;
-  pointer-events: none;
-  animation: ${sealIn} 0.3s cubic-bezier(0.2, 1.15, 0.35, 1) forwards;
-`;
-
-const Kanji = styled.div`
-  position: absolute;
-  inset: ${(p) => (getTheme(p.$type).hero ? "-4% -2%" : "-8% -4%")};
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: ${FONT_KANJI};
-  font-weight: 900;
-  font-size: ${(p) =>
-    getTheme(p.$type).hero
-      ? "clamp(4.8rem, 8.8cqw, 6.4rem)"
-      : "clamp(4.4rem, 8cqw, 5.8rem)"};
-  line-height: 1;
-  color: ${(p) => getTheme(p.$type).color};
-  opacity: 0;
-  transform-origin: center center;
-  animation: ${kanjiPress} 0.28s cubic-bezier(0.2, 1.2, 0.35, 1) forwards;
-  text-shadow: ${(p) =>
-    getTheme(p.$type).hero
-      ? `0 2px 0 rgba(0, 0, 0, 0.9), 2px 4px 0 rgba(0, 0, 0, 0.5),
-         -1px 0 0 color-mix(in srgb, ${getTheme(p.$type).deep} 70%, transparent)`
-      : `0 2px 0 rgba(0, 0, 0, 0.85), 2px 3px 0 rgba(0, 0, 0, 0.4)`};
-  user-select: none;
-`;
-
-/*
- * Ghost impression — second kanji offset behind the hero seal,
- * like the stamp hit twice. Cheap depth without blur filters.
- */
-const KanjiGhost = styled.div`
-  position: absolute;
-  inset: -2% 0% -6% 4%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: ${FONT_KANJI};
-  font-weight: 900;
-  font-size: clamp(4.8rem, 8.8cqw, 6.4rem);
-  line-height: 1;
-  color: ${(p) => getTheme(p.$type).deep};
-  opacity: 0.35;
-  transform: rotate(-11deg);
-  pointer-events: none;
-  user-select: none;
-  z-index: 0;
-`;
-
-const LabelSeat = styled.div`
-  position: absolute;
-  left: 50%;
-  top: 52%;
-  z-index: 2;
-  width: ${(p) => (getTheme(p.$type).hero ? "122%" : "118%")};
-  /* Single-line word height — thin lacquer strip across the seal. */
-  height: ${(p) => (getTheme(p.$type).hero ? "26%" : "24%")};
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  background: ${(p) => {
-    const { deep, hero } = getTheme(p.$type);
-    if (hero) {
-      return css`linear-gradient(
-        90deg,
-        transparent 0%,
-        color-mix(in srgb, ${deep} 70%, #06080c) 10%,
-        color-mix(in srgb, ${deep} 55%, #0a0c10) 50%,
-        color-mix(in srgb, ${deep} 70%, #06080c) 90%,
-        transparent 100%
-      )`;
-    }
-    return css`linear-gradient(
-      90deg,
-      transparent 0%,
-      color-mix(in srgb, ${deep} 45%, #06080c) 14%,
-      #06080c 50%,
-      color-mix(in srgb, ${deep} 45%, #06080c) 86%,
-      transparent 100%
-    )`;
-  }};
-  border-top: ${(p) =>
-    getTheme(p.$type).hero
-      ? `1px solid color-mix(in srgb, ${getTheme(p.$type).color} 55%, transparent)`
-      : "none"};
-  border-bottom: ${(p) =>
-    getTheme(p.$type).hero
-      ? `1px solid color-mix(in srgb, ${getTheme(p.$type).color} 40%, transparent)`
-      : "none"};
-  clip-path: ${(p) =>
-    p.$isLeftSide
-      ? "polygon(0 0, 100% 0, 94% 100%, 0 100%)"
-      : "polygon(6% 0, 100% 0, 100% 100%, 0 100%)"};
-`;
-
-const Label = styled.div`
-  position: absolute;
-  left: 50%;
-  top: 52%;
-  z-index: 3;
+const Word = styled.div`
   font-family: ${FONT_DISPLAY};
   font-size: ${(p) =>
-    getTheme(p.$type).hero
-      ? "clamp(1.1rem, 1.95cqw, 1.45rem)"
-      : "clamp(0.95rem, 1.7cqw, 1.25rem)"};
+    p.$long
+      ? "clamp(1.55rem, 3.15cqw, 2.45rem)"
+      : "clamp(2.05rem, 4.15cqw, 3.35rem)"};
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  line-height: 1;
+  letter-spacing: 0.03em;
+  line-height: 0.9;
   white-space: nowrap;
-  text-align: center;
-  color: ${C.cream};
-  text-shadow: ${TEXT_SHADOW_COMBAT};
-  opacity: 0;
-  transform-origin: center center;
-  animation: ${labelSettle} 0.2s cubic-bezier(0.22, 1, 0.36, 1) 0.03s forwards;
-  -webkit-font-smoothing: antialiased;
+  text-align: ${(p) => (p.$isLeftSide ? "right" : "left")};
+  color: ${CALLOUT_CREAM};
+  -webkit-text-stroke: 2.5px ${(p) => p.$stroke};
+  paint-order: stroke fill;
+  text-shadow:
+    0 0 2px ${(p) => p.$stroke},
+    0 0 6px ${(p) => p.$glow},
+    0 2px 0 rgba(0, 0, 0, 0.5);
+  ${FONT_RENDER}
+  user-select: none;
+  ${(p) => {
+    if (p.$evicted) {
+      return css`
+        animation: ${wordOff} 0.04s linear forwards;
+      `;
+    }
+
+    const snapDelay = p.$restrike ? 0 : 0.05;
+    const hold = Math.max(0.55, (p.$duration || HYPE_DURATION_S) - EXIT_S);
+
+    return css`
+      animation:
+        ${wordSlam} 0.16s cubic-bezier(0.2, 0.9, 0.22, 1) ${snapDelay}s both,
+        ${wordOff} 0.04s linear forwards;
+      animation-delay: ${snapDelay}s, ${hold}s;
+    `;
+  }}
 `;
 
 // ============================================
@@ -402,26 +239,28 @@ const SumoHypeStamp = ({
   const raw = text || theme.label;
   let label = typeof raw === "string" ? raw.replace(/\s+/g, " ").trim() : raw;
   label = withSpacedBang(label);
+  const long =
+    typeof label === "string" &&
+    label.replace(/\u00A0!/, "").trim().length > 10;
 
   return (
     <StampWrapper $isLeftSide={isLeftSide}>
-      <StampMotion $evicted={evicted} $restrike={restrike} $duration={duration}>
-        <InkSeat $type={type} aria-hidden />
-        <Mark $type={type}>
-          {theme.hero && (
-            <>
-              <KanjiGhost $type={type} aria-hidden>
-                {theme.kanji}
-              </KanjiGhost>
-              <SealRing $type={type} aria-hidden />
-            </>
-          )}
-          <Kanji $type={type} aria-hidden>
-            {theme.kanji}
-          </Kanji>
-          <LabelSeat $type={type} $isLeftSide={isLeftSide} aria-hidden />
-          <Label $type={type}>{label}</Label>
-        </Mark>
+      <StampMotion
+        $isLeftSide={isLeftSide}
+        $evicted={evicted}
+        $restrike={restrike}
+      >
+        <Word
+          $isLeftSide={isLeftSide}
+          $long={long}
+          $evicted={evicted}
+          $restrike={restrike}
+          $duration={duration}
+          $stroke={theme.stroke}
+          $glow={theme.glow}
+        >
+          {label}
+        </Word>
       </StampMotion>
     </StampWrapper>
   );

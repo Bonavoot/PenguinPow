@@ -4,9 +4,8 @@ import PropTypes from "prop-types";
 import SumoHypeStamp, { HYPE_DURATION_MS } from "./SumoHypeStamp";
 
 /**
- * PerfectBraceEffect — PERFECT BRACE hype stamp (same hero register as
- * PERFECT parry). Fired when a timed Plant beats a throw/pull, including
- * Deep Grip techniques.
+ * PerfectBraceEffect — PERFECT BRACE hype mark (same combo-counter
+ * register as PERFECT parry). Fired when a timed Plant beats a throw/pull.
  */
 const PerfectBraceEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);

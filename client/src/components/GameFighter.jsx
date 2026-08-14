@@ -9366,18 +9366,14 @@ const GameFighter = ({
         >
           <RoundResult isVictory={true} winType="slap" />
           <RoundResult isVictory={false} winType="slap" />
-          {/* PERF: pre-inject info-rail + hype-stamp variants so the first
+          {/* PERF: pre-inject combat-slab + hype-mark variants so the first
               real callout doesn't pay styled-components CSS injection mid-
               combat. Unmounts after 2 frames. */}
           {[
-            "parry",
-            "counter",
             "counterhit",
             "countergrab",
             "matadorbreak",
             "punish",
-            "counterthrow",
-            "deepgrip",
             "break",
             "tech",
             "default",
@@ -9387,7 +9383,7 @@ const GameFighter = ({
               <SumoAnnouncementBanner text="WARM" type={t} isLeftSide={false} />
             </span>
           ))}
-          {["perfect"].map((t) => (
+          {["perfect", "matador", "perfectbrace"].map((t) => (
             <span key={`warm-hype-${t}`}>
               <SumoHypeStamp type={t} isLeftSide={true} />
               <SumoHypeStamp type={t} isLeftSide={false} />

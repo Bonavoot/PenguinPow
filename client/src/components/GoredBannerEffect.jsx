@@ -9,8 +9,7 @@ import SumoAnnouncementBanner, {
  * GoredBannerEffect — "MATADOR BREAK" side-rail callout when a strike hits
  * someone during a live / whiffed MATADOR (grab-line parry).
  *
- * Orange plaque (success MATADOR is gold stamp). Hero seat — same band as
- * COUNTER HIT: you punished their matador.
+ * Orange combat slab. Success MATADOR is the gold hype mark above this rail.
  */
 const GoredBannerEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);

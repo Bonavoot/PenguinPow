@@ -1,164 +1,118 @@
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
-import {
-  C,
-  FONT_BODY,
-  FONT_DISPLAY,
-  FONT_KANJI,
-  TEXT_SHADOW_COMBAT,
-} from "./menuTheme";
+import { C, FONT_DISPLAY, FONT_RENDER, FONT_UI } from "./menuTheme";
 import {
   ANNOUNCEMENT_EXIT_S,
   ANNOUNCEMENT_MIN_HOLD_S,
 } from "./sumoAnnouncementTiming";
+import {
+  CALLOUT_CREAM,
+  CalloutParallelogram,
+  withSpacedBang,
+} from "./calloutPrimitives";
 
 /*
- * SumoAnnouncementBanner — side INFO rail plaque.
+ * SumoAnnouncementBanner — combat INFO rail.
  *
- * Lane: combat-read callouts you wouldn't fully know without the game
- * saying so — COUNTER HIT, COUNTER GRAB, PUNISH, GRAB BREAK, COUNTER
- * THROW, clinch reads, tech. Hype moments (PERFECT / MATADOR /
- * MATADOR BREAK) use SumoHypeStamp on a separate band above this rail.
+ * Color-field parallelogram (Tokon negative-space trick, Pumo materials):
+ *   opaque pigment fill, cream HUD stroke + dark keyline, cream Bungee
+ *   parked in the inner third, empty color running to the screen edge.
  *
- * Edge-plaque language:
- *   opaque lacquer parallelogram via clip-path (no dissolve, no skew),
- *   cream Bungee (same face as HUD), type-colored accent + hanko kanji.
- *   Subtle tier hierarchy. Spaced " !" on every callout.
+ * Hierarchy is length + type size + hold, not a lower seat. Both slots
+ * share one origin. Cap 2 per side; same type restrikes in place.
  *
- * Band contract (per side, must not collide with SumoHypeStamp):
- *   hype stamps own ~26–44cqh; this rail owns ~54cqh+.
+ * Hype (PERFECT / MATADOR) lives on SumoHypeStamp, above this rail.
  *
- * RAIL: ONE plaque per side. A new callout replaces the prior — old
- * snaps out, new owns the rail. Same-type repeats restrike in place.
- *
- * IMPORTANT: `duration` is a target for the HOLD, not the time on screen — a
- * shared minimum hold and the slide-away exit both run past it. Parents must
- * keep this mounted until announcementVisibleMs(duration) has elapsed, or the
- * plaque pops off the rail instead of leaving. See ./sumoAnnouncementTiming.
+ * `duration` is a HOLD target — parents must keep this mounted until
+ * announcementVisibleMs(duration). See ./sumoAnnouncementTiming.
  */
 
 export const ANNOUNCEMENT_DURATION_S = 1.5;
 export const ANNOUNCEMENT_DURATION_MS = 1500;
 
+const MAX_STACK = 2;
+
 // ============================================
-// COLOR THEMES — lacquer pigments, hard fills
+// THEMES — flat pigment, cream type
 // ============================================
 
 const TYPE_COLORS = {
-  punish: { color: "#c4a0e8", deep: "#3d2466" },
-  counterhit: { color: C.gold, deep: C.goldDeep },
-  counter: { color: C.vermillionBright, deep: C.vermillionDeep },
-  countergrab: { color: "#e07098", deep: "#5a2048" },
-  counterthrow: { color: "#e89a5c", deep: "#7a3a14" },
-  deepgrip: { color: "#e0b85a", deep: "#6e4a10" },
-  parry: { color: C.iceBright, deep: C.iceDeep },
-  tech: { color: C.ice, deep: C.iceMid },
-  break: { color: C.successBright, deep: C.successDeep },
-  perfect: { color: C.gold, deep: C.goldDeep },
-  perfectbrace: {
-    color: "#f0d078",
-    deep: "#5a3a08",
-    accent: C.cream,
-    textAccent: "#fff6d8",
-  },
-  perfectparry: {
-    color: "#9ae8f5",
-    deep: C.iceDeep,
-    accent: C.cream,
-    textAccent: "#e8f7fb",
-  },
-  default: { color: C.cream, deep: C.sumi },
+  punish: { fill: "#9b3dff" },
+  counterhit: { fill: "#ff5c1a" },
+  counter: { fill: "#ff4d3d" },
+  countergrab: { fill: "#ff3d88" },
+  counterthrow: { fill: "#ff7a2e" },
+  deepgrip: { fill: "#e8c547" },
+  parry: { fill: "#22d3ee" },
+  tech: { fill: "#22d3ee" },
+  break: { fill: "#22e584" },
+  matadorbreak: { fill: "#ff6b1a" },
+  perfect: { fill: "#22d3ee" },
+  perfectbrace: { fill: "#e8c547" },
+  perfectparry: { fill: "#22d3ee" },
+  default: { fill: C.sumi },
 };
 
 const getTheme = (type) => TYPE_COLORS[type] || TYPE_COLORS.default;
 
-const TYPE_KANJI = {
-  punish: "罰",
-  counterhit: "撃",
-  counter: "反",
-  countergrab: "掴",
-  counterthrow: "投",
-  deepgrip: "締",
-  parry: "受",
-  tech: "技",
-  break: "破",
-  perfect: "極",
-  perfectbrace: "構",
-  perfectparry: "極",
-};
-
-/*
- * Tier drives size + vertical seat. Same plaque language, quiet weight
- * differences — readable hierarchy without a billboard COUNTER HIT plaque.
- * All seats sit below the hype-stamp band (~44cqh clear).
- */
 const TYPE_TIER = {
   counterhit: "hero",
   countergrab: "hero",
+  punish: "primary",
+  matadorbreak: "primary",
   counter: "primary",
   counterthrow: "primary",
   perfect: "primary",
   perfectbrace: "primary",
   perfectparry: "primary",
-  punish: "secondary",
-  parry: "secondary",
   break: "secondary",
+  parry: "secondary",
   deepgrip: "secondary",
-  tech: "secondary",
+  tech: "primary",
   default: "primary",
 };
 
 const getTier = (type) => TYPE_TIER[type] || "primary";
 
+const TIER_RANK = {
+  hero: 3,
+  primary: 2,
+  secondary: 1,
+};
+
 const TIER_LAYOUT = {
   hero: {
-    top: "clamp(345px, 54cqh, 410px)",
-    topMobile: "clamp(300px, 52cqh, 365px)",
-    fontSize: "clamp(1.05rem, 1.85cqw, 1.4rem)",
-    fontSizeMobile: "clamp(0.9rem, 2.2cqw, 1.15rem)",
-    /* Kanji oversized vs plaque so it reads as a pressed hanko, not chrome. */
-    kanjiSize: "clamp(2.15rem, 3.9cqw, 2.9rem)",
-    /* Single-line labels — keep pad tight to the word height. */
-    padBlock: "clamp(5px, 0.65cqh, 8px)",
-    minWidth: "clamp(195px, 20cqw, 290px)",
+    fontSize: "clamp(1.08rem, 1.85cqw, 1.38rem)",
+    fontSizeMobile: "clamp(0.95rem, 2.25cqw, 1.18rem)",
+    padBlock: "clamp(5px, 0.55cqh, 8px)",
+    minWidth: "clamp(176px, 17cqw, 225px)",
   },
   primary: {
-    top: "clamp(375px, 59cqh, 440px)",
-    topMobile: "clamp(325px, 57cqh, 390px)",
-    fontSize: "clamp(0.95rem, 1.65cqw, 1.25rem)",
-    fontSizeMobile: "clamp(0.82rem, 2cqw, 1.05rem)",
-    kanjiSize: "clamp(1.95rem, 3.5cqw, 2.65rem)",
-    padBlock: "clamp(4px, 0.55cqh, 7px)",
-    minWidth: "clamp(180px, 18.5cqw, 265px)",
+    fontSize: "clamp(0.98rem, 1.65cqw, 1.22rem)",
+    fontSizeMobile: "clamp(0.86rem, 2.05cqw, 1.08rem)",
+    padBlock: "clamp(4px, 0.5cqh, 7px)",
+    minWidth: "clamp(160px, 15.5cqw, 205px)",
   },
   secondary: {
-    top: "clamp(410px, 65cqh, 480px)",
-    topMobile: "clamp(355px, 62cqh, 420px)",
-    fontSize: "clamp(0.82rem, 1.4cqw, 1.05rem)",
-    fontSizeMobile: "clamp(0.72rem, 1.85cqw, 0.95rem)",
-    kanjiSize: "clamp(1.7rem, 3.1cqw, 2.3rem)",
-    padBlock: "clamp(4px, 0.5cqh, 6px)",
-    minWidth: "clamp(145px, 15cqw, 215px)",
+    fontSize: "clamp(0.88rem, 1.45cqw, 1.08rem)",
+    fontSizeMobile: "clamp(0.78rem, 1.85cqw, 0.95rem)",
+    padBlock: "clamp(4px, 0.45cqh, 6px)",
+    minWidth: "clamp(148px, 14cqw, 188px)",
   },
 };
 
-/* Spaced " !" — PUMO signature. Non-breaking space so ! can't wrap alone. */
-const withSpacedBang = (text) => {
-  if (typeof text !== "string") return text;
-  if (/\u00A0!+\s*$/.test(text) || /\s!+\s*$/.test(text)) {
-    return text.replace(/\s*!+\s*$/, "\u00A0!");
-  }
-  return `${text.replace(/\s*!+\s*$/, "")}\u00A0!`;
-};
+const RAIL_TOP = "clamp(372px, 59cqh, 448px)";
+const RAIL_TOP_MOBILE = "clamp(328px, 57cqh, 400px)";
+const SLOT_GAP = "clamp(44px, 6.4cqh, 58px)";
 
 // ============================================
-// SIDE RAIL — one plaque, replace on conflict
+// STACK RAIL — cap 2, rank-aware seats
 // ============================================
 
 const activeAnnouncementRails = {
-  left: null,
-  right: null,
+  left: [],
+  right: [],
 };
 
 const railListeners = new Set();
@@ -170,6 +124,30 @@ const notifyRailListeners = () => {
   railListeners.forEach((listener) => listener());
 };
 
+const previewAssignment = (stack, type, rank) => {
+  const sameIdx = stack.findIndex((e) => e.type === type);
+  if (sameIdx >= 0) return { handoff: "restrike", slot: sameIdx };
+  if (stack.length === 0) return { handoff: "fresh", slot: 0 };
+  if (rank >= stack[0].rank) return { handoff: "replace", slot: 0 };
+  return { handoff: "stack", slot: 1 };
+};
+
+const commitAssignment = (side, id, type, rank) => {
+  const stack = activeAnnouncementRails[side];
+  const sameIdx = stack.findIndex((e) => e.type === type);
+  let next;
+  if (sameIdx >= 0) {
+    next = stack.map((e, i) => (i === sameIdx ? { id, type, rank } : e));
+  } else if (stack.length === 0) {
+    next = [{ id, type, rank }];
+  } else if (rank >= stack[0].rank) {
+    next = [{ id, type, rank }, stack[0]].slice(0, MAX_STACK);
+  } else {
+    next = [stack[0], { id, type, rank }];
+  }
+  activeAnnouncementRails[side] = next;
+};
+
 const useAnnouncementRail = (isLeftSide, type) => {
   const idRef = useRef(null);
   if (idRef.current === null) {
@@ -178,40 +156,38 @@ const useAnnouncementRail = (isLeftSide, type) => {
   }
 
   const sideKey = getSideKey(isLeftSide);
+  const rank = TIER_RANK[getTier(type)] || 2;
   const joinedRef = useRef(false);
 
-  // Resolve handoff mode synchronously for correct first paint.
-  const handoffRef = useRef(null);
-  if (handoffRef.current === null) {
-    const current = activeAnnouncementRails[sideKey];
-    if (current && current.type === type) {
-      handoffRef.current = "restrike";
-    } else if (current) {
-      handoffRef.current = "replace";
-    } else {
-      handoffRef.current = "fresh";
-    }
+  const previewRef = useRef(null);
+  if (previewRef.current === null) {
+    previewRef.current = previewAssignment(
+      activeAnnouncementRails[sideKey],
+      type,
+      rank,
+    );
   }
 
   const [railState, setRailState] = useState({
     evicted: false,
-    replacedBySameType: false,
-    handoff: handoffRef.current,
+    slot: previewRef.current.slot,
+    handoff: previewRef.current.handoff,
   });
+  const slotRef = useRef(previewRef.current.slot);
 
   useEffect(() => {
     const id = idRef.current;
-    activeAnnouncementRails[sideKey] = { id, type };
+    commitAssignment(sideKey, id, type, rank);
     joinedRef.current = true;
 
     const updateRailState = () => {
-      const current = activeAnnouncementRails[sideKey];
-      const stillOwner = current && current.id === id;
+      const stack = activeAnnouncementRails[sideKey];
+      const idx = stack.findIndex((e) => e.id === id);
+      if (idx >= 0) slotRef.current = idx;
       setRailState({
-        handoff: handoffRef.current,
-        evicted: joinedRef.current && !stillOwner,
-        replacedBySameType:
-          joinedRef.current && !stillOwner && current?.type === type,
+        handoff: previewRef.current.handoff,
+        slot: idx >= 0 ? idx : slotRef.current,
+        evicted: joinedRef.current && idx < 0,
       });
     };
 
@@ -220,90 +196,55 @@ const useAnnouncementRail = (isLeftSide, type) => {
 
     return () => {
       railListeners.delete(updateRailState);
-      if (activeAnnouncementRails[sideKey]?.id === id) {
-        activeAnnouncementRails[sideKey] = null;
-      }
+      activeAnnouncementRails[sideKey] = activeAnnouncementRails[sideKey].filter(
+        (e) => e.id !== id,
+      );
       notifyRailListeners();
     };
-  }, [sideKey, type]);
+  }, [sideKey, type, rank]);
 
   return railState;
 };
 
 // ============================================
 // ANIMATIONS
-// Shape slant lives on PlaqueFill via clip-path — NOT transform:skew
-// (skew + filter:drop-shadow are what made the type look soft).
+// Fill wipes. Type snaps. The slab may nudge — it never scales the glyphs.
 // ============================================
 
-const slabInFromLeft = keyframes`
-  0%   { opacity: 0; transform: translateX(-40px) scaleX(0.94); }
-  70%  { opacity: 1; transform: translateX(3px) scaleX(1.01); }
-  100% { opacity: 1; transform: translateX(0) scaleX(1); }
+/* Negative inset leaves room for the cream chrome so clip-path
+   does not crop it into a rectangle. */
+const CLIP_OPEN = "-10px -8px";
+const CLIP_SHUT_RIGHT = "-10px 100% -10px -8px";
+const CLIP_SHUT_LEFT = "-10px -8px -10px 100%";
+
+const fillWipeInFromLeft = keyframes`
+  0%   { clip-path: inset(${CLIP_SHUT_RIGHT}); }
+  100% { clip-path: inset(${CLIP_OPEN}); }
 `;
 
-const slabInFromRight = keyframes`
-  0%   { opacity: 0; transform: translateX(40px) scaleX(0.94); }
-  70%  { opacity: 1; transform: translateX(-3px) scaleX(1.01); }
-  100% { opacity: 1; transform: translateX(0) scaleX(1); }
+const fillWipeInFromRight = keyframes`
+  0%   { clip-path: inset(${CLIP_SHUT_LEFT}); }
+  100% { clip-path: inset(${CLIP_OPEN}); }
 `;
 
-const slabOutToLeft = keyframes`
-  0%   { opacity: 1; transform: translateX(0) scaleX(1); }
-  100% { opacity: 0; transform: translateX(-28px) scaleX(0.96); }
+const fillWipeOutToLeft = keyframes`
+  0%   { clip-path: inset(${CLIP_OPEN}); }
+  100% { clip-path: inset(${CLIP_SHUT_RIGHT}); }
 `;
 
-const slabOutToRight = keyframes`
-  0%   { opacity: 1; transform: translateX(0) scaleX(1); }
-  100% { opacity: 0; transform: translateX(28px) scaleX(0.96); }
+const fillWipeOutToRight = keyframes`
+  0%   { clip-path: inset(${CLIP_OPEN}); }
+  100% { clip-path: inset(${CLIP_SHUT_LEFT}); }
 `;
 
-const slabReplaceOutLeft = keyframes`
-  0%   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-  100% { opacity: 0; transform: translate3d(-6px, -12px, 0) scale(0.94); }
+const textSnapOn = keyframes`
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
 `;
 
-const slabReplaceOutRight = keyframes`
-  0%   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-  100% { opacity: 0; transform: translate3d(6px, -12px, 0) scale(0.94); }
-`;
-
-const slabRestrikeOut = keyframes`
-  0%   { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(0.97); }
-`;
-
-const slabRestrikeLeft = keyframes`
-  0%   { opacity: 0.8; transform: translateX(-6px) scale(0.97); }
-  40%  { opacity: 1; transform: translateX(2px) scale(1.02); }
-  100% { opacity: 1; transform: translateX(0) scale(1); }
-`;
-
-const slabRestrikeRight = keyframes`
-  0%   { opacity: 0.8; transform: translateX(6px) scale(0.97); }
-  40%  { opacity: 1; transform: translateX(-2px) scale(1.02); }
-  100% { opacity: 1; transform: translateX(0) scale(1); }
-`;
-
-const textSettle = keyframes`
-  0%   { opacity: 0; transform: scale(1.04); }
-  100% { opacity: 1; transform: scale(1); }
-`;
-
-const kanjiPress = keyframes`
-  0%   { opacity: 0; transform: scale(1.4) rotate(-12deg); }
-  55%  { opacity: 0.95; transform: scale(0.97) rotate(-7deg); }
-  100% { opacity: 0.9; transform: scale(1) rotate(-8deg); }
-`;
-
-const ruleDraw = keyframes`
-  0%   { opacity: 0; transform: scaleX(0); }
-  100% { opacity: 1; transform: scaleX(1); }
-`;
-
-const subTextRise = keyframes`
-  0%   { opacity: 0; transform: translateY(4px); }
-  100% { opacity: 1; transform: translateY(0); }
+const textSnapOff = keyframes`
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
 `;
 
 // ============================================
@@ -312,202 +253,138 @@ const subTextRise = keyframes`
 
 const BannerWrapper = styled.div`
   position: absolute;
-  top: ${(p) => TIER_LAYOUT[getTier(p.$type)].top};
-  ${(p) => (p.$isLeftSide ? "left: 0;" : "right: 0;")}
+  top: ${(p) =>
+    p.$slot === 1 ? `calc(${RAIL_TOP} + ${SLOT_GAP})` : RAIL_TOP};
+  ${(p) =>
+    p.$isLeftSide
+      ? css`left: clamp(8px, 1.15cqw, 16px);`
+      : css`right: clamp(8px, 1.15cqw, 16px);`}
   pointer-events: none;
-  z-index: 220;
+  z-index: ${(p) => 220 - p.$slot};
+  transition: ${(p) =>
+    p.$slotReady
+      ? "top 0.14s cubic-bezier(0.22, 1, 0.36, 1)"
+      : "none"};
 
   @media (max-width: 900px) {
-    top: ${(p) => TIER_LAYOUT[getTier(p.$type)].topMobile};
+    top: ${(p) =>
+      p.$slot === 1
+        ? `calc(${RAIL_TOP_MOBILE} + ${SLOT_GAP})`
+        : RAIL_TOP_MOBILE};
   }
 `;
 
 const EXIT_DURATION_S = ANNOUNCEMENT_EXIT_S;
-const REPLACE_EXIT_DURATION_S = 0.18;
-const RESTRIKE_IN_DURATION_S = 0.18;
-const REPLACE_ENTER_DELAY_S = 0.07;
+const REPLACE_ENTER_DELAY_S = 0.05;
 const MIN_HOLD_S = ANNOUNCEMENT_MIN_HOLD_S;
+const WIPE_IN_S = 0.14;
+const TEXT_SNAP_DELAY_S = 0.08;
 
 const BannerMotion = styled.div`
   position: relative;
-  transform-origin: ${(p) => (p.$isLeftSide ? "left center" : "right center")};
+`;
+
+const Slab = styled.div`
+  position: relative;
+  min-width: ${(p) => TIER_LAYOUT[getTier(p.$type)].minWidth};
+  max-width: 26cqw;
+  padding-block: ${(p) => TIER_LAYOUT[getTier(p.$type)].padBlock};
+  /* Inner pad (toward the fight) has to clear the parallelogram slant
+     plus the 1.5px glyph stroke. Outer pad is the empty color — enough
+     air, not a banner to center screen. */
+  ${(p) =>
+    p.$isLeftSide
+      ? css`
+          padding-left: clamp(40px, 4.6cqw, 62px);
+          padding-right: clamp(22px, 2.4cqw, 32px);
+          text-align: right;
+        `
+      : css`
+          padding-left: clamp(22px, 2.4cqw, 32px);
+          padding-right: clamp(40px, 4.6cqw, 62px);
+          text-align: left;
+        `}
+`;
+
+const FillWipe = styled.div`
+  position: absolute;
+  inset: -3px 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: visible;
   ${(p) => {
+    const wipeIn = p.$isLeftSide ? fillWipeInFromLeft : fillWipeInFromRight;
+    const wipeOut = p.$isLeftSide ? fillWipeOutToLeft : fillWipeOutToRight;
+
     if (p.$evicted) {
-      if (p.$replacedBySameType) {
-        return css`
-          animation: ${slabRestrikeOut} 0.12s ease-in forwards;
-        `;
-      }
       return css`
-        animation: ${p.$isLeftSide ? slabReplaceOutLeft : slabReplaceOutRight}
-          ${REPLACE_EXIT_DURATION_S}s cubic-bezier(0.4, 0, 1, 1) forwards;
+        animation: ${wipeOut} 0.14s cubic-bezier(0.4, 0, 1, 1) forwards;
       `;
     }
 
     const isRestrike = p.$handoff === "restrike";
     const isReplace = p.$handoff === "replace";
-    const enterAnim = isRestrike
-      ? p.$isLeftSide
-        ? slabRestrikeLeft
-        : slabRestrikeRight
-      : p.$isLeftSide
-        ? slabInFromLeft
-        : slabInFromRight;
-    const enterDuration = isRestrike ? RESTRIKE_IN_DURATION_S : 0.22;
-    const enterEase = isRestrike
-      ? "cubic-bezier(0.22, 0.9, 0.2, 1)"
-      : "cubic-bezier(0.2, 0.72, 0.2, 1)";
     const enterDelay = isReplace ? REPLACE_ENTER_DELAY_S : 0;
-    const exitAnim = p.$isLeftSide ? slabOutToLeft : slabOutToRight;
     const hold =
       Math.max(
         MIN_HOLD_S,
-        (p.$duration || ANNOUNCEMENT_DURATION_S) - EXIT_DURATION_S
+        (p.$duration || ANNOUNCEMENT_DURATION_S) - EXIT_DURATION_S,
       ) + enterDelay;
+
+    if (isRestrike) {
+      return css`
+        animation: ${wipeOut} ${EXIT_DURATION_S}s ease-in forwards;
+        animation-delay: ${hold}s;
+      `;
+    }
 
     return css`
       animation:
-        ${enterAnim} ${enterDuration}s ${enterEase} both,
-        ${exitAnim} ${EXIT_DURATION_S}s ease-in forwards;
+        ${wipeIn} ${WIPE_IN_S}s cubic-bezier(0.2, 0.7, 0.2, 1) ${enterDelay}s both,
+        ${wipeOut} ${EXIT_DURATION_S}s ease-in forwards;
       animation-delay: ${enterDelay}s, ${hold}s;
     `;
   }}
 `;
 
-/*
- * Layout shell — padding + overflow for the hanko stamp.
- * Paint lives on PlaqueFill (clip-path slant) so English type stays
- * axis-aligned and sharp.
- */
-const Slab = styled.div`
-  position: relative;
-  z-index: 1;
-  overflow: visible;
-  min-width: ${(p) => TIER_LAYOUT[getTier(p.$type)].minWidth};
-  max-width: 32cqw;
-  padding-block: ${(p) => TIER_LAYOUT[getTier(p.$type)].padBlock};
-  ${(p) =>
-    p.$isLeftSide
-      ? css`
-          padding-left: clamp(36px, 3.8cqw, 52px);
-          padding-right: clamp(18px, 2cqw, 28px);
-          text-align: right;
-        `
-      : css`
-          padding-left: clamp(18px, 2cqw, 28px);
-          padding-right: clamp(36px, 3.8cqw, 52px);
-          text-align: left;
-        `}
-`;
-
-const PlaqueFill = styled.div`
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  ${(p) =>
-    p.$isLeftSide
-      ? css`
-          border-left: 2px solid ${getTheme(p.$type).color};
-          clip-path: polygon(0 0, 100% 0, 92% 100%, 0 100%);
-        `
-      : css`
-          border-right: 2px solid ${getTheme(p.$type).color};
-          clip-path: polygon(8% 0, 100% 0, 100% 100%, 0 100%);
-        `}
-  background: ${(p) => {
-    const { deep } = getTheme(p.$type);
-    const dir = p.$isLeftSide ? "90deg" : "270deg";
-    return css`linear-gradient(
-      ${dir},
-      color-mix(in srgb, ${deep} 28%, #0a0c10) 0%,
-      #0c0f14 55%,
-      #0c0f14 100%
-    )`;
-  }};
-  box-shadow: ${(p) =>
-    p.$isLeftSide
-      ? "2px 2px 0 rgba(0, 0, 0, 0.45)"
-      : "-2px 2px 0 rgba(0, 0, 0, 0.45)"};
-
-  &::before,
-  &::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 1px;
-    pointer-events: none;
-    transform-origin: ${(p) => (p.$isLeftSide ? "left center" : "right center")};
-    animation: ${ruleDraw} 0.2s cubic-bezier(0.2, 0.7, 0.2, 1) 0.03s both;
-    background: ${(p) => {
-      const { color } = getTheme(p.$type);
-      const dir = p.$isLeftSide ? "90deg" : "270deg";
-      return css`linear-gradient(
-        ${dir},
-        ${color} 0%,
-        color-mix(in srgb, ${color} 40%, transparent) 62%,
-        transparent 100%
-      )`;
-    }};
-  }
-
-  &::before {
-    top: 0;
-  }
-
-  &::after {
-    bottom: 0;
-  }
-`;
-
-const KanjiPrint = styled.div`
-  position: absolute;
-  z-index: 1;
-  top: 50%;
-  ${(p) =>
-    p.$isLeftSide
-      ? css`left: clamp(-6px, -0.4cqw, -2px);`
-      : css`right: clamp(-6px, -0.4cqw, -2px);`}
-  font-family: ${FONT_KANJI};
-  font-weight: 900;
-  font-size: ${(p) => TIER_LAYOUT[getTier(p.$type)].kanjiSize};
-  line-height: 1;
-  color: ${(p) => getTheme(p.$type).color};
-  opacity: 0;
-  pointer-events: none;
-  transform-origin: center center;
-  animation: ${kanjiPress} 0.3s cubic-bezier(0.22, 1.15, 0.4, 1) forwards;
-  margin-top: -0.55em;
-  text-shadow:
-    0 2px 0 rgba(0, 0, 0, 0.85),
-    2px 3px 0 rgba(0, 0, 0, 0.4);
-`;
-
-const Content = styled.div`
-  position: relative;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  align-items: ${(p) => (p.$isLeftSide ? "flex-end" : "flex-start")};
-  width: 100%;
-  gap: clamp(2px, 0.25cqh, 3px);
-`;
-
 const MainText = styled.div`
+  position: relative;
+  z-index: 2;
   font-family: ${FONT_DISPLAY};
   font-size: ${(p) => TIER_LAYOUT[getTier(p.$type)].fontSize};
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.02em;
   line-height: 1;
   white-space: nowrap;
   text-align: inherit;
-  transform-origin: ${(p) => (p.$isLeftSide ? "right center" : "left center")};
   color: ${C.cream};
-  text-shadow: ${TEXT_SHADOW_COMBAT};
-  opacity: 0;
-  animation: ${textSettle} 0.22s cubic-bezier(0.22, 1, 0.36, 1) 0.03s forwards;
-  -webkit-font-smoothing: antialiased;
+  text-shadow: none;
+  ${FONT_RENDER}
+  user-select: none;
+  ${(p) => {
+    if (p.$evicted) {
+      return css`
+        animation: ${textSnapOff} 0.04s linear forwards;
+      `;
+    }
+
+    const isRestrike = p.$handoff === "restrike";
+    const isReplace = p.$handoff === "replace";
+    const enterDelay = isReplace ? REPLACE_ENTER_DELAY_S : 0;
+    const snapDelay = isRestrike ? enterDelay : enterDelay + TEXT_SNAP_DELAY_S;
+    const hold =
+      Math.max(
+        MIN_HOLD_S,
+        (p.$duration || ANNOUNCEMENT_DURATION_S) - EXIT_DURATION_S,
+      ) + enterDelay;
+
+    return css`
+      animation:
+        ${textSnapOn} 0.01s linear ${snapDelay}s both,
+        ${textSnapOff} 0.04s linear forwards;
+      animation-delay: ${snapDelay}s, ${hold}s;
+    `;
+  }}
 
   @media (max-width: 900px) {
     font-size: ${(p) => TIER_LAYOUT[getTier(p.$type)].fontSizeMobile};
@@ -515,24 +392,17 @@ const MainText = styled.div`
 `;
 
 const SubText = styled.div`
-  font-family: ${FONT_BODY};
+  position: relative;
+  z-index: 2;
+  font-family: ${FONT_UI};
   font-weight: 700;
   font-size: clamp(0.45rem, 0.75cqw, 0.62rem);
-  color: ${(p) => {
-    const { color } = getTheme(p.$type);
-    return css`color-mix(in srgb, ${color} 45%, ${C.creamMute})`;
-  }};
+  color: ${CALLOUT_CREAM};
   text-transform: uppercase;
   letter-spacing: 0.2em;
   text-align: inherit;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9);
-  opacity: 0;
-  animation: ${subTextRise} 0.22s ease-out 0.16s forwards;
-
-  @media (max-width: 900px) {
-    font-size: clamp(0.45rem, 1.35cqw, 0.66rem);
-    letter-spacing: 0.16em;
-  }
+  opacity: 0.7;
+  ${FONT_RENDER}
 `;
 
 // ============================================
@@ -546,40 +416,55 @@ const SumoAnnouncementBanner = ({
   duration = ANNOUNCEMENT_DURATION_S,
   subText = null,
 }) => {
-  const { evicted, replacedBySameType, handoff } = useAnnouncementRail(
-    isLeftSide,
-    type,
-  );
-  const kanji = TYPE_KANJI[type];
-  // Side-rail labels are single-line; collapse any leftover breaks/whitespace.
+  const { evicted, slot, handoff } = useAnnouncementRail(isLeftSide, type);
+  const [slotReady, setSlotReady] = useState(false);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setSlotReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  const theme = getTheme(type);
+  const fill = theme.fill;
   let label =
-    typeof text === "string"
-      ? text.replace(/\s+/g, " ").trim()
-      : text;
+    typeof text === "string" ? text.replace(/\s+/g, " ").trim() : text;
   label = withSpacedBang(label);
 
   return (
-    <BannerWrapper $isLeftSide={isLeftSide} $type={type}>
+    <BannerWrapper
+      $isLeftSide={isLeftSide}
+      $slot={slot}
+      $slotReady={slotReady}
+    >
       <BannerMotion
         $isLeftSide={isLeftSide}
-        $duration={duration}
         $evicted={evicted}
-        $replacedBySameType={replacedBySameType}
         $handoff={handoff}
       >
         <Slab $isLeftSide={isLeftSide} $type={type}>
-          <PlaqueFill $isLeftSide={isLeftSide} $type={type} aria-hidden />
-          {kanji && (
-            <KanjiPrint $type={type} $isLeftSide={isLeftSide} aria-hidden>
-              {kanji}
-            </KanjiPrint>
-          )}
-          <Content $isLeftSide={isLeftSide}>
-            <MainText $type={type} $isLeftSide={isLeftSide}>
-              {label}
-            </MainText>
-            {subText && <SubText $type={type}>{subText}</SubText>}
-          </Content>
+          <FillWipe
+            $isLeftSide={isLeftSide}
+            $evicted={evicted}
+            $handoff={handoff}
+            $duration={duration}
+            aria-hidden
+          >
+            <CalloutParallelogram
+              color={fill}
+              chrome
+              insetY={7}
+              slant={6}
+            />
+          </FillWipe>
+          <MainText
+            $type={type}
+            $evicted={evicted}
+            $handoff={handoff}
+            $duration={duration}
+          >
+            {label}
+          </MainText>
+          {subText && <SubText>{subText}</SubText>}
         </Slab>
       </BannerMotion>
     </BannerWrapper>
@@ -601,6 +486,7 @@ SumoAnnouncementBanner.propTypes = {
     "countergrab",
     "break",
     "tech",
+    "matadorbreak",
     "default",
   ]),
   isLeftSide: PropTypes.bool,

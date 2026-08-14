@@ -4,9 +4,9 @@ import PropTypes from "prop-types";
 import SumoHypeStamp, { HYPE_DURATION_MS } from "./SumoHypeStamp";
 
 /**
- * MatadorSuccessEffect — "MATADOR" hype stamp when a grab-line parry lands
- * (instant pull). Peer to PERFECT on the hype band.
- * Gold stamp; MATADOR BREAK (orange rail callout) is the opposite RPS punish.
+ * MatadorSuccessEffect — "MATADOR" hype mark when a grab-line parry lands
+ * (instant pull). Peer to PERFECT on the combo-counter band.
+ * Gold rail; MATADOR BREAK (orange combat slab) is the opposite RPS punish.
  */
 const MatadorSuccessEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);

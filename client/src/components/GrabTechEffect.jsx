@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import SumoAnnouncementBanner from "./SumoAnnouncementBanner";
-import { HIT_EFFECT_TEXT_DURATION, HIT_EFFECT_TEXT_DELAY } from "../config/hitEffectText";
 
 // Main ring expands with 3D tilt toward the grabber
 const mainRingExpand = keyframes`
@@ -89,34 +88,6 @@ const sparkExplode = keyframes`
   100% {
     opacity: 0;
     transform: translate(calc(-50% + var(--spark-dx)), calc(-50% + var(--spark-dy))) scale(0.3);
-  }
-`;
-
-// TECH! text — clean snappy pop
-const techTextPop = keyframes`
-  0% {
-    transform: translate(-50%, -50%) scale(0);
-    opacity: 0;
-  }
-  18% {
-    transform: translate(-50%, -50%) scale(1.25);
-    opacity: 1;
-  }
-  35% {
-    transform: translate(-50%, -50%) scale(0.95);
-    opacity: 1;
-  }
-  50% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 1;
-  }
-  80% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0;
   }
 `;
 
@@ -232,27 +203,6 @@ const Spark = styled.div`
   --spark-dy: ${props => props.$dy}cqw;
 `;
 
-const TechText = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  font-family: "Bungee", cursive;
-  font-size: 0.86cqw;
-  color: #64c8ff;
-  -webkit-text-stroke: clamp(2px, 0.2cqw, 3.5px) #000;
-  paint-order: stroke fill;
-  text-shadow:
-    -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000,
-    2px 2px 0 rgba(20, 50, 100, 0.85), 4px 4px 0 rgba(10, 35, 70, 0.5),
-    0 2px 6px rgba(0, 0, 0, 0.7);
-  letter-spacing: 0.15em;
-  white-space: nowrap;
-  transform: translate(-50%, -50%) scale(0);
-  animation: ${techTextPop} ${HIT_EFFECT_TEXT_DURATION}s ease-out forwards;
-  animation-delay: ${HIT_EFFECT_TEXT_DELAY}s;
-  z-index: 20;
-`;
-
 const GrabTechEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedTechsRef = useRef(new Set());
@@ -339,7 +289,6 @@ const GrabTechEffect = ({ position }) => {
                   />
                 ))}
               </RingWrapper>
-              <TechText>TECH!</TechText>
             </EffectContainer>
             {document.getElementById("game-hud-callouts") && createPortal(
               <SumoAnnouncementBanner

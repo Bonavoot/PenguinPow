@@ -130,9 +130,9 @@ RegularParryContactFlash.propTypes = {
   size: PropTypes.number,
 };
 
-// ── PERFECT hype stamp ──────────────────────────────────────────────────────
+// ── PERFECT hype mark ───────────────────────────────────────────────────────
 // Parents MUST keep this mounted for HYPE_DURATION_MS. The parry sprite
-// burst is much shorter; stamp lifetime is owned by Raw/SlapParryEffect.
+// burst is much shorter; mark lifetime is owned by Raw/SlapParryEffect.
 export const PerfectParryBanner = ({ playerNumber = 1 }) => {
   const isLeftSide = playerNumber === 1;
   const hudEl =

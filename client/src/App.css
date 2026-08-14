@@ -858,7 +858,7 @@ body.cursor-hidden *,
   pointer-events: none;
 }
 
-/* ── Side combat callouts (info plaques + hype stamps)
+/* ── Side combat callouts (pigment slabs + hype marks)
    Viewport-fixed like the other HUD hosts. Stack:
      nameplates (200) < ring props (201) < callouts (202) < wrestlers (205)
    < ceremony (207) so banners sit over gyoji/salt but under the penguins,

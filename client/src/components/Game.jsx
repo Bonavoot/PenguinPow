@@ -1245,8 +1245,8 @@ const Game = ({
             showPreMatchScreen ? " is-prematch-hidden" : ""
           }`}
         ></div>
-        {/* Side combat callout host — info plaques + hype stamps portal here so
-            COUNTER HIT / PUNISH / PERFECT / clinch callouts sit OVER ring props
+        {/* Side combat callout host — pigment slabs + hype marks portal here so
+            COUNTER HIT / PUNISH / PERFECT / MATADOR sit OVER ring props
             and UNDER the wrestlers. Center announcements still target #game-hud. */}
         <div
           id="game-hud-callouts"
