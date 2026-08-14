@@ -8,6 +8,7 @@ import {
 } from "./sumoAnnouncementTiming";
 import {
   CALLOUT_CREAM,
+  CALLOUT_PIGMENT,
   CalloutParallelogram,
   withSpacedBang,
 } from "./calloutPrimitives";
@@ -16,11 +17,15 @@ import {
  * SumoAnnouncementBanner — combat INFO rail.
  *
  * Color-field parallelogram (Tokon negative-space trick, Pumo materials):
- *   opaque pigment fill, cream HUD stroke + dark keyline, cream Bungee
- *   parked in the inner third, empty color running to the screen edge.
+ *   opaque pigment fill, cream Bungee parked in the inner third, empty
+ *   color running to the screen edge. No HUD cream stroke / inner keyline
+ *   — those belong on stamina and posture, not on a hit event.
  *
  * Hierarchy is length + type size + hold, not a lower seat. Both slots
- * share one origin. Cap 2 per side; same type restrikes in place.
+ * share one origin. Cap 2 per side, and only for DIFFERENT types
+ * (COUNTER HIT + PUNISH). Same type restrikes the live seat — never
+ * a second copy of the same word. The old instance cuts out, a short
+ * empty beat, then the wipe plays again. The blink is the confirm.
  *
  * Hype (PERFECT / MATADOR) lives on SumoHypeStamp, above this rail.
  *
@@ -38,8 +43,8 @@ const MAX_STACK = 2;
 // ============================================
 
 const TYPE_COLORS = {
-  punish: { fill: "#9b3dff" },
-  counterhit: { fill: "#ff5c1a" },
+  punish: { fill: CALLOUT_PIGMENT.punish },
+  counterhit: { fill: CALLOUT_PIGMENT.counterhit },
   counter: { fill: "#ff4d3d" },
   countergrab: { fill: "#ff3d88" },
   counterthrow: { fill: "#ff7a2e" },
@@ -47,7 +52,7 @@ const TYPE_COLORS = {
   parry: { fill: "#22d3ee" },
   tech: { fill: "#22d3ee" },
   break: { fill: "#22e584" },
-  matadorbreak: { fill: "#ff6b1a" },
+  matadorbreak: { fill: CALLOUT_PIGMENT.matadorbreak },
   perfect: { fill: "#22d3ee" },
   perfectbrace: { fill: "#e8c547" },
   perfectparry: { fill: "#22d3ee" },
@@ -170,6 +175,7 @@ const useAnnouncementRail = (isLeftSide, type) => {
 
   const [railState, setRailState] = useState({
     evicted: false,
+    evictedByRestrike: false,
     slot: previewRef.current.slot,
     handoff: previewRef.current.handoff,
   });
@@ -184,10 +190,12 @@ const useAnnouncementRail = (isLeftSide, type) => {
       const stack = activeAnnouncementRails[sideKey];
       const idx = stack.findIndex((e) => e.id === id);
       if (idx >= 0) slotRef.current = idx;
+      const evicted = joinedRef.current && idx < 0;
       setRailState({
         handoff: previewRef.current.handoff,
         slot: idx >= 0 ? idx : slotRef.current,
-        evicted: joinedRef.current && idx < 0,
+        evicted,
+        evictedByRestrike: evicted && stack.some((e) => e.type === type),
       });
     };
 
@@ -211,11 +219,9 @@ const useAnnouncementRail = (isLeftSide, type) => {
 // Fill wipes. Type snaps. The slab may nudge — it never scales the glyphs.
 // ============================================
 
-/* Negative inset leaves room for the cream chrome so clip-path
-   does not crop it into a rectangle. */
-const CLIP_OPEN = "-10px -8px";
-const CLIP_SHUT_RIGHT = "-10px 100% -10px -8px";
-const CLIP_SHUT_LEFT = "-10px -8px -10px 100%";
+const CLIP_OPEN = "0";
+const CLIP_SHUT_RIGHT = "0 100% 0 0";
+const CLIP_SHUT_LEFT = "0 0 0 100%";
 
 const fillWipeInFromLeft = keyframes`
   0%   { clip-path: inset(${CLIP_SHUT_RIGHT}); }
@@ -261,6 +267,7 @@ const BannerWrapper = styled.div`
       : css`right: clamp(8px, 1.15cqw, 16px);`}
   pointer-events: none;
   z-index: ${(p) => 220 - p.$slot};
+  visibility: ${(p) => (p.$evictedByRestrike ? "hidden" : "visible")};
   transition: ${(p) =>
     p.$slotReady
       ? "top 0.14s cubic-bezier(0.22, 1, 0.36, 1)"
@@ -276,6 +283,7 @@ const BannerWrapper = styled.div`
 
 const EXIT_DURATION_S = ANNOUNCEMENT_EXIT_S;
 const REPLACE_ENTER_DELAY_S = 0.05;
+const RESTRIKE_GAP_S = 0.06;
 const MIN_HOLD_S = ANNOUNCEMENT_MIN_HOLD_S;
 const WIPE_IN_S = 0.14;
 const TEXT_SNAP_DELAY_S = 0.08;
@@ -316,6 +324,13 @@ const FillWipe = styled.div`
     const wipeIn = p.$isLeftSide ? fillWipeInFromLeft : fillWipeInFromRight;
     const wipeOut = p.$isLeftSide ? fillWipeOutToLeft : fillWipeOutToRight;
 
+    if (p.$evictedByRestrike) {
+      return css`
+        opacity: 0;
+        animation: none;
+      `;
+    }
+
     if (p.$evicted) {
       return css`
         animation: ${wipeOut} 0.14s cubic-bezier(0.4, 0, 1, 1) forwards;
@@ -324,19 +339,16 @@ const FillWipe = styled.div`
 
     const isRestrike = p.$handoff === "restrike";
     const isReplace = p.$handoff === "replace";
-    const enterDelay = isReplace ? REPLACE_ENTER_DELAY_S : 0;
+    const enterDelay = isReplace
+      ? REPLACE_ENTER_DELAY_S
+      : isRestrike
+        ? RESTRIKE_GAP_S
+        : 0;
     const hold =
       Math.max(
         MIN_HOLD_S,
         (p.$duration || ANNOUNCEMENT_DURATION_S) - EXIT_DURATION_S,
       ) + enterDelay;
-
-    if (isRestrike) {
-      return css`
-        animation: ${wipeOut} ${EXIT_DURATION_S}s ease-in forwards;
-        animation-delay: ${hold}s;
-      `;
-    }
 
     return css`
       animation:
@@ -362,6 +374,13 @@ const MainText = styled.div`
   ${FONT_RENDER}
   user-select: none;
   ${(p) => {
+    if (p.$evictedByRestrike) {
+      return css`
+        opacity: 0;
+        animation: none;
+      `;
+    }
+
     if (p.$evicted) {
       return css`
         animation: ${textSnapOff} 0.04s linear forwards;
@@ -370,8 +389,12 @@ const MainText = styled.div`
 
     const isRestrike = p.$handoff === "restrike";
     const isReplace = p.$handoff === "replace";
-    const enterDelay = isReplace ? REPLACE_ENTER_DELAY_S : 0;
-    const snapDelay = isRestrike ? enterDelay : enterDelay + TEXT_SNAP_DELAY_S;
+    const enterDelay = isReplace
+      ? REPLACE_ENTER_DELAY_S
+      : isRestrike
+        ? RESTRIKE_GAP_S
+        : 0;
+    const snapDelay = enterDelay + TEXT_SNAP_DELAY_S;
     const hold =
       Math.max(
         MIN_HOLD_S,
@@ -416,7 +439,10 @@ const SumoAnnouncementBanner = ({
   duration = ANNOUNCEMENT_DURATION_S,
   subText = null,
 }) => {
-  const { evicted, slot, handoff } = useAnnouncementRail(isLeftSide, type);
+  const { evicted, evictedByRestrike, slot, handoff } = useAnnouncementRail(
+    isLeftSide,
+    type,
+  );
   const [slotReady, setSlotReady] = useState(false);
 
   useEffect(() => {
@@ -435,23 +461,20 @@ const SumoAnnouncementBanner = ({
       $isLeftSide={isLeftSide}
       $slot={slot}
       $slotReady={slotReady}
+      $evictedByRestrike={evictedByRestrike}
     >
-      <BannerMotion
-        $isLeftSide={isLeftSide}
-        $evicted={evicted}
-        $handoff={handoff}
-      >
+      <BannerMotion>
         <Slab $isLeftSide={isLeftSide} $type={type}>
           <FillWipe
             $isLeftSide={isLeftSide}
             $evicted={evicted}
+            $evictedByRestrike={evictedByRestrike}
             $handoff={handoff}
             $duration={duration}
             aria-hidden
           >
             <CalloutParallelogram
               color={fill}
-              chrome
               insetY={7}
               slant={6}
             />
@@ -459,6 +482,7 @@ const SumoAnnouncementBanner = ({
           <MainText
             $type={type}
             $evicted={evicted}
+            $evictedByRestrike={evictedByRestrike}
             $handoff={handoff}
             $duration={duration}
           >

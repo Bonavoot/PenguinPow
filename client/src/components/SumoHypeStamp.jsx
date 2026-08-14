@@ -2,18 +2,16 @@ import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 import { FONT_DISPLAY, FONT_RENDER } from "./menuTheme";
-import {
-  CALLOUT_CREAM,
-  withSpacedBang,
-} from "./calloutPrimitives";
+import { withSpacedBang } from "./calloutPrimitives";
 
 /*
  * SumoHypeStamp — combo-counter register.
  *
  * PERFECT (timed attack parry) and MATADOR (grab-line parry) sit above the
  * combat rail, where other fighting games put the hit counter. The word
- * is the object: oversized cream Bungee, no underline. Color lives in a
- * glow stroke on the glyphs — ice on Perfect, yellow on Matador.
+ * is the object: oversized Bungee filled with the event color (ice /
+ * leaf-gold), a hard ink contour, and a foil cap highlight. No glow —
+ * bloom made these read as neon stickers.
  *
  * Band: ~24–40cqh. Combat rail starts ~59cqh.
  */
@@ -21,26 +19,32 @@ import {
 export const HYPE_DURATION_S = 1.45;
 export const HYPE_DURATION_MS = 1450;
 
+const HYPE_INK = "rgba(4, 6, 12, 0.95)";
+
 const HYPE_THEMES = {
   perfect: {
     label: "PERFECT",
-    stroke: "#3ec8f0",
-    glow: "rgba(70, 210, 255, 0.9)",
+    fill: "#3ec8f0",
+    shine: "#f0fcff",
+    shelf: "rgba(8, 70, 100, 0.62)",
   },
   perfectbrace: {
     label: "PERFECT BRACE",
-    stroke: "#f0d24a",
-    glow: "rgba(255, 220, 90, 0.9)",
+    fill: "#f0d24a",
+    shine: "#fff6c8",
+    shelf: "rgba(110, 70, 0, 0.58)",
   },
   matador: {
     label: "MATADOR",
-    stroke: "#f0d24a",
-    glow: "rgba(255, 220, 90, 0.9)",
+    fill: "#f0d24a",
+    shine: "#fff6c8",
+    shelf: "rgba(110, 70, 0, 0.58)",
   },
   matadorbreak: {
     label: "MATADOR BREAK",
-    stroke: "#ff9a3a",
-    glow: "rgba(255, 160, 60, 0.9)",
+    fill: "#ee5141",
+    shine: "#ffe4de",
+    shelf: "rgba(90, 12, 8, 0.58)",
   },
 };
 
@@ -114,25 +118,20 @@ const useHypeRail = (isLeftSide, type) => {
 // ============================================
 
 const markIn = keyframes`
-  0%   { transform: translateY(-16px); }
-  62%  { transform: translateY(3px); }
-  100% { transform: translateY(0); }
+  0%   { transform: scale(1.32); }
+  58%  { transform: scale(0.97); }
+  100% { transform: scale(1); }
 `;
 
 const markRestrike = keyframes`
-  0%   { transform: translateY(0); }
-  40%  { transform: translateY(-6px); }
-  100% { transform: translateY(0); }
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.08); }
+  100% { transform: scale(1); }
 `;
 
 const markReplaceOut = keyframes`
-  0%   { opacity: 1; transform: translateY(0); }
-  100% { opacity: 0; transform: translateY(-12px); }
-`;
-
-const wordSlam = keyframes`
-  0%   { opacity: 0; transform: translateY(-10px); }
-  100% { opacity: 1; transform: translateY(0); }
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.92); }
 `;
 
 const wordOff = keyframes`
@@ -162,12 +161,13 @@ const StampWrapper = styled.div`
 `;
 
 const EXIT_S = 0.2;
-const REPLACE_EXIT_S = 0.14;
-const RESTRIKE_S = 0.16;
+const REPLACE_EXIT_S = 0.12;
+const RESTRIKE_S = 0.12;
 
 const StampMotion = styled.div`
   position: relative;
   width: max-content;
+  transform-origin: ${(p) => (p.$isLeftSide ? "right center" : "left center")};
   ${(p) => {
     if (p.$evicted) {
       return css`
@@ -177,15 +177,17 @@ const StampMotion = styled.div`
     }
 
     const enter = p.$restrike ? markRestrike : markIn;
-    const enterDur = p.$restrike ? RESTRIKE_S : 0.22;
+    const enterDur = p.$restrike ? RESTRIKE_S : 0.16;
 
     return css`
-      animation: ${enter} ${enterDur}s cubic-bezier(0.18, 0.85, 0.22, 1) both;
+      animation: ${enter} ${enterDur}s cubic-bezier(0.2, 0.9, 0.22, 1) both;
     `;
   }}
 `;
 
 const Word = styled.div`
+  position: relative;
+  padding: 0.06em 0.12em 0.1em;
   font-family: ${FONT_DISPLAY};
   font-size: ${(p) =>
     p.$long
@@ -196,13 +198,12 @@ const Word = styled.div`
   line-height: 0.9;
   white-space: nowrap;
   text-align: ${(p) => (p.$isLeftSide ? "right" : "left")};
-  color: ${CALLOUT_CREAM};
-  -webkit-text-stroke: 2.5px ${(p) => p.$stroke};
+  color: ${(p) => p.$fill};
+  -webkit-text-stroke: clamp(2.4px, 0.28cqw, 3.6px) ${HYPE_INK};
   paint-order: stroke fill;
   text-shadow:
-    0 0 2px ${(p) => p.$stroke},
-    0 0 6px ${(p) => p.$glow},
-    0 2px 0 rgba(0, 0, 0, 0.5);
+    0 2px 0 rgba(0, 0, 0, 0.82),
+    0 3px 0 ${(p) => p.$shelf};
   ${FONT_RENDER}
   user-select: none;
   ${(p) => {
@@ -212,16 +213,34 @@ const Word = styled.div`
       `;
     }
 
-    const snapDelay = p.$restrike ? 0 : 0.05;
     const hold = Math.max(0.55, (p.$duration || HYPE_DURATION_S) - EXIT_S);
 
     return css`
-      animation:
-        ${wordSlam} 0.16s cubic-bezier(0.2, 0.9, 0.22, 1) ${snapDelay}s both,
-        ${wordOff} 0.04s linear forwards;
-      animation-delay: ${snapDelay}s, ${hold}s;
+      animation: ${wordOff} 0.04s linear forwards;
+      animation-delay: ${hold}s;
     `;
   }}
+`;
+
+const Shine = styled.span`
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  padding: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-transform: inherit;
+  text-align: inherit;
+  white-space: inherit;
+  color: ${(p) => p.$shine};
+  -webkit-text-stroke: inherit;
+  paint-order: stroke fill;
+  text-shadow: none;
+  clip-path: inset(0 0 56% 0);
+  pointer-events: none;
+  user-select: none;
 `;
 
 // ============================================
@@ -256,10 +275,13 @@ const SumoHypeStamp = ({
           $evicted={evicted}
           $restrike={restrike}
           $duration={duration}
-          $stroke={theme.stroke}
-          $glow={theme.glow}
+          $fill={theme.fill}
+          $shelf={theme.shelf}
         >
           {label}
+          <Shine aria-hidden $shine={theme.shine}>
+            {label}
+          </Shine>
         </Word>
       </StampMotion>
     </StampWrapper>

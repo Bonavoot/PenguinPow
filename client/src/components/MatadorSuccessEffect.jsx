@@ -6,7 +6,7 @@ import SumoHypeStamp, { HYPE_DURATION_MS } from "./SumoHypeStamp";
 /**
  * MatadorSuccessEffect — "MATADOR" hype mark when a grab-line parry lands
  * (instant pull). Peer to PERFECT on the combo-counter band.
- * Gold rail; MATADOR BREAK (orange combat slab) is the opposite RPS punish.
+ * Gold rail; MATADOR BREAK (vermillion combat slab) is the opposite RPS punish.
  */
 const MatadorSuccessEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
