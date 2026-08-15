@@ -45,6 +45,12 @@ const STRIKE_TIP_SPRITE_PX = {
 // lands — tip-meets-body must never ghost-whiff from float/coast jitter.
 const CONTACT_SNAP_EPSILON = 1.5;
 
+// Air-hit: never torso-park to the fist. Pass-through jumps can be overlapping
+// or on the far side — a full tip park is a 50–130px teleport into hitstop.
+// Only unglue stacked sprites; knockback finishes the separation.
+const AIR_HIT_UNSTACK_MAX_PX = 16;
+const AIR_HIT_UNSTACK_COMFORT_PX = 36;
+
 // Park extension sep inside connect reach. Needs real margin: ice drift across
 // a few ticks can eat a 2px window and turn a point-blank slap into a ghost whiff.
 const EXTENSION_HIT_SLACK_PX = 8;
@@ -235,6 +241,26 @@ function applyContactCorrection(attacker, victim, parkDist) {
 }
 
 /**
+ * Air-hit spacing. Stay on the side they already occupy. Cap the nudge so
+ * hitstop freezes the connect, not a warp to the strike tip.
+ */
+function applyAirHitContactCorrection(attacker, victim) {
+  if (!attacker || !victim) return false;
+  const dx = victim.x - attacker.x;
+  const current = Math.abs(dx);
+  if (current >= AIR_HIT_UNSTACK_COMFORT_PX) return false;
+  // Dead overlap: unglue in front of the strike (16px), not a tip-park warp.
+  const pushSign = dx === 0 ? getAttackDir(attacker) : dx >= 0 ? 1 : -1;
+  const nudge = Math.min(
+    AIR_HIT_UNSTACK_MAX_PX,
+    AIR_HIT_UNSTACK_COMFORT_PX - current
+  );
+  if (nudge <= 0.5) return false;
+  victim.x = clampToRopeRest(victim.x + pushSign * nudge);
+  return true;
+}
+
+/**
  * While a slap/palm ACTIVE pose is out, keep the opponent at tip-meets-body
  * spacing so the limb cannot bury into their sprite. Charged uses the lunge
  * clamp instead (and already feels good). Runs every tick after pushbox.
@@ -264,7 +290,8 @@ function enforceStrikeExtensionSeparation(attacker, opponent, nowSim) {
     opponent.isBeingThrown ||
     opponent.isThrowing ||
     (opponent.isSlideJumping && opponent.slideJumpPhase === "flight") ||
-    (opponent.isRopeJumping && opponent.ropeJumpPhase === "active")
+    (opponent.isRopeJumping && opponent.ropeJumpPhase === "active") ||
+    opponent.isHitFalling
   ) {
     return false;
   }
@@ -325,6 +352,8 @@ module.exports = {
   STRIKE_TIP_SPRITE_PX,
   SPARK_PAST_TIP_PX,
   CONTACT_SNAP_EPSILON,
+  AIR_HIT_UNSTACK_MAX_PX,
+  AIR_HIT_UNSTACK_COMFORT_PX,
   EXTENSION_HIT_SLACK_PX,
   getVictimBodyHalf,
   getStrikeTipWorld,
@@ -336,6 +365,7 @@ module.exports = {
   getContactSeamX,
   clampToRopeRest,
   applyContactCorrection,
+  applyAirHitContactCorrection,
   enforceStrikeExtensionSeparation,
   attackKindFromPlayer,
   getAttackDir,

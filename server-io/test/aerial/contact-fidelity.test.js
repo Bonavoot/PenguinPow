@@ -248,6 +248,7 @@ describe("offensive aerial — lateral contact geometry", () => {
     const s = createSlideJumpScenario({
       name: "cross_immutable",
       armFlap: true,
+      dive: true,
       attackerX: 480,
       defenderX: 540,
       jumpDir: 1,
@@ -255,6 +256,7 @@ describe("offensive aerial — lateral contact geometry", () => {
       velY: -2,
       attackerY: GROUND_LEVEL + 55,
     });
+    placeDescendingOverOpponent(s, { height: 55, dive: true });
     runUntil(s, () => s.attacker.slideJumpHitLanded, 80);
     assert.equal(s.attacker.slideJumpHitLanded, true);
     const cx = s.attacker.offensiveAerial.contactX;

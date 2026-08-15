@@ -6,11 +6,7 @@
 
 const { describe, it, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
-const {
-  GROUND_LEVEL,
-  SLIDE_JUMP_LANDING_RECOVERY_MS,
-  FLAP_LANDING_RECOVERY_MS,
-} = require("../../constants");
+const { GROUND_LEVEL } = require("../../constants");
 const {
   setSimRoomResolver,
   timeoutManager,
@@ -130,14 +126,14 @@ describe("offensive aerial — cleanup stages", () => {
 });
 
 describe("offensive aerial — immunity cleanup", () => {
-  it("flight immunity holds through dive until touchdown", () => {
+  it("ascent is hittable; dive (past peak) is strike-immune", () => {
     const s = createSlideJumpScenario({
       name: "immunity_flight",
       armFlap: true,
       attackerY: GROUND_LEVEL + 60,
       velY: 5,
     });
-    assert.equal(isSlideJumpFlightImmune(s.attacker), true);
+    assert.equal(isSlideJumpFlightImmune(s.attacker), false);
     s.attacker.keys.s = true;
     runUntil(s, () => s.attacker.slideJumpDiveCommitted, 40);
     assert.equal(s.attacker.slideJumpDiveCommitted, true);
@@ -174,7 +170,7 @@ describe("offensive aerial — immunity cleanup", () => {
     runUntil(s, () => !s.attacker.isSlideJumping, 40);
     assert.equal(isSlideJumpFlightImmune(s.attacker), false);
     beginSlideJumpFlight(s.attacker, { now: s.room.simTime, armFlap: false });
-    assert.equal(isSlideJumpFlightImmune(s.attacker), true);
+    assert.equal(isSlideJumpFlightImmune(s.attacker), false);
   });
 
   it("interruption clears immunity", () => {
@@ -184,14 +180,14 @@ describe("offensive aerial — immunity cleanup", () => {
       attackerY: GROUND_LEVEL + 80,
       velY: 5,
     });
-    assert.equal(isSlideJumpFlightImmune(s.attacker), true);
+    assert.equal(isSlideJumpFlightImmune(s.attacker), false);
     clearAllActionStates(s.attacker);
     assert.equal(isSlideJumpFlightImmune(s.attacker), false);
   });
 });
 
 describe("offensive aerial — movement + buffer preservation", () => {
-  it("whiff preserves current plain landing recovery duration (90ms)", () => {
+  it("no-slam whiff land skips the plant lock (continue-slide)", () => {
     const s = createSlideJumpScenario({
       name: "whiff_recovery_ms",
       attackerX: 400,
@@ -201,13 +197,10 @@ describe("offensive aerial — movement + buffer preservation", () => {
       attackerY: GROUND_LEVEL + 10,
     });
     runUntil(s, () => s.attacker.slideJumpPhase === "landing", 20);
-    assert.equal(
-      s.attacker.actionLockUntil,
-      s.attacker.slideJumpLandingTime + SLIDE_JUMP_LANDING_RECOVERY_MS
-    );
+    assert.equal(s.attacker.actionLockUntil, s.attacker.slideJumpLandingTime);
   });
 
-  it("flap-flight whiff preserves FLAP_LANDING_RECOVERY_MS", () => {
+  it("no-slam flap-flight land skips the plant lock (continue-slide)", () => {
     const s = createSlideJumpScenario({
       name: "flap_whiff_ms",
       flapFlight: true,
@@ -218,10 +211,7 @@ describe("offensive aerial — movement + buffer preservation", () => {
       attackerY: GROUND_LEVEL + 10,
     });
     runUntil(s, () => s.attacker.slideJumpPhase === "landing", 20);
-    assert.equal(
-      s.attacker.actionLockUntil,
-      s.attacker.slideJumpLandingTime + FLAP_LANDING_RECOVERY_MS
-    );
+    assert.equal(s.attacker.actionLockUntil, s.attacker.slideJumpLandingTime);
   });
 
   it("buffered slap still blocked while slide-jumping", () => {
@@ -245,10 +235,10 @@ describe("offensive aerial — movement + buffer preservation", () => {
     });
     runUntil(s, () => s.attacker.slideJumpPhase === "landing", 20);
     const y = s.attacker.y;
-    const phase = s.attacker.slideJumpPhase;
+    assert.equal(s.attacker.y, GROUND_LEVEL);
     stepSlideJumpTick(s);
-    assert.equal(phase, "landing");
     assert.equal(s.attacker.y, y);
+    assert.equal(s.attacker.isSlideJumping, false);
     assert.equal(isBodySlamWindowOpen(s.attacker), false);
   });
 });

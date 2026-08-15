@@ -40,6 +40,9 @@ export const SHAKE_PROFILES = {
 
   // ── Medium events — rattle + slight roll ──
   rope_landing:    { trauma: 0.52, punch: 0.0, rot: 0.20 },
+  // Tawara kick-off — slide/redirect off the rope toward center. Louder than
+  // a normal land so the speed burst is impossible to miss.
+  rope_kickoff:    { trauma: 0.68, punch: 0.0, rot: 0.28, replace: true, dirBias: 0.8 },
   throw_landing:   { trauma: 0.55, punch: 0.0, rot: 0.20 },
   // Legacy / non-hit edge events (danger tell). Combat clamp hits use
   // rope_clamp_hit — stacking edge_pin on barrages read as a continuous wobble.

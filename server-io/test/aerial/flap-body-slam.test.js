@@ -10,7 +10,6 @@ const assert = require("node:assert/strict");
 const {
   GROUND_LEVEL,
   BURST_STUN_MS,
-  FLAP_LANDING_RECOVERY_MS,
   HITBOX_DISTANCE_VALUE,
   AP_STAGGER_FLAP_MS,
 } = require("../../constants");
@@ -61,9 +60,16 @@ describe("offensive aerial — body-slam geometry (current)", () => {
     assert.equal(s.attacker.slideJumpHitLanded, false);
   });
 
-  it("descent within height opens the body-slam window", () => {
+  it("descent within height opens the body-slam window only after S", () => {
+    const noSlam = createSlideJumpScenario({
+      name: "descent_window_no_s",
+      velY: -8,
+      attackerY: GROUND_LEVEL + 40,
+    });
+    assert.equal(isBodySlamWindowOpen(noSlam.attacker), false);
     const s = createSlideJumpScenario({
       name: "descent_window",
+      dive: true,
       velY: -8,
       attackerY: GROUND_LEVEL + 40,
     });
@@ -150,9 +156,9 @@ describe("offensive aerial — FLAP / slide-jump clean hit", () => {
     assert.equal(s.defender.hitCounter, hitCount1);
   });
 
-  it("crossing-side hit: attacker can connect while traveling across defender", () => {
+  it("no S: traveling across a standing defender does not slam", () => {
     const s = createSlideJumpScenario({
-      name: "cross_hit",
+      name: "cross_pass",
       attackerX: 480,
       defenderX: 560,
       jumpDir: 1,
@@ -160,16 +166,13 @@ describe("offensive aerial — FLAP / slide-jump clean hit", () => {
       velY: -2,
       attackerY: GROUND_LEVEL + 60,
     });
-    const side0 = s.attacker.x < s.defender.x ? -1 : 1;
-    const hitSnap = runUntil(
+    runUntil(
       s,
       () => s.attacker.slideJumpHitLanded || s.attacker.slideJumpPhase === "landing",
       80
     );
-    assert.equal(s.attacker.slideJumpHitLanded, true, "expected connect while crossing");
-    assert.ok(hitSnap);
-    // Side may flip during continued post-hit travel; latch is the invariant.
-    assert.equal(typeof side0, "number");
+    assert.equal(s.attacker.slideJumpHitLanded, false);
+    assert.equal(s.defender.isHit, false);
   });
 
   it("hit near left boundary still resolves without throwing", () => {
@@ -256,10 +259,8 @@ describe("offensive aerial — whiff outcomes", () => {
     assert.equal(s.attacker.slideJumpHitLanded, false);
     assert.equal(s.defender.isHit, false);
     assert.equal(s.attacker.slideJumpPhase, "landing");
-    // Flap flight was active → longer whiff recovery.
-    const expectedUnlock =
-      s.attacker.slideJumpLandingTime + FLAP_LANDING_RECOVERY_MS;
-    assert.equal(s.attacker.actionLockUntil, expectedUnlock);
+    // No slam → continue-slide, no plant lock (even after flap flight).
+    assert.equal(s.attacker.actionLockUntil, s.attacker.slideJumpLandingTime);
   });
 
   it("whiff passing over: high descent never contacts, then lands", () => {

@@ -16,7 +16,6 @@ const {
   GROUND_LEVEL,
   SLIDE_JUMP_LIFTOFF_IMPULSE,
   SLIDE_JUMP_GRAVITY,
-  SLIDE_JUMP_H_BASE,
   SLIDE_JUMP_AIR_STEER,
   SLIDE_JUMP_AIR_STEER_BLEED,
   SLIDE_JUMP_LANDING_RECOVERY_MS,
@@ -52,6 +51,9 @@ const {
   shouldCommitSlideJumpDive,
   cancelPendingSlapWork,
   armSlideJumpFlapCharges,
+  slideJumpHorizontalToMovementVelocity,
+  isSlideJumpContinueSlideLand,
+  applySlideJumpContinueOnLandDone,
 } = require("../../../gameUtils");
 const {
   arePlayersColliding,
@@ -96,6 +98,10 @@ const {
 } = require("../../../offensiveAerialReaction");
 const { createMockIo } = require("../../helpers/mockIo");
 const { computeOffensiveAerialContact } = require("../../../offensiveAerialContact");
+const {
+  beginSlideJumpLandSettle,
+  clearSlideJumpLandSettle,
+} = require("../../../slideJumpLandSettle");
 
 const TICK_MS = 1000 / TICK_RATE;
 
@@ -170,7 +176,7 @@ function createSlideJumpScenario(options = {}) {
     beginSlideJumpFlight(attacker, {
       now: startSim,
       dir: options.jumpDir != null ? options.jumpDir : attackerX < defenderX ? 1 : -1,
-      hSpeed: options.hSpeed != null ? options.hSpeed : SLIDE_JUMP_H_BASE,
+      hSpeed: options.hSpeed != null ? options.hSpeed : 5,
       velY:
         options.velY != null ? options.velY : SLIDE_JUMP_LIFTOFF_IMPULSE,
       y: options.attackerY != null ? options.attackerY : GROUND_LEVEL + 1,
@@ -206,7 +212,7 @@ function beginSlideJumpFlight(player, opts = {}) {
   player.slideJumpPhase = "flight";
   player.slideJumpStartTime = now;
   player.slideJumpVelocityY = opts.velY != null ? opts.velY : SLIDE_JUMP_LIFTOFF_IMPULSE;
-  player.slideJumpVelocityX = dir * (opts.hSpeed != null ? opts.hSpeed : SLIDE_JUMP_H_BASE);
+  player.slideJumpVelocityX = dir * (opts.hSpeed != null ? opts.hSpeed : 5);
   player.facing = dir > 0 ? -1 : 1;
   player.slideJumpDiveCommitted = !!opts.dive;
   player.slideJumpDiveBuffered = !!opts.dive;
@@ -223,6 +229,7 @@ function beginSlideJumpFlight(player, opts = {}) {
   player.isBraking = false;
   player.currentAction = "slideJump";
   player.actionLockUntil = 0;
+  clearSlideJumpLandSettle(player);
   player.y = opts.y != null ? opts.y : GROUND_LEVEL + 1;
   if (opts.armFlap) {
     player.activePowerUp = "flap";
@@ -533,12 +540,26 @@ function stepSlideJumpTick(scenario, options = {}) {
       attacker.y <= GROUND_LEVEL &&
       attacker.slideJumpVelocityY <= 0
     ) {
+      const continueSlide = isSlideJumpContinueSlideLand(attacker, {
+        isDiveLocked,
+        parryRecoil,
+      });
+      const carryVel = continueSlide
+        ? slideJumpHorizontalToMovementVelocity(attacker)
+        : 0;
       attacker.y = GROUND_LEVEL;
       attacker.slideJumpVelocityY = 0;
       attacker.slideJumpVelocityX = 0;
       attacker.flapVelocityX = 0;
       if (isDiveLocked) {
         attacker.x = attacker.slideJumpDiveLockX;
+      }
+      if (continueSlide) {
+        attacker.movementVelocity = carryVel;
+        attacker.slideJumpLandSlideQueued = !!(
+          attacker.keys && attacker.keys.shift
+        );
+        beginSlideJumpLandSettle(attacker, defender, now);
       }
       attacker.slideJumpPhase = "landing";
       attacker.slideJumpLandingTime = now;
@@ -548,9 +569,11 @@ function stepSlideJumpTick(scenario, options = {}) {
       const whiffRecovery = attacker.slideJumpFlapFlightActive
         ? FLAP_LANDING_RECOVERY_MS
         : SLIDE_JUMP_LANDING_RECOVERY_MS;
-      let recovery = attacker.slideJumpHitLanded
-        ? attacker.slideJumpHitRecoverDuration || BURST_STUN_MS
-        : whiffRecovery;
+      let recovery = continueSlide
+        ? 0
+        : attacker.slideJumpHitLanded
+          ? attacker.slideJumpHitRecoverDuration || BURST_STUN_MS
+          : whiffRecovery;
       resolveOffensiveAerialTouchdownTerminal(attacker, {
         resolvedTime: now,
         debugReason: "harness_touchdown",
@@ -581,12 +604,18 @@ function stepSlideJumpTick(scenario, options = {}) {
     if (attacker._oaTouchdownPresentation) {
       attacker._oaTouchdownPresentation = false;
     }
+    const continueSlide = isSlideJumpContinueSlideLand(attacker, {
+      isDiveLocked: !!attacker.slideJumpDiveCommitted,
+      parryRecoil: isParriedRecoilActive(attacker),
+    });
     const whiffRecovery = attacker.slideJumpFlapFlightActive
       ? FLAP_LANDING_RECOVERY_MS
       : SLIDE_JUMP_LANDING_RECOVERY_MS;
-    let recovery = attacker.slideJumpHitLanded
-      ? attacker.slideJumpHitRecoverDuration || BURST_STUN_MS
-      : whiffRecovery;
+    let recovery = continueSlide
+      ? 0
+      : attacker.slideJumpHitLanded
+        ? attacker.slideJumpHitRecoverDuration || BURST_STUN_MS
+        : whiffRecovery;
     if (
       attacker._oaParryControlRestoreAt &&
       attacker.offensiveAerial?.outcome === OFFENSIVE_AERIAL_OUTCOME.PARRIED
@@ -609,10 +638,15 @@ function stepSlideJumpTick(scenario, options = {}) {
         null;
       attacker.isRecovering = false;
       attacker.isAlreadyHit = false;
+      const carriedVel = attacker.movementVelocity;
+      const queuedSlide = !!attacker.slideJumpLandSlideQueued;
       clearSlideJumpState(attacker, {
         expectedInstanceId: endingInstanceId,
         debugReason: "harness_recovery_complete",
       });
+      attacker.movementVelocity = carriedVel;
+      attacker.slideJumpLandSlideQueued = queuedSlide;
+      applySlideJumpContinueOnLandDone(attacker, now);
       attacker.currentAction = null;
       attacker.actionLockUntil = 0;
       applyNeutralFacingAfterAerial(attacker, defender);
@@ -702,9 +736,18 @@ function placeDescendingOverOpponent(scenario, opts = {}) {
   attacker.slideJumpVelocityY =
     opts.velY != null ? opts.velY : -FLAP_DIVE_MIN_DOWN_VELOCITY;
   attacker.slideJumpVelocityX = opts.velX != null ? opts.velX : 0;
-  if (opts.dive) {
+  if (opts.dive !== false) {
     attacker.slideJumpDiveCommitted = true;
     attacker.slideJumpDiveLockX = attacker.x;
+    if (!attacker.offensiveAerial) {
+      beginOffensiveAerialActivation(attacker, {
+        forceNew: true,
+        moveType: OFFENSIVE_AERIAL_MOVE_TYPE.BODY_SLAM_DIVE,
+        offensiveArmed: true,
+        movementOwner: OFFENSIVE_AERIAL_MOVEMENT_OWNER.DIVE,
+        debugReason: "harness_place_dive",
+      });
+    }
   }
 }
 

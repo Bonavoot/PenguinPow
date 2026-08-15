@@ -189,6 +189,7 @@ function updateProjectiles(room, io, delta) {
 
           // Snowball impact — discrete presentation at projectile contact.
           // Legacy client used victim.x+70 (always +X); pin X to snowball.x.
+          const hitFromAir = targetPlayer.y > GROUND_LEVEL;
           {
             const approach =
               snowball.velocityX > 0 ? 1 : snowball.velocityX < 0 ? -1 : 1;
@@ -251,7 +252,6 @@ function updateProjectiles(room, io, delta) {
           // Capture air velocity before clearAllActionStates zeros flight channels
           const airCarryY = captureAirVerticalVelocity(targetPlayer);
           const airCarryX = captureAirHorizontalVelocity(targetPlayer);
-          const hitFromAir = targetPlayer.y > GROUND_LEVEL;
 
           // CRITICAL: Clear ALL action states before setting isHit
           clearAllActionStates(targetPlayer);
@@ -260,6 +260,7 @@ function updateProjectiles(room, io, delta) {
             beginAirHitFall(targetPlayer, {
               now: simNow(room),
               carryVelY: airCarryY,
+              attacker: player,
               impactTier: "medium",
             });
           } else if (targetPlayer.y < GROUND_LEVEL) {
@@ -310,7 +311,7 @@ function updateProjectiles(room, io, delta) {
                 knockbackDirection
               ).velocity;
             targetPlayer.movementVelocity = 0;
-            if (hitFromAir) applyAirHitKnockbackBoost(targetPlayer, airCarryX);
+            if (hitFromAir) applyAirHitKnockbackBoost(targetPlayer, airCarryX, player);
 
             setKnockbackImmunity(targetPlayer);
           }
@@ -691,6 +692,7 @@ function updateProjectiles(room, io, delta) {
             beginAirHitFall(opponent, {
               now: simNow(room),
               carryVelY: airCarryY,
+              attacker: player,
               impactTier: "medium",
             });
           } else if (opponent.y < GROUND_LEVEL) {
@@ -735,7 +737,7 @@ function updateProjectiles(room, io, delta) {
                 knockbackDirection
               ).velocity;
             opponent.movementVelocity = 0;
-            if (hitFromAir) applyAirHitKnockbackBoost(opponent, airCarryX);
+            if (hitFromAir) applyAirHitKnockbackBoost(opponent, airCarryX, player);
 
             setKnockbackImmunity(opponent);
           }

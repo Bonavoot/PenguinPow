@@ -5,28 +5,30 @@ import { C, HUD } from "./menuTheme";
 /*
  * Shared geometry + copy for combat slabs and hype marks.
  *
- * Slabs are a pigment parallelogram — no HUD cream stroke, no inner
- * keyline. Those belong on persistent instruments (stamina, posture).
- * A combat callout is an event: color field + cream type.
+ * Slabs are one shared well parallelogram — the same near-black as the
+ * stamina track and empty power-up slot. No cream stroke, no inner
+ * keyline. Those belong on persistent instruments. A combat callout is
+ * an event: well field + typed color.
  *
- * Pigment triad (hue-separated, same weight so they feel like one stamp set):
- *   COUNTER HIT   — hot gold. Tempo steal. Matches the gold hit ring.
- *                   Bright cadmium, not ochre — the darker amber read as
- *                   mustard. Not traffic-orange, not MATADOR's leaf-gold.
- *   PUNISH        — royal violet. Recovery cash-in. Same family as the
- *                   purple hit ring, pulled a step off neon so it sits
- *                   as paint next to the other two.
- *   MATADOR BREAK — hanko vermillion. Gored / exposed RPS. Brand violence
- *                   color, so it can never be mistaken for a counter.
+ * Type ink (hue-separated, same weight so they feel like one stamp set):
+ *   COUNTER HIT   — neon yellow-orange, mostly yellow. Tempo steal.
+ *                   Not lemon, not mustard. Leaf-gold stays on MATADOR.
+ *   PUNISH        — neon violet. Recovery cash-in. Same family as the
+ *                   purple hit ring, pushed to sign-brightness.
+ *   MATADOR BREAK — hanko vermillion. Gored / exposed RPS. Brand violence.
+ *   COUNTER GRAB  — rose. Grab-side steal. Not gold (that's a strike
+ *                   counter) and not vermillion (that's Matador Break).
  */
 
 export const CALLOUT_KEYLINE = HUD.keyline;
 export const CALLOUT_CREAM = HUD.heroType;
+export const CALLOUT_SLAB = HUD.well;
 
 export const CALLOUT_PIGMENT = {
-  counterhit: "#ffb400",
-  punish: "#8a35e4",
+  counterhit: "#ffd800",
+  punish: "#9b4dff",
   matadorbreak: C.vermillion,
+  countergrab: "#ff3d88",
 };
 
 export const withSpacedBang = (text) => {
@@ -37,7 +39,15 @@ export const withSpacedBang = (text) => {
   return `${text.replace(/\s*!+\s*$/, "")}\u00A0!`;
 };
 
-export const parallelogramPoints = (slant = 8, insetX = 2.4, insetY = 8) => {
+export const parallelogramPoints = (
+  slant = 8,
+  insetX = 2.4,
+  insetY = 8,
+  mirror = false,
+) => {
+  if (mirror) {
+    return `${insetX},${insetY} ${100 - insetX - slant},${insetY} ${100 - insetX},${100 - insetY} ${insetX + slant},${100 - insetY}`;
+  }
   return `${insetX + slant},${insetY} ${100 - insetX},${insetY} ${100 - insetX - slant},${100 - insetY} ${insetX},${100 - insetY}`;
 };
 
@@ -56,8 +66,9 @@ export const CalloutParallelogram = ({
   slant = 8,
   strokeWidth = 0,
   insetY = 8,
+  mirror = false,
 }) => {
-  const pts = parallelogramPoints(slant, 2.4, insetY);
+  const pts = parallelogramPoints(slant, 2.4, insetY, mirror);
   return (
     <FillSvg
       viewBox="0 0 100 100"
@@ -82,4 +93,5 @@ CalloutParallelogram.propTypes = {
   slant: PropTypes.number,
   strokeWidth: PropTypes.number,
   insetY: PropTypes.number,
+  mirror: PropTypes.bool,
 };

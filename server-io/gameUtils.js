@@ -1,6 +1,7 @@
 const {
   SCREEN_SHAKE_MIN_INTERVAL,
   DOHYO_EDGE_PANIC_ZONE,
+  ROPE_KICKOFF_ZONE,
   SLIDE_BRAKE_FRICTION, SLIDE_FRICTION,
   ICE_EDGE_BRAKE_BONUS, ICE_BRAKE_FRICTION,
   ICE_MOVING_FRICTION, ICE_COAST_FRICTION, ICE_EDGE_SLIDE_PENALTY,
@@ -25,14 +26,8 @@ const {
   INPUT_PRESS_MONOTONIC_SLACK_MS,
   FLAP_CHARGES,
   FLAP_STAMINA_COST,
-  HIT_FALL_DUMP_LIGHT,
-  HIT_FALL_DUMP_MEDIUM,
-  HIT_FALL_DUMP_HEAVY,
-  HIT_FALL_CARRY_DOWN_SCALE,
-  HIT_FALL_COUNTER_DUMP_MULT,
   HIT_FALL_MAX_FALL_SPEED,
-  AIR_HIT_KB_MULT,
-  AIR_HIT_CARRY_X_SCALE,
+  AIR_HIT_KB_BONUS_PX,
   TICK_RATE,
   speedFactor,
   GASSED_DURATION_MS,
@@ -55,11 +50,18 @@ const {
   ICE_SLIDE_REVERSE_BURST,
   ICE_SLIDE_REVERSE_HOP_MS,
   ICE_SLIDE_REVERSE_COOLDOWN_MS,
+  ICE_SLIDE_MAX_SPEED,
   GRAB_STATES,
   GRAB_STARTUP_DURATION_MS,
   SLIDE_JUMP_DIVE_MIN_AIR_MS,
   SLIDE_JUMP_DIVE_MIN_HEIGHT,
   SLIDE_JUMP_DIVE_BUFFER_MS,
+  SLIDE_JUMP_H_MIN,
+  SLIDE_JUMP_H_CARRY,
+  SLIDE_JUMP_H_MAX_MULT,
+  SLIDE_JUMP_H_STACK_START,
+  SLIDE_JUMP_H_STACK_FULL_MULT,
+  SLIDE_JUMP_H_STACK_HEADROOM,
 } = require("./constants");
 
 // Velocity-at-press telemetry sink (MASTERY Phase 0). appendVerbInit is a
@@ -67,7 +69,8 @@ const {
 const { appendVerbInit, AUDIT_ENABLED } = require("./inputAuditLog");
 
 const { MASTERY_P1_MOMENTUM } = require("./masteryFlags");
-const { handoffVelocity } = require("./momentumTransfer");
+const { handoffVelocity, pxToKbVelocity } = require("./momentumTransfer");
+const { clearAirHitOverlapEject } = require("./airHitOverlapEject");
 // Constants-only module — safe to require here without a cycle.
 const { stampGrabVariant } = require("./commandGrabInput");
 const { getGrabLungeImpulse } = require("./combatHelpers");
@@ -97,6 +100,7 @@ const {
 } = require("./offensiveAerialFacing");
 const {
   clearOffensiveAerialPresentation,
+  syncOffensiveAerialPresentation,
 } = require("./offensiveAerialPresentation");
 const {
   isActionFacingOwnershipV2Enabled,
@@ -1065,7 +1069,7 @@ function canPlayerUseAction(player) {
 
 /**
  * Dodge startup strike invuln (DODGE_IFRAME_MS from dodgeStartTime).
- * Strike collision only — grabs always beat dodge.
+ * Strike collision only — grabs still beat the kick-off dodge.
  */
 function isInDodgeStrikeIFrames(player, nowSim) {
   if (!player || !player.isDodging) return false;
@@ -1532,6 +1536,7 @@ function clearAllActionStates(player) {
   player.hitFallStartTime = 0;
   player.hitFallStartY = 0;
   player.hitFallVelocityY = 0;
+  clearAirHitOverlapEject(player);
   player.isSidestepHitReturn = false;
   player.sidestepHitReturnStartTime = 0;
   player.sidestepHitReturnStartY = 0;
@@ -1698,6 +1703,7 @@ function clearSlideJumpState(player, opts = {}) {
   player.slideJumpLandSlamImmuneUntil = 0;
   player.slideJumpStartTime = 0;
   player.slideJumpBufferUntil = 0;
+  player.slideJumpLandSlideQueued = false;
   player.slideJumpHasFlap = false;
   player.slideJumpFlapFlightActive = false;
   // Charge / wing-beat / H-burst fields shared with FLAP flight mode.
@@ -1737,7 +1743,9 @@ function clearIceSlideState(player) {
   player.isIceSliding = false;
   player.iceSlideDir = 0;
   player.iceSlideStartTime = 0;
+  player.iceSlideCarrySpeed = 0;
   player.slideJumpBufferUntil = 0;
+  player.slideJumpLandSlideQueued = false;
   player.isIceSlideReverseHopping = false;
   player.iceSlideReverseHopStartTime = 0;
   player.iceSlideReverseHopUntil = 0;
@@ -1886,7 +1894,191 @@ function tryIceSlideReverse(player, nowSim) {
   player.iceSlideBrakeArmStart = 0;
   // Fresh slide clock so the post-reverse jump isn't starved by brake time.
   player.iceSlideStartTime = nowSim;
+  applyRopeKickoff(player, newDir, nowSim);
+  stampIceSlideCarrySpeed(player);
   return true;
+}
+
+/**
+ * Redirect bunny-hop invuln — strikes AND grabs. Hop window only.
+ * A grab that is in range during this hop whiffs immediately (punishable).
+ */
+function isInSlideRedirectIFrames(player, nowSim) {
+  if (!player || !player.isIceSlideReverseHopping) return false;
+  const until = player.iceSlideReverseHopUntil || 0;
+  if (!until) return false;
+  const t = typeof nowSim === "number" ? nowSim : simNowForPlayer(player);
+  return t < until;
+}
+
+/** Slide / redirect off the near rope, toward center. */
+function isRopeKickoffEligible(x, dir) {
+  if (typeof x !== "number" || !dir) return false;
+  if (dir > 0) return x - MAP_LEFT_BOUNDARY <= ROPE_KICKOFF_ZONE;
+  if (dir < 0) return MAP_RIGHT_BOUNDARY - x <= ROPE_KICKOFF_ZONE;
+  return false;
+}
+
+/**
+ * Snap to full slide speed and stamp a client FX id.
+ * Returns true when the kick-off fired.
+ * `originX` is the launch point (dodge start on the straw) — land X is already
+ * a hop inward and must not be the only sample.
+ */
+function applyRopeKickoff(player, dir, nowSim, originX) {
+  if (!player) return false;
+  const atRope =
+    isRopeKickoffEligible(player.x, dir) ||
+    isRopeKickoffEligible(originX, dir);
+  if (!atRope) return false;
+  const slideDir = dir > 0 ? 1 : -1;
+  player.movementVelocity = slideDir * ICE_SLIDE_MAX_SPEED;
+  player.iceSlideCarrySpeed = ICE_SLIDE_MAX_SPEED;
+  player.ropeKickoffFxId = (player.ropeKickoffFxId || 0) + 1;
+  if (nowSim != null && MASTERY_P1_MOMENTUM) {
+    stampMomentumWindow(player, player.movementVelocity, nowSim);
+  }
+  return true;
+}
+
+function beginIceSlide(player, dir, velocity, nowSim, opts = {}) {
+  const slideDir = dir > 0 ? 1 : dir < 0 ? -1 : 0;
+  if (!player || !slideDir) return { ok: false, ropeKickoff: false };
+  player.isIceSliding = true;
+  player.iceSlideDir = slideDir;
+  player.iceSlideStartTime = nowSim;
+  player.slideJumpBufferUntil = 0;
+  player.isBraking = false;
+  player.isStrafing = false;
+  if (typeof velocity === "number") {
+    player.movementVelocity = velocity;
+  }
+  const ropeKickoff = applyRopeKickoff(
+    player,
+    slideDir,
+    nowSim,
+    opts.kickoffOriginX
+  );
+  if (
+    opts.stampMomentum !== false &&
+    !ropeKickoff &&
+    MASTERY_P1_MOMENTUM
+  ) {
+    stampMomentumWindow(player, player.movementVelocity, nowSim);
+  }
+  stampIceSlideCarrySpeed(player);
+  return { ok: true, ropeKickoff };
+}
+
+const ICE_SLIDE_CARRY_STAMP_EPS = 0.2;
+
+/** Remember real slide speed so a pocket pushbox zero cannot starve W takeoff. */
+function stampIceSlideCarrySpeed(player) {
+  if (!player?.isIceSliding) return;
+  const speed = Math.abs(player.movementVelocity || 0);
+  if (speed > ICE_SLIDE_CARRY_STAMP_EPS) {
+    player.iceSlideCarrySpeed = speed;
+  }
+}
+
+function slideJumpTakeoffSourceSpeed(player) {
+  const live = Math.abs(player?.movementVelocity || 0);
+  // Live slide wins. Carry is only the pocket-zero fallback — never a peak
+  // from a kick-off you were only in for a tick.
+  if (live > ICE_SLIDE_CARRY_STAMP_EPS) return live;
+  const carry = player?.isIceSliding
+    ? Math.abs(player.iceSlideCarrySpeed || 0)
+    : 0;
+  return Math.max(live, carry);
+}
+
+function slideJumpUnbuffedMaxTakeoffH() {
+  const icePx =
+    (1000 / TICK_RATE) * speedFactor * ICE_SLIDE_MAX_SPEED;
+  return SLIDE_JUMP_H_MIN + icePx * SLIDE_JUMP_H_CARRY;
+}
+
+/** Ice-slide displacement per tick, including Happy Feet / basho speed. */
+function iceSlidePxPerTick(player, movementVelocity) {
+  const speed = Math.abs(
+    typeof movementVelocity === "number"
+      ? movementVelocity
+      : player?.movementVelocity || 0
+  );
+  return (
+    (1000 / TICK_RATE) *
+    speedFactor *
+    getEffectiveMoveSpeedMult(player) *
+    speed
+  );
+}
+
+/**
+ * Max air H. Unbuffed kick-off takeoff is the travel we like. First Happy
+ * Feet does not buy a longer jump. Extra stacks may add a little leftover.
+ */
+function slideJumpTakeoffHCap(player) {
+  const base = slideJumpUnbuffedMaxTakeoffH() * SLIDE_JUMP_H_MAX_MULT;
+  const mult = getEffectiveMoveSpeedMult(player);
+  const extra = Math.max(0, mult - SLIDE_JUMP_H_STACK_START);
+  const span = Math.max(
+    1e-6,
+    SLIDE_JUMP_H_STACK_FULL_MULT - SLIDE_JUMP_H_STACK_START
+  );
+  const t = Math.min(1, extra / span);
+  return base * (1 + SLIDE_JUMP_H_STACK_HEADROOM * t);
+}
+
+/** Air H (px/tick) from the slide you left. Buffed ice is capped — see cap. */
+function slideJumpTakeoffHorizontalSpeed(player) {
+  const source = slideJumpTakeoffSourceSpeed(player);
+  const carried = iceSlidePxPerTick(player, source);
+  const h = SLIDE_JUMP_H_MIN + carried * SLIDE_JUMP_H_CARRY;
+  return Math.min(h, slideJumpTakeoffHCap(player));
+}
+
+/** px/tick (slide-jump / flap H) → movementVelocity, capped at slide max. */
+function slideJumpHorizontalToMovementVelocity(player) {
+  if (!player) return 0;
+  let hPx = player.slideJumpVelocityX || 0;
+  if (player.slideJumpFlapFlightActive) {
+    hPx += player.flapVelocityX || 0;
+  }
+  const k =
+    (1000 / TICK_RATE) * speedFactor * getEffectiveMoveSpeedMult(player);
+  if (!(k > 0)) return 0;
+  const v = hPx / k;
+  return Math.max(-ICE_SLIDE_MAX_SPEED, Math.min(ICE_SLIDE_MAX_SPEED, v));
+}
+
+/**
+ * No-slam, no-parry, no-connect land → keep jump H as a slide (ice slide if SHIFT).
+ * Slam / hit-landed / parry still plant.
+ */
+function isSlideJumpContinueSlideLand(player, extras = {}) {
+  if (!player) return false;
+  if (extras.parryRecoil || isParriedRecoilActive(player)) return false;
+  if (extras.isDiveLocked || player.slideJumpDiveCommitted) return false;
+  if (player.slideJumpHitLanded) return false;
+  if (player.offensiveAerial?.outcome === OFFENSIVE_AERIAL_OUTCOME.PARRIED) {
+    return false;
+  }
+  return true;
+}
+
+function applySlideJumpContinueOnLandDone(player, nowSim) {
+  if (!player) return { ropeKickoff: false };
+  const vel = player.movementVelocity || 0;
+  const queued = !!player.slideJumpLandSlideQueued;
+  const holdShift = !!(player.keys && player.keys.shift);
+  player.slideJumpLandSlideQueued = false;
+  const dir =
+    Math.sign(vel) ||
+    (player.iceSlideDir > 0 ? 1 : player.iceSlideDir < 0 ? -1 : 0);
+  if ((queued || holdShift) && dir) {
+    return beginIceSlide(player, dir, vel, nowSim);
+  }
+  return { ok: true, ropeKickoff: false };
 }
 
 function clearHitFall(player) {
@@ -1894,21 +2086,39 @@ function clearHitFall(player) {
   player.hitFallStartTime = 0;
   player.hitFallStartY = 0;
   player.hitFallVelocityY = 0;
+  clearAirHitOverlapEject(player);
 }
 
 /**
- * Slide-jump / FLAP flight is strike-immune until touchdown.
- * Includes S dive — dive commits the slam offense but does not open the
- * flyer to mid-air hits (landing phase is the punish window).
+ * True once the slide-jump has crested — descent, dive, or velY already down.
+ * Launch (rising) stays open; everything after the peak is strike-immune.
+ */
+function isSlideJumpPastPeak(player) {
+  if (!player?.isSlideJumping || player.slideJumpPhase !== "flight") {
+    return false;
+  }
+  if (player.slideJumpDiveCommitted || player.slideJumpFastFalling) {
+    return true;
+  }
+  return (player.slideJumpVelocityY || 0) <= 0;
+}
+
+/**
+ * Slide-jump strike i-frames: post-peak only. Ascent can be stuffed.
+ * Parried recoil stays vulnerable. Pass-through (pushbox / tip-sep) is
+ * separate — jumping a body is not the same as being unhittable.
  */
 function isSlideJumpFlightImmune(player) {
-  // Parried recoil is deliberately vulnerable (flight immunity cleared).
   if (isParriedRecoilActive(player)) return false;
-  return !!(
-    player &&
-    player.isSlideJumping &&
-    player.slideJumpPhase === "flight"
-  );
+  return isSlideJumpPastPeak(player);
+}
+
+/**
+ * @deprecated Distance is the anti-follow-up (authored KB + AIR_HIT_KB_BONUS_PX).
+ * Kept so old callers compile; always false.
+ */
+function isAirHitFallStrikeImmune() {
+  return false;
 }
 
 /**
@@ -1983,62 +2193,48 @@ function captureAirHorizontalVelocity(player) {
 }
 
 /**
- * Amplify air-connect KB and fold prior air H travel into the shove so the
- * dump continues their path instead of dropping straight down.
+ * Anti-air send: whatever the strike already wrote + a fixed extra shove.
+ * That extra is the punishment — not a silent hurtbox, not an eject channel.
  */
-function applyAirHitKnockbackBoost(player, airCarryX = 0) {
-  if (!player?.knockbackVelocity) return;
-  if (Math.abs(player.knockbackVelocity.x) < 0.001 && Math.abs(airCarryX) < 0.001) {
-    return;
+function applyAirHitKnockbackBoost(player, _airCarryX = 0, attacker = null) {
+  if (!player) return;
+  if (!player.knockbackVelocity) {
+    player.knockbackVelocity = { x: 0, y: 0 };
   }
-  player.knockbackVelocity.x *= AIR_HIT_KB_MULT;
-  // slide-jump X is raw px/tick; knockback integrates as x += kb * delta * speedFactor
-  const pxPerKbUnit = (1000 / TICK_RATE) * speedFactor;
-  if (pxPerKbUnit > 0 && Math.abs(airCarryX) > 0.01) {
-    player.knockbackVelocity.x += (airCarryX / pxPerKbUnit) * AIR_HIT_CARRY_X_SCALE;
+  let dir = Math.sign(player.knockbackVelocity.x);
+  if (!dir && attacker && typeof attacker.x === "number") {
+    const dx = (player.x || 0) - attacker.x;
+    dir = dx > 0 ? 1 : dx < 0 ? -1 : attacker.facing === 1 ? -1 : 1;
   }
+  if (!dir) dir = 1;
+  player.knockbackVelocity.x += dir * pxToKbVelocity(AIR_HIT_KB_BONUS_PX);
 }
 
 /**
- * Start heavy-sumo dump after an airborne hit.
- * No upward pop — kill rise, dump down by move power. Horizontal KB stays on
- * knockbackVelocity.x until touchdown (see endHitKnockback / landing handoff).
- * impactTier: 'light' | 'medium' | 'heavy'
- * chargePercentage: 0–100; when > 0, lerps medium→heavy for charged hits.
+ * Start the anti-air fall. Kill rise — no pop. Gravity drops them from
+ * current height. Horizontal travel is authored KB + AIR_HIT_KB_BONUS_PX
+ * (applied by the caller before this). No overlap eject.
  */
 function beginAirHitFall(player, {
   now = 0,
   carryVelY = 0,
-  impactTier = "light",
-  chargePercentage = 0,
-  isCounterHit = false,
-  isGored = false,
 } = {}) {
   if (!player || !(player.y > GROUND_LEVEL)) return false;
 
   clearSidestepHitReturn(player);
 
-  let dump = HIT_FALL_DUMP_LIGHT;
-  if (impactTier === "medium") dump = HIT_FALL_DUMP_MEDIUM;
-  else if (impactTier === "heavy") dump = HIT_FALL_DUMP_HEAVY;
-
-  if (typeof chargePercentage === "number" && chargePercentage > 0) {
-    const t = Math.max(0, Math.min(1, chargePercentage / 100));
-    dump = HIT_FALL_DUMP_MEDIUM + (HIT_FALL_DUMP_HEAVY - HIT_FALL_DUMP_MEDIUM) * t;
-  }
-
-  if (isCounterHit || isGored) dump *= HIT_FALL_COUNTER_DUMP_MULT;
-
-  // Keep only downward carry; rising momentum is killed on impact.
-  const downCarry =
-    carryVelY < 0 ? carryVelY * HIT_FALL_CARRY_DOWN_SCALE : 0;
-  let velY = downCarry - dump;
+  // Interrupt the jump. Keep only leftover downward speed; never invert
+  // into a dump and never add an upward pop.
+  let velY = carryVelY < 0 ? carryVelY : 0;
   if (velY < -HIT_FALL_MAX_FALL_SPEED) velY = -HIT_FALL_MAX_FALL_SPEED;
 
   player.isHitFalling = true;
   player.hitFallStartTime = now;
   player.hitFallStartY = player.y;
   player.hitFallVelocityY = velY;
+  player.isRecovering = false;
+  player.isJumping = false;
+  syncOffensiveAerialPresentation(player);
   return true;
 }
 
@@ -2090,7 +2286,7 @@ function endHitKnockback(player) {
   }
 }
 
-/** Touchdown from air-hit dump — hand residual KB to ice coast. */
+/** Touchdown from air-hit arc — hand residual KB to ice coast. */
 function finishAirHitFallLanding(player) {
   if (!player) return;
   if (Math.abs(player.knockbackVelocity?.x || 0) > 0.01) {
@@ -2104,7 +2300,10 @@ function finishAirHitFallLanding(player) {
   player.burstKnockbackStartTime = 0;
   player.isChargedKnockback = false;
   player.chargedKnockbackCanRingOut = false;
+  player.isRecovering = false;
+  resetOffensiveAerialReaction(player);
   clearHitFall(player);
+  syncOffensiveAerialPresentation(player);
 }
 
 function clearSidestepHitReturn(player) {
@@ -2571,6 +2770,19 @@ module.exports = {
   canPlayerDash,
   beginPlayerDodge,
   isInDodgeStrikeIFrames,
+  isInSlideRedirectIFrames,
+  isRopeKickoffEligible,
+  applyRopeKickoff,
+  beginIceSlide,
+  iceSlidePxPerTick,
+  stampIceSlideCarrySpeed,
+  slideJumpTakeoffSourceSpeed,
+  slideJumpUnbuffedMaxTakeoffH,
+  slideJumpTakeoffHCap,
+  slideJumpTakeoffHorizontalSpeed,
+  slideJumpHorizontalToMovementVelocity,
+  isSlideJumpContinueSlideLand,
+  applySlideJumpContinueOnLandDone,
   canPlayerSidestep,
   resetPlayerAttackStates,
   clearAllActionStates,
@@ -2604,7 +2816,9 @@ module.exports = {
   getSidestepInitData,
   clearHitFall,
   clearSidestepHitReturn,
+  isSlideJumpPastPeak,
   isSlideJumpFlightImmune,
+  isAirHitFallStrikeImmune,
   isSlideJumpDiveEnabled,
   bufferSlideJumpDiveInput,
   shouldCommitSlideJumpDive,

@@ -3,9 +3,6 @@ const assert = require("node:assert/strict");
 const {
   BOUT_SECONDS,
   BOUT_CARD_MS,
-  BOUT_CARD_HOLD_MS,
-  GYOJI_CALL_DELAY_MS,
-  tachiaiStartAt,
   HANTEI_TIE_EPSILON,
   describeBout,
   ringFromBoundaries,
@@ -187,44 +184,13 @@ describe("boutClock — bout card", () => {
   });
 });
 
-describe("boutClock — tachiai hold for the bout card", () => {
-  it("does not delay the salt path, where the card already finished", () => {
-    // Card fires at salt start; the wrestlers aren't set for ~2s after.
-    assert.equal(tachiaiStartAt(5000, 2800), 5000);
-  });
-
-  it("buys back only the shortfall when the salt throw is skipped", () => {
-    // Card fired 200ms ago, so 200ms of the hold is already served and
-    // only the remainder is added to the tachiai.
-    const elapsedSinceCard = 200;
-    assert.equal(tachiaiStartAt(5000, 4800), 4800 + BOUT_CARD_HOLD_MS);
-    assert.equal(
-      tachiaiStartAt(5000, 4800) - 5000,
-      BOUT_CARD_HOLD_MS - elapsedSinceCard
-    );
-  });
-
-  it("holds the full card length when the card just fired", () => {
-    assert.equal(tachiaiStartAt(5000, 5000) - 5000, BOUT_CARD_HOLD_MS);
-  });
-
-  it("never holds when no card was sent", () => {
-    assert.equal(tachiaiStartAt(5000, null), 5000);
-    assert.equal(tachiaiStartAt(5000, undefined), 5000);
-  });
-
-  it("gives the card exactly its animation and no more", () => {
-    // Screen time = (tachiai - cardFired) + gyoji delay, because the
-    // client kills the card the instant gyoji_call lands.
-    const fired = 1000;
-    const screenTime =
-      tachiaiStartAt(fired, fired) - fired + GYOJI_CALL_DELAY_MS;
-    assert.equal(screenTime, BOUT_CARD_MS);
-  });
-});
-
 describe("boutClock — constants", () => {
   it("keeps the bout short enough that the clock looks alive", () => {
     assert.ok(BOUT_SECONDS > 0 && BOUT_SECONDS <= 99);
+  });
+
+  it("sizes the versus card to the salt-throw window", () => {
+    // 1.8s sits inside the 1483ms throw plus the walk, with a real hold.
+    assert.equal(BOUT_CARD_MS, 1800);
   });
 });

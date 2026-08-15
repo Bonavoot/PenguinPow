@@ -21,11 +21,10 @@ export const BOUT_SECONDS = 30;
 export const CLOCK_URGENT_AT = 10;
 
 /**
- * Bout card ("DAY 7" / "ROUND 2" / "FINAL ROUND") animation length.
+ * Versus bout card ("ROUND 2" / "FINAL ROUND") animation length.
  *
- * The server holds the tachiai open by exactly the shortfall this
- * implies, so the card is never clipped on bouts that skip the salt
- * throw. Change it here and BOUT_CARD_MS in server-io/boutClock.js
- * together, or later bouts start losing the tail of the card again.
+ * Sized to the salt throw that now plays every versus bout. Change it
+ * here and BOUT_CARD_MS in server-io/boutClock.js together. Basho days
+ * sit under the HUD clock and do not use this card.
  */
-export const BOUT_CARD_SECONDS = 1.4;
+export const BOUT_CARD_SECONDS = 1.8;

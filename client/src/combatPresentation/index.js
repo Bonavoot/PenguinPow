@@ -31,3 +31,9 @@ export {
   movementSmokeEmitterName,
   isSlideRedirectDirFlip,
 } from "./movementSmoke";
+
+export {
+  claimDodgeStartAudio,
+  clearDodgeStartAudio,
+  DODGE_START_AUDIO_WINDOW_MS,
+} from "./dodgeStartAudio";

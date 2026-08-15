@@ -335,6 +335,19 @@ describe("Phase 5A — offensive aerial facing lock + presentation", () => {
       resolveOffensiveAerialPresentation(p),
       OFFENSIVE_AERIAL_PRESENTATION.INTERRUPTED_AIRBORNE
     );
+    p.isHit = false;
+    assert.equal(
+      resolveOffensiveAerialPresentation(p),
+      OFFENSIVE_AERIAL_PRESENTATION.INTERRUPTED_AIRBORNE,
+      "stun end mid-air must keep the hit pose"
+    );
+    p.isRecovering = true;
+    p.offensiveAerial = { outcome: OFFENSIVE_AERIAL_OUTCOME.PARRIED };
+    assert.equal(
+      resolveOffensiveAerialPresentation(p),
+      OFFENSIVE_AERIAL_PRESENTATION.INTERRUPTED_AIRBORNE,
+      "leftover isRecovering must not steal the air-hit pose"
+    );
   });
 
   it("22. Touchdown resolves before landing recovery", () => {

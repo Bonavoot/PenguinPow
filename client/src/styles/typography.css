@@ -7,6 +7,7 @@
  *   --font-ui       Chillax — interface, HUD info, body, buttons
  *   --font-clock    Chillax — bout timer (same family as --font-ui)
  *   --font-kanji    Noto Serif JP — CJK ceremonial accents only
+ *   --font-brush    Yuji Boku — painted combat-callout seals only
  *
  * Crisp type: hard shelves over soft bloom. See menuTheme TEXT_SHADOW_*.
  */
@@ -17,6 +18,7 @@
   --font-clock: var(--font-ui);
   --font-body: var(--font-ui);
   --font-kanji: "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --font-brush: "Yuji Boku", var(--font-kanji);
 
   --fw-regular: 400;
   --fw-medium: 500;

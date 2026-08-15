@@ -1510,15 +1510,10 @@ const STAMINA_MIDLINE_TOP = `
  * reads as low-biased on the hero bar; pull it up a hair. */
 const CLOCK_MIDLINE_TOP = STAMINA_MIDLINE_TOP;
 
-/* Match clock — bare numerals between the wing gauges. No ring, no rail,
- * no caption.
- *
- * The center used to hold a round/day counter, which is information you
- * need once at the top of a bout and never again; it has moved to a card
- * that plays before HANDS DOWN. The clock is the opposite — it's the one
- * thing worth a permanent seat between the bars, and the negative space
- * around it is what makes it read without a container. */
-const MatchClock = styled.div`
+/* Clock seat — sized to the numeral only. The optional BASHO day caption
+ * hangs below via absolute positioning so it cannot shift the clock off
+ * the stamina midline. */
+const ClockSeat = styled.div`
   position: absolute;
   top: calc(${CLOCK_MIDLINE_TOP});
   left: 50%;
@@ -1529,6 +1524,18 @@ const MatchClock = styled.div`
   z-index: 3;
   pointer-events: none;
   user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+`;
+
+/* Match clock — bare numerals between the wing gauges. No ring, no rail.
+ *
+ * Versus rounds are a one-beat title over the salt throw. Basho days
+ * stay here as a small caption — a 15-day run needs orientation for
+ * the whole bout, not another announcement. */
+const MatchClock = styled.div`
+  display: inline-block;
   opacity: ${(p) => (p.$matchOver ? 0.7 : 1)};
   transition: opacity 260ms ease;
 
@@ -1572,6 +1579,29 @@ const MatchClock = styled.div`
     css`
       animation: ${dangerFramePulse} 0.5s ease-in-out infinite;
     `}
+`;
+
+/* BASHO day — orientation under the clock, not a callout. Cream, not
+ * gold (gold is rank) and never vermillion with the urgent clock. */
+const ClockDay = styled.div`
+  position: absolute;
+  top: calc(100% + clamp(2px, 0.35cqh, 5px));
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
+  font-size: clamp(8px, 1.05cqw, 12px);
+  line-height: 1;
+  letter-spacing: ${TRACK.label};
+  text-indent: ${TRACK.label};
+  text-transform: uppercase;
+  white-space: nowrap;
+  ${FONT_RENDER}
+  color: ${HUD.heroType};
+  -webkit-text-stroke: 0.08em rgba(4, 6, 12, 0.95);
+  paint-order: stroke fill;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  opacity: ${(p) => (p.$matchOver ? 0.7 : 0.88)};
 `;
 
 // ============================================
@@ -1706,6 +1736,7 @@ const UiPlayerInfo = ({
   player1TopMarks = undefined,
   player2TopMarks = undefined,
   secondsRemaining = null,
+  bashoDay = null,
   player2Name = "PLAYER 2",
   bashoPowerUpSlots = false,
   showRoundMarks = true,
@@ -2468,16 +2499,23 @@ const UiPlayerInfo = ({
       </PlayerWing>
 
       {/* ═══ CENTER CLOCK ═══ */}
-      <MatchClock
-        $matchOver={matchOver}
-        /* A bout that ended ON the clock parks at 0, and the match-over
-         * screen sits above the band — a red 0 strobing behind the winner
-         * card is the clock still shouting after the bout is decided. */
-        $urgent={!matchOver && clockSeconds <= CLOCK_URGENT_AT}
-        aria-label={`${clockSeconds} seconds remaining`}
-      >
-        {clockSeconds}
-      </MatchClock>
+      <ClockSeat>
+        <MatchClock
+          $matchOver={matchOver}
+          /* A bout that ended ON the clock parks at 0, and the match-over
+           * screen sits above the band — a red 0 strobing behind the winner
+           * card is the clock still shouting after the bout is decided. */
+          $urgent={!matchOver && clockSeconds <= CLOCK_URGENT_AT}
+          aria-label={`${clockSeconds} seconds remaining`}
+        >
+          {clockSeconds}
+        </MatchClock>
+        {Number.isFinite(bashoDay) && bashoDay >= 1 && (
+          <ClockDay $matchOver={matchOver} aria-label={`Day ${bashoDay}`}>
+            DAY {bashoDay}
+          </ClockDay>
+        )}
+      </ClockSeat>
 
       {/* ═══ PLAYER 2 — West (Nishi) ═══ */}
       <PlayerWing $matchOver={matchOver}>
@@ -2660,6 +2698,7 @@ UiPlayerInfo.propTypes = {
   player1TopMarks: PropTypes.node,
   player2TopMarks: PropTypes.node,
   secondsRemaining: PropTypes.number,
+  bashoDay: PropTypes.number,
   player2Name: PropTypes.string,
   bashoPowerUpSlots: PropTypes.bool,
   showRoundMarks: PropTypes.bool,

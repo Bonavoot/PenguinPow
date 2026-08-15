@@ -172,6 +172,7 @@ import {
   movementSmokeEmitArgs,
   isSlideRedirectDirFlip,
   normalizeMoveDir,
+  claimDodgeStartAudio,
 } from "../combatPresentation";
 import {
   resolvePoseRender,
@@ -497,7 +498,7 @@ const GameFighter = ({
   bashoOpponentRankLabel = null, // BASHO-only: opponent's division label for the HUD plaque
   bashoDraftedPowerUps = null, // BASHO-only: stacked in-run power-up draft for the boon tray
   bashoOpponentPowerUps = null, // BASHO-only: CPU rival's passive/active draft loadout
-  bashoDay = 1, // BASHO-only: current honbasho day (center HUD)
+  bashoDay = 1, // BASHO-only: current honbasho day (caption under the clock)
   bashoOpponentName = null, // BASHO-only: CPU rival name for the HUD nameplate
 }) => {
   const { socket } = useContext(SocketContext);
@@ -1633,7 +1634,9 @@ const GameFighter = ({
               moveDir,
               worldX: penguin.x,
             });
-            playSound(dodgeSound, 0.02);
+            if (claimDodgeStartAudio(player.id, null)) {
+              playSound(dodgeSound, 0.02);
+            }
             if (smoke) {
               emitParticles("dashStart", movementSmokeEmitArgs(smoke));
             }
@@ -5479,9 +5482,9 @@ const GameFighter = ({
     };
     socket.on("gyoji_call", handleGyojiCall);
 
-    /* Bout card — "DAY 7" / "ROUND 2" / "FINAL ROUND". Server fires it
-       once per bout when the walk to the tachiai begins, so it always
-       clears well before the Gyoji's HANDS DOWN. */
+    /* Bout card — "ROUND 2" / "FINAL ROUND". Server fires it at salt
+       start on versus bouts so it clears before HANDS DOWN. Basho days
+       sit under the HUD clock instead. */
     const handleBoutCard = (card) => {
       if (!card || !card.label) return;
       setBoutCard(card);
@@ -5999,7 +6002,9 @@ const GameFighter = ({
             moveDir,
             worldX,
           });
-          playSound(dodgeSound, 0.02);
+          if (claimDodgeStartAudio(player.id, penguin.dodgeStartTime)) {
+            playSound(dodgeSound, 0.02);
+          }
           if (smoke) {
             emitParticles("dashStart", movementSmokeEmitArgs(smoke));
           }
@@ -6198,6 +6203,40 @@ const GameFighter = ({
     penguin.isDodging,
     penguin.isSlideJumping,
     penguin.iceSlideDir,
+    player.id,
+    playerNumber,
+    emitParticles,
+  ]);
+
+  const prevRopeKickoffFxId = useRef(penguin.ropeKickoffFxId || 0);
+  useEffect(() => {
+    const id = penguin.ropeKickoffFxId || 0;
+    if (id <= 0 || id === prevRopeKickoffFxId.current) {
+      prevRopeKickoffFxId.current = id;
+      return;
+    }
+    prevRopeKickoffFxId.current = id;
+    const pos = interpolatedPositionRef.current;
+    const worldX = pos?.x ?? penguin.x;
+    const dir = normalizeMoveDir(
+      penguin.iceSlideDir,
+      lastDodgeDirRef.current || iceSlideDirRef.current || 1
+    );
+    emitParticles("iceSlideRopeKick", {
+      x: worldX,
+      y: MOVEMENT_SMOKE_GROUND_Y,
+      direction: dir,
+      facing: dir,
+      playerNumber,
+    });
+    addShake("rope_kickoff", { dirX: dir });
+    // Do not replay dodge-sound here. Kick-off is the same hop landing on
+    // the straw — SLIDE_REDIRECT is for a mid-slide reverse, not this.
+  }, [
+    penguin.ropeKickoffFxId,
+    penguin.iceSlideDir,
+    penguin.x,
+    penguin.y,
     player.id,
     playerNumber,
     emitParticles,
@@ -8435,7 +8474,7 @@ const GameFighter = ({
     penguin.isBeingPushed,
     penguin.grabState,
     penguin.grabAttemptType,
-    penguin.isRecovering,
+    penguin.isRecovering && !penguin.isHit && !penguin.isHitFalling,
     penguin.isRawParryStun,
     // Local visual hold keeps the deflect pose even after flurry re-tap clears
     // server success flags (same sprites for regular/perfect).
@@ -9004,6 +9043,7 @@ const GameFighter = ({
     $isReady: penguin.isReady,
     $readyIntroComplete: readyIntroComplete,
     $isHit: penguin.isHit || penguin.isHitFalling,
+    $isHitFalling: !!penguin.isHitFalling,
     $lastHitType: penguin.lastHitType,
     // Procedural impact grading + attacker contact recoil (see the
     // player_hit handler and fighterStyledComponents keyframes).
@@ -9049,7 +9089,8 @@ const GameFighter = ({
     $justLandedFromDodge: penguin.justLandedFromDodge,
     $speedFactor: penguin.speedFactor,
     $sizeMultiplier: penguin.sizeMultiplier,
-    $isRecovering: penguin.isRecovering,
+    $isRecovering:
+      penguin.isRecovering && !penguin.isHit && !penguin.isHitFalling,
     $isRawParryStun: penguin.isRawParryStun,
     $isRawParrySuccess: inRawParrySuccessAnim && !penguin.isPerfectRawParrySuccess,
     $isPerfectRawParrySuccess:
@@ -9286,6 +9327,7 @@ const GameFighter = ({
           the camera's walk-up pan doesn't drag the title around. */}
       {index === 0 &&
         boutCard &&
+        !isBashoMatch &&
         document.getElementById("game-hud") &&
         createPortal(
           <SumoGameAnnouncement
@@ -9565,6 +9607,7 @@ const GameFighter = ({
           $isRingOutThrowCutscene={penguin.isRingOutThrowCutscene}
           $isAtTheRopes={penguin.isAtTheRopes}
           $isHit={penguin.isHit || penguin.isHitFalling}
+          $isHitFalling={!!penguin.isHitFalling}
           $isBurstKnockback={penguin.isBurstKnockback}
           $impactAmp={impactAmp}
           $isRawParryStun={penguin.isRawParryStun}
@@ -9590,6 +9633,7 @@ const GameFighter = ({
               !!penguin.isPerfectRawParrySuccess && inRawParrySuccessAnim
             }
             $isHit={penguin.isHit || penguin.isHitFalling}
+            $isHitFalling={!!penguin.isHitFalling}
             $isChargingAttack={displayPenguin.isChargingAttack}
             $isGrabTeching={penguin.isGrabTeching}
             $grabTechRole={penguin.grabTechRole}

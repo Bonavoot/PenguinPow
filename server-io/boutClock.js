@@ -36,48 +36,15 @@ const BOUT_SECONDS = 30;
 /**
  * Bout card animation length. MUST match BOUT_CARD_SECONDS on the client.
  *
- * 1.4s, not the 1.7s it started at. The card's length sets how long the
- * tachiai has to be held open on bouts that skip the salt throw, and
- * skipping the salt only saves 1483ms in the first place — a 1.7s card
- * would have handed nearly all of that back. At 1.4s a "ROUND 2" still
- * gets ~200ms in, ~800ms held and ~400ms out, which is a comfortable
- * read for two short words, and the no-salt bouts stay noticeably
- * quicker to the tachiai than the opener.
+ * Versus always throws salt (1483ms) and then walks to the tachiai, so
+ * the card can hold a real read — ~250ms in, ~1.1s held, ~450ms out —
+ * and still be gone before HANDS DOWN. Basho days sit under the HUD
+ * clock; this duration is versus-only.
  */
-const BOUT_CARD_MS = 1400;
+const BOUT_CARD_MS = 1800;
 
 /** readyStartTime → gyoji_call, in index.js and handleReadyPositions. */
 const GYOJI_CALL_DELAY_MS = 700;
-
-/**
- * How long the tachiai must wait after the bout card fires.
- *
- * The client kills the card the moment gyoji_call lands, so the card's
- * real screen time is (tachiai start − card fired) + GYOJI_CALL_DELAY_MS.
- * Holding for the difference gives it exactly its animation and not a
- * frame more.
- */
-const BOUT_CARD_HOLD_MS = BOUT_CARD_MS - GYOJI_CALL_DELAY_MS;
-
-/**
- * When the tachiai countdown may start.
- *
- * On the first bout the salt throw runs (1483ms) plus the walk, so the
- * card has finished long before the wrestlers are set and this returns
- * `now` unchanged. Later bouts SKIP the salt to get back into the fight
- * faster — which left the card perhaps a couple hundred ms before the
- * Gyoji cut it off. This buys back only the shortfall, so the fast path
- * stays fast and the card is never clipped.
- *
- * Returning a FUTURE readyStartTime rather than refusing to set one is
- * deliberate: every downstream beat is `now - readyStartTime >= X`, so a
- * seeded start shifts the whole ceremony as a unit instead of squeezing
- * HANDS DOWN against HAKKI-YOI.
- */
-function tachiaiStartAt(now, boutCardAtSim) {
-  if (!boutCardAtSim) return now;
-  return Math.max(now, boutCardAtSim + BOUT_CARD_HOLD_MS);
-}
 
 const HANTEI_WEIGHTS = {
   position: 0.6,
@@ -112,12 +79,13 @@ function ringFromBoundaries(left, right) {
 }
 
 /**
- * Text for the card that plays over the walk-up.
+ * Text for the card that plays over the versus walk-up.
  *
- * BASHO counts days; everything else counts rounds. "FINAL ROUND" wins
- * over the number in best-of-3 at one fall apiece, because at that point
- * what matters is that the next fall ends the match, not that it happens
- * to be the third.
+ * "FINAL ROUND" wins over the number in best-of-3 at one fall apiece,
+ * because at that point what matters is that the next fall ends the
+ * match, not that it happens to be the third. Basho days live under
+ * the HUD clock, not on this card — the helper still names them so a
+ * stray emit stays well-formed.
  *
  * @returns {{label: string, final: boolean}}
  */
@@ -205,9 +173,7 @@ function resolveHantei(p1, p2, ring) {
 module.exports = {
   BOUT_SECONDS,
   BOUT_CARD_MS,
-  BOUT_CARD_HOLD_MS,
   GYOJI_CALL_DELAY_MS,
-  tachiaiStartAt,
   HANTEI_WEIGHTS,
   HANTEI_TIE_EPSILON,
   ringFromBoundaries,

@@ -1,6 +1,6 @@
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
-import { FONT_DISPLAY } from "./menuTheme";
+import { FONT_DISPLAY, FONT_RENDER } from "./menuTheme";
 import { BOUT_CARD_SECONDS } from "../config/boutClock";
 import {
   GYOJI_CENTER_PCT,
@@ -10,16 +10,16 @@ import handsDownBubble from "../assets/gyoji-hands-down-v2.svg";
 import handsDownWordmark from "../assets/gyoji-hands-down-wordmark-v1.svg";
 
 // ============================================
-// SHARED Y-POSITION (RoundResult / PowerUpReveal)
+// SHARED Y-POSITION (RoundResult / HAKKI-YOI)
 // ============================================
-/** Shared with PowerUpReveal — upper-arena band just under the HUD. */
+/** Upper-arena band just under the HUD. */
 export const ANNOUNCE_Y = "clamp(100px, 28cqh, 190px)";
 
 /** Pro fight-call budget: snap → brief hold → gone as play opens. */
 export const DEFAULT_HAKKIYOI_DURATION = 0.75;
 export const DEFAULT_TEWOTSUITE_DURATION = 2;
-/** Bout card rides the walk-up and must be gone before HANDS DOWN.
- *  Server holds the tachiai to match — see config/boutClock.js. */
+/** Bout card rides the versus salt throw and must be gone before HANDS DOWN.
+ *  See config/boutClock.js. */
 export const DEFAULT_BOUTCARD_DURATION = BOUT_CARD_SECONDS;
 
 /*
@@ -214,9 +214,8 @@ const HakkiyoiRule = styled.div`
 `;
 
 /*
- * HAKKI-YOI — gold leaf ceremony, not cream (too quiet) and not the old
- * arcade recipe (gold + vermillion stroke + hard 3D shelf).
- * Fill = warm leaf gold. Stroke = thin sumi ink. Seat = soft depth only.
+ * HAKKI-YOI — gold leaf ceremony. Same cut-type recipe as RoundResult
+ * (ink contour, paint-order stroke fill, no seat). Fill stays leaf gold.
  */
 const HakkiyoiText = styled.div`
   position: absolute;
@@ -227,20 +226,18 @@ const HakkiyoiText = styled.div`
 
   font-family: ${FONT_DISPLAY}, "Impact", sans-serif;
   font-size: clamp(2.45rem, 7cqw, 6.2rem);
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1;
   letter-spacing: 0.1em;
+  text-indent: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
 
   color: #f0d56a;
-  -webkit-text-stroke: clamp(1.4px, 0.19cqw, 2.4px) rgba(18, 12, 6, 0.92);
-
-  text-shadow:
-    0 1px 0 rgba(255, 244, 200, 0.35),
-    0 2px 0 rgba(120, 78, 12, 0.55),
-    0 3px 10px rgba(0, 0, 0, 0.65),
-    0 0 22px rgba(232, 197, 71, 0.28);
+  -webkit-text-stroke: clamp(4.2px, 0.5cqw, 6.4px) #05070c;
+  paint-order: stroke fill;
+  text-shadow: none;
+  ${FONT_RENDER}
 
   animation: ${css`
       ${slamIn}`} ${(p) => p.$duration} cubic-bezier(0.16, 1, 0.3, 1)
@@ -249,15 +246,17 @@ const HakkiyoiText = styled.div`
   @media (max-width: 900px) {
     font-size: clamp(2rem, 6.1cqw, 4.7rem);
     letter-spacing: 0.085em;
+    text-indent: 0.085em;
   }
   @media (max-width: 600px) {
     font-size: clamp(1.55rem, 5.5cqw, 3.25rem);
     letter-spacing: 0.07em;
+    text-indent: 0.07em;
   }
 `;
 
 // ============================================
-// BOUT CARD — "DAY 7" / "ROUND 2" / "FINAL ROUND"
+// BOUT CARD — "ROUND 2" / "FINAL ROUND"
 // ============================================
 
 /* Cream, not gold. Gold on this screen belongs to HAKKI-YOI, and the
@@ -456,7 +455,7 @@ const SumoGameAnnouncement = ({
 SumoGameAnnouncement.propTypes = {
   type: PropTypes.oneOf(["hakkiyoi", "tewotsuite", "boutcard"]),
   duration: PropTypes.number,
-  /** boutcard only — "DAY 7" / "ROUND 2" / "FINAL ROUND". */
+  /** boutcard only — "ROUND 2" / "FINAL ROUND". */
   label: PropTypes.string,
   /** boutcard only — vermillion treatment for the decider. */
   final: PropTypes.bool,

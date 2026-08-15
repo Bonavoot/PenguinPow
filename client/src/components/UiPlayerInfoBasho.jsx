@@ -13,16 +13,15 @@ import { getBashoPassiveDraft } from "../config/powerUpConfig";
  * overlay the gauge column at posture height. Draft actives render in
  * the slot.
  *
- * `bashoDay` is still accepted (it rides the rest spread) but currently
- * renders nowhere: it used to be the center numeral, and the center now
- * belongs to the bout clock. It is destined for the bout card that plays
- * ahead of HANDS DOWN, which lands with the timer work.
+ * `bashoDay` sits under the bout clock as a small caption. The DayCard
+ * already announced the day; this is orientation for the rest of the bout.
  */
 
 const UiPlayerInfoBasho = ({
   bashoDraftedPowerUps = [],
   bashoOpponentPowerUps = [],
   bashoOpponentName = null,
+  bashoDay,
   isPlayer1Local = true,
   matchOver = false,
   ...uiPlayerInfoProps
@@ -41,6 +40,7 @@ const UiPlayerInfoBasho = ({
       {...uiPlayerInfoProps}
       isPlayer1Local={isPlayer1Local}
       matchOver={matchOver}
+      bashoDay={bashoDay}
       bashoPowerUpSlots
       showRoundMarks={false}
       player2Name={bashoOpponentName || "CPU"}

@@ -8,15 +8,25 @@ const { describe, it, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   GROUND_LEVEL,
-  SLIDE_JUMP_LANDING_RECOVERY_MS,
   SLIDE_JUMP_LIFTOFF_IMPULSE,
   BURST_STUN_MS,
+  HIT_FALL_GRAVITY,
+  speedFactor,
 } = require("../../constants");
 const {
   setSimRoomResolver,
   timeoutManager,
   isSlideJumpFlightImmune,
+  isSlideJumpPastPeak,
+  clearAllActionStates,
+  captureAirVerticalVelocity,
+  captureAirHorizontalVelocity,
+  beginAirHitFall,
 } = require("../../gameUtils");
+const {
+  resolveOffensiveAerialPresentation,
+  OFFENSIVE_AERIAL_PRESENTATION,
+} = require("../../offensiveAerialPresentation");
 const {
   createSlideJumpScenario,
   beginSlideJumpFlight,
@@ -50,7 +60,7 @@ describe("offensive aerial — slide-jump lifecycle", () => {
     assert.equal(s.attacker.slideJumpVelocityY, SLIDE_JUMP_LIFTOFF_IMPULSE);
     assert.equal(s.attacker.slideJumpFlapFlightActive, false);
     assert.equal(s.attacker.slideJumpHasFlap, false);
-    assert.equal(isSlideJumpFlightImmune(s.attacker), true);
+    assert.equal(isSlideJumpFlightImmune(s.attacker), false);
   });
 
   it("flight disables grounded pushbox collision", () => {
@@ -94,13 +104,29 @@ describe("offensive aerial — slide-jump lifecycle", () => {
     runUntil(s, () => s.attacker.slideJumpPhase === "landing", 120);
     assert.equal(s.attacker.slideJumpHitLanded, false);
     assert.equal(s.defender.isHit, false);
-    assert.equal(
-      s.attacker.actionLockUntil,
-      s.attacker.slideJumpLandingTime + SLIDE_JUMP_LANDING_RECOVERY_MS
-    );
+    // No-slam land skips the plant — jump H becomes a slide, no 90ms lock.
+    assert.equal(s.attacker.actionLockUntil, s.attacker.slideJumpLandingTime);
+    assert.ok(s.attacker.movementVelocity > 0);
   });
 
-  it("offensive contact during descent (plain slide-jump, no FLAP)", () => {
+  it("no S: descent overlap does not slam — jump can clear a statue", () => {
+    const s = createSlideJumpScenario({
+      name: "plain_descent_pass",
+      attackerX: 500,
+      defenderX: 500,
+      velY: -8,
+      hSpeed: 0,
+      attackerY: GROUND_LEVEL + 40,
+      armFlap: false,
+      flapFlight: false,
+    });
+    placeDescendingOverOpponent(s, { height: 40, dive: false });
+    stepSlideJumpTick(s);
+    assert.equal(s.attacker.slideJumpHitLanded, false);
+    assert.equal(s.defender.isHit, false);
+  });
+
+  it("S dive during descent slams (plain slide-jump, no FLAP)", () => {
     const s = createSlideJumpScenario({
       name: "plain_descent_hit",
       attackerX: 500,
@@ -110,8 +136,9 @@ describe("offensive aerial — slide-jump lifecycle", () => {
       attackerY: GROUND_LEVEL + 40,
       armFlap: false,
       flapFlight: false,
+      dive: true,
     });
-    placeDescendingOverOpponent(s, { height: 40 });
+    placeDescendingOverOpponent(s, { height: 40, dive: true });
     stepSlideJumpTick(s);
     assert.equal(s.attacker.slideJumpHitLanded, true);
     assert.equal(s.defender.lastHitType, "flap"); // attackType label is "flap"
@@ -258,5 +285,81 @@ describe("offensive aerial — FLAP charge arming", () => {
     assert.equal(s.attacker.slideJumpFlapFlightActive, true);
     assert.equal(s.attacker.flapCharges, chargesBefore - 1);
     assert.equal(s.attacker.slideJumpVelocityX, 0); // carry dropped on first spend
+  });
+});
+
+describe("slide-jump air-hit arc", () => {
+  it("ascent is hittable; after peak is immune", () => {
+    const s = createSlideJumpScenario({
+      name: "peak_gate",
+      startGrounded: true,
+    });
+    beginSlideJumpFlight(s.attacker, {
+      now: s.room.simTime,
+      armFlap: false,
+    });
+    assert.equal(isSlideJumpPastPeak(s.attacker), false);
+    assert.equal(isSlideJumpFlightImmune(s.attacker), false);
+    runUntil(s, () => s.attacker.slideJumpVelocityY <= 0, 80);
+    assert.equal(s.attacker.isSlideJumping, true);
+    assert.equal(s.attacker.slideJumpPhase, "flight");
+    assert.equal(isSlideJumpPastPeak(s.attacker), true);
+    assert.equal(isSlideJumpFlightImmune(s.attacker), true);
+  });
+
+  it("launch connect kills rise — same H KB, gravity drops them", () => {
+    const s = createSlideJumpScenario({
+      name: "air_hit_arc",
+      attackerX: 520,
+      defenderX: 530,
+      attackerY: GROUND_LEVEL + 50,
+      velY: 8,
+      hSpeed: 6,
+    });
+    const y0 = s.attacker.y;
+    const carryY = captureAirVerticalVelocity(s.attacker);
+    const carryX = captureAirHorizontalVelocity(s.attacker);
+    assert.ok(carryY > 0);
+    assert.ok(carryX > 0);
+    clearAllActionStates(s.attacker);
+    assert.equal(s.attacker.isSlideJumping, false);
+    assert.equal(s.attacker.y, y0);
+    s.attacker.knockbackVelocity = { x: 3, y: 0 };
+    beginAirHitFall(s.attacker, {
+      now: s.room.simTime,
+      carryVelY: carryY,
+    });
+    assert.equal(s.attacker.isHitFalling, true);
+    assert.equal(s.attacker.isRecovering, false);
+    assert.equal(s.attacker.y, y0);
+    assert.equal(
+      s.attacker.hitFallVelocityY,
+      0,
+      "rise is killed; no upward pop"
+    );
+    assert.equal(
+      resolveOffensiveAerialPresentation(s.attacker),
+      OFFENSIVE_AERIAL_PRESENTATION.INTERRUPTED_AIRBORNE
+    );
+    s.attacker.isHit = true;
+    assert.equal(arePlayersColliding(s.attacker, s.defender), false);
+    const ax = s.attacker.x;
+    const dx = s.defender.x;
+    const { adjustPlayerPositions } = require("../../gameFunctions");
+    adjustPlayerPositions(s.attacker, s.defender, 15.625);
+    assert.equal(s.attacker.x, ax);
+    assert.equal(s.defender.x, dx);
+
+    const x0 = s.attacker.x;
+    const kb = s.attacker.knockbackVelocity.x;
+    const tickMs = 1000 / 64;
+    for (let i = 0; i < 8; i++) {
+      s.attacker.hitFallVelocityY -= HIT_FALL_GRAVITY;
+      s.attacker.y += s.attacker.hitFallVelocityY;
+      s.attacker.x += kb * tickMs * speedFactor;
+    }
+    assert.ok(s.attacker.y > GROUND_LEVEL, "still airborne after 8 ticks");
+    assert.ok(s.attacker.y < y0, "gravity brings them down; they do not go up");
+    assert.ok(s.attacker.x - x0 > 20, "full horizontal KB actually travels");
   });
 });

@@ -93,7 +93,7 @@ describe("offensive aerial — S-key body slam dive", () => {
       attackerY: GROUND_LEVEL + 50,
     });
     placeDescendingOverOpponent(s, { height: 50, dive: true });
-    // Dive keeps receive-immunity; offense window is still open.
+    // Dive is past peak — receive-immune; slam offense window is still open.
     assert.equal(isSlideJumpFlightImmune(s.attacker), true);
     assert.equal(isBodySlamWindowOpen(s.attacker), true);
     stepSlideJumpTick(s);

@@ -221,6 +221,9 @@ const getImageSrc = (
   if (isApWhiffRecovering) return rawParrySuccessFrame1;
   if (isRawParryStun) return isPerfectParried;
   if (isHit) return hit;
+  // Stun can end mid-air while the arc is still live. Never fall through to
+  // flap / landing-recovery — that is the "recovering instead of hit" bug.
+  if (offensiveAerialPresentation === "INTERRUPTED_AIRBORNE") return hit;
   if (isAtTheRopes) return atTheRopes;
   if (isRopeJumping) {
     if (ropeJumpPhase === "startup" || ropeJumpPhase === "landing") return recovering;
@@ -246,15 +249,8 @@ const getImageSrc = (
     // FLIGHT_ACTIVE / HIT_CONTINUATION / WHIFF_DESCENT → flap art
     return slideJumpFlapFrame === 2 ? flap2 : flap1;
   }
-  if (
-    !isSlideJumping &&
-    (offensiveAerialPresentation === "GROUNDED_STAGGER" ||
-      offensiveAerialPresentation === "INTERRUPTED_AIRBORNE")
-  ) {
-    if (offensiveAerialPresentation === "INTERRUPTED_AIRBORNE" && isHit) {
-      return hit;
-    }
-    if (offensiveAerialPresentation === "GROUNDED_STAGGER") return recovering;
+  if (!isSlideJumping && offensiveAerialPresentation === "GROUNDED_STAGGER") {
+    return recovering;
   }
   // Grab attempt outranks ice slide — otherwise slide→grab keeps the sliding
   // pose and reads as the slide eating the attempt.

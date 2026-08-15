@@ -1,0 +1,18 @@
+/*
+ * Yuji Boku — Kinuta Font Factory / Yuji Kataoka (OFL-1.1).
+ * Brush calligraphy, subsetted to combat-callout seals + kimarite (~23kb).
+ * Full family: https://github.com/Kinutafontfactory/Yuji
+ */
+@font-face {
+  font-family: "Yuji Boku";
+  src: url("./YujiBoku-callout.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+304D-304E, U+3051-3052, U+3055-3058, U+305B-305C,
+    U+305F-3060, U+3068-3069, U+3072-3073, U+308A, U+308C, U+3099, U+4E0A,
+    U+5012, U+51FA, U+5207, U+5224, U+53D6-53D7, U+559D, U+5834, U+58CA,
+    U+5916, U+5B8C, U+5B9A, U+5BC4, U+5D29, U+5F15, U+624B, U+6280, U+6295,
+    U+62BC, U+6355, U+639B, U+6975, U+6D74, U+76F4, U+7834, U+7A81, U+7F70,
+    U+8010, U+843D, U+8FD4, U+9001, U+9006;
+}

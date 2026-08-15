@@ -58,6 +58,13 @@ const {
   LANDING_SETTLE_OVERLAP_EPS_PX,
   SETTLE_LANDING_SETTLE_ACTIVE,
 } = require("./landingResolution");
+const {
+  pickSlideJumpLandSettleJumper,
+  resolveSlideJumpLandSettleOrdering,
+  slideJumpLandSettleShares,
+  computeSlideJumpLandSettleCorrectionPx,
+  releaseSlideJumpLandSettleIfClear,
+} = require("./slideJumpLandSettle");
 
 // Per-match input audit log (open at first round, close on matchOver)
 const { openLog: openAuditLog, closeLog: closeAuditLog, appendWinType } = require("./inputAuditLog");
@@ -106,7 +113,7 @@ const {
   markLifecycleControlRestore,
 } = require("./actionLifecycleOwnership");
 
-const { BOUT_SECONDS, tachiaiStartAt } = require("./boutClock");
+const { BOUT_SECONDS } = require("./boutClock");
 const {
   GROUND_LEVEL,
   HITBOX_DISTANCE_VALUE,
@@ -712,6 +719,7 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
     p.isIceSliding = false;
     p.iceSlideDir = 0;
     p.iceSlideStartTime = 0;
+    p.iceSlideCarrySpeed = 0;
     p.slideJumpBufferUntil = 0;
     p.isIceSlideReverseHopping = false;
     p.iceSlideReverseHopStartTime = 0;
@@ -719,6 +727,7 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
     p.iceSlideReverseCooldownUntil = 0;
     p.iceSlideReverseBufferUntil = 0;
     p.iceSlideBrakeArmStart = 0;
+    p.slideJumpLandSlideQueued = false;
     p.isSlideJumping = false;
     p.slideJumpPhase = null;
     p.slideJumpVelocityY = 0;
@@ -732,6 +741,14 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
     p.slideJumpHitRecoverDuration = 0;
     p.slideJumpLandingTime = 0;
     p.slideJumpLandSlamImmuneUntil = 0;
+    p.slideJumpLandSettleActive = false;
+    p.slideJumpLandSettleUntil = 0;
+    p.slideJumpLandSettleJumperIsLeft = null;
+    p.slideJumpLandSettleTravelDir = 0;
+    p.slideJumpLandSettleCase = null;
+    p.airHitEjectActive = false;
+    p.airHitEjectDir = 0;
+    p.airHitEjectRate = 0;
     p.slideJumpStartTime = 0;
     p.offensiveAerial = null;
     p._offensiveAerialTrace = null;
@@ -1843,9 +1860,7 @@ function handleReadyPositions(room, player1, player2, io) {
       // Start a timer to trigger hakkiyoi after players are ready
       // (sim clock — index.js tick also reads readyStartTime against room.simTime)
       if (!room.readyStartTime) {
-        // May seed slightly ahead so the bout card isn't clipped on the
-        // no-salt path — see tachiaiStartAt.
-        room.readyStartTime = tachiaiStartAt(simNow(room), room.boutCardAtSim);
+        room.readyStartTime = simNow(room);
       }
 
       const currentTime = simNow(room);
@@ -1920,6 +1935,7 @@ function arePlayersColliding(player1, player2) {
   // (incl. FLAP-armed), return false — airborne bodies have no ground pushbox.
   if (player1.isDodging || player2.isDodging ||
       player1.isSidestepping || player2.isSidestepping ||
+      player1.isHitFalling || player2.isHitFalling ||
       (player1.isRopeJumping && player1.ropeJumpPhase === "active") ||
       (player2.isRopeJumping && player2.ropeJumpPhase === "active") ||
       (player1.isSlideJumping && player1.slideJumpPhase === "flight") ||
@@ -2004,7 +2020,9 @@ function adjustPlayerPositions(player1, player2, delta) {
     (player2.isFlapping && player2.flapPhase === "flight") ||
     // Same as flap: pushbox would shove the opponent outside slam reach mid-ring.
     (player1.isSlideJumping && player1.slideJumpPhase === "flight") ||
-    (player2.isSlideJumping && player2.slideJumpPhase === "flight")
+    (player2.isSlideJumping && player2.slideJumpPhase === "flight") ||
+    player1.isHitFalling ||
+    player2.isHitFalling
   ) {
     return;
   }
@@ -2059,7 +2077,12 @@ function adjustPlayerPositions(player1, player2, delta) {
   const distanceBetweenCenters = Math.abs(player1.x - player2.x);
   const minDistance = player1Hitbox.left + player2Hitbox.right;
 
-  if (distanceBetweenCenters >= minDistance) return;
+  const settleNow = simNowForPlayer(player1);
+  if (distanceBetweenCenters >= minDistance) {
+    releaseSlideJumpLandSettleIfClear(player1, player2, settleNow);
+    releaseSlideJumpLandSettleIfClear(player2, player1, settleNow);
+    return;
+  }
 
   const overlap = minDistance - distanceBetweenCenters;
   const overlapBefore = overlap;
@@ -2072,6 +2095,12 @@ function adjustPlayerPositions(player1, player2, delta) {
       : player2.isRopeJumping && player2.ropeJumpPhase === "landing"
         ? player2
         : null;
+  const slideSettlePick = ropeJumper
+    ? null
+    : pickSlideJumpLandSettleJumper(player1, player2, settleNow);
+  const slideSettleBoth = slideSettlePick === "both";
+  const slideSettleJumper =
+    slideSettleBoth || !slideSettlePick ? null : slideSettlePick;
 
   // Phase A.3.1: separation direction from actual centers (intent only at
   // coincident centers). Rejects the old half-body jump-direction cross-up
@@ -2080,6 +2109,12 @@ function adjustPlayerPositions(player1, player2, delta) {
   if (ropeJumper) {
     p1IsLeft = resolveLandingSeparationOrdering(player1, player2, ropeJumper)
       .p1IsLeft;
+  } else if (slideSettleJumper) {
+    p1IsLeft = resolveSlideJumpLandSettleOrdering(
+      player1,
+      player2,
+      slideSettleJumper
+    ).p1IsLeft;
   } else {
     p1IsLeft = player1.x <= player2.x;
   }
@@ -2098,6 +2133,18 @@ function adjustPlayerPositions(player1, player2, delta) {
   } else if (p2Anchored) {
     p1Share = 1;
     p2Share = 0;
+  } else if (slideSettleBoth) {
+    p1Share = 0.5;
+    p2Share = 0.5;
+  } else if (slideSettleJumper) {
+    const shares = slideJumpLandSettleShares(slideSettleJumper);
+    if (slideSettleJumper === player1) {
+      p1Share = shares.jumperShare;
+      p2Share = shares.opponentShare;
+    } else {
+      p1Share = shares.opponentShare;
+      p2Share = shares.jumperShare;
+    }
   } else {
     const p1MovingToward = (p1IsLeft && player1.movementVelocity > 0) ||
                            (!p1IsLeft && player1.movementVelocity < 0);
@@ -2149,6 +2196,8 @@ function adjustPlayerPositions(player1, player2, delta) {
     effectiveOverlap = computeLandingSettleCorrectionPx(ropeJumper, overlap);
   } else if (ropeJumpLanding) {
     effectiveOverlap = Math.min(overlap, LANDING_SETTLE_MAX_PX_PER_TICK);
+  } else if (slideSettleBoth || slideSettleJumper) {
+    effectiveOverlap = computeSlideJumpLandSettleCorrectionPx(overlap);
   } else {
     effectiveOverlap = overlap;
   }
@@ -2219,13 +2268,16 @@ function adjustPlayerPositions(player1, player2, delta) {
     player2.x = Math.max(leftBoundary, Math.min(player2.x, rightBoundary));
   }
 
-  // Kill velocity for any non-anchored player moving toward the other
-  if (!p1Anchored) {
+  // Kill velocity for any non-anchored player moving toward the other.
+  // Slide-jump land settle keeps the jumper's ice — that speed is the collision.
+  const skipP1VelKill = slideSettleBoth || slideSettleJumper === player1;
+  const skipP2VelKill = slideSettleBoth || slideSettleJumper === player2;
+  if (!p1Anchored && !skipP1VelKill) {
     const isToward = (player1.x < player2.x && player1.movementVelocity > 0) ||
                      (player1.x > player2.x && player1.movementVelocity < 0);
     if (isToward) player1.movementVelocity = 0;
   }
-  if (!p2Anchored) {
+  if (!p2Anchored && !skipP2VelKill) {
     const isToward = (player2.x < player1.x && player2.movementVelocity > 0) ||
                      (player2.x > player1.x && player2.movementVelocity < 0);
     if (isToward) player2.movementVelocity = 0;
@@ -2248,6 +2300,11 @@ function adjustPlayerPositions(player1, player2, delta) {
     if (v2SettleActive) {
       updateLandingSettleCompletion(ropeJumper, overlapAfter);
     }
+  }
+
+  if (slideSettleBoth || slideSettleJumper) {
+    releaseSlideJumpLandSettleIfClear(player1, player2, settleNow);
+    releaseSlideJumpLandSettleIfClear(player2, player1, settleNow);
   }
 }
 

@@ -123,6 +123,9 @@ export function isAirborneForMovementSmoke(fighter) {
   if (fighter.isIceSlideReverseHopping) {
     return false;
   }
+  if (fighter.isDodging) {
+    return false;
+  }
   if (
     typeof fighter.y === "number" &&
     Number.isFinite(fighter.y) &&

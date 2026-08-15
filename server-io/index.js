@@ -26,8 +26,7 @@ const {
   ICE_SLIDE_EXIT_SPEED, ICE_SLIDE_MAX_SPEED, ICE_SLIDE_MAINTAIN,
   ICE_SLIDE_REVERSE_HOP_MS, ICE_SLIDE_REVERSE_HOP_HEIGHT,
   SLIDE_JUMP_MIN_MS, SLIDE_JUMP_BUFFER_MS, SLIDE_JUMP_LIFTOFF_IMPULSE,
-  SLIDE_JUMP_GRAVITY, SLIDE_JUMP_H_BASE, SLIDE_JUMP_H_BONUS, SLIDE_JUMP_H_SPEED_SCALE,
-  SLIDE_JUMP_SCALE_MS, SLIDE_JUMP_AIR_STEER, SLIDE_JUMP_AIR_STEER_BLEED,
+  SLIDE_JUMP_GRAVITY, SLIDE_JUMP_AIR_STEER, SLIDE_JUMP_AIR_STEER_BLEED,
   SLIDE_JUMP_LANDING_RECOVERY_MS,
   SLIDE_JUMP_LAND_SLAM_IFRAME_MS,
   DODGE_LANDING_BASE, K_DODGE_INHERIT, DODGE_LANDING_MIN, DODGE_LANDING_MAX,
@@ -38,7 +37,6 @@ const {
   MIN_MOVEMENT_THRESHOLD,
   DODGE_DURATION, DODGE_BASE_SPEED,
   DODGE_TRAVEL_DISTANCE, DODGE_SPEED_MULT_CAP,
-  DODGE_CANCEL_ACTION_LOCK,
   DODGE_STARTUP_MS, DODGE_RECOVERY_MS, DODGE_COOLDOWN_MS,
   SLAP_STARTUP_MS, SLAP_ACTIVE_MS,
   CHARGED_STARTUP_MS, CHARGED_ACTIVE_MS,
@@ -136,6 +134,13 @@ const {
   clearSidestepHitReturn,
   clearIceSlideState,
   tryIceSlideReverse,
+  isInSlideRedirectIFrames,
+  beginIceSlide,
+  stampIceSlideCarrySpeed,
+  slideJumpTakeoffHorizontalSpeed,
+  slideJumpHorizontalToMovementVelocity,
+  isSlideJumpContinueSlideLand,
+  applySlideJumpContinueOnLandDone,
   clearSlideJumpState,
   shouldCommitSlideJumpDive,
   armSlideJumpFlapCharges,
@@ -143,13 +148,17 @@ const {
   stampMomentumWindow,
   applyBalanceDamage,
 } = require("./gameUtils");
+const {
+  beginSlideJumpLandSettle,
+  clearSlideJumpLandSettle,
+} = require("./slideJumpLandSettle");
+const { applyAirHitOverlapEject } = require("./airHitOverlapEject");
 
 const {
   BOUT_SECONDS,
   describeBout,
   resolveHantei,
   ringFromBoundaries,
-  tachiaiStartAt,
 } = require("./boutClock");
 
 // Import game functions
@@ -808,9 +817,7 @@ function tick(delta) {
       ) {
         const currentTime = now;
         if (!room.readyStartTime) {
-          // May seed slightly ahead so the bout card isn't clipped on the
-          // no-salt path — see tachiaiStartAt.
-          room.readyStartTime = tachiaiStartAt(currentTime, room.boutCardAtSim);
+          room.readyStartTime = currentTime;
         }
 
         const elapsedTime = currentTime - room.readyStartTime;
@@ -1228,8 +1235,8 @@ function tick(delta) {
         player.isHit ||
         (player.isHitFalling && Math.abs(player.knockbackVelocity?.x || 0) > 0.01)
       ) {
-        // Air-hit dump keeps horizontal KB after stun ends (heavy sumo shove
-        // must not die mid-air). Same friction / rope clamps as grounded hit.
+        // Air-hit arc keeps horizontal KB after stun ends (the shove must
+        // not die mid-air). Same friction / rope clamps as grounded hit.
         // Cinematic kill victims fly off with no friction, no DI, no slowdown
         if (player.isHit && player.isCinematicKillVictim) {
           player.x += player.knockbackVelocity.x * delta * speedFactor;
@@ -1519,9 +1526,18 @@ function tick(delta) {
             (opponent.isFlapping && opponent.flapPhase === "flight") ||
             (opponent.isSlideJumping && opponent.slideJumpPhase === "flight") ||
             opponent.isHitFalling ||
-            opponent.isIceSlideReverseHopping ||
-            (typeof opponent.y === "number" && opponent.y > GROUND_LEVEL + 8);
-          if (opponent && !opponentAirborneForGrab && (normalGrabInRange || sidestepTrackInRange)) {
+            (!opponent.isDodging &&
+              typeof opponent.y === "number" &&
+              opponent.y > GROUND_LEVEL + 8);
+          const opponentRedirectInvuln = isInSlideRedirectIFrames(opponent, now);
+          const grabInRange = !!(normalGrabInRange || sidestepTrackInRange);
+          // In-range grab into a live redirect hop is a WHIFF, not a delayed
+          // catch after the hop. That's the punish window.
+          if (opponent && opponentRedirectInvuln && grabInRange && withinConnectWindow) {
+            executeGrabWhiff(player);
+            return;
+          }
+          if (opponent && !opponentAirborneForGrab && !opponentRedirectInvuln && grabInRange) {
             // === TECH CHECK: opponent also in grab startup → both tech ===
             // Whiffing players CANNOT tech — they are fully vulnerable.
             // Also check if opponent's startup has already expired AND their grab
@@ -2297,32 +2313,6 @@ function tick(delta) {
         }
         player.y = GROUND_LEVEL;
       }
-      // S-key dodge cancel — stops the dash immediately
-      if (player.isDodging && !player.isBeingGrabbed && player.keys.s) {
-        player.isDodging = false;
-        player.isDodgeStartup = false;
-        player.dodgeDirection = null;
-        if (isActionFacingOwnershipV2Enabled()) {
-          releaseActionFacingLock(player, {
-            expectedInstanceId: player.dodgeFacingInstanceId,
-            expectedOwnerType: ACTION_FACING_OWNER.DODGE,
-            reason: ACTION_FACING_RELEASE.ACTION_END,
-            clearLegacy: false,
-          });
-          player.dodgeFacingInstanceId = null;
-        }
-        player.y = GROUND_LEVEL;
-        player.movementVelocity = 0;
-        player.isStrafing = false;
-        player.isBraking = false;
-        player.isPowerSliding = false;
-        player.actionLockUntil = Math.max(player.actionLockUntil || 0, now + DODGE_CANCEL_ACTION_LOCK);
-
-        const cancelOpponent = room.players.find(p => p.id !== player.id);
-        if (cancelOpponent && !player.atTheRopesFacingDirection) {
-          player.facing = player.x < cancelOpponent.x ? -1 : 1;
-        }
-      }
       if (player.isDodging && !player.isBeingGrabbed) {
         const dodgeOpponent = room.players.find(p => p.id !== player.id);
 
@@ -2359,6 +2349,7 @@ function tick(delta) {
           if (dir > 0) newX = Math.min(newX, targetX);
           else newX = Math.max(newX, targetX);
           newX = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
+          const prePushboxX = newX;
 
           // Pushbox: stop at opponent's body instead of phasing through.
           // Phase-through used to be allowed during opponent's charged active
@@ -2389,11 +2380,22 @@ function tick(delta) {
             }
           }
 
-          player.y = GROUND_LEVEL;
+          const hopStart = player.dodgeStartupEndTime || player.dodgeStartTime || now;
+          const hopT = Math.min(
+            1,
+            Math.max(0, (now - hopStart) / ICE_SLIDE_REVERSE_HOP_MS)
+          );
+          player.y =
+            GROUND_LEVEL + ICE_SLIDE_REVERSE_HOP_HEIGHT * 4 * hopT * (1 - hopT);
           player.x = newX;
 
-          // Arrived at fixed end early → land now (don't idle in dodge state).
-          if ((dir > 0 && player.x >= targetX - 0.01) || (dir < 0 && player.x <= targetX + 0.01)) {
+          // Arrived at fixed end, or the kick-off ate the pocket — land into slide.
+          const blockedByBody = Math.abs(newX - prePushboxX) > 0.01;
+          if (
+            blockedByBody ||
+            (dir > 0 && player.x >= targetX - 0.01) ||
+            (dir < 0 && player.x <= targetX + 0.01)
+          ) {
             player.dodgeEndTime = Math.min(player.dodgeEndTime || now, now);
           }
         }
@@ -2451,24 +2453,24 @@ function tick(delta) {
           // Tap-release SHIFT keeps today's soft ice coast.
           // (New dodges are locked while gassed; this only applies if a dodge
           // already started before the gassed state began.)
+          let dodgeLandKickoff = false;
           if (player.keys.shift && landingDirection !== 0) {
-            player.isIceSliding = true;
-            player.iceSlideDir = landingDirection > 0 ? 1 : -1;
-            player.iceSlideStartTime = now;
-            player.slideJumpBufferUntil = 0;
-            player.isBraking = false;
-            player.isStrafing = false;
+            const started = beginIceSlide(
+              player,
+              landingDirection,
+              player.movementVelocity,
+              now,
+              { kickoffOriginX: player.dodgeStartX }
+            );
+            dodgeLandKickoff = !!started.ropeKickoff;
           } else {
             clearIceSlideState(player);
+            if (MASTERY_P1_MOMENTUM) {
+              stampMomentumWindow(player, player.movementVelocity, now);
+            }
           }
-
-          // MASTERY Phase 1: stamp the dodge's landing momentum into the carry
-          // window so the next slap inherits it reliably (even a buffered
-          // mouse1), instead of racing the landing slide's decay. Captures the
-          // full landing velocity — including the C-held powerslide boost and
-          // the A/D nudge above.
-          if (MASTERY_P1_MOMENTUM) {
-            stampMomentumWindow(player, player.movementVelocity, now);
+          if (dodgeLandKickoff) {
+            emitThrottledScreenShake(room, io, { type: "rope_kickoff" });
           }
 
           player.justLandedFromDodge = true;
@@ -2859,6 +2861,7 @@ function tick(delta) {
           } else if (player.movementVelocity < -ICE_SLIDE_MAX_SPEED) {
             player.movementVelocity = -ICE_SLIDE_MAX_SPEED;
           }
+          stampIceSlideCarrySpeed(player);
 
           player.isStrafing = false;
 
@@ -2883,16 +2886,9 @@ function tick(delta) {
           const bufferLive =
             player.slideJumpBufferUntil && now <= player.slideJumpBufferUntil;
           if ((jumpReady && bufferLive) || (jumpReady && player.wJustPressed)) {
-            // Launch slide-jump
-            const durationBonus = Math.min(
-              1,
-              Math.max(0, (slideAge - SLIDE_JUMP_MIN_MS) / SLIDE_JUMP_SCALE_MS)
-            );
-            const takeoffSpeed = Math.abs(player.movementVelocity);
-            const hSpeed =
-              SLIDE_JUMP_H_BASE +
-              durationBonus * SLIDE_JUMP_H_BONUS +
-              takeoffSpeed * SLIDE_JUMP_H_SPEED_SCALE;
+            // Launch slide-jump — air H from the ice you left, capped so
+            // Happy Feet cannot buy a longer jump than the unbuffed kick-off.
+            const hSpeed = slideJumpTakeoffHorizontalSpeed(player);
             const jumpDir =
               player.iceSlideDir || (player.movementVelocity >= 0 ? 1 : -1);
 
@@ -2910,6 +2906,7 @@ function tick(delta) {
             player.slideJumpHitRecoverDuration = 0;
             player.slideJumpLandingTime = 0;
             player.slideJumpBufferUntil = 0;
+            clearSlideJumpLandSettle(player);
             player.slideJumpFlapFlightActive = false;
             player.flapVelocityX = 0;
             player.movementVelocity = 0;
@@ -3140,12 +3137,26 @@ function tick(delta) {
           }
 
           if (player.y <= GROUND_LEVEL && player.slideJumpVelocityY <= 0) {
+            const continueSlide = isSlideJumpContinueSlideLand(player, {
+              isDiveLocked,
+              parryRecoil,
+            });
+            const carryVel = continueSlide
+              ? slideJumpHorizontalToMovementVelocity(player)
+              : 0;
             player.y = GROUND_LEVEL;
             player.slideJumpVelocityY = 0;
             player.slideJumpVelocityX = 0;
             player.flapVelocityX = 0;
             if (isDiveLocked) {
               player.x = player.slideJumpDiveLockX;
+            }
+            if (continueSlide) {
+              player.movementVelocity = carryVel;
+              player.slideJumpLandSlideQueued = !!(player.keys && player.keys.shift);
+              if (sjOpponent) {
+                beginSlideJumpLandSettle(player, sjOpponent, now);
+              }
             }
             player.slideJumpPhase = "landing";
             player.slideJumpLandingTime = now;
@@ -3161,9 +3172,11 @@ function tick(delta) {
             const whiffRecovery = flapFlight || player.slideJumpFlapFlightActive
               ? FLAP_LANDING_RECOVERY_MS
               : SLIDE_JUMP_LANDING_RECOVERY_MS;
-            let recovery = player.slideJumpHitLanded
-              ? player.slideJumpHitRecoverDuration
-              : whiffRecovery;
+            let recovery = continueSlide
+              ? 0
+              : player.slideJumpHitLanded
+                ? player.slideJumpHitRecoverDuration
+                : whiffRecovery;
             // Outcome contract: WHIFF / LANDED_WITHOUT_CONTACT / preserve HIT|PARRIED.
             resolveOffensiveAerialTouchdownTerminal(player, {
               resolvedTime: now,
@@ -3190,7 +3203,9 @@ function tick(delta) {
               }
             }
             player.actionLockUntil = now + recovery;
-            emitThrottledScreenShake(room, io, { type: "rope_landing" });
+            if (!continueSlide) {
+              emitThrottledScreenShake(room, io, { type: "rope_landing" });
+            }
           }
         } else if (player.slideJumpPhase === "landing") {
           // Mirror flap landing: clear the live dive VFX flag, but keep
@@ -3201,12 +3216,18 @@ function tick(delta) {
           if (player._oaTouchdownPresentation) {
             player._oaTouchdownPresentation = false;
           }
+          const continueSlide = isSlideJumpContinueSlideLand(player, {
+            isDiveLocked: !!player.slideJumpDiveCommitted,
+            parryRecoil: isParriedRecoilActive(player),
+          });
           const whiffRecovery = player.slideJumpFlapFlightActive
             ? FLAP_LANDING_RECOVERY_MS
             : SLIDE_JUMP_LANDING_RECOVERY_MS;
-          let recovery = player.slideJumpHitLanded
-            ? player.slideJumpHitRecoverDuration
-            : whiffRecovery;
+          let recovery = continueSlide
+            ? 0
+            : player.slideJumpHitLanded
+              ? player.slideJumpHitRecoverDuration
+              : whiffRecovery;
           if (
             player._oaParryControlRestoreAt &&
             player.offensiveAerial?.outcome === OFFENSIVE_AERIAL_OUTCOME.PARRIED
@@ -3238,10 +3259,18 @@ function tick(delta) {
             player.isRecovering = false;
             player.isAlreadyHit = false;
             player._oaGroundedStagger = false;
+            const carriedVel = player.movementVelocity;
+            const queuedSlide = !!player.slideJumpLandSlideQueued;
             clearSlideJumpState(player, {
               expectedInstanceId: endingInstanceId,
               debugReason: "landing_recovery_complete",
             });
+            player.movementVelocity = carriedVel;
+            player.slideJumpLandSlideQueued = queuedSlide;
+            const continued = applySlideJumpContinueOnLandDone(player, now);
+            if (continued.ropeKickoff) {
+              emitThrottledScreenShake(room, io, { type: "rope_kickoff" });
+            }
             player.currentAction = null;
             player.actionLockUntil = 0;
             player.inputLockUntil = Math.min(
@@ -3255,16 +3284,20 @@ function tick(delta) {
         syncOffensiveAerialPresentation(player, { groundLevel: GROUND_LEVEL });
       }
 
-      // ── Hit Fall — heavy dump after airborne hit (pairs with full H KB) ──
+      // ── Hit Fall — ballistic arc after a launch connect (full H KB) ──
       if (player.isHitFalling) {
         player.hitFallVelocityY = (player.hitFallVelocityY || 0) - HIT_FALL_GRAVITY;
         if (player.hitFallVelocityY < -HIT_FALL_MAX_FALL_SPEED) {
           player.hitFallVelocityY = -HIT_FALL_MAX_FALL_SPEED;
         }
         player.y += player.hitFallVelocityY;
+        const hitFallOpponent = room.players.find((p) => p.id !== player.id);
+        applyAirHitOverlapEject(player, hitFallOpponent);
         if (player.y <= GROUND_LEVEL) {
           player.y = GROUND_LEVEL;
           finishAirHitFallLanding(player);
+        } else {
+          syncOffensiveAerialPresentation(player, { groundLevel: GROUND_LEVEL });
         }
       }
 
@@ -3778,6 +3811,7 @@ function tick(delta) {
           !player.isFlapping &&
           !player.isSlideJumping &&
           !player.isIceSlideReverseHopping &&
+          !player.isDodging &&
           !player.isHitFalling
         ) {
           player.y -= delta * speedFactor + 10;
@@ -4255,17 +4289,15 @@ function tick(delta) {
     }
 
     // ── BOUT CARD ──
-    // "DAY 7" / "ROUND 2" / "FINAL ROUND", once per bout.
+    // "ROUND 2" / "FINAL ROUND", once per versus bout.
     //
-    // Fires at the START of the salt throw, which buys the card the full
-    // 1483ms salt animation PLUS the walk to the tachiai before the Gyoji
-    // calls HANDS DOWN. The first pass waited for the salt to FINISH
-    // (canMoveToReady) and the card was still on screen when the bubble
-    // popped. canMoveToReady and readyStartTime stay as backstops for any
-    // mode that skips the ritual — and the client hides the card the
-    // instant gyoji_call lands, so the two can never overlap regardless
-    // of how the timings drift.
+    // Fires at the START of the salt throw. Versus always throws salt, so
+    // the card gets the full 1483ms animation plus the walk before the
+    // Gyoji calls HANDS DOWN. The client also hides the card the instant
+    // gyoji_call lands, so the two can never overlap. Basho days sit
+    // under the HUD clock — no card.
     if (
+      room.matchMode !== "basho" &&
       !room.boutCardSent &&
       !room.gameStart &&
       !room.gameOver &&
@@ -4275,13 +4307,10 @@ function tick(delta) {
         room.readyStartTime)
     ) {
       room.boutCardSent = true;
-      room.boutCardAtSim = now;
       io.in(room.id).emit(
         "bout_card",
         describeBout({
           matchMode: room.matchMode,
-          bashoBout: room.bashoBout,
-          bashoTotalBouts: room.bashoTotalBouts,
           winsP1: (room.players[0].wins || []).length,
           winsP2: (room.players[1].wins || []).length,
         })

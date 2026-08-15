@@ -61,14 +61,15 @@ function applySingleSlotPowerUp(player, type) {
 const PLAYER_1_READY_X = 543;
 const PLAYER_2_READY_X = 735;
 
-// Salt throw only on the first ritual of a match/series:
-// - VS CPU / Custom: score 0-0 (both wins empty)
-// - Basho: first bout of the 7/15-day series (bashoBout === 0)
+// Salt throw:
+// - VS CPU / Custom: every bout. The ROUND card rides this window.
+// - Basho: first day of the series only. Later days already have the
+//   DayCard interstitial; DAY sits under the HUD clock instead.
 function shouldPlaySaltRitual(room) {
   if (room.matchMode === "basho") {
     return (room.bashoBout || 0) === 0;
   }
-  return room.players.every((p) => !p.wins || p.wins.length === 0);
+  return true;
 }
 
 // Skip the walk-up: put the fighter on the ready mark so HANDS DOWN can fire
@@ -110,8 +111,8 @@ function handlePowerUpSelection(room, io) {
 
   // BASHO (§Phase 7 rework): the human drafts their power-up on the DAY card
   // BEFORE the bout (applied via basho_set_draft → applyBashoDraftToPlayer), so
-  // there is NO mid-match card selection. First bout of a series runs the
-  // salt-throw ritual; later bouts snap straight to ready for HANDS DOWN.
+  // there is NO mid-match card selection. Day 1 of a series runs the
+  // salt-throw ritual; later days snap straight to ready for HANDS DOWN.
   // The CPU uses the roster opponent's stacked loadout
   // (applyBashoOpponentProfile) — never a random VS-CPU pick.
   // PvP / VS CPU fall through to the normal selection path below, untouched.
@@ -233,7 +234,7 @@ function handleSaltThrowAndPowerUp(player, room, io) {
 
   checkAndRevealPowerUps(room, io);
 
-  // Later rounds skip salt and start already on the ready mark (HANDS DOWN next).
+  // Basho later days skip salt and start already on the ready mark.
   if (!shouldPlaySaltRitual(room)) {
     snapPlayerToReady(player);
     return;
@@ -339,9 +340,9 @@ function resetRoomAndPlayers(room, io) {
   room.gameOver = false;
   room.hakkiyoiCount = 0;
   room.gameOverTime = null;
-  // Bout clock is re-armed at the next HAKKI-YOI, and the card re-fires
-  // when the wrestlers start their walk. Both must clear here or the
-  // next bout inherits an already-expired deadline and ends instantly.
+  // Bout clock is re-armed at the next HAKKI-YOI, and the versus card
+  // re-fires when salt starts. Both must clear here or the next bout
+  // inherits an already-expired deadline and ends instantly.
   room.boutEndsAtSim = null;
   room.boutSecondsShown = null;
   room.boutCardSent = false;
@@ -551,6 +552,9 @@ function resetRoomAndPlayers(room, io) {
     player.hitFallStartTime = 0;
     player.hitFallStartY = 0;
     player.hitFallVelocityY = 0;
+    player.airHitEjectActive = false;
+    player.airHitEjectDir = 0;
+    player.airHitEjectRate = 0;
     player.isSidestepHitReturn = false;
     player.sidestepHitReturnStartTime = 0;
     player.sidestepHitReturnStartY = 0;

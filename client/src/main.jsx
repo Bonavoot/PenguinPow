@@ -12,6 +12,9 @@ import "@fontsource/noto-serif-jp/700.css";
 import "@fontsource/noto-serif-jp/900.css";
 import "@fontsource/noto-sans-jp/600.css";
 
+// Brush kanji for combat callout seals (subset — see yuji-boku.css)
+import "./assets/fonts/yuji-boku.css";
+
 import "./assets/fonts/material-symbols.css";
 import "./styles/typography.css";
 

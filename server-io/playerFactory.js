@@ -86,6 +86,9 @@ function createInitialPlayerState(overrides = {}) {
     hitFallStartTime: 0,
     hitFallStartY: 0,
     hitFallVelocityY: 0,
+    airHitEjectActive: false,
+    airHitEjectDir: 0,
+    airHitEjectRate: 0,
     isFallingOffDohyo: false,
 
     // === Movement ===
@@ -96,6 +99,7 @@ function createInitialPlayerState(overrides = {}) {
     isPowerSliding: false,
     isIceSliding: false,
     iceSlideDir: 0, // +1 right / -1 left — primary slide direction from dodge land
+    iceSlideCarrySpeed: 0, // last real |slide vel| — pocket pushbox must not starve W
     iceSlideStartTime: 0,
     isIceSlideReverseHopping: false, // recovering pose during bunny-hop reverse
     iceSlideReverseHopStartTime: 0,
@@ -103,6 +107,8 @@ function createInitialPlayerState(overrides = {}) {
     iceSlideReverseCooldownUntil: 0,
     iceSlideReverseBufferUntil: 0, // SHIFT repress buffer awaiting opposite dig
     iceSlideBrakeArmStart: 0, // when opposite dig began (0 = not digging)
+    ropeKickoffFxId: 0, // increments on tawara kick-off (slide/redirect toward center)
+    slideJumpLandSlideQueued: false, // SHIFT held at no-slam touchdown → ice slide on landDone
     isSlideJumping: false,
     slideJumpPhase: null, // "flight" | "landing"
     slideJumpVelocityY: 0,
@@ -116,6 +122,11 @@ function createInitialPlayerState(overrides = {}) {
     slideJumpHitRecoverDuration: 0,
     slideJumpLandingTime: 0,
     slideJumpLandSlamImmuneUntil: 0, // brief slam-only i-frames after touchdown
+    slideJumpLandSettleActive: false, // no-slam land-on-body spacing episode
+    slideJumpLandSettleUntil: 0,
+    slideJumpLandSettleJumperIsLeft: null,
+    slideJumpLandSettleTravelDir: 0,
+    slideJumpLandSettleCase: null,
     slideJumpStartTime: 0,
     slideJumpBufferUntil: 0, // W pressed during min flash — consume when jump becomes legal
     slideJumpHasFlap: false, // FLAP-armed takeoff — grants charges; flight still i-frame until S dive

@@ -39,7 +39,7 @@ const {
 } = require("./constants");
 const { getPushboxHalfWidth } = require("./pushboxGeometry");
 const { getActionFacingLock } = require("./actionFacingOwnership");
-const { isInDodgeStrikeIFrames } = require("./gameUtils");
+const { isInDodgeStrikeIFrames, isInSlideRedirectIFrames } = require("./gameUtils");
 const {
   COMBAT_VOLUME_KIND,
   COMBAT_VOLUME_TAG,
@@ -224,6 +224,11 @@ function collectTags(player, simTime) {
   }
   if (isInDodgeStrikeIFrames(player, simTime)) {
     tags.push(COMBAT_VOLUME_TAG.INVULNERABLE);
+  }
+  if (isInSlideRedirectIFrames(player, simTime)) {
+    if (!tags.includes(COMBAT_VOLUME_TAG.INVULNERABLE)) {
+      tags.push(COMBAT_VOLUME_TAG.INVULNERABLE);
+    }
   }
   // Sidestep active (+ recovery while still flagged sidestepping): live strike
   // i-frames are more nuanced (overlap threshold); Phase 1 tags the phase only.

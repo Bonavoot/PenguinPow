@@ -70,6 +70,8 @@ const DELTA_TRACKED_PROPS = [
   // iceSlideDir: +1 right / -1 left — client foot FX wake (dodgeDirection is
   // cleared on the same land tick that arms isIceSliding).
   'isIceSliding', 'iceSlideDir', 'isIceSlideReverseHopping', 'isSlideJumping', 'slideJumpDiveCommitted', 'slideJumpFastFalling', 'slideJumpPhase', 'slideJumpHasFlap',
+  // Increments when a slide/redirect kicks off the rope toward center — client VFX.
+  'ropeKickoffFxId',
   // Phase 4: compact reaction type for client animation ownership (null when idle).
   'offensiveAerialReactionType',
   // Phase 5A: compact presentation category (NONE/FLIGHT_ACTIVE/…).
@@ -431,9 +433,9 @@ const GRAB_STARTUP_MS = 85;
 const GRAB_ACTIVE_MS = 110;       // Connect window, opening once startup ends
 
 const DODGE_STARTUP_MS = 50;      // Readable windup/anticipation before the hop (was 20)
-const DODGE_ACTIVE_MS = 210;      // Actual dash movement — lengthened for readability (was 175); speed lowered to keep the same travel distance
+const DODGE_ACTIVE_MS = 85;       // Kick-off only — sit down onto the ice, then the slide owns travel
 const DODGE_RECOVERY_MS = 0;      // No recovery — cooldown prevents chain-dash (was 90)
-const DODGE_TOTAL_MS = DODGE_STARTUP_MS + DODGE_ACTIVE_MS + DODGE_RECOVERY_MS; // 260ms
+const DODGE_TOTAL_MS = DODGE_STARTUP_MS + DODGE_ACTIVE_MS + DODGE_RECOVERY_MS; // 135ms
 const DODGE_COOLDOWN_MS = 100;    // Forced idle gap after recovery before next dash (prevents chain-dash blur)
 // Strike-only startup invuln from dodge press. Covers most of the 50ms windup so
 // a committed dodge slips a meaty; cuts off before/as active travel begins so
@@ -595,8 +597,7 @@ const DODGE_POWERSLIDE_BOOST = 1.95;    // Boost if holding C on dodge landing
 // ICE SLIDE (SHIFT held through dodge land) → SLIDE JUMP (W) → BUTT SLAM (S)
 // ============================================
 // Entered when SHIFT is still held as a dodge ends. Tiny grounded flash before
-// W is live; jump range scales with slide time + exit speed. Steering bleeds
-// speed (and thus jump range). S in the air reuses the flap body-slam dive.
+// W is live; jump H carries ice speed (incl. speed stats). S is the slam.
 const ICE_SLIDE_FRICTION = 0.996;           // Very low friction while SHIFT held in slide dir
 const ICE_SLIDE_COAST_FRICTION = 0.965;     // SHIFT released but still sliding — keep state for repress reverse
 const ICE_SLIDE_STEER_FRICTION = 0.88;      // Bleed when A/D steers / fights the slide
@@ -615,19 +616,28 @@ const ICE_SLIDE_REVERSE_HOP_HEIGHT = 16;    // Peak Y above ground during the ho
 const ICE_SLIDE_REVERSE_COOLDOWN_MS = 160;  // Anti ping-pong; still snappy
 const SLIDE_JUMP_MIN_MS = 100;             // Grounded "slide flash" before W jump is live
 const SLIDE_JUMP_BUFFER_MS = 120;          // W pressed during flash → fire when min elapses
-const SLIDE_JUMP_LIFTOFF_IMPULSE = 13.2;   // Electric pop — clears a standing body (~peak 160px)
-const SLIDE_JUMP_GRAVITY = 0.52;           // Snappier than flap float; still hangs enough to read
-const SLIDE_JUMP_H_BASE = 4.4;             // Min horizontal carry (px/tick) — past opponent by default
-const SLIDE_JUMP_H_BONUS = 2.2;            // Extra H from long slide (added at full scale)
-const SLIDE_JUMP_H_SPEED_SCALE = 0.55;     // Extra H from |movementVelocity| at takeoff
-const SLIDE_JUMP_SCALE_MS = 450;           // Slide duration after min to reach full H bonus
+const SLIDE_JUMP_LIFTOFF_IMPULSE = 14.2;   // A little more pop — peak ~150px
+const SLIDE_JUMP_GRAVITY = 0.64;           // Sharper apex than 0.52 (less floaty U, still high)
+// Air H floor/carry are the unbuffed kick-off jump. Floor stays so a legal
+// hop still hops. Carry 1.0 (was 1.2) trims max travel ~8% after the taller arc.
+const SLIDE_JUMP_H_MIN = 1.8;
+const SLIDE_JUMP_H_CARRY = 1.0;
+// Distance cap. Ice can still run Happy Feet; the jump does not inherit it
+// 1:1. First stack (PvP / BASHO pick 1 = 1.4) stays on the unbuffed takeoff.
+// Stacks past that buy a little leftover air — not another ring-cross.
+const SLIDE_JUMP_H_MAX_MULT = 1.0;
+const SLIDE_JUMP_H_STACK_START = POWER_UP_EFFECTS[POWER_UP_TYPES.SPEED]; // 1.4
+const SLIDE_JUMP_H_STACK_FULL_MULT = 2.5; // basho HF ceiling
+const SLIDE_JUMP_H_STACK_HEADROOM = 0.10; // +10% H at full leftover stacks
 const SLIDE_JUMP_AIR_STEER = 1.2;          // Weak air nudge (also bleeds H slightly)
 const SLIDE_JUMP_AIR_STEER_BLEED = 0.97;   // Per-tick H decay when air-steering
 const SLIDE_JUMP_LANDING_RECOVERY_MS = 90; // Barely punishable — strict slap-timing window
-// S dive enable — kill hop-cancel micro-slams while keeping mid-ascent freedom.
-// Enabled when EITHER airtime OR height clears (mid-launch, not peak).
-const SLIDE_JUMP_DIVE_MIN_AIR_MS = 220;    // ~14 ticks @ 64Hz — readable hop telegraph
-const SLIDE_JUMP_DIVE_MIN_HEIGHT = 118;    // upper mid-ascent (~11 ticks on normal liftoff; peak ~160)
+// No-slam land-on-body: spacing episode, not a plant. Owns the 18px/tick
+// unstack so continue-slide (recovery 0) cannot dump 130px in one frame.
+const SLIDE_JUMP_LAND_SETTLE_MS = 160;
+// S dive enable — mid-ascent on the heavier arc (peak ~150, ascent ~22 ticks).
+const SLIDE_JUMP_DIVE_MIN_AIR_MS = 140;    // ~9 ticks @ 64Hz
+const SLIDE_JUMP_DIVE_MIN_HEIGHT = 88;     // mid-launch, not peak
 // Early S during the lock latches; commit fires on the first enabled tick.
 const SLIDE_JUMP_DIVE_BUFFER_MS = 220;     // Tap forgiveness across the lock window
 // Brief slam-only i-frames after slide-jump touchdown so "landed first" isn't
@@ -642,6 +652,9 @@ const FLAP_BODYSLAM_POST_HIT_H_DAMP = 0.2;
 
 // Edge awareness
 const DOHYO_EDGE_PANIC_ZONE = 89;       // Scaled for camera zoom (was 120)
+// Rope / tawara kick-off — on the straw. Dodge land is judged from dodgeStartX
+// (the hop itself is ~34px inward and would miss this window).
+const ROPE_KICKOFF_ZONE = 28;
 // PHASE 2 — position gate for the read-gated charged cinematic kill. A NEUTRAL
 // charged hit (no counter/punish, not gassed) may only cinematic-KO when the
 // victim was within THIS distance of the boundary (in the knockback direction)
@@ -668,13 +681,15 @@ const MIN_MOVEMENT_THRESHOLD = ICE_STOP_THRESHOLD;
 // ============================================
 // Dash Physics - grounded dash with dash slap
 // ============================================
-const DODGE_DURATION = DODGE_STARTUP_MS + DODGE_ACTIVE_MS; // 260ms total before recovery phase
+const DODGE_DURATION = DODGE_STARTUP_MS + DODGE_ACTIVE_MS; // 135ms total before recovery phase
 const DODGE_BASE_SPEED = 2.67; // Baseline px-rate unit — travel distance is FIXED (see DODGE_TRAVEL_DISTANCE)
-// Fixed hop distance at rate 1: BASE_SPEED * speedFactor * ACTIVE_MS ≈ 104px.
-// Speed buffs must NOT extend this — they only finish the hop sooner (capped).
-const DODGE_TRAVEL_DISTANCE = DODGE_BASE_SPEED * speedFactor * DODGE_ACTIVE_MS;
+// Same ground a redirect hop covers at burst (85ms × speedFactor × 2.15).
+// Speed buffs finish this sooner — they never extend travel.
+const DODGE_TRAVEL_DISTANCE = Math.round(
+  ICE_SLIDE_REVERSE_HOP_MS * speedFactor * ICE_SLIDE_REVERSE_BURST
+);
 const DODGE_SPEED_MULT_CAP = 1.5; // Max Happy Feet / draft rate on dodge — duration shrink only
-const DODGE_CANCEL_ACTION_LOCK = 80; // Brief lock after S-cancel to prevent instant pivoting
+const DODGE_CANCEL_ACTION_LOCK = 80; // Unused — grounded S-during-dodge cancel removed
 
 // ============================================
 // Grab Mechanics
@@ -1111,20 +1126,33 @@ const AIR_STRIKE_HURT_HEIGHT = 72;
 const FLAP_BODYSLAM_KB_VELOCITY = BURST_KB_VELOCITY;
 
 // ============================================
-// Hit Recovery — heavy sumo dump when hit airborne
+// Hit Recovery — grounded knockback + gravity after a launch connect
 // ============================================
-// Commitment model: passive flight is immune. Air hits are mostly dive-stuffs
-// / rare elevated connects. Stronger H KB + faster dump; blend prior air travel
-// into the shove so it isn't a straight vertical teleport.
-const HIT_FALL_GRAVITY = 1.18;            // Accelerated plummet (jump 0.52 / flap 0.44)
-const HIT_FALL_DUMP_LIGHT = 4.2;          // Slap / low kick — immediate down dump
-const HIT_FALL_DUMP_MEDIUM = 5.6;         // Palm / snowball / pumo
-const HIT_FALL_DUMP_HEAVY = 7.2;          // Charged tier
-const HIT_FALL_CARRY_DOWN_SCALE = 0.85;   // Keep downward dive carry
-const HIT_FALL_COUNTER_DUMP_MULT = 1.18;  // Counter / gored — slightly harder dump
-const HIT_FALL_MAX_FALL_SPEED = 20;       // Terminal down speed while hit-falling
-const AIR_HIT_KB_MULT = 1.4;              // Air connects shove harder than grounded
-const AIR_HIT_CARRY_X_SCALE = 0.5;        // Fraction of prior air H folded into KB
+// Slide-jump: ascent is hittable (limb height), post-peak is immune.
+// A launch connect uses authored horizontal KB + AIR_HIT_KB_BONUS_PX.
+// Rise is killed; gravity drops them from current height. No pop. No dump.
+const HIT_FALL_GRAVITY = SLIDE_JUMP_GRAVITY; // Same fall as the jump they left
+const HIT_FALL_POP_LIGHT = 0;
+const HIT_FALL_POP_MEDIUM = 0;
+const HIT_FALL_POP_HEAVY = 0;
+const HIT_FALL_RISE_KEEP = 0;
+const HIT_FALL_MAX_POP = 0;
+const HIT_FALL_CARRY_DOWN_SCALE = 1;
+const HIT_FALL_COUNTER_POP_MULT = 1;
+const HIT_FALL_MAX_FALL_SPEED = 16;
+const AIR_HIT_KB_MULT = 1.0;              // unused — air hits add BONUS_PX, not a mult
+const AIR_HIT_CARRY_X_SCALE = 0;          // Do not fold jump H into the shove
+// Authored send + this. Enough that a poke still yeets them out of mash
+// range. Slap ring-out gate is unchanged — mid-ring still dies at the rope.
+const AIR_HIT_KB_BONUS_PX = 130;
+// Overlap eject: leftover helper. Air hits use the bonus send, not eject.
+const AIR_HIT_EJECT_MAX_PX_PER_TICK = 18; // Same cap as land settle
+const AIR_HIT_EJECT_SEP_EPS = 0.5;
+// Back-compat aliases (old dump names)
+const HIT_FALL_DUMP_LIGHT = HIT_FALL_POP_LIGHT;
+const HIT_FALL_DUMP_MEDIUM = HIT_FALL_POP_MEDIUM;
+const HIT_FALL_DUMP_HEAVY = HIT_FALL_POP_HEAVY;
+const HIT_FALL_COUNTER_DUMP_MULT = HIT_FALL_COUNTER_POP_MULT;
 const SIDESTEP_HIT_RETURN_BASE_MS = 80;   // Base duration for sidestep Y return at max dip depth
 const SIDESTEP_HIT_RETURN_MIN_MS = 30;    // Floor — even a tiny dip gets a brief ease
 
@@ -2108,13 +2136,16 @@ module.exports = {
   SLIDE_JUMP_BUFFER_MS,
   SLIDE_JUMP_LIFTOFF_IMPULSE,
   SLIDE_JUMP_GRAVITY,
-  SLIDE_JUMP_H_BASE,
-  SLIDE_JUMP_H_BONUS,
-  SLIDE_JUMP_H_SPEED_SCALE,
-  SLIDE_JUMP_SCALE_MS,
+  SLIDE_JUMP_H_MIN,
+  SLIDE_JUMP_H_CARRY,
+  SLIDE_JUMP_H_MAX_MULT,
+  SLIDE_JUMP_H_STACK_START,
+  SLIDE_JUMP_H_STACK_FULL_MULT,
+  SLIDE_JUMP_H_STACK_HEADROOM,
   SLIDE_JUMP_AIR_STEER,
   SLIDE_JUMP_AIR_STEER_BLEED,
   SLIDE_JUMP_LANDING_RECOVERY_MS,
+  SLIDE_JUMP_LAND_SETTLE_MS,
   SLIDE_JUMP_DIVE_MIN_AIR_MS,
   SLIDE_JUMP_DIVE_MIN_HEIGHT,
   SLIDE_JUMP_DIVE_BUFFER_MS,
@@ -2122,6 +2153,7 @@ module.exports = {
   FLAP_BODYSLAM_PARK_MAX_NUDGE_PX,
   FLAP_BODYSLAM_POST_HIT_H_DAMP,
   DOHYO_EDGE_PANIC_ZONE,
+  ROPE_KICKOFF_ZONE,
   CHARGED_KILL_EDGE_ZONE,
   ICE_EDGE_BRAKE_BONUS,
   ICE_EDGE_SLIDE_PENALTY,
@@ -2372,14 +2404,23 @@ module.exports = {
 
   // Hit recovery
   HIT_FALL_GRAVITY,
+  HIT_FALL_POP_LIGHT,
+  HIT_FALL_POP_MEDIUM,
+  HIT_FALL_POP_HEAVY,
+  HIT_FALL_RISE_KEEP,
+  HIT_FALL_MAX_POP,
   HIT_FALL_DUMP_LIGHT,
   HIT_FALL_DUMP_MEDIUM,
   HIT_FALL_DUMP_HEAVY,
   HIT_FALL_CARRY_DOWN_SCALE,
+  HIT_FALL_COUNTER_POP_MULT,
   HIT_FALL_COUNTER_DUMP_MULT,
   HIT_FALL_MAX_FALL_SPEED,
   AIR_HIT_KB_MULT,
   AIR_HIT_CARRY_X_SCALE,
+  AIR_HIT_KB_BONUS_PX,
+  AIR_HIT_EJECT_MAX_PX_PER_TICK,
+  AIR_HIT_EJECT_SEP_EPS,
   SIDESTEP_HIT_RETURN_BASE_MS,
   SIDESTEP_HIT_RETURN_MIN_MS,
 

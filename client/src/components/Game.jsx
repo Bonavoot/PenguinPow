@@ -102,8 +102,8 @@ function scheduleRewarmCoalesced(reason) {
 // gameMusicAudio.volume = 0.02;
 
 // PERFORMANCE: Hidden element that forces the browser to download, parse, and
-// rasterize Noto Serif JP at the size/weight used by RoundResult kimarite
-// subtitles. Without this, the first win can hitch while the CJK font loads.
+// rasterize Yuji Boku at the size used by RoundResult kimarite. Without this,
+// the first win can hitch while the brush subset loads.
 const FontWarmup = () => (
   <div
     aria-hidden="true"
@@ -120,17 +120,15 @@ const FontWarmup = () => (
   >
     <span
       style={{
-        fontFamily: '"Noto Serif JP", serif',
-        fontSize: "1.4rem",
-        fontWeight: 700,
-        letterSpacing: "0.3em",
+        fontFamily: '"Yuji Boku", "Noto Serif JP", serif',
+        fontSize: "1.7rem",
+        fontWeight: 400,
+        letterSpacing: "0.14em",
         lineHeight: 1,
-        color: "#F5E6C8",
-        textShadow:
-          "1px 1px 3px rgba(0,0,0,0.9), 0 0 8px rgba(255,220,140,0.12)",
+        color: "#f5ecd9",
       }}
     >
-      突き出し寄り切り場外
+      突き出し寄り切り場外判定取り直し
     </span>
   </div>
 );

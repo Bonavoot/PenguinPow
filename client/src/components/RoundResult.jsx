@@ -1,7 +1,28 @@
 import React, { memo } from "react";
-import styled, { keyframes, css } from "styled-components";
+import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import { ANNOUNCE_Y } from "./SumoGameAnnouncement";
+import {
+  C,
+  FONT_BRUSH,
+  FONT_DISPLAY,
+  FONT_RENDER,
+  HUD,
+} from "./menuTheme";
+import { withSpacedBang } from "./calloutPrimitives";
+
+/*
+ * RoundResult — the gyoji's call.
+ *
+ * Same ceremony grammar as HAKKI-YOI (cut type + hairline), different
+ * pigment so the finish is not the start. Victory: cream English,
+ * gold-leaf kimarite and rule (same ceremony metal as HAKKI-YOI).
+ * Defeat: vermillion English on the same ink contour; cream
+ * kimarite. One stamp. No slab.
+ *
+ * Shares ANNOUNCE_Y with HAKKI-YOI. Hype sits under this stack so a
+ * winning special can stay on screen without becoming one sentence.
+ */
 
 const WIN_TYPE_CONFIG = {
   slap: { english: "THRUST OUT!", japanese: "突き出し" },
@@ -34,269 +55,136 @@ export function kimariteFor(winType) {
   return WIN_TYPE_CONFIG[winType] || WIN_TYPE_CONFIG.ringOut;
 }
 
+const RESULT_HOLD_S = 3;
+const INK = "#05070c";
+
+const GOLD = "#f0d56a";
+
+const FILL = {
+  victory: HUD.heroType,
+  defeat: C.vermillionBright,
+};
+
+const STROKE_W = "clamp(4.2px, 0.5cqw, 6.4px)";
+
+const KIMARITE_FILL = {
+  victory: GOLD,
+  defeat: HUD.heroType,
+};
+
+const KIMARITE_STROKE_W = "clamp(1.6px, 0.2cqw, 2.6px)";
+
+const RULE = {
+  victory: GOLD,
+  defeat: C.vermillion,
+};
+
 // ============================================
 // ANIMATIONS
 // ============================================
 
-const screenFlash = keyframes`
-  0%   { opacity: 0; }
-  6%   { opacity: 0.45; }
-  16%  { opacity: 0.18; }
-  30%  { opacity: 0.06; }
-  100% { opacity: 0; }
-`;
-
-const hazePulse = keyframes`
-  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
-  12%  { opacity: 0.75; transform: translate(-50%, -50%) scale(1.05); }
-  22%  { transform: translate(-50%, -50%) scale(1); }
-  78%  { opacity: 0.75; }
+/* Sized on the English line only so translate(-50%, -50%) shares a
+ * band with HAKKI-YOI. Kimarite hangs below and is not in this box.
+ * Punch-in, no rebound — same weight as HAKKI-YOI, not a squash. */
+const wordStamp = keyframes`
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.16); }
+  10%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  82%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
 `;
 
-/* Hanko stamp — anchored on the English line only (same Y center as
- * HAKKI-YOI / HANDS DOWN). Brush + kanji hang below and must NOT be
- * included in the centered box, or the hero text rides too high. */
-const stackStamp = keyframes`
-  0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.35) rotate(-1.5deg); }
-  10%  { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
-  78%  { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
-  100% { opacity: 0; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
-`;
-
-const brushPaint = keyframes`
-  0%   { clip-path: inset(0 100% 0 0); opacity: 0; }
-  8%   { opacity: 0; }
-  14%  { opacity: 1; }
-  30%  { clip-path: inset(0 0% 0 0); }
-  78%  { clip-path: inset(0 0% 0 0); opacity: 1; }
-  100% { clip-path: inset(0 0% 0 0); opacity: 0; }
-`;
-
-const splashAppear = keyframes`
-  0%   { opacity: 0; transform: rotate(15deg) scale(0.3); }
-  26%  { opacity: 0; transform: rotate(15deg) scale(0.3); }
-  34%  { opacity: 0.65; transform: rotate(15deg) scale(1.1); }
-  42%  { opacity: 0.5; transform: rotate(15deg) scale(1); }
-  78%  { opacity: 0.5; }
-  100% { opacity: 0; }
-`;
-
-const subtitleTrack = keyframes`
-  0%   { opacity: 0; letter-spacing: 0.8em; }
-  24%  { opacity: 0; letter-spacing: 0.8em; }
-  42%  { opacity: 1; letter-spacing: 0.3em; }
-  78%  { opacity: 1; letter-spacing: 0.3em; }
-  100% { opacity: 0; letter-spacing: 0.25em; }
-`;
-
 // ============================================
-// STYLED COMPONENTS
+// LAYOUT
 // ============================================
 
-const ScreenFlash = styled.div`
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1000;
-  animation: ${screenFlash} 0.6s ease-out forwards;
-  background: ${(p) =>
-    p.$isVictory
-      ? "radial-gradient(ellipse at 50% 25%, rgba(255,230,180,0.5) 0%, rgba(255,210,120,0.2) 28%, transparent 55%)"
-      : "radial-gradient(ellipse at 50% 25%, rgba(0,0,0,0.4) 0%, rgba(10,10,20,0.2) 30%, transparent 55%)"};
-`;
-
-const ContrastHaze = styled.div`
-  position: absolute;
-  top: ${ANNOUNCE_Y};
-  left: 50%;
-  width: clamp(440px, 58cqw, 720px);
-  height: clamp(120px, 18cqh, 200px);
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 1001;
-
-  background: ${(p) =>
-    p.$isVictory
-      ? `radial-gradient(
-        ellipse at center,
-        rgba(18, 12, 5, 0.6) 0%,
-        rgba(12, 8, 3, 0.38) 28%,
-        rgba(6, 4, 2, 0.14) 55%,
-        transparent 78%
-      )`
-      : `radial-gradient(
-        ellipse at center,
-        rgba(5, 5, 14, 0.6) 0%,
-        rgba(4, 4, 10, 0.38) 28%,
-        rgba(2, 2, 6, 0.14) 55%,
-        transparent 78%
-      )`};
-  filter: blur(8px);
-
-  animation: ${hazePulse} 3s ease-out forwards;
-
-  @media (max-width: 900px) {
-    width: clamp(340px, 55cqw, 580px);
-    height: clamp(100px, 16cqh, 170px);
-  }
-  @media (max-width: 600px) {
-    width: clamp(280px, 58cqw, 440px);
-    height: clamp(85px, 15cqh, 145px);
-  }
-`;
-
-/* Sized by MainText only so translate(-50%, -50%) lands on the same
- * band as HAKKI-YOI / HANDS DOWN. Support layers hang below. */
 const CalloutAnchor = styled.div`
   position: absolute;
   top: ${ANNOUNCE_Y};
   left: 50%;
+  transform: translate(-50%, -50%);
   z-index: 1005;
   pointer-events: none;
+  width: max-content;
   max-width: 92cqw;
-
-  animation: ${css`
-      ${stackStamp}`} 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: ${wordStamp} ${RESULT_HOLD_S}s cubic-bezier(0.16, 1, 0.3, 1)
+    forwards;
   will-change: transform, opacity;
 `;
 
 const MainText = styled.div`
-  font-family: "Bungee", "Impact", sans-serif;
-  font-size: clamp(2.2rem, 6.5cqw, 5.8rem);
+  font-family: ${FONT_DISPLAY};
+  font-size: clamp(2.1rem, 5.8cqw, 5.2rem);
   font-weight: 400;
   line-height: 1;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
+  text-indent: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
   text-align: center;
-
-  color: #ffffff;
-  -webkit-text-stroke: ${(p) =>
-    p.$isVictory
-      ? "clamp(1.5px, 0.22cqw, 3px) #1a1008"
-      : "clamp(1.5px, 0.22cqw, 3px) #0c0c18"};
-
-  text-shadow: ${(p) =>
-    p.$isVictory
-      ? `
-      clamp(2px, 0.18cqw, 4px) clamp(2px, 0.18cqw, 4px) 0 #1a0e06,
-      clamp(4px, 0.35cqw, 7px) clamp(4px, 0.35cqw, 7px) 0 rgba(18,10,4,0.8),
-      clamp(6px, 0.5cqw, 10px) clamp(6px, 0.5cqw, 10px) 0 rgba(12,6,2,0.5),
-      clamp(8px, 0.65cqw, 13px) clamp(8px, 0.65cqw, 13px) 0 rgba(8,4,1,0.25),
-      0 clamp(3px, 0.3cqw, 6px) clamp(12px, 1cqw, 22px) rgba(0,0,0,0.7)
-    `
-      : `
-      clamp(2px, 0.18cqw, 4px) clamp(2px, 0.18cqw, 4px) 0 #0e0e1a,
-      clamp(4px, 0.35cqw, 7px) clamp(4px, 0.35cqw, 7px) 0 rgba(10,10,22,0.8),
-      clamp(6px, 0.5cqw, 10px) clamp(6px, 0.5cqw, 10px) 0 rgba(5,5,15,0.5),
-      clamp(8px, 0.65cqw, 13px) clamp(8px, 0.65cqw, 13px) 0 rgba(2,2,10,0.25),
-      0 clamp(3px, 0.3cqw, 6px) clamp(12px, 1cqw, 22px) rgba(0,0,0,0.7)
-    `};
+  color: ${(p) => (p.$isVictory ? FILL.victory : FILL.defeat)};
+  -webkit-text-stroke: ${STROKE_W} ${INK};
+  paint-order: stroke fill;
+  text-shadow: none;
+  ${FONT_RENDER}
+  user-select: none;
 
   @media (max-width: 900px) {
-    font-size: clamp(1.8rem, 5.6cqw, 4.2rem);
-    letter-spacing: 0.08em;
+    font-size: clamp(1.7rem, 5.2cqw, 3.8rem);
   }
   @media (max-width: 600px) {
-    font-size: clamp(1.4rem, 5cqw, 3rem);
-    letter-spacing: 0.06em;
+    font-size: clamp(1.35rem, 4.6cqw, 2.8rem);
+  }
+
+  &::after {
+    content: "";
+    display: block;
+    width: 46%;
+    height: 3px;
+    margin: clamp(5px, 0.7cqh, 9px) auto 0;
+    background:
+      linear-gradient(
+        90deg,
+        transparent 0%,
+        ${(p) => (p.$isVictory ? RULE.victory : RULE.defeat)} 22%,
+        ${(p) => (p.$isVictory ? RULE.victory : RULE.defeat)} 78%,
+        transparent 100%
+      )
+        top / 100% 2px no-repeat,
+      linear-gradient(
+        90deg,
+        transparent 0%,
+        ${INK} 22%,
+        ${INK} 78%,
+        transparent 100%
+      )
+        bottom / 100% 3px no-repeat;
   }
 `;
 
 const SupportStack = styled.div`
   position: absolute;
-  top: calc(100% + clamp(5px, 0.75cqh, 10px));
+  top: calc(100% + clamp(8px, 1.1cqh, 14px));
   left: 50%;
   transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: clamp(5px, 0.75cqh, 10px);
-`;
-
-const BrushRow = styled.div`
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: clamp(240px, 38cqw, 480px);
-  height: clamp(7px, 1cqh, 14px);
-  flex-shrink: 0;
-
-  @media (max-width: 900px) {
-    width: clamp(200px, 35cqw, 380px);
-  }
-  @media (max-width: 600px) {
-    width: clamp(160px, 34cqw, 300px);
-  }
-`;
-
-const BrushStroke = styled.div`
-  width: 100%;
-  height: 100%;
-  border-radius: 60% 25% 45% 50% / 80% 50% 40% 65%;
-  filter: blur(0.5px);
-  transform: rotate(-0.8deg);
-
-  background: ${(p) =>
-    p.$isVictory
-      ? `linear-gradient(90deg,
-        transparent,
-        rgba(255,215,0,0.2) 5%,
-        rgba(255,215,0,0.55) 16%,
-        rgba(255,215,0,0.8) 38%,
-        rgba(255,215,0,0.85) 52%,
-        rgba(255,215,0,0.6) 72%,
-        rgba(255,215,0,0.3) 90%,
-        transparent)`
-      : `linear-gradient(90deg,
-        transparent,
-        rgba(180,40,40,0.18) 5%,
-        rgba(200,50,50,0.45) 16%,
-        rgba(210,55,55,0.7) 38%,
-        rgba(210,55,55,0.75) 52%,
-        rgba(200,50,50,0.5) 72%,
-        rgba(180,40,40,0.22) 90%,
-        transparent)`};
-
-  animation: ${brushPaint} 3s ease-out forwards;
-`;
-
-const BrushSplash = styled.div`
-  position: absolute;
-  right: clamp(-6px, -0.8cqw, -2px);
-  top: 50%;
-  width: clamp(10px, 1.5cqw, 20px);
-  height: clamp(4px, 0.5cqh, 7px);
-  border-radius: 50% 30% 45% 55% / 60% 40% 55% 45%;
-  transform-origin: center center;
-
-  background: ${(p) =>
-    p.$isVictory ? "rgba(255,215,0,0.5)" : "rgba(200,50,50,0.4)"};
-
-  animation: ${splashAppear} 3s ease-out forwards;
 `;
 
 const KimariteText = styled.div`
-  font-family: "Noto Serif JP", "Yu Mincho", serif;
-  font-size: clamp(0.8rem, 1.7cqw, 1.4rem);
-  font-weight: 700;
-  color: ${(p) => (p.$isVictory ? "#F5E6C8" : "#D0D4DE")};
-  letter-spacing: 0.3em;
-  padding-left: 0.3em;
-  text-align: center;
+  font-family: ${FONT_BRUSH};
+  font-size: clamp(1.25rem, 2.55cqw, 2.05rem);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
   white-space: nowrap;
-
-  text-shadow: ${(p) =>
-    p.$isVictory
-      ? "1px 1px 3px rgba(0,0,0,0.9), 0 0 8px rgba(255,220,140,0.12)"
-      : "1px 1px 3px rgba(0,0,0,0.9), 0 0 8px rgba(160,170,200,0.1)"};
-
-  animation: ${subtitleTrack} 3s ease-out forwards;
+  text-align: center;
+  color: ${(p) => (p.$isVictory ? KIMARITE_FILL.victory : KIMARITE_FILL.defeat)};
+  -webkit-text-stroke: ${KIMARITE_STROKE_W} ${INK};
+  paint-order: stroke fill;
+  text-shadow: none;
+  ${FONT_RENDER}
+  user-select: none;
 
   @media (max-width: 600px) {
-    font-size: clamp(0.65rem, 1.4cqw, 1rem);
+    font-size: clamp(1rem, 2.1cqw, 1.55rem);
   }
 `;
 
@@ -307,27 +195,19 @@ const KimariteText = styled.div`
 const RoundResult = ({ isVictory, winType }) => {
   const config = WIN_TYPE_CONFIG[winType] || WIN_TYPE_CONFIG.ringOut;
   const hasKimarite = !!config.japanese;
+  const headline = withSpacedBang(config.english);
 
   return (
-    <>
-      <ScreenFlash $isVictory={isVictory} />
-      <ContrastHaze $isVictory={isVictory} />
-
-      <CalloutAnchor>
-        <MainText $isVictory={isVictory}>{config.english}</MainText>
+    <CalloutAnchor>
+      <MainText $isVictory={isVictory}>{headline}</MainText>
+      {hasKimarite && (
         <SupportStack>
-          <BrushRow>
-            <BrushStroke $isVictory={isVictory} />
-            <BrushSplash $isVictory={isVictory} />
-          </BrushRow>
-          {hasKimarite && (
-            <KimariteText $isVictory={isVictory}>
-              {config.japanese}
-            </KimariteText>
-          )}
+          <KimariteText $isVictory={isVictory}>
+            {config.japanese}
+          </KimariteText>
         </SupportStack>
-      </CalloutAnchor>
-    </>
+      )}
+    </CalloutAnchor>
   );
 };
 

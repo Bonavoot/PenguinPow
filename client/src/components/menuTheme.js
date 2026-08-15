@@ -34,12 +34,15 @@ import { keyframes } from "styled-components";
  * kept reading as a different game; same-family + bold tabular numerals
  * keeps the timer in the band without a foreign type voice.
  * Kanji accents stay "Noto Serif JP" / "Noto Sans JP".
+ * Painted combat seals use Yuji Boku (brush), not the ceremonial mincho.
  */
 export const FONT_BODY = `"Space Grotesk", "Inter", system-ui, sans-serif`;
 export const FONT_DISPLAY = `"Bungee", cursive`;
 /** @deprecated Use FONT_DISPLAY — kept as alias so old imports keep working. */
 export const FONT_COMBAT = FONT_DISPLAY;
 export const FONT_KANJI = `"Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif`;
+/** Brush calligraphy — combat seals + kimarite subline. */
+export const FONT_BRUSH = `"Yuji Boku", ${FONT_KANJI}`;
 /** HUD / menu interface face — matches --font-ui in typography.css */
 export const FONT_UI = `"Chillax", system-ui, sans-serif`;
 /** Match-clock / bout timer face — same family as FONT_UI */
@@ -323,7 +326,7 @@ export const HUD = {
    */
   heroType: "#fffaf0",
   keyline: "rgba(3, 5, 10, 0.92)", // dark ring outside every cream stroke
-  well: "#0a0d15",                // substrate a fill sits directly against
+  well: "#080808",                // ink black — not slate, not grey, not #000
 
   /*
    * Two weights, one color. Hierarchy on this band is carried by how

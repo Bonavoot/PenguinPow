@@ -88,7 +88,6 @@ const {
   FLAP_BODYSLAM_KB_VELOCITY,
   FLAP_BODYSLAM_PARK_MAX_NUDGE_PX,
   FLAP_BODYSLAM_POST_HIT_H_DAMP,
-  AIR_STRIKE_HURT_HEIGHT,
   AP_ACTIVE_MS,
   AP_LATE_PARRY_MS,
   SLAP_GRACE_CONFIRM_SLACK_PX,
@@ -158,6 +157,7 @@ const {
   alignedEntryVelocity,
   grantAttackParryFlurryCover,
   isInDodgeStrikeIFrames,
+  isInSlideRedirectIFrames,
   applyBalanceDamage,
 } = require("./gameUtils");
 
@@ -252,8 +252,10 @@ const {
   getContactSeamX,
   clampToRopeRest,
   applyContactCorrection,
+  applyAirHitContactCorrection,
   attackKindFromPlayer,
 } = require("./strikeContact");
+const { strikeLimbReachesVictimY } = require("./strikeLimbReach");
 
 const {
   resolveAuthoredSlapHurtContact,
@@ -358,16 +360,20 @@ function evaluateHitCallouts(victim, currentTime, opts = {}) {
   const counterHitFromSidestepStartup = victim.isSidestepStartup === true;
   const counterHitFromFlapStartup =
     victim.isFlapping && victim.flapPhase === "startup";
+  // Slide-jump W has no squat — liftoff IS the startup. Landing is PUNISH.
+  const counterHitFromSlideJump =
+    !!victim.isSlideJumping && victim.slideJumpPhase !== "landing";
   // Dodge is a pure movement ability — strikes outside its i-frames are normal
-  // hits (no counter, no punish). Sidestep / rope jump / flap liftoff remain
-  // counter-hittable on startup (committed defensive reads).
+  // hits (no counter, no punish). Sidestep / rope jump / flap liftoff / W
+  // remain counter-hittable on startup (committed defensive reads).
   const counterHitRaw =
     counterHitFromAttacking ||
     counterHitFromIntent ||
     counterHitFromGrabAttempt ||
     counterHitFromRopeJumpStartup ||
     counterHitFromSidestepStartup ||
-    counterHitFromFlapStartup;
+    counterHitFromFlapStartup ||
+    counterHitFromSlideJump;
 
   // EXPOSED (MATADOR) overrides normal counter/punish labels.
   const isGored =
@@ -500,19 +506,14 @@ function checkCollision(player, otherPlayer, rooms, io) {
     return;
   }
 
-  // Slide-jump / FLAP commitment model: passive flight is immune. S dive and
-  // landing recovery are hittable (parry answers the dive; land is punishable).
+  // Slide-jump: ascent is hittable, post-peak is immune.
   if (isSlideJumpFlightImmune(otherPlayer)) {
     return;
   }
 
-  // Strikes are horizontal-only. Without a height gate, a high airborne body
-  // still "occupies" ground X and gets floor-hit. Only allow connects when the
-  // victim is actually low enough to anti-air / stuff.
-  if (
-    otherPlayer.y - GROUND_LEVEL > AIR_STRIKE_HURT_HEIGHT &&
-    !(player.isSlideJumping && player.slideJumpPhase === "flight")
-  ) {
+  // Strikes are horizontal-only. Limb Y is the anti-air — a slap cannot
+  // floor-hit a body above the authored arm / HIT band.
+  if (!strikeLimbReachesVictimY(player, otherPlayer)) {
     return;
   }
 
@@ -584,6 +585,8 @@ function checkCollision(player, otherPlayer, rooms, io) {
   const now = simNowForPlayer(player);
   const otherInDodgeIFrames = isInDodgeStrikeIFrames(otherPlayer, now);
   const playerInDodgeIFrames = isInDodgeStrikeIFrames(player, now);
+  const otherInRedirectIFrames = isInSlideRedirectIFrames(otherPlayer, now);
+  const playerInRedirectIFrames = isInSlideRedirectIFrames(player, now);
 
   // Sidestep grants i-frames vs ALL strikes during the ACTIVE phase, AND
   // during RECOVERY while still LITERALLY clipping the opponent's body
@@ -629,6 +632,8 @@ function checkCollision(player, otherPlayer, rooms, io) {
     otherPlayer.isDead ||
     otherInDodgeIFrames ||
     playerInDodgeIFrames ||
+    otherInRedirectIFrames ||
+    playerInRedirectIFrames ||
     otherInSidestepIFrames ||
     playerInSidestepIFrames ||
     player.isBeingThrown ||
@@ -2905,12 +2910,17 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       !!strikeContactOverride &&
       (strikeContactOverride.skipTorsoPark === true ||
         strikeContactOverride.limbOnly === true);
+    const victimAirborne = otherPlayer.y > GROUND_LEVEL;
     const preParkAx = player.x;
     const preParkVx = otherPlayer.x;
     let parkPolicy = "none";
     if (isSlapAttack || player.attackType === "charged" || player.isPalmThrust) {
       if (limbOnlyHit) {
         parkPolicy = "skip_limb_only";
+      } else if (victimAirborne) {
+        // Hit-in-place. Full tip park is the mid-air snap-to-fist.
+        parkPolicy = "skip_airborne";
+        applyAirHitContactCorrection(player, otherPlayer);
       } else {
         parkPolicy = "torso_park";
         const parkDist = getHitParkDistance(hitAttackKind, player, otherPlayer);
@@ -3523,9 +3533,10 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
 
       // Keep a floor so post-hit physics can't re-bury the freeze pose.
       // Slap/charged/palm all park via getHitParkDistance; low kick has no tip rail yet.
+      // Air connects skip this — it is the same tip-park snap as applyContactCorrection.
       // Rope-rest clamp: never push the victim past the tawara rest for the
       // hitstop pin (same contract as applyContactCorrection).
-      if (!isLowKick) {
+      if (!isLowKick && !hitFromAir) {
         const floorKind = attackKindFromPlayer(player);
         const minSepDist = getHitParkDistance(floorKind, player, otherPlayer);
         const currentDist = Math.abs(player.x - otherPlayer.x);
@@ -3882,10 +3893,11 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         impactTier = "heavy";
         hitChargePct = chargePercentage || 0;
       }
-      applyAirHitKnockbackBoost(otherPlayer, airCarryX);
+      applyAirHitKnockbackBoost(otherPlayer, airCarryX, player);
       beginAirHitFall(otherPlayer, {
         now: currentTime,
         carryVelY: airCarryY,
+        attacker: player,
         impactTier,
         chargePercentage: hitChargePct,
         isCounterHit: !!isCounterHit,
@@ -4341,6 +4353,7 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
     flapper &&
     flapper.isSlideJumping &&
     flapper.slideJumpPhase === "flight" &&
+    !!flapper.slideJumpDiveCommitted &&
     descending &&
     !flapper.slideJumpHitLanded;
 
@@ -4567,10 +4580,11 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   opponent.movementVelocity = 0;
 
   if (hitFromAir) {
-    applyAirHitKnockbackBoost(opponent, airCarryX);
+    applyAirHitKnockbackBoost(opponent, airCarryX, flapper);
     beginAirHitFall(opponent, {
       now: currentTime,
       carryVelY: airCarryY,
+      attacker: flapper,
       impactTier: "heavy",
       isCounterHit: !!isCounterHit,
       isGored: !!isGored,

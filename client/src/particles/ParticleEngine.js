@@ -1,5 +1,13 @@
-import { DOHYO_LEFT_BOUNDARY, DOHYO_RIGHT_BOUNDARY } from "../constants";
-import { DASH_SMOKE_SHEET_BASELINE_Y } from "../combatPresentation/movementSmoke";
+import {
+  DOHYO_LEFT_BOUNDARY,
+  DOHYO_RIGHT_BOUNDARY,
+  MAP_LEFT_BOUNDARY,
+  MAP_RIGHT_BOUNDARY,
+} from "../constants";
+import {
+  DASH_SMOKE_SHEET_BASELINE_Y,
+  MOVEMENT_SMOKE_GROUND_Y,
+} from "../combatPresentation/movementSmoke";
 import { isLowSpec } from "../utils/lowSpecMode";
 import landingSmokeSheet from "../assets/landing-smoke-effect.png";
 import straightUpSmokeSheet from "../assets/straight-up-smoke-effect.png";
@@ -332,7 +340,8 @@ function spawnSwooshSmoke(
   footY,
   { dir = 1, scale = 1, alpha = 0.9, maxLife = 0.42 } = {}
 ) {
-  if (!sheet || !sheet.complete || !sheet.naturalWidth) return false;
+  const canvasReady = sheet && typeof sheet.getContext === "function" && sheet.width;
+  if (!canvasReady && (!sheet || !sheet.complete || !sheet.naturalWidth)) return false;
   const drawSize = cfg.size * scale;
   const sign = cfg.flipSign ?? 1;
   const flip = sign * dir < 0;
@@ -371,9 +380,10 @@ function spawnDashSmoke(engine, footX, footY, opts = {}) {
   // Does not touch charged swoosh, ice-slide frost, or streak emitters.
   const baseline =
     opts.applySheetBaseline === false ? 0 : DASH_SMOKE_SHEET_BASELINE_Y;
+  const tawaraReady = opts.tint === "tawara" && dashSmokeTawara.canvas;
   return spawnSwooshSmoke(
     engine,
-    dashSmokeImg,
+    tawaraReady ? dashSmokeTawara.canvas : dashSmokeImg,
     SWOOSH_SMOKE_CFG.dash,
     footX,
     footY + baseline,
@@ -383,6 +393,42 @@ function spawnDashSmoke(engine, footX, footY, opts = {}) {
 
 function spawnChargedSmoke(engine, footX, footY, opts) {
   return spawnSwooshSmoke(engine, chargedSmokeImg, SWOOSH_SMOKE_CFG.charged, footX, footY, opts);
+}
+
+/** Kicked ice sparks — default slide spray (was the rope-kick burst). */
+function spawnIceSlideSparks(engine, x, y, dir, { count = 10, speedScale = 1 } = {}) {
+  const T = engine.textures;
+  const sign = dir > 0 ? 1 : -1;
+  for (let i = 0; i < count; i++) {
+    const spd = rand(120, 230) * speedScale;
+    const tex = pick([
+      T.spark,
+      T.sparkSmall,
+      T.chunkIce,
+      T.circleIce,
+      T.palmThrustIceChip,
+    ]);
+    const additive =
+      tex === T.spark || tex === T.sparkSmall || tex === T.palmThrustIceChip;
+    engine.spawn({
+      x: x + rand(-8, 8),
+      y: y - rand(2, 10),
+      vx: sign * spd * rand(0.3, 0.75) + rand(-36, 36),
+      vy: -Math.abs(rand(36, 130)) * speedScale,
+      gravity: 460,
+      drag: 0.93,
+      size: rand(4, 8),
+      sizeEnd: rand(1, 2.5),
+      alpha: rand(0.8, 1),
+      alphaEnd: 0,
+      ease: "linear",
+      easeAlpha: "outQuad",
+      rotationSpeed: rand(-6, 6),
+      maxLife: rand(0.22, 0.38),
+      texture: tex,
+      blendMode: additive ? "lighter" : undefined,
+    });
+  }
 }
 
 // ── Cinematic throw-kill landing splash ──────────────────────────────────────
@@ -437,6 +483,8 @@ const cinematicThrowLandSmokeGold = makeTintedSheet(cinematicThrowLandSmokeImg, 
 // Electric ice-cyan variant — perfect-parry foot splash, matches the hotter
 // perfect-tier burst (distinct from regular steel-cyan hold motes).
 const cinematicThrowLandSmokeCyan = makeTintedSheet(cinematicThrowLandSmokeImg, 40, 230, 255, 0.82);
+// Tawara / rice-straw — sampled from dohyo-display.webp rope pixels (mean 204,170,139).
+const dashSmokeTawara = makeTintedSheet(dashSmokeImg, 204, 170, 139, 0.72);
 
 function spawnCinematicThrowLandSmoke(
   engine,
@@ -2532,61 +2580,24 @@ const PRESETS = {
       stretchX: 2.8,
     });
 
-    // Hot blade sparks + ice chips kicked sideways off both feet.
-    for (let i = 0; i < 8; i++) {
-      const fx = i % 2 === 0 ? artLeftX : artRightX;
-      const side = i % 2 === 0 ? -1 : 1;
-      const spd = rand(90, 200);
-      const lift = rand(0.2, 0.75);
-      engine.spawn({
-        x: fx + rand(-4, 4),
-        y: footY - rand(2, 8),
-        vx: side * Math.cos(lift) * spd + wakeDir * rand(20, 60),
-        vy: -Math.abs(Math.sin(lift)) * spd * 0.55 - rand(10, 35),
-        gravity: 520,
-        drag: 0.94,
-        size: rand(3.5, 6.5),
-        sizeEnd: rand(1, 2),
-        alpha: rand(0.85, 1),
-        alphaEnd: 0,
-        ease: "linear",
-        easeAlpha: "outQuad",
-        rotationSpeed: rand(-4, 4),
-        maxLife: rand(0.16, 0.28),
-        texture: pick([
-          engine.textures.spark,
-          engine.textures.sparkSmall,
-          engine.textures.palmThrustIceGlow,
-        ]),
-        blendMode: "lighter",
-      });
-    }
+    spawnIceSlideSparks(engine, artLeftX, footY, wakeDir, { count: 5 });
+    spawnIceSlideSparks(engine, artRightX, footY, wakeDir, { count: 5 });
+  },
 
-    for (let i = 0; i < 5; i++) {
-      const fx = i % 2 === 0 ? artLeftX : artRightX;
-      const side = Math.random() < 0.5 ? -1 : 1;
-      engine.spawn({
-        x: fx + rand(-3, 3),
-        y: footY - rand(1, 5),
-        vx: side * rand(50, 130) + wakeDir * rand(10, 40),
-        vy: rand(-55, -12),
-        gravity: 380,
-        drag: 0.95,
-        size: rand(3, 6),
-        sizeEnd: rand(1, 2.5),
-        alpha: rand(0.7, 0.95),
-        alphaEnd: 0,
-        ease: "linear",
-        easeAlpha: "outQuad",
-        rotationSpeed: rand(-8, 8),
-        maxLife: rand(0.22, 0.36),
-        texture: pick([
-          engine.textures.chunkIce,
-          engine.textures.circleIce,
-          engine.textures.palmThrustIceChip,
-        ]),
-      });
-    }
+  // Rope / tawara kick-off — same dodge swoosh registration as dashStart,
+  // spawned on the map line (not the post-hop fighter, not shoved off-ring).
+  iceSlideRopeKick(engine, opts = {}) {
+    const travel = opts.direction || opts.facing || 1;
+    const dir = travel > 0 ? 1 : -1;
+    const ropeX = dir > 0 ? MAP_LEFT_BOUNDARY : MAP_RIGHT_BOUNDARY;
+    const footY = GAME_H - MOVEMENT_SMOKE_GROUND_Y;
+
+    spawnDashSmoke(engine, ropeX, footY, {
+      dir,
+      maxLife: 0.42,
+      applySheetBaseline: true,
+      tint: "tawara",
+    });
   },
 
   // Accepted ice-slide bunny-hop redirect — same dashStart swoosh sheet as a
@@ -2645,35 +2656,11 @@ const PRESETS = {
       }
     }
 
-    // Blade sparks — bright ice-cyan glints arcing off both feet.
-    const sparkN = Math.round(2 + s * 2 * brake);
-    for (let i = 0; i < sparkN; i++) {
-      const fx = i % 2 === 0 ? artLeftX : artRightX;
-      const spd = rand(50, 140) * (0.7 + s * 0.4);
-      const angle = rand(-0.25, 0.55);
-      engine.spawn({
-        x: fx + wakeDir * rand(0, 8) + rand(-3, 3),
-        y: footY - rand(3, 10),
-        vx: wakeDir * Math.cos(angle) * spd + rand(-18, 18),
-        vy: -Math.abs(Math.sin(angle)) * spd * 0.45 + rand(-28, -4),
-        gravity: 580,
-        drag: 0.93,
-        size: rand(2.5, 5.5) * (0.85 + s * 0.2),
-        sizeEnd: rand(0.8, 1.8),
-        alpha: rand(0.85, 1),
-        alphaEnd: 0,
-        ease: "linear",
-        easeAlpha: "outQuad",
-        rotationSpeed: 0,
-        maxLife: rand(0.08, 0.16),
-        texture: pick([
-          engine.textures.spark,
-          engine.textures.sparkSmall,
-          engine.textures.palmThrustIceGlow,
-        ]),
-        blendMode: "lighter",
-      });
-    }
+    const sparkN = Math.round(1 + s * 2 * brake);
+    spawnIceSlideSparks(engine, pick(feet), footY, wakeDir, {
+      count: sparkN,
+      speedScale: 0.7 + s * 0.35,
+    });
 
     // Twinkling frost pinpoints — the "sparkly ice" read.
     if (Math.random() < 0.55 + s * 0.25) {
@@ -2723,37 +2710,6 @@ const PRESETS = {
         texture: pick([engine.textures.groundStreak, engine.textures.groundStreakThin]),
         stretchX: rand(3.2, 6.5) * (0.85 + s * 0.25),
       });
-    }
-
-    // Occasional ice chips flicked sideways (more when braking / faster).
-    const chipChance = 0.35 + s * 0.25 + (braking ? 0.3 : 0);
-    if (Math.random() < chipChance) {
-      const chipN = braking ? 3 : 1 + (Math.random() < s * 0.5 ? 1 : 0);
-      for (let i = 0; i < chipN; i++) {
-        const fx = braking && i === 0 ? digX : pick(feet);
-        const side = Math.random() < 0.5 ? -1 : 1;
-        engine.spawn({
-          x: fx + rand(-3, 3),
-          y: footY - rand(1, 5),
-          vx: side * rand(40, 110) * brake + wakeDir * rand(15, 50) * s,
-          vy: rand(-50, -8) * (braking ? 1.2 : 1),
-          gravity: 360,
-          drag: 0.94,
-          size: rand(2.5, 5.5),
-          sizeEnd: rand(1, 2),
-          alpha: rand(0.65, 0.95),
-          alphaEnd: 0,
-          ease: "linear",
-          easeAlpha: "outQuad",
-          rotationSpeed: rand(-10, 10),
-          maxLife: rand(0.18, 0.32),
-          texture: pick([
-            engine.textures.chunkIce,
-            engine.textures.circleIce,
-            engine.textures.palmThrustIceChip,
-          ]),
-        });
-      }
     }
 
     // Dig plow — when braking, spray toward the look side (opposite wake).

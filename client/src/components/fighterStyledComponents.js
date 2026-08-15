@@ -641,6 +641,7 @@ export const StyledImage = styled("img")
         "isReady",
         "readyIntroComplete",
         "isHit",
+        "isHitFalling",
         "lastHitType",
         "isDead",
         "x",
@@ -960,6 +961,8 @@ export const StyledImage = styled("img")
         : props.$inClinch && props.$balanceWobble
         ? "clinchTeeter 1.5s ease-in-out infinite"
         // Hit reaction: amp-scaled contact squash only (no post-squash stagger).
+        : props.$isHitFalling
+        ? "airHitCarry 0.22s cubic-bezier(0.22, 0.6, 0.35, 1) forwards"
         : props.$isHit
         ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
         // Attacker contact recoil: their own body jolts back a beat when a
@@ -970,7 +973,7 @@ export const StyledImage = styled("img")
         : props.$isSlideJumping
         ? "slideJumpPop 0.22s cubic-bezier(0.15, 0.85, 0.25, 1) forwards"
         : props.$isDodging
-        ? "dashJump 0.26s linear forwards"
+        ? "dashJump 0.085s linear forwards"
         : props.$justLandedFromDodge &&
           !props.$isPowerSliding &&
           !props.$isBraking
@@ -1081,6 +1084,13 @@ export const StyledImage = styled("img")
      translateY is reserved for intentional airborne / ground-plant poses. */
   /* Every deviation from the identity pose scales with --impact-amp (see the
      attrs var above) — same shape at amp 1, ~2x deformation on a max hit. */
+  /* Air-hit: they are not planted. Grounded squash reads as a freeze-warp
+     onto the ice. Lean and hold — knockback + gravity own the travel. */
+  @keyframes airHitCarry {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) skewX(0deg) translateX(0); }
+    14% { transform: scaleX(var(--facing, 1)) scaleY(0.98) skewX(calc(var(--facing, 1) * -7deg)) translateX(calc(var(--facing, 1) * -2%)); }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) skewX(calc(var(--facing, 1) * -5deg)) translateX(calc(var(--facing, 1) * -1.2%)); }
+  }
   @keyframes hitSquash {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); }
     6% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.25 * var(--impact-amp, 1)))) scaleY(calc(1 - 0.25 * var(--impact-amp, 1))) translateX(calc(var(--facing, 1) * -3% * var(--impact-amp, 1))) skewX(calc(var(--facing, 1) * 2deg * var(--impact-amp, 1))); }
@@ -1477,21 +1487,11 @@ export const StyledImage = styled("img")
   }
 
   @keyframes dashJump {
-    /* One continuous animation over the whole dodge (startup + active), driven
-       by the single predicted isDodging flag so it never restarts mid-air.
-       0-19% (~50ms) = grounded windup crouch; 19-100% (~210ms) = the jump arc.
-       The arc peak is deliberately LOW (~15%) so it stays proportional to the
-       ~118px of forward travel — a tall arc over a short distance reads as
-       fake/sped-up. This is a low forward hop, not a vertical pop. */
-    0%   { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* windup start */
-    11%  { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(0.92); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* crouching */
-    19%  { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(0.9);  transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* crouch bottom (leaving ground) */
-    33%  { transform: scaleX(var(--facing, 1)) translateY(-9%)  scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* pushoff */
-    52%  { transform: scaleX(var(--facing, 1)) translateY(-14%) scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* rising */
-    60%  { transform: scaleX(var(--facing, 1)) translateY(-15%) scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* apex */
-    68%  { transform: scaleX(var(--facing, 1)) translateY(-13%) scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* hang */
-    86%  { transform: scaleX(var(--facing, 1)) translateY(-6%)  scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* falling */
-    100% { transform: scaleX(var(--facing, 1)) translateY(0)    scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* touchdown */
+    /* World Y is the hop (same 16px / 85ms parabola as a slide redirect).
+       This is squash only so CSS doesn't stack a second jump. */
+    0%   { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(0.92); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    40%  { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
   @keyframes dashLanding {
     0%   { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(0.9);  transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; } /* impact */
@@ -1570,7 +1570,7 @@ export const AnimatedFighterContainer = styled.div
     shouldForwardProp: (prop) =>
       ![
         "x", "y", "facing", "fighter", "isThrowing", "isDodging",
-        "isGrabbing", "isRingOutThrowCutscene", "isAtTheRopes", "isHit", "isBurstKnockback",
+        "isGrabbing", "isRingOutThrowCutscene", "isAtTheRopes", "isHit", "isHitFalling", "isBurstKnockback",
         "isRawParryStun", "isCinematicKillAttacker", "isSidestepping",
         "attackerConfirmTier", "isPostureBroken",
       ].includes(prop),
@@ -1613,8 +1613,10 @@ export const AnimatedFighterContainer = styled.div
         clipPath: "inset(0 0.5% 0 0.5%)",
         // Sole origin so sidestep scaleY / hit squash never lift painted feet.
         transformOrigin: FIGHTER_SOLE_TRANSFORM_ORIGIN,
-        animation: props.$isBurstKnockback
+        animation: props.$isBurstKnockback && !props.$isHitFalling
           ? "burstHitSquash 0.35s cubic-bezier(0.22, 0.6, 0.35, 1)"
+          : props.$isHitFalling
+          ? "airHitCarryContainer 0.22s cubic-bezier(0.22, 0.6, 0.35, 1) forwards"
           : props.$isHit
           ? "hitSquashContainer 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
           // MASTERY Phase 2 (2.1): feet-pinned openable teeter on spritesheet
@@ -1635,6 +1637,11 @@ export const AnimatedFighterContainer = styled.div
     67% { transform: scaleX(var(--facing, 1)) skewX(-0.7deg) translateX(-0.4px); }
     70% { transform: scaleX(var(--facing, 1)) skewX(0.35deg) translateX(0.2px); }
     73% { transform: scaleX(var(--facing, 1)) skewX(0deg) translateX(0); }
+  }
+  @keyframes airHitCarryContainer {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) skewX(0deg) translateX(0); }
+    14% { transform: scaleX(var(--facing, 1)) scaleY(0.98) skewX(calc(var(--facing, 1) * -7deg)) translateX(calc(var(--facing, 1) * -2%)); }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) skewX(calc(var(--facing, 1) * -5deg)) translateX(calc(var(--facing, 1) * -1.2%)); }
   }
   /* Amp-scaled like StyledImage's hitSquash — sole-pivoted, skewX lean (no rotate). */
   @keyframes hitSquashContainer {
@@ -1664,7 +1671,7 @@ export const AnimatedFighterImage = styled.img
       ![
         "frameCount", "fps", "loop", "isLocalPlayer", "isAtTheRopes",
         "isGrabBreaking", "isRawParrying", "isMatadorParrying", "isMatadorSuccess",
-        "isPerfectRawParrySuccess", "isHit", "isChargingAttack",
+        "isPerfectRawParrySuccess", "isHit", "isHitFalling", "isChargingAttack",
         "animationKey", "noFilter", "overlayLayer",
       ].includes(prop),
   })

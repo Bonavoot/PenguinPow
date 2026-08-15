@@ -4,7 +4,10 @@ import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { SocketContext } from "../SocketContext";
 import { C, FONT_DISPLAY, FONT_UI, FONT_WEIGHT, TRACK } from "./menuTheme";
-import { ANNOUNCE_Y } from "./SumoGameAnnouncement";
+import {
+  HYPE_RAIL_TOP,
+  HYPE_RAIL_TOP_MOBILE,
+} from "./SumoHypeStamp";
 import powerWaterIcon from "../assets/power-water.png";
 import snowballImage from "../assets/snowball.png";
 import pumoArmyIcon from "./pumo-army-icon.png";
@@ -66,7 +69,8 @@ import shatterPalmIcon from "../assets/shatter-palm-icon.png";
  *       │ POWER WATER│ ← cream name strip
  *       └────────────┘
  *
- *   P1 cluster on the left, P2 on the right in a centered row.
+ *   P1 card on the left rail, P2 on the right — same edge as
+ *   PERFECT / MATADOR, seated just above that stamp.
  *
  * MOTION:
  *   Local cluster slides in from the LEFT edge (west-side
@@ -159,58 +163,26 @@ const RevealOverlay = styled.div`
   pointer-events: none;
 `;
 
-/*
- * Full HUD width with the pair centered as a unit. Each cluster uses
- * the same fixed column width so tile midpoints stay on-axis with the
- * screen center (max-content flex skewed that). Tile-to-tile distance
- * is driven by column width — keep columns ~tile-sized, not HUD-wide.
- */
-const RevealRow = styled.div`
-  position: absolute;
-  top: calc(${ANNOUNCE_Y} - clamp(68px, 7.5cqh, 104px));
-  left: 0;
-  right: 0;
-  width: 100%;
-  padding-inline: clamp(10px, 2.5cqw, 28px);
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-  align-items: flex-start;
-  gap: clamp(22px, 4.8cqw, 48px);
-  pointer-events: none;
-
-  @media (max-width: 700px) {
-    gap: clamp(16px, 4cqw, 34px);
-    padding-inline: clamp(8px, 3cqw, 20px);
-  }
-`;
+/* Sit the card a step below the hype line — still above the combat rail. */
+const REVEAL_BELOW_HYPE = "clamp(24px, 3.6cqh, 40px)";
+/* In from the bezel — past the hype edge, still on each wrestler's side. */
+const REVEAL_RAIL_INSET = "clamp(36px, 4.4cqw, 60px)";
 
 /*
- * Cluster order is always P1 then P2 left-to-right in the row.
- * LOCAL/OPP is carried by TileLabel only — if you are P2, YOU is
- * still the right-hand tile.
- *
- * `$isLeft` selects entrance direction (west vs east). `$isLocal`
- * only affects label styling inside the tile.
+ * One card per side, a step below the PERFECT / MATADOR line,
+ * inset toward the dohyo. `$isLeft` is P1. `$isLocal` is the tab.
  */
-/* Column sizes to the card width plus minimal breathing room.
- * The card carries its own name and tab internally now, so the
- * column no longer needs to be wide enough to hold a floating
- * Bungee title — it just needs to seat the card itself. Tighter
- * cols pull the two cards closer to center, which sells the
- * "two opponents facing each other across the dohyo" symmetry. */
-const CLUSTER_COL = "clamp(108px, 12cqw, 148px)";
-
 const Cluster = styled.div`
-  position: relative;
+  position: absolute;
+  bottom: calc(100% - ${HYPE_RAIL_TOP} - ${REVEAL_BELOW_HYPE});
+  ${(p) =>
+    p.$isLeft
+      ? css`left: ${REVEAL_RAIL_INSET};`
+      : css`right: ${REVEAL_RAIL_INSET};`}
   display: flex;
   flex-direction: column;
-  align-items: center;
-  flex: 0 0 ${CLUSTER_COL};
-  width: ${CLUSTER_COL};
-  max-width: ${CLUSTER_COL};
-  min-width: 0;
+  align-items: ${(p) => (p.$isLeft ? "flex-start" : "flex-end")};
+  width: max-content;
   box-sizing: border-box;
   opacity: 0;
   animation: ${(p) => (p.$isLeft ? enterFromLeft : enterFromRight)}
@@ -224,6 +196,10 @@ const Cluster = styled.div`
       animation: ${exitUp} 0.32s ease-in forwards;
       animation-delay: 0s;
     `}
+
+  @media (max-width: 900px) {
+    bottom: calc(100% - ${HYPE_RAIL_TOP_MOBILE} - ${REVEAL_BELOW_HYPE});
+  }
 `;
 
 /*
@@ -492,33 +468,29 @@ const PowerUpReveal = ({ roomId, localId }) => {
 
   return createPortal(
     <RevealOverlay>
-      <RevealRow>
-        {/* P1 — west-side entrance, tab on the OUTER (left) edge. */}
-        <Cluster $isLeft={true} $isExiting={isExiting}>
-          <RevealCard>
-            <PlayerTab $onLeft={true} $isLocal={isLocalP1}>
-              {isLocalP1 ? "You" : "Opp"}
-            </PlayerTab>
-            <CardArt $type={revealData.player1.powerUpType}>
-              <CardIcon src={p1Info?.icon} alt={p1Info?.name} />
-            </CardArt>
-            <CardName>{p1Info?.name}</CardName>
-          </RevealCard>
-        </Cluster>
+      <Cluster $isLeft={true} $isExiting={isExiting}>
+        <RevealCard>
+          <PlayerTab $onLeft={true} $isLocal={isLocalP1}>
+            {isLocalP1 ? "You" : "Opp"}
+          </PlayerTab>
+          <CardArt $type={revealData.player1.powerUpType}>
+            <CardIcon src={p1Info?.icon} alt={p1Info?.name} />
+          </CardArt>
+          <CardName>{p1Info?.name}</CardName>
+        </RevealCard>
+      </Cluster>
 
-        {/* P2 — east-side entrance, tab on the OUTER (right) edge. */}
-        <Cluster $isLeft={false} $isExiting={isExiting}>
-          <RevealCard>
-            <PlayerTab $onLeft={false} $isLocal={!isLocalP1}>
-              {!isLocalP1 ? "You" : "Opp"}
-            </PlayerTab>
-            <CardArt $type={revealData.player2.powerUpType}>
-              <CardIcon src={p2Info?.icon} alt={p2Info?.name} />
-            </CardArt>
-            <CardName>{p2Info?.name}</CardName>
-          </RevealCard>
-        </Cluster>
-      </RevealRow>
+      <Cluster $isLeft={false} $isExiting={isExiting}>
+        <RevealCard>
+          <PlayerTab $onLeft={false} $isLocal={!isLocalP1}>
+            {!isLocalP1 ? "You" : "Opp"}
+          </PlayerTab>
+          <CardArt $type={revealData.player2.powerUpType}>
+            <CardIcon src={p2Info?.icon} alt={p2Info?.name} />
+          </CardArt>
+          <CardName>{p2Info?.name}</CardName>
+        </RevealCard>
+      </Cluster>
     </RevealOverlay>,
     hudEl
   );

@@ -9,42 +9,41 @@ import { withSpacedBang } from "./calloutPrimitives";
  *
  * PERFECT (timed attack parry) and MATADOR (grab-line parry) sit above the
  * combat rail, where other fighting games put the hit counter. The word
- * is the object: oversized Bungee filled with the event color (ice /
- * leaf-gold), a hard ink contour, and a foil cap highlight. No glow —
- * bloom made these read as neon stickers.
+ * is the object: oversized Bungee, one pigment, a thin ink contour,
+ * and a single ink seat so it grounds over the crowd. No foil split,
+ * no colored extrusion, no glow.
  *
- * Band: ~24–40cqh. Combat rail starts ~59cqh.
+ * Band: just under the round-result stack (English + kimarite),
+ * still clear of the headline. A winning PERFECT / MATADOR has
+ * to stay readable when the result stamps in, so this rail no
+ * longer shares ANNOUNCE_Y.
  */
 
-export const HYPE_DURATION_S = 1.45;
-export const HYPE_DURATION_MS = 1450;
+export const HYPE_DURATION_S = 2.4;
+export const HYPE_DURATION_MS = 2400;
+
+export const HYPE_RAIL_EDGE = "clamp(14px, 1.6cqw, 22px)";
+export const HYPE_RAIL_TOP = "clamp(224px, 35cqh, 272px)";
+export const HYPE_RAIL_TOP_MOBILE = "clamp(208px, 33cqh, 256px)";
 
 const HYPE_INK = "rgba(4, 6, 12, 0.95)";
 
 const HYPE_THEMES = {
   perfect: {
     label: "PERFECT",
-    fill: "#3ec8f0",
-    shine: "#f0fcff",
-    shelf: "rgba(8, 70, 100, 0.62)",
+    fill: "#22f6ff",
   },
   perfectbrace: {
     label: "PERFECT BRACE",
-    fill: "#f0d24a",
-    shine: "#fff6c8",
-    shelf: "rgba(110, 70, 0, 0.58)",
+    fill: "#ffe135",
   },
   matador: {
     label: "MATADOR",
-    fill: "#f0d24a",
-    shine: "#fff6c8",
-    shelf: "rgba(110, 70, 0, 0.58)",
+    fill: "#ffe135",
   },
   matadorbreak: {
     label: "MATADOR BREAK",
     fill: "#ee5141",
-    shine: "#ffe4de",
-    shelf: "rgba(90, 12, 8, 0.58)",
   },
 };
 
@@ -145,18 +144,18 @@ const wordOff = keyframes`
 
 const StampWrapper = styled.div`
   position: absolute;
-  top: clamp(155px, 26cqh, 210px);
+  top: ${HYPE_RAIL_TOP};
   ${(p) =>
     p.$isLeftSide
-      ? css`left: clamp(8px, 1.15cqw, 16px);`
-      : css`right: clamp(8px, 1.15cqw, 16px);`}
+      ? css`left: ${HYPE_RAIL_EDGE};`
+      : css`right: ${HYPE_RAIL_EDGE};`}
   pointer-events: none;
   z-index: 222;
   display: flex;
   justify-content: ${(p) => (p.$isLeftSide ? "flex-start" : "flex-end")};
 
   @media (max-width: 900px) {
-    top: clamp(140px, 24cqh, 190px);
+    top: ${HYPE_RAIL_TOP_MOBILE};
   }
 `;
 
@@ -194,16 +193,14 @@ const Word = styled.div`
       ? "clamp(1.55rem, 3.15cqw, 2.45rem)"
       : "clamp(2.05rem, 4.15cqw, 3.35rem)"};
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   line-height: 0.9;
   white-space: nowrap;
   text-align: ${(p) => (p.$isLeftSide ? "right" : "left")};
   color: ${(p) => p.$fill};
-  -webkit-text-stroke: clamp(2.4px, 0.28cqw, 3.6px) ${HYPE_INK};
+  -webkit-text-stroke: clamp(2.8px, 0.32cqw, 4.2px) ${HYPE_INK};
   paint-order: stroke fill;
-  text-shadow:
-    0 2px 0 rgba(0, 0, 0, 0.82),
-    0 3px 0 ${(p) => p.$shelf};
+  text-shadow: 0 0.045em 0 ${HYPE_INK};
   ${FONT_RENDER}
   user-select: none;
   ${(p) => {
@@ -220,27 +217,6 @@ const Word = styled.div`
       animation-delay: ${hold}s;
     `;
   }}
-`;
-
-const Shine = styled.span`
-  position: absolute;
-  left: 0;
-  top: 0;
-  right: 0;
-  padding: inherit;
-  font: inherit;
-  letter-spacing: inherit;
-  line-height: inherit;
-  text-transform: inherit;
-  text-align: inherit;
-  white-space: inherit;
-  color: ${(p) => p.$shine};
-  -webkit-text-stroke: inherit;
-  paint-order: stroke fill;
-  text-shadow: none;
-  clip-path: inset(0 0 56% 0);
-  pointer-events: none;
-  user-select: none;
 `;
 
 // ============================================
@@ -276,12 +252,8 @@ const SumoHypeStamp = ({
           $restrike={restrike}
           $duration={duration}
           $fill={theme.fill}
-          $shelf={theme.shelf}
         >
           {label}
-          <Shine aria-hidden $shine={theme.shine}>
-            {label}
-          </Shine>
         </Word>
       </StampMotion>
     </StampWrapper>

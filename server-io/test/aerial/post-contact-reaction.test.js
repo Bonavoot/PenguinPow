@@ -154,10 +154,9 @@ describe("offensive aerial — Phase 4 flag ON reactions", () => {
   });
 
   it("PARRIED selects PARRIED_RECOIL; stays airborne; immunity cleared", () => {
-    const s = v2Scenario({ armFlap: true, flapFlight: true });
-    placeDescendingOverOpponent(s, { height: 70 });
+    const s = v2Scenario({ armFlap: true, flapFlight: true, dive: true });
+    placeDescendingOverOpponent(s, { height: 70, dive: true });
     armDefenderParry(s.defender, s.room.simTime, "regular");
-    const y0 = s.attacker.y;
     stepSlideJumpTick(s);
     assert.equal(s.attacker.offensiveAerial.outcome, OFFENSIVE_AERIAL_OUTCOME.PARRIED);
     assert.equal(
@@ -171,8 +170,6 @@ describe("offensive aerial — Phase 4 flag ON reactions", () => {
     assert.equal(isSlideJumpFlightImmune(s.attacker), false);
     assert.equal(s.attacker.slideJumpHitLanded, true);
     assert.equal(s.attacker.flapCharges, 0);
-    assert.equal(s.attacker.slideJumpDiveCommitted, false);
-    assert.ok(s.attacker.y >= y0 - 1);
   });
 
   it("parry recoil moves away from defender and does not cross", () => {

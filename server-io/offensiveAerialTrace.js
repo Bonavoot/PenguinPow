@@ -48,6 +48,7 @@ function isBodySlamWindowOpen(attacker) {
   }
   // Latch + outcome contactConsumed both kill the hitbox (same activation).
   if (attacker.slideJumpHitLanded || isContactConsumed(attacker)) return false;
+  if (!attacker.slideJumpDiveCommitted) return false;
   const descending =
     (attacker.slideJumpVelocityY ?? 0) <= 0 || !!attacker.slideJumpDiveCommitted;
   if (!descending) return false;

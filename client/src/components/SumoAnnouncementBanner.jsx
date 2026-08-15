@@ -1,7 +1,7 @@
 import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
-import { C, FONT_DISPLAY, FONT_RENDER, FONT_UI } from "./menuTheme";
+import { C, FONT_BRUSH, FONT_DISPLAY, FONT_RENDER, FONT_UI } from "./menuTheme";
 import {
   ANNOUNCEMENT_EXIT_S,
   ANNOUNCEMENT_MIN_HOLD_S,
@@ -9,6 +9,7 @@ import {
 import {
   CALLOUT_CREAM,
   CALLOUT_PIGMENT,
+  CALLOUT_SLAB,
   CalloutParallelogram,
   withSpacedBang,
 } from "./calloutPrimitives";
@@ -16,10 +17,12 @@ import {
 /*
  * SumoAnnouncementBanner — combat INFO rail.
  *
- * Color-field parallelogram (Tokon negative-space trick, Pumo materials):
- *   opaque pigment fill, cream Bungee parked in the inner third, empty
- *   color running to the screen edge. No HUD cream stroke / inner keyline
- *   — those belong on stamina and posture, not on a hit event.
+ * Well parallelogram (Tokon negative-space trick, Pumo materials):
+ *   one shared HUD-well field, type color parked in the inner third,
+ *   empty well running off the screen edge so the slab reads as coming
+ *   out of the bezel — not a floating plaque. Color lives on the word,
+ *   not the plate. No HUD cream stroke / inner keyline / type shadow —
+ *   those belong on stamina and posture, not on a hit event.
  *
  * Hierarchy is length + type size + hold, not a lower seat. Both slots
  * share one origin. Cap 2 per side, and only for DIFFERENT types
@@ -40,27 +43,46 @@ export const ANNOUNCEMENT_DURATION_MS = 1500;
 const MAX_STACK = 2;
 
 // ============================================
-// THEMES — flat pigment, cream type
+// THEMES — shared HUD-well slab, typed color on the word
 // ============================================
 
-const TYPE_COLORS = {
-  punish: { fill: CALLOUT_PIGMENT.punish },
-  counterhit: { fill: CALLOUT_PIGMENT.counterhit },
-  counter: { fill: "#ff4d3d" },
-  countergrab: { fill: "#ff3d88" },
-  counterthrow: { fill: "#ff7a2e" },
-  deepgrip: { fill: "#e8c547" },
-  parry: { fill: "#22d3ee" },
-  tech: { fill: "#22d3ee" },
-  break: { fill: "#22e584" },
-  matadorbreak: { fill: CALLOUT_PIGMENT.matadorbreak },
-  perfect: { fill: "#22d3ee" },
-  perfectbrace: { fill: "#e8c547" },
-  perfectparry: { fill: "#22d3ee" },
-  default: { fill: C.sumi },
+const TYPE_INK = {
+  punish: CALLOUT_PIGMENT.punish,
+  counterhit: CALLOUT_PIGMENT.counterhit,
+  counter: "#ff4d3d",
+  countergrab: CALLOUT_PIGMENT.countergrab,
+  counterthrow: "#ff7a2e",
+  deepgrip: "#e8c547",
+  parry: "#22d3ee",
+  tech: "#22d3ee",
+  break: "#22e584",
+  matadorbreak: CALLOUT_PIGMENT.matadorbreak,
+  perfect: "#22d3ee",
+  perfectbrace: "#e8c547",
+  perfectparry: "#22d3ee",
+  default: C.cream,
 };
 
-const getTheme = (type) => TYPE_COLORS[type] || TYPE_COLORS.default;
+const getTypeInk = (type) => TYPE_INK[type] || TYPE_INK.default;
+
+const TYPE_KANJI = {
+  counterhit: "返",
+  punish: "罰",
+  countergrab: "捕",
+  matadorbreak: "破",
+  counter: "逆",
+  counterthrow: "投",
+  deepgrip: "極",
+  parry: "受",
+  tech: "技",
+  break: "崩",
+  perfect: "完",
+  perfectbrace: "耐",
+  perfectparry: "完",
+  default: "喝",
+};
+
+const getTypeKanji = (type) => TYPE_KANJI[type] || TYPE_KANJI.default;
 
 const TYPE_TIER = {
   counterhit: "hero",
@@ -89,28 +111,34 @@ const TIER_RANK = {
 
 const TIER_LAYOUT = {
   hero: {
-    fontSize: "clamp(1.08rem, 1.85cqw, 1.38rem)",
-    fontSizeMobile: "clamp(0.95rem, 2.25cqw, 1.18rem)",
+    fontSize: "clamp(1.06rem, 1.78cqw, 1.32rem)",
+    fontSizeMobile: "clamp(0.93rem, 2.2cqw, 1.16rem)",
     padBlock: "clamp(5px, 0.55cqh, 8px)",
-    minWidth: "clamp(176px, 17cqw, 225px)",
+    minWidth: "clamp(186px, 18.2cqw, 236px)",
   },
   primary: {
-    fontSize: "clamp(0.98rem, 1.65cqw, 1.22rem)",
-    fontSizeMobile: "clamp(0.86rem, 2.05cqw, 1.08rem)",
+    fontSize: "clamp(0.97rem, 1.62cqw, 1.18rem)",
+    fontSizeMobile: "clamp(0.86rem, 2.05cqw, 1.06rem)",
     padBlock: "clamp(4px, 0.5cqh, 7px)",
-    minWidth: "clamp(160px, 15.5cqw, 205px)",
+    minWidth: "clamp(166px, 16.2cqw, 212px)",
   },
   secondary: {
-    fontSize: "clamp(0.88rem, 1.45cqw, 1.08rem)",
-    fontSizeMobile: "clamp(0.78rem, 1.85cqw, 0.95rem)",
+    fontSize: "clamp(0.86rem, 1.46cqw, 1.06rem)",
+    fontSizeMobile: "clamp(0.78rem, 1.84cqw, 0.95rem)",
     padBlock: "clamp(4px, 0.45cqh, 6px)",
-    minWidth: "clamp(148px, 14cqw, 188px)",
+    minWidth: "clamp(150px, 14.6cqw, 194px)",
   },
 };
 
-const RAIL_TOP = "clamp(372px, 59cqh, 448px)";
-const RAIL_TOP_MOBILE = "clamp(328px, 57cqh, 400px)";
-const SLOT_GAP = "clamp(44px, 6.4cqh, 58px)";
+const RAIL_TOP = "clamp(396px, 62cqh, 472px)";
+const RAIL_TOP_MOBILE = "clamp(352px, 60cqh, 424px)";
+const SLOT_GAP = "clamp(40px, 5.7cqh, 50px)";
+// Hang the outer color field past the bezel. Same slab length — the
+// viewport clips the empty pigment so the rail reads as coming out of
+// the side. Text sits on the inner third and stays fully on-canvas.
+const RAIL_EDGE = "clamp(-36px, -3.2cqw, -24px)";
+// Empty well that may sit off-canvas. Content starts after this.
+const RAIL_SAFE = `calc(${RAIL_EDGE} * -1 + clamp(10px, 1.2cqw, 16px))`;
 
 // ============================================
 // STACK RAIL — cap 2, rank-aware seats
@@ -271,8 +299,8 @@ const BannerWrapper = styled.div`
     p.$slot === 1 ? `calc(${RAIL_TOP} + ${SLOT_GAP})` : RAIL_TOP};
   ${(p) =>
     p.$isLeftSide
-      ? css`left: clamp(8px, 1.15cqw, 16px);`
-      : css`right: clamp(8px, 1.15cqw, 16px);`}
+      ? css`left: ${RAIL_EDGE};`
+      : css`right: ${RAIL_EDGE};`}
   pointer-events: none;
   z-index: ${(p) => 220 - p.$slot};
   visibility: ${(p) => (p.$evictedByRestrike ? "hidden" : "visible")};
@@ -310,23 +338,26 @@ const BannerMotion = styled.div`
 
 const Slab = styled.div`
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: ${(p) => (p.$isLeftSide ? "flex-end" : "flex-start")};
   min-width: ${(p) => TIER_LAYOUT[getTier(p.$type)].minWidth};
-  max-width: 26cqw;
+  max-width: 30cqw;
+  width: max-content;
   padding-block: ${(p) => TIER_LAYOUT[getTier(p.$type)].padBlock};
-  /* Inner pad (toward the fight) has to clear the parallelogram slant
-     plus the 1.5px glyph stroke. Outer pad is the empty color — enough
-     air, not a banner to center screen. */
+  /* Outer pad clears the bezel hang so type never clips.
+     Inner pad is the kanji seat — same side on both players.
+     Short words (PUNISH) pack to that inner edge; extra min-width
+     stays as empty well on the bezel, not a hole after the bang. */
   ${(p) =>
     p.$isLeftSide
       ? css`
-          padding-left: clamp(40px, 4.6cqw, 62px);
-          padding-right: clamp(22px, 2.4cqw, 32px);
-          text-align: right;
+          padding-left: ${RAIL_SAFE};
+          padding-right: clamp(16px, 1.8cqw, 24px);
         `
       : css`
-          padding-left: clamp(22px, 2.4cqw, 32px);
-          padding-right: clamp(40px, 4.6cqw, 62px);
-          text-align: left;
+          padding-left: clamp(16px, 1.8cqw, 24px);
+          padding-right: ${RAIL_SAFE};
         `}
 `;
 
@@ -381,6 +412,10 @@ const FillWipe = styled.div`
 const MainText = styled.div`
   position: relative;
   z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: ${(p) => (p.$isLeftSide ? "flex-end" : "flex-start")};
+  gap: 0.28em;
   font-family: ${FONT_DISPLAY};
   font-size: ${(p) => TIER_LAYOUT[getTier(p.$type)].fontSize};
   text-transform: uppercase;
@@ -388,8 +423,10 @@ const MainText = styled.div`
   line-height: 1;
   white-space: nowrap;
   text-align: inherit;
-  color: ${C.cream};
+  color: ${(p) => getTypeInk(p.$type)};
   text-shadow: none;
+  /* Bungee caps sit high in the em — drop the cluster onto the plate midline. */
+  transform: translateY(0.05em);
   ${FONT_RENDER}
   user-select: none;
   ${(p) => {
@@ -436,6 +473,28 @@ const MainText = styled.div`
   }
 `;
 
+const KanjiMark = styled.span`
+  flex: 0 0 auto;
+  display: block;
+  font-family: ${FONT_BRUSH};
+  font-size: 1.15em;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: none;
+  /* Brush em-box sits low against Bungee caps — nudge to the word midline. */
+  transform: ${(p) =>
+    p.$isLeftSide
+      ? "translateY(-0.07em) rotate(7deg)"
+      : "translateY(-0.07em) rotate(-7deg)"};
+  pointer-events: none;
+  user-select: none;
+`;
+
+const CalloutLabel = styled.span`
+  display: block;
+  line-height: 1;
+`;
+
 const SubText = styled.div`
   position: relative;
   z-index: 2;
@@ -472,8 +531,6 @@ const SumoAnnouncementBanner = ({
     return () => cancelAnimationFrame(id);
   }, []);
 
-  const theme = getTheme(type);
-  const fill = theme.fill;
   let label =
     typeof text === "string" ? text.replace(/\s+/g, " ").trim() : text;
   label = withSpacedBang(label);
@@ -500,19 +557,25 @@ const SumoAnnouncementBanner = ({
             aria-hidden
           >
             <CalloutParallelogram
-              color={fill}
+              color={CALLOUT_SLAB}
               insetY={7}
               slant={6}
+              mirror={!isLeftSide}
             />
           </FillWipe>
           <MainText
+            $isLeftSide={isLeftSide}
             $type={type}
             $evicted={evicted}
             $evictedByRestrike={evictedByRestrike}
             $handoff={handoff}
             $duration={duration}
           >
-            {label}
+            {isLeftSide && <CalloutLabel>{label}</CalloutLabel>}
+            <KanjiMark $isLeftSide={isLeftSide} aria-hidden>
+              {getTypeKanji(type)}
+            </KanjiMark>
+            {!isLeftSide && <CalloutLabel>{label}</CalloutLabel>}
           </MainText>
           {subText && <SubText>{subText}</SubText>}
         </Slab>
