@@ -582,7 +582,7 @@ const RAW_PARRY_SLAP_KNOCKBACK = 0.5; // Lighter knockback for slap parries
 const PERFECT_PARRY_KNOCKBACK = 0.65; // Slightly stronger than regular parry
 const PERFECT_PARRY_WINDOW = 40; // PERFECT tier window (ms), measured as (hitTime − rawParryStartTime, lag-comp). Tight inner band of AP_ACTIVE_MS — regular owns the generous read; perfect is the rare dead-on grade. Also gates the snowball perfect-reflect.
 const PERFECT_PARRY_SUCCESS_DURATION = 850; // Compressed parry — fast enough to keep pace, long enough for visual read
-const PERFECT_PARRY_ATTACKER_STUN_DURATION = 700; // Stun — comfortable window for slap/grab follow-up
+const PERFECT_PARRY_ATTACKER_STUN_DURATION = 420; // Starstun floor. Live jail is max(move stagger, this) so flap (500) never pays less than regular. Slap/palm Perfect = +220 vs the 200ms plant.
 const PERFECT_PARRY_ANIMATION_LOCK = 330; // AP_PERFECT_HITSTOP_MS (210) + 120ms post-freeze cool-pose floor
 const PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK = 200; // Shorter than player parry lock — the reflected snowball is the reward
 
@@ -629,7 +629,8 @@ const PERFECT_PARRY_BALANCE_REFUND = 0;
 // Space tap = parry (slap/palm only; not grab or charged). Hold = guard.
 // Empty release/expiry = whiff (AP_WHIFF_RECOVERY_MS). Reuses isRawParrying /
 // isRawParrySuccess. Landed parry opens AP_FLURRY_COVER_MS for the next re-tap.
-// Regular vs perfect graded by PERFECT_PARRY_WINDOW. Regular never KOs.
+// Regular vs perfect graded by PERFECT_PARRY_WINDOW. Neither grade KOs
+// while AP_KILL_ENABLED is false (Perfect is a starstun confirm).
 // Guard: chip + pushback + stamina; rooted; does not stop grab/charged.
 // Stamina 0 while guarding → guard-crush → gassed. One parry per physical press.
 const AP_ACTIVE_MS = 180;            // PARRY WINDOW: tap deflects if the strike connects within this of the (lag-comp) press (was 140). Perfect stays PERFECT_PARRY_WINDOW.
@@ -642,6 +643,7 @@ const AP_ACTIVE_MS = 180;            // PARRY WINDOW: tap deflects if the strike
 // and confirm once grace ends (see collisionSystem) — otherwise ice drift across
 // the deferred ticks can push past tip connect and ghost-whiff a point-blank
 // slap. Slack is a few ticks of coast, not sidestep distance.
+// A grace-held slap can still PARRY. It cannot PERFECT — the save is Regular.
 const AP_LATE_PARRY_MS = 45;
 const SLAP_GRACE_CONFIRM_SLACK_PX = 28;
 const AP_FLOW_WINDOW_MS = 400;       // DEPRECATED (Deflect Flow removed). Kept only so existing imports resolve; unreferenced by the new state machine.
@@ -672,8 +674,14 @@ const MATADOR_SUCCESS_LOCK_MS = AP_SUCCESS_RECOVERY_MS;  // Brief plant on the m
 const MATADOR_PULL_DISTANCE = 260;
 const MATADOR_PULL_DISTANCE_MAX = 400;
 const AP_STAMINA_COST = 3;           // Charged per parry tap
-// KILL gate: PERFECT parry only, attacker balance < this. Regular parries never KO.
-// Under clinch kill (15) and posture break (35).
+// Live Attack Parry never finishes the round. Perfect is a starstun confirm;
+// the follow-up (grab / slap / walk-out) is the earned kill.
+// The lethal slap-down (ap_pull + clinchKillPull) is still in collisionSystem
+// behind this flag. Flip to true to restore Perfect-only kills when the
+// attacker's balance is already under AP_PERFECT_KILL_THRESHOLD.
+const AP_KILL_ENABLED = false;
+// KILL gate (dormant while AP_KILL_ENABLED is false): PERFECT only.
+// Regular parries never KO. Under clinch kill (15) and posture break (35).
 const AP_KILL_THRESHOLD = 8; // legacy (unused) — kills use AP_PERFECT_KILL_THRESHOLD only
 const AP_PERFECT_KILL_THRESHOLD = 12;
 // Balance drained from the parried attacker (vs BALANCE_SLAP_HIT_DRAIN_P2 slap drain).
@@ -689,11 +697,13 @@ const AP_KILL_HITSTOP_MS = 550;      // Matches CINEMATIC_KILL_HITSTOP_MS
 // PERFECT-only balance refund to the PARRIER — removed (Halo posture regen).
 // Attacker still eats AP_PERFECT_BALANCE_DRAIN. Constant kept at 0 for callers.
 const AP_PERFECT_BALANCE_REFUND = 0;
-// Attacker lockout after being parried, keyed to the committed move, in that move's recovery pose (not hit.png).
-const AP_STAGGER_SLAP_MS = 150;
+// Attacker lockout after being parried, keyed to the committed move.
+// Regular slap + AP_FLURRY_STAGGER_BEGIN_MS (20) = AP_SUCCESS_RECOVERY_MS (200) → +0.
+// Perfect jail = max(move stagger, PERFECT_PARRY_ATTACKER_STUN_DURATION). Not the old +220 add-on.
+const AP_STAGGER_SLAP_MS = 180;
 const AP_STAGGER_PALM_MS = 420;
 const AP_STAGGER_FLAP_MS = 500;
-const AP_PERFECT_ADVANTAGE_MS = 220; // Extra attacker lockout on a PERFECT slap parry
+const AP_PERFECT_ADVANTAGE_MS = 220; // Legacy slap-only add-on. Live Perfect uses max(move stagger, 420).
 // Post-parry flurry cover (tap-every-slap). After a landed parry, the next
 // rising-edge re-tap may extend its live window to (parryTime + cover). Cover
 // matches REAL ASAP follow-up timing, not the naive stagger alone:
@@ -706,7 +716,7 @@ const AP_PERFECT_ADVANTAGE_MS = 220; // Extra attacker lockout on a PERFECT slap
 const AP_FLURRY_STAGGER_BEGIN_MS = 20; // must match collisionSystem parryStaggerBegin delay
 const AP_FLURRY_SLACK_MS = 120;        // delayed follow-up / CPU reaction pad
 const AP_FLURRY_COVER_MS =
-  AP_FLURRY_STAGGER_BEGIN_MS + AP_STAGGER_SLAP_MS + SLAP_STARTUP_MS + AP_FLURRY_SLACK_MS; // 345 default (regular slap)
+  AP_FLURRY_STAGGER_BEGIN_MS + AP_STAGGER_SLAP_MS + SLAP_STARTUP_MS + AP_FLURRY_SLACK_MS; // 375 default (regular slap +0)
 // Lethal AP slap-down slide — victim dragged through the parrier (matches clinch kill-pull).
 const AP_KILL_SLIDE_DISTANCE = 210;      // == CLINCH_KILL_PULL_DISTANCE
 const AP_KILL_SLIDE_DURATION_MS = 950;   // clinch pull is 850; +100ms
@@ -721,6 +731,7 @@ const GUARD_PALM_STAMINA_DRAIN = 7;
 const GUARD_SLAP_PUSHBACK = 2.0;      // Slide-model velocity — blocked slap ≈ 32px
 const GUARD_PALM_PUSHBACK = 4.0;      // Blocked palm ≈ 64px
 const GUARD_HITSTOP_MS = 40;
+const GUARD_ATTACKER_RECOVERY_MS = 80; // Block consumes the string; short settle so they cannot instant-cancel. Drop-guard is even / a hair plus.
 const GUARD_CRUSH_STUN_MS = 500;      // Guard broken (stamina hit 0 while blocking), then gassed
 
 // ── SLAP TRADE (replaces the slap clash / "slap parry") ─────────────────────
@@ -1430,8 +1441,8 @@ const CPU_CADENCE_IMPOSSIBLE = 0.92;
 //   attackerStun = lerp(PERFECT_PARRY_ATTACKER_STUN_DURATION, _MAX, quality)
 //   parryShove   = lerp(PERFECT_PARRY_KNOCKBACK,              _MAX, quality)
 //   postureRefund= round(lerp(PERFECT_PARRY_BALANCE_REFUND,   _MAX, quality))
-// Quality 0 = base 700 / 0.65 / 12. Regular (non-perfect) parries untouched.
-const PERFECT_PARRY_ATTACKER_STUN_MAX = 880; // base PERFECT_PARRY_ATTACKER_STUN_DURATION 700; SAFE 820
+// Quality 0 = base 420 / 0.65 / 12. Regular (non-perfect) parries untouched.
+const PERFECT_PARRY_ATTACKER_STUN_MAX = 500; // analog ceiling; live floor is 420. Must stay ≥ AP_STAGGER_FLAP_MS.
 const PERFECT_PARRY_KNOCKBACK_MAX = 0.95;    // base PERFECT_PARRY_KNOCKBACK 0.65; SAFE 0.85
 const PERFECT_PARRY_BALANCE_REFUND_MAX = 20; // base PERFECT_PARRY_BALANCE_REFUND 12; SAFE 18
 
@@ -1761,6 +1772,7 @@ module.exports = {
   MATADOR_PULL_DISTANCE,
   MATADOR_PULL_DISTANCE_MAX,
   AP_STAMINA_COST,
+  AP_KILL_ENABLED,
   AP_KILL_THRESHOLD,
   AP_PERFECT_KILL_THRESHOLD,
   AP_BALANCE_DRAIN,
@@ -1788,6 +1800,7 @@ module.exports = {
   GUARD_SLAP_PUSHBACK,
   GUARD_PALM_PUSHBACK,
   GUARD_HITSTOP_MS,
+  GUARD_ATTACKER_RECOVERY_MS,
   GUARD_CRUSH_STUN_MS,
   SLAP_TRADE_WINDOW_MS,
   SLAP_TRADE_KNOCKBACK,

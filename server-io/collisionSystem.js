@@ -92,6 +92,7 @@ const {
   AP_LATE_PARRY_MS,
   SLAP_GRACE_CONFIRM_SLACK_PX,
   AP_FLOW_WINDOW_MS,
+  AP_KILL_ENABLED,
   AP_PERFECT_KILL_THRESHOLD,
   AP_BALANCE_DRAIN,
   AP_PERFECT_BALANCE_DRAIN,
@@ -103,7 +104,6 @@ const {
   AP_STAGGER_SLAP_MS,
   AP_STAGGER_PALM_MS,
   AP_STAGGER_FLAP_MS,
-  AP_PERFECT_ADVANTAGE_MS,
   AP_SUCCESS_RECOVERY_MS,
   AP_COOLDOWN_MS,
   AP_STAMINA_COST,
@@ -116,6 +116,7 @@ const {
   GUARD_SLAP_PUSHBACK,
   GUARD_PALM_PUSHBACK,
   GUARD_HITSTOP_MS,
+  GUARD_ATTACKER_RECOVERY_MS,
   GUARD_CRUSH_STUN_MS,
   SLAP_TRADE_WINDOW_MS,
   SLAP_TRADE_KNOCKBACK,
@@ -197,6 +198,60 @@ const {
   markLifecycleControlRestore,
   consumeLifecycleOwner,
 } = require("./actionLifecycleOwnership");
+
+/** Block floor: kill the incoming string and park the attacker in a short settle. */
+function consumeGuardedAttack(attacker, currentTime) {
+  if (!attacker) return;
+  attacker.isAttacking = false;
+  attacker.slapActiveEndTime = 0;
+  attacker.chargedActiveEndTime = 0;
+  attacker.attackEndTime = 0;
+  attacker.isChargingAttack = false;
+  attacker.isSlapSliding = false;
+  attacker.slapOpenHitPending = false;
+  attacker.pendingSlapCount = 0;
+  attacker.pendingPalmThrust = false;
+  attacker.isHit = false;
+  timeoutManager.clearPlayerSpecific(attacker.id, "slapCycle");
+  timeoutManager.clearPlayerSpecific(attacker.id, "palmThrustVisualEnd");
+  timeoutManager.clearPlayerSpecific(attacker.id, "palmThrustStartupEnd");
+  timeoutManager.clearPlayerSpecific(attacker.id, "guardAttackerRecover");
+
+  if (isActionLifecycleOwnershipV2Enabled()) {
+    const attackOwnerId =
+      attacker.slapLifecycleInstanceId ||
+      attacker.chargedLifecycleInstanceId ||
+      null;
+    if (attackOwnerId) {
+      consumeLifecycleOwner(
+        attacker,
+        LIFECYCLE_DOMAIN.PRIMARY_ACTION,
+        attackOwnerId,
+        { reason: "GUARD_CONSUME_ATTACK", keepActive: false }
+      );
+    }
+  }
+
+  attacker.isSlapAttack = false;
+  attacker.isPalmThrust = false;
+  attacker.attackType = null;
+  releaseStrikeFacingLock(attacker, {
+    reason: ACTION_FACING_RELEASE.INTERRUPT,
+  });
+  attacker.isRecovering = true;
+  attacker.inputLockUntil = Math.max(
+    attacker.inputLockUntil || 0,
+    currentTime + GUARD_ATTACKER_RECOVERY_MS
+  );
+  setPlayerTimeout(
+    attacker.id,
+    () => {
+      attacker.isRecovering = false;
+    },
+    GUARD_ATTACKER_RECOVERY_MS,
+    "guardAttackerRecover"
+  );
+}
 
 function beginHitstunLifecycle(victim) {
   if (!victim || !isActionLifecycleOwnershipV2Enabled()) return null;
@@ -2383,7 +2438,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
   // open hits are deferred so a slightly-late tap can arm and catch. Palm /
   // charged are unchanged. Stamp slapOpenHitPending so checkCollision can
   // still confirm after grace if ice drift nudged the pair slightly past tip
-  // connect (point-blank ghost whiff).
+  // connect (point-blank ghost whiff). A later tap that catches a held slap
+  // still Regular-parries; it cannot Perfect (see grade below).
   //
   // NEVER defer when slap-vs-slap priority already committed this hit. Orphaning
   // consumeLosingAttackInstance on the later slap (clear tip/limb, no damage)
@@ -2440,9 +2496,10 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
 
     if (!inParryWindow) {
       // ── GUARD BLOCK — chip + ground lost + stamina bled, NO reward ──────────
-      // The attacker is NOT nullified (their slap cycle continues, keeping
-      // pressure); the guard just mitigates. Dedup via isAlreadyHit so the same
-      // active window chips once. Stamina to 0 while guarding = guard-crush.
+      // String dies (no donated turn). Chip / pushback / stamina are the tax.
+      // Drop-Space after the freeze is even / a hair plus. Hold stays grab food.
+      // Dedup via isAlreadyHit so the same active window chips once.
+      // Stamina to 0 while guarding = guard-crush.
       const chip = isPalm ? GUARD_PALM_BALANCE_CHIP : GUARD_SLAP_BALANCE_CHIP;
       const stamDrain = isPalm ? GUARD_PALM_STAMINA_DRAIN : GUARD_SLAP_STAMINA_DRAIN;
       const pushback = isPalm ? GUARD_PALM_PUSHBACK : GUARD_SLAP_PUSHBACK;
@@ -2457,6 +2514,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       parrier.isAlreadyHit = true;
       parrier.apChainCount = 0;    // a block breaks the parry chain
       parrier.apFlurryUntil = 0;   // block breaks tap-every-slap flurry cover
+      consumeGuardedAttack(attacker, currentTime);
 
       // GUARD CRUSH — bled dry while blocking: drop the guard into a brief stun
       // AND enter gassed immediately. Do not wait for the end-of-tick gassed
@@ -2522,11 +2580,20 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
 
     // ── PARRY — graded regular vs PERFECT by how dead-on the tap landed ───────
     const parryDuration = currentTime - (parrier.rawParryStartTime || currentTime);
-    const isPerfect = parryDuration >= 0 && parryDuration <= PERFECT_PARRY_WINDOW;
+    // Grace-held slap (open hit deferred so a late tap could arm) still parries.
+    // It cannot Perfect — that save is Regular. Palm / already-live windows unchanged.
+    const graceHeldSlap = isSlapAttack && !!attacker.slapOpenHitPending;
+    const isPerfect =
+      !graceHeldSlap &&
+      parryDuration >= 0 &&
+      parryDuration <= PERFECT_PARRY_WINDOW;
+    attacker.slapOpenHitPending = false;
 
-    // KILL CHECK — PERFECT only. Regular parries never finish; balance must also
-    // already be inside the kill band when the perfect lands.
+    // KILL CHECK — dormant while AP_KILL_ENABLED is false. Branch + cinematic
+    // stay so the slap-down can be restored without a rewrite. When on:
+    // PERFECT only, attacker already inside the kill band.
     const isApKill =
+      AP_KILL_ENABLED &&
       isPerfect &&
       attacker.balance < AP_PERFECT_KILL_THRESHOLD &&
       currentRoom &&
@@ -2652,8 +2719,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     } else {
       // ── NON-LETHAL PARRY — freeze the attacker, then shove + recover ───
       // Hitbox dies; ATTACK pose stays through hitstop. After freeze they slide
-      // back via slap-parry slide (not knockbackVelocity+isHit) in their own
-      // move's recovery. Perfect: bigger shove/drain + AP_PERFECT_ADVANTAGE_MS.
+      // back via slap-parry slide (not knockbackVelocity+isHit). Regular slap
+      // is +0 (stagger + begin delay = plant). Perfect: starstun, max(move, 420).
       attacker.isAttacking = false;      // kill the hitbox (pose stays via isSlapAttack/isPalmThrust)
       attacker.slapActiveEndTime = 0;
       attacker.chargedActiveEndTime = 0;
@@ -2677,11 +2744,15 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       applyBalanceDamage(attacker, drain, currentTime);
 
       const shove = isPerfect ? AP_PERFECT_ATTACKER_KNOCKBACK : AP_ATTACKER_KNOCKBACK;
-      // Lockout keyed to the committed move. Perfect slap parry adds AP_PERFECT_ADVANTAGE_MS.
-      let staggerMs = isSlapAttack ? AP_STAGGER_SLAP_MS : AP_STAGGER_PALM_MS;
-      if (isPerfect && isSlapAttack) staggerMs += AP_PERFECT_ADVANTAGE_MS;
+      // Regular: move-keyed stagger. Perfect: starstun, never shorter than that move's regular jail.
+      const moveStaggerMs = isSlapAttack ? AP_STAGGER_SLAP_MS : AP_STAGGER_PALM_MS;
+      const staggerMs = isPerfect
+        ? Math.max(moveStaggerMs, PERFECT_PARRY_ATTACKER_STUN_DURATION)
+        : moveStaggerMs;
       // Immediate lock covers the freeze + stagger (can't act during the freeze).
       attacker.inputLockUntil = Math.max(attacker.inputLockUntil || 0, currentTime + staggerMs);
+      timeoutManager.clearPlayerSpecific(attacker.id, "perfectParryStunReset");
+      attacker.isRawParryStun = false;
 
       // After the freeze (~1 tick past the sim-frozen hitstop): drop the attack
       // pose into recovery and apply the shove slide.
@@ -2730,7 +2801,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           releaseStrikeFacingLock(attacker, {
             reason: ACTION_FACING_RELEASE.INTERRUPT,
           });
-          attacker.isRecovering = true;
+          attacker.isRecovering = !isPerfect;
+          attacker.isRawParryStun = !!isPerfect;
           attacker.slapParryKnockbackVelocity = shoveVel;
           attacker.inputLockUntil = Math.max(attacker.inputLockUntil || 0, simNow(currentRoom) + staggerMs);
           timeoutManager.clearPlayerSpecific(attacker.id, "parryStaggerReset");
@@ -2749,6 +2821,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
                 return;
               }
               attacker.isRecovering = false;
+              attacker.isRawParryStun = false;
               if (isActionLifecycleOwnershipV2Enabled()) {
                 completeLifecycleOwner(
                   attacker,
@@ -4058,6 +4131,7 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
     inParryWindow && parryDuration >= 0 && parryDuration <= PERFECT_PARRY_WINDOW;
 
   const isApKill =
+    AP_KILL_ENABLED &&
     isPerfect &&
     flapper.balance < AP_PERFECT_KILL_THRESHOLD &&
     currentRoom &&
@@ -4193,33 +4267,60 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
   // ── NON-LETHAL: drain + defender reward; attacker consequence differs by flag ──
   const drain = isPerfect ? AP_PERFECT_BALANCE_DRAIN : AP_BALANCE_DRAIN;
   const shove = isPerfect ? AP_PERFECT_ATTACKER_KNOCKBACK : AP_ATTACKER_KNOCKBACK;
+  const flapStaggerMs = isPerfect
+    ? Math.max(AP_STAGGER_FLAP_MS, PERFECT_PARRY_ATTACKER_STUN_DURATION)
+    : AP_STAGGER_FLAP_MS;
   applyBalanceDamage(flapper, drain, currentTime);
   flapper.knockbackVelocity = { x: 0, y: 0 };
   flapper.isHit = false;
   flapper.isParryKnockback = false;
   flapper.lastHitTime = currentTime;
+  timeoutManager.clearPlayerSpecific(flapper.id, "perfectParryStunReset");
+  flapper.isRawParryStun = false;
 
   if (!useV2Recoil) {
     flapper.slapParryKnockbackVelocity = shove * knockbackDirection;
-    flapper.isRecovering = true;
+    flapper.isRecovering = !isPerfect;
+    flapper.isRawParryStun = !!isPerfect;
     flapper.inputLockUntil = Math.max(
       flapper.inputLockUntil || 0,
-      currentTime + AP_STAGGER_FLAP_MS
+      currentTime + flapStaggerMs
     );
     timeoutManager.clearPlayerSpecific(flapper.id, "parryStaggerReset");
     setPlayerTimeout(
       flapper.id,
       () => {
         flapper.isRecovering = false;
+        flapper.isRawParryStun = false;
         flapper.isAlreadyHit = false;
       },
-      AP_STAGGER_FLAP_MS,
+      flapStaggerMs,
       "parryStaggerReset"
     );
   } else {
     // Airborne recoil owns movement; grounded stagger starts at touchdown.
     // shove unused in air — horizontal rejection comes from contact normal.
     flapper.slapParryKnockbackVelocity = 0;
+    if (isPerfect) {
+      flapper.isRawParryStun = true;
+      flapper.inputLockUntil = Math.max(
+        flapper.inputLockUntil || 0,
+        currentTime + flapStaggerMs
+      );
+      if (flapper.offensiveAerialReaction) {
+        flapper.offensiveAerialReaction.controlRestoreAt =
+          currentTime + flapStaggerMs;
+      }
+      timeoutManager.clearPlayerSpecific(flapper.id, "parryStaggerReset");
+      setPlayerTimeout(
+        flapper.id,
+        () => {
+          flapper.isRawParryStun = false;
+        },
+        flapStaggerMs,
+        "parryStaggerReset"
+      );
+    }
   }
 
   // Parrier reward. Same as slap AP: continued hold after a land → GUARD
@@ -4243,7 +4344,7 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
   opponent.apChainCount = (opponent.apChainCount || 0) + 1;
   opponent.isApWhiffRecovering = false;
   opponent.apRecoveryUntil = 0;
-  grantAttackParryFlurryCover(opponent, currentTime, AP_STAGGER_FLAP_MS);
+  grantAttackParryFlurryCover(opponent, currentTime, flapStaggerMs);
 
   const perfectBalanceGain = 0;
 

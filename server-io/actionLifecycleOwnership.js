@@ -67,6 +67,7 @@ const LIFECYCLE_TIMEOUT_NAMES = Object.freeze([
   "parryStaggerBegin",
   "parryStaggerReset",
   "parrySuccess",
+  "guardAttackerRecover",
   "guardCrushReset",
   "cinematicAttackerRecovery",
   "atTheRopesTimeout",

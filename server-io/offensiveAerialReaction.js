@@ -18,6 +18,7 @@ const {
 const {
   GROUND_LEVEL,
   AP_STAGGER_FLAP_MS,
+  PERFECT_PARRY_ATTACKER_STUN_DURATION,
   FLAP_FASTFALL_GRAVITY,
 } = require("./constants");
 // Mirror gameUtils map edges (avoid circular require with gameUtils).
@@ -281,7 +282,10 @@ function beginOffensiveAerialReaction(player, reactionType, meta = {}) {
     record.movementOwner = OFFENSIVE_AERIAL_MOVEMENT_OWNER.PARRY_STAGGER;
     record.animationOwner = ANIMATION_OWNER.PARRIED_RECOIL;
     record.controlRestoreAt =
-      record.reactionStartedTime + AP_STAGGER_FLAP_MS;
+      record.reactionStartedTime +
+      (player.isRawParryStun
+        ? Math.max(AP_STAGGER_FLAP_MS, PERFECT_PARRY_ATTACKER_STUN_DURATION)
+        : AP_STAGGER_FLAP_MS);
   } else if (reactionType === OFFENSIVE_AERIAL_REACTION.WHIFF_DESCENT) {
     record.movementOwner = OFFENSIVE_AERIAL_MOVEMENT_OWNER.SLIDE_JUMP_FLIGHT;
     record.animationOwner = ANIMATION_OWNER.WHIFF_DESCENT;
@@ -635,7 +639,10 @@ function applyOffensiveAerialTouchdownHandoff(player, opponent, now, meta = {}) 
   ) {
     const preset = getReactionPreset(r.preset);
     const contactTime = r.reactionStartedTime || now;
-    const legacyEnd = contactTime + AP_STAGGER_FLAP_MS;
+    const parryJailMs = player.isRawParryStun
+      ? Math.max(AP_STAGGER_FLAP_MS, PERFECT_PARRY_ATTACKER_STUN_DURATION)
+      : AP_STAGGER_FLAP_MS;
+    const legacyEnd = contactTime + parryJailMs;
     const maxEnd = legacyEnd + (preset.maxExtraConsequenceMs || 0);
     const landMinEnd = now + (preset.minLandRecoveryMs || 0);
     const controlAt = Math.min(maxEnd, Math.max(legacyEnd, landMinEnd));
