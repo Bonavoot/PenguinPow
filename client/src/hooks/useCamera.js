@@ -78,10 +78,8 @@ const SHAKE_FREQ_HZ = 22; // oscillation frequency of the smooth shake path
 const SHAKE_DIR_BIAS = 0.5; // share of amplitude given to directional recoil (rest = noise)
 
 // ── Zoom punch-in ─────────────────────────────────────────────────
-// The coupled scale push is the single biggest "weight" cue, but it's also the
-// most disorienting if overused — so it's RARE by design (hakkiyoi pulse, KO
-// cinematic, kill-throw land). Perfect parry does NOT zoom — its punch lives
-// on the VFX. Snappy decay keeps punches crisp, not lingering/floaty.
+// Used on hakkiyoi pulse, KO cinematic, kill-throw land. Perfect parry does
+// not zoom — its punch lives on the VFX.
 const PUNCH_DECAY = 0.86; // per-frame multiplier → ~110 ms (snappy)
 const PUNCH_STOP = 0.001; // cut to zero below this
 

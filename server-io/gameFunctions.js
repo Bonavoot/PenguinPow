@@ -471,9 +471,7 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
   // Store the win count BEFORE potentially clearing it
   const winCount = winner.wins.length;
 
-  // MASTERY Phase 2 (2.5): win-type telemetry — record the oshi/yotsu split so
-  // the playtest can confirm both conversion paths are used (audit-gated, no-op
-  // by default).
+  // Win-type telemetry (audit-gated, no-op by default).
   appendWinType(room, {
     winType: winType || "ringOut",
     category: classifyWinCategory(winType || "ringOut"),
@@ -1085,12 +1083,10 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
 
   clearChargeState(player);
 
-  // === INDIVIDUAL SLAP (no string / no combo) ===
-  // Every press is one self-contained slap. On hit the exchange is +0 by
-  // construction (see processHit: victim hitstun = attacker's remaining cycle),
-  // so the reward is GROUND, never frames. All attack-cycle timestamps below
-  // live on the room's pausable sim clock, so the whole cycle freezes in
-  // lockstep during hitstop.
+  // === INDIVIDUAL SLAP ===
+  // Every press is one slap. On hit, victim hitstun = attacker's remaining cycle
+  // (see processHit). Attack-cycle timestamps live on the room's pausable sim
+  // clock, so the cycle freezes in lockstep during hitstop.
   const now = simNowForPlayer(player);
 
   // MASTERY Phase 3 (tsuppari cadence): stamp the press moment. This is the
@@ -1407,14 +1403,8 @@ function executePalmThrust(player, rooms) {
   }
 
   // BUG FIX: the palm is rooted, so zeroing movementVelocity here meant the
-  // on-hit momentum transfer sampled ZERO and every palm resolved at its
-  // floor regardless of how it was set up. Playtest: "the palm thrust is also
-  // super lame knockback."
-  //
-  // Snapshot the speed carried INTO the stance first. Being rooted is about
-  // the palm not travelling; it should not erase the momentum you spent
-  // building before you planted. A palm out of a slide now sends hard, a
-  // flat-footed one pays the floor.
+  // on-hit momentum transfer sampled ZERO and every palm resolved at its floor.
+  // Snapshot the speed carried into the stance first.
   const palmFacingDir = player.facing === 1 ? -1 : 1;
   player.palmEntryAligned = Math.max(
     0,

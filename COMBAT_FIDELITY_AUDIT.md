@@ -32,7 +32,7 @@ PUMO PUMO’s combat stack is **not** a single unified interaction model. It is 
 
 The recent slap / charged / palm work introduced a real professional core: **`strikeContact.js` art-tip → connect distance → live extension separation → on-hit park → `contactX` seam**. That pipeline is why those strikes now feel like bodies meeting. Much of the rest of the game still uses older midpoint effects, fixed distances, or “disable collision then correct later” patterns.
 
-**Coherence verdict:** Grounded tip-rail strikes are structurally strong. Rope-jump landing V2 is approved. Offensive aerial (slide-jump / FLAP / S-dive) uses a coherent descending body-slam + latch + dedicated AP path, but still lacks an explicit outcome→landing handoff and uses midpoint contact FX; slide-jump landing settle is not yet generalized from rope infrastructure. Pose grounding metadata, defense composition, and client freeze pinning remain broader gaps. The system is uneven — professionally tuned islands inside a larger special-case sea — not uniformly amateur and not uniformly AAA.
+**Status at audit:** Grounded tip-rail strikes and rope-jump landing V2 are in. Offensive aerial (slide-jump / FLAP / S-dive) uses a descending body-slam + latch + dedicated AP path, but still lacks an explicit outcome→landing handoff and uses midpoint contact FX; slide-jump landing settle is not yet generalized from rope infrastructure. Pose grounding metadata, defense composition, and client freeze pinning remain gaps.
 
 ---
 

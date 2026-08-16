@@ -1,7 +1,4 @@
-// CPU AI Module for Pumo Pumo - SUMO EXPERT
-// Goal: Knock the opponent out of the dohyo (ring)
-// Design philosophy: Human-like decision making with strategic reads, commitment,
-// and intelligent grab system usage based on positioning and stamina.
+// CPU AI.
 
 const { ROPE_JUMP_BOUNDARY_ZONE,
         SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_TOTAL_MS,
@@ -44,10 +41,10 @@ const MAP_WIDTH = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
 
 // ── TRAINING LAB (TEMP) ──────────────────────────────────────────────────────
 // When true, Easy VS CPU only mashes slap (mouse1). Flip to false for normal Easy.
-const EASY_SLAP_ONLY_DUMMY = true;
+const EASY_SLAP_ONLY_DUMMY = false;
 // When true, Easy VS CPU is a grab-only dummy with infinite posture (MATADOR).
 // Mutually exclusive with EASY_SLAP_ONLY_DUMMY — slap flag wins if both true.
-const EASY_GRAB_MATADOR_DUMMY = false;
+const EASY_GRAB_MATADOR_DUMMY = true;
 
 // AI Configuration - Tuned for expert sumo gameplay
 const AI_CONFIG = {
@@ -3749,7 +3746,7 @@ function handleCommitment(cpu, human, aiState, currentTime, distance) {
 
 // handleHit3Charge removed — hit 3 no longer part of slap string
 
-// === OVERHAULED: Close range combat — commit to actions, don't always back off ===
+// Close range
 function handleCloseRange(cpu, human, aiState, currentTime, distance) {
   resetAllKeys(cpu);
   aiState.consecutiveChargedAttacks = 0;
@@ -3821,7 +3818,7 @@ function handleCloseRange(cpu, human, aiState, currentTime, distance) {
   aiState.lastDecisionTime = currentTime;
 }
 
-// === OVERHAULED: Mid range — more grabs, more approach aggression ===
+// Mid range
 function handleMidRange(cpu, human, aiState, currentTime, distance) {
   resetAllKeys(cpu);
   
@@ -3980,7 +3977,7 @@ function handleFarRange(cpu, human, aiState, currentTime, distance) {
   aiState.lastDecisionTime = currentTime;
 }
 
-// === OVERHAULED: Smart movement — more fluid, less predictable ===
+// Movement
 function handleMovement(cpu, human, aiState, currentTime, distance) {
   if (cpu.isAttacking || cpu.isGrabbing || cpu.isDodging || cpu.isRawParrying) {
     return;

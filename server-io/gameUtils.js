@@ -226,13 +226,10 @@ function alignedEntryVelocity(v, dir) {
 }
 
 // ── MOMENTUM CARRY WINDOW ────────────────────────────────────────────────
-// Stamp the earned momentum from a dodge landing (or an active power slide) as
-// a short-lived, non-decaying carry so the NEXT slap inherits it RELIABLY —
-// independent of the exact tick the press lands on, and covering buffered
-// presses. Without this the inheritance reads the live (already-decaying) slide
-// velocity, so a dodge→slap only felt boosted on a frame-perfect click. Both
-// call sites are gated on MASTERY_P1_MOMENTUM, so with the flag off this is
-// never stamped or consumed.
+// Stamp earned momentum from a dodge landing (or active power slide) so the
+// next slap inherits it independent of press tick, including buffered presses.
+// Dodge zeroes movementVelocity during travel and only restores a decaying
+// slide on landing. Call sites gated on MASTERY_P1_MOMENTUM.
 function stampMomentumWindow(player, signedVel, nowSim) {
   player.momentumWindowVel = signedVel || 0;
   player.momentumWindowUntil = nowSim + MOMENTUM_WINDOW_MS;

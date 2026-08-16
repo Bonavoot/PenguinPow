@@ -382,25 +382,9 @@ const PowerCard = styled.button`
 `;
 
 /*
- * Card art panel — ~48% of card height.
- *
- * Iteration note: the v2 pass had this at 52% with an icon
- * clamp of 56-88px. In playtest the art panel felt too
- * dominant relative to the body's text content. Pulled back
- * to 48% panel + 52-78px icon clamp here — the panel is
- * still the dominant zone but no longer dominant-feeling,
- * which gives the centered title+desc cluster below room to
- * breathe rather than crowding against the inner frame.
- *
- * Sizing is via `flex: 0 0 48%` so the panel always takes a
- * fixed portion of card height regardless of body content
- * length. Fixed proportions are what separate a trading-card
- * layout from a UI-card layout.
- *
- * Flat power-type color fill (no 135deg gradient — that's
- * the canonical AI app-icon look). The 2px deep-color
- * bottom-edge bevel + the 1px highlight on top sell the
- * "stamped panel" feel without needing a separate divider. */
+ * Card art panel — ~48% of card height via `flex: 0 0 48%`.
+ * Icon clamp 52–78px (v2 was 52% panel / 56–88px icons).
+ * Flat power-type color fill; 2px bottom-edge bevel + 1px top highlight. */
 const CardHeader = styled.div`
   position: relative;
   display: flex;

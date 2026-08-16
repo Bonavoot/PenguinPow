@@ -7,14 +7,12 @@ Rules future fidelity work must uphold. Phase 1 audit only — nothing here is n
 ## Gameplay invariants
 
 1. Server remains authoritative for hits, movement outcomes, push separation, grabs, parries, and ring-outs.
-2. Hitstop freezes `room.simTime` for both fighters equally (symmetric freeze preserves frame advantage).
-3. Slap on-hit remains +0 (victim hitstun = attacker remaining lockout, min `SLAP_MIN_HITSTUN_MS`).
-4. Clinch positional rules (`maintainClinchPositions`, attach distances) must not be replaced by generic pushbox logic.
-5. Intentional pass-through states (dodge, sidestep, rope-jump **active**, slide-jump **flight**, throw arcs, grab locks) remain pass-through unless a design change explicitly removes them.
-6. Thick Blubber / armor absorb remains grabs-oriented as currently implemented.
-7. Competitive outcomes (damage, knockback magnitudes, active/recovery windows, input rules) must not change unless a later phase explicitly authorizes balance work.
-8. **Body presence ≠ offensive immunity** (Phase 13): priority suppression, grab catch, or damage immunity must not erase a fighter’s physical body unless the state is on the explicit intangibility allowlist (`COMBAT_CONTACT_FIDELITY_PHASE.md`). `COMBAT_CONTACT_FIDELITY_V2` is **default ON**; explicit `0`/`false` = legacy. A losing attack’s hitbox/pose is consumed on the authoritative resolution tick (0 survival ticks). Phase 13A: slap↔flying-headbutt under V2 is decided by earliest authored-surface contact (not `CHARGE_PRIORITY_THRESHOLD`); see `CHARGED_HEADBUTT_CONTACT_PHASE.md`. Slap presentation uses the original `SLAP_ANIM` director (Phase 14 timing experiment rejected — `SLAP_PRESENTATION_TIMING_PHASE.md`).
-9. **Action lifecycle ownership** (Phase 15): delayed lifecycle callbacks and interrupt cleanup must match the expected owner instance; an older timeout must not clear a newer action. `ACTION_LIFECYCLE_OWNERSHIP_V2` is **default ON** (manually approved); explicit `0`/`false` = exact legacy (`ACTION_LIFECYCLE_OWNERSHIP_PHASE.md`).
+2. Hitstop freezes `room.simTime` for both fighters equally.
+3. Clinch positional rules (`maintainClinchPositions`, attach distances) must not be replaced by generic pushbox logic.
+4. Pass-through states (dodge, sidestep, rope-jump **active**, slide-jump **flight**, throw arcs, grab locks) remain pass-through unless a change explicitly removes them.
+5. Thick Blubber / armor absorb remains grabs-oriented as currently implemented.
+6. **Body presence ≠ offensive immunity** (Phase 13): priority suppression, grab catch, or damage immunity must not erase a fighter’s physical body unless the state is on the explicit intangibility allowlist (`COMBAT_CONTACT_FIDELITY_PHASE.md`). `COMBAT_CONTACT_FIDELITY_V2` is **default ON**; explicit `0`/`false` = legacy. A losing attack’s hitbox/pose is consumed on the authoritative resolution tick (0 survival ticks). Phase 13A: slap↔flying-headbutt under V2 is decided by earliest authored-surface contact (not `CHARGE_PRIORITY_THRESHOLD`); see `CHARGED_HEADBUTT_CONTACT_PHASE.md`. Slap presentation uses the original `SLAP_ANIM` director (`SLAP_PRESENTATION_TIMING_PHASE.md`).
+7. **Action lifecycle ownership** (Phase 15): delayed lifecycle callbacks and interrupt cleanup must match the expected owner instance; an older timeout must not clear a newer action. `ACTION_LIFECYCLE_OWNERSHIP_V2` is **default ON**; explicit `0`/`false` = exact legacy (`ACTION_LIFECYCLE_OWNERSHIP_PHASE.md`).
 
 ## Physical invariants
 
@@ -45,7 +43,7 @@ Rules future fidelity work must uphold. Phase 1 audit only — nothing here is n
 
 ## Animation invariants
 
-1. Pose priority must remain intentional (cinematic / kill / hit / aerial / attack / defense / locomotion order as currently designed).
+1. Pose priority order: cinematic / kill / hit / aerial / attack / defense / locomotion.
 2. Slap / palm multi-frame client timelines must stay aligned with server active windows for contact poses.
 3. Dead positional arguments in `getImageSrc` must not be silently repurposed.
 4. Recovery poses must not be overridden by stale action flags (existing sidestep-recovery-before-sidestep rule).
@@ -61,7 +59,7 @@ Rules future fidelity work must uphold. Phase 1 audit only — nothing here is n
 | Snowball swept collision | Continuous path check for fast objects |
 | Symmetric hitstop via sim clock | Competitive fairness + presentation freeze |
 | `contactX` on `player_hit` / guard / many parry emits | Authoritative spark placement |
-| Ice movement character + slap ground transfer | Sumo positional currency feel |
+| Ice movement + slap ground transfer | On-hit pair slide + ice friction |
 
 ## Known intentional exceptions
 
@@ -75,7 +73,7 @@ Rules future fidelity work must uphold. Phase 1 audit only — nothing here is n
 | Clinch own distance system | Grapple composition ≠ strike pushbox |
 | `sizeMultiplier` scales pushbox but not sprite width | Client fighter width is fixed at 12.30% |
 | CSS sole origin hardcoded 2.1% | Compensates typical transparent foot pad; not per-pose |
-| Slap1 tip constant 478 vs alpha ~458 | Likely intentional slack / soft-edge measure — verify before changing |
+| Slap1 tip constant 478 vs alpha ~458 | Current authored tip vs measured alpha |
 
 ---
 

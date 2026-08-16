@@ -3701,16 +3701,9 @@ function tick(delta) {
               const opponent = room.players.find((p) => p.id !== player.id);
               let effectiveVelocity = player.movementVelocity;
               if (opponent && arePlayersColliding(player, opponent)) {
-                // Contact damp. This used to cut the slide to 30%, which is a
-                // 70% brake applied EXACTLY while you are in slapping range —
-                // so forward movement got suppressed during each slap and
-                // released between them. Playtest read it as the movement
-                // happening "in between each slap" instead of on it, with a
-                // hiccup on every connect.
-                //
+                // Contact damp. Used to cut the slide to 30% while in slap range.
                 // Pushbox separation already prevents fighters passing through
-                // each other, so this only needs to take the edge off the
-                // shove, not stop it.
+                // each other, so this only takes the edge off the shove.
                 effectiveVelocity *= SLAP_SLIDE_CONTACT_DAMP;
               }
               newX = player.x + delta * speedFactor * effectiveVelocity;

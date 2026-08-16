@@ -2,40 +2,26 @@
 
 ## Overview
 
-The **jolt** is a heavy, committal chest-shove during clinch. It's the anti-plant read — the way a pusher cracks through a planting opponent. It completes the clinch triangle:
+Clinch Mouse1 shove (`clinchJolt`). Requires `hasGrip`.
 
-- **Push beats neutral** (positional gain + balance/stam drain on the victim)
-- **Plant brakes push** (slows the walk, pays stam upkeep, nets ~0 bal/sec mid-ring — buys time, not a free posture win)
-- **Jolt beats plant** (60px push + 15 balance damage + 800ms regen interrupt)
-- **Push beats jolt** (jolter takes 8 self-damage, 0 lockout on target, 400ms recovery = free throw window)
+Current matchup numbers:
 
-**Input:** Mouse1 during clinch (requires `hasGrip`)
-**Name convention:** `clinchJolt` (e.g. `isClinchJolting`, `isBeingClinchJolted`)
-
----
-
-## Design Philosophy
-
-Jolt is NOT spam. It's a read. Each jolt is a real commitment — 250ms startup (telegraphed), 400ms recovery (punishable), 1200ms cooldown (one shot per clinch cycle). You use it when you SEE the opponent planting and want to crack them open. Wrong read (they're pushing) = self-damage, no lockout on them, and you're stuck in recovery while they can throw.
-
-### Plant Regen Context
-Plant is a paid **brake**: regens balance at **12/sec**, costs ~4.5 stam/s under push. Push drains bal at 12/sec. This means:
-- **Mid-ring:** Plant nets ~0 bal/sec (buys time / throw window, not a free posture win)
-- **At edge (1.5x drain):** Push drains 18/sec vs 12/sec regen = net -6/sec (edge still melts the planter)
-
-Jolt remains the accelerator — crack a plant to convert the slower walk into a real dump before they throw/break.
+- **Push vs neutral** — positional gain + balance/stam drain on the victim
+- **Plant vs push** — slows the walk, stam upkeep, ~0 bal/sec mid-ring
+- **Jolt vs plant** — 60px push + 15 balance + 800ms regen interrupt
+- **Push vs jolt** — jolter takes 8 self-damage, 0 lockout on target, 400ms recovery
 
 ---
 
-## Game Design
+## Current numbers
 
-### Effectiveness by Opponent State
-| Opponent doing | Balance damage | Self-damage | Push (px) | Target lockout | Frame adv | Notes |
-|---|---|---|---|---|---|---|
-| **Plant** | 15 | 0 | 60px | 550ms | **+150ms** | Devastating — correct read rewarded hard |
-| **Neutral** | 6 | 0 | 15px | 400ms | **0ms** | Modest — neutral isn't the target |
-| **Push** | 0 | **8 (self)** | 0px | **0ms** | **-400ms** | Disaster — you walked into their force |
-| **Jolting (mutual)** | 6 each | 0 | 0px | 300ms both | Even | Both pay cost, no net position |
+### Effectiveness by opponent state
+| Opponent doing | Balance damage | Self-damage | Push (px) | Target lockout | Frame adv |
+|---|---|---|---|---|---|
+| **Plant** | 15 | 0 | 60px | 550ms | +150ms |
+| **Neutral** | 6 | 0 | 15px | 400ms | 0ms |
+| **Push** | 0 | **8 (self)** | 0px | **0ms** | −400ms |
+| **Jolting (mutual)** | 6 each | 0 | 0px | 300ms both | Even |
 
 ### Resource Costs
 - **Stamina cost:** 10
@@ -51,7 +37,7 @@ Jolt remains the accelerator — crack a plant to convert the slower walk into a
 ### Cooldown (1200ms)
 - Starts AFTER recovery ends
 - During cooldown: can push, plant, throw — just can't jolt again
-- One jolt per clinch cycle keeps it as a read, not a rhythm game
+- One jolt per cooldown cycle
 
 ### Plant Interrupt
 - On successful jolt vs plant: target's plant regen is interrupted for **800ms**
@@ -142,18 +128,17 @@ Cooldown cleared on clinch end / round end / all cleanup paths.
 ## CPU AI Behavior
 
 - Check interval: 1600ms (matches cooldown rhythm)
-- **vs Plant:** 55% chance to jolt (this is the intended use case)
-- **vs Neutral:** 10% chance (occasional pressure)
-- **vs Push:** 0% chance (AI knows this is a bad trade)
+- **vs Plant:** 55% chance to jolt
+- **vs Neutral:** 10% chance
+- **vs Push:** 0% chance
 - Reaction delay: 200-400ms
 - Respects cooldown flag
 
 ---
 
-## What NOT to Change
+## Current constraints
 
-- Push, plant, throw, pull, lift mechanics are unchanged
-- Jolt requires `hasGrip` — no grip = no jolt
-- Jolt does NOT break clinch
+- Jolt requires `hasGrip`
+- Jolt does not break clinch
 - Jolt blocked during throw/pull/lift/clash animations
-- Jolt blocked during one-sided grip-up phase (Phase A)
+- Jolt blocked during one-sided grip-up (Phase A)

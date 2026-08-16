@@ -541,4 +541,4 @@ Historical `COMBAT_FIDELITY_*` docs remain useful for invariants and prior phase
 - No manual playtest performed in this Phase 0 execution.  
 - No production builds, installs, packaging, or git staging/commits.  
 - Severity of sidestep “pop” and Plant visual weakness remain **playtest-pending** even where code paths are proven.  
-- Dirty worktree: only untracked `PUMO_PUMO_PREMIUM_COMBAT_FOUNDATION_GROK_MEGA_PROMPT.md` at audit time.
+- Dirty worktree noted at audit time.

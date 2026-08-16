@@ -49,9 +49,8 @@ Overlays + pose report trusted; playtest list filled.
 - Resolve non-960 contact-critical assets plan (migrate hit/ropes/etc. later)
 
 ### Exclusions
-- Do not retune slap1 tip 478→458 without playtest
-- Do not change pushbox values
-- Do not change move frame data
+- Slap1 tip is currently 478 (measured alpha ~458)
+- Pushbox values and move frame data are out of scope for this phase
 
 ### Player-visible benefit
 Little at first; prevents future art from breaking contact.
@@ -315,7 +314,7 @@ ContactEvent required fields present on all strike/defense connects.
 - Final playtest checklist vs `COMBAT_INVARIANTS.md`
 
 ### Exclusions
-- Broad combat redesign / slap economics (see `COMBAT_OVERHAUL_SPEC.md` — separate track)
+- Broad combat redesign / slap economics
 
 ### Player-visible benefit
 Commercial cohesion; sticker-overlap class bugs gone.

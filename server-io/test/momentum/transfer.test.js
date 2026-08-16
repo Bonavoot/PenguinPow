@@ -151,10 +151,6 @@ test("grabs are guaranteed, strikes are contested", () => {
 });
 
 test("a maxed drive beats a maxed palm against a defender who DIs", () => {
-  // This is the grab's identity: not more distance on paper, but distance that
-  // cannot be argued with. Against a passive victim the palm wins on raw px;
-  // against a competent one the drive wins, and it is the only tool whose
-  // number is a promise.
   const palmMax = M.transfer(2.4, 90, 300);
   const driveMax = M.transfer(2.4, 30, 300);
 
@@ -234,12 +230,8 @@ test("send cap holds — no chain exceeds the biggest authored hit", () => {
 // THE TSUPPARI RHYTHM
 // ────────────────────────────────────────────────────────────────────────────
 test("PACING: a flat-footed barrage walks them out at a playable rate", () => {
-  // Both failure modes playtest has named, in one assertion. Too few connects
-  // is "3-4 slaps and you win again"; too many is "excrutiatingly boring and
-  // slow" — at a 110px floor this took ~11 and played as a grind.
-  //
-  // Sends are FLAT (compounding and escalation are both off), so this is
-  // purely floor-vs-ring geometry.
+  // Sends are flat (compounding and escalation off) — floor-vs-ring geometry.
+  // At a 110px floor this took ~11 connects.
   const decay = Math.pow(M.COAST_FRICTION, SLAP_CYCLE_MS / M.MS_PER_TICK);
   const p = M.profileFor("slap");
 

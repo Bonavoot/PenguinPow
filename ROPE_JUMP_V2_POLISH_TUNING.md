@@ -53,4 +53,4 @@ ROPE_JUMP_LANDING_V2=0 npm run dev:web
 # → legacy rope jump
 ```
 
-No further rope-jump tuning is currently authorized before broader playtesting.
+Current default: V2 on, preset `reference_contact_9`.

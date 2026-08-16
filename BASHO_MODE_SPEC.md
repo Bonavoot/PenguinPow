@@ -1,10 +1,6 @@
 # BASHO MODE — Implementation Spec & Handoff Document
 
-> **How to use this doc:** This is the source-of-truth spec for building PenguinPow's new
-> single-player **BASHO** career/roguelite mode. It is written so a fresh AI agent (or a
-> future you) can pick up implementation with no prior context. Work is split into **phases** —
-> do NOT try to build everything in one pass. Build the MVP (Phases 0–3) first, polished, then
-> layer on the rest. Read the **Guardrails** section before writing any code.
+> Implementation spec for single-player **BASHO** career/roguelite mode. Phased; MVP is Phases 0–3.
 
 ---
 
@@ -21,19 +17,10 @@ stack for that basho). It must feel **premium / AAA**, not like a cheap web game
 
 ---
 
-## 2. GUARDRAILS (read first — non-negotiable)
+## 2. Mode isolation
 
-1. **PvP AND VS CPU are both sacred and untouched.** None of BASHO's stats, loadouts, unlocks, or
-   currency may affect PvP / online / Custom Match **or VS CPU** in any way. In PvP both penguins are
-   identical except the one power-up each player picks pre-match. **VS CPU is simply "PvP with a CPU
-   AI in the second slot" — it is a protected baseline that gets the SAME firewall treatment as PvP.**
-   BASHO progression is a *single-player-only sandbox*. Any change to shared combat code must be gated
-   so it only applies in a BASHO match context (`matchMode === "basho"`).
-   - **One exception, narrowly scoped:** the CPU's *behavior / difficulty* (AI brain, reaction tuning,
-     adding EASY/NORMAL/IMPOSSIBLE tiers) MAY evolve in later phases and that is fine. What must NOT
-     change is the **VS CPU match itself** — its first-to-2 format, fighter parity (both slots
-     identical except the one pre-match power-up), and all combat math. The bot may get smarter; the
-     match it plays in stays exactly as it is today.
+1. **BASHO stats, loadouts, unlocks, and currency do not apply to PvP / online / Custom Match or VS CPU.** In PvP both penguins are identical except the one power-up each player picks pre-match. VS CPU is PvP with a CPU in the second slot. Shared combat changes that are BASHO-only must be gated (`matchMode === "basho"`).
+   - CPU behavior / difficulty may change later. VS CPU match format (first-to-2), fighter parity, and combat math stay on the non-BASHO path.
 2. **Do not break existing modes — prefer a forked BASHO match context over mutating shared paths.**
    Custom Match (PvP) and VS CPU must keep working exactly as they do today. BASHO reuses the CPU
    *pipeline* (see §4.3), but every BASHO-specific behavior — best-of-1, stat modifiers, loadout
@@ -65,7 +52,7 @@ throwing / knocking the opponent out of the ring. Authoritative simulation lives
 bout — see Section 5.*
 
 **Core combat verbs (full kit, shared by both fighters):**
-- **Slap / slap string** (Mouse1): fast neutral; up to a 3-hit string; 3rd hit is a finisher.
+- **Slap** (Mouse1): individual presses (no string).
 - **Charged attack** (hold S + forward + Mouse1): big committal lunge; beats slaps above a charge
   threshold; can pin a cornered opponent for a guaranteed ring-out ("cinematic kill").
 - **Grab → Clinch** (Mouse2): the sumo identity. Grab leads into a clinch with situational tools —
@@ -96,7 +83,7 @@ REAR PUSH OUT (okuridashi), RING OUT, DEMOLISHED, etc. (`RoundResult.jsx` / `gam
 **Pre-match ritual:** power-up pick → salt throw (Shinto purification, already in game) → tachiai.
 
 **CPU AI is a major existing asset:**
-- `server-io/cpuAI.js` (~2,700 lines) — "SUMO EXPERT", used for HARD (and any non-IMPOSSIBLE
+- `server-io/cpuAI.js` — used for HARD (and any non-IMPOSSIBLE
   difficulty). Has aggression personalities (aggressive/balanced/defensive), intentional human
   imperfection (reaction miss %, jitter), full clinch/power-up/flap counterplay.
 - **(Phase 8 — done)** ONE brain now serves all tiers: `cpuAI.js` reads `room.cpuDifficulty` and

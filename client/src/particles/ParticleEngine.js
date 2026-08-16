@@ -2883,7 +2883,7 @@ const PRESETS = {
   clinchStrainSweat(engine, { x, y, facing, intensity = 0.5 }) {
     const t = Math.min(Math.max(intensity, 0), 1);
     const headX = x;
-    // 88-112 read as neck height in playtests — true head/temple level sits higher
+    // headY offset 118–140 (above neck; 88–112 sat at neck)
     const headY = GAME_H - y - rand(118, 140);
     const count = t > 0.75 ? 3 : rand(0, 1) < 0.7 ? 2 : 1;
 

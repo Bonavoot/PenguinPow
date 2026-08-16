@@ -1,9 +1,7 @@
 # PREMIUM COMBAT FOUNDATION — PHASE 0 ROADMAP
 
-**Status:** Ranked execution roadmap after source-verified Phase 0 audit  
-**Companion:** `PREMIUM_COMBAT_FOUNDATION_AUDIT.md`  
-**Controlling charter:** `PUMO_PUMO_PREMIUM_COMBAT_FOUNDATION_GROK_MEGA_PROMPT.md`  
-**Rule:** Do not start a numbered phase until the previous gate is explicitly approved.
+**Status:** Phase 0 roadmap after source-verified audit  
+**Companion:** `PREMIUM_COMBAT_FOUNDATION_AUDIT.md`
 
 This roadmap recommends the **smallest sequence that produces the largest felt improvement**, adjusted for what the current workspace already solved.
 
@@ -11,7 +9,7 @@ This roadmap recommends the **smallest sequence that produces the largest felt i
 
 ## Executive recommendation
 
-PUMO already has strong **tip-rail strikes**, **hitstop/input freeze**, **lifecycle/facing ownership**, **rope-jump V2**, **offensive-aerial contracts**, and a solid **clinch harness**. The largest remaining “illegitimate fighter” gaps are:
+Current stack: tip-rail strikes, hitstop/input freeze, lifecycle/facing ownership, rope-jump V2, offensive-aerial contracts, clinch harness. Remaining gaps listed at audit time:
 
 1. **Invisible / dishonest sidestep** (timing, direction, destination truth)  
 2. **No whiff-punishable limbs** despite readable extended recovery art  
@@ -19,7 +17,7 @@ PUMO already has strong **tip-rail strikes**, **hitstop/input freeze**, **lifecy
 4. **Presentation under-selling real Plant/Open lockouts**  
 5. **Easy CPU is a lab dummy in the consumer slot**
 
-Do **not** begin with a geometry rewrite of slap contact. Keep tip rails; add authored **hurt** volumes around them. Do **not** add premium VFX before sidestep outcomes are trustworthy.
+Tip rails stay; authored hurt volumes sit around them. Sidestep outcome truth before extra VFX.
 
 ### Adjustment vs master phase map
 

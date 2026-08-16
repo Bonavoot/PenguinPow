@@ -1729,9 +1729,8 @@ function applyTradeHit(victim, attacker, room, io, opts = {}) {
     tradePreHitBalance
   );
 
-  // Hard mutual shove (not the normal on-hit drift) so a trade SPACES both
-  // players out of slap range — they must re-approach, which breaks the +0
-  // "sync-lock" that would otherwise make synced mashers re-trade every cycle.
+  // Hard mutual shove (not the normal on-hit drift) so a trade spaces both
+  // players out of slap range.
   victim.knockbackVelocity = { x: knockbackDirection * tradeKb, y: 0 };
   victim.movementVelocity = 0;
   victim.lastHitTime = currentTime;
@@ -2651,15 +2650,10 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         attacker.facing = victimFacingBeforeKill;
       }
     } else {
-      // ── NON-LETHAL PARRY — FREEZE-FRAME the attacker, then shove + recover ───
-      // SFV-style: the attacker is NOT thrown into a hurt animation. Their hitbox
-      // dies but their ATTACK pose is kept, so during the hitstop the swing
-      // FREEZES mid-strike. After the freeze they slide back (via the smooth
-      // slap-parry slide, NOT knockbackVelocity+isHit) in their own move's
-      // recovery — reads as "my swing got deflected and I stumbled back", never
-      // as "I got hit". Position is the payout: the shove sends them OUT of range
-      // so the parrier REVERSES the ground. Perfect adds bigger shove/drain,
-      // a balance refund, and real frame advantage (a guaranteed poke).
+      // ── NON-LETHAL PARRY — freeze the attacker, then shove + recover ───
+      // Hitbox dies; ATTACK pose stays through hitstop. After freeze they slide
+      // back via slap-parry slide (not knockbackVelocity+isHit) in their own
+      // move's recovery. Perfect: bigger shove/drain + AP_PERFECT_ADVANTAGE_MS.
       attacker.isAttacking = false;      // kill the hitbox (pose stays via isSlapAttack/isPalmThrust)
       attacker.slapActiveEndTime = 0;
       attacker.chargedActiveEndTime = 0;
@@ -2683,10 +2677,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       applyBalanceDamage(attacker, drain, currentTime);
 
       const shove = isPerfect ? AP_PERFECT_ATTACKER_KNOCKBACK : AP_ATTACKER_KNOCKBACK;
-      // Lockout keyed to the committed move. A slap recovers ~with the parrier
-      // (regular = near-neutral by design); palm's long recovery is already a
-      // free punish. A PERFECT slap parry adds advantage so even the fast slap
-      // becomes a guaranteed poke.
+      // Lockout keyed to the committed move. Perfect slap parry adds AP_PERFECT_ADVANTAGE_MS.
       let staggerMs = isSlapAttack ? AP_STAGGER_SLAP_MS : AP_STAGGER_PALM_MS;
       if (isPerfect && isSlapAttack) staggerMs += AP_PERFECT_ADVANTAGE_MS;
       // Immediate lock covers the freeze + stagger (can't act during the freeze).
@@ -3471,28 +3462,13 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         // (rope clamps still apply). victimKbScale is exactly 1 when the flag is
         // off ⇒ byte-identical.
         // ── MOMENTUM TRANSFER ────────────────────────────────────────────
-        // The charged headbutt is the one move whose `vSelf` is manufactured by
-        // the move itself: the lunge speed already scales with charge
-        // (1.5 → 7.0, index.js), so charge buys momentum which buys distance.
-        // That is the intended shape — it makes the headbutt the game's
-        // momentum GENERATOR rather than a second physics system.
-        //
-        // victimKbScale is retired: a victim charging in now feeds the impact
-        // channel (hitstop + posture), not the distance channel. kbBoost keeps
-        // the cinematic KO flying out of frame.
-        // BUG FIX: the charged lunge advances `x` directly (index.js, via
-        // `lungeSpeed`) and never writes `movementVelocity`. So sampling the
-        // attacker's speed the normal way read ZERO, and every charged hit —
-        // including a full 100% release — resolved at its floor. Playtest:
-        // "the charged attack may as well not even be an attack anymore. Even
-        // at full charge it hits like a wet noodle."
-        //
-        // Mapped from charge fraction rather than raw lunge speed. The raw
-        // lunge runs 1.5→7.0, but V_REF is 2.4, so passing it directly pinned
-        // the curve at roughly 50% charge and every release above that was
-        // identical. Mapping the charge fraction across the full range keeps
-        // the whole charge meter meaningful: 110px at 0%, 234px at 50%, 460px
-        // at 100%.
+        // Charged vSelf is lunge speed (scales with charge, 1.5 → 7.0 in index.js).
+        // victimKbScale is retired: charging in feeds impact (hitstop + posture), not distance.
+        // BUG FIX: the charged lunge advances `x` via `lungeSpeed` and never writes
+        // `movementVelocity`, so sampling attacker speed read ZERO (every hit at floor).
+        // Mapped from charge fraction rather than raw lunge: V_REF is 2.4, so raw
+        // 1.5→7.0 pinned the curve at ~50% charge. Charge fraction: 110px at 0%,
+        // 234px at 50%, 460px at 100%.
         // Prefer the release snapshot (gameFunctions), fall back to the live
         // field. Both are 0-100.
         const releasePct = Number.isFinite(player.chargedReleasePower)
@@ -3613,19 +3589,9 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
               // Drives the client charged-hit shake scaling (heavier charge = bigger crunch).
               chargePercentage: isSlapAttack ? 0 : chargePercentage,
               // ── MOMENTUM TELEMETRY (client presentation) ──────────────────
-              // The escalation and the momentum bonus are both real but
-              // currently INVISIBLE: every slap in a barrage plays the same
-              // animation, same VFX, same freeze, and only the slide distance
-              // differs. Playtest: "the ramp up seems invisible if there is
-              // one, like all back to back hits feel somewhat similar."
-              //
-              // These let the client sell it. `power` (0..1) is the distance
-              // channel — scale spark size, trail length, squash. `impact`
-              // (0..1) is the collision channel — scale shake and SFX weight.
-              // They deliberately disagree: a slide-in on a stationary target
-              // is high power / low impact; a head-on is the reverse.
-              // `pressureStep` is the Nth consecutive connect, for a visibly
-              // building tell (bigger spark / rising pitch each hit).
+              // `power` (0..1) = distance channel (spark / trail / squash).
+              // `impact` (0..1) = collision channel (shake / SFX).
+              // `pressureStep` = Nth consecutive connect.
               momentumPower: lastTransfer ? lastTransfer.telemetry.power : 0,
               momentumImpact: lastTransfer ? lastTransfer.telemetry.impact : 0,
               momentumSendPx: lastTransfer ? lastTransfer.telemetry.sendPx : 0,
@@ -3916,14 +3882,9 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     }
 
     // === HIT STUN DURATION ===
-    // SLAP: +0 BY CONSTRUCTION. The victim's hitstun equals the attacker's
-    //   remaining attack cycle at the moment of connect, so BOTH players become
-    //   actionable at the exact same sim-clock instant — no matter when in the
-    //   active window the hit landed. No combo, no frame advantage; the reward
-    //   is ground. (Hitstop pauses the sim clock for both, so it cancels out.)
-    //   A COUNTER HIT adds a flat SLAP_COUNTER_HIT_BONUS_MS on top — the one
-    //   earned exception: your next press wins a mash-vs-mash clash, but a
-    //   parry still answers it.
+    // SLAP: victim hitstun = attacker's remaining attack cycle at connect
+    //   (both actionable at the same sim-clock instant). Hitstop pauses both.
+    //   Counter hit adds SLAP_COUNTER_HIT_BONUS_MS.
     // CHARGED: fixed 380ms stun (counter ×1.4). Punish adds nothing — label only.
     let hitStateDuration;
     if (isLowKick) {
@@ -3951,9 +3912,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       }
     }
 
-    // No hitstop extension needed: the stun timer below runs on the sim clock,
-    // which freezes during hitstop — victim stun and attacker cycle pause in
-    // perfect lockstep, so the +0 margin is frame-exact by construction.
+    // Stun timer runs on the sim clock, which freezes during hitstop.
 
     // Update the last hit time for tracking
     otherPlayer.lastHitTime = currentTime;
@@ -4549,14 +4508,10 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   opponent.hitCounter = (opponent.hitCounter || 0) + 1;
   opponent.isBurstKnockback = true;
   opponent.burstKnockbackStartTime = currentTime;
-  // A dive's momentum is mostly VERTICAL. Sampling horizontal speed the way a
-  // ground strike does made a straight-down slam resolve at its floor — the
-  // attacker kept more momentum than the victim received, which playtest
-  // spotted immediately ("the body slam is moving ME more than the opponent").
-  //
-  // Use the full flight speed instead: falling fast IS the commitment, and a
-  // shallow drop should land soft while a committed dive sends. Scaled so a
-  // terminal-velocity dive lands near the top of the range without pinning it.
+  // Dive momentum is mostly vertical. Sampling horizontal speed (as a ground
+  // strike does) made a straight-down slam resolve at its floor. Use full
+  // flight speed instead, scaled so a terminal-velocity dive lands near the
+  // top of the range without pinning it.
   const diveSpeedPxPerTick = Math.hypot(
     flapper.slideJumpVelocityX || 0,
     flapper.slideJumpVelocityY || 0

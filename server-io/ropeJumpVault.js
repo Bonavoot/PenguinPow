@@ -99,8 +99,8 @@ const VAULT_PRESETS = {
   reference_contact_12: referenceContactPreset("reference_contact_12", 12),
   reference_contact_6: referenceContactPreset("reference_contact_6", 6),
   /**
-   * REJECTED by manual playtest — lighter/floatier, looked more triangular
-   * in motion despite better numeric H-velocity continuity. Dev comparison only.
+   * Rejected polish — lighter/floatier, more triangular in motion despite
+   * better numeric H-velocity continuity. Dev comparison only.
    */
   rounded_rejected_floaty: {
     name: "rounded_rejected_floaty",

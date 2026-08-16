@@ -42,7 +42,7 @@ Sprites face left; tip ≈ canvasCenterX − frontmostOpaqueX.
 | `attack.png` (charged) | 424.5 | 425 | −0.5 |
 | `palm-thrust.png` | 437.5 | 438 | −0.5 |
 
-**Interpretation:** Charged, palm, and slap2 tip rails are tightly art-aligned (confidence: high). Slap1’s live constant is ~20px longer than hard-alpha tip — likely soft-edge / intentional slack from playtest. **Do not “fix” to 458 without playtest** — changing it would alter slap1 reach and could regress the improved feel.
+**Interpretation:** Charged, palm, and slap2 tip rails are tightly art-aligned. Slap1’s live constant is ~20px longer than hard-alpha tip. Changing it to 458 would alter slap1 reach.
 
 `palm-thrust-smear.png` tip measures ~469.5 — longer than active palm; smear is presentation-only if active frame drives connect.
 
@@ -136,7 +136,7 @@ Server would convert tip px → world via shared scale; client sole % would read
 - Non-960 canvases need explicit scale before comparison.
 - Centroid ≠ mass/hurt center for sumo silhouettes.
 
-**Authoring workflow recommendation:** artist places markers (sole, tip, hurt center) on 960 guides → export JSON → CI runs `audit-pose-geometry.js` as a diff check against markers (warn-only), never auto-overwrite playtest-tuned tip constants.
+**Authoring workflow:** artist places markers (sole, tip, hurt center) on 960 guides → export JSON → CI runs `audit-pose-geometry.js` as a diff check against markers (warn-only). Do not auto-overwrite tip constants from the audit script.
 
 ---
 
