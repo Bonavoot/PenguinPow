@@ -113,7 +113,10 @@ const DELTA_TRACKED_PROPS = [
   // the escalating hand-flash VFX + rising-pitch SFX so the crowd can HEAR a good
   // player's rhythm. Only ever incremented behind MASTERY_P3_CADENCE; stays 0 with
   // the flag off (stable extra field on the wire, no sim/gameplay change).
-  'cadenceChain'
+  'cadenceChain',
+  // Ice-slide slap convert — client holds the palm-out pose through the longer
+  // recovery so the plant reads as a thrust, not a dropped mash string.
+  'slideSlapArmed'
 ];
 
 /**
@@ -195,6 +198,27 @@ const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS;
 // Extra recovery on a whiffed slap only (applied at cycle end, not on hit).
 const SLAP_WHIFF_EXTRA_RECOVERY_MS = 45;
 
+// Ice-slide slap (SHIFT sprint → Mouse1). Pocket mash is unchanged.
+// Arm only while actually ice-sliding with earned speed above a walk.
+// A planted Shift-hold (~ICE_SLIDE_EXIT_SPEED 0.28) must not arm.
+const SLIDE_SLAP_ARM_SPEED = 1.45;
+// Same startup+active as a slap; a short tail so a mashed follow-up
+// comes out after the plant has opened daylight. Keep this lean — the
+// paused hit sells the convert, not a long recovery pose.
+const SLIDE_SLAP_EXTRA_RECOVERY_MS = 70;
+const SLAP_TOTAL_MS_SLIDE = SLAP_TOTAL_MS + SLIDE_SLAP_EXTRA_RECOVERY_MS;
+// Convert is +X, not +0. Just enough lock after you are free that they
+// cannot sprint the hole closed during the plant. Pocket mash stays +0.
+const SLIDE_SLAP_ADVANTAGE_MS = 50;
+// Impact-channel freeze can balloon on a fast slide. Cap so the pause
+// stays a punch, not a cinematic. MUST match momentumTransfer apply.
+const SLIDE_SLAP_HITSTOP_CAP_MS = 110;
+// After the freeze: a slow, fixed forward drift while they take the send.
+// No dump, no decay — the chop was a lurch then a dig-in. Ends with the
+// convert (endSlapCycle zeros it). Granted, not chase.
+const SLIDE_SLAP_FOLLOW_VEL = 0.9;
+const SLIDE_SLAP_FOLLOW_FRICTION = 1;
+
 // Burst knockback (palm / flap body-slam). Travel ≈ k·v0/(1−friction);
 // k = delta·speedFactor ≈ 2.89 px per velocity-unit per tick. v0=3.1 @ 0.982 ≈ 494px.
 const BURST_KB_VELOCITY = 3.1;             // Flap body-slam impulse.
@@ -245,6 +269,8 @@ const PALM_THRUST_ACTIVE_MS = 90;
 // Recovery after active; still renders slapAttack1 (not the recovery pose).
 const PALM_THRUST_HOLD_MS = 260;
 const PALM_THRUST_END_RECOVERY_MS = 60;
+// On-hit recover after the remaining active pose. Victim hitstun + both
+// input locks equal remaining pose + this window (+0, like pocket slap).
 const PALM_THRUST_HIT_RECOVERY_MS = 200;
 // Fixed charge % for the charged-resolution path. Palm vs slap is timing/trade.
 // Connect freeze: HITSTOP_BURST_MS. Shove: PALM_THRUST_KB_VELOCITY.
@@ -580,7 +606,10 @@ const RINGOUT_PUSH_DEFEAT_DELAY_MS = 280;
 const RAW_PARRY_KNOCKBACK = 0.49; // Knockback velocity for charged attack parries
 const RAW_PARRY_SLAP_KNOCKBACK = 0.5; // Lighter knockback for slap parries
 const PERFECT_PARRY_KNOCKBACK = 0.65; // Slightly stronger than regular parry
-const PERFECT_PARRY_WINDOW = 40; // PERFECT tier window (ms), measured as (hitTime − rawParryStartTime, lag-comp). Tight inner band of AP_ACTIVE_MS — regular owns the generous read; perfect is the rare dead-on grade. Also gates the snowball perfect-reflect.
+// Just window: last N sim ticks before contact (SF6 Perfect ≈ 2f). Graded from
+// apArmSimTime (when the tap was applied), not the lag-comp'd press stamp.
+const PERFECT_PARRY_JUST_TICKS = 2;
+const PERFECT_PARRY_WINDOW = (PERFECT_PARRY_JUST_TICKS * 1000) / TICK_RATE; // 31.25ms @ 64Hz
 const PERFECT_PARRY_SUCCESS_DURATION = 850; // Compressed parry — fast enough to keep pace, long enough for visual read
 const PERFECT_PARRY_ATTACKER_STUN_DURATION = 420; // Starstun floor. Live jail is max(move stagger, this) so flap (500) never pays less than regular. Slap/palm Perfect = +220 vs the 200ms plant.
 const PERFECT_PARRY_ANIMATION_LOCK = 330; // AP_PERFECT_HITSTOP_MS (210) + 120ms post-freeze cool-pose floor
@@ -600,10 +629,12 @@ const INPUT_BACKDATE_RTT_SLACK_MS = 16;     // Slack beyond estimated one-way
 const INPUT_CLOCK_OFFSET_MAX_DELTA_MS = 80; // Prefer server EMA if client offset jumps
 const INPUT_PRESS_MONOTONIC_SLACK_MS = 8;   // Allow tiny reorder noise vs last press
 
-// Raw parry commitment: minimum time locked in parry stance
-const RAW_PARRY_MIN_DURATION = 200; // Whiffed parry lock (was 375)
-const RAW_PARRY_MAX_DURATION = 700; // Auto-end after this (was 550)
-const RAW_PARRY_COOLDOWN_MS = 150; // Cooldown after a fully-released parry before you can parry again (prevents perfect-window spam). Bypassed by re-arm (see below).
+// ── Legacy RAW_PARRY_MIN/MAX/COOLDOWN (unused by live AP) ───────────────────
+// Live empty-tap jail is AP_WHIFF_RECOVERY_MS. These remain so old imports
+// don't throw. Do not wire them back in — they fight the tap/hold SM.
+const RAW_PARRY_MIN_DURATION = 200;
+const RAW_PARRY_MAX_DURATION = 700;
+const RAW_PARRY_COOLDOWN_MS = 150;
 
 // ── Legacy RAW_PARRY_REARM_* (unused by live AP) ─────────────────────────────
 // Live re-time is: falling Space clears apSpaceConsumed + rising Space calls
@@ -629,21 +660,18 @@ const PERFECT_PARRY_BALANCE_REFUND = 0;
 // Space tap = parry (slap/palm only; not grab or charged). Hold = guard.
 // Empty release/expiry = whiff (AP_WHIFF_RECOVERY_MS). Reuses isRawParrying /
 // isRawParrySuccess. Landed parry opens AP_FLURRY_COVER_MS for the next re-tap.
-// Regular vs perfect graded by PERFECT_PARRY_WINDOW. Neither grade KOs
-// while AP_KILL_ENABLED is false (Perfect is a starstun confirm).
+// Regular vs Perfect: already in the window = Regular (callout). Armed in the
+// last PERFECT_PARRY_JUST_TICKS before contact = Perfect (just). A slightly-late
+// slap tap still Regulars via open-hit grace — it cannot Perfect. Way late = hit.
+// Neither grade KOs while AP_KILL_ENABLED is false (Perfect is a starstun confirm).
 // Guard: chip + pushback + stamina; rooted; does not stop grab/charged.
 // Stamina 0 while guarding → guard-crush → gassed. One parry per physical press.
-const AP_ACTIVE_MS = 180;            // PARRY WINDOW: tap deflects if the strike connects within this of the (lag-comp) press (was 140). Perfect stays PERFECT_PARRY_WINDOW.
-// Early-active slap grace: for the first N ms of slap ACTIVE frames, open hits
-// (defender not in Space stance) are deferred, while live PARRY / GUARD still
-// resolve immediately. Gives a slightly-late tap time to arm during early active
-// without making the jab fully reactable on startup. Slap-only.
-//
-// Open hits that were already in range during this window set slapOpenHitPending
-// and confirm once grace ends (see collisionSystem) — otherwise ice drift across
-// the deferred ticks can push past tip connect and ghost-whiff a point-blank
-// slap. Slack is a few ticks of coast, not sidestep distance.
-// A grace-held slap can still PARRY. It cannot PERFECT — the save is Regular.
+const AP_ACTIVE_MS = 180;            // Callout window. Just grade is PERFECT_PARRY_WINDOW (2 ticks).
+// First N ms of slap ACTIVE: open hits wait so a slightly-late tap can still
+// Regular. Live PARRY/GUARD resolve immediately. Slap-only. A grace save
+// cannot Perfect (see collisionSystem). This game has no SF6 block under a
+// missed just — without this, a 16ms-late callout eats a raw jab.
+const AP_OPEN_HIT_GRACE_ENABLED = true;
 const AP_LATE_PARRY_MS = 45;
 const SLAP_GRACE_CONFIRM_SLACK_PX = 28;
 const AP_FLOW_WINDOW_MS = 400;       // DEPRECATED (Deflect Flow removed). Kept only so existing imports resolve; unreferenced by the new state machine.
@@ -710,9 +738,8 @@ const AP_PERFECT_ADVANTAGE_MS = 220; // Legacy slap-only add-on. Live Perfect us
 //   parryStaggerBegin delay (20) + attacker stagger + slap startup + slack
 // (collision re-applies stagger AFTER hitstop via parryStaggerBegin). Slack
 // absorbs delayed/CPU follow-ups. grantAttackParryFlurryCover() uses the
-// actual staggerMs from that parry (regular vs perfect). Neutral taps stay
-// AP_ACTIVE_MS (plus slap early-active grace). Perfect grade stays
-// (hit − press) ≤ PERFECT_PARRY_WINDOW.
+// actual staggerMs from that parry. Regular only — Perfect is a turn, not
+// another piano. Neutral taps stay AP_ACTIVE_MS. Just grade is apply-tick.
 const AP_FLURRY_STAGGER_BEGIN_MS = 20; // must match collisionSystem parryStaggerBegin delay
 const AP_FLURRY_SLACK_MS = 120;        // delayed follow-up / CPU reaction pad
 const AP_FLURRY_COVER_MS =
@@ -1613,6 +1640,13 @@ module.exports = {
   SLAP_RECOVERY_MS,
   SLAP_TOTAL_MS,
   SLAP_WHIFF_EXTRA_RECOVERY_MS,
+  SLIDE_SLAP_ARM_SPEED,
+  SLIDE_SLAP_EXTRA_RECOVERY_MS,
+  SLAP_TOTAL_MS_SLIDE,
+  SLIDE_SLAP_ADVANTAGE_MS,
+  SLIDE_SLAP_HITSTOP_CAP_MS,
+  SLIDE_SLAP_FOLLOW_VEL,
+  SLIDE_SLAP_FOLLOW_FRICTION,
   BURST_KB_VELOCITY,
   BURST_STUN_MS,
   BURST_KB_FRICTION,
@@ -1738,6 +1772,7 @@ module.exports = {
   RAW_PARRY_KNOCKBACK,
   RAW_PARRY_SLAP_KNOCKBACK,
   PERFECT_PARRY_KNOCKBACK,
+  PERFECT_PARRY_JUST_TICKS,
   PERFECT_PARRY_WINDOW,
   PERFECT_PARRY_SUCCESS_DURATION,
   PERFECT_PARRY_ATTACKER_STUN_DURATION,
@@ -1759,6 +1794,7 @@ module.exports = {
   PERFECT_PARRY_BALANCE_REFUND,
   // Guard & Parry (AP)
   AP_ACTIVE_MS,
+  AP_OPEN_HIT_GRACE_ENABLED,
   AP_LATE_PARRY_MS,
   SLAP_GRACE_CONFIRM_SLACK_PX,
   AP_FLOW_WINDOW_MS,

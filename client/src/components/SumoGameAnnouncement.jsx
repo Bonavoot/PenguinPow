@@ -18,9 +18,13 @@ export const ANNOUNCE_Y = "clamp(100px, 28cqh, 190px)";
 /** Pro fight-call budget: snap → brief hold → gone as play opens. */
 export const DEFAULT_HAKKIYOI_DURATION = 0.75;
 export const DEFAULT_TEWOTSUITE_DURATION = 2;
-/** Bout card rides the versus salt throw and must be gone before HANDS DOWN.
- *  See config/boutClock.js. */
+/** Fallback / CSS-warmup length. Live versus cards ride PowerUpReveal
+ *  (hold 2400ms, exit 320ms) and ignore this. */
 export const DEFAULT_BOUTCARD_DURATION = BOUT_CARD_SECONDS;
+
+/** Enter / exit — same lengths as PowerUpReveal's Cluster. */
+const BOUT_CARD_ENTER_S = "0.4s";
+const BOUT_CARD_EXIT_S = "0.32s";
 
 /*
  * Restored working widths (pre diagonal-tail / vw revision), then scaled:
@@ -96,17 +100,29 @@ const brushReveal = keyframes`
 
 /* Bout card — deliberately NOT slamIn.
  *
- * This is a title card during the walk-up, not a call. HAKKI-YOI punches
- * because it releases the tachiai; if the card punched too, the round
- * would open with two impacts and the actual start would land softer
- * than the announcement that preceded it. So the card rises and settles,
- * holds while the wrestlers walk on, and is gone before the Gyoji speaks.
+ * Rides the power-up reveal: same mount, same 2.4s hold, same 0.32s
+ * exit. Rise-and-settle on the way in so HAKKI-YOI still owns the
+ * only punch of the ceremony.
  */
-const boutCardIn = keyframes`
-  0%   { opacity: 0; transform: translate(-50%, -50%) translateY(9px); }
-  16%  { opacity: 1; transform: translate(-50%, -50%) translateY(0); }
-  74%  { opacity: 1; transform: translate(-50%, -50%) translateY(0); }
-  100% { opacity: 0; transform: translate(-50%, -50%) translateY(-5px); }
+const boutCardEnter = keyframes`
+  from { opacity: 0; transform: translate(-50%, -50%) translateY(9px); }
+  to   { opacity: 1; transform: translate(-50%, -50%) translateY(0); }
+`;
+
+const boutCardExit = keyframes`
+  from { opacity: 1; transform: translate(-50%, -50%) translateY(0); }
+  to   { opacity: 0; transform: translate(-50%, -50%) translateY(-14px); }
+`;
+
+const boutCardRuleEnter = keyframes`
+  0%   { clip-path: inset(0 100% 0 0); opacity: 0; }
+  40%  { clip-path: inset(0 0% 0 0); opacity: 0.85; }
+  100% { clip-path: inset(0 0% 0 0); opacity: 0.85; }
+`;
+
+const boutCardRuleExit = keyframes`
+  from { opacity: 0.85; }
+  to   { opacity: 0; }
 `;
 
 // ============================================
@@ -290,9 +306,10 @@ const BoutCardText = styled.div`
     0 2px 0 rgba(0, 0, 0, 0.4),
     0 3px 12px rgba(0, 0, 0, 0.7);
 
-  animation: ${css`
-      ${boutCardIn}`} ${(p) => p.$duration} cubic-bezier(0.16, 1, 0.3, 1)
-    forwards;
+  animation: ${(p) =>
+    p.$exiting
+      ? css`${boutCardExit} ${BOUT_CARD_EXIT_S} ease-in forwards`
+      : css`${boutCardEnter} ${BOUT_CARD_ENTER_S} cubic-bezier(0.2, 0.7, 0.2, 1) forwards`};
 
   @media (max-width: 600px) {
     font-size: clamp(1.1rem, 3.6cqw, 2rem);
@@ -320,7 +337,10 @@ const BoutCardRule = styled.div`
     rgba(245, 236, 217, 0.2) 82%,
     transparent 100%
   );
-  animation: ${brushReveal} ${(p) => p.$duration} ease-out forwards;
+  animation: ${(p) =>
+    p.$exiting
+      ? css`${boutCardRuleExit} ${BOUT_CARD_EXIT_S} ease-in forwards`
+      : css`${boutCardRuleEnter} ${BOUT_CARD_ENTER_S} ease-out forwards`};
 `;
 
 // ============================================
@@ -400,6 +420,7 @@ const SumoGameAnnouncement = ({
   duration = null,
   label = "",
   final = false,
+  exiting = false,
 }) => {
   const actualDuration =
     duration ?? DEFAULT_DURATIONS[type] ?? DEFAULT_TEWOTSUITE_DURATION;
@@ -410,10 +431,10 @@ const SumoGameAnnouncement = ({
     if (!label) return null;
     return (
       <>
-        <BoutCardText $duration={durationStr} $final={final}>
+        <BoutCardText $exiting={exiting} $final={final}>
           {label}
         </BoutCardText>
-        <BoutCardRule $duration={durationStr} aria-hidden />
+        <BoutCardRule $exiting={exiting} aria-hidden />
       </>
     );
   }
@@ -459,6 +480,8 @@ SumoGameAnnouncement.propTypes = {
   label: PropTypes.string,
   /** boutcard only — vermillion treatment for the decider. */
   final: PropTypes.bool,
+  /** boutcard only — plays the reveal-synced exit. */
+  exiting: PropTypes.bool,
 };
 
 export default SumoGameAnnouncement;

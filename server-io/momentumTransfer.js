@@ -10,6 +10,7 @@ const {
   ICE_SLIDE_MAX_SPEED,
   MATADOR_PULL_DISTANCE,
   MATADOR_PULL_DISTANCE_MAX,
+  SLIDE_SLAP_HITSTOP_CAP_MS,
 } = require("./constants");
 
 // ── Units ───────────────────────────────────────────────────────────────────
@@ -167,6 +168,11 @@ function transfer(vSelf, floorPx, ceilPx, mult = 1) {
 const MOVE_TRANSFER = {
   // send velocity = sendPx / PX_PER_VELOCITY. 175px → ~1.09 initial.
   slap: { floor: 175, ceil: 380, guaranteed: false },
+
+  // Ice-slide convert. Floor sits above a walk-in slap so the first armed
+  // hit already looks like a real shove; ceiling is allowed to out-send a
+  // standing palm. Chase is NOT applied on this profile (processHit plant).
+  slideSlap: { floor: 260, ceil: 440, guaranteed: false },
 
   palm: { floor: 250, ceil: 400, guaranteed: false },
 
@@ -402,6 +408,7 @@ const HITSTOP_POWER_BONUS_MAX_MS = 70;
 
 const HITSTOP_POWER_WEIGHT = {
   slap: 0.15,
+  slideSlap: 0.28,
   lowKick: 0.3,
   snowball: 0.3,
   pumoClone: 0.3,
@@ -439,6 +446,7 @@ const POSTURE_CHIP_CEIL = 30;
 // `base` always chips; `scale` is added from closing speed.
 const POSTURE_CHIP_PROFILE = {
   slap: { base: 3, scale: 7 }, // was flat 7
+  slideSlap: { base: 6, scale: 10 },
   palm: { base: 10, scale: 12 }, // was flat 20
   charged: { base: 10, scale: 14 }, // was flat 18
   bodySlam: { base: 10, scale: 12 },
@@ -462,6 +470,7 @@ function postureChipFor(vClose, weight = 1) {
 // Per-move weight on the IMPACT channel only (not distance).
 const IMPACT_WEIGHT = {
   slap: 0.7,
+  slideSlap: 1.25,
   palm: 1.45,
   charged: 1.35,
   bodySlam: 1.3,
@@ -537,6 +546,17 @@ function resolveTransfer(opts) {
   creditPressure(victim, nowSim, step);
 
   const powerScalar = Math.max(0, Math.min(applied.sendPx / MAX_SEND_PX, 1));
+  let hitstopMs = hitstopMsFor(
+    vClose,
+    weight,
+    powerScalar,
+    hitstopPowerWeightFor(moveKey)
+  );
+  // Fast slides were minting ~200ms freezes. The convert pause should
+  // read as a punch, not a cutscene.
+  if (moveKey === "slideSlap") {
+    hitstopMs = Math.min(hitstopMs, SLIDE_SLAP_HITSTOP_CAP_MS);
+  }
 
   return {
     vSelf,
@@ -549,12 +569,7 @@ function resolveTransfer(opts) {
     compounded: applied.compounded,
     capped: applied.capped,
     guaranteed: !!profile.guaranteed,
-    hitstopMs: hitstopMsFor(
-      vClose,
-      weight,
-      powerScalar,
-      hitstopPowerWeightFor(moveKey)
-    ),
+    hitstopMs,
     postureChip: postureChipFor(vClose, weight),
     telemetry: buildImpactTelemetry({
       sendPx: applied.sendPx,

@@ -144,6 +144,12 @@ export const getFighterPopFilter = (props) => {
     return "none";
   }
 
+  // These drop-shadows follow the sprite's alpha. Fighter PNGs used to ship
+  // with a near-black a=1–4 fill across the empty canvas; that made this
+  // filter paint a dark rectangle the size of the frame. Ghost alpha is
+  // punched in recolorCore / tools/punch-ghost-canvas-alpha.mjs so only
+  // the penguin silhouette pops.
+
   // Subject separation: a dark cut-out against the crowd's thick outlines.
   // Keep the blur radius tiny — this is a keyline, not a glow halo.
   const edge =
@@ -802,7 +808,17 @@ export const StyledImage = styled("img")
         props.$isGuarding,
         props.$isGuardBlockSuccess,
         undefined, // rawParrySuccessFrame
-        undefined // isApWhiffRecovering (GameFighter animated path owns this)
+        undefined, // isApWhiffRecovering (GameFighter animated path owns this)
+        undefined, // isIceSliding
+        undefined, // isIceSlideReverseHopping
+        undefined, // isSlideJumping
+        undefined, // slideJumpPhase
+        undefined, // slideJumpUseDodgePose
+        undefined, // slideJumpFlapFrame
+        undefined, // offensiveAerialReactionType
+        undefined, // offensiveAerialPresentation
+        undefined, // isGrabPushDefeat
+        props.$slideSlapArmed || false
       ),
     style: {
       position: "absolute",
@@ -989,7 +1005,7 @@ export const StyledImage = styled("img")
         ? "chargeShake 0.08s linear infinite"
         : props.$isAttacking && !props.$isSlapAttack
         ? "attackPunch 0.2s ease-out"
-        : props.$isSlapAttack
+        : props.$isSlapAttack && !props.$slideSlapArmed
         ? "slapRush 0.12s ease-in-out infinite"
         // MASTERY Phase 2: broken-posture teeter is an IDLE tell only.
         // It used to sit above dodge/charge and stole dashJump + chargeShake
@@ -1051,6 +1067,8 @@ export const StyledImage = styled("img")
         // pose — spin / pull-kill / everyone else stay on the standard size.
         props.$showClinchKillThrowLanding
           ? "min(12.75%, 393px)"
+          : props.$spriteBoxScale && props.$spriteBoxScale !== 1
+          ? `min(${(12.3 * props.$spriteBoxScale).toFixed(2)}%, ${Math.round(379 * props.$spriteBoxScale)}px)`
           : props.$isAtTheRopes && props.$fighter === "player 1"
           ? "min(11.56%, 356px)"
           : "min(12.30%, 379px)",

@@ -21,10 +21,9 @@ export const BOUT_SECONDS = 30;
 export const CLOCK_URGENT_AT = 10;
 
 /**
- * Versus bout card ("ROUND 2" / "FINAL ROUND") animation length.
+ * Versus bout card warmup / fallback length.
  *
- * Sized to the salt throw that now plays every versus bout. Change it
- * here and BOUT_CARD_MS in server-io/boutClock.js together. Basho days
- * sit under the HUD clock and do not use this card.
+ * Live cards ride PowerUpReveal (2400ms hold + 320ms exit) and ignore
+ * this. Kept so the hidden CSS warmup still injects the bout-card tree.
  */
 export const BOUT_CARD_SECONDS = 1.8;

@@ -1510,7 +1510,7 @@ const STAMINA_MIDLINE_TOP = `
  * reads as low-biased on the hero bar; pull it up a hair. */
 const CLOCK_MIDLINE_TOP = STAMINA_MIDLINE_TOP;
 
-/* Clock seat — sized to the numeral only. The optional BASHO day caption
+/* Clock seat — sized to the numeral only. The optional day/round caption
  * hangs below via absolute positioning so it cannot shift the clock off
  * the stamina midline. */
 const ClockSeat = styled.div`
@@ -1531,9 +1531,8 @@ const ClockSeat = styled.div`
 
 /* Match clock — bare numerals between the wing gauges. No ring, no rail.
  *
- * Versus rounds are a one-beat title over the salt throw. Basho days
- * stay here as a small caption — a 15-day run needs orientation for
- * the whole bout, not another announcement. */
+ * Day/round sit under it as a small caption. Versus still fires the
+ * ROUND callout over the salt throw; this is orientation for the bout. */
 const MatchClock = styled.div`
   display: inline-block;
   opacity: ${(p) => (p.$matchOver ? 0.7 : 1)};
@@ -1581,9 +1580,9 @@ const MatchClock = styled.div`
     `}
 `;
 
-/* BASHO day — orientation under the clock, not a callout. Cream, not
+/* Day / round — orientation under the clock, not a callout. Cream, not
  * gold (gold is rank) and never vermillion with the urgent clock. */
-const ClockDay = styled.div`
+const ClockCaption = styled.div`
   position: absolute;
   top: calc(100% + clamp(2px, 0.35cqh, 5px));
   left: 50%;
@@ -1740,6 +1739,7 @@ const UiPlayerInfo = ({
   player2Name = "PLAYER 2",
   bashoPowerUpSlots = false,
   showRoundMarks = true,
+  isTraining = false,
   player1SubMarks = undefined,
   player2SubMarks = undefined,
   /* Sub-marks (BASHO boons) ride the pre-bout ceremony and clear at
@@ -2240,6 +2240,21 @@ const UiPlayerInfo = ({
     Math.ceil(secondsRemaining ?? BOUT_SECONDS)
   );
 
+  /* Caption under the clock. Basho uses the day; versus uses the bout
+   * being fought (history length + 1). After the match ends, freeze on
+   * the last completed bout so a 2-0 finish does not flip to ROUND 3. */
+  let clockCaption = null;
+  if (isTraining) {
+    clockCaption = { text: "TRAINING", label: "Training" };
+  } else if (Number.isFinite(bashoDay) && bashoDay >= 1) {
+    clockCaption = { text: `DAY ${bashoDay}`, label: `Day ${bashoDay}` };
+  } else if (showRoundMarks) {
+    const n = matchOver
+      ? Math.max(1, roundHistory.length)
+      : roundHistory.length + 1;
+    clockCaption = { text: `ROUND ${n}`, label: `Round ${n}` };
+  }
+
   const renderCenterMarks = (playerName) => {
     const marks = [];
     const maxRounds = 3;
@@ -2505,15 +2520,15 @@ const UiPlayerInfo = ({
           /* A bout that ended ON the clock parks at 0, and the match-over
            * screen sits above the band — a red 0 strobing behind the winner
            * card is the clock still shouting after the bout is decided. */
-          $urgent={!matchOver && clockSeconds <= CLOCK_URGENT_AT}
-          aria-label={`${clockSeconds} seconds remaining`}
+          $urgent={!isTraining && !matchOver && clockSeconds <= CLOCK_URGENT_AT}
+          aria-label={isTraining ? "Training" : `${clockSeconds} seconds remaining`}
         >
-          {clockSeconds}
+          {isTraining ? "∞" : clockSeconds}
         </MatchClock>
-        {Number.isFinite(bashoDay) && bashoDay >= 1 && (
-          <ClockDay $matchOver={matchOver} aria-label={`Day ${bashoDay}`}>
-            DAY {bashoDay}
-          </ClockDay>
+        {clockCaption && (
+          <ClockCaption $matchOver={matchOver} aria-label={clockCaption.label}>
+            {clockCaption.text}
+          </ClockCaption>
         )}
       </ClockSeat>
 
@@ -2702,6 +2717,7 @@ UiPlayerInfo.propTypes = {
   player2Name: PropTypes.string,
   bashoPowerUpSlots: PropTypes.bool,
   showRoundMarks: PropTypes.bool,
+  isTraining: PropTypes.bool,
   player1SubMarks: PropTypes.node,
   player2SubMarks: PropTypes.node,
   subMarksVisible: PropTypes.bool,

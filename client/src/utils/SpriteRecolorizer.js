@@ -1048,7 +1048,7 @@ function buildRecolorCacheKey(imageSrc, sourceColorRange, targetColorHex, option
   const bodyColorHex = options.bodyColorHex || null;
   // Bump when body-recolor rules change so stale IndexedDB entries (e.g. yellow
   // topknot from a bad dark-fringe experiment) cannot stick around.
-  const RECOLOR_ALGO = "v4";
+  const RECOLOR_ALGO = "v5";
   return `${hiResSrc}_${sourceColorRange.minHue}-${
     sourceColorRange.maxHue
   }_${targetColorHex}${bodyColorHex ? "_body_" + bodyColorHex : ""}${

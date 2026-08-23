@@ -46,18 +46,21 @@ Promise.all([
   import("./components/Settings.jsx"),
   import("./utils/lowSpecMode.js"),
   import("./combatAudio/index.js"),
+  import("./utils/antarcticaMap.js"),
 ]).then(
   ([
     { default: App },
     { initGlobalVolumeFromSettings },
     { initLowSpecFromSettings },
     { installAudioTraceGlobal },
+    { initAntarcticaMap },
   ]) => {
     // Apply saved SFX volume before first cue (preserves mute / non-default).
     initGlobalVolumeFromSettings();
     // Low Spec Mode before first paint so menu/match skip expensive layers.
     initLowSpecFromSettings();
     installAudioTraceGlobal();
+    initAntarcticaMap();
     root.render(<App />);
   },
 );

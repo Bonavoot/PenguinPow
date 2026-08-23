@@ -40,11 +40,10 @@ const MAP_CENTER = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
 const MAP_WIDTH = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
 
 // ── TRAINING LAB (TEMP) ──────────────────────────────────────────────────────
-// When true, Easy VS CPU only mashes slap (mouse1). Flip to false for normal Easy.
+// Retired: dummy verbs live on room.cpuTrainingBehavior in Training mode.
+// Leave false so VS CPU Easy is the real Easy brain again.
 const EASY_SLAP_ONLY_DUMMY = false;
-// When true, Easy VS CPU is a grab-only dummy with infinite posture (MATADOR).
-// Mutually exclusive with EASY_SLAP_ONLY_DUMMY — slap flag wins if both true.
-const EASY_GRAB_MATADOR_DUMMY = true;
+const EASY_GRAB_MATADOR_DUMMY = false;
 
 // AI Configuration - Tuned for expert sumo gameplay
 const AI_CONFIG = {
@@ -398,6 +397,59 @@ function isEasyGrabMatadorDummy() {
 
 // Slap-only training dummy (Easy only, gated by flag above).
 // Stand still and mash mouse1. Nothing else — no palm queue, no movement.
+function faceTrainingDummy(cpu, human) {
+  cpu.facing = cpu.x < human.x ? -1 : 1;
+}
+
+function runStandbyDummy(cpu, human) {
+  resetAllKeys(cpu);
+  cpu.palmThrustQueued = false;
+  faceTrainingDummy(cpu, human);
+}
+
+function runPalmDummy(cpu, human, aiState, currentTime, distance) {
+  aiState.pendingParry = false;
+  aiState.parryReleaseTime = 0;
+  aiState.reactionTarget = null;
+  aiState.commitAction = null;
+  aiState.commitCount = 0;
+  aiState.grabApproachIntent = false;
+
+  resetAllKeys(cpu);
+  faceTrainingDummy(cpu, human);
+
+  const maxReach =
+    getConnectDistance("palm", cpu, human) + AI_CONFIG.PALM_COUNTERPOKE_REACH_SLACK;
+
+  if (distance > maxReach) {
+    cpu.palmThrustQueued = false;
+    const dir = getDirectionToOpponent(cpu, human);
+    if (dir === 1) cpu.keys.d = true;
+    else if (dir === -1) cpu.keys.a = true;
+    aiState.lastActionType = "palm_dummy_approach";
+    return;
+  }
+
+  const PRESS_MS = 50;
+  const RELEASE_MS = 80;
+  if (
+    !aiState.easySlapPhase ||
+    currentTime >= (aiState.easySlapPhaseUntil || 0)
+  ) {
+    if (aiState.easySlapPhase === "press") {
+      aiState.easySlapPhase = "release";
+      aiState.easySlapPhaseUntil = currentTime + RELEASE_MS;
+    } else {
+      aiState.easySlapPhase = "press";
+      aiState.easySlapPhaseUntil = currentTime + PRESS_MS;
+    }
+  }
+  const pressing = aiState.easySlapPhase === "press";
+  cpu.keys.mouse1 = pressing;
+  cpu.palmThrustQueued = pressing;
+  aiState.lastActionType = "palm_dummy_mash";
+}
+
 function runEasySlapOnlyDummy(cpu, human, aiState, currentTime, distance) {
   aiState.pendingParry = false;
   aiState.parryReleaseTime = 0;
@@ -456,8 +508,6 @@ function cancelEasyGrabDummyPush(cpu, human) {
 // Walks in and spam-grabs so you can lab MATADOR. No slap / parry / dodge / charge.
 // On connect: never push / never clinch actions — grab-break ASAP.
 function runEasyGrabMatadorDummy(cpu, human, aiState, currentTime, distance) {
-  topUpEasyGrabDummy(cpu);
-
   // Never defend / slap / charge — offense is open-game grabs only.
   cpu.palmThrustQueued = false;
   aiState.pendingParry = false;
@@ -1520,6 +1570,25 @@ function updateCPUAI(cpu, human, room, currentTime) {
   
   // Handle pending key releases
   handlePendingKeyReleases(cpu, aiState, currentTime);
+
+  const trainingBehavior =
+    room.matchMode === "training" ? (room.cpuTrainingBehavior || "standby") : null;
+  if (trainingBehavior === "standby") {
+    runStandbyDummy(cpu, human);
+    return;
+  }
+  if (trainingBehavior === "slap") {
+    runEasySlapOnlyDummy(cpu, human, aiState, currentTime, distance);
+    return;
+  }
+  if (trainingBehavior === "palm") {
+    runPalmDummy(cpu, human, aiState, currentTime, distance);
+    return;
+  }
+  if (trainingBehavior === "grab") {
+    runEasyGrabMatadorDummy(cpu, human, aiState, currentTime, distance);
+    return;
+  }
 
   // Slap lab: Easy = mash mouse1 only (no movement).
   if (isEasySlapOnlyDummy()) {

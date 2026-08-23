@@ -28,6 +28,9 @@ export const SHAKE_PROFILES = {
   // Slap pokes — snappy directional kick. Replace-mode so a barrage reads as
   // discrete cracks, not a stacked wobble (same idea as rope_clamp_hit).
   slap_hit:        { trauma: 0.44, punch: 0.0, rot: 0.0, replace: true, dirBias: 0.72 },
+  // Ice-slide convert — slap crack (replace, directional) with a touch more
+  // weight. Not throw_landing: that rattle hangs and slows the exchange.
+  slide_slap_hit:  { trauma: 0.58, punch: 0.0, rot: 0.10, replace: true, dirBias: 0.78 },
   // Charged hit — heavy crunch + roll + micro zoom-punch (caller scales by charge %).
   charged_hit:     { trauma: 0.92, punch: 0.06, rot: 0.55 },
 

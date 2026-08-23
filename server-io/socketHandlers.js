@@ -6,7 +6,7 @@ const {
   ROPE_JUMP_BOUNDARY_ZONE,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS,
   SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
-  SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, RAW_PARRY_STAMINA_COST, RAW_PARRY_COOLDOWN_MS,
+  SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, RAW_PARRY_STAMINA_COST,
   RAW_PARRY_REARM_STAMINA_COST, RAW_PARRY_REARM_INTERVAL_MS,
   CHARGE_FULL_POWER_MS,
   LOW_KICK_ENABLED,
@@ -119,6 +119,15 @@ const {
 const { clearAIState } = require("./cpuAI");
 const { deriveStatMods } = require("./bashoStatMods");
 const { deriveLoadout } = require("./bashoLoadout");
+const {
+  TRAINING_CPU_MAWASHI,
+  isTrainingRoom,
+  applyTrainingBehavior,
+  applyTrainingInfiniteResources,
+  trainingSettingsPayload,
+  armTrainingLive,
+  snapTrainingPositions,
+} = require("./trainingMode");
 
 // Per-match input audit log — appended after rate limit, closed on
 // match-end / disconnect / reset paths below.
@@ -1189,7 +1198,11 @@ function processInputPacket(room, player, data, io, rooms) {
   ) {
     emitStaminaBlocked(player, "dodge", io);
   } else if (
-    (player.shiftJustPressed || player.keys.shift) && // Buffer on press OR hold (catches spammers who end on held key)
+    (player.shiftJustPressed ||
+      // Held SHIFT buffers on pocket slaps / throws. A slide convert must
+      // NOT treat the ice-slide hold as a dodge tap — only a rising edge
+      // during the plant queues the hop (endSlapCycle fires it).
+      (!player.slideSlapArmed && player.keys.shift)) &&
     (player.isAttacking ||
       player.isThrowing ||
       player.isBeingThrown ||
@@ -1750,6 +1763,112 @@ function registerSocketHandlers(socket, io, rooms, context) {
     io.emit("rooms", getCleanedRoomsData(rooms));
   });
 
+  // Training lab — fork of create_cpu_match. Already live, no ritual, stock
+  // CPU colors so the client can skip P2 recolor. PvP / VS CPU / BASHO
+  // stay on their own handlers.
+  socket.on("create_training_match", (data) => {
+    const trainingRoomId = `training-${data.socketId}-${Date.now()}`;
+
+    const room = {
+      id: trainingRoomId,
+      players: [],
+      readyCount: 2,
+      rematchCount: 0,
+      gameStart: true,
+      gameOver: false,
+      matchOver: false,
+      readyStartTime: null,
+      roundStartTimer: null,
+      hakkiyoiCount: 1,
+      teWoTsuiteSent: false,
+      isCPURoom: true,
+      matchMode: "training",
+      cpuDifficulty: "HARD",
+      cpuTrainingBehavior: "standby",
+      trainingInfiniteResources: false,
+      playerAvailablePowerUps: {},
+      playersSelectedPowerUps: {},
+    };
+
+    rooms.push(room);
+
+    socket.join(room.id);
+    socket.roomId = room.id;
+
+    const human = createInitialPlayerState({
+      id: data.socketId,
+      ...PLAYER_1_SPAWN,
+      mawashiColor: data.mawashiColor || PLAYER_1_SPAWN.mawashiColor,
+      bodyColor: data.bodyColor !== undefined ? data.bodyColor : null,
+      gearIds: Array.isArray(data.gearIds) ? data.gearIds : [],
+    });
+    snapTrainingPositions(human);
+    room.players.push(human);
+
+    const cpuPlayerId = `CPU_${trainingRoomId}`;
+    const cpuPlayer = createCPUPlayer(cpuPlayerId, {
+      mawashiColor: TRAINING_CPU_MAWASHI,
+      bodyColor: null,
+      gearIds: [],
+    });
+    snapTrainingPositions(cpuPlayer);
+    room.players.push(cpuPlayer);
+    room.cpuPlayerId = cpuPlayerId;
+
+    registerPlayerInMaps(human, room);
+    registerPlayerInMaps(cpuPlayer, room);
+    armTrainingLive(room);
+
+    socket.emit("training_match_created", {
+      roomId: room.id,
+      players: room.players,
+      settings: trainingSettingsPayload(room),
+    });
+
+    io.in(room.id).emit("lobby", room.players);
+    io.emit("rooms", getCleanedRoomsData(rooms));
+  });
+
+  socket.on("set_training_behavior", (data) => {
+    const room = rooms.find(
+      (r) => isTrainingRoom(r) && r.players.some((p) => p.id === socket.id)
+    );
+    if (!room) return;
+    applyTrainingBehavior(room, data && data.behavior);
+    const cpu = room.players.find((p) => p.isCPU);
+    if (cpu) {
+      clearAIState(cpu.id);
+      if (cpu.keys) {
+        cpu.keys.w = false;
+        cpu.keys.a = false;
+        cpu.keys.s = false;
+        cpu.keys.d = false;
+        cpu.keys[" "] = false;
+        cpu.keys.shift = false;
+        cpu.keys.mouse1 = false;
+        cpu.keys.mouse2 = false;
+      }
+      cpu.palmThrustQueued = false;
+    }
+    socket.emit("training_settings", trainingSettingsPayload(room));
+  });
+
+  socket.on("request_training_reset", () => {
+    const room = rooms.find(
+      (r) => isTrainingRoom(r) && r.players.some((p) => p.id === socket.id)
+    );
+    if (room) room.trainingResetPending = true;
+  });
+
+  socket.on("set_training_resources", (data) => {
+    const room = rooms.find(
+      (r) => isTrainingRoom(r) && r.players.some((p) => p.id === socket.id)
+    );
+    if (!room) return;
+    applyTrainingInfiniteResources(room, !!(data && data.infiniteResources));
+    socket.emit("training_settings", trainingSettingsPayload(room));
+  });
+
   // BASHO bout creation — a FORK of create_cpu_match (left untouched per the
   // PvP/VS CPU firewall). Reuses the CPU AI + auto-ready pipeline (isCPURoom)
   // but flags the room with matchMode:"basho" so best-of-1 scoring + the named
@@ -1886,7 +2005,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
           if (cpuPlayer && !cpuPlayer.isReady) {
             // BASHO bouts pre-set the named opponent's colors at room creation;
             // don't randomize over them. Plain VS CPU keeps the random pick.
-            if (room.matchMode !== "basho") {
+            if (room.matchMode !== "basho" && !isTrainingRoom(room)) {
               const playerColor = humanPlayer.mawashiColor
                 || (humanPlayer.color === "aqua" ? "#00FFFF" : humanPlayer.color);
               const availableColors = LOBBY_COLORS.filter(
@@ -1960,6 +2079,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
     const room = rooms.find((r) => r.id === roomId);
     
     if (!room) return;
+    if (isTrainingRoom(room)) return;
     
     // Only proceed if this is still the initial round
     if (room.isInitialRound) {

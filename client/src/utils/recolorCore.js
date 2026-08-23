@@ -283,6 +283,26 @@ export function getSpecialPixelColor(specialMode, x, y) {
   }
 }
 
+/** Near-transparent canvas fill (typically a=1–4 black) that CSS drop-shadow
+ *  turns into a visible dark rectangle around every fighter frame. */
+export const GHOST_CANVAS_ALPHA = 8;
+
+/**
+ * Zero RGB+A for pixels below the ghost-canvas threshold so silhouette
+ * filters (drop-shadow, brightness) only see the penguin, not the frame.
+ */
+export function punchGhostCanvasAlpha(data, threshold = GHOST_CANVAS_ALPHA) {
+  const length = data.length;
+  for (let i = 0; i < length; i += 4) {
+    if (data[i + 3] < threshold) {
+      data[i] = 0;
+      data[i + 1] = 0;
+      data[i + 2] = 0;
+      data[i + 3] = 0;
+    }
+  }
+}
+
 /**
  * The master recolor pass. Mutates `imageData.data` (RGBA bytes) in place and
  * returns `imageData`.
@@ -318,6 +338,7 @@ export function processImageData(
   skipMawashiRecolor = false
 ) {
   const data = imageData.data;
+  punchGhostCanvasAlpha(data);
   const length = data.length;
   const HIT_RED_RGB = hslToRgb(0, 58, 55);
   const HIT_BLEND = 0.34;

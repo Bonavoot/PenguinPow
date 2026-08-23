@@ -20,6 +20,7 @@ const {
   STRIKE_PALM_REACH_OVERHANG_PX,
   SLAP_STARTUP_MS,
   AP_LATE_PARRY_MS,
+  AP_OPEN_HIT_GRACE_ENABLED,
   SLAP_TIP_POCKET_SLACK_PX,
   SLAP_ROPE_RESIST_BUFFER,
 } = require("./constants");
@@ -304,6 +305,7 @@ function enforceStrikeExtensionSeparation(attacker, opponent, nowSim) {
   // still confirms after grace (with slack). On-hit contact correction still
   // snaps the freeze frame clean.
   if (
+    AP_OPEN_HIT_GRACE_ENABLED &&
     kind === "slap" &&
     attacker.attackStartTime &&
     typeof nowSim === "number"

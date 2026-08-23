@@ -35,7 +35,8 @@
     "perf:server-load": "node server-io/scripts/roomLoadBaseline.mjs",
     "perf:server-soak": "node server-io/scripts/liveRoomSoak.mjs",
     "encode:display": "node client/scripts/encodeDisplayAssets.mjs",
-    "audit:pose-geometry": "node tools/audit-pose-geometry.js"
+    "audit:pose-geometry": "node tools/audit-pose-geometry.js",
+    "punch:ghost-alpha": "node tools/punch-ghost-canvas-alpha.mjs"
   },
   "dependencies": {
     "react-player": "^2.15.1",

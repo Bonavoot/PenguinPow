@@ -467,6 +467,7 @@ describe("Phase 11 — pose geometry registration", () => {
       poseKeyFromSrc("slap-attack-1-hit-frame.png"),
       "slap_hit_1"
     );
+    assert.equal(poseKeyFromSrc("belly-bump.png"), "belly_bump");
   });
 
   it("35. Charged flight stays airborne even at gameplay ground Y", () => {
@@ -504,14 +505,20 @@ describe("Phase 11 — pose geometry registration", () => {
     assert.equal(recover.appliedOffsetY, 0);
   });
 
-  it("37. No active grounded sole correction remains in the registry", () => {
+  it("37. No active grounded sole correction remains except belly-bump placeholder", () => {
+    const allowedSoleFix = new Set(["belly_bump"]);
     for (const key of listPoseKeys()) {
       const reg = getPoseRegistration(key);
-      if (typeof reg.supportFromBottomPct === "number") {
+      if (typeof reg.supportFromBottomPct === "number" && !allowedSoleFix.has(key)) {
         assert.fail(
           `${key} still has supportFromBottomPct — no proven sole defect remains`
         );
       }
     }
+    assert.equal(
+      getPoseRegistration("belly_bump").supportFromBottomPct,
+      0.136,
+      "1254² belly-bump has extra sole pad vs the 960 set"
+    );
   });
 });

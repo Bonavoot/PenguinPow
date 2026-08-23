@@ -200,6 +200,16 @@ const POSE_REGISTRY = Object.freeze({
     pivotY: 0.5,
     mirrorRule: MIRROR_RULE.SCALE_X_ART_LEFT,
   }),
+  belly_bump: Object.freeze({
+    asset: "belly-bump.png",
+    grounded: true,
+    supportFromBottomPct: 0.136,
+    displayScale: 1.17,
+    visualOffsetX: 0,
+    pivotX: 0.5,
+    pivotY: 0.5,
+    mirrorRule: MIRROR_RULE.SCALE_X_ART_LEFT,
+  }),
   palm_startup: Object.freeze({
     asset: "palm-thrust-startup.png",
     grounded: true,
@@ -534,7 +544,9 @@ function resolvePoseRender(opts = {}) {
     soleFromBottomPct = reg.supportFromBottomPct;
     // Positive pad above target → feet float → lower the CSS box.
     appliedOffsetY =
-      -(soleFromBottomPct - LEGACY_SOLE_FROM_BOTTOM_PCT) * SPRITE_WORLD_SIZE;
+      -(soleFromBottomPct - LEGACY_SOLE_FROM_BOTTOM_PCT) *
+      SPRITE_WORLD_SIZE *
+      (finite(reg.displayScale, 1) || 1);
   } else if (!grounded) {
     appliedOffsetY = finite(reg.visualOffsetY, 0);
     soleFromBottomPct = LEGACY_SOLE_FROM_BOTTOM_PCT;

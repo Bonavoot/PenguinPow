@@ -11,6 +11,10 @@ const {
   PERFECT_PARRY_ATTACKER_STUN_DURATION,
   GUARD_ATTACKER_RECOVERY_MS,
   AP_KILL_ENABLED,
+  AP_OPEN_HIT_GRACE_ENABLED,
+  PERFECT_PARRY_JUST_TICKS,
+  PERFECT_PARRY_WINDOW,
+  TICK_RATE,
 } = require("../../constants");
 
 describe("Attack parry frame contract", () => {
@@ -43,6 +47,12 @@ describe("Attack parry frame contract", () => {
 
   it("attack parry cannot finish the round (kill flag off, branch kept)", () => {
     assert.equal(AP_KILL_ENABLED, false);
+  });
+
+  it("just is the last two apply-ticks; slap grace can Regular, not Perfect", () => {
+    assert.equal(PERFECT_PARRY_JUST_TICKS, 2);
+    assert.equal(PERFECT_PARRY_WINDOW, (2 * 1000) / TICK_RATE);
+    assert.equal(AP_OPEN_HIT_GRACE_ENABLED, true);
   });
 
   it("blocked attack gets a short settle so the string cannot continue", () => {

@@ -155,7 +155,12 @@ export const EDITOR_CAMERA_PRESETS = {
   flat: { scale: 1, x: 0, y: 0 }, // no camera (full map)
 };
 
-export default function useCamera(containerRef, socket, showPreMatchScreen = false) {
+export default function useCamera(
+  containerRef,
+  socket,
+  showPreMatchScreen = false,
+  startTracking = false,
+) {
   const posRef = useRef({
     p1x: null,
     p2x: null,
@@ -174,11 +179,15 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
     p1Flap: false,
     p2Flap: false,
   });
-  const camRef = useRef({
-    scale: PREMATCH_CAMERA.scale,
-    x: PREMATCH_CAMERA.x,
-    y: PREMATCH_CAMERA.y,
-  });
+  const camRef = useRef(
+    startTracking
+      ? { scale: READY_CAMERA.scale, x: READY_CAMERA.x, y: READY_CAMERA.y }
+      : {
+          scale: PREMATCH_CAMERA.scale,
+          x: PREMATCH_CAMERA.x,
+          y: PREMATCH_CAMERA.y,
+        },
+  );
   const rafId = useRef(null);
 
   // Impact state lives on the shared trauma bus (lib/cameraShake) so hits and
@@ -190,8 +199,9 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
   const shakeClockRef = useRef(0); // accumulated wall-clock ms, drives the noise phase
 
   // Player-tracking is off during power-up selection, ready-up, and gyoji
-  // calls — camera stays centered until HAKKIYOI (game_start).
-  const trackingEnabledRef = useRef(false);
+  // calls — camera stays centered until HAKKIYOI (game_start). Training
+  // starts already live, so tracking is on from the first frame.
+  const trackingEnabledRef = useRef(!!startTracking);
 
   // Timestamp (performance.now) until which the perfect-parry micro-hitstop
   // holds the camera frozen. 0 = not freezing.
@@ -306,6 +316,15 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
       trackingEnabledRef.current = false;
     };
 
+    // Training snap-back: keep fight tracking on. Never emit game_start /
+    // game_reset in this mode, so without this the cam would stay parked.
+    const onTrainingReset = () => {
+      const cin = cinematicRef.current;
+      cin.active = false;
+      cin.phase = "none";
+      trackingEnabledRef.current = true;
+    };
+
     // Round-start camera "GO!" punch.
     // Tiny zoom-in pulse at hakkiyoi (every round, including 2 & 3) so the start
     // of a round reads as a kick-off moment rather than a quiet fade-in. Reuses
@@ -350,8 +369,16 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
     };
 
     const unsubFighter = subscribeFighterSnapshot(onFighterAction);
+    if (startTracking) {
+      trackingEnabledRef.current = true;
+      posRef.current.p1x = PLAYER1_READY_X;
+      posRef.current.p2x = PLAYER2_READY_X;
+      onFighterAction();
+    }
+
     socket.on("cinematic_kill", onCinematicKill);
     socket.on("game_reset", onGameReset);
+    socket.on("training_reset", onTrainingReset);
     socket.on("game_start", onGameStart);
     socket.on("perfect_parry", onPerfectParry);
     socket.on("screen_shake", onScreenShake);
@@ -600,10 +627,18 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
           maxPxY,
         );
 
+        const trackX = clamp(Math.round((cam.x * cw) / 100), -maxPxX, maxPxX);
+        const trackY = clamp(Math.round((cam.y * ch) / 100), -maxPxY, maxPxY);
+
         el.style.setProperty("--cam-scale", snappedScale);
         el.style.setProperty("--cam-x", pixelX + "px");
         el.style.setProperty("--cam-y", pixelY + "px");
         el.style.setProperty("--cam-rot", shakeRot.toFixed(3) + "deg");
+        el.style.setProperty("--cam-track-x", trackX + "px");
+        el.style.setProperty("--cam-track-y", trackY + "px");
+        el.style.setProperty("--cam-shake-x", pixelX - trackX + "px");
+        el.style.setProperty("--cam-shake-y", pixelY - trackY + "px");
+        el.style.setProperty("--cam-shake-rot", shakeRot.toFixed(3) + "deg");
       }
 
       rafId.current = requestAnimationFrame(tick);
@@ -615,10 +650,11 @@ export default function useCamera(containerRef, socket, showPreMatchScreen = fal
       unsubFighter();
       socket.off("cinematic_kill", onCinematicKill);
       socket.off("game_reset", onGameReset);
+      socket.off("training_reset", onTrainingReset);
       socket.off("game_start", onGameStart);
       socket.off("perfect_parry", onPerfectParry);
       socket.off("screen_shake", onScreenShake);
       if (rafId.current) cancelAnimationFrame(rafId.current);
     };
-  }, [containerRef, socket]);
+  }, [containerRef, socket, startTracking]);
 }

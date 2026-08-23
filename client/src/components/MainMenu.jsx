@@ -47,6 +47,7 @@ import {
 import styled, { css, keyframes } from "styled-components";
 import { SocketContext } from "../SocketContext";
 import { selectGameServer } from "../lib/serverConnection";
+import { SPRITE_BASE_COLOR } from "../config/colorPresets";
 
 /*
  * Difficulty for a specific bout: the HIGHER of the intra-basho ramp
@@ -87,7 +88,6 @@ import PumoLogo from "./PumoLogo";
 import {
   C,
   FONT_BODY,
-  FONT_DISPLAY,
   FONT_KANJI,
   FONT_UI,
   FONT_WEIGHT,
@@ -97,7 +97,6 @@ import {
   slideInLeft,
   broadcastSlideDown,
   FONT_RENDER,
-  TEXT_SHADOW_DISPLAY,
   TEXT_SHADOW_DISPLAY_SOFT,
 } from "./menuTheme";
 
@@ -119,11 +118,6 @@ const grainDrift = keyframes`
 const pumoBreathe = keyframes`
   0%, 100% { transform: scaleY(1); }
   50%      { transform: scaleY(1.022); }
-`;
-
-const brushIn = keyframes`
-  from { transform: scaleX(0); opacity: 0; }
-  to   { transform: scaleX(1); opacity: 1; }
 `;
 
 const hintFade = keyframes`
@@ -403,18 +397,17 @@ const HeroStage = styled.main`
 `;
 
 /*
- * Title stack — festival program over the courtyard.
- * Negative space is deliberate; density comes from hierarchy,
- * whisper meta, and ink — not boxes.
+ * Title stack — brand mark, then a type list in open air.
+ * The courtyard is the poster; the menu is ink on it, not a panel.
  */
 const LeftColumn = styled.div`
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: clamp(28px, 4.2cqh, 44px);
+  gap: clamp(32px, 5cqh, 52px);
   min-width: 0;
-  max-width: clamp(300px, 34cqw, 400px);
+  max-width: clamp(280px, 36cqw, 420px);
   will-change: transform, opacity;
   animation: ${slideInLeft} 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) 0.12s both;
 `;
@@ -431,134 +424,111 @@ const MenuList = styled.nav`
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: clamp(12px, 1.8cqh, 18px);
+  gap: clamp(20px, 3.2cqh, 32px);
 `;
 
 /*
- * Mode rows — open type with a calligraphy brush focus.
- * Featured mode carries a whisper line; hover draws the same
- * brush under siblings. No plates, ticks, or glow bars.
+ * Open type — Chillax, not the placeholder Bungee mark.
+ * Hierarchy is size, vermillion, and air. No rings, strokes, or plaques.
  */
 const MenuButton = styled.button`
   position: relative;
-  display: inline-flex;
+  display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.28em;
-  background: none;
-  border: none;
-  padding: 0 0 0.42em;
+  gap: 0.4em;
   margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
   cursor: pointer;
   text-align: left;
-  opacity: 0;
-  animation: ${slideInLeft} 0.45s ease-out forwards;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  animation: ${slideInLeft} 0.45s ease-out backwards;
   animation-delay: ${(p) => 0.4 + p.$index * 0.07}s;
 
+  ${(p) =>
+    p.$system &&
+    css`
+      margin-top: clamp(10px, 1.8cqh, 18px);
+      gap: 0;
+    `}
+
   .mode-label {
-    font-family: ${FONT_DISPLAY};
+    display: block;
+    font-family: ${FONT_UI};
     font-size: ${(p) =>
-      p.$primary
-        ? "clamp(1.65rem, 2.75cqw, 2.25rem)"
-        : "clamp(1.05rem, 1.65cqw, 1.35rem)"};
-    font-weight: 400;
-    letter-spacing: ${TRACK.display};
+      p.$system
+        ? "clamp(0.7rem, 1.02cqw, 0.84rem)"
+        : p.$primary
+          ? "clamp(1.85rem, 3.1cqw, 2.45rem)"
+          : "clamp(1.12rem, 1.85cqw, 1.42rem)"};
+    font-weight: ${(p) =>
+      p.$system
+        ? FONT_WEIGHT.medium
+        : p.$primary
+          ? FONT_WEIGHT.bold
+          : FONT_WEIGHT.semibold};
+    letter-spacing: ${(p) =>
+      p.$system ? "0.16em" : p.$primary ? "0.04em" : "0.06em"};
     text-transform: uppercase;
-    line-height: 0.95;
+    line-height: 1;
     color: ${(p) =>
-      p.$primary ? C.cream : "rgba(245, 236, 217, 0.7)"};
+      p.$system
+        ? "rgba(245, 236, 217, 0.42)"
+        : p.$primary
+          ? C.vermillionBright
+          : "rgba(255, 255, 255, 0.88)"};
     ${FONT_RENDER}
-    text-shadow: ${(p) =>
-      p.$primary ? TEXT_SHADOW_DISPLAY : TEXT_SHADOW_DISPLAY_SOFT};
-    transition: color 0.22s ease;
+    text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
+    transform-origin: left center;
+    transition:
+      color 0.2s ease,
+      transform 0.2s cubic-bezier(0.25, 0.85, 0.2, 1),
+      opacity 0.2s ease;
   }
 
   .mode-hint {
-    font-family: ${FONT_UI};
+    font-family: ${FONT_BODY};
     font-weight: ${FONT_WEIGHT.medium};
-    font-size: clamp(0.5rem, 0.78cqw, 0.62rem);
-    letter-spacing: ${TRACK.label};
+    font-size: clamp(0.52rem, 0.76cqw, 0.62rem);
+    letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: ${C.iceBright};
+    color: rgba(245, 236, 217, 0.55);
     ${FONT_RENDER}
     text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
     animation: ${hintFade} 0.4s ease-out 0.7s both;
   }
 
-  &::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    bottom: 0;
-    height: 2px;
-    width: 100%;
-    max-width: ${(p) => (p.$primary ? "4.5em" : "0")};
-    background: linear-gradient(
-      90deg,
-      ${C.vermillionBright} 0%,
-      ${C.vermillion} 55%,
-      transparent 100%
-    );
-    transform-origin: left center;
-    opacity: ${(p) => (p.$primary ? 1 : 0)};
-    transition:
-      max-width 0.32s cubic-bezier(0.25, 0.85, 0.2, 1),
-      opacity 0.22s ease,
-      background 0.22s ease;
-    pointer-events: none;
-    ${(p) =>
-      p.$primary &&
-      css`
-        animation: ${brushIn} 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) 0.75s both;
-      `}
+  &:hover .mode-label {
+    transform: translateX(5px);
+    color: ${(p) =>
+      p.$system
+        ? "rgba(245, 236, 217, 0.88)"
+        : p.$primary
+          ? "#ff6d5c"
+          : C.iceBright};
   }
 
-  &:hover .mode-label {
-    color: ${C.cream};
-  }
-  &:hover::after {
-    max-width: 4.5em;
-    opacity: 1;
-    background: linear-gradient(
-      90deg,
-      ${(p) => (p.$primary ? C.vermillionBright : C.iceBright)} 0%,
-      ${(p) => (p.$primary ? C.vermillion : C.ice)} 55%,
-      transparent 100%
-    );
-  }
   &:active .mode-label {
+    transform: translateX(2px);
     opacity: 0.88;
   }
-`;
 
-const SystemButton = styled.button`
-  display: inline-flex;
-  align-items: center;
-  margin-top: clamp(6px, 1.2cqh, 12px);
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  font-family: ${FONT_UI};
-  font-weight: ${FONT_WEIGHT.medium};
-  font-size: clamp(0.68rem, 1.05cqw, 0.84rem);
-  letter-spacing: ${TRACK.label};
-  text-transform: uppercase;
-  text-align: left;
-  line-height: 1;
-  color: rgba(245, 236, 217, 0.4);
-  ${FONT_RENDER}
-  text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
-  transition: color 0.2s ease;
-  opacity: 0;
-  animation: ${slideInLeft} 0.45s ease-out forwards;
-  animation-delay: ${(p) => 0.4 + p.$index * 0.07}s;
-
-  &:hover {
-    color: rgba(245, 236, 217, 0.88);
+  &:focus-visible {
+    outline: none;
+  }
+  &:focus-visible .mode-label {
+    transform: translateX(5px);
+    color: ${(p) =>
+      p.$system
+        ? "rgba(245, 236, 217, 0.88)"
+        : p.$primary
+          ? "#ff6d5c"
+          : C.iceBright};
   }
 `;
-
 /*
  * Key-art poster — right third, intentional foot crop,
  * planted on the snow line. Classic fighting-game title sit.
@@ -659,6 +629,7 @@ const MainMenu = ({
   const [roomName, setRoomName] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [isCPUMatch, setIsCPUMatch] = useState(false);
+  const [isTrainingMatch, setIsTrainingMatch] = useState(false);
   const { socket } = useContext(SocketContext);
   const lowSpec = useLowSpec();
 
@@ -1038,15 +1009,66 @@ const MainMenu = ({
       alert("Failed to create CPU match: " + data.reason);
     };
 
+    const upsertTrainingRoom = (roomId, players) => {
+      if (!roomId || !Array.isArray(players)) return;
+      const nextPlayers = players.map((p) => ({
+        id: p.id,
+        fighter: p.fighter,
+        mawashiColor: p.mawashiColor,
+        bodyColor: p.bodyColor ?? null,
+        gearIds: Array.isArray(p.gearIds) ? p.gearIds : [],
+        isCPU: !!p.isCPU,
+        wins: p.wins || [],
+        isReady: !!p.isReady,
+      }));
+      setRooms((prev) => {
+        const idx = prev.findIndex((r) => r.id === roomId);
+        if (idx === -1) {
+          return [
+            ...prev,
+            {
+              id: roomId,
+              isCPURoom: true,
+              matchMode: "training",
+              readyCount: 2,
+              players: nextPlayers,
+            },
+          ];
+        }
+        return prev.map((r, i) =>
+          i === idx ? { ...r, players: nextPlayers } : r
+        );
+      });
+    };
+
+    const handleTrainingMatchCreated = (data) => {
+      setRoomName(data.roomId);
+      setIsCPUMatch(true);
+      setIsTrainingMatch(true);
+      setPlayer2Color(SPRITE_BASE_COLOR);
+      setPlayer2BodyColor(null);
+      upsertTrainingRoom(data.roomId, data.players);
+      setCurrentPage("game");
+    };
+
+    const handleTrainingMatchFailed = (data) => {
+      console.error("Training match failed:", data?.reason);
+      alert("Failed to start training: " + (data?.reason || "unknown"));
+    };
+
     socket.on("cpu_match_created", handleCPUMatchCreated);
     socket.on("cpu_match_failed", handleCPUMatchFailed);
+    socket.on("training_match_created", handleTrainingMatchCreated);
+    socket.on("training_match_failed", handleTrainingMatchFailed);
 
     return () => {
       stopBackgroundMusic();
       socket.off("cpu_match_created", handleCPUMatchCreated);
       socket.off("cpu_match_failed", handleCPUMatchFailed);
+      socket.off("training_match_created", handleTrainingMatchCreated);
+      socket.off("training_match_failed", handleTrainingMatchFailed);
     };
-  }, [socket, setCurrentPage]);
+  }, [socket, setCurrentPage, setRooms, setPlayer2Color, setPlayer2BodyColor]);
 
   // BASHO bout socket flow. Registered once; all dynamic state is read from
   // refs. Guarded by isBashoMatchRef so it never reacts to a PvP/VS CPU match.
@@ -1174,6 +1196,16 @@ const MainMenu = ({
 
   const handleMainMenuPage = () => {
     setIsCPUMatch(false);
+    setIsTrainingMatch(false);
+    setCurrentPage("mainMenu");
+  };
+
+  const handleLeaveTraining = () => {
+    if (roomName) {
+      socket.emit("leave_room", { roomId: roomName });
+    }
+    setIsTrainingMatch(false);
+    setIsCPUMatch(false);
     setCurrentPage("mainMenu");
   };
 
@@ -1192,6 +1224,25 @@ const MainMenu = ({
 
   const handleSettings = () => {
     setShowSettings((prev) => !prev);
+  };
+
+  const handleTraining = async () => {
+    playButtonPressSound2();
+    const save = await loadSave();
+    const outfit = getActiveOutfit(save.customization);
+    applyOutfitToPlayer1Setters(outfit, {
+      setPlayer1Color,
+      setPlayer1BodyColor,
+    });
+    setPlayer2Color(SPRITE_BASE_COLOR);
+    setPlayer2BodyColor(null);
+    await selectGameServer("local");
+    socket.emit("create_training_match", {
+      socketId: socket.id,
+      mawashiColor: outfit.mawashiColor,
+      bodyColor: outfit.bodyColor,
+      gearIds: Array.isArray(outfit.gearIds) ? outfit.gearIds : [],
+    });
   };
 
   const handleVsCPU = async () => {
@@ -1307,6 +1358,15 @@ const MainMenu = ({
 
               <MenuButton
                 $index={3}
+                onClick={handleTraining}
+                onMouseEnter={playButtonHoverSound}
+              >
+                <span className="mode-label">Training</span>
+                <span className="mode-hint">Dummy lab</span>
+              </MenuButton>
+
+              <MenuButton
+                $index={4}
                 onClick={() => {
                   playButtonPressSound2();
                   setCurrentPage("customize");
@@ -1316,8 +1376,9 @@ const MainMenu = ({
                 <span className="mode-label">Customize</span>
               </MenuButton>
 
-              <SystemButton
-                $index={4}
+              <MenuButton
+                $system
+                $index={5}
                 className="settings-button"
                 onClick={() => {
                   handleSettings();
@@ -1325,8 +1386,8 @@ const MainMenu = ({
                 }}
                 onMouseEnter={playButtonHoverSound}
               >
-                Options
-              </SystemButton>
+                <span className="mode-label">Options</span>
+              </MenuButton>
             </MenuList>
           </LeftColumn>
         </HeroStage>
@@ -1405,6 +1466,8 @@ const MainMenu = ({
             roomName={roomName}
             setCurrentPage={setCurrentPage}
             isCPUMatch={isCPUMatch}
+            isTrainingMatch={isTrainingMatch}
+            onLeaveTraining={handleLeaveTraining}
             isBashoMatch={isBashoMatch}
             bashoBout={bashoBout}
             bashoBoutToken={bashoBoutToken}

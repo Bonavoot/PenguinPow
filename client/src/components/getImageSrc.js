@@ -13,6 +13,7 @@ import {
   slapAttack1Hit,
   slapAttack2Blur,
   slapAttack2Hit,
+  bellyBump,
   palmThrust,
   palmThrustStartup,
   palmThrustSmear,
@@ -171,7 +172,9 @@ const getImageSrc = (
   // Phase 5A: server presentation category (NONE / FLIGHT_ACTIVE / …).
   offensiveAerialPresentation = null,
   // FORCE OUT (grabPush) loser — held after the shove settles (not idle).
-  isGrabPushDefeat = false
+  isGrabPushDefeat = false,
+  // Ice-slide convert — placeholder belly-bump pose (1254² art, scaled in pose).
+  slideSlapArmed = false
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -208,7 +211,8 @@ const getImageSrc = (
   if (isGrabSeparating) return rawParrySuccessFrame1;
   if (isGrabBreaking) return crouching;
   if (isGrabBreakCountered) return hit;
-  // Attack Parry SUCCESS: blocking → f1 (quick) → f2 (hold). No frame 3.
+  // Attack Parry SUCCESS: f2 on the hit. Frame 0/1 kept for a one-tick flash
+  // if a director asks; live director skips them.
   if (isRawParrySuccess || isPerfectRawParrySuccess) {
     if (rawParrySuccessFrame === 0) return blocking;
     if (rawParrySuccessFrame === 1) return rawParrySuccessFrame1;
@@ -216,8 +220,8 @@ const getImageSrc = (
   }
   // Guard SUCCESS — chip absorb lands; hold block-parry.png for the block VFX.
   if (isGuardBlockSuccess) return blockParry;
-  // Empty-tap AP whiff only — success-f1 for the jail. Live window + hold-guard
-  // stay on blocking below so holding Space never leaves the block pose.
+  // Empty-tap flash only. GameFighter gates this to ~50ms so the 300ms jail
+  // does not hold f1 in slow motion.
   if (isApWhiffRecovering) return rawParrySuccessFrame1;
   if (isRawParryStun) return isPerfectParried;
   if (isHit) return hit;
@@ -261,7 +265,9 @@ const getImageSrc = (
     return grabAttemptType === "throw" ? throwing : grabAttempt;
   }
   // Ice slide — sliding pose; bunny-hop reverse flashes recovering → sliding.
-  if (isIceSliding) {
+  // Slap outranks ice slide so a convert press does not keep the sliding
+  // pose for a frame (server clears isIceSliding on the next attack tick).
+  if (isIceSliding && !isSlapAttack) {
     if (isIceSlideReverseHopping) return recovering;
     return sliding;
   }
@@ -331,6 +337,9 @@ const getImageSrc = (
   // }
 
   if (isSlapAttack) {
+    // Slide convert: same slap cycle, belly-bump art from smear through hold.
+    // Windup stays the ready stance so the pop into the bump is readable.
+    if (slideSlapArmed && slapFrame !== 0) return bellyBump;
     // Slaps play the client-driven windup → smear → hit → recovery cycle:
     //   0 windup   → ready stance (palm-thrust-startup), held long enough to READ
     //   1 smear    → slap-attack-{1,2}-blur-frame (a short motion beat before the hit)

@@ -36,6 +36,7 @@ const {
   MOMENTUM_ENTRY_CLAMP,
   MOMENTUM_WINDOW_MS,
   AP_ACTIVE_MS,
+  PERFECT_PARRY_WINDOW,
   AP_WHIFF_RECOVERY_MS,
   AP_COOLDOWN_MS,
   MATADOR_ACTIVE_MS,
@@ -409,11 +410,9 @@ function lagCompensatedFromPress(player, simNowMs, pressGameTime, receiptGameNow
 // backdated toward the player's TRUE press moment instead of the moment the
 // input was drained on the server.
 //
-// Why: the perfect-parry window (PERFECT_PARRY_WINDOW) is judged as
-// `hitTime - rawParryStartTime`. If start time is the packet-arrival time, then
-// network latency + the client send-throttle + the server tick phase all get
-// baked into that duration — and, worse, they JITTER tick-to-tick, so an
-// identically-timed press lands "perfect" one round and "regular" the next.
+// Why: placing the press on the true keydown tick keeps the 180ms callout
+// honest when the packet is late. Just/Perfect does NOT use this stamp — it
+// grades from apArmSimTime (when the tap was applied) so RTT cannot jitter stars.
 //
 // Age uses PACKET RECEIPT (not drain time) so hitstop queue wait cannot inflate
 // backdate. Cap is RTT-aware. Consumes the press stamp.
@@ -513,6 +512,7 @@ function armMatador(player, simTime, startTime) {
   player.isRawParrying = false;
   player.isGuarding = false;
   player.rawParryStartTime = 0;
+  player.apArmSimTime = 0;
   player.apActiveUntil = 0;
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
@@ -567,6 +567,7 @@ function cancelAttackParryWindow(player, simTime) {
   player.isRawParrying = false;
   player.isGuarding = false;
   player.rawParryStartTime = 0;
+  player.apArmSimTime = 0;
   player.apActiveUntil = 0;
   player.apChainCount = 0;
   player.apSpaceConsumed = false;
@@ -592,6 +593,8 @@ function armAttackParry(player, simTime, startTime) {
   player.isGuarding = false; // a fresh read window, not the block floor
   player.apGuardNeedsRelease = false;
   player.rawParryStartTime = startTime != null ? startTime : simTime;
+  // Apply tick — just grade reads this, not the lag-comp'd start.
+  player.apArmSimTime = simTime;
   player.apActiveUntil = simTime + AP_ACTIVE_MS;
   // Flurry cover: early re-tap after a landed parry keeps the window alive long
   // enough to meet stagger + slap startup. Perfect still uses press→hit delta.
@@ -618,6 +621,18 @@ function armAttackParry(player, simTime, startTime) {
 // Stamp / refresh the post-parry flurry cover deadline (sim clock).
 // `staggerMs` should be the lockout applied to the attacker on this parry
 // (regular slap / perfect / palm / flap) so cover outlasts their ASAP re-fire.
+// Just = the tap was applied in the last PERFECT_PARRY_WINDOW ms before contact.
+// Early callout (already in) is Regular. Does not use lag-comp'd rawParryStartTime.
+function isAttackParryJust(parrier, hitTime) {
+  if (!parrier || parrier.isGuarding) return false;
+  const armedAt =
+    typeof parrier.apArmSimTime === "number" && parrier.apArmSimTime > 0
+      ? parrier.apArmSimTime
+      : parrier.rawParryStartTime || hitTime;
+  const dt = hitTime - armedAt;
+  return dt >= 0 && dt <= PERFECT_PARRY_WINDOW;
+}
+
 function grantAttackParryFlurryCover(player, simTime, staggerMs) {
   const stagger =
     typeof staggerMs === "number" && staggerMs > 0 ? staggerMs : AP_STAGGER_SLAP_MS;
@@ -652,6 +667,7 @@ function clearAttackParryWindow(player) {
   player.isRawParrying = false;
   player.isGuarding = false;
   player.rawParryStartTime = 0;
+  player.apArmSimTime = 0;
   player.apActiveUntil = 0;
   player.apSpaceConsumed = false;
 }
@@ -726,6 +742,7 @@ function updateAttackParryState(player, simTime, spaceHeld) {
     // Stale isRawParrying with no window (e.g. a snowball parry that cleared).
     player.isRawParrying = false;
     player.rawParryStartTime = 0;
+    player.apArmSimTime = 0;
     player.apChainCount = 0;
     return;
   }
@@ -1246,6 +1263,7 @@ function resetPlayerAttackStates(player) {
   player.attackCooldownUntil = 0;
   player.currentSlapHitConnected = false;
   player.slapOpenHitPending = false;
+  player.slideSlapArmed = false;
   player.isBurstKnockback = false;
   player.burstKnockbackStartTime = 0;
 }
@@ -1332,6 +1350,7 @@ function clearAllActionStates(player) {
   player.isEnhancedSlap = false;
   player.cadenceChain = 0;
   player.isSlapSliding = false;
+  player.slideSlapArmed = false;
   player.currentSlapHitConnected = false;
   player.slapOpenHitPending = false;
   player.isBurstKnockback = false;
@@ -1441,6 +1460,7 @@ function clearAllActionStates(player) {
   player.isRawParrying = false;
   player.isGuarding = false;
   player.rawParryStartTime = 0;
+  player.apArmSimTime = 0;
   player.rawParryPressGameTime = 0;
   player.rawParryMinDurationMet = false;
   player.isSlapParrying = false;
@@ -2286,9 +2306,21 @@ function endHitKnockback(player) {
 /** Touchdown from air-hit arc — hand residual KB to ice coast. */
 function finishAirHitFallLanding(player) {
   if (!player) return;
-  if (Math.abs(player.knockbackVelocity?.x || 0) > 0.01) {
+  const residual = player.knockbackVelocity?.x || 0;
+  if (player.isHit && Math.abs(residual) > 0.01) {
+    // Still in hitstun. X is integrated from knockbackVelocity while isHit;
+    // movementVelocity is ignored. Keep the shove on the KB channel so a
+    // low air connect (dodge hop / reverse hop / short W) does not freeze
+    // them on touchdown until the stun timer pops.
+    player.isRecovering = false;
+    resetOffensiveAerialReaction(player);
+    clearHitFall(player);
+    syncOffensiveAerialPresentation(player);
+    return;
+  }
+  if (Math.abs(residual) > 0.01) {
     // Same distance-preserving conversion as endHitKnockback.
-    player.movementVelocity = handoffVelocity(player.knockbackVelocity.x);
+    player.movementVelocity = handoffVelocity(residual);
   }
   player.knockbackVelocity.x = 0;
   player.isSlapKnockback = false;
@@ -2421,6 +2453,7 @@ function cancelPendingSlapWork(player) {
   player.slapOpenHitPending = false;
   player.currentLowKickHitConnected = false;
   player.isSlapSliding = false;
+  player.slideSlapArmed = false;
   player.slapFacingDirection = null;
   player.isInStartupFrames = false;
   player.startupEndTime = 0;
@@ -2741,6 +2774,7 @@ module.exports = {
   lagCompensatedClinchBraceStart,
   canArmAttackParry,
   armAttackParry,
+  isAttackParryJust,
   grantAttackParryFlurryCover,
   isAttackParryFlurryLinger,
   isAttackParryPostLocked,

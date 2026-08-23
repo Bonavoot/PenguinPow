@@ -24,6 +24,7 @@ const {
   DODGE_SLIDE_MOMENTUM, DODGE_POWERSLIDE_BOOST,
   ICE_SLIDE_FRICTION, ICE_SLIDE_COAST_FRICTION, ICE_SLIDE_STEER_FRICTION, ICE_SLIDE_OPPOSE_FRICTION,
   ICE_SLIDE_EXIT_SPEED, ICE_SLIDE_MAX_SPEED, ICE_SLIDE_MAINTAIN,
+  SLIDE_SLAP_FOLLOW_FRICTION,
   ICE_SLIDE_REVERSE_HOP_MS, ICE_SLIDE_REVERSE_HOP_HEIGHT,
   SLIDE_JUMP_MIN_MS, SLIDE_JUMP_BUFFER_MS, SLIDE_JUMP_LIFTOFF_IMPULSE,
   SLIDE_JUMP_GRAVITY, SLIDE_JUMP_AIR_STEER, SLIDE_JUMP_AIR_STEER_BLEED,
@@ -48,7 +49,7 @@ const {
   GRAB_BREAK_STAMINA_COST, GRAB_BREAK_FORCED_DISTANCE,
   GRAB_BREAK_TWEEN_DURATION, GRAB_BREAK_RESIDUAL_VEL,
   GRAB_BREAK_INPUT_LOCK_MS, GRAB_BREAK_ACTION_LOCK_MS,
-  RAW_PARRY_STAMINA_COST, RAW_PARRY_MIN_DURATION, RAW_PARRY_MAX_DURATION, RAW_PARRY_COOLDOWN_MS, PULL_BOUNDARY_MARGIN,
+  PULL_BOUNDARY_MARGIN,
   AT_THE_ROPES_DURATION,
   ROPE_JUMP_STARTUP_MS, ROPE_JUMP_ACTIVE_MS, ROPE_JUMP_LANDING_RECOVERY_MS,
   ROPE_JUMP_ARC_HEIGHT,
@@ -156,7 +157,6 @@ const { applyAirHitOverlapEject } = require("./airHitOverlapEject");
 
 const {
   BOUT_SECONDS,
-  describeBout,
   resolveHantei,
   ringFromBoundaries,
 } = require("./boutClock");
@@ -200,6 +200,7 @@ const {
 const {
   resetRoomAndPlayers,
 } = require("./roomManagement");
+const { isTrainingRoom, refillTrainingResources } = require("./trainingMode");
 
 // Facing hard rule: always face opponent unless purposefully locked
 const { enforcePairFacing } = require("./facingSystem");
@@ -801,6 +802,7 @@ function tick(delta) {
       }
 
       if (
+        !isTrainingRoom(room) &&
         player1.isReady &&
         player2.isReady &&
         !player1.isRawParrying &&
@@ -1885,11 +1887,13 @@ function tick(delta) {
         handleWinCondition(room, player, winner, io, winType);
         player.knockbackVelocity = { ...player.knockbackVelocity };
         
-        io.in(room.id).emit("ring_out", {
-          loserId: player.id,
-          winnerId: winner.id,
-          direction: player.x <= MAP_LEFT_BOUNDARY ? "left" : "right",
-        });
+        if (!isTrainingRoom(room)) {
+          io.in(room.id).emit("ring_out", {
+            loserId: player.id,
+            winnerId: winner.id,
+            direction: player.x <= MAP_LEFT_BOUNDARY ? "left" : "right",
+          });
+        }
       }
 
       // FALLBACK WIN CONDITION: Catch edge cases where player fell off dohyo
@@ -1908,11 +1912,13 @@ function tick(delta) {
           handleWinCondition(room, player, winner, io, "ringOut");
           player.knockbackVelocity = { ...player.knockbackVelocity };
           
-          io.in(room.id).emit("ring_out", {
-            loserId: player.id,
-            winnerId: winner.id,
-            direction: player.x <= MAP_LEFT_BOUNDARY ? "left" : "right",
-          });
+          if (!isTrainingRoom(room)) {
+            io.in(room.id).emit("ring_out", {
+              loserId: player.id,
+              winnerId: winner.id,
+              direction: player.x <= MAP_LEFT_BOUNDARY ? "left" : "right",
+            });
+          }
         }
       }
 
@@ -3666,7 +3672,10 @@ function tick(delta) {
             // The slap slide is fully committed — no input may affect it. While it's
             // active, ignore movement keys for both braking and friction so the forced
             // forward slide is identical regardless of what the player holds.
-            const slapSlideCommitted = player.isSlapSliding;
+            const slideSlapFollowThrough =
+              player.slideSlapArmed && player.currentSlapHitConnected;
+            const slapSlideCommitted =
+              player.isSlapSliding || slideSlapFollowThrough;
 
             // Determine braking state
             const isMovingRight = player.movementVelocity > 0;
@@ -3683,7 +3692,9 @@ function tick(delta) {
             const edgeProximity = getEdgeProximity(player.x);
             
             // Normal ice physics: friction first, then position
-            const friction = getIceFriction(player, isActiveBraking, nearEdge, edgeProximity, slapSlideCommitted);
+            const friction = slideSlapFollowThrough
+              ? SLIDE_SLAP_FOLLOW_FRICTION
+              : getIceFriction(player, isActiveBraking, nearEdge, edgeProximity, slapSlideCommitted);
             
             player.movementVelocity *= friction;
 
@@ -3697,7 +3708,7 @@ function tick(delta) {
             player.isStrafing = false;
 
             let newX;
-            if (player.isSlapSliding) {
+            if (player.isSlapSliding && !slideSlapFollowThrough) {
               const opponent = room.players.find((p) => p.id !== player.id);
               let effectiveVelocity = player.movementVelocity;
               if (opponent && arePlayersColliding(player, opponent)) {
@@ -3787,7 +3798,12 @@ function tick(delta) {
           // Don't immediately stop on ice unless hit or rope jumping.
           // Slap slide already coasts via getIceFriction(slapSlideCommitted) —
           // skip this extra decay so the committed step-in isn't double-killed.
-          if (!player.isHit && !player.isRopeJumping && !player.isSlapSliding) {
+          if (
+            !player.isHit &&
+            !player.isRopeJumping &&
+            !player.isSlapSliding &&
+            !(player.slideSlapArmed && player.currentSlapHitConnected)
+          ) {
             player.movementVelocity *= MOVEMENT_FRICTION;
           }
           // Also clear grab walking if no movement conditions are met
@@ -4274,40 +4290,15 @@ function tick(delta) {
       }
     });
 
+    if (isTrainingRoom(room) && room.trainingInfiniteResources) {
+      room.players.forEach(refillTrainingResources);
+    }
+
     // HARD RULE: after all movement / side-switches this tick, face each other
     // unless a purposeful lock is active (attack, dodge hop, ropes, throw, etc.).
     // (Player loop is outside the early hitstop pair-block, so resolve from room.)
     if (room.players.length === 2 && !isRoomInHitstop(room)) {
       enforcePairFacing(room.players[0], room.players[1], now);
-    }
-
-    // ── BOUT CARD ──
-    // "ROUND 2" / "FINAL ROUND", once per versus bout.
-    //
-    // Fires at the START of the salt throw. Versus always throws salt, so
-    // the card gets the full 1483ms animation plus the walk before the
-    // Gyoji calls HANDS DOWN. The client also hides the card the instant
-    // gyoji_call lands, so the two can never overlap. Basho days sit
-    // under the HUD clock — no card.
-    if (
-      room.matchMode !== "basho" &&
-      !room.boutCardSent &&
-      !room.gameStart &&
-      !room.gameOver &&
-      room.players.length === 2 &&
-      (room.players.some((p) => p.isThrowingSalt) ||
-        room.players.every((p) => p.canMoveToReady) ||
-        room.readyStartTime)
-    ) {
-      room.boutCardSent = true;
-      io.in(room.id).emit(
-        "bout_card",
-        describeBout({
-          matchMode: room.matchMode,
-          winsP1: (room.players[0].wins || []).length,
-          winsP2: (room.players[1].wins || []).length,
-        })
-      );
     }
 
     // ── BOUT CLOCK ──
@@ -4365,7 +4356,10 @@ function tick(delta) {
     // ROOM-LEVEL SAFETY: Check game reset outside player loop
     // This ensures reset is checked even if all players return early
     // (e.g., during hitstop, or if loser has isHit=false)
-    if (
+    if (isTrainingRoom(room) && room.trainingResetPending) {
+      room.trainingResetPending = false;
+      resetRoomAndPlayers(room, io);
+    } else if (
       room.gameOver &&
       room.gameOverTime &&
       now - room.gameOverTime >= 2000 &&

@@ -107,6 +107,7 @@ import {
   PALM_THRUST_ANIM,
   GRAB_SEPARATE_PALM_ANIM,
   AP_WHIFF_RECOVERY_MS,
+  SLIDE_SLAP_ARM_SPEED,
 } from "../config/combatTiming";
 import {
   SIDESTEP_ACTIVE_MS,
@@ -493,6 +494,7 @@ const GameFighter = ({
   playerColor, // Custom color for mawashi/headband recoloring
   playerBodyColor, // Custom body color (null = default grey)
   isCPUMatch, // True when playing vs CPU — hides PvP-only HUD bits (rematch tally)
+  isTrainingMatch = false, // Training lab — no ritual, clock, or round result
   isBashoMatch, // True during a BASHO bout — the run controller drives the post-bout flow, so the MatchOver/Rematch UI is suppressed here
   bashoPlayerRankLabel = null, // BASHO-only: real banzuke rank for the HUD plaque
   bashoOpponentRankLabel = null, // BASHO-only: opponent's division label for the HUD plaque
@@ -821,7 +823,8 @@ const GameFighter = ({
   // raw_parry_success / rising edge), and keep painting it even after the
   // server clears the flags for the next read.
   //
-  // Every land: blocking → success-f1 (quick) → success-f2 (hold). No frame 3.
+  // Every land: f2 on the hit frame. No blocking lead-in, no f1 windup —
+  // those made the deflect look a beat late. Hitstop only EXTENDS the hold.
   const rawParrySuccessVisualRef = useRef({
     startedAt: 0,
     until: 0,
@@ -829,14 +832,12 @@ const GameFighter = ({
     lastServerSuccess: false,
     chainCount: 1,
   });
-  const rawParrySuccessFrameRef = useRef(1);
+  const rawParrySuccessFrameRef = useRef(2);
   const RAW_PARRY_SUCCESS_ANIM = {
-    BLOCK_MS: 16, // blocking.png — ~1 frame
-    FRAME1_MS: 40, // success-f1 — quick
-    // F2 hold floor after block+f1. Longer hitstop on perfect only EXTENDS
-    // past this — it never shortens it.
-    MIN_HOLD_MS: 180,
-    POST_HITSTOP_HOLD_MS: 80,
+    BLOCK_MS: 0,
+    FRAME1_MS: 0,
+    MIN_HOLD_MS: 90,
+    POST_HITSTOP_HOLD_MS: 32,
   };
   const successLeadMs = () =>
     RAW_PARRY_SUCCESS_ANIM.BLOCK_MS + RAW_PARRY_SUCCESS_ANIM.FRAME1_MS;
@@ -1180,14 +1181,14 @@ const GameFighter = ({
   //     (no linger). predictedFlurryUntilRef only lengthens the NEXT re-arm.
   const AP_ACTIVE_MS_CLIENT = 180;
   const AP_CANCEL_RECOVERY_MS_CLIENT = AP_WHIFF_RECOVERY_MS;
-  // Match server grantAttackParryFlurryCover (regular slap ≈ 345; perfect ≈ 565)
+  // Match server: Regular piano only. Perfect is a turn (no cover).
   const AP_FLURRY_COVER_REGULAR_MS_CLIENT = 345;
-  const AP_FLURRY_COVER_PERFECT_MS_CLIENT = 565;
   const predictedParryCommitUntilRef = useRef(0);
   const predictedFlurryUntilRef = useRef(0);
   // Local Space-up whiff pose — snaps to success-f1 before server isApWhiffRecovering.
   // Gated: live read only (not guard), not during flurry soft-clear.
-  const apWhiffPredictRef = useRef({ until: 0, sawServerWhiff: false });
+  const apWhiffPredictRef = useRef({ until: 0, startedAt: 0, sawServerWhiff: false });
+  const AP_WHIFF_POSE_MS = 50; // flash only — jail stays 300ms, pose must not crawl
   const isLocalParryActive = useCallback(() => {
     if (!isLocalPlayer) return false;
     // Post-parry lock (survives flurry re-tap that clears success pose).
@@ -1401,6 +1402,10 @@ const GameFighter = ({
               isAttacking: true,
               isPalmThrust: false,
               isLowKick: false,
+              slideSlapArmed: !!(
+                penguin.isIceSliding &&
+                Math.abs(penguin.movementVelocity || 0) >= SLIDE_SLAP_ARM_SPEED
+              ),
               slapAnimation: predictedState.current.slapAnimation === 1 ? 2 : 1,
               // CRITICAL: Clear other action predictions to prevent visual flicker
               isChargingAttack: false,
@@ -1460,6 +1465,7 @@ const GameFighter = ({
               isLowKick: false,
               isAttacking: true,
               isSlapAttack: false,
+              slideSlapArmed: false,
               // CRITICAL: Clear other action predictions to prevent visual flicker
               isChargingAttack: false,
               isDodging: false,
@@ -1696,16 +1702,17 @@ const GameFighter = ({
           }
           break;
         case "matador_release": {
-          if (gameStarted) {
-            predictedParryCommitUntilRef.current =
-              now + AP_CANCEL_RECOVERY_MS_CLIENT;
-          }
           const inLiveMatador =
             isLocalPlayer &&
+            !penguin.isMatadorSuccess &&
             (penguin.isMatadorParrying ||
               predictedState.current.isMatadorParrying);
+          // Jail empty taps only. A landed pull must not lock offense for 300ms.
           if (gameStarted && inLiveMatador) {
+            predictedParryCommitUntilRef.current =
+              now + AP_CANCEL_RECOVERY_MS_CLIENT;
             apWhiffPredictRef.current.until = now + AP_WHIFF_RECOVERY_MS;
+            apWhiffPredictRef.current.startedAt = now;
             apWhiffPredictRef.current.sawServerWhiff = false;
             forceVisualRender();
           }
@@ -1723,14 +1730,8 @@ const GameFighter = ({
           break;
         }
         case "parry_release": {
-          // Offense suppress for whiff jail length. Do NOT hold commit until
-          // flurry end or you can walk unable to attack for hundreds of ms.
-          if (gameStarted) {
-            predictedParryCommitUntilRef.current =
-              now + AP_CANCEL_RECOVERY_MS_CLIENT;
-          }
-          // Snap whiff pose (success-f1) on Space-up from a LIVE read — not
-          // from hold-guard, not during post-land flurry soft-clear.
+          // Snap whiff pose + offense lock on an EMPTY live read only.
+          // Landed parry and flurry soft-clear must not eat a 300ms convert.
           const inLiveRead =
             isLocalPlayer &&
             !penguin.isGuarding &&
@@ -1739,7 +1740,10 @@ const GameFighter = ({
             (penguin.isRawParrying || predictedState.current.isRawParrying);
           const inFlurryCover = now < predictedFlurryUntilRef.current;
           if (gameStarted && inLiveRead && !inFlurryCover) {
+            predictedParryCommitUntilRef.current =
+              now + AP_CANCEL_RECOVERY_MS_CLIENT;
             apWhiffPredictRef.current.until = now + AP_WHIFF_RECOVERY_MS;
+            apWhiffPredictRef.current.startedAt = now;
             apWhiffPredictRef.current.sawServerWhiff = false;
             forceVisualRender();
           }
@@ -2306,11 +2310,12 @@ const GameFighter = ({
   /* Bout clock is server-driven: `bout_clock` only fires when the whole
      second changes, so this holds the last value the server sent. */
   const [boutSeconds, setBoutSeconds] = useState(BOUT_SECONDS);
-  const [boutCard, setBoutCard] = useState(null);
   /* False through the walk-up, true from HAKKI-YOI until the next reset.
      Drives ceremony-only HUD content (BASHO boons) off the band once the
      wrestlers can actually act. */
-  const [boutLive, setBoutLive] = useState(false);
+  const [boutLive, setBoutLive] = useState(!!isTrainingMatch);
+  const isTrainingMatchRef = useRef(isTrainingMatch);
+  isTrainingMatchRef.current = isTrainingMatch;
   /* {player1, player2} 0-100 judges' scores — set only on a time-expired
      bout, printed over each wrestler's head with the result. */
   const [hanteiScores, setHanteiScores] = useState(null);
@@ -2349,7 +2354,7 @@ const GameFighter = ({
   const [p2BalanceGain, setP2BalanceGain] = useState(0);
   const [showStarStunEffect, setShowStarStunEffect] = useState(false);
   const [hasUsedPowerUp, setHasUsedPowerUp] = useState(false);
-  const [countdown, setCountdown] = useState(15);
+  const [countdown, setCountdown] = useState(isTrainingMatch ? 0 : 15);
   const countdownRef = useRef(null);
   const pendingSocketTimeouts = useRef([]);
   const pendingSocketRafs = useRef([]);
@@ -2590,9 +2595,8 @@ const GameFighter = ({
         // turn into a burst of catch-up simulation ticks afterwards.
         movementPredictorRef.current?.notePause(timestamp);
 
-        // RAW PARRY SUCCESS: movement is frozen, but block → f1 → f2 must still
-        // advance (and the local visual hold must keep ticking) so the
-        // DEFLECT is readable every time — including through flurry clears.
+        // RAW PARRY SUCCESS: movement is frozen; f2 is already on the hit
+        // frame. Keep the hold ticking through flurry clears.
         const vSuccess = rawParrySuccessVisualRef.current;
         if (vSuccess.until > timestamp) {
           // Hitstop packet can arrive AFTER we stamped `until`; extend to match.
@@ -4097,6 +4101,12 @@ const GameFighter = ({
               dirX: shakeDir,
               scale: momentumScale(1.15),
             });
+          } else if (data.slideSlap) {
+            // Ice-slide convert — snappy crack, not a throw-land rattle.
+            addShake("slide_slap_hit", {
+              dirX: shakeDir,
+              scale: momentumScale(1.08),
+            });
           } else {
             // Slaps: base stays light so a poke reads as a poke, but a chained
             // or dash-in slap escalates continuously instead of flipping a
@@ -4159,7 +4169,9 @@ const GameFighter = ({
             // frequent momentum slaps). Braked knockback stays a VISUAL-only tell
             // (the dig-in skid below) — replaying the hit sample here was the
             // other half of the doubling. Server-gated ⇒ silent with the flag off.
-            if (data.momentumHit) {
+            if (data.slideSlap) {
+              playSound(baseSound, 0.02, null, 0.55, pan);
+            } else if (data.momentumHit) {
               playSound(baseSound, 0.012, null, 0.6, pan);
             }
           } else {
@@ -4431,7 +4443,7 @@ const GameFighter = ({
           } else if (data.attackType === "flap") {
             amp = 1.35;
           } else if (data.attackType === "slap") {
-            amp = 1.08;
+            amp = data.slideSlap ? 1.35 : 1.08;
           } else if (data.isLowKick || data.attackType === "lowKick") {
             amp = 0.9;
           }
@@ -4596,14 +4608,13 @@ const GameFighter = ({
         data?.isAttackParry &&
         data.parrierId === penguin.id
       ) {
-        predictedFlurryUntilRef.current =
-          performance.now() +
-          (data.isPerfect
-            ? AP_FLURRY_COVER_PERFECT_MS_CLIENT
-            : AP_FLURRY_COVER_REGULAR_MS_CLIENT);
+        predictedFlurryUntilRef.current = data.isPerfect
+          ? 0
+          : performance.now() + AP_FLURRY_COVER_REGULAR_MS_CLIENT;
         predictedParryCommitUntilRef.current = 0;
         // Land overrides any Space-up whiff pose predict.
         apWhiffPredictRef.current.until = 0;
+        apWhiffPredictRef.current.startedAt = 0;
         apWhiffPredictRef.current.sawServerWhiff = false;
         if (predictedState.current.isRawParrying) {
           predictedState.current.isRawParrying = false;
@@ -5468,12 +5479,47 @@ const GameFighter = ({
     };
     socket.on("game_reset", handleGameReset);
 
+    const handleTrainingReset = () => {
+      setGameOver(false);
+      setShowRoundResult(false);
+      setWinType(null);
+      setHanteiScores(null);
+      setMatchOver(false);
+      setGyojiCall(null);
+      setGyojiState("idle");
+      setRawParryEffectPosition(null);
+      setHitEffectPosition(null);
+      setParryEffectPosition(null);
+      setSnowballImpactPosition(null);
+      setBlockingEffectPosition(null);
+      setGuardBlockSuccess(false);
+      setChargeClashEffectPosition(null);
+      clearPresentationEvents();
+      clearPlacementDebug();
+      clearPoseGeometryDebug();
+      cancelPendingSwingSounds();
+      predictedState.current = {
+        isSlapAttack: false,
+        slapAnimation: predictedState.current.slapAnimation,
+        isAttacking: false,
+        isPalmThrust: false,
+        isLowKick: false,
+        isDodging: false,
+        dodgeDirection: null,
+        isChargingAttack: false,
+        isRawParrying: false,
+        isGrabbing: false,
+        isPowerSliding: false,
+        isBraking: false,
+        timestamp: 0,
+      };
+      setUiRoundId((id) => id + 1);
+      setBoutLive(true);
+    };
+    socket.on("training_reset", handleTrainingReset);
+
     const handleGyojiCall = (call) => {
       setGyojiCall(call);
-      // Hard guarantee the bout card and HANDS DOWN never share the
-      // screen: whatever the ceremony timings drift to, the card is gone
-      // the moment the Gyoji speaks.
-      setBoutCard(null);
 
       const tid = setTimeout(() => {
         setGyojiCall(null);
@@ -5481,19 +5527,6 @@ const GameFighter = ({
       pendingSocketTimeouts.current.push(tid);
     };
     socket.on("gyoji_call", handleGyojiCall);
-
-    /* Bout card — "ROUND 2" / "FINAL ROUND". Server fires it at salt
-       start on versus bouts so it clears before HANDS DOWN. Basho days
-       sit under the HUD clock instead. */
-    const handleBoutCard = (card) => {
-      if (!card || !card.label) return;
-      setBoutCard(card);
-      const tid = setTimeout(() => {
-        setBoutCard(null);
-      }, Math.round(DEFAULT_BOUTCARD_DURATION * 1000) + 50);
-      pendingSocketTimeouts.current.push(tid);
-    };
-    socket.on("bout_card", handleBoutCard);
 
     /* Only the integer second, and only when it changes — the server is
        the only clock, so there is nothing to count down locally. */
@@ -5505,6 +5538,7 @@ const GameFighter = ({
     /* Torinaoshi — the clock ran out on a dead heat. No winner, no fall
        awarded; the bout is simply fought again after the usual reset. */
     const handleBoutDraw = (data) => {
+      if (isTrainingMatchRef.current) return;
       setHanteiScores(data?.hanteiScores || null);
       setWinType("torinaoshi");
       setGameOver(true);
@@ -5574,6 +5608,7 @@ const GameFighter = ({
     socket.on("game_start", handleGameStart);
 
     const handleGameOver = (data) => {
+      if (isTrainingMatchRef.current) return;
       setGameOver(data.isGameOver);
       setWinner(data.winner);
       setWinType(data.winType || "ringOut");
@@ -5744,11 +5779,11 @@ const GameFighter = ({
       }
       socket.off("snowball_hit", handleSnowballHit);
       socket.off("gyoji_call", handleGyojiCall);
-      socket.off("bout_card", handleBoutCard);
       socket.off("bout_clock", handleBoutClock);
       socket.off("bout_draw", handleBoutDraw);
       socket.off("game_start", handleGameStart);
       socket.off("game_reset", handleGameReset);
+      socket.off("training_reset", handleTrainingReset);
       socket.off("game_over", handleGameOver);
       socket.off("match_over", handleMatchOver);
       socket.off("power_ups_revealed", handlePowerUpsRevealed);
@@ -5784,7 +5819,10 @@ const GameFighter = ({
   useEffect(() => {
     if (!ownsMatchMusic) return;
 
-    if (!opponentDisconnected && !matchEndingRef.current) {
+    if (isTrainingMatch) {
+      stopEeshi();
+      startBattleMusic();
+    } else if (!opponentDisconnected && !matchEndingRef.current) {
       startEeshi(false);
     }
 
@@ -5792,7 +5830,7 @@ const GameFighter = ({
       stopEeshi();
       stopBattleMusic(true);
     };
-  }, [opponentDisconnected, ownsMatchMusic, startEeshi, stopEeshi, stopBattleMusic]);
+  }, [opponentDisconnected, ownsMatchMusic, isTrainingMatch, startEeshi, startBattleMusic, stopEeshi, stopBattleMusic]);
 
   // NOTE: game_start and game_over music handling is now consolidated into the main socket useEffect
   // to prevent duplicate listeners and cleanup race conditions
@@ -8338,9 +8376,12 @@ const GameFighter = ({
   let slapFrame = 2;
   if (inSlapPhaseAnim && slapAnimRef.current.startedAt) {
     const elapsed = computeAnimElapsed(slapAnimRef.current, performance.now());
+    const hitPoseEnd = displayPenguin.slideSlapArmed
+      ? SLAP_ANIM.SLIDE_HIT_END
+      : SLAP_ANIM.HIT_END;
     if (elapsed < SLAP_ANIM.WINDUP_END) slapFrame = 0; // windup (ready stance)
     else if (elapsed < SLAP_ANIM.HIT_POSE_START) slapFrame = 1; // smear
-    else if (elapsed < SLAP_ANIM.HIT_END) slapFrame = 2; // hit (strike, held)
+    else if (elapsed < hitPoseEnd) slapFrame = 2; // hit (strike, held)
     else slapFrame = 3; // recovery — settle back to the ready stance (not idle)
   }
   // Landed slap: hold the extended hit frame through hitstop even if the
@@ -8416,17 +8457,28 @@ const GameFighter = ({
   const whiffPredict = apWhiffPredictRef.current;
   if (serverRawParrySuccess || inRawParrySuccessAnim) {
     whiffPredict.until = 0;
+    whiffPredict.startedAt = 0;
     whiffPredict.sawServerWhiff = false;
   }
   const serverApWhiff =
     !!penguin.isApWhiffRecovering || !!penguin.isMatadorWhiffRecovering;
+  if (serverApWhiff && !whiffPredict.sawServerWhiff) {
+    if (!whiffPredict.startedAt || nowSuccessMs - whiffPredict.startedAt > 80) {
+      whiffPredict.startedAt = nowSuccessMs;
+    }
+  }
   if (serverApWhiff) whiffPredict.sawServerWhiff = true;
   else if (whiffPredict.sawServerWhiff) {
     whiffPredict.until = 0;
+    whiffPredict.startedAt = 0;
     whiffPredict.sawServerWhiff = false;
   }
-  const showApWhiff =
+  const whiffLive =
     serverApWhiff || nowSuccessMs < whiffPredict.until;
+  const showApWhiff =
+    whiffLive &&
+    whiffPredict.startedAt > 0 &&
+    nowSuccessMs - whiffPredict.startedAt < AP_WHIFF_POSE_MS;
 
   // Anchor the dash clock on the rising edge of the predicted dodge (same
   // render-anchored pattern as the palm-thrust/flap clocks). Driving the phase
@@ -8550,7 +8602,8 @@ const GameFighter = ({
     slideJumpFlapFrame,
     penguin.offensiveAerialReactionType || null,
     penguin.offensiveAerialPresentation || null,
-    !!penguin.isGrabPushDefeat
+    !!penguin.isGrabPushDefeat,
+    !!displayPenguin.slideSlapArmed
   );
   if (!penguin.isHit && !penguin.isHitFalling) {
     lastNonHitSpriteRef.current = rawSpriteSrc;
@@ -9051,6 +9104,8 @@ const GameFighter = ({
     $attackerRecoil: attackerRecoil,
     $isDead: penguin.isDead,
     $isSlapAttack: displayPenguin.isSlapAttack,
+    $slideSlapArmed: !!displayPenguin.slideSlapArmed,
+    $spriteBoxScale: poseResolved.displayScale || 1,
     // Limb-out z: smear/hit pose (not isAttacking — that's the hitbox and can
     // die while the arm is still painted). Simultaneous: first swing leads.
     $strikeExtendZ: strikeExtendZ,
@@ -9231,7 +9286,9 @@ const GameFighter = ({
 
             const hudProps = {
               secondsRemaining: boutSeconds,
-              subMarksVisible: !boutLive,
+              isTraining: isTrainingMatch,
+              showRoundMarks: !isTrainingMatch,
+              subMarksVisible: !boutLive && !isTrainingMatch,
               playerOneWinCount,
               playerTwoWinCount,
               roundHistory,
@@ -9314,6 +9371,7 @@ const GameFighter = ({
           tracks the Gyoji. HAKKI-YOI stays in #game-hud (screen space). */}
       {index === 0 &&
         gyojiCall &&
+        !isTrainingMatch &&
         document.getElementById("game-ceremony") &&
         createPortal(
           <SumoGameAnnouncement
@@ -9323,22 +9381,6 @@ const GameFighter = ({
           document.getElementById("game-ceremony")
         )}
 
-      {/* Bout card — screen space like HAKKI-YOI (not #game-ceremony), so
-          the camera's walk-up pan doesn't drag the title around. */}
-      {index === 0 &&
-        boutCard &&
-        !isBashoMatch &&
-        document.getElementById("game-hud") &&
-        createPortal(
-          <SumoGameAnnouncement
-            type="boutcard"
-            label={boutCard.label}
-            final={boutCard.final}
-            duration={DEFAULT_BOUTCARD_DURATION}
-          />,
-          document.getElementById("game-hud")
-        )}
-
       {/* Screen-space HUD: portalled outside the scene so it never zooms.
           NOTE: UiPlayerInfo → #game-hud-info (under actors). Side combat
           plaques → #game-hud-callouts (also under actors). Center callouts /
@@ -9346,7 +9388,7 @@ const GameFighter = ({
       {document.getElementById("game-hud") &&
         createPortal(
           <>
-            {index === 0 && hakkiyoi && (
+            {index === 0 && hakkiyoi && !isTrainingMatch && (
               <SumoGameAnnouncement
                 type="hakkiyoi"
                 duration={DEFAULT_HAKKIYOI_DURATION}
@@ -9371,7 +9413,7 @@ const GameFighter = ({
                 />
               );
             })()}
-            {index === 0 && showRoundResult && !matchOver && (
+            {index === 0 && showRoundResult && !matchOver && !isTrainingMatch && (
               <RoundResult
                 /* A torinaoshi has no winner, so `winner` is stale from
                    the previous bout — nobody gets the victory palette. */
@@ -9381,7 +9423,7 @@ const GameFighter = ({
                 winType={winType}
               />
             )}
-            {index === 0 && matchOver && !isBashoMatch && (
+            {index === 0 && matchOver && !isBashoMatch && !isTrainingMatch && (
               <MatchOver
                 winner={winner}
                 localId={localId}
@@ -9392,7 +9434,7 @@ const GameFighter = ({
           </>,
           document.getElementById("game-hud")
         )}
-      {warmupRoundResult && (
+      {warmupRoundResult && !isTrainingMatch && (
         <div
           aria-hidden="true"
           style={{
@@ -9471,6 +9513,7 @@ const GameFighter = ({
       )}
 
       {penguin.id === localId &&
+        !isTrainingMatch &&
         !hakkiyoi &&
         gyojiState === "idle" &&
         countdown > 0 && (
@@ -9921,6 +9964,7 @@ GameFighter.propTypes = {
   playerColor: PropTypes.string,
   playerBodyColor: PropTypes.string,
   isCPUMatch: PropTypes.bool,
+  isTrainingMatch: PropTypes.bool,
   isBashoMatch: PropTypes.bool,
   bashoPlayerRankLabel: PropTypes.string,
   bashoOpponentRankLabel: PropTypes.string,
@@ -9963,6 +10007,7 @@ export default React.memo(GameFighter, (prevProps, nextProps) => {
     // a measured ~70-90ms transition stall for zero visual change. Input gating
     // for selection lives in Game.jsx, not here.
     prevProps.isCPUMatch === nextProps.isCPUMatch &&
+    prevProps.isTrainingMatch === nextProps.isTrainingMatch &&
     prevProps.isBashoMatch === nextProps.isBashoMatch &&
     prevProps.bashoPlayerRankLabel === nextProps.bashoPlayerRankLabel &&
     prevProps.bashoOpponentRankLabel === nextProps.bashoOpponentRankLabel &&

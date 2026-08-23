@@ -34,12 +34,8 @@
 const BOUT_SECONDS = 30;
 
 /**
- * Bout card animation length. MUST match BOUT_CARD_SECONDS on the client.
- *
- * Versus always throws salt (1483ms) and then walks to the tachiai, so
- * the card can hold a real read — ~250ms in, ~1.1s held, ~450ms out —
- * and still be gone before HANDS DOWN. Basho days sit under the HUD
- * clock; this duration is versus-only.
+ * Bout card warmup / fallback length. Live versus cards ride the
+ * power-up reveal (2400ms hold + 320ms exit) on the client.
  */
 const BOUT_CARD_MS = 1800;
 
@@ -79,7 +75,7 @@ function ringFromBoundaries(left, right) {
 }
 
 /**
- * Text for the card that plays over the versus walk-up.
+ * Text for the card that plays with the versus power-up reveal.
  *
  * "FINAL ROUND" wins over the number in best-of-3 at one fall apiece,
  * because at that point what matters is that the next fall ends the

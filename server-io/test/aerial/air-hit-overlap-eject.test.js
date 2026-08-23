@@ -114,4 +114,20 @@ describe("air-hit overlap eject", () => {
     assert.equal(victim2.airHitEjectActive, false);
     clearAirHitOverlapEject(victim2);
   });
+
+  it("touchdown during hitstun keeps residual KB on the knockback channel", () => {
+    const attacker = fighter(500, GROUND_LEVEL);
+    const victim = fighter(508, GROUND_LEVEL + 16);
+    victim.knockbackVelocity.x = 2.1;
+    victim.isHit = true;
+    victim.isSlapKnockback = true;
+    beginAirHitFall(victim, { attacker });
+    finishAirHitFallLanding(victim);
+    assert.equal(victim.isHitFalling, false);
+    assert.ok(
+      Math.abs(victim.knockbackVelocity.x - 2.1) < 1e-6,
+      "must not hand off to movementVelocity while isHit (that channel is frozen)"
+    );
+    assert.equal(victim.isSlapKnockback, true, "rope clamp must still see slap KB");
+  });
 });

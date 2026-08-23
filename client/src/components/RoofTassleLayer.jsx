@@ -177,7 +177,7 @@ const RoofTassleLayer = () => {
 
   return (
     <>
-      <RoofPropsLayer aria-hidden="true">
+      <RoofPropsLayer className="roof-props-layer" aria-hidden="true">
         {backTassles.map(renderTassle)}
         {frontTassles.map(renderTassle)}
         <PropImg

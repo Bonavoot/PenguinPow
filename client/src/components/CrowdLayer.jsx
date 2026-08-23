@@ -643,11 +643,11 @@ const CrowdLayer = ({ crowdEvent = null, bashoRank = null }) => {
 
   return (
     <>
-      <CrowdContainer ref={containerRef}>
+      <CrowdContainer className="crowd-stand-host" ref={containerRef}>
         <CrowdStandCanvasEl ref={standCanvasRef} aria-hidden="true" />
       </CrowdContainer>
       {foregroundCrowd.length > 0 && (
-        <ForegroundCrowdContainer>
+        <ForegroundCrowdContainer className="crowd-fg-host">
           {foregroundCrowd.map((member) => {
             const crowdType = CROWD_TYPES[member.typeIndex];
             const needsFilter =

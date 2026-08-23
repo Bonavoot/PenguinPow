@@ -34,6 +34,7 @@ import slapAttack1Blur from "../assets/slap-attack-1-blur-frame.png";
 import slapAttack1Hit from "../assets/slap-attack-1-hit-frame.png";
 import slapAttack2Blur from "../assets/slap-attack-2-blur-frame.png";
 import slapAttack2Hit from "../assets/slap-attack-2-hit-frame.png";
+import bellyBump from "../assets/belly-bump.png";
 import palmThrust from "../assets/palm-thrust.png";
 import palmThrustStartup from "../assets/palm-thrust-startup.png";
 import palmThrustSmear from "../assets/palm-thrust-smear.png";
@@ -146,6 +147,9 @@ const battleMusicTracks = [battleMusic, battleMusic2, battleMusic3];
 // PRELOAD-ONLY IMPORTS (not exported — consumed internally by preloading)
 // ============================================
 import gameMapBackground from "../assets/game-map-444.webp";
+import antarcticaSky from "../assets/map-antarctica-sky.webp";
+import antarcticaFloor from "../assets/game-map-floor.png";
+import antarcticaWaterMask from "../assets/game-map-water-mask.png";
 // In-match dohyo is the flat display bake; style webp is editor-only (--live).
 import dohyoOverlay from "../assets/dohyo-display.webp";
 import gyojiImage from "../assets/gyoji.png";
@@ -299,6 +303,7 @@ const initializeImagePreloading = () => {
   preloadImage(slapAttack1Hit);
   preloadImage(slapAttack2Blur);
   preloadImage(slapAttack2Hit);
+  preloadImage(bellyBump);
   preloadImage(palmThrust);
   preloadImage(palmThrustStartup);
   preloadImage(palmThrustSmear);
@@ -328,6 +333,9 @@ const initializeImagePreloading = () => {
   ALL_BALD_BODY_SRCS.forEach((src) => preloadImage(src));
 
   preloadImage(gameMapBackground);
+  preloadImage(antarcticaSky);
+  preloadImage(antarcticaFloor);
+  preloadImage(antarcticaWaterMask);
   preloadImage(dohyoOverlay);
 
   preloadImage(powerWaterIcon);
@@ -489,6 +497,7 @@ export {
   slapAttack1Hit,
   slapAttack2Blur,
   slapAttack2Hit,
+  bellyBump,
   palmThrust,
   palmThrustStartup,
   palmThrustSmear,

@@ -42,6 +42,7 @@ const {
   grantedVelocityNow,
   isRidingHitSlide,
   creditGrantedVelocity,
+  clearGrantedVelocity,
   SLAP_STEP_IN_VELOCITY,
   transfer,
   profileFor,
@@ -114,18 +115,21 @@ const {
 } = require("./actionLifecycleOwnership");
 
 const { BOUT_SECONDS } = require("./boutClock");
+const { isTrainingRoom } = require("./trainingMode");
 const {
   GROUND_LEVEL,
   HITBOX_DISTANCE_VALUE,
   SLAP_ATTACK_STAMINA_COST,
   CHARGED_ATTACK_STAMINA_COST,
-  RAW_PARRY_STAMINA_COST, RAW_PARRY_COOLDOWN_MS,
+  RAW_PARRY_STAMINA_COST,
   CHARGE_FULL_POWER_MS,
   SLAP_STARTUP_MS,
   SLAP_ACTIVE_MS,
   SLAP_RECOVERY_MS,
   SLAP_TOTAL_MS,
   SLAP_TOTAL_MS_ENHANCED,
+  SLAP_TOTAL_MS_SLIDE,
+  SLIDE_SLAP_ARM_SPEED,
   CADENCE_WINDOW_MS,
   SLAP_WHIFF_EXTRA_RECOVERY_MS,
   K_SLAP_INHERIT,
@@ -412,6 +416,7 @@ function cleanupGrabStates(player, opponent) {
  * a bout should not lose time to frames nobody could act on.
  */
 function startBoutClock(room) {
+  if (isTrainingRoom(room)) return;
   room.boutEndsAtSim = simNow(room) + BOUT_SECONDS * 1000;
   // Seeded to BOUT_SECONDS: the caller emits that alongside game_start.
   // The next tick uses floor(msLeft/1000), so within ~1 frame the display
@@ -431,6 +436,10 @@ function startBoutClock(room) {
  * already deletes winnerId/loserId, so leaving them unset is safe.
  */
 function handleBoutDraw(room, io, scores) {
+  if (isTrainingRoom(room)) {
+    room.trainingResetPending = true;
+    return;
+  }
   if (room.gameOver) return;
   room.gameOver = true;
   room.players.forEach((p) => {
@@ -450,6 +459,11 @@ function handleBoutDraw(room, io, scores) {
  *   them over the wrestlers' heads without recomputing the decision.
  */
 function handleWinCondition(room, loser, winner, io, winType, extra) {
+  // Training has no fall / banner / rematch — snap back to ready marks.
+  if (isTrainingRoom(room)) {
+    room.trainingResetPending = true;
+    return;
+  }
   if (room.gameOver) return; // Prevent multiple win declarations
 
   room.gameOver = true;
@@ -943,6 +957,11 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
     return;
   }
 
+  // Re-evaluated every swing. A buffered follow-up after a slide convert
+  // must not inherit the previous swing's arm — that follow-up is a mash
+  // slap into the space the convert just opened.
+  player.slideSlapArmed = false;
+
   // MASTERY Phase 0 telemetry — snapshot entry velocity BEFORE the slide
   // overwrite below (velocity-at-press for the momentum-curve histogram).
   const slapEntryVelocity = player.movementVelocity;
@@ -1028,6 +1047,14 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
       } else {
         player.slapEntryAligned = 0;
       }
+
+      // Slide-armed slap: committed ice slide + real speed, not "Shift is down."
+      // A planted reverse-dig stance (near-zero slide) stays a normal slap.
+      const slideSlapEarned = MASTERY_P1_MOMENTUM
+        ? player.slapEntryAligned
+        : Math.max(0, alignedEntryVelocity(slapEntryVelocity, slideDirection));
+      player.slideSlapArmed =
+        !!player.isIceSliding && slideSlapEarned >= SLIDE_SLAP_ARM_SPEED;
 
       if (player.activePowerUp === "power") {
         slapSlideVelocity *= player.powerUpMultiplier - 0.1;
@@ -1121,7 +1148,15 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
   // from the attacker's remaining cycle (attackCooldownUntil), which is set from
   // totalCycleDuration below — both players just become actionable sooner.
   const attackDuration = SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
-  const totalCycleDuration = isEnhancedSlap ? SLAP_TOTAL_MS_ENHANCED : SLAP_TOTAL_MS;
+  // Slide convert uses a longer recovery tail so a mashed follow-up comes
+  // out after the victim has already opened daylight. Startup + active stay
+  // byte-identical to a pocket slap. Cadence-enhanced follow-ups are never
+  // slide-armed (ice slide is already cleared), so these do not stack.
+  const totalCycleDuration = player.slideSlapArmed
+    ? SLAP_TOTAL_MS_SLIDE
+    : isEnhancedSlap
+      ? SLAP_TOTAL_MS_ENHANCED
+      : SLAP_TOTAL_MS;
 
   player.isSlapAttack = true;
   player.isPalmThrust = false; // A slap is never a palm — clear any lingering hold flag
@@ -1199,10 +1234,21 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
           slapLifecycleId
         );
       }
+      // Snapshot before flags clear — a connected convert can flow into a
+      // buffered dodge. Held SHIFT from the ice slide must NOT count; only a
+      // rising-edge tap queued mid-plant (see socketHandlers).
+      const slideConvertHit =
+        !!player.slideSlapArmed && !!player.currentSlapHitConnected;
+
       player.isAttacking = false;
       player.isSlapAttack = false;
       player.attackType = null;
       player.isSlapSliding = false;
+      player.slideSlapArmed = false;
+      if (slideConvertHit) {
+        player.movementVelocity = 0;
+        clearGrantedVelocity(player);
+      }
       if (isActionFacingOwnershipV2Enabled()) {
         releaseActionFacingLock(player, {
           expectedInstanceId: player.slapFacingInstanceId,
@@ -1238,6 +1284,34 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
         player.pendingGrabPressTime = 0;
         executePalmThrust(player, rooms);
         return;
+      }
+
+      // Connected slide convert → buffered dodge. The plant stays committed
+      // (no mid-pose cancel); the tap comes out the first free frame so the
+      // convert → hop → slide loop is fluid. Beats a mashed slap / grab so
+      // Mouse1 spam cannot eat the reset.
+      if (slideConvertHit && isPlayerValid()) {
+        const nowSim = simNowForPlayer(player);
+        const queuedDash =
+          player.bufferedAction &&
+          player.bufferedAction.type === "dash" &&
+          player.bufferExpiryTime &&
+          nowSim < player.bufferExpiryTime;
+        if (queuedDash && canPlayerDash(player)) {
+          const direction = player.bufferedAction.direction;
+          player.bufferedAction = null;
+          player.bufferExpiryTime = 0;
+          player.pendingSlapCount = 0;
+          player.pendingGrab = false;
+          player.pendingGrabPressTime = 0;
+          player.pendingPalmThrust = false;
+          if (player.isGassed) {
+            emitStaminaBlocked(player, "dodge");
+          } else {
+            beginPlayerDodge(player, { direction, nowSim });
+          }
+          return;
+        }
       }
 
       // M2 pressed mid-slap → grab at cycle end. Queued as pendingGrab because a
@@ -1792,6 +1866,13 @@ function calculateEffectiveHitboxSize(player) {
 }
 
 function handleReadyPositions(room, player1, player2, io) {
+  if (isTrainingRoom(room)) {
+    player1.isReady = false;
+    player2.isReady = false;
+    player1.canMoveToReady = false;
+    player2.canMoveToReady = false;
+    return;
+  }
   if (room.gameStart === false && room.hakkiyoiCount === 0) {
     // Only adjust player 1's ready position based on size power-up
     const player1ReadyX = 543; // Removed SIZE power-up condition

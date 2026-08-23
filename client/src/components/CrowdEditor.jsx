@@ -1,7 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import styled from "styled-components";
-import gameMapBg from "../assets/game-map-444.webp";
 import dohyoStyleBg from "../assets/dohyo-style.webp";
 import {
   TASSLE_STORAGE_KEY,
@@ -28,6 +27,12 @@ import DOHYO_OVERLAY, {
   applyDohyoOverlayVars,
 } from "./dohyoOverlayData";
 import { EDITOR_CAMERA_PRESETS } from "../hooks/useCamera";
+import {
+  isAntarcticaMap,
+  setAntarcticaMap,
+  subscribeAntarcticaMap,
+} from "../utils/antarcticaMap";
+import { acquireCursor, releaseCursor } from "../ui/cursorGate";
 
 const CROWD_STORAGE_KEY = "penguin-pow-crowd-positions";
 const EDITOR_TAB_CROWD = "crowd";
@@ -283,6 +288,8 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
   // Match live useCamera framing so edits preview as in-game (default = ready stance)
   const [dohyoCameraPreset, setDohyoCameraPreset] = useState("ready");
   const dohyoCameraPresetRef = useRef(dohyoCameraPreset);
+  // Cosmetic map only — same dohyo/crowd drafts on stadium or Antarctica
+  const [antarcticaMap, setAntarcticaMapState] = useState(isAntarcticaMap);
   // { kind: 'crowd'|'tassle'|'apron'|'dohyo', id? }
   const [selection, setSelection] = useState(null);
   // Hold Alt to click through the apron onto tassles underneath
@@ -324,6 +331,8 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
   useEffect(() => {
     dohyoCameraPresetRef.current = dohyoCameraPreset;
   }, [dohyoCameraPreset]);
+
+  useEffect(() => subscribeAntarcticaMap(setAntarcticaMapState), []);
 
   // Fit the 1280×720 stage into the preview viewport (like --app-zoom in-game).
   // perspective() is absolute CSS px — without a fixed stage it foreshortens
@@ -426,6 +435,12 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  // Fight hides the cursor — bring it back for dragging / sliders / export.
+  useEffect(() => {
+    acquireCursor("crowd-editor");
+    return () => releaseCursor("crowd-editor");
   }, []);
 
   // Weighted random type selection (matches addMember logic)
@@ -1054,7 +1069,8 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
             transformOrigin: "top left",
           }}
         >
-        {/* Scene layer — same transform as .game-scene (scale + Y bias). */}
+        {/* Scene layer — same transform as .game-scene (scale + Y bias).
+            --cam-* lets Antarctica sky/mountain parallax match in-game. */}
         <div
           style={{
             position: "absolute",
@@ -1062,23 +1078,22 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
             transformOrigin: "center center",
             transform: `translate3d(${activeCam.x}%, ${activeCam.y}%, 0) scale(${activeCam.scale})`,
             willChange: "transform",
+            ["--cam-scale"]: String(activeCam.scale),
+            ["--cam-x"]: `${(activeCam.x / 100) * STAGE_W}px`,
+            ["--cam-y"]: `${(activeCam.y / 100) * STAGE_H}px`,
           }}
         >
-        {/* Map background */}
-        <div style={{
-          position: "absolute",
-          inset: 0,
-          backgroundImage: `url(${gameMapBg})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center -12%",
-          backgroundRepeat: "no-repeat",
-          pointerEvents: "none",
-        }} />
+        {/* Same .game-map stack as Game.jsx — stadium or Antarctica via html attr */}
+        <div className="game-map" aria-hidden="true">
+          <div className="game-map-ocean" />
+          <div className="game-map-snow" />
+          <div className="game-map-mountain" />
+        </div>
 
         {/* Game-accurate stack: map → stands crowd → dohyo → foreground crowd.
             (Old editor painted ALL crowd above the plate, so front-row overlap
             looked clear here but covered in-game.) */}
-        {(!isDohyoTab || showCrowdInDohyoTab) &&
+        {(!antarcticaMap && (!isDohyoTab || showCrowdInDohyoTab)) &&
           editorPositions
             .filter((m) => !m._hidden && m.customZIndex === undefined)
             .map((member) => {
@@ -1184,7 +1199,7 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
         />
 
         {/* Foreground crowd (customZIndex) — in front of dohyo + ice, like live z:4 */}
-        {(!isDohyoTab || showCrowdInDohyoTab) &&
+        {(!antarcticaMap && (!isDohyoTab || showCrowdInDohyoTab)) &&
           editorPositions
             .filter((m) => !m._hidden && m.customZIndex !== undefined)
             .map((member) => {
@@ -1510,6 +1525,26 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
           </button>
         </div>
 
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 12,
+            color: "#9ab",
+            fontSize: 11,
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={antarcticaMap}
+            onChange={(e) => setAntarcticaMap(e.target.checked)}
+          />
+          Antarctica map
+          <span style={{ color: "#555", fontSize: 9 }}>(cosmetic · Ctrl+Shift+A)</span>
+        </label>
+
         {isDohyoTab ? (
           <>
             <div style={{ color: "#6af", fontWeight: "bold", marginBottom: 4, fontSize: "13px", letterSpacing: "0.5px" }}>
@@ -1647,6 +1682,17 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
                   `  } catch { /* defaults */ }\n` +
                   `  return normalizeDohyo(DOHYO_OVERLAY);\n` +
                   `}\n\n` +
+                  `/** True when the crowd editor has a localStorage draft — in-game should use\n` +
+                  ` *  live CSS 3D (dohyo-style.webp) instead of the production bake. */\n` +
+                  `export function hasDohyoDraft() {\n` +
+                  `  try {\n` +
+                  `    const version = parseInt(localStorage.getItem(DOHYO_VERSION_KEY) || "0", 10);\n` +
+                  `    if (version < CURRENT_DOHYO_VERSION) return false;\n` +
+                  `    return Boolean(localStorage.getItem(DOHYO_STORAGE_KEY));\n` +
+                  `  } catch {\n` +
+                  `    return false;\n` +
+                  `  }\n` +
+                  `}\n\n` +
                   `export function applyDohyoOverlayVars(el, data) {\n` +
                   `  if (!el) return;\n` +
                   `  const d = normalizeDohyo(data);\n` +
@@ -1716,8 +1762,9 @@ const CrowdEditor = ({ positions, crowdTypes, onClose }) => {
             </button>
 
             <div style={{ marginTop: 8, color: "#664", fontSize: "9px", lineHeight: 1.4 }}>
-              In-game uses a baked plate. After export:{" "}
-              <span style={{ color: "#8af" }}>npm run bake:dohyo</span>
+              Drafts apply live in-game (no bake needed). For production:{" "}
+              <span style={{ color: "#8af" }}>EXPORT</span> → replace file →{" "}
+              <span style={{ color: "#8af" }}>npm run bake:dohyo</span> → RESET draft.
             </div>
 
             <div style={{ marginTop: 8, textAlign: "center", color: "#444", fontSize: "9px" }}>

@@ -16,10 +16,16 @@ const {
 } = require("./playerFactory");
 
 const { deriveBashoDraft, normalizeBashoDraftList } = require("./bashoDraft");
+const { describeBout } = require("./boutClock");
 const { deriveStatMods } = require("./bashoStatMods");
 const { clearInputCommandTrace } = require("./inputCommandTrace");
 const { clearInputCommandNotes } = require("./inputCommandRejection");
 const { clearDirectionTapState } = require("./inputCommandReliability");
+const {
+  isTrainingRoom,
+  armTrainingLive,
+  snapTrainingPositions,
+} = require("./trainingMode");
 
 const LOBBY_COLORS = [
   "#4169E1", "#4F4F4F", "#F0E4C4", "#DA1B44", "#E98520", "#E6BD37",
@@ -66,6 +72,7 @@ const PLAYER_2_READY_X = 735;
 // - Basho: first day of the series only. Later days already have the
 //   DayCard interstitial; DAY sits under the HUD clock instead.
 function shouldPlaySaltRitual(room) {
+  if (isTrainingRoom(room)) return false;
   if (room.matchMode === "basho") {
     return (room.bashoBout || 0) === 0;
   }
@@ -108,6 +115,14 @@ function handlePowerUpSelection(room, io) {
   room.powerUpSelectionPhase = true;
   room.playersSelectedPowerUps = {};
   room.playerAvailablePowerUps = {};
+
+  // Training stays live with no cards / salt / walk-up.
+  if (isTrainingRoom(room)) {
+    room.powerUpSelectionPhase = false;
+    room.players.forEach(snapTrainingPositions);
+    armTrainingLive(room);
+    return;
+  }
 
   // BASHO (§Phase 7 rework): the human drafts their power-up on the DAY card
   // BEFORE the bout (applied via basho_set_draft → applyBashoDraftToPlayer), so
@@ -322,7 +337,7 @@ function checkAndRevealPowerUps(room, io) {
       player.powerUpRevealed = true;
     });
 
-    io.in(room.id).emit("power_ups_revealed", {
+    const payload = {
       player1: {
         playerId: room.players[0].id,
         powerUpType: room.players[0].activePowerUp,
@@ -331,18 +346,30 @@ function checkAndRevealPowerUps(room, io) {
         playerId: room.players[1].id,
         powerUpType: room.players[1].activePowerUp,
       },
-    });
+    };
+    // Versus ROUND card rides this same beat — both picks are in, so
+    // the callout and the reveal cards appear together. Basho days
+    // sit under the HUD clock and do not get a card.
+    if (room.matchMode !== "basho") {
+      payload.boutCard = describeBout({
+        matchMode: room.matchMode,
+        winsP1: (room.players[0].wins || []).length,
+        winsP2: (room.players[1].wins || []).length,
+      });
+    }
+    io.in(room.id).emit("power_ups_revealed", payload);
   }
 }
 
 function resetRoomAndPlayers(room, io) {
-  room.gameStart = false;
+  const trainingLive = isTrainingRoom(room);
+
+  room.gameStart = trainingLive;
   room.gameOver = false;
-  room.hakkiyoiCount = 0;
+  room.hakkiyoiCount = trainingLive ? 1 : 0;
   room.gameOverTime = null;
-  // Bout clock is re-armed at the next HAKKI-YOI, and the versus card
-  // re-fires when salt starts. Both must clear here or the next bout
-  // inherits an already-expired deadline and ends instantly.
+  // Bout clock is re-armed at the next HAKKI-YOI. Clear the deadline
+  // here or the next bout inherits an already-expired clock.
   room.boutEndsAtSim = null;
   room.boutSecondsShown = null;
   room.boutCardSent = false;
@@ -585,7 +612,12 @@ function resetRoomAndPlayers(room, io) {
     player.staminaRegenAccum = 0;
     player.isBowing = false;
     player.isGrabPushDefeat = false;
-    player.x = player.fighter === "player 1" ? 440 : 840;
+    if (trainingLive) {
+      snapTrainingPositions(player);
+      player.wins = [];
+    } else {
+      player.x = player.fighter === "player 1" ? 440 : 840;
+    }
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
     player.activePowerUp = null;
@@ -613,6 +645,7 @@ function resetRoomAndPlayers(room, io) {
     player.pendingGrabPressTime = 0;
     player.slapAnimationToggle = 0;
     player.currentSlapHitConnected = false;
+    player.slideSlapArmed = false;
     player.slapOpenHitPending = false;
     player.isBurstKnockback = false;
     player.burstKnockbackStartTime = 0;
@@ -768,6 +801,12 @@ function resetRoomAndPlayers(room, io) {
     const opp =
       room.bashoOpponents && room.bashoOpponents[room.bashoBout || 0];
     if (cpu && opp) applyBashoOpponentProfile(cpu, opp);
+  }
+
+  if (trainingLive) {
+    armTrainingLive(room);
+    io.in(room.id).emit("training_reset");
+    return;
   }
 
   if (!room.isInitialRound) {

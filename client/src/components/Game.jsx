@@ -8,6 +8,7 @@ import CrowdLayer from "./CrowdLayer";
 import RoofTassleLayer from "./RoofTassleLayer";
 import SnowEffect from "./SnowEffect";
 import PreMatchScreen from "./PreMatchScreen";
+import TrainingPanel from "./TrainingPanel";
 import gamepadHandler from "../utils/gamepadHandler";
 import useCamera from "../hooks/useCamera";
 import { usePlayerColors } from "../context/PlayerColorContext";
@@ -139,6 +140,8 @@ const Game = ({
   localId,
   setCurrentPage,
   isCPUMatch = false,
+  isTrainingMatch = false,
+  onLeaveTraining = null,
   isBashoMatch = false,
   bashoBout = null,
   bashoBoutToken = 0,
@@ -166,7 +169,12 @@ const Game = ({
   const [crowdEvent, setCrowdEvent] = useState(null);
 
   // Pre-match screen state
-  const [showPreMatchScreen, setShowPreMatchScreen] = useState(true); // Start with overlay visible
+  const [showPreMatchScreen, setShowPreMatchScreen] = useState(
+    !isTrainingMatch
+  ); // Training starts already live — no pre-match card
+  const [trainingBehavior, setTrainingBehavior] = useState("standby");
+  const [trainingInfiniteResources, setTrainingInfiniteResources] =
+    useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isPreloading, setIsPreloading] = useState(true);
   // Tracks which bout the pre-match sequence has already run for. For a normal
@@ -206,18 +214,30 @@ const Game = ({
   localIdRef.current = localId;
   // Diagnostic mode label only — never branches combat/audio behavior.
   const modeLabelRef = useRef("custom_pvp");
-  modeLabelRef.current = isBashoMatch
-    ? "basho"
-    : isCPUMatch
-      ? "vs_cpu"
-      : "custom_pvp";
+  modeLabelRef.current = isTrainingMatch
+    ? "training"
+    : isBashoMatch
+      ? "basho"
+      : isCPUMatch
+        ? "vs_cpu"
+        : "custom_pvp";
+
+  const isTrainingMatchRef = useRef(isTrainingMatch);
+  isTrainingMatchRef.current = isTrainingMatch;
 
   // ============================================
   // GAME STATE TRACKING FOR PREDICTIONS
   // Track when game is active (after hakkiyoi) to prevent
   // predictions during power-up selection or before match starts
   // ============================================
-  const isGameActiveRef = useRef(false);
+  const isGameActiveRef = useRef(!!isTrainingMatch);
+
+  useLayoutEffect(() => {
+    if (!isTrainingMatch) return undefined;
+    isGameActiveRef.current = true;
+    setLocalGameActive(true);
+    return undefined;
+  }, [isTrainingMatch]);
 
   // ============================================
   // CLIENT-SIDE PREDICTION REF
@@ -238,7 +258,7 @@ const Game = ({
   const lastCinematicPunchRef = useRef(0);
   const perfectParryFlashTimeoutRef = useRef(null);
 
-  useCamera(containerRef, socket, showPreMatchScreen);
+  useCamera(containerRef, socket, showPreMatchScreen, isTrainingMatch);
 
   // Dohyo plate knobs (CSS vars) — baked defaults or editor draft in localStorage.
   // Live z-order unchanged; only --dohyo-* appearance updates.
@@ -629,6 +649,15 @@ const Game = ({
 
     const handleKeyDown = (e) => {
       const cp = currentPlayerRef.current;
+      const key = e.key.toLowerCase();
+      if (isTrainingMatchRef.current && key === "e") {
+        e.preventDefault();
+        if (!e.repeat && socket?.connected) {
+          socket.emit("request_training_reset");
+        }
+        return;
+      }
+
       // Block inputs during power-up selection
       if (isPowerUpSelectionActive) return;
 
@@ -645,7 +674,6 @@ const Game = ({
         return;
       }
 
-      const key = e.key.toLowerCase();
       if (Object.prototype.hasOwnProperty.call(keyState, key)) {
         // Prevent browser default behavior for game keys (especially CTRL which triggers selection)
         e.preventDefault();
@@ -735,6 +763,7 @@ const Game = ({
 
     const handleMouseDown = (e) => {
       const cp = currentPlayerRef.current;
+      if (e.target?.closest?.("[data-training-ui]")) return;
       // Block inputs during power-up selection
       if (isPowerUpSelectionActive) return;
 
@@ -910,6 +939,30 @@ const Game = ({
     const isLightReskin = isBashoMatch && token > 0; // only the opponent changed
     preMatchDoneRef.current = false;
     bashoBeginningRef.current = false;
+
+    if (isTrainingMatch) {
+      setShowPreMatchScreen(false);
+      isGameActiveRef.current = true;
+      setLocalGameActive(true);
+      const runTrainingPreload = async () => {
+        try {
+          await preloadSprites(
+            player1Color,
+            player2Color,
+            player1BodyColor,
+            player2BodyColor,
+            currentRoom?.players?.[0]?.gearIds || [],
+            []
+          );
+        } catch (error) {
+          console.error("Game: Training preload failed:", error);
+        }
+        preMatchDoneRef.current = true;
+      };
+      runTrainingPreload();
+      return;
+    }
+
     setShowPreMatchScreen(true);
 
     const runPreload = async () => {
@@ -963,6 +1016,7 @@ const Game = ({
   }, [
     bashoBoutToken,
     isBashoMatch,
+    isTrainingMatch,
     beginBashoBout,
     preloadSprites,
     loadGyojiOutfit,
@@ -993,11 +1047,34 @@ const Game = ({
       setOpponentDisconnected(false);
       setDisconnectedRoomId(null);
       setCrowdEvent({ type: "reset", timestamp: Date.now() });
+      if (isTrainingMatchRef.current) {
+        isGameActiveRef.current = true;
+        setLocalGameActive(true);
+        return;
+      }
       isGameActiveRef.current = false;
       setLocalGameActive(false);
     };
 
+    const handleTrainingReset = () => {
+      setCrowdEvent({ type: "reset", timestamp: Date.now() });
+      isGameActiveRef.current = true;
+      setLocalGameActive(true);
+    };
+
+    const handleTrainingBehavior = (data) => {
+      if (data?.behavior) setTrainingBehavior(data.behavior);
+    };
+
+    const handleTrainingSettings = (data) => {
+      if (data?.behavior) setTrainingBehavior(data.behavior);
+      if (typeof data?.infiniteResources === "boolean") {
+        setTrainingInfiniteResources(data.infiniteResources);
+      }
+    };
+
     const handleGameOver = () => {
+      if (isTrainingMatchRef.current) return;
       requestAnimationFrame(() => {
         setCrowdEvent({
           type: "cheer",
@@ -1087,6 +1164,7 @@ const Game = ({
     // per-frame offscreen re-raster of the heavy zooming layers for the whole
     // ~710ms hitstop = the cinematic freeze. The opacity-only overlay is free.
     const handleCinematicKill = (data) => {
+      if (isTrainingMatchRef.current) return;
       const el = containerRef.current;
       if (!el) return;
       lastCinematicPunchRef.current = Date.now();
@@ -1104,6 +1182,7 @@ const Game = ({
     // A cinematic kill emits its own ring_out ~1–2s later as the victim flies
     // out; the timestamp guard swallows that one.
     const handleRingOut = () => {
+      if (isTrainingMatchRef.current) return;
       const el = containerRef.current;
       if (!el) return;
       if (el.classList.contains("ko-grade-punch")) return;
@@ -1118,6 +1197,9 @@ const Game = ({
 
     socket.on("opponent_disconnected", handleOpponentDisconnected);
     socket.on("game_reset", handleGameReset);
+    socket.on("training_reset", handleTrainingReset);
+    socket.on("training_behavior", handleTrainingBehavior);
+    socket.on("training_settings", handleTrainingSettings);
     socket.on("game_over", handleGameOver);
     socket.on("game_start", handleGameStart);
     socket.on("power_ups_revealed", handlePowerUpsRevealedRewarm);
@@ -1129,6 +1211,9 @@ const Game = ({
     return () => {
       socket.off("opponent_disconnected", handleOpponentDisconnected);
       socket.off("game_reset", handleGameReset);
+      socket.off("training_reset", handleTrainingReset);
+      socket.off("training_behavior", handleTrainingBehavior);
+      socket.off("training_settings", handleTrainingSettings);
       socket.off("game_over", handleGameOver);
       socket.off("game_start", handleGameStart);
       socket.off("power_ups_revealed", handlePowerUpsRevealedRewarm);
@@ -1153,10 +1238,11 @@ const Game = ({
   useEffect(() => {
     if (currentRoom) return undefined;
     const t = setTimeout(() => {
-      setCurrentPage("mainMenu");
+      if (isTrainingMatch && onLeaveTraining) onLeaveTraining();
+      else setCurrentPage("mainMenu");
     }, 1200);
     return () => clearTimeout(t);
-  }, [currentRoom, setCurrentPage]);
+  }, [currentRoom, setCurrentPage, isTrainingMatch, onLeaveTraining]);
 
   if (!currentRoom) {
     return null;
@@ -1166,6 +1252,16 @@ const Game = ({
     <div className="game-wrapper">
       <FontWarmup />
       <div ref={containerRef} className="game-container">
+        {/* Far field — sky lags; floor plate (ice + water + mountains) uses
+            the fight cam. Sibling of .game-scene, not inside it. */}
+        <div className="game-parallax" aria-hidden="true">
+          <div className="game-parallax-sky"></div>
+          <div className="game-parallax-floor">
+            <div className="game-parallax-floor-art">
+              <div className="game-parallax-water" aria-hidden="true"></div>
+            </div>
+          </div>
+        </div>
         {/* Scene — everything inside moves together when the camera pans/zooms */}
         <div className="game-scene">
           <div className="game-map"></div>
@@ -1216,6 +1312,11 @@ const Game = ({
         {/* Screen-space film grain — sits on .game-container (NOT the scene)
             so it's fixed to the lens and never scales/pans with the camera. */}
         <div className="film-grain" aria-hidden="true"></div>
+        <div
+          className="antarctica-map-hint"
+          data-on="Antarctica · Ctrl+Shift+A to stadium"
+          data-off="Stadium · Ctrl+Shift+A to Antarctica"
+        ></div>
         {/* Cinematic-kill dim — the "dark background" beat. Screen-fixed (not
             camera-transformed) and driven purely by opacity via the
             `.ko-grade-punch` class on .game-container, so it composites for
@@ -1288,6 +1389,7 @@ const Game = ({
                         i === 0 ? player1BodyColor : player2BodyColor
                       }
                       isCPUMatch={isCPUMatch}
+                      isTrainingMatch={isTrainingMatch}
                       isBashoMatch={isBashoMatch}
                       bashoPlayerRankLabel={
                         isBashoMatch ? bashoBout?.playerRankLabel : undefined
@@ -1330,12 +1432,36 @@ const Game = ({
           id="game-hud"
           className={`game-hud${showPreMatchScreen ? " is-prematch-hidden" : ""}`}
         ></div>
-        <PowerUpSelection
-          roomId={roomName}
-          playerId={localId}
-          onSelectionStateChange={setIsPowerUpSelectionActive}
-        />
-        <PowerUpReveal roomId={roomName} localId={localId} />
+        {!isTrainingMatch && (
+          <PowerUpSelection
+            roomId={roomName}
+            playerId={localId}
+            onSelectionStateChange={setIsPowerUpSelectionActive}
+          />
+        )}
+        {!isTrainingMatch && (
+          <PowerUpReveal roomId={roomName} localId={localId} />
+        )}
+        {isTrainingMatch && (
+          <TrainingPanel
+            behavior={trainingBehavior}
+            infiniteResources={trainingInfiniteResources}
+            onSelect={(next) => {
+              setTrainingBehavior(next);
+              socket.emit("set_training_behavior", { behavior: next });
+            }}
+            onToggleResources={(next) => {
+              setTrainingInfiniteResources(next);
+              socket.emit("set_training_resources", {
+                infiniteResources: next,
+              });
+            }}
+            onReset={() => {
+              if (socket?.connected) socket.emit("request_training_reset");
+            }}
+            onExit={onLeaveTraining || (() => setCurrentPage("mainMenu"))}
+          />
+        )}
         {showPreMatchScreen && currentRoom && (
           <PreMatchScreen
             player1Name={currentRoom.players[0]?.fighter || "Player 1"}
@@ -1415,6 +1541,8 @@ Game.propTypes = {
   localId: PropTypes.string.isRequired,
   setCurrentPage: PropTypes.func.isRequired,
   isCPUMatch: PropTypes.bool,
+  isTrainingMatch: PropTypes.bool,
+  onLeaveTraining: PropTypes.func,
   isBashoMatch: PropTypes.bool,
   bashoBout: PropTypes.object,
   bashoBoutToken: PropTypes.number,

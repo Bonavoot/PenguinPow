@@ -294,12 +294,14 @@ function armDefenderParry(defender, now, mode = "regular") {
   defender.isGuarding = mode === "guard";
   defender.rawParryStartTime =
     mode === "perfect" ? now : now - (PERFECT_PARRY_WINDOW + 1);
+  defender.apArmSimTime = defender.rawParryStartTime;
   defender.apActiveUntil = now + AP_ACTIVE_MS;
   defender.spaceJustPressed = false;
   defender.apSpaceConsumed = true;
   if (mode === "guard") {
     // Guard floor: isRawParrying + isGuarding; perfect window closed.
     defender.rawParryStartTime = now - (PERFECT_PARRY_WINDOW + 1);
+    defender.apArmSimTime = defender.rawParryStartTime;
   }
 }
 

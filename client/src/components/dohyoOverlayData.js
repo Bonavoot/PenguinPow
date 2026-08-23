@@ -66,6 +66,18 @@ export function loadDohyoOverlay() {
   return normalizeDohyo(DOHYO_OVERLAY);
 }
 
+/** True when the crowd editor has a localStorage draft — in-game should use
+ *  live CSS 3D (dohyo-style.webp) instead of the production bake. */
+export function hasDohyoDraft() {
+  try {
+    const version = parseInt(localStorage.getItem(DOHYO_VERSION_KEY) || "0", 10);
+    if (version < CURRENT_DOHYO_VERSION) return false;
+    return Boolean(localStorage.getItem(DOHYO_STORAGE_KEY));
+  } catch {
+    return false;
+  }
+}
+
 export function applyDohyoOverlayVars(el, data) {
   if (!el) return;
   const d = normalizeDohyo(data);

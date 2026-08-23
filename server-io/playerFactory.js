@@ -299,6 +299,7 @@ function createInitialPlayerState(overrides = {}) {
     isRawParrying: false,
     isGuarding: false,         // holding Space as the block floor (no live parry window)
     rawParryStartTime: 0,
+    apArmSimTime: 0,         // sim tick the tap was applied (just/Perfect grade)
     rawParryPressGameTime: 0,
     apActiveUntil: 0,          // Sim time the PARRY window closes (→ guard if held, whiff if released cold)
     apFlowUntil: 0,            // DEPRECATED (Deflect Flow removed) — kept zeroed so lingering reads don't throw
@@ -314,7 +315,7 @@ function createInitialPlayerState(overrides = {}) {
     isApPostParryLocked: false,
     apPostParryLockUntil: 0,
     // Legacy raw-parry fields kept so lingering references don't throw; unused by AP.
-    rawParryMinDurationMet: false,
+    rawParryMinDurationMet: false, // unused — live jail is isApWhiffRecovering
     rawParryCooldownUntil: 0,
     rawParryRearmUntil: 0,
     isRawParryStun: false,
@@ -485,6 +486,9 @@ function createInitialPlayerState(overrides = {}) {
     // MASTERY Phase 1: max(0, aligned entry velocity) at slap press — drives the
     // on-hit ground-transfer inheritance in processHit (gated by MASTERY_P1_MOMENTUM).
     slapEntryAligned: 0,
+    // Ice-slide Mouse1 convert. Armed at press (isIceSliding + earned speed);
+    // on hit the attacker crawls forward and the victim takes the send (no chase).
+    slideSlapArmed: false,
 
     // === Command grab ===
     // Variant selection: stamped at the M2 edge, revisable until the grab goes

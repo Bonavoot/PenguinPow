@@ -4,6 +4,7 @@ import styled, { keyframes, css } from "styled-components";
 import PropTypes from "prop-types";
 import { SocketContext } from "../SocketContext";
 import { C, FONT_DISPLAY, FONT_UI, FONT_WEIGHT, TRACK } from "./menuTheme";
+import SumoGameAnnouncement from "./SumoGameAnnouncement";
 import {
   HYPE_RAIL_TOP,
   HYPE_RAIL_TOP_MOBILE,
@@ -77,7 +78,8 @@ import shatterPalmIcon from "../assets/shatter-palm-icon.png";
  *   wrestler entrance), opponent cluster from the RIGHT (east-
  *   side). Pure translateX + opacity, no rotation, no
  *   overshoot. After ~2.4s both fade up off-screen as a single
- *   beat.
+ *   beat. The versus ROUND callout mounts and exits on this
+ *   same clock.
  *
  * COLOR BUDGET:
  *   Cream washi cardstock + sumi ink (borders, name text, tab
@@ -394,6 +396,9 @@ const PlayerTab = styled.span`
 // COMPONENT
 // ============================================
 
+const REVEAL_HOLD_MS = 2400;
+const REVEAL_EXIT_MS = 320;
+
 const PowerUpReveal = ({ roomId, localId }) => {
   const { socket } = useContext(SocketContext);
   const [isVisible, setIsVisible] = useState(false);
@@ -416,9 +421,11 @@ const PowerUpReveal = ({ roomId, localId }) => {
 
   useEffect(() => {
     const handlePowerUpsRevealed = (data) => {
+      if (!data?.player1 || !data?.player2) return;
       setRevealData({
         player1: data.player1,
         player2: data.player2,
+        boutCard: data.boutCard || null,
       });
       setIsVisible(true);
       setIsExiting(false);
@@ -429,11 +436,11 @@ const PowerUpReveal = ({ roomId, localId }) => {
       revealTimeoutsRef.current.push(
         setTimeout(() => {
           setIsExiting(true);
-        }, 2400),
+        }, REVEAL_HOLD_MS),
         setTimeout(() => {
           setIsVisible(false);
           setRevealData(null);
-        }, 2760)
+        }, REVEAL_HOLD_MS + REVEAL_EXIT_MS)
       );
     };
 
@@ -467,31 +474,41 @@ const PowerUpReveal = ({ roomId, localId }) => {
   const p2Info = powerUpInfo[revealData.player2.powerUpType];
 
   return createPortal(
-    <RevealOverlay>
-      <Cluster $isLeft={true} $isExiting={isExiting}>
-        <RevealCard>
-          <PlayerTab $onLeft={true} $isLocal={isLocalP1}>
-            {isLocalP1 ? "You" : "Opp"}
-          </PlayerTab>
-          <CardArt $type={revealData.player1.powerUpType}>
-            <CardIcon src={p1Info?.icon} alt={p1Info?.name} />
-          </CardArt>
-          <CardName>{p1Info?.name}</CardName>
-        </RevealCard>
-      </Cluster>
+    <>
+      {revealData.boutCard?.label && (
+        <SumoGameAnnouncement
+          type="boutcard"
+          label={revealData.boutCard.label}
+          final={!!revealData.boutCard.final}
+          exiting={isExiting}
+        />
+      )}
+      <RevealOverlay>
+        <Cluster $isLeft={true} $isExiting={isExiting}>
+          <RevealCard>
+            <PlayerTab $onLeft={true} $isLocal={isLocalP1}>
+              {isLocalP1 ? "You" : "Opp"}
+            </PlayerTab>
+            <CardArt $type={revealData.player1.powerUpType}>
+              <CardIcon src={p1Info?.icon} alt={p1Info?.name} />
+            </CardArt>
+            <CardName>{p1Info?.name}</CardName>
+          </RevealCard>
+        </Cluster>
 
-      <Cluster $isLeft={false} $isExiting={isExiting}>
-        <RevealCard>
-          <PlayerTab $onLeft={false} $isLocal={!isLocalP1}>
-            {!isLocalP1 ? "You" : "Opp"}
-          </PlayerTab>
-          <CardArt $type={revealData.player2.powerUpType}>
-            <CardIcon src={p2Info?.icon} alt={p2Info?.name} />
-          </CardArt>
-          <CardName>{p2Info?.name}</CardName>
-        </RevealCard>
-      </Cluster>
-    </RevealOverlay>,
+        <Cluster $isLeft={false} $isExiting={isExiting}>
+          <RevealCard>
+            <PlayerTab $onLeft={false} $isLocal={!isLocalP1}>
+              {!isLocalP1 ? "You" : "Opp"}
+            </PlayerTab>
+            <CardArt $type={revealData.player2.powerUpType}>
+              <CardIcon src={p2Info?.icon} alt={p2Info?.name} />
+            </CardArt>
+            <CardName>{p2Info?.name}</CardName>
+          </RevealCard>
+        </Cluster>
+      </RevealOverlay>
+    </>,
     hudEl
   );
 };

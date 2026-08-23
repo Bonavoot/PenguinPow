@@ -2,7 +2,7 @@ const {
   GROUND_LEVEL, DOHYO_FALL_DEPTH, DOHYO_FALL_SPEED,
   speedFactor,
   POWER_UP_TYPES,
-  PERFECT_PARRY_WINDOW, PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK,
+  PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK,
   RAW_PARRY_STAMINA_REFUND, PARRY_SUCCESS_DURATION,
   SIDESTEP_HIT_RETURN_BASE_MS,
   SIDESTEP_HIT_RETURN_MIN_MS,
@@ -31,6 +31,7 @@ const {
   hasHitAbsorption,
   consumeHitAbsorption,
   timeoutManager,
+  isAttackParryJust,
 } = require("./gameUtils");
 const MomentumTransfer = require("./momentumTransfer");
 const {
@@ -389,8 +390,7 @@ function updateProjectiles(room, io, delta) {
 
           // Check if this is a perfect parry (within 100ms of parry start)
           const currentTime = simNow(room);
-          const parryDuration = currentTime - opponent.rawParryStartTime;
-          const isPerfectParry = parryDuration <= PERFECT_PARRY_WINDOW;
+          const isPerfectParry = isAttackParryJust(opponent, currentTime);
           
           // Find the snowball thrower
           const thrower = room.players.find(p => p.id === player.id);
@@ -425,7 +425,6 @@ function updateProjectiles(room, io, delta) {
               opponent.inputLockUntil = Math.max(opponent.inputLockUntil || 0, simNow(room) + PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK);
             } else {
               opponent.isRawParrySuccess = true;
-              opponent.rawParryMinDurationMet = true;
             }
           }
           
@@ -803,7 +802,6 @@ function updateProjectiles(room, io, delta) {
           opponent.stamina = Math.min(100, opponent.stamina + RAW_PARRY_STAMINA_REFUND);
           // Trigger parry success animation and sound + allow early exit
           opponent.isRawParrySuccess = true;
-          opponent.rawParryMinDurationMet = true;
           // Consume any armed AP window so the state machine treats this as USED.
           opponent.apActiveUntil = 0;
           opponent.isApWhiffRecovering = false;
