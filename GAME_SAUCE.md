@@ -20,6 +20,8 @@ Smash's sauce is that sentence, told a hundred different ways. Real sumo's sauce
 
 You leaned into the ice. The ice writes displacement. **The next lean is cashing the ice.**
 
+**Correction after the follow-up:** do not cash it with Street Fighter plus frames. Pocket slap staying +0 is *correct for this sport*. Sumo advantage is position, not a stun timer. The hole is that position does not change what the buttons mean, and a kill grab is still the same neutral grab. See §10.
+
 ---
 
 ## 0. Three words people mash together
@@ -396,7 +398,7 @@ That is your current recap. It is not a content problem. It is a sentence-struct
 
 ---
 
-## 9. Closing
+## 9. Closing (v1)
 
 You asked what the real sauce of your game is.
 
@@ -407,3 +409,179 @@ It is not the penguin. It is not the particle. It is not "more attacks like Smas
 Feet, then body, then ring. Ice is the weather that makes the thefts huge. The win condition is the courtroom. The grab is supposed to be the handcuffs. Right now the weather is beautiful, the courtroom is real, and the handcuffs turn into a cutscene after a coin flip.
 
 You do not need a new game. You need to stop resetting the speaker every time someone says something true.
+
+---
+
+## 10. Follow-up: +0 is not the bug. The grab kill is.
+
+This section is the answer to the pushback, and it overrules the more Street-Fighter-brained lines in §§6–7.
+
+The pushback, in your words:
+
+> In sumo they can do whatever. There are no stuns. The reward is always positioning. Your turn isn't plus frames, it's where you are. Making slap not +0 feels weird too.
+>
+> I want more unsafe moves that lead to reads and reactions, not coin-flip punishes.
+>
+> The three grabs are unique, then the same grabs suddenly kill off balance. "Whoops, you got grabbed in neutral again but this time YOU LOSE." The buildup is technically there (posture from the same hits) but it doesn't *feel* like buildup. No escape once they connect. Grabs are already obnoxious to land on a masher. Parries feel out of place if the best grab confirm is perfect parry → stun → grab.
+
+All of that is right. The first draft named the hunger correctly (a successful play should change the conversation) and then offered the wrong dialect (plus frames) for a sumo game.
+
+### 10.1 Do not stun them. Change the menu.
+
+Real sumo does not freeze anyone. After a slap, both men can still move. The guy whose heels are on the tawara is not "minus twelve." He is in a *worse world*: no retreat, a miss is death, the other man's shove is now a force-out. Grapplearts / kimarite writing names the actual science: **kuzushi** — you break their balance *before* the throw. Uwatenage is not a coin flip that sometimes kills. It is the last page of a grip fight.
+
+Footsies people have been saying the same thing without clay. "Position is invisible advantage. The corner removes options." (2XKO / classic spacing writing.) You already believed this. The ice lean is this. Trust it.
+
+**The test is not "are they locked out?" The test is: after I move you, are your three buttons still the same quality as mine?**
+
+| After a mid-screen slap | After I put you on the line / on weather |
+|---|---|
+| Your grab is a real threat | Your grab is a suicide if it whiffs (no room, or you step out) |
+| Your parry is a check | Your empty parry is a funeral |
+| My slap is a conversation | My slap / drive is a kill threat (you already tax edge posture) |
+| We have the same triangle | The triangle *tilts* |
+
+If those two columns play the same, positioning is juice — pretty ice — not advantage. That is the actual hole. Not +0.
+
+Pocket mash staying +0 is the tachiai. Two men slapping in the middle, both free, both glued: that is sumo. **Leave it.** Slide-slap already breaks the rule on purpose (`SLIDE_SLAP_ADVANTAGE_MS` 50) because their feet left. That exception is the whole template:
+
+**Plus frames only when their feet are not theirs.** Not as a house style on every connect. Ice coast while you are planted *is* a stun that still looks like sumo. If they can full-power RPS while sliding, the ice is a particle.
+
+So: do not make slap +4. Make the *place you put them* mean something, and make *unplanted feet* mean something. Charged plant, slide convert, edge tax, limb snag, landing — those are already "their body isn't home." Lean there.
+
+### 10.2 The unsafe moves you actually want
+
+You do not want a combo game. You want a **whiff to be a crime the other person can see and take.**
+
+That is the opposite of the current triangle, where the punish is "I guessed the button that beats yours." Counter-grab and parry-on-startup are *guess punishes*. They can be correct yomi and still feel like luck, because the body never told the story first.
+
+Reaction / read punishes need a **picture**:
+
+- They threw a limb and it is still out (slap/palm recovery — Phase 4 hurt volumes exist)
+- They lunged and missed (charged, raw grab 450ms — already real)
+- They tapped Space at nothing (AP 300ms jail — already real)
+- They henka'd and failed the pass (sidestep recovery)
+- They landed from rope / slide
+
+Those are *reactable or at least readable commitments*. Grab should be the cash-in on **those**, not on "I picked grab this time."
+
+Against a masher, grab *should* be hard. Slap beats grab. That is the sport. The masher's answer is not "guess parry, then grab the stun." The masher's answer is **make the mash miss, then take the belt.** Walk out. Henka. Block-floor. Then the 450ms they paid is yours. If that cash-in is still a second coin flip, the unsafe move was for nothing — which is why it currently feels like there are no unsafe moves even when the recovery numbers exist.
+
+So the work is not "add plus frames to slap." The work is:
+
+1. A few more *loud* commitments (you may not even need new verbs — charged, grab, empty AP, sidestep, aerial landing are the cast). Make their recoveries un-RPS-able enough that a human can take the body.
+2. Stop the cash-in from being another triangle. Punish grab after a visible whiff should feel like *your* grab.
+
+That gives you the satisfying read without turning the mid-screen slap war into Street Fighter.
+
+### 10.3 Why the grab kill feels cheap (you named it)
+
+Source, not vibes:
+
+- Drive / Pull / Throw are picked at input (`commandGrabInput.js`).
+- After connect there is no Break, no Brace, no Open. The tell exists **for the audience**, not for the victim (`commandGrabSystem.js` header).
+- Throw / Pull become lethal when `balance < CLINCH_THROW_KILL_THRESHOLD` (15), snapshotted at connect. Drive does not — Drive KOs are stamina / gassed / rope.
+- Non-kill throw/pull already scale distance with posture (short toss at full composure, far toss near the line). Then they cross 15 and the *same input* is a round-ender.
+- `isPostureBroken` already exists (breaks < 35, recovers > 45) with a teeter overlay and a `posture_break` crack. It currently floors Drive carry speed. It does **not** change the grab into a different game.
+- Posture comes from the same slaps / palms / charged hits you were already eating (`BALANCE_*_HIT_DRAIN_P2`).
+
+Smash gets away with "same throw button, sometimes it kills" because the sentence changes:
+
+| Smash throw | Your grab |
+|---|---|
+| At 0% it is a *starter*. You still play (follow-up, they tech, they DI). | At 100 balance it is a tween that settles +0. The conversation dies. |
+| Percent has been a fuse the whole stock. The number is the story. | Posture is a fuse, but the grab at 16 and the grab at 14 are the same verb. The story is "whoops." |
+| High-% throw is a *picture* (they fly at the blast zone). | Kill throw is a longer tell + cinematic on the same input. |
+| They can still DI / survive / be edgeguarded. There is play after. | There is no play after connect. |
+| The grab often came from a punish (shield, whiff), not from mid-screen RPS. | The kill grab is allowed to be a mid-screen RPS that happens to occur when the bar is low. |
+
+Wrestling / judo / sumo agree with you: a pin or a kimarite that comes from nowhere is a botch. Kuzushi first. Grip first. Then the dump. WWE even keeps a kick-out on the pin so the finish is a *moment*, not a flag. You deleted the kick-out (grab break) and kept the sudden pin.
+
+**The buildup is a number. It needs to be a mode.**
+
+`isPostureBroken` was supposed to be that mode ("openable" in the comments). Right now it is a teeter and a longer Drive. The victim does not play differently. The grabber does not *do* a different thing. Then at 15 the same M2+W ends the round.
+
+That is why "I got slapped a bunch and then I got grabbed in neutral and died" feels off. You didn't enter Dump Territory. You were in Neutral the whole time, and Neutral grew a death flag.
+
+### 10.4 What to do with grabs (compass, still not a patch)
+
+Do not restore the whole old clinch. You killed Plant/Jolt/Brace/Open for a reason (prediction, honesty, it was a second video game).
+
+Do these three separations. They match the sport and your complaints.
+
+**A. Neutral grab is always a fight for space. It does not get to end the bout by itself.**
+
+Drive / Pull / Throw at high composure stay what they are: carry, side switch, toss. Unique. Good. They write position. That *is* the reward. A mid-screen grab that dumps someone who still has their feet is the cheap feeling. If you want a mid-screen throw KO, they should already be in the broken mode *and* fail a struggle — not silently cross 15.
+
+Practical shape: Throw/Pull only become lethal at the line, or only when `isPostureBroken` *and* a second beat fails, or only as an obvious finisher state. Drive already refuses to be a posture-kill. Believe Drive. It is the honest grab.
+
+**B. Broken posture is a different game, announced before the grab.**
+
+You already have the teeter, the crack, the hysteresis. Make it change the *menu*, not just the carry math:
+
+- Victim knows they can be dumped. They play scared (give ground, stop mashing grab, respect the belt).
+- Grabber's throw/pull *looks* like a finisher before it is one (pose, gyoji, crowd) — the kill tell is already longer (`CMD_GRAB_KILL_CONNECT_STARTUP_MS` 400/520 vs 200/280). Point that extra time at the *victim*, not only the camera.
+- Slaps in this mode are not "the same hits as before." They are the oshi cash-in (you already expand the kill band vs broken posture). Grab in this mode is the yotsu cash-in. Two different sports, same bar.
+
+If the player cannot tell "I am in danger of a kimarite" *before* M2 comes out, the bar is a lie.
+
+**C. Bring grab break back — on the tell, as stamina, not as Tekken 1+2.**
+
+Your instinct is the right minimum viable hold. Space is already the defensive button. Old cost was 30 stam — "a real escape, not a free reset." Keep that spirit.
+
+Use the window you already authored and then locked:
+
+- Drive (0ms tell): a shove. Either unbreakable, or a break that *still eats the carry* (you separate, you're still toward the rope). Breaking a shove should not teleport you to mid-screen.
+- Pull / Throw (200–280ms tell, 400–520ms on kill): Space = struggle. This is the human second. The tell stops being a cutscene and becomes a kick-out.
+- Kill versions: longer picture, *harder* escape (more stam than they have, or a single timed press, or fail if gassed / already broken). Do **not** make the longer kill tell an easier mash. That would invert the drama.
+- Vs mashers: break does not make grab free to attempt. Slap still beats grab on the way in. Break is only for after they *earned* the connect. A masher who never gets grabbed never presses it.
+
+That is not the old clinch. That is WWE kick-out / VF throw escape energy on one button you already have. It answers "there's no way to escape once it happened" without a second game.
+
+If break is too strong, grabs feel even worse to land. So the cost has to hurt, and a raw mid-screen grab that they break should still have *bought you something* (stam tax, they are still toward the rope, you are not −400 and dead). A broken grab that returns to identical neutral is why people stop grabbing.
+
+### 10.5 Parry is eating the grab's lunch
+
+If the most reliable grab is "perfect parry, then grab the stun," two systems get sick at once:
+
+- **Grab** becomes a confirm button, not a yotsu verb. Neutral grab stays a coin vs mash, so nobody believes in it.
+- **Parry** becomes a Street Fighter organ taped onto a sumo game. You can feel it. Sumo's answers to a slap are: slap back, henka, or take the belt first — not a sword clash.
+
+Perfect parry can stay a hero moment. It should not be the *job* that makes grab real.
+
+Job assignment:
+
+| Verb | Job |
+|---|---|
+| Slap / palm / charged | Write on the ice. Steal feet. Edge tax. |
+| Raw grab | The parry / turtle call. High risk. Pays in space, not in a silent round-end. |
+| Punish grab | Cash a *visible* whiff or unplanted feet. This is the read. |
+| Finish grab | Cash broken posture / the line / a failed break. This is the kimarite. |
+| Regular parry | Check a slap. You get space or their recovery — not a free belt by default. |
+| Perfect parry | The clip. Rare. Can give a real turn. Must not be the only turn. |
+| Henka / walk-out | How you beat a masher without guessing. |
+
+Once punish grab is real, parry can shrink back into a check and it will stop feeling like it doesn't belong. Right now it is doing two jobs and grab is doing zero.
+
+### 10.6 The updated sentence
+
+v1 said: steal feet, then body, then ring — and hinted that hits should pay in plus frames.
+
+v2: **steal place, then steal their feet, then take the belt, then they get one struggle, then the ring.**
+
+- Place = they are on the line, or on your weather. Both still free. The triangle has tilted. No stun. This is sumo.
+- Feet = a loud commitment missed, or ice they haven't reclaimed. Now the belt is yours to take. This is the read you want.
+- Belt = Drive/Pull/Throw as *space* if they are composed, as *kimarite* if they are broken and fail the struggle.
+- Struggle = grab break on the tell. Stamina. One button.
+- Ring = the name you already have.
+
++0 stays. Unsafe moves do the sauce work that plus frames would have faked. The grab kill stops being "neutral, but the bar said so."
+
+---
+
+## 11. Sources added in v2
+
+- Grapplearts, "Sumo Wrestling: Practical Techniques for the Martial Artist" — kuzushi (balance-breaking) before kimarite; you do not throw a man who still has his feet.
+- Kimarite catalogues (bashopicks, Fight Encyclopedia, Sumo Fan Magazine Issue 13) — uwatenage / yorikiri / morozashi as the end of a grip fight, not a random dump.
+- Footsies / spacing writing (2XKO guides, Kastle "uncertainty spacing," GBHBL on spacing) — position is invisible advantage; the corner changes the menu without a stun.
+- WWE 2K kick-out / reversal-stamina discourse — a finish with no struggle is a flag; a struggle with no cost becomes the whole game. You want the first half of that lesson, not the purple-bar overcorrection.
