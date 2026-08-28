@@ -116,7 +116,10 @@ function createInitialPlayerState(overrides = {}) {
     slideJumpDiveCommitted: false,
     slideJumpDiveBuffered: false, // early S latched until dive enable
     slideJumpDiveBufferUntil: 0, // wall-clock expiry for a buffered dive tap
-    slideJumpFastFalling: false, // mirrors flapFastFalling — dive latched for VFX
+    slideJumpDivePhase: null, // "pop" | "drop" — Honda rise/hang then plummet
+    slideJumpDivePopStartTime: 0,
+    slideJumpDivePopFromHeight: 0, // height at S; hang-in-place if already above cap
+    slideJumpFastFalling: false, // plummet VFX — drop phase only
     slideJumpDiveLockX: 0,
     slideJumpHitLanded: false,
     slideJumpHitRecoverDuration: 0,
@@ -325,8 +328,10 @@ function createInitialPlayerState(overrides = {}) {
     isPerfectRawParrySuccess: false,
 
     // === MATADOR (BACK+SPACE grab-parry) ===
-    // Timed tap-only read on the grab line. Separate from AP so grabs don't
-    // CLAMP a matador attempt (matador beats grabs → instant pull).
+    // Press-and-hold grab-line read (same input feel as AP). One outcome —
+    // hold past the 180ms arm window stays isMatadorParrying (never GUARD).
+    // Separate from AP so grabs don't CLAMP a matador attempt (beats grabs
+    // → instant pull). matadorActiveUntil = 0 while holding = hold floor.
     isMatadorParrying: false,
     isMatadorSuccess: false,
     matadorStartTime: 0,
@@ -467,7 +472,7 @@ function createInitialPlayerState(overrides = {}) {
     isGrabStartup: false,
     grabStartupStartTime: 0,
     grabStartupDuration: 0,
-    grabStartupArmorUsed: false,
+    grabActiveDuration: 0,
     grabStartTime: 0,
     grabbedOpponent: null,
     isGrabWalking: false,
@@ -479,10 +484,12 @@ function createInitialPlayerState(overrides = {}) {
     grabTechResidualVel: 0,
     grabMovementStartTime: 0,
     grabMovementDirection: 0,
+    grabFacingDirection: null,
     grabMovementVelocity: 0,
     lastGrabAttemptTime: 0,
     lastGrabStaminaDrainTime: 0,
     grabApproachSpeed: 0,
+    grabAttemptSpeed: 0,
     // MASTERY Phase 1: max(0, aligned entry velocity) at slap press — drives the
     // on-hit ground-transfer inheritance in processHit (gated by MASTERY_P1_MOMENTUM).
     slapEntryAligned: 0,

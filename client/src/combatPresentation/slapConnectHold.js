@@ -67,6 +67,13 @@ export const resolveSlapConnectHold = (hold, now, hitstopUntil) => {
   return false;
 };
 
+export const clearSlapConnectHold = (hold) => {
+  if (!hold) return;
+  hold.until = 0;
+  hold.pendingUntil = 0;
+  hold.hitId = null;
+};
+
 export const slapConnectHoldNeedsTick = (hold, now, showing) =>
   !!hold &&
   ((showing && now >= hold.until) ||

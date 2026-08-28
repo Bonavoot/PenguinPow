@@ -65,10 +65,17 @@ export const SPRITESHEET_CONFIG_BY_NAME = {
   grabAttempt: {
     spritesheet: grabAttemptSpritesheet,
     frameCount: 20,
-    frameWidth: 480,
-    frameHeight: 480,
+    frameWidth: 560,
+    frameHeight: 560,
     fps: 40,
-    loop: false,
+    loop: true,
+    // PLACEHOLDER ONLY — 480-authored grab-attempt art was padded into 560
+    // cells so the strip no longer shows the next frame. This CSS scale
+    // restores the penguin to its pre-pad on-screen size (the sheet itself
+    // stays 560). Display-only: grab latch is pushbox / getGrabConnectDistance,
+    // not the sprite box or GRAB_RANGE. Drop this when the real canvas ships
+    // or the animation will look oversized next to other poses.
+    displayScale: 560 / 480,
   },
   beingGrabbed: {
     spritesheet: isBeingGrabbedSpritesheet,

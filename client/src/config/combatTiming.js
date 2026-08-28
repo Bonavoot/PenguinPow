@@ -4,8 +4,8 @@
  */
 
 export const SLAP_STARTUP_MS = 55;
-export const SLAP_ACTIVE_MS = 130;
-export const SLAP_RECOVERY_MS = 75;
+export const SLAP_ACTIVE_MS = 47;
+export const SLAP_RECOVERY_MS = 158;
 export const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS;
 /** Ice-slide convert — MUST match server-io/constants.js SLAP_TOTAL_MS_SLIDE. */
 export const SLIDE_SLAP_EXTRA_RECOVERY_MS = 70;
@@ -14,7 +14,7 @@ export const SLAP_TOTAL_MS_SLIDE = SLAP_TOTAL_MS + SLIDE_SLAP_EXTRA_RECOVERY_MS;
 export const SLIDE_SLAP_ARM_SPEED = 1.45;
 
 /** Early-active slap grace — open hits deferred so a late tap can Regular. */
-export const AP_LATE_PARRY_MS = 45;
+export const AP_LATE_PARRY_MS = 16;
 
 /** Empty-tap AP whiff jail — MUST match server-io/constants.js. */
 export const AP_WHIFF_RECOVERY_MS = 300;
@@ -25,10 +25,10 @@ export const AP_WHIFF_RECOVERY_MS = 300;
  * on the strike frame — not the blur. (Holding smear through AP_LATE_PARRY_MS
  * made late parries look like they clanged the smear.)
  * Authored smear is 18→55 (WINDUP_END / SMEAR_END / HIT_POSE_START).
- * HIT_END is sprite hold only — the server hitbox still rides SLAP_ACTIVE_MS.
- * Tune HIT_POSE_HOLD_MS to change how long the extended-arm sprite is held.
+ * HIT_END matches the server hitbox (SLAP_ACTIVE_MS) so the extended-arm
+ * sprite does not outlive the jab. Recovery pose plays during SLAP_RECOVERY_MS.
  */
-export const HIT_POSE_HOLD_MS = 90;
+export const HIT_POSE_HOLD_MS = SLAP_ACTIVE_MS;
 /** Palm-out through the convert cycle (matches the shorter plant). */
 export const SLIDE_SLAP_HIT_POSE_HOLD_MS = SLAP_TOTAL_MS_SLIDE - SLAP_STARTUP_MS;
 export const SLAP_ANIM = {
@@ -41,17 +41,19 @@ export const SLAP_ANIM = {
 
 export const PALM_THRUST_STARTUP_MS = 90;
 export const PALM_THRUST_ACTIVE_MS = 90;
-export const PALM_THRUST_HOLD_MS = 260;
+export const PALM_THRUST_HOLD_MS = 380;
 export const PALM_THRUST_END_RECOVERY_MS = 60;
 
 /**
- * Palm pose director — short smear lead-in, early strike pose (pre-130 package).
- * Server hitbox is PALM_THRUST_STARTUP_MS (90); paint is intentionally snappier.
+ * Palm pose director — smear through startup so the strike pose lands with
+ * the server hitbox (medium/heavy telegraph), then holds through active +
+ * the committed pose (PALM_THRUST_HOLD_MS).
  */
 export const PALM_THRUST_ANIM = {
-  STARTUP_END: 20,
-  SMEAR_END: 40,
-  ACTIVE_END: 460,
+  STARTUP_END: 40,
+  SMEAR_END: PALM_THRUST_STARTUP_MS,
+  ACTIVE_END:
+    PALM_THRUST_STARTUP_MS + PALM_THRUST_ACTIVE_MS + PALM_THRUST_HOLD_MS,
 };
 
 /**
@@ -60,12 +62,12 @@ export const PALM_THRUST_ANIM = {
  * winner off with both hands. Server sets `isGrabSeparatePalm` — there is no
  * palm thrust move happening, so PALM_THRUST_ANIM's timings do not apply.
  *
- * The real thrust holds the strike pose for 460ms because a thrust is a long
- * commitment you need to read. Borrowing that here would spend the whole
- * separation on one frame — extend, hold, cut to idle — which is the static
- * pose problem this was meant to solve. So the beats are packed to fit the
- * release: startup and smear play IN PLACE, and the slide does not start
- * until SMEAR_END (the active / hit pose). That delay is
+ * The real thrust holds the strike pose through active + PALM_THRUST_HOLD_MS
+ * because a thrust is a long commitment you need to read. Borrowing that here
+ * would spend the whole separation on one frame — extend, hold, cut to idle —
+ * which is the static pose problem this was meant to solve. So the beats are
+ * packed to fit the release: startup and smear play IN PLACE, and the slide
+ * does not start until SMEAR_END (the active / hit pose). That delay is
  * server-io/constants.js CMD_DRIVE_RELEASE_IMPACT_MS — keep them equal.
  *
  * Settle still lands BEFORE the slide stops, so the fighter arrives already

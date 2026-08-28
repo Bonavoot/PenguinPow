@@ -47,6 +47,8 @@ function endGrabWhiffRecovery(player) {
   player.isWhiffingGrab = false;
   player.grabCooldown = false;
   releaseGrabStartupFacingLock(player);
+  player.grabFacingDirection = null;
+  player.grabMovementDirection = 0;
 }
 
 // A grab that never found anything. Fully vulnerable for the whole recovery —

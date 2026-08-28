@@ -67,7 +67,7 @@ describe("offensive aerial — Phase 4 flag OFF equivalence (legacy rollback)", 
     assert.equal(s.attacker.offensiveAerial.outcome, OFFENSIVE_AERIAL_OUTCOME.PARRIED);
     assert.equal(s.attacker.isSlideJumping, false);
     assert.equal(s.attacker.y, GROUND_LEVEL);
-    assert.equal(s.attacker.isRecovering, true);
+    assert.equal(s.attacker.isRawParryStun, true);
     assert.equal(s.attacker.offensiveAerialReaction, null);
   });
 

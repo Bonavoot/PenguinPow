@@ -24,6 +24,7 @@ const {
   lagCompensatedParryStart,
   canArmAttackParry,
   armAttackParry,
+  wantsMatadorChord,
   canArmMatador,
   armMatador,
   clearMatadorWindow,
@@ -264,6 +265,7 @@ function cleanupGrabStates(player, opponent) {
   player.grabPushEndTime = 0;
   player.grabPushStartTime = 0;
   player.grabApproachSpeed = 0;
+  player.grabAttemptSpeed = 0;
   player.grabDecisionMade = false;
   player.isGrabWalking = false;
   player.isGrabWhiffRecovery = false;
@@ -353,6 +355,7 @@ function cleanupGrabStates(player, opponent) {
   opponent.grabPushEndTime = 0;
   opponent.grabPushStartTime = 0;
   opponent.grabApproachSpeed = 0;
+  opponent.grabAttemptSpeed = 0;
   opponent.grabDecisionMade = false;
   opponent.isGrabWalking = false;
   opponent.isGrabWhiffRecovery = false;
@@ -747,6 +750,9 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
     p.slideJumpDiveCommitted = false;
     p.slideJumpDiveBuffered = false;
     p.slideJumpDiveBufferUntil = 0;
+    p.slideJumpDivePhase = null;
+    p.slideJumpDivePopStartTime = 0;
+    p.slideJumpDivePopFromHeight = 0;
     p.slideJumpFastFalling = false;
     p.slideJumpDiveLockX = 0;
     p.slideJumpHitLanded = false;
@@ -904,6 +910,7 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
     },
     wins: winCount,
     winType: winType || "ringOut",
+    isMatchEnd: !!isMatchEnd,
     ...(extra || {}),
   });
   room.winnerId = winner.id;
@@ -1270,7 +1277,9 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
       const isPlayerValid = () => (
         !player.isDodging && !player.isThrowing && !player.isBeingThrown &&
         !player.isGrabbing && !player.isBeingGrabbed && !player.isRawParryStun &&
-        !player.isRawParrying && !player.isHit && !player.canMoveToReady
+        !player.isRawParrying && !player.isHit && !player.canMoveToReady &&
+        !player.isGrabStartup && !player.isGrabbingMovement &&
+        !player.isWhiffingGrab && !player.isGrabWhiffRecovery
       );
 
       // Back was held mid-slap → flow into the rooted palm thrust instead of
@@ -2684,13 +2693,20 @@ function activateBufferedInputAfterGrab(player, rooms) {
     return;
   }
 
-  // Priority 1: Attack Parry (spacebar) - tap deflect. canArmAttackParry gates on
-  // apSpaceConsumed so a held key only fires ONE parry (tap-per-attack).
-  if (player.keys[" "] && !player.grabBreakSpaceConsumed &&
-      canArmAttackParry(player, simNowForPlayer(player))) {
-    armAttackParry(player, simNowForPlayer(player));
-    clearChargeState(player, true);
-    return;
+  // Priority 1: BACK+SPACE = MATADOR, else SPACE = Attack Parry.
+  // apSpaceConsumed so a held key only fires ONE window per physical press.
+  if (player.keys[" "] && !player.grabBreakSpaceConsumed) {
+    const nowSim = simNowForPlayer(player);
+    if (wantsMatadorChord(player) && canArmMatador(player, nowSim)) {
+      armMatador(player, nowSim, lagCompensatedParryStart(player, nowSim));
+      clearChargeState(player, true);
+      return;
+    }
+    if (canArmAttackParry(player, nowSim)) {
+      armAttackParry(player, nowSim, lagCompensatedParryStart(player, nowSim));
+      clearChargeState(player, true);
+      return;
+    }
   }
 
   // Priority 2a: Sidestep (S + SHIFT) - lateral evasion

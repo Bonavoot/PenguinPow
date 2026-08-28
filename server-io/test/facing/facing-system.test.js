@@ -307,6 +307,35 @@ describe("post-sidestep facing track", () => {
     assert.equal(getActionFacingLock(dodger).direction, -1);
     assert.equal(dodger.facing, -1);
   });
+
+  it("does not turn a grab attempt around after a sidestep cross", () => {
+    setActionFacingOwnershipV2ForTests(true);
+    const grabber = makePlayer({
+      id: "grabber",
+      x: 400,
+      facing: -1,
+      isGrabStartup: true,
+      grabFacingDirection: -1,
+      postSidestepFacingTrackUntil: 1000,
+    });
+    const opp = makePlayer({ id: "opp", x: 500, facing: 1 });
+    const id = mintActionFacingInstanceId(grabber, ACTION_FACING_OWNER.GRAB_STARTUP);
+    grabber.grabFacingInstanceId = id;
+    acquireActionFacingLock(grabber, {
+      ownerType: ACTION_FACING_OWNER.GRAB_STARTUP,
+      ownerInstanceId: id,
+      direction: -1,
+      reason: ACTION_FACING_REASON.COMMIT,
+      allowDirectionUpdate: false,
+      supersede: true,
+    });
+
+    opp.x = 200;
+    enforcePairFacing(grabber, opp, 500);
+    assert.equal(getLockedFacing(grabber), -1);
+    assert.equal(grabber.facing, -1);
+    assert.equal(getActionFacingLock(grabber).direction, -1);
+  });
 });
 
 describe("charge hold facing", () => {

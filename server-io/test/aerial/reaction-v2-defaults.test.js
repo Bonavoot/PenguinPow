@@ -160,7 +160,7 @@ describe("offensive aerial reaction V2 finalization — approved heavy_short", (
     assert.equal(s.attacker.offensiveAerial.outcome, OFFENSIVE_AERIAL_OUTCOME.PARRIED);
     assert.equal(s.attacker.isSlideJumping, false);
     assert.equal(s.attacker.y, GROUND_LEVEL);
-    assert.equal(s.attacker.isRecovering, true);
+    assert.equal(s.attacker.isRawParryStun, true);
     assert.equal(s.attacker.offensiveAerialReaction, null);
   });
 

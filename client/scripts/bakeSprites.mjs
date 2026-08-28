@@ -11,6 +11,7 @@
  *
  * Usage:  npm run bake   (from client/)
  *         BAKE_GEARS=ponytail npm run bake:hats   # merge one topper into existing bake
+ *         BAKE_IDS=grab-attempt_spritesheet npm run bake  # refresh one source, keep the rest
  *
  * Output: client/public/baked/*  +  client/public/baked/manifest.json
  */
@@ -74,6 +75,16 @@ const BAKE_GEARS = (process.env.BAKE_GEARS || "")
  */
 const BAKE_MERGE = process.env.BAKE_MERGE === "1";
 const BAKE_HATS_ONLY = process.env.BAKE_HATS_ONLY === "1";
+/**
+ * Optional body-source filter, e.g. BAKE_IDS=grab-attempt_spritesheet
+ * (comma-separated bakeSources ids). Implies merge: keeps the existing
+ * manifest + hats, overwrites only the listed sprite keys. Use after a
+ * single sheet/pose PNG changes so you don't wipe the full bake.
+ */
+const BAKE_IDS = (process.env.BAKE_IDS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 // SCOPE: bake the BASE tint only. The brief hit/charge/blubber/armor flash
 // tints stay on the runtime recolor path (they're momentary overlays and
@@ -242,12 +253,21 @@ async function main() {
       `[bake] BAKE_GEARS=${BAKE_GEARS.join(",")} matched no HAT_GEAR_IDS`,
     );
   }
+  const sourcesToBake = BAKE_IDS.length
+    ? BAKE_SOURCES.filter((s) => BAKE_IDS.includes(s.id))
+    : BAKE_SOURCES;
+  if (BAKE_IDS.length && sourcesToBake.length === 0) {
+    throw new Error(
+      `[bake] BAKE_IDS=${BAKE_IDS.join(",")} matched no BAKE_SOURCES ids`,
+    );
+  }
+  const mergeBake = BAKE_MERGE || BAKE_HATS_ONLY || BAKE_IDS.length > 0;
 
   let existing = null;
-  if (BAKE_MERGE || BAKE_HATS_ONLY) {
+  if (mergeBake) {
     if (!fs.existsSync(MANIFEST_PATH)) {
       throw new Error(
-        "[bake] BAKE_MERGE/BAKE_HATS_ONLY requires an existing public/baked/manifest.json",
+        "[bake] BAKE_MERGE/BAKE_HATS_ONLY/BAKE_IDS requires an existing public/baked/manifest.json",
       );
     }
     existing = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
@@ -256,10 +276,12 @@ async function main() {
   console.log(
     BAKE_HATS_ONLY
       ? `[bake] hats-only merge: ${gearIds.join(",")} × ${combos.length} combos`
-      : `[bake] ${combos.length} color combos × ${BAKE_SOURCES.length} sources × ${BAKE_TINTS.length} tint → baking…`,
+      : BAKE_IDS.length
+        ? `[bake] ids ${BAKE_IDS.join(",")} × ${combos.length} combos (merge, hats kept)`
+      : `[bake] ${combos.length} color combos × ${sourcesToBake.length} sources × ${BAKE_TINTS.length} tint → baking…`,
   );
 
-  if (!BAKE_MERGE && !BAKE_HATS_ONLY) {
+  if (!mergeBake) {
     // Fresh output dir.
     fs.rmSync(OUT_DIR, { recursive: true, force: true });
   }
@@ -269,7 +291,7 @@ async function main() {
   const decoded = new Map();
   const sourceTagById = new Map();
   if (!BAKE_HATS_ONLY) {
-    for (const src of BAKE_SOURCES) {
+    for (const src of sourcesToBake) {
       const abs = path.join(ASSETS_DIR, src.file);
       if (!fs.existsSync(abs)) {
         console.warn(`[bake] MISSING source, skipping: ${src.file}`);
@@ -285,7 +307,14 @@ async function main() {
   // keyed by color tuple, not pixel content). For hats-only merges, also fold
   // in overlay bytes so a topper art update busts ?v= without a full rebake.
   let bakeTag;
-  if (BAKE_HATS_ONLY) {
+  if (BAKE_IDS.length) {
+    bakeTag = crypto
+      .createHash("sha1")
+      .update(String(existing?.bakeTag || ""))
+      .update([...sourceTagById.entries()].sort().join("|"))
+      .digest("hex")
+      .slice(0, 10);
+  } else if (BAKE_HATS_ONLY) {
     const overlayTag = crypto.createHash("sha1");
     for (const gearId of gearIds) {
       for (const pose of HAT_POSE_SOURCES) {
@@ -318,12 +347,21 @@ async function main() {
   if (!BAKE_HATS_ONLY) {
     // Full / body bake replaces sprite map entries (merge keeps prior keys for
     // sources we skip; wipe mode starts empty above when not merging).
-    if (!BAKE_MERGE) {
+    if (!BAKE_MERGE && !BAKE_IDS.length) {
       for (const k of Object.keys(manifest)) delete manifest[k];
+    }
+    const staleBakeFiles = [];
+    if (BAKE_IDS.length) {
+      for (const key of Object.keys(manifest)) {
+        const id = key.split("|")[0];
+        if (!BAKE_IDS.includes(id)) continue;
+        const name = String(manifest[key] || "").split("/").pop()?.split("?")[0];
+        if (name) staleBakeFiles.push(name);
+      }
     }
     for (const combo of combos) {
       const special = SPECIAL_COLORS.has(combo.mawashi);
-      for (const src of BAKE_SOURCES) {
+      for (const src of sourcesToBake) {
         const srcPng = decoded.get(src.id);
         if (!srcPng) continue;
         for (const tint of BAKE_TINTS) {
@@ -332,7 +370,7 @@ async function main() {
             continue;
           }
           const key = bakeKey(src.id, combo.mawashi, combo.body, tint);
-          if (manifest[key] && BAKE_MERGE) continue;
+          if (manifest[key] && BAKE_MERGE && !BAKE_IDS.length) continue;
 
           const out = recolorBitmap(srcPng, combo.mawashi, combo.body, tint);
           const sourceTag = sourceTagById.get(src.id) || "";
@@ -349,6 +387,18 @@ async function main() {
         }
       }
     }
+    if (staleBakeFiles.length) {
+      const stillUsed = new Set();
+      for (const url of Object.values(manifest)) {
+        const name = String(url || "").split("/").pop()?.split("?")[0];
+        if (name) stillUsed.add(name);
+      }
+      for (const name of staleBakeFiles) {
+        if (stillUsed.has(name)) continue;
+        const abs = path.join(OUT_DIR, name);
+        if (fs.existsSync(abs)) fs.unlinkSync(abs);
+      }
+    }
   }
 
   // ── Phase 2: flattened body + topper composites ─────────────────────
@@ -359,13 +409,14 @@ async function main() {
       const gearId = key.split("|")[1];
       if (gearIds.includes(gearId)) delete hats[key];
     }
-  } else if (!BAKE_MERGE) {
+  } else if (!BAKE_MERGE && !BAKE_IDS.length) {
     for (const key of Object.keys(hats)) delete hats[key];
   }
   let hatCount = 0;
   let hatDeduped = 0;
   const hatContentToFile = new Map(); // sha1 → filename.webp
 
+  if (!BAKE_IDS.length) {
   const poseList = HAT_POSE_SOURCES.filter(
     (p) => BAKE_MENU_HATS || !p.menuOnly,
   );
@@ -532,6 +583,7 @@ async function main() {
         }
       }
     }
+  }
   }
 
   fs.writeFileSync(

@@ -247,7 +247,9 @@ function classifyOffensiveAerial(fighter) {
       phase === "flight" &&
       !fighter.slideJumpHitLanded &&
       !contract?.contactConsumed &&
-      ((fighter.slideJumpVelocityY ?? 0) <= 0 || !!fighter.slideJumpDiveCommitted),
+      fighter.slideJumpDivePhase !== "pop" &&
+      !!fighter.slideJumpDiveCommitted &&
+      (fighter.slideJumpVelocityY ?? 0) <= 0,
     attackLatch: !!fighter.slideJumpHitLanded,
     dive: !!fighter.slideJumpDiveCommitted,
     flapFlight: !!fighter.slideJumpFlapFlightActive,

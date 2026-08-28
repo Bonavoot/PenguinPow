@@ -25,6 +25,7 @@ const {
   isTrainingRoom,
   armTrainingLive,
   snapTrainingPositions,
+  applyTrainingKitsToRoom,
 } = require("./trainingMode");
 
 const LOBBY_COLORS = [
@@ -705,6 +706,35 @@ function resetRoomAndPlayers(room, io) {
     player.clinchOpenHideStars = false;
     player.hasDeepGrip = false;
     player.clinchShoveLead = null;
+    // Clinch / FORCE OUT presentation. Training reset used to leave these
+    // live (PvP waits 2s so ringOutPushIdle clears them first), which left
+    // fighters stuck in the grab-push pose until the next move.
+    player.inClinch = false;
+    player.hasGrip = false;
+    player.gripAcquiredTime = 0;
+    player.isClinchPushing = false;
+    player.isClinchPlanting = false;
+    player.isClinchBeltHolding = false;
+    player.clinchBeltRequiresM2Release = false;
+    player.clinchAttachDistance = 0;
+    player.clinchAction = null;
+    player.clinchInstanceId = null;
+    player.isClinchThrowing = false;
+    player.isClinchClashing = false;
+    player.isClinchCommittedDrive = false;
+    player.isClinchPerfectBracing = false;
+    player.clinchBracePhase = null;
+    player.clinchBraceSimTime = 0;
+    player.clinchThrowRequest = null;
+    player.isClinchJolting = false;
+    player.clinchJoltRecovery = false;
+    player.isBeingClinchJolted = false;
+    player.isClinchJoltClashing = false;
+    player.clinchJoltRequest = false;
+    player.cmdGrabPhase = null;
+    player.cmdGrabVariant = null;
+    player.grabVariant = null;
+    player.grabVariantLocked = false;
     player.grabCounterAttempted = false;
     player.grabCounterInput = null;
     player.isThrowTeching = false;
@@ -729,10 +759,11 @@ function resetRoomAndPlayers(room, io) {
     player.grabTechResidualVel = 0;
     player.grabMovementStartTime = 0;
     player.grabMovementDirection = 0;
+    player.grabFacingDirection = null;
     player.grabMovementVelocity = 0;
     player.grabStartupStartTime = 0;
     player.grabStartupDuration = 0;
-    player.grabStartupArmorUsed = false;
+    player.grabActiveDuration = 0;
     player.isGrabPushing = false;
     player.isBeingGrabPushed = false;
     player.isEdgePushing = false;
@@ -762,6 +793,7 @@ function resetRoomAndPlayers(room, io) {
     player.grabPushEndTime = 0;
     player.grabPushStartTime = 0;
     player.grabApproachSpeed = 0;
+    player.grabAttemptSpeed = 0;
     player.grabDecisionMade = false;
     player.isRingOutThrowCutscene = false;
     player.ringOutThrowDistance = 0;
@@ -804,6 +836,7 @@ function resetRoomAndPlayers(room, io) {
   }
 
   if (trainingLive) {
+    applyTrainingKitsToRoom(room, { refreshActives: true });
     armTrainingLive(room);
     io.in(room.id).emit("training_reset");
     return;

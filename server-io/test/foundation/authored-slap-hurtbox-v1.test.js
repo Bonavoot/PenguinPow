@@ -52,6 +52,7 @@ const {
   armPalmPhase,
   armChargedPhase,
   stepCollisionBothOrders,
+  clampSlapActiveAge,
 } = require("./helpers/scenarioHarness");
 const {
   limbReachGap,
@@ -69,7 +70,8 @@ function sc(opts) {
 /** Past AP late-parry grace so open slap hits confirm immediately. */
 function deepenSlapActive(player, now) {
   player.isInStartupFrames = false;
-  player.attackStartTime = now - SLAP_STARTUP_MS - AP_LATE_PARRY_MS - 20;
+  const age = clampSlapActiveAge(AP_LATE_PARRY_MS + 8);
+  player.attackStartTime = now - SLAP_STARTUP_MS - age;
   player.slapActiveEndTime =
     player.attackStartTime + SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
   player.attackEndTime = player.slapActiveEndTime + SLAP_RECOVERY_MS;
@@ -1246,10 +1248,12 @@ describe("Phase 4A — active-end boundary (slapActiveEndTime exclusivity)", () 
     armSlapPhase(s.left, "active", now);
     deepenSlapActive(s.left, now);
     // Right earlier, left later — both tip live.
-    s.right.attackStartTime = now - SLAP_STARTUP_MS - AP_LATE_PARRY_MS - 40;
+    s.right.attackStartTime =
+      now - SLAP_STARTUP_MS - clampSlapActiveAge(AP_LATE_PARRY_MS + 16);
     s.right.slapActiveEndTime =
       s.right.attackStartTime + SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
-    s.left.attackStartTime = now - SLAP_STARTUP_MS - AP_LATE_PARRY_MS - 10;
+    s.left.attackStartTime =
+      now - SLAP_STARTUP_MS - clampSlapActiveAge(AP_LATE_PARRY_MS + 4);
     s.left.slapActiveEndTime =
       s.left.attackStartTime + SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
     assert.equal(isSlapTipLive(s.right, now), true);
@@ -1383,7 +1387,9 @@ describe("Phase 4A — recovery-classification partition", () => {
     // Earlier left slap wins active-vs-active (priority unchanged).
     armSlapPhase(s.left, "active", now);
     deepenSlapActive(s.left, now);
-    s.left.attackStartTime = s.right.attackStartTime - 30;
+    const rightAge = now - s.right.attackStartTime - SLAP_STARTUP_MS;
+    const earlierMs = Math.min(30, Math.max(8, SLAP_ACTIVE_MS - rightAge - 4));
+    s.left.attackStartTime = s.right.attackStartTime - earlierMs;
     s.left.slapActiveEndTime =
       s.left.attackStartTime + SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
     stepCollisionBothOrders(s);
@@ -1511,7 +1517,8 @@ describe("Phase 4A — unilateral active-limb contact (recording 13.3–13.6s)",
   function armDeepActive(p, now, agePastGrace) {
     armSlapPhase(p, "active", now);
     p.isInStartupFrames = false;
-    p.attackStartTime = now - SLAP_STARTUP_MS - AP_LATE_PARRY_MS - agePastGrace;
+    const age = clampSlapActiveAge(AP_LATE_PARRY_MS + agePastGrace);
+    p.attackStartTime = now - SLAP_STARTUP_MS - age;
     p.slapActiveEndTime =
       p.attackStartTime + SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
     p.attackEndTime = p.slapActiveEndTime + SLAP_RECOVERY_MS;

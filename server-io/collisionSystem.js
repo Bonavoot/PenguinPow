@@ -20,19 +20,18 @@ const {
   COUNTER_HIT_INTENT_WINDOW_MS,
   SLAP_CHAIN_HIT_GAP_MS,
   HITSTOP_SLAP_MS, HITSTOP_BURST_MS, HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
+  GRAB_ARMOR_ABSORB_HITSTOP_MS,
   SLAP_HIT_VICTIM_STAMINA_DRAIN, CHARGED_HIT_VICTIM_STAMINA_DRAIN,
   PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN,
   BALANCE_SLAP_HIT_DRAIN, BALANCE_CHARGED_HIT_DRAIN,
   BALANCE_SLAP_HIT_DRAIN_P2, BALANCE_CHARGED_HIT_DRAIN_P2, BALANCE_PALM_HIT_DRAIN_P2,
   BALANCE_SLAP_HIT_DRAIN_ENHANCED, CADENCE_STEP_IN_MULT,
   POSTURE_COUNTER_DRAIN_MULT,
-  KILLBAND_MOMENTUM, KILLBAND_MOMENTUM_REF, KILLBAND_POSTURE, KILLBAND_CAP,
   POSTURE_CHARGED_KILL_REACH_MULT,
   MOMENTUM_HIT_MULT_THRESHOLD,
   CHARGE_CLASH_RECOVERY_DURATION, CHARGE_CLASH_BASE_KNOCKBACK,
   CHARGE_CLASH_MIN_KNOCKBACK, CHARGE_CLASH_ADVANTAGE_SCALE,
   CHARGE_PRIORITY_THRESHOLD,
-  SLAP_KILL_RANGE,
   SLAP_ROPE_EDGE_ZONE,
   SLAP_EDGE_POSTURE_MULT,
   PALM_EDGE_POSTURE_MULT,
@@ -74,6 +73,7 @@ const {
   CINEMATIC_KILL_KNOCKBACK_BOOST,
   SIDESTEP_HIT_RETURN_BASE_MS,
   SIDESTEP_HIT_RETURN_MIN_MS,
+  SLAP_AIR_PUNISH_KB_BONUS_PX,
   COUNTER_HIT_WINDOW_MS,
   SLAP_STARTUP_MS,
   CHARGED_STARTUP_MS,
@@ -129,6 +129,7 @@ const {
   PALM_VS_SLAP_TRADE_KB_ON_SLAPPER,
   PALM_VS_SLAP_TRADE_KB_ON_PALM,
 } = require("./constants");
+const { getMinimumCenterDistance } = require("./pushboxGeometry");
 
 const {
   setPlayerTimeout,
@@ -150,6 +151,7 @@ const {
   clearHitFall,
   clearSidestepHitReturn,
   isSlideJumpFlightImmune,
+  isSlideJumpDiveDropping,
   captureAirVerticalVelocity,
   captureAirHorizontalVelocity,
   applyAirHitKnockbackBoost,
@@ -304,6 +306,13 @@ const {
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
 } = require("./combatHelpers");
+const {
+  playerPalmBreaksGrabArmor,
+  shouldStrikeStuffGrab,
+  isGrabAttemptLive,
+  cancelStrikeForGrabCatch,
+  releaseSlapHitboxKeepBuffer,
+} = require("./grabStartupArmor");
 
 const {
   getConnectDistance,
@@ -378,12 +387,6 @@ const {
   attachCombatPresentation,
 } = require("./combatPresentationEvent");
 
-function playerPalmBreaksGrabArmor(player) {
-  return (
-    !!player.loadout?.palmBreaksGrabArmor ||
-    player.activePowerUp === POWER_UP_TYPES.SHATTER_PALM
-  );
-}
 
 /**
  * Shared COUNTER HIT / PUNISH / GORED labels for any strike that lands on a victim.
@@ -490,28 +493,7 @@ function chargedKillReach(finalMultiplier) {
   return Math.max(0, Math.min(raw, CHARGED_KILL_REACH_CAP));
 }
 
-// MASTERY Phase 2 (2.4) — OSHI conversion. The palm/flap-slam edge kill band
-// EXPANDS with earned quality: the attacker's carried momentum
-// (slapEntryAligned) plus whether the victim's POSTURE is broken. It can only
-// widen (never shrink) and is hard-capped at KILLBAND_CAP so a wide midscreen
-// no-kill deadzone always survives (invariant #3). Palm/flap carry no
-// slapEntryAligned (rooted / airborne) so their momentum term is 0 — only the
-// posture term widens their band. With the flag OFF this collapses to exactly
-// SLAP_KILL_RANGE (byte-identical, invariants #2 & #4).
-//
-// Slap itself no longer uses this — slap ring-out is posture-gated
-// (slapKnockbackArmedForRingOut). Kept for palm / flap / palm-trade paths.
-function slapKillBand(attacker, victim) {
-  if (!MASTERY_P2_POSTURE) return SLAP_KILL_RANGE;
-  const aligned = Math.min(attacker.slapEntryAligned || 0, KILLBAND_MOMENTUM_REF);
-  const band =
-    SLAP_KILL_RANGE +
-    KILLBAND_MOMENTUM * (aligned / KILLBAND_MOMENTUM_REF) +
-    (victim.isPostureBroken ? KILLBAND_POSTURE : 0);
-  return Math.min(band, KILLBAND_CAP);
-}
-
-// Slap/palm rope clamp opens only when posture was ALREADY in the kill-throw
+// Slap/palm/body-slam rope clamp opens only when posture was ALREADY in the kill-throw
 // band BEFORE this hit's drain. The hit that cracks them under 15 still clamps —
 // the NEXT strike (while still under 15) can ring out. Fairer/readable: the
 // HUD threshold is honest. Entry speed / connect position do not gate it.
@@ -1036,9 +1018,9 @@ function checkCollision(player, otherPlayer, rooms, io) {
         }
       }
 
-      // Slap stuffs grab startup at ANY point on it — the grab carries no armor,
-      // so a live hitbox in range always wins. Thick Blubber is the only absorb,
-      // resolved grabs-only inside processHit.
+      // Slap vs grab: overlapping hitboxes always resolve (poke stuffs the
+      // run; only a late mash at latch range is a catch). Thick Blubber can
+      // still absorb a stuff, resolved inside processHit.
       if (eitherHasSlapParryImmunity) {
         consumeStrikeContactOverride(player);
         return;
@@ -1162,11 +1144,9 @@ function checkCollision(player, otherPlayer, rooms, io) {
     if (chargedHurt.mode === "authored_slap_hurtbox_v1" && chargedHurt.winner) {
       stampStrikeContactOverride(player, chargedHurt.winner);
     }
-    // PALM THRUST vs a grab: there is no default grab-startup armor, so a palm
-    // that reaches a grabber stuffs the grab like any other strike (resolved in
-    // processHit, where only the grabs-only Thick Blubber can absorb it). We
-    // still block the palm from connecting through an ALREADY-active grab
-    // (clinch) — that's a completed grab, not a startup to be stuffed.
+    // PALM THRUST vs a grab: reaching / tip is a real hit. Late palm after
+    // the grip is on is caught unless Shatter Palm. Already-latched clinch
+    // still blocks the palm — that's a completed grab.
     if (
       player.isPalmThrust &&
       isOpponentCloseEnoughForGrab(otherPlayer, player) &&
@@ -2184,9 +2164,36 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
 
 // resolveSlap3Clash removed — hit 3 no longer part of slap string
 
-// (The default grab-startup slap armor was removed: grabs no longer get a free
-// one-hit absorb. The absorb behavior now lives ONLY in the grabs-only Thick
-// Blubber loadout/power-up, resolved inside processHit.)
+// Throw vs strike: meaties stuff, late mash does not land.
+// Thick Blubber is an optional absorb on a meaty that would have stuffed.
+
+function emitGrabArmorAbsorbVfx(io, room, attacker, defender, now) {
+  if (!room || !io) return;
+  const absorbId = `armor-absorb-${now}-${defender.id}`;
+  io.in(room.id).emit(
+    "grab_armor_absorb",
+    attachCombatPresentation(
+      {
+        defenderId: defender.id,
+        attackerId: attacker.id,
+        x: defender.x,
+        y: defender.y,
+        facing: defender.facing,
+        absorbId,
+      },
+      buildClinchPresentation({
+        interactionType: CLINCH_INTERACTION.GRAB_ARMOR_ABSORB,
+        actionInstanceId: absorbId,
+        initiator: attacker,
+        responder: defender,
+        outcome: "ABSORB",
+        contactX: defender.x,
+        contactY: CLINCH_EFFECT_MID_Y,
+        salt: "armor_absorb",
+      })
+    )
+  );
+}
 
 function processHit(player, otherPlayer, rooms, io, opts = {}) {
   // Find the current room
@@ -2217,10 +2224,21 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
   const victimWasDefending =
     !!(otherPlayer.isRawParrying || otherPlayer.isGuarding);
 
+  // Overlap vs a grab attempt always resolves. Tip / reaching / already-live
+  // slap are real hits. A late slap after the grip is on is CATCH (kill the
+  // swing so latch freeze is not slap-active art).
+  if (
+    isGrabAttemptLive(otherPlayer) &&
+    !shouldStrikeStuffGrab(player, otherPlayer, currentTime)
+  ) {
+    cancelStrikeForGrabCatch(player);
+    return;
+  }
+
   // ── ARMOR BREAK VFX ───────────────────────────────────────────────
-  // Charged / low-kick landing during a grab attempt's startup is the
-  // "armor break" tell. Slap does not play this VFX. Skip if thick blubber
-  // will absorb, or if the defender is raw parrying (parry plays its own VFX).
+  // Charged / Shatter Palm / low-kick stuffing a grab attempt. Slap uses
+  // the normal counter-hit tell instead. Skip if thick blubber will absorb,
+  // or if the defender is raw parrying (parry plays its own VFX).
   const palmBreaksGrabArmor =
     player.isPalmThrust && playerPalmBreaksGrabArmor(player);
   if (
@@ -2265,10 +2283,9 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     }
   }
 
-  // Charged shattering grab armor has its own VFX (grab_armor_break) — don't
-  // also fire the counter-hit banner/effect, it doubles up visually. Slap
-  // stuffing grab (after armor consumed) IS still a counter hit — that's a
-  // skilled chain breaking commitment, and the boost reads correctly there.
+  // Charged / Shatter Palm stuffing a grab has its own VFX — don't also
+  // fire the counter-hit banner. A slap meaty stuffing the grab IS still a
+  // counter hit: they pre-committed the swing and beat the throw.
   const isChargedArmorBreak = !isSlapAttack &&
     (!player.isPalmThrust || palmBreaksGrabArmor) &&
     (otherPlayer.isGrabStartup === true || otherPlayer.isGrabbingMovement === true);
@@ -2283,11 +2300,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
   // Store the charge power before resetting states
   const chargePercentage = player.chargeAttackPower;
 
-  // Thick Blubber hit absorption — GRABS ONLY. The defender must be in a grab
-  // (startup / dash / clinch) for blubber to eat the hit; it no longer applies
-  // to charged attacks or palm thrust. One absorb per grab attempt (refreshed
-  // when a grab starts), so a blubber grappler can trade the first strike for
-  // the grab, but a second hit stuffs it.
+  // Thick Blubber — GRABS ONLY. Absorbs a meaty that would have stuffed.
+  // Shatter Palm / charged still get eaten here if the perk is live.
   const isDefenderGrabbing = otherPlayer.isGrabStartup || otherPlayer.isGrabbingMovement || otherPlayer.isGrabbing;
   if (
     hasHitAbsorption(otherPlayer) &&
@@ -2323,42 +2337,21 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       };
       // Absorbed — grounded recover, no hit flip / land arc.
     }
-    // For slap attacks, end the attack to prevent further collisions
+    // Slap: kill the absorbed hitbox so it cannot keep colliding.
     else {
-      player.isAttacking = false;
-      player.attackStartTime = 0;
-      player.attackEndTime = 0;
-      releaseStrikeFacingLock(player, { reason: ACTION_FACING_RELEASE.INTERRUPT });
+      releaseSlapHitboxKeepBuffer(player);
     }
 
-    // Absorb VFX: the pink "wrap ring" (formerly the grab-armor absorb) is now
-    // the Thick Blubber animation. Payload matches the ring handler (defender-
-    // gated, facing-aware).
     if (currentRoom) {
-      const absorbId = `armor-absorb-${currentTime}-${otherPlayer.id}`;
-      io.in(currentRoom.id).emit(
-        "grab_armor_absorb",
-        attachCombatPresentation(
-          {
-            defenderId: otherPlayer.id,
-            attackerId: player.id,
-            x: otherPlayer.x,
-            y: otherPlayer.y,
-            facing: otherPlayer.facing,
-            absorbId,
-          },
-          buildClinchPresentation({
-            interactionType: CLINCH_INTERACTION.GRAB_ARMOR_ABSORB,
-            actionInstanceId: absorbId,
-            initiator: player,
-            responder: otherPlayer,
-            outcome: "ABSORB",
-            contactX: otherPlayer.x,
-            contactY: CLINCH_EFFECT_MID_Y,
-            salt: "armor_absorb",
-          })
-        )
-      );
+      if (isSlapAttack) {
+        triggerHitstopAndEmit(
+          io,
+          currentRoom,
+          GRAB_ARMOR_ABSORB_HITSTOP_MS,
+          "grab_armor"
+        );
+      }
+      emitGrabArmorAbsorbVfx(io, currentRoom, player, otherPlayer, currentTime);
     }
 
     // Early return - no further hit processing for the defender
@@ -2455,7 +2448,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     isSlapAttack &&
     player.attackStartTime &&
     !otherPlayer.isRawParrying &&
-    !opts.skipSlapOpenHitGrace
+    !opts.skipSlapOpenHitGrace &&
+    !isGrabAttemptLive(otherPlayer)
   ) {
     const slapAge = simNowForPlayer(player) - player.attackStartTime;
     if (
@@ -3336,7 +3330,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         // Pocket mash chases. A slide convert PLANTS — the charge went into
         // them, so the send is allowed to open daylight instead of skating
         // the pair at matching speed.
-        if (!isSlideSlap) {
+        if (!isSlideSlap && !hitFromAir) {
           player.movementVelocity = pushDirection * attackerPush;
           player.isSlapSliding = true;
         }
@@ -3388,7 +3382,12 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         otherPlayer.knockbackVelocity.x = slapTransfer.velocity;
         lastTransfer = slapTransfer;
 
-        if (isSlideSlap) {
+        if (hitFromAir) {
+          // Air punish plants. Chase / convert-crawl would eat the extra
+          // send and drop them at the slapper's feet.
+          player.movementVelocity = 0;
+          player.isSlapSliding = false;
+        } else if (isSlideSlap) {
           // Slow fixed drift, not chase and not a dump-skid. Leftover
           // sprint is discarded; this crawl lasts the convert and stops
           // with the move so the pair opens cleanly.
@@ -3745,6 +3744,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
               // Both false with the flag off ⇒ the client renders today's VFX.
               momentumHit: momentumHitTell,
               slideSlap: isSlideSlap,
+              // Air slap punish — client routes the bigger spark / heavier tell.
+              hitFromAir: !!hitFromAir,
               braked: MASTERY_P5_ASSISTS && MASTERY_P1_MOMENTUM && victimIntoHit < 0,
               // Rope-edge slap/palm: victim was already on the clamp — client
               // sells the extra posture tax with crack SFX / VFX (slap keeps
@@ -3947,15 +3948,20 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     if (hitFromAir || otherPlayer.y > GROUND_LEVEL) {
       let impactTier = "medium";
       let hitChargePct = 0;
-      if (isSlapAttack || isLowKick) {
+      if (isLowKick) {
         impactTier = "light";
-      } else if (player.isPalmThrust) {
+      } else if (isSlapAttack || player.isPalmThrust) {
         impactTier = "medium";
       } else {
         impactTier = "heavy";
         hitChargePct = chargePercentage || 0;
       }
-      applyAirHitKnockbackBoost(otherPlayer, airCarryX, player);
+      applyAirHitKnockbackBoost(
+        otherPlayer,
+        airCarryX,
+        player,
+        isSlapAttack && !isLowKick ? SLAP_AIR_PUNISH_KB_BONUS_PX : 0
+      );
       beginAirHitFall(otherPlayer, {
         now: currentTime,
         carryVelY: airCarryY,
@@ -3980,7 +3986,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     // === HIT STUN DURATION ===
     // SLAP: victim hitstun = attacker's remaining attack cycle at connect
     //   (both actionable at the same sim-clock instant). Hitstop pauses both.
-    //   Counter hit adds SLAP_COUNTER_HIT_BONUS_MS.
+    //   Counter is a callout + knockback bonus — extra stun on a 3f jab
+    //   made the follow-up meaty un-answerable except by parry.
     // PALM: +0 like pocket slap. Victim hitstun + input lock = palmer's
     //   remaining pose (attackEndTime, already floored to a full active
     //   window) + PALM_THRUST_HIT_RECOVERY_MS. Counter / gored are labels —
@@ -4005,8 +4012,6 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       hitStateDuration = Math.max(victimFreeAt - currentTime, SLAP_MIN_HITSTUN_MS);
       if (isGored) {
         hitStateDuration += GORED_HITSTUN_BONUS_MS;
-      } else if (isCounterHit) {
-        hitStateDuration += SLAP_COUNTER_HIT_BONUS_MS;
       }
     } else if (player.isPalmThrust) {
       const attackerFreeAt =
@@ -4079,18 +4084,20 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     );
 
     // Input lockout (sim clock — locks freeze through hitstop instead of being
-    // eaten by it). SLAP: the victim's lock matches the +0 hitstun exactly — a
-    // shorter fixed lock would silently hand the victim early inputs, a longer
-    // one would make them minus. PALM: same clock as the palmer's remaining
-    // pose + on-hit recovery so both release together.
+    // eaten by it). SLAP: both locks match the +0 hitstun — attacker used to
+    // walk/grab after 50ms while the victim was still stunned, which is plus,
+    // not +0. PALM: same clock as the palmer's remaining pose + on-hit recovery.
     const victimLockMs = hitStateDuration;
-    // Attacker: brief lock for slaps creates commitment to each strike.
-    // Palm matches the victim so inputLockUntil is +0 as well as isHit.
-    const attackerLockMs = isSlapAttack || isLowKick
-      ? 50
-      : player.isPalmThrust
-        ? hitStateDuration
-        : 200;
+    const attackerLockMs = isSlapAttack
+      ? Math.max(
+          (player.attackCooldownUntil || currentTime) - currentTime,
+          0
+        )
+      : isLowKick
+        ? 50
+        : player.isPalmThrust
+          ? hitStateDuration
+          : 200;
     otherPlayer.inputLockUntil = Math.max(
       otherPlayer.inputLockUntil || 0,
       currentTime + victimLockMs
@@ -4110,9 +4117,10 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
 // Not a regular `isAttacking` strike — polled each tick. One connect per
 // flight (`slideJumpHitLanded`). Grounded defenders can raw-parry it.
 // CONTACT_HEIGHT = max height above ground where the body still overlaps a
-// standing opponent. WIDTH_SCALE narrows left/right vs full pushbox.
+// standing opponent. Width is full pushbox (scale 1) — rubbing their body
+// is a hit, not a slide-off whiff.
 const FLAP_BODYSLAM_CONTACT_HEIGHT = 100;
-const FLAP_BODYSLAM_WIDTH_SCALE = 0.7;
+const FLAP_BODYSLAM_WIDTH_SCALE = 1;
 
 // A grounded defender raw-parrying the flap drop. Mirrors the strike-vs-parry
 // resolution in processHit, but scoped to the flap: the parry ENDS the flight
@@ -4121,10 +4129,10 @@ const FLAP_BODYSLAM_WIDTH_SCALE = 0.7;
 // non-slap knockback values.
 function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
   // GUARD/PARRY vs the flap body-slam: ends the flight and grounds the flapper
-  // (their landing recovery is fully punishable). A live PARRY window grades
-  // regular vs PERFECT; GUARDING still stuffs the slam (flap is a huge
-  // commitment) but at the regular tier. Flap kill requires a PERFECT parry
-  // with the flapper already inside the kill band.
+  // (their landing recovery is fully punishable). Any live PARRY window on the
+  // slam is PERFECT — the drop is a huge, readable commitment. GUARDING still
+  // stuffs at the regular tier. Flap kill requires a PERFECT parry with the
+  // flapper already inside the kill band.
   const currentTime = simNowForPlayer(opponent);
   const knockbackDirection = flapper.x < opponent.x ? -1 : 1;
   const parryingPlayerNumber = currentRoom
@@ -4164,7 +4172,7 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
 
   const inParryWindow =
     !opponent.isGuarding && currentTime < (opponent.apActiveUntil || 0);
-  const isPerfect = inParryWindow && isAttackParryJust(opponent, currentTime);
+  const isPerfect = inParryWindow;
 
   const isApKill =
     AP_KILL_ENABLED &&
@@ -4445,15 +4453,14 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
 }
 
 function checkFlapBodySlam(flapper, opponent, rooms, io) {
-  // Air body hitbox — DESCENDING flight only (ascent keeps pushbox pass-through
-  // but no offensive hit). S dive forces a plummet so it always qualifies.
-  const descending =
-    (flapper.slideJumpVelocityY ?? 0) <= 0 || !!flapper.slideJumpDiveCommitted;
+  // Air body hitbox — DROP phase only. Honda pop / ascent is pose + travel,
+  // not a hit. Legacy committed-without-phase still counts as dropping.
+  const descending = (flapper.slideJumpVelocityY ?? 0) <= 0;
   const inAirBodyWindow =
     flapper &&
     flapper.isSlideJumping &&
     flapper.slideJumpPhase === "flight" &&
-    !!flapper.slideJumpDiveCommitted &&
+    isSlideJumpDiveDropping(flapper) &&
     descending &&
     !flapper.slideJumpHitLanded;
 
@@ -4472,12 +4479,11 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   // flight → only the lower body may connect (higher player gets hit).
   // Equal height → stable id order so the early-pair poll can't double-latch.
   // This is the one case that may pierce flight immunity (both committed).
-  const opponentDescending =
-    (opponent.slideJumpVelocityY ?? 0) <= 0 || !!opponent.slideJumpDiveCommitted;
   const opponentAlsoSlamming =
     opponent.isSlideJumping &&
     opponent.slideJumpPhase === "flight" &&
-    opponentDescending &&
+    isSlideJumpDiveDropping(opponent) &&
+    (opponent.slideJumpVelocityY ?? 0) <= 0 &&
     !opponent.slideJumpHitLanded;
   if (opponentAlsoSlamming) {
     // Clamp to the floor footprint — integrate can push y slightly below
@@ -4524,10 +4530,13 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
     return;
   }
 
-  // Horizontal overlap: bodies must be within a (narrowed) pushbox-width.
+  // Horizontal overlap: same rest distance as grounded pushboxes. Flush
+  // contact counts — you should not slide off a body you are touching.
   const bodyWidth =
-    HITBOX_DISTANCE_VALUE * 2 * FLAP_BODYSLAM_WIDTH_SCALE *
-    Math.max(flapper.sizeMultiplier || 1, opponent.sizeMultiplier || 1);
+    getMinimumCenterDistance(
+      flapper.sizeMultiplier,
+      opponent.sizeMultiplier
+    ) * FLAP_BODYSLAM_WIDTH_SCALE;
   if (Math.abs(flapper.x - opponent.x) > bodyWidth) return;
 
   // The grounded defender can RAW PARRY the drop — the parry beats the slam,
@@ -4716,21 +4725,15 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
     flapper.slideJumpVelocityX = 0;
   }
 
-  // ROPE RESISTANCE (same treatment as the slap/palm): the slam may only send the
-  // victim OUT of the ring if they were already within SLAP_KILL_RANGE of the
-  // boundary they're knocked toward at connect time. From mid-ring the rope
-  // catches them at the edge instead (clamped in the isHit movement block,
-  // gated on isSlapKnockback). isBurstKnockback already governs the friction
-  // curve, so this flag only enables the rope clamp — no other behavior change.
+  // ROPE RESISTANCE (same as slap/palm): slam knockback only leaves the ring
+  // if posture was already < CLINCH_THROW_KILL_THRESHOLD BEFORE this hit's
+  // drain. The hit that cracks them still clamps — the next lethal strike can
+  // ring out. Position / entry speed do not arm the KO. From mid-ring or
+  // above the lethal line the rope catches them (isSlapKnockback clamp in
+  // index.js). isBurstKnockback already governs the friction curve, so this
+  // flag only enables the rope clamp — no other behavior change.
   opponent.isSlapKnockback = true;
-  const distanceToBoundaryInKbDir =
-    knockbackDirection > 0
-      ? MAP_RIGHT_BOUNDARY - opponent.x
-      : opponent.x - MAP_LEFT_BOUNDARY;
-  // MASTERY Phase 2 (2.4): flap body-slam (airborne → no momentum term) still
-  // gets the broken-posture band extension. Flag off ⇒ SLAP_KILL_RANGE.
-  opponent.slapKnockbackCanRingOut =
-    distanceToBoundaryInKbDir <= slapKillBand(flapper, opponent);
+  opponent.slapKnockbackCanRingOut = slapKnockbackArmedForRingOut(opponent);
 
   if (!opponent.isAtTheRopes && !opponent.atTheRopesFacingDirection) {
     opponent.facing = flapper.x < opponent.x ? 1 : -1;

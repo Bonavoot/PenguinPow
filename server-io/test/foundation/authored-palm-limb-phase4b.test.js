@@ -37,6 +37,7 @@ const {
   createFoundationScenario,
   armSlapPhase,
   armPalmPhase,
+  slapConfirmableActiveAge,
   stepCollisionBothOrders,
   placeAtGap,
   clearActionState,
@@ -58,8 +59,9 @@ const {
 } = require("./helpers/limbSpacing");
 const { COMBAT_VOLUME_KIND } = require("../../combatVolumeVocabulary");
 const {
-  AP_LATE_PARRY_MS,
   SLAP_GRACE_CONFIRM_SLACK_PX,
+  PALM_THRUST_END_RECOVERY_MS,
+  PALM_THRUST_HIT_RECOVERY_MS,
 } = require("../../constants");
 const { getStrikeTipWorld, getConnectDistance } = require("../../strikeContact");
 const authoredCatalog = require("../../../shared/combatVolumeAuthored.json");
@@ -68,16 +70,16 @@ const authoredCatalog = require("../../../shared/combatVolumeAuthored.json");
 const BOUNDARY_NUDGE = 1e-6;
 
 /**
- * Deep-active slap attacker: past the late-parry grace, tip genuinely live.
- * Starts clearly earlier than a typical active palm (palm arms at
- * now - PALM_THRUST_STARTUP_MS - 5) so slap→palm limb fixtures still resolve
- * as the slap punish under palm-vs-slap timing priority — not a palm counter.
+ * Confirmable-active slap attacker: past the late-parry grace, tip genuinely live.
+ * A jab's active window is shorter than palm startup, so this cannot also be
+ * "started before an already-active palm" — slap→palm limb fixtures resolve
+ * slap-as-attacker only (stepSlapIntoPalm).
  */
 function armDeepSlapActive(p, now) {
   armSlapPhase(p, "active", now);
   p.isInStartupFrames = false;
-  // ~160ms into the slap — still inside SLAP_ACTIVE, earlier than palm active.
-  p.attackStartTime = now - SLAP_STARTUP_MS - AP_LATE_PARRY_MS - 60;
+  const age = slapConfirmableActiveAge(10);
+  p.attackStartTime = now - SLAP_STARTUP_MS - age;
   p.slapActiveEndTime = p.attackStartTime + SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
   p.attackEndTime = p.slapActiveEndTime + SLAP_RECOVERY_MS;
 }
@@ -248,9 +250,10 @@ describe("Phase 4B — palm exposure window", () => {
   }
 
   it("the hold window never outlives the extended art (whiff and connect)", () => {
-    // Whiff recovery is HOLD+END (320); a connect settles in 200. Both keep the
-    // extended sprite up for their whole duration, so both stay honest.
-    for (const duration of [320, 200]) {
+    // Whiff is HOLD+END; a connect settles in PALM_THRUST_HIT_RECOVERY_MS.
+    // Both keep the extended sprite up for their whole duration.
+    const whiffMs = PALM_THRUST_HOLD_MS + PALM_THRUST_END_RECOVERY_MS;
+    for (const duration of [whiffMs, PALM_THRUST_HIT_RECOVERY_MS]) {
       const { s, now, victim } = palmScenario({
         phase: "recovery",
         opts: { holdElapsed: 0 },
@@ -369,9 +372,13 @@ describe("Phase 4B — palm limb contact boundary", () => {
 
     it(`${tag}: limb-only contact applies no torso park`, () => {
       const { s, now, victim, attacker } = palmScenario(row);
-      const gap = limbOnlyGap("slap", attacker, victim, now);
-      assert.ok(gap != null, `${tag}: band required`);
-      placeAtGap(s, gap);
+      assert.ok(
+        limbOnlyGap("slap", attacker, victim, now) != null,
+        `${tag}: band required`
+      );
+      // Far edge: slap tip still tags the palm arm; an active palm hitbox
+      // does not also reach (that would be strike-vs-strike, not a limb poke).
+      placeAtGap(s, limbReachGap("slap", victim, now) - BOUNDARY_NUDGE);
       const attackerXBefore = attacker.x;
       stepSlapIntoPalm(s, attacker, victim);
       assert.equal(victim.isHit, true);
@@ -462,8 +469,8 @@ describe("Phase 4B — palm hit-event identity", () => {
     it(`${row.poseKey} stamps generic limb identity, not slap-named fields`, () => {
       const { s, now, victim, attacker } = palmScenario({ phase: row.phase });
       const committedMirror = victim.chargingFacingDirection;
-      placeAtGap(s, limbOnlyGap("slap", attacker, victim, now));
-      stepCollisionBothOrders(s);
+      placeAtGap(s, limbReachGap("slap", victim, now) - BOUNDARY_NUDGE);
+      stepSlapIntoPalm(s, attacker, victim);
 
       const p = lastHit(s.io);
       assert.ok(p, "must emit player_hit");
@@ -517,12 +524,8 @@ describe("Phase 4B — palm hit-event identity", () => {
   for (const row of IDENTITY_TABLE) {
     it(`${row.poseKey} stays limb-only when the open-hit grace confirms the hit`, () => {
       const withGrace = palmScenario({ phase: row.phase });
-      const gap = limbOnlyGap(
-        "slap",
-        withGrace.attacker,
-        withGrace.victim,
-        withGrace.now
-      );
+      const gap =
+        limbReachGap("slap", withGrace.victim, withGrace.now) - BOUNDARY_NUDGE;
       // Precondition: the torso is genuinely out of reach at this spacing, and
       // the grace slack genuinely covers it.
       const gate = torsoGate("slap", withGrace.attacker, withGrace.victim);
@@ -617,12 +620,15 @@ describe("Phase 4B — palm hit-event identity", () => {
     const gate = torsoGate("slap", attacker, victim);
     assert.ok(limbReachGap("slap", victim, now) > gate - 1);
     placeAtGap(s, gate - 2);
-    stepCollisionBothOrders(s);
+    // Classification test, not a strike-vs-strike. Both-order at torso range
+    // with live palm + live slap is a trade; we only need the slap's contact
+    // label when the tip is on the body.
+    stepSlapIntoPalm(s, attacker, victim);
     const p = lastHit(s.io);
     assert.ok(p);
-    assert.equal(
+    assert.notEqual(
       p.limbOnlyContact,
-      false,
+      true,
       "body contact must keep ordinary hit presentation"
     );
     s.dispose();

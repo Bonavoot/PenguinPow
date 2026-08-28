@@ -13,18 +13,18 @@
  * - defenderContact* = defender surface anchor
  * - contactX/Y = midpoint between those surface anchors
  *
- * Geometry source: same slam width scale as collisionSystem
- * (HITBOX_DISTANCE_VALUE * FLAP_BODYSLAM_WIDTH_SCALE * sizeMult) and the
- * FLAP_BODYSLAM_CONTACT_HEIGHT vertical band. Not tip-rail / not client sprites.
+ * Geometry source: same slam width as collisionSystem (full pushbox halves
+ * via getPushboxHalfWidth) and the FLAP_BODYSLAM_CONTACT_HEIGHT vertical
+ * band. Not tip-rail / not client sprites.
  *
  * See OFFENSIVE_AERIAL_CONTACT_FIDELITY.md
  */
 
-const { GROUND_LEVEL, HITBOX_DISTANCE_VALUE } = require("./constants");
+const { GROUND_LEVEL } = require("./constants");
 const { getPushboxHalfWidth } = require("./pushboxGeometry");
 
 /** Must match collisionSystem.js slam detector. */
-const FLAP_BODYSLAM_WIDTH_SCALE = 0.7;
+const FLAP_BODYSLAM_WIDTH_SCALE = 1;
 const FLAP_BODYSLAM_CONTACT_HEIGHT = 100;
 
 const CONTACT_AXIS = Object.freeze({
@@ -50,11 +50,7 @@ function finite(n, fallback = 0) {
 }
 
 function slamHalfWidth(player) {
-  return (
-    HITBOX_DISTANCE_VALUE *
-    FLAP_BODYSLAM_WIDTH_SCALE *
-    (player?.sizeMultiplier || 1)
-  );
+  return getPushboxHalfWidth(player?.sizeMultiplier) * FLAP_BODYSLAM_WIDTH_SCALE;
 }
 
 function defenderBodyHalf(player) {

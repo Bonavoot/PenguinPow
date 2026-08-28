@@ -54,6 +54,19 @@ function commitFacingTowardOpponent(player, opponent) {
 function getLockedFacing(player) {
   if (!player) return null;
 
+  // Grab attempt + whiff recovery: the direction they COMMITTED, not live X.
+  // Sidestepping to the other side must not turn this into a rear grab.
+  if (
+    player.isGrabStartup ||
+    player.isGrabbingMovement ||
+    player.isWhiffingGrab ||
+    player.isGrabWhiffRecovery
+  ) {
+    if (player.grabFacingDirection === 1 || player.grabFacingDirection === -1) {
+      return player.grabFacingDirection;
+    }
+  }
+
   // Phase 12 — instance-owned non-aerial lock (when flag enabled).
   if (isActionFacingOwnershipV2Enabled()) {
     const actionLock = getActionFacingLock(player);
@@ -65,8 +78,6 @@ function getLockedFacing(player) {
     }
   }
 
-  // Grab attempt + whiff/clash recovery: freeze until recovery frames end.
-  // Successful connect clears these flags (and the V2 lock) before clinch.
   if (
     player.isGrabStartup ||
     player.isGrabbingMovement ||
@@ -193,6 +204,16 @@ function clearOrphanPullFacingLocks(player1, player2) {
 function retargetPostSidestepActionFacing(player, opponent, nowSim) {
   if (!player || !opponent) return false;
   if (player.atTheRopesFacingDirection != null) return false;
+  // Grab commit is a one-way run. Sidestep track is for slap/charge lunches,
+  // not for turning a grab around onto someone who crossed.
+  if (
+    player.isGrabStartup ||
+    player.isGrabbingMovement ||
+    player.isWhiffingGrab ||
+    player.isGrabWhiffRecovery
+  ) {
+    return false;
+  }
   const until = player.postSidestepFacingTrackUntil || 0;
   if (!until || typeof nowSim !== "number" || nowSim >= until) return false;
 
@@ -203,7 +224,11 @@ function retargetPostSidestepActionFacing(player, opponent, nowSim) {
 
   if (isActionFacingOwnershipV2Enabled()) {
     const lock = getActionFacingLock(player);
-    if (lock && lock.direction !== desired) {
+    if (
+      lock &&
+      lock.ownerType !== ACTION_FACING_OWNER.GRAB_STARTUP &&
+      lock.direction !== desired
+    ) {
       updateActionFacingLockDirection(player, desired, {
         force: true,
         syncLegacy: true,

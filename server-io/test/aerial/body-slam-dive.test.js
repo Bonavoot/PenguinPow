@@ -11,12 +11,16 @@ const {
   FLAP_DIVE_MIN_DOWN_VELOCITY,
   BURST_STUN_MS,
   SLIDE_JUMP_DIVE_MIN_HEIGHT,
+  SLIDE_JUMP_DIVE_POP_MS,
+  SLIDE_JUMP_DIVE_POP_HEIGHT,
 } = require("../../constants");
 const {
   setSimRoomResolver,
   timeoutManager,
   isSlideJumpFlightImmune,
   isSlideJumpDiveEnabled,
+  isSlideJumpDivePopping,
+  isSlideJumpDiveDropping,
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
 } = require("../../gameUtils");
@@ -65,9 +69,11 @@ describe("offensive aerial — S dive hop lock / buffer", () => {
     assert.ok(snap);
     assert.equal(s.attacker.slideJumpDiveCommitted, true);
     assert.equal(s.attacker.keys.s, false);
+    assert.equal(isSlideJumpDivePopping(s.attacker), true);
+    assert.equal(isBodySlamWindowOpen(s.attacker), false);
   });
 
-  it("S after enable commits immediately", () => {
+  it("S after enable commits a Honda pop, not a plummet", () => {
     const s = createSlideJumpScenario({
       name: "dive_late",
       attackerY: GROUND_LEVEL + SLIDE_JUMP_DIVE_MIN_HEIGHT + 10,
@@ -78,6 +84,88 @@ describe("offensive aerial — S dive hop lock / buffer", () => {
     s.attacker.keys.s = true;
     stepSlideJumpTick(s);
     assert.equal(s.attacker.slideJumpDiveCommitted, true);
+    assert.equal(isSlideJumpDivePopping(s.attacker), true);
+    assert.ok(s.attacker.slideJumpVelocityY > 0);
+    assert.equal(isBodySlamWindowOpen(s.attacker), false);
+  });
+});
+
+describe("offensive aerial — Honda pop before slam", () => {
+  it("overlapping S at enable does not slam on the commit tick", () => {
+    const s = createSlideJumpScenario({
+      name: "honda_no_instant_hit",
+      attackerX: 500,
+      defenderX: 500,
+      attackerY: GROUND_LEVEL + SLIDE_JUMP_DIVE_MIN_HEIGHT + 10,
+      velY: 4,
+      hSpeed: 0,
+      attackerKeys: { s: true },
+    });
+    stepSlideJumpTick(s);
+    assert.equal(s.attacker.slideJumpDiveCommitted, true);
+    assert.equal(isSlideJumpDivePopping(s.attacker), true);
+    assert.equal(s.attacker.slideJumpHitLanded, false);
+    assert.equal(s.defender.isHit, false);
+    assert.equal(isBodySlamWindowOpen(s.attacker), false);
+  });
+
+  it("pop rises, then drops after POP_MS, then slams", () => {
+    const s = createSlideJumpScenario({
+      name: "honda_pop_then_hit",
+      attackerX: 500,
+      defenderX: 500,
+      attackerY: GROUND_LEVEL + SLIDE_JUMP_DIVE_MIN_HEIGHT + 10,
+      velY: 4,
+      hSpeed: 0,
+      attackerKeys: { s: true },
+    });
+    const start = s.room.simTime;
+    const startY = s.attacker.y;
+    stepSlideJumpTick(s);
+    assert.equal(isSlideJumpDivePopping(s.attacker), true);
+    assert.ok(s.attacker.y > startY, "pop must go up");
+
+    const dropSnap = runUntil(
+      s,
+      () => isSlideJumpDiveDropping(s.attacker),
+      40
+    );
+    assert.ok(dropSnap);
+    const popMs = s.room.simTime - s.attacker.slideJumpDivePopStartTime;
+    assert.ok(
+      popMs >= SLIDE_JUMP_DIVE_POP_MS,
+      `pop lasted ${popMs}ms, expected >= ${SLIDE_JUMP_DIVE_POP_MS}`
+    );
+    assert.equal(s.attacker.slideJumpHitLanded, false);
+
+    runUntil(s, () => s.attacker.slideJumpHitLanded, 40);
+    assert.equal(s.attacker.slideJumpHitLanded, true);
+    assert.equal(s.defender.isHit, true);
+    const contactMs = s.room.simTime - start;
+    assert.ok(
+      contactMs >= 250,
+      `S→contact was ${contactMs}ms; want a reactable slam`
+    );
+  });
+
+  it("already above pop cap hangs in place until drop", () => {
+    const s = createSlideJumpScenario({
+      name: "honda_hang",
+      attackerX: 500,
+      defenderX: 850,
+      attackerY: GROUND_LEVEL + SLIDE_JUMP_DIVE_POP_HEIGHT + 20,
+      velY: 2,
+      hSpeed: 0,
+      attackerKeys: { s: true },
+    });
+    const hangY = s.attacker.y;
+    stepSlideJumpTick(s);
+    assert.equal(isSlideJumpDivePopping(s.attacker), true);
+    assert.equal(s.attacker.slideJumpVelocityY, 0);
+    assert.ok(Math.abs(s.attacker.y - hangY) < 1);
+    runUntil(s, () => isSlideJumpDiveDropping(s.attacker), 40);
+    assert.equal(isSlideJumpDiveDropping(s.attacker), true);
+    assert.ok(s.attacker.slideJumpVelocityY < 0);
   });
 });
 
@@ -130,7 +218,7 @@ describe("offensive aerial — S-key body slam dive", () => {
     placeDescendingOverOpponent(s, { height: 40, dive: true });
     stepSlideJumpTick(s);
     assert.equal(s.attacker.isSlideJumping, false);
-    assert.equal(s.attacker.isRecovering, true);
+    assert.equal(s.attacker.isRawParryStun, true);
     assert.equal(s.defender.isHit, false);
   });
 

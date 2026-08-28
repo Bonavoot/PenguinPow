@@ -83,7 +83,7 @@ describe("offensive aerial — cleanup stages", () => {
     assert.equal(s.attacker.y, GROUND_LEVEL);
     assert.equal(s.attacker.isSlideJumping, false);
     assert.equal(s.attacker.slideJumpPhase, null);
-    assert.equal(s.attacker.isRecovering, true);
+    assert.equal(s.attacker.isRawParryStun, true);
     assert.equal(
       s.attacker.offensiveAerial.outcome,
       OFFENSIVE_AERIAL_OUTCOME.PARRIED

@@ -279,6 +279,22 @@ function enforceStrikeExtensionSeparation(attacker, opponent, nowSim) {
   // bury the arm for 90ms before the hit lands.
   if (attacker.isInStartupFrames && kind !== "palm") return false;
 
+  // isAttacking stays true through slap RECOVERY (pose flag). Tip-sep must
+  // not — after slapActiveEndTime the jab is retracted. Leaving this wall up
+  // parked an incoming grabber at slap-tip range (outside latch) for the
+  // whole 158ms recovery, so a ranged grab froze on the extended-arm spacing
+  // until the cycle ended, then snapped in. Inline of isSlapTipLive: do not
+  // import authoredSlapHurtTarget (it requires this file).
+  if (
+    kind === "slap" &&
+    typeof attacker.slapActiveEndTime === "number" &&
+    attacker.slapActiveEndTime > 0 &&
+    typeof nowSim === "number" &&
+    nowSim >= attacker.slapActiveEndTime
+  ) {
+    return false;
+  }
+
   // Same pass-through exemptions as the pushbox — never horizontally pin a
   // flapping / slide-jumping / rope-jumping / dodging / sidestepping / thrown
   // fighter. Without this, a grounded slap ACTIVE turned the tip-sep into an

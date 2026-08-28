@@ -242,10 +242,16 @@ export const resolveFighterDisplaySprite = ({
   rawSpriteSrc,
   idleSrc,
   recoveringSrc,
+  dodgeLandSrc,
 }) => {
   if (struckLimbHoldSrc) return struckLimbHoldSrc;
   if (inDashWindup) return recoveringSrc;
-  if (justLandedFromDodge && rawSpriteSrc === idleSrc) return recoveringSrc;
+  // Tap-dodge land holds the dodge squat (same art as ice slide). Never
+  // recovering, and never idle for the land window. Slide land already
+  // arrives as sliding, so this is a no-op there. Buffered actions win.
+  if (justLandedFromDodge && rawSpriteSrc === idleSrc) {
+    return dodgeLandSrc || rawSpriteSrc;
+  }
   return rawSpriteSrc;
 };
 

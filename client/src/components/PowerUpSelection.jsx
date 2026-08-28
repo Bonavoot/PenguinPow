@@ -727,7 +727,7 @@ const PowerUpSelection = ({
       },
       shatter_palm: {
         name: "Shatter Palm",
-        description: "Break grab armor",
+        description: "Palm stuffs grab",
         icon: shatterPalmIcon,
         active: false,
       },

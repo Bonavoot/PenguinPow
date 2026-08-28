@@ -203,8 +203,7 @@ const POSE_REGISTRY = Object.freeze({
   belly_bump: Object.freeze({
     asset: "belly-bump.png",
     grounded: true,
-    supportFromBottomPct: 0.136,
-    displayScale: 1.17,
+    supportFromBottomPct: null,
     visualOffsetX: 0,
     pivotX: 0.5,
     pivotY: 0.5,
@@ -544,9 +543,7 @@ function resolvePoseRender(opts = {}) {
     soleFromBottomPct = reg.supportFromBottomPct;
     // Positive pad above target → feet float → lower the CSS box.
     appliedOffsetY =
-      -(soleFromBottomPct - LEGACY_SOLE_FROM_BOTTOM_PCT) *
-      SPRITE_WORLD_SIZE *
-      (finite(reg.displayScale, 1) || 1);
+      -(soleFromBottomPct - LEGACY_SOLE_FROM_BOTTOM_PCT) * SPRITE_WORLD_SIZE;
   } else if (!grounded) {
     appliedOffsetY = finite(reg.visualOffsetY, 0);
     soleFromBottomPct = LEGACY_SOLE_FROM_BOTTOM_PCT;

@@ -28,8 +28,8 @@ const assert = require("node:assert/strict");
 const { createCommandGrabScenario } = require("./harness/scenario");
 const {
   CMD_GRAB_CONNECT_STARTUP_MS,
-  CMD_DRIVE_CARRY_MS,
   CMD_DRIVE_DISTANCE_MIN,
+  GRAB_LUNGE_SPEED,
   CMD_DRIVE_DISTANCE_MAX,
   CMD_DRIVE_GASSED_DISTANCE_MULT,
   CMD_DRIVE_APPROACH_REF_SPEED,
@@ -48,7 +48,11 @@ const {
   ICE_SLIDE_MAX_SPEED,
   speedFactor,
 } = require("../../constants");
-const { grabSeparationEase } = require("../../combatHelpers");
+const {
+  grabSeparationEase,
+  grabSpeedToPxPerSec,
+  getDriveCarryDurationMs,
+} = require("../../combatHelpers");
 const { MAP_RIGHT_BOUNDARY } = require("../../gameUtils");
 const { profileFor } = require("../../momentumTransfer");
 // Mirrors GRAB_POSTURE_MULT_MAX in commandGrabSystem.js.
@@ -68,16 +72,19 @@ test("drive carry", async (t) => {
   await t.test("resolves into a stamped carry tween, not a live shove", () => {
     const s = driveToStartOfCarry();
     assert.equal(s.grabber.cmdGrabPhase, "carry");
-    // Carry duration now scales with distance so the carry holds a roughly
-    // constant, animatable pace instead of getting faster the further it goes.
+    // Opens at run speed and eases up under the ice-slide cap. Pocket
+    // 160px at 1.75 is ~440ms — same distance, not a blaze.
+    const pocketDist = Math.abs(
+      s.grabber.cmdGrabCarryTargetX - s.grabber.cmdGrabCarryStartX
+    );
+    const expectedMs = getDriveCarryDurationMs(pocketDist, GRAB_LUNGE_SPEED);
     assert.ok(
-      s.grabber.cmdGrabCarryDuration > 0 &&
-        s.grabber.cmdGrabCarryDuration <= CMD_DRIVE_CARRY_MS * 1.5,
-      `carry duration must be bounded, got ${s.grabber.cmdGrabCarryDuration}ms`
+      Math.abs(s.grabber.cmdGrabCarryDuration - expectedMs) <= 2,
+      `carry must accel from run speed over the pocket, got ${s.grabber.cmdGrabCarryDuration}ms want ${expectedMs}ms`
     );
     assert.ok(
-      s.grabber.cmdGrabCarryDuration >= 480,
-      `a pocket drive must last long enough to read, got ${s.grabber.cmdGrabCarryDuration}ms`
+      pocketDist >= profileFor("drive").floor - 1,
+      `authored pocket distance must survive the slide-decay shape, got ${pocketDist}`
     );
     assert.ok(
       s.grabber.cmdGrabCarryTargetX !== s.grabber.cmdGrabCarryStartX,
@@ -123,6 +130,100 @@ test("drive carry", async (t) => {
     assert.ok(
       dist(slideIn) - dist(standing) >= CMD_DRIVE_APPROACH_BONUS_MAX - 1,
       `a full-speed approach should add the whole bonus, got +${dist(slideIn) - dist(standing)}`
+    );
+  });
+
+  await t.test("drive carry keeps the grab-run pace", () => {
+    // Same shove distance, two attempt speeds: the faster entry finishes
+    // sooner. Distance stays authored; the clock follows the slide.
+    const slow = createCommandGrabScenario({ variant: "drive", midX: CENTER });
+    slow.grabber.grabApproachSpeed = CMD_DRIVE_APPROACH_REF_SPEED;
+    slow.grabber.grabAttemptSpeed = 1.75;
+    slow.connect();
+    slow.resolveNow();
+    const fast = createCommandGrabScenario({ variant: "drive", midX: CENTER });
+    fast.grabber.grabApproachSpeed = CMD_DRIVE_APPROACH_REF_SPEED;
+    fast.grabber.grabAttemptSpeed = ICE_SLIDE_MAX_SPEED;
+    fast.connect();
+    fast.resolveNow();
+    assert.equal(
+      Math.abs(slow.grabber.cmdGrabCarryTargetX - slow.grabber.cmdGrabCarryStartX),
+      Math.abs(fast.grabber.cmdGrabCarryTargetX - fast.grabber.cmdGrabCarryStartX),
+      "distance is approach; pace is the run"
+    );
+    assert.ok(
+      fast.grabber.cmdGrabCarryDuration < slow.grabber.cmdGrabCarryDuration,
+      `faster run must carry quicker (${fast.grabber.cmdGrabCarryDuration} vs ${slow.grabber.cmdGrabCarryDuration})`
+    );
+  });
+
+  await t.test("carry starts at grab-run speed, not a bite", () => {
+    // Accel opens at v0 and peaks at the shove-off. First tick must
+    // stay on the attempt slide.
+    const s = createCommandGrabScenario({ variant: "drive", midX: CENTER });
+    s.grabber.grabAttemptSpeed = GRAB_LUNGE_SPEED;
+    s.connect();
+    s.resolveNow();
+    const startX = s.grabber.x;
+    const runPxPerSec = grabSpeedToPxPerSec(GRAB_LUNGE_SPEED);
+    s.advance(s.tickMs);
+    const firstTickPxPerSec =
+      (Math.abs(s.grabber.x - startX) * 1000) / s.tickMs;
+    assert.ok(
+      Math.abs(firstTickPxPerSec - runPxPerSec) / runPxPerSec < 0.12,
+      `first tick must stay at run pace, got ${firstTickPxPerSec.toFixed(1)} vs ${runPxPerSec.toFixed(1)} px/s`
+    );
+  });
+
+  await t.test("carry inherits the live slide when it differs from the stamp", () => {
+    const s = createCommandGrabScenario({ variant: "drive", midX: CENTER });
+    s.grabber.grabAttemptSpeed = GRAB_LUNGE_SPEED;
+    s.grabber.grabMovementVelocity = ICE_SLIDE_MAX_SPEED;
+    s.connect();
+    s.resolveNow();
+    const dist = Math.abs(
+      s.grabber.cmdGrabCarryTargetX - s.grabber.cmdGrabCarryStartX
+    );
+    const liveMs = getDriveCarryDurationMs(dist, ICE_SLIDE_MAX_SPEED);
+    const stampMs = getDriveCarryDurationMs(dist, GRAB_LUNGE_SPEED);
+    assert.ok(liveMs < stampMs, "faster live slide must finish sooner");
+    assert.ok(
+      Math.abs(s.grabber.cmdGrabCarryDuration - liveMs) <= 2,
+      `carry clock must follow live velocity, got ${s.grabber.cmdGrabCarryDuration}ms want ${liveMs}ms`
+    );
+  });
+
+  await t.test("carry speeds up into the shove-off", () => {
+    const s = driveToStartOfCarry();
+    const window = s.tickMs * 4;
+    const x0 = s.grabber.x;
+    s.advance(window);
+    const first = Math.abs(s.grabber.x - x0);
+    s.advance(s.grabber.cmdGrabCarryDuration - 2 * window);
+    const x1 = s.grabber.x;
+    s.advance(window);
+    const last = Math.abs(s.grabber.x - x1);
+    assert.ok(
+      last > first,
+      `end must be faster than the open, first ${first.toFixed(1)}px vs last ${last.toFixed(1)}px`
+    );
+  });
+
+  await t.test("carry peak never outruns a power slide", () => {
+    const s = createCommandGrabScenario({ variant: "drive", midX: CENTER });
+    s.grabber.grabAttemptSpeed = ICE_SLIDE_MAX_SPEED;
+    s.grabber.grabMovementVelocity = ICE_SLIDE_MAX_SPEED;
+    s.connect();
+    s.resolveNow();
+    const window = s.tickMs * 3;
+    s.advance(s.grabber.cmdGrabCarryDuration - window);
+    const x1 = s.grabber.x;
+    s.advance(window);
+    const peakPxPerSec = (Math.abs(s.grabber.x - x1) * 1000) / window;
+    const slideCap = grabSpeedToPxPerSec(ICE_SLIDE_MAX_SPEED);
+    assert.ok(
+      peakPxPerSec <= slideCap * 1.08,
+      `peak ${peakPxPerSec.toFixed(1)} must stay under ice-slide ${slideCap.toFixed(1)} px/s`
     );
   });
 
@@ -488,6 +589,10 @@ test("drive at the tawara", async (t) => {
     assert.ok(
       Math.abs(s.victim.x - MAP_RIGHT_BOUNDARY) < 1,
       "victim should be released pinned against the tawara"
+    );
+    assert.ok(
+      s.victim.stamina > 50,
+      `one edge drive must not dump a full tank, got ${s.victim.stamina}`
     );
   });
 

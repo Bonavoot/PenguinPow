@@ -86,7 +86,14 @@ import slapAttack2Hit from "../assets/slap-attack-2-hit-frame.png";
 import palmThrust from "../assets/palm-thrust.png";
 import palmThrustStartup from "../assets/palm-thrust-startup.png";
 import palmThrustSmear from "../assets/palm-thrust-smear.png";
+import bellyBumpRaw from "../assets/belly-bump.png";
 import lowKick from "../assets/kick.png";
+
+// Recolor IndexedDB + browser cache key on URL. Bump rev when the PNG changes
+// in place so a replaced file does not keep showing the old blob.
+const bellyBump = `${bellyBumpRaw}${
+  bellyBumpRaw.includes("?") ? "&" : "?"
+}rev=4`;
 
 // ============================================
 // SPRITE CONFIGURATIONS
@@ -135,9 +142,10 @@ const BLUE_ANIMATED_SPRITES = {
   grabAttempt: {
     src: grabAttemptSheet,
     frameCount: 20,
-    frameWidth: 480,
-    frameHeight: 480,
-    fps: 15,
+    frameWidth: 560,
+    frameHeight: 560,
+    fps: 40,
+    loop: true,
   },
   hit: {
     src: hitSheet,
@@ -260,6 +268,7 @@ const BLUE_STATIC_SPRITES = {
   palmThrust: palmThrust,
   palmThrustStartup: palmThrustStartup,
   palmThrustSmear: palmThrustSmear,
+  bellyBump: bellyBump,
   lowKick: lowKick,
 };
 

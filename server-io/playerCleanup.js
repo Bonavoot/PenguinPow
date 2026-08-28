@@ -9,12 +9,13 @@ function cleanupPlayerStates(player) {
   player.grabAttemptType = null;
   player.grabAttemptStartTime = null;
   player.isGrabStartup = false;
-  player.grabStartupArmorUsed = false;
+  player.grabActiveDuration = 0;
   player.isGrabbing = false;
   player.isGrabbingMovement = false;
   player.isWhiffingGrab = false;
   player.grabMovementStartTime = 0;
   player.grabMovementDirection = 0;
+  player.grabFacingDirection = null;
   player.grabMovementVelocity = 0;
   player.isBeingGrabbed = false;
   player.isCounterGrabbed = false;
@@ -267,6 +268,7 @@ function getCleanedRoomData(room) {
       isWhiffingGrab: false,
       grabMovementStartTime: 0,
       grabMovementDirection: 0,
+      grabFacingDirection: null,
       grabMovementVelocity: 0,
       isBeingGrabbed: false,
       isCounterGrabbed: false,

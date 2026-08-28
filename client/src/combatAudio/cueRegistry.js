@@ -3,13 +3,18 @@
  * Gameplay code requests cue names; asset/layer choices live here.
  */
 
+import {
+  SLAP_STARTUP_MS,
+  PALM_THRUST_STARTUP_MS,
+} from "../config/combatTiming.js";
+
 /** Matches server-io/inputCommandReliability.js PALM_DIR_CHORD_MS */
 export const STRIKE_CHORD_MS = 50;
 
 export const SWING_STARTUP_MS = Object.freeze({
-  slap: 55,
+  slap: SLAP_STARTUP_MS,
   /** MUST match server-io/constants.js PALM_THRUST_STARTUP_MS */
-  palm: 90,
+  palm: PALM_THRUST_STARTUP_MS,
   lowKick: 95,
   /** Hitbox startup only — NOT the charged lunge whoosh seam. */
   charged: 150,

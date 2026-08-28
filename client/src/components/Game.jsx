@@ -9,6 +9,10 @@ import RoofTassleLayer from "./RoofTassleLayer";
 import SnowEffect from "./SnowEffect";
 import PreMatchScreen from "./PreMatchScreen";
 import TrainingPanel from "./TrainingPanel";
+import {
+  EMPTY_TRAINING_KITS,
+  applyTrainingKitView,
+} from "./TrainingKitTray";
 import gamepadHandler from "../utils/gamepadHandler";
 import useCamera from "../hooks/useCamera";
 import { usePlayerColors } from "../context/PlayerColorContext";
@@ -43,6 +47,7 @@ import {
 } from "../prediction/localInput";
 import { acquireCursor, releaseCursor } from "../ui/cursorGate";
 import { getServerOffset, isServerClockSynced, getEstimatedRtt } from "../lib/serverClock";
+import { warmCues } from "../utils/musicDirector";
 import {
   requestFighterResync,
   retainFighterSocket,
@@ -175,6 +180,8 @@ const Game = ({
   const [trainingBehavior, setTrainingBehavior] = useState("standby");
   const [trainingInfiniteResources, setTrainingInfiniteResources] =
     useState(false);
+  const [trainingKits, setTrainingKits] = useState(EMPTY_TRAINING_KITS);
+  const [trainingKitTarget, setTrainingKitTarget] = useState("human");
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isPreloading, setIsPreloading] = useState(true);
   // Tracks which bout the pre-match sequence has already run for. For a normal
@@ -224,6 +231,13 @@ const Game = ({
 
   const isTrainingMatchRef = useRef(isTrainingMatch);
   isTrainingMatchRef.current = isTrainingMatch;
+
+  // Stream-warm results BGM during prematch (existing preloadMusic path —
+  // HTMLAudio cache, not decodeAudioData). Avoids a 2–3MB hitch when the
+  // ceremony card mounts after the last bout.
+  useEffect(() => {
+    warmCues(["resultsWin", "resultsLose"]);
+  }, []);
 
   // ============================================
   // GAME STATE TRACKING FOR PREDICTIONS
@@ -1071,9 +1085,10 @@ const Game = ({
       if (typeof data?.infiniteResources === "boolean") {
         setTrainingInfiniteResources(data.infiniteResources);
       }
+      if (data?.kits) setTrainingKits(data.kits);
     };
 
-    const handleGameOver = () => {
+    const handleGameOver = (data) => {
       if (isTrainingMatchRef.current) return;
       requestAnimationFrame(() => {
         setCrowdEvent({
@@ -1404,6 +1419,9 @@ const Game = ({
                         isBashoMatch ? bashoBout?.opponentPowerUps : undefined
                       }
                       bashoDay={isBashoMatch ? bashoBout?.day : undefined}
+                      bashoTotalBouts={
+                        isBashoMatch ? bashoBout?.totalBouts : undefined
+                      }
                       bashoOpponentName={
                         isBashoMatch ? bashoBout?.opponentName : undefined
                       }
@@ -1460,6 +1478,26 @@ const Game = ({
               if (socket?.connected) socket.emit("request_training_reset");
             }}
             onExit={onLeaveTraining || (() => setCurrentPage("mainMenu"))}
+            kits={trainingKits}
+            kitTarget={trainingKitTarget}
+            onKitTarget={setTrainingKitTarget}
+            onKitChange={(op, type) => {
+              setTrainingKits((prev) => ({
+                ...prev,
+                [trainingKitTarget]: applyTrainingKitView(
+                  prev[trainingKitTarget],
+                  op,
+                  type
+                ),
+              }));
+              if (socket?.connected) {
+                socket.emit("set_training_kit", {
+                  target: trainingKitTarget,
+                  op,
+                  type,
+                });
+              }
+            }}
           />
         )}
         {showPreMatchScreen && currentRoom && (

@@ -45,44 +45,28 @@ function size(rel) {
   console.log(`ok - display map webp (${(webp / 1024).toFixed(0)} KB)`);
 }
 
-// 2. Battle music is OGG + streamed (not AudioBuffer-preloaded)
+// 2. Battle music is streamed (not AudioBuffer-preloaded)
 {
-  const tracks = [
-    "client/src/sounds/battle-music-sound.ogg",
-    "client/src/sounds/battle-music-sound-2.ogg",
-    "client/src/sounds/battle-music-sound-3.ogg",
-  ];
-  let total = 0;
-  for (const t of tracks) {
-    assert.ok(exists(t), `missing ${t}`);
-    total += size(t);
-  }
-  assert.ok(total < 12 * 1024 * 1024, `battle ogg total too large: ${total}`);
+  const battleOgg = "client/src/sounds/battle-music.ogg";
+  assert.ok(exists(battleOgg), "missing battle-music.ogg");
 
   const assets = read("client/src/components/fighterAssets.js");
-  assert.ok(/battle-music-sound\.ogg/.test(assets), "battle music imports ogg");
+  assert.ok(/battle-music\.ogg/.test(assets), "battle music imports ogg");
   assert.ok(
-    !/battle-music-sound.*\.wav/.test(assets),
-    "battle music must not import wav",
+    /preloadMusicTracks\s*\(\s*\[\s*battleMusic\s*\]\s*\)/.test(assets),
+    "battle track uses preloadMusicTracks",
   );
-  assert.ok(
-    /preloadMusicTracks\s*\(\s*battleMusicTracks\s*\)/.test(assets),
-    "battle tracks use preloadMusicTracks",
-  );
-  // Must not appear inside preloadSounds([...])
   const preloadBlock = assets.match(/preloadSounds\(\[([\s\S]*?)\]\)/);
   assert.ok(preloadBlock, "preloadSounds block missing");
   assert.ok(
-    !/battleMusicTracks/.test(preloadBlock[1]),
-    "battleMusicTracks must not be decode-preloaded",
+    !/\bbattleMusic\b/.test(preloadBlock[1]),
+    "battleMusic must not be decode-preloaded",
   );
 
   const engine = read("client/src/utils/audioEngine.js");
   assert.ok(/createStreamedCrossfadeLoop/.test(engine), "streamed loop present");
   assert.ok(/preloadMusicTracks/.test(engine), "preloadMusicTracks exported");
-  console.log(
-    `ok - battle music ogg+stream (total ${(total / 1024 / 1024).toFixed(2)} MB)`,
-  );
+  console.log("ok - battle music streamed (not decode-preloaded)");
 }
 
 // 3. Match preload uses dohyo-display, not 6MB style

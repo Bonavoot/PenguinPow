@@ -98,6 +98,20 @@ HIT_FX.slapBurst = {
   durationMs: 230,
 };
 
+// Ice-slide belly bump — palm-scale burst, white-hot body check (not yellow
+// slap poke). Same Y as a slap spark; only the size/color carry the weight.
+HIT_FX.slideSlap = {
+  ...HIT_FX.slap,
+  sizeCqw: 17.2,
+  durationMs: 240,
+  edgeSizeCqw: 18.6,
+  filters: {
+    ...HIT_FX.slap.filters,
+    normal:
+      "brightness(1.38) saturate(0.72) drop-shadow(0 0 0.55cqw rgba(255, 252, 245, 0.95)) drop-shadow(0 0 1.05cqw rgba(170, 215, 255, 0.45))",
+  },
+};
+
 // Flap / slide-jump belly-slam — big burst spark (same weight as slapBurst).
 // GameFighter anchors Y higher on the victim via FLAP_HIT_EFFECT_Y.
 HIT_FX.flap = {
@@ -272,7 +286,14 @@ const SlapHitSpriteEffect = ({ position }) => {
     const rawType = position.attackType || "slap";
     // Palm thrust uses the bigger slapBurst variant of the slap spark sheet
     // (it's attackType "charged" on the wire, so it must be routed explicitly).
-    const attackType = position.isPalmThrust ? "slapBurst" : rawType;
+    // Belly bump stays attackType "slap" on the wire — route on the flag.
+    const attackType = position.isPalmThrust
+      ? "slapBurst"
+      : position.slideSlap
+        ? "slideSlap"
+        : position.hitFromAir && rawType === "slap"
+          ? "slapBurst"
+          : rawType;
     // Only render for moves that have a configured sheet.
     if (!HIT_FX[attackType]) return;
     if (processedHitsRef.current.has(hitIdentifier)) return;
@@ -298,6 +319,8 @@ const SlapHitSpriteEffect = ({ position }) => {
     position?.seamAnchored,
     position?.attackType,
     position?.isPalmThrust,
+    position?.slideSlap,
+    position?.hitFromAir,
     position?.isCounterHit,
     position?.isPunish,
     position?.isArmorBreak,
@@ -332,6 +355,8 @@ SlapHitSpriteEffect.propTypes = {
     hitId: PropTypes.string,
     timestamp: PropTypes.number,
     isPalmThrust: PropTypes.bool,
+    slideSlap: PropTypes.bool,
+    hitFromAir: PropTypes.bool,
     isCounterHit: PropTypes.bool,
     isPunish: PropTypes.bool,
     isArmorBreak: PropTypes.bool,

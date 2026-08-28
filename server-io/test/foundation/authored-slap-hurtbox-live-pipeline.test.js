@@ -23,6 +23,7 @@ const {
   armSlapPhase,
   stepCollisionBothOrders,
   advanceSim,
+  clampSlapActiveAge,
 } = require("./helpers/scenarioHarness");
 const {
   SLAP_STARTUP_MS,
@@ -107,7 +108,8 @@ function armLiveSlapActive(player, now, agePastStartupMs) {
   player.currentAction = "slap";
   player.isInStartupFrames = false;
   player.isRecovering = false;
-  player.attackStartTime = now - SLAP_STARTUP_MS - agePastStartupMs;
+  const age = clampSlapActiveAge(agePastStartupMs);
+  player.attackStartTime = now - SLAP_STARTUP_MS - age;
   player.slapActiveEndTime =
     player.attackStartTime + SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
   player.attackEndTime = player.slapActiveEndTime + SLAP_RECOVERY_MS;

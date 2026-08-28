@@ -124,6 +124,9 @@ const {
   isTrainingRoom,
   applyTrainingBehavior,
   applyTrainingInfiniteResources,
+  emptyTrainingKits,
+  applyTrainingKitsToRoom,
+  setTrainingKit,
   trainingSettingsPayload,
   armTrainingLive,
   snapTrainingPositions,
@@ -650,7 +653,7 @@ function processInputPacket(room, player, data, io, rooms) {
   }
 
   // SPACE PRESS (rising edge):
-  //   BACK+SPACE → MATADOR (grab-line tap parry; never becomes GUARD)
+  //   BACK+SPACE → MATADOR (grab-line press-and-hold; one outcome, never GUARD)
   //   SPACE alone → ATTACK PARRY (tap read → hold settles into GUARD)
   // PRIMARY human path; lag-compensated. Shared apSpaceConsumed latch.
   if (
@@ -1786,6 +1789,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
       cpuDifficulty: "HARD",
       cpuTrainingBehavior: "standby",
       trainingInfiniteResources: false,
+      trainingKits: emptyTrainingKits(),
       playerAvailablePowerUps: {},
       playersSelectedPowerUps: {},
     };
@@ -1817,6 +1821,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
 
     registerPlayerInMaps(human, room);
     registerPlayerInMaps(cpuPlayer, room);
+    applyTrainingKitsToRoom(room, { refreshActives: true });
     armTrainingLive(room);
 
     socket.emit("training_match_created", {
@@ -1867,6 +1872,15 @@ function registerSocketHandlers(socket, io, rooms, context) {
     if (!room) return;
     applyTrainingInfiniteResources(room, !!(data && data.infiniteResources));
     socket.emit("training_settings", trainingSettingsPayload(room));
+  });
+
+  socket.on("set_training_kit", (data) => {
+    const room = rooms.find(
+      (r) => isTrainingRoom(r) && r.players.some((p) => p.id === socket.id)
+    );
+    if (!room) return;
+    const settings = setTrainingKit(room, data || {});
+    if (settings) socket.emit("training_settings", settings);
   });
 
   // BASHO bout creation — a FORK of create_cpu_match (left untouched per the

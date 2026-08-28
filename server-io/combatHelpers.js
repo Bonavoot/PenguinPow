@@ -1,90 +1,134 @@
 const {
-  GRAB_RANGE,
   GRAB_STARTUP_DURATION_MS,
   GRAB_ACTIVE_MS,
-  GRAB_LUNGE_DISTANCE,
+  GRAB_LUNGE_SPEED,
+  GRAB_LUNGE_SPEED_CAP,
   GRAB_LUNGE_FRICTION,
   TICK_RATE,
   speedFactor,
 } = require("./constants");
+const { getMinimumCenterDistance } = require("./pushboxGeometry");
 
-// ── Grab dive physics ───────────────────────────────────────────────────────
-// The dive is an impulse bled off by friction, integrated the same way every other
-// moving thing in this game is: `x += delta * speedFactor * v` then `v *= friction`.
-//
-// GRAB_LUNGE_DISTANCE authors the TOTAL travel of that decay, so the impulse has to
-// be solved backwards from it. Summing the geometric series of per-tick travel:
-//
-//   total = Σ tickMs · speedFactor · v₀ · fⁿ = tickMs · speedFactor · v₀ / (1 − f)
-//
-// which inverts to the impulse below, and gives a closed form for how far the dive
-// has travelled after n ticks. Both live here rather than inline in the sim so the
-// frame-data guardrails measure the same curve the game actually runs, instead of a
-// second copy that can drift away from it.
+// ── Grab run physics ────────────────────────────────────────────────────────
+// Stamp a run speed, then `x += delta * speedFactor * v` and `v *= friction`.
+// While the grab is live, friction is a kiss (GRAB_LUNGE_FRICTION ≈ 1) so
+// you keep running. Recovery swaps in GRAB_WHIFF_FRICTION — that is the
+// slowdown. Travel is a consequence of speed × time, not a 110px cap.
 const NOMINAL_TICK_MS = 1000 / TICK_RATE;
 const TRAVEL_PER_TICK_AT_UNIT_VELOCITY = NOMINAL_TICK_MS * speedFactor;
 
 function getGrabLungeImpulse() {
+  return GRAB_LUNGE_SPEED;
+}
+
+// Standing run is the floor. Incoming slide may raise it. Cap is a
+// power slide — not uncapped Happy Feet. Drive uses this same number.
+function getGrabAttemptSpeed(incomingAbs = 0) {
+  const incoming = Number.isFinite(incomingAbs) ? Math.abs(incomingAbs) : 0;
+  return Math.min(GRAB_LUNGE_SPEED_CAP, Math.max(GRAB_LUNGE_SPEED, incoming));
+}
+
+function grabSpeedToPxPerSec(speed) {
+  const v =
+    Number.isFinite(speed) && speed > 0 ? speed : GRAB_LUNGE_SPEED;
+  return v * TRAVEL_PER_TICK_AT_UNIT_VELOCITY * TICK_RATE;
+}
+
+// Drive opens at the attempt slide, then eases up — skating into the
+// shove-off. Peak is capped at a power slide so a slide-in cannot
+// blaze. Live velocity wins; stamped attempt speed is the fallback.
+const DRIVE_CARRY_END_SPEED_MULT = 1.25;
+
+function getDriveCarrySpeed(grabber) {
+  const live = Math.abs(Number(grabber && grabber.grabMovementVelocity) || 0);
+  const stamped = Number(grabber && grabber.grabAttemptSpeed) || 0;
+  return getGrabAttemptSpeed(live > 0 ? live : stamped);
+}
+
+function resolveDriveCarryEndMult(speed) {
+  const v0 = grabSpeedToPxPerSec(speed);
+  const cap = grabSpeedToPxPerSec(GRAB_LUNGE_SPEED_CAP);
+  if (!(v0 > 0)) return 1;
+  const wanted = v0 * DRIVE_CARRY_END_SPEED_MULT;
+  return Math.max(1, Math.min(wanted, cap) / v0);
+}
+
+function driveCarryAccelCoef(endMult) {
+  const m = endMult > 0 ? endMult : 1;
+  return 2 / (m + 1);
+}
+
+// Constant accel from v0 to min(v0*mult, ice-slide cap) over distance D.
+// Same distance, longer clock when the peak is clamped.
+function getDriveCarryDurationMs(distancePx, speed) {
+  const d = Math.max(0, Number(distancePx) || 0);
+  const v0 = grabSpeedToPxPerSec(speed);
+  if (!(d > 0) || !(v0 > 0)) return 0;
+  const endMult = resolveDriveCarryEndMult(speed);
+  return Math.round((d * driveCarryAccelCoef(endMult) / v0) * 1000);
+}
+
+function driveCarryTravelT(t, speed) {
+  const u = t < 0 ? 0 : t > 1 ? 1 : t;
+  const p = driveCarryAccelCoef(resolveDriveCarryEndMult(speed));
+  return p * u + (1 - p) * u * u;
+}
+
+function getGrabLungeTravel(elapsedMs, friction = GRAB_LUNGE_FRICTION, speed = GRAB_LUNGE_SPEED) {
+  if (!(elapsedMs > 0)) return 0;
+  const ticks = elapsedMs / NOMINAL_TICK_MS;
+  if (friction >= 1) return ticks * TRAVEL_PER_TICK_AT_UNIT_VELOCITY * speed;
   return (
-    (GRAB_LUNGE_DISTANCE * (1 - GRAB_LUNGE_FRICTION)) /
-    TRAVEL_PER_TICK_AT_UNIT_VELOCITY
+    (TRAVEL_PER_TICK_AT_UNIT_VELOCITY * speed * (1 - Math.pow(friction, ticks))) /
+    (1 - friction)
   );
 }
 
-// Distance covered by `elapsedMs` into the dive. Used by the sim only for
-// reasoning/tests — the live position comes from real per-tick integration, which
-// tracks this within rounding.
-function getGrabLungeTravel(elapsedMs) {
-  if (!(elapsedMs > 0)) return 0;
-  const ticks = elapsedMs / NOMINAL_TICK_MS;
-  return GRAB_LUNGE_DISTANCE * (1 - Math.pow(GRAB_LUNGE_FRICTION, ticks));
-}
-
-// How far the dive carries while the grab can still CATCH something — startup plus
-// active. Everything past this is skid during recovery, so it is threat range that
-// this measures, not total travel.
 function getGrabThreatTravel() {
   return getGrabLungeTravel(GRAB_STARTUP_DURATION_MS + GRAB_ACTIVE_MS);
 }
 
+// Hands-on-belly latch. Must sit INSIDE slap tip or an incoming dive
+// connects in the 175-range vacuum before a tip poke can clang.
+// Ice jitter uses the same 1.5px epsilon as strike confirm.
+const GRAB_CONNECT_EPSILON_PX = 1.5;
+
+function getGrabConnectDistance(grabber, defender) {
+  return getMinimumCenterDistance(
+    grabber?.sizeMultiplier,
+    defender?.sizeMultiplier
+  );
+}
+
 function isOpponentCloseEnoughForGrab(player, opponent) {
-  // Calculate grab range based on player size
-  const grabRange = GRAB_RANGE * (player.sizeMultiplier || 1);
-  return Math.abs(player.x - opponent.x) < grabRange;
+  const limit = getGrabConnectDistance(player, opponent);
+  return Math.abs(player.x - opponent.x) <= limit + GRAB_CONNECT_EPSILON_PX;
 }
 
 function isOpponentInFrontOfGrabber(player, opponent) {
-  // Grab should only connect with opponents who are in front of the grabber,
-  // not behind them. Uses player.facing for direction check.
+  // Commit facing wins. Live facing can flip when they sidestep; the
+  // attempt must not start grabbing "the new front."
   // facing: 1 = facing left, -1 = facing right
-  const BEHIND_TOLERANCE = 20; // Small tolerance (pixels) for near-overlap edge cases
-  // Convert facing to direction: facing 1 (left) → check opponent is to left (-1)
-  const facingDirection = player.facing === 1 ? -1 : 1;
-  // Positive = opponent is in front, negative = opponent is behind
+  const facing =
+    player.grabFacingDirection === 1 || player.grabFacingDirection === -1
+      ? player.grabFacingDirection
+      : player.facing;
+  const BEHIND_TOLERANCE = 20;
+  const facingDirection = facing === 1 ? -1 : 1;
   const relativePos = (opponent.x - player.x) * facingDirection;
   return relativePos >= -BEHIND_TOLERANCE;
 }
 
-// COMMAND-GRAB TIMELINE — no armor anywhere on it.
-//
-// The grab used to carry a "throw catch": from 70ms into startup it beat any
-// slap in range. That was load-bearing at the old 145ms startup, because 145 is
-// longer than the 130ms gap a slap masher leaves between active windows, so
-// without it a point-blank grab was arithmetically impossible. It was also
-// invisible — a grab at 60ms and one at 80ms looked identical and resolved
-// oppositely, with the elapsed time never even reaching the client.
-//
-// The startup was cut instead (see GRAB_STARTUP_MS), which makes the armor
-// unnecessary and the model physical:
-//   • Startup: fully hittable, every frame. Any live hitbox that reaches you
-//     stuffs the grab, slap included. The grab has to fit in a GAP.
-//   • Active: connect window. In range → clinch.
-// Nothing about the outcome depends on state you cannot see.
+// GRAB TIMELINE — overlap always resolves (see grabStartupArmor.js).
+// Reaching / tip poke / slap already out when the grip turns on → real hit.
+// Late slap after the grip is on → CATCH. Shatter Palm always stuffs.
+// Latch is pushbox-touch, not GRAB_RANGE.
 function getGrabTimelineElapsed(grabber, now) {
   if (!grabber?.isGrabStartup || !grabber.grabStartupStartTime) return null;
   const startupMs = grabber.grabStartupDuration || GRAB_STARTUP_DURATION_MS;
   const elapsed = now - grabber.grabStartupStartTime;
-  if (elapsed < 0 || elapsed >= startupMs + GRAB_ACTIVE_MS) return null;
+  const activeMs = grabber.grabActiveDuration || GRAB_ACTIVE_MS;
+  if (elapsed < 0 || elapsed >= startupMs + activeMs) return null;
   return elapsed;
 }
 
@@ -133,9 +177,17 @@ function grabSeparationEase(t, curve) {
 
 module.exports = {
   isOpponentCloseEnoughForGrab,
+  getGrabConnectDistance,
   isOpponentInFrontOfGrabber,
   isGrabInActiveWindow,
   getGrabLungeImpulse,
+  getGrabAttemptSpeed,
+  grabSpeedToPxPerSec,
+  getDriveCarrySpeed,
+  getDriveCarryDurationMs,
+  driveCarryTravelT,
+  resolveDriveCarryEndMult,
+  DRIVE_CARRY_END_SPEED_MULT,
   getGrabLungeTravel,
   getGrabThreatTravel,
   grabSeparationEase,

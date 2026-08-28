@@ -505,20 +505,14 @@ describe("Phase 11 — pose geometry registration", () => {
     assert.equal(recover.appliedOffsetY, 0);
   });
 
-  it("37. No active grounded sole correction remains except belly-bump placeholder", () => {
-    const allowedSoleFix = new Set(["belly_bump"]);
+  it("37. No active grounded sole correction remains in the registry", () => {
     for (const key of listPoseKeys()) {
       const reg = getPoseRegistration(key);
-      if (typeof reg.supportFromBottomPct === "number" && !allowedSoleFix.has(key)) {
+      if (typeof reg.supportFromBottomPct === "number") {
         assert.fail(
           `${key} still has supportFromBottomPct — no proven sole defect remains`
         );
       }
     }
-    assert.equal(
-      getPoseRegistration("belly_bump").supportFromBottomPct,
-      0.136,
-      "1254² belly-bump has extra sole pad vs the 960 set"
-    );
   });
 });

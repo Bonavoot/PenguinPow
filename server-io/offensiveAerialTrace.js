@@ -15,7 +15,9 @@ const {
   OFFENSIVE_AERIAL_DEBUG,
   isOffensiveAerialReactionV2Enabled,
 } = require("./offensiveAerialFlags");
-const { GROUND_LEVEL, HITBOX_DISTANCE_VALUE } = require("./constants");
+const { GROUND_LEVEL } = require("./constants");
+const { getMinimumCenterDistance } = require("./pushboxGeometry");
+const { isSlideJumpDiveDropping } = require("./gameUtils");
 const {
   isContactConsumed,
   snapshotOffensiveAerialDebug,
@@ -30,15 +32,15 @@ const {
 } = require("./offensiveAerialFacing");
 
 /** Must match collisionSystem.js local constants (exported there for tests). */
-const FLAP_BODYSLAM_WIDTH_SCALE = 0.7;
+const FLAP_BODYSLAM_WIDTH_SCALE = 1;
 const FLAP_BODYSLAM_CONTACT_HEIGHT = 100;
 
 function bodySlamBodyWidth(attacker, defender) {
   return (
-    HITBOX_DISTANCE_VALUE *
-    2 *
-    FLAP_BODYSLAM_WIDTH_SCALE *
-    Math.max(attacker?.sizeMultiplier || 1, defender?.sizeMultiplier || 1)
+    getMinimumCenterDistance(
+      attacker?.sizeMultiplier,
+      defender?.sizeMultiplier
+    ) * FLAP_BODYSLAM_WIDTH_SCALE
   );
 }
 
@@ -48,10 +50,8 @@ function isBodySlamWindowOpen(attacker) {
   }
   // Latch + outcome contactConsumed both kill the hitbox (same activation).
   if (attacker.slideJumpHitLanded || isContactConsumed(attacker)) return false;
-  if (!attacker.slideJumpDiveCommitted) return false;
-  const descending =
-    (attacker.slideJumpVelocityY ?? 0) <= 0 || !!attacker.slideJumpDiveCommitted;
-  if (!descending) return false;
+  if (!isSlideJumpDiveDropping(attacker)) return false;
+  if ((attacker.slideJumpVelocityY ?? 0) > 0) return false;
   if (attacker.y - GROUND_LEVEL > FLAP_BODYSLAM_CONTACT_HEIGHT) return false;
   return true;
 }
@@ -68,6 +68,7 @@ function classifyAerialPhase(player) {
   }
   if (player.isSlideJumping) {
     if (player.slideJumpPhase === "landing") return "landing";
+    if (player.slideJumpDivePhase === "pop") return "airborne_dive_pop";
     if (player.slideJumpDiveCommitted) return "airborne_active_dive";
     if (isBodySlamWindowOpen(player)) return "airborne_active";
     if (player.slideJumpHitLanded) return "post_hit_travel";

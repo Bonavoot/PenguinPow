@@ -21,7 +21,6 @@ const { createCommandGrabScenario } = require("./harness/scenario");
 const { profileFor } = require("../../momentumTransfer");
 const { grabTellAnimMs } = require("../../commandGrabSystem");
 const {
-  CMD_DRIVE_CARRY_MS,
   CMD_DRIVE_CINCH_FRACTION,
   CMD_GRAB_CINCH_MS,
   CMD_GRAB_STAMINA_COST,
@@ -192,7 +191,7 @@ test("command grab connect beat", async (t) => {
       firstTickGap > s.settledAttach + 20,
       `grip must still be open on the first carry tick, got ${firstTickGap}`
     );
-    s.advance(CMD_DRIVE_CARRY_MS * CMD_DRIVE_CINCH_FRACTION);
+    s.advance(s.grabber.cmdGrabCarryDuration * CMD_DRIVE_CINCH_FRACTION);
     assert.ok(
       Math.abs(s.gap() - s.settledAttach) < 6,
       `grip should be closed by the end of the cinch slice, got ${s.gap()}`

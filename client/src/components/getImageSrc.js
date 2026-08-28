@@ -106,7 +106,7 @@ const getImageSrc = (
   isGrabWhiffRecovery,
   isRopeJumping,
   ropeJumpPhase,
-  isDodgeRecovery,
+  isDodgeRecovery, // eslint-disable-line no-unused-vars -- tap-dodge has no recovering settle
   isSidestepping,
   isSidestepRecovery,
   isChargingAttack,
@@ -173,7 +173,7 @@ const getImageSrc = (
   offensiveAerialPresentation = null,
   // FORCE OUT (grabPush) loser — held after the shove settles (not idle).
   isGrabPushDefeat = false,
-  // Ice-slide convert — placeholder belly-bump pose (1254² art, scaled in pose).
+  // Ice-slide convert — belly-bump pose (same slap cycle, different art).
   slideSlapArmed = false
 ) => {
   if (ritualAnimationSrc) {
@@ -201,7 +201,9 @@ const getImageSrc = (
 
   // Legacy flag — mutual grab no longer plays a special tech pose.
   if (isGrabTeching) return grabbing;
-  if (isGrabWhiffRecovery) return grabAttempt;
+  // Whiff recovery is the punish window — use the recovering pose so it
+  // doesn't keep reading as the still-lunging grab attempt.
+  if (isGrabWhiffRecovery) return recovering;
 
   if (isGrabBellyFlopping) return grabbing;
   if (isBeingGrabBellyFlopped) return beingGrabbed;
@@ -292,6 +294,15 @@ const getImageSrc = (
   if (isPowerSliding) return crouchStance;
   // Low kick / trip — single pose for the whole rooted move.
   if (isLowKick) return lowKick;
+  // Clinch / grab connect outranks slap. isSlapAttack can still be true for
+  // one packet after a ranged CATCH (or a leftover buffered slap→grab). The
+  // jab hit pose must not freeze on the grabber through grab hitstop.
+  if (isGrabbing) {
+    if (grabState === "attempting") {
+      return grabAttemptType === "throw" ? throwing : grabAttempt;
+    }
+    return grabbing;
+  }
   // Palm thrust: a client-driven 4-frame animation spanning the whole move.
   // Server keeps isPalmThrust true from startup through recovery, so we never
   // fall through to the generic recovering sprite — the frame index drives the
@@ -325,8 +336,11 @@ const getImageSrc = (
     if (hasGrip) return grabbing;
     return beingGrabbed;
   }
-  if (isDodging) return dodging;
-  if (isDodgeRecovery) return recovering;
+  // Dodge hop uses the same squat art as ice slide; hop/windup/landing stay
+  // on dodge timing (CSS + recovering bookends in GameFighter).
+  if (isDodging) return sliding;
+  // Tap-dodge land has no recovering settle (0ms server recovery + no pose swap).
+  // Held SHIFT is already on `sliding` via isIceSliding above.
   if (isJumping) return throwing;
   if (isAttacking && !isSlapAttack) return attack;
   if (isCrouchStrafing) return crouchStrafingApng;
@@ -355,12 +369,6 @@ const getImageSrc = (
     const isSlap2 = slapAnimation === 2;
     if (slapFrame === 1) return isSlap2 ? slapAttack2Blur : slapAttack1Blur; // smear
     return isSlap2 ? slapAttack2Hit : slapAttack1Hit; // hit — held through active
-  }
-  if (isGrabbing) {
-    if (grabState === "attempting") {
-      return grabAttemptType === "throw" ? throwing : grabAttempt;
-    }
-    return grabbing;
   }
   // Parry / guard ATTEMPTING stance (space held, no absorb this frame).
   // Same blocking.png for the live parry window AND the guard floor — success

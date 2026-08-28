@@ -1,7 +1,9 @@
 import Rematch from "./Rematch";
+import { useEffect } from "react";
 import styled, { keyframes } from "styled-components";
 import PropTypes from "prop-types";
 import { C } from "./menuTheme";
+import { setMusic, resultsCue, silenceResultStingers } from "../utils/soundUtils";
 
 /*
  * MatchOver — printed result card pinned into the broadcast feed.
@@ -322,6 +324,11 @@ const RematchSection = styled.div`
 
 const MatchOver = ({ winner, roomName, localId, isCPUMatch }) => {
   const isWinner = localId === winner.id;
+
+  useEffect(() => {
+    silenceResultStingers();
+    setMusic(resultsCue(isWinner));
+  }, [isWinner]);
 
   return (
     <MatchOverOverlay>

@@ -110,13 +110,15 @@ function preloadSounds(sources) {
   return Promise.all(sources.map((src) => preloadSound(src)));
 }
 
-/**
- * Play a sound effect instantly from a pre-decoded AudioBuffer.
- * @param {string} src - The sound file URL (same as what was passed to preloadSound)
- * @param {number} volume - Final volume, caller should apply global volume
- * @param {number|null} duration - Optional max duration in milliseconds
- * @returns {{ source: AudioBufferSourceNode, gainNode: GainNode } | null}
- */
+const stopGenBySrc = new Map();
+function oneShotGen(src) {
+  return stopGenBySrc.get(src) || 0;
+}
+function bumpOneShotGen(src) {
+  if (!src) return;
+  stopGenBySrc.set(src, oneShotGen(src) + 1);
+}
+
 /**
  * Play a decoded buffer. When the buffer is not yet loaded:
  * - one-shots: fire-and-forget preload (legacy) — returns null
@@ -147,9 +149,10 @@ function playBuffer(src, volume = 1.0, duration = null, playbackRate = 1.0, loop
           }
         },
       };
+      const gen = oneShotGen(src);
       preloadSound(src).then((buf) => {
-        if (!buf || handle._stopped) return;
-        const started = _play(ctx, buf, volume, duration, playbackRate, loop, pan);
+        if (!buf || handle._stopped || gen !== oneShotGen(src)) return;
+        const started = _play(ctx, buf, volume, duration, playbackRate, loop, pan, src);
         if (!started) return;
         handle._inner = {
           stop() {
@@ -173,16 +176,68 @@ function playBuffer(src, volume = 1.0, duration = null, playbackRate = 1.0, loop
       });
       return handle;
     }
+    const gen = oneShotGen(src);
     preloadSound(src).then((buf) => {
-      if (buf) _play(ctx, buf, volume, duration, playbackRate, loop, pan);
+      if (!buf || gen !== oneShotGen(src)) return;
+      _play(ctx, buf, volume, duration, playbackRate, loop, pan, src);
     });
     return null;
   }
 
-  return _play(ctx, buffer, volume, duration, playbackRate, loop, pan);
+  return _play(ctx, buffer, volume, duration, playbackRate, loop, pan, src);
 }
 
-function _play(ctx, buffer, volume, duration, playbackRate = 1.0, loop = false, pan = 0) {
+const playingBySrc = new Map();
+
+function trackSource(src, source) {
+  if (!src || !source) return;
+  let set = playingBySrc.get(src);
+  if (!set) {
+    set = new Set();
+    playingBySrc.set(src, set);
+  }
+  set.add(source);
+}
+
+function untrackSource(src, source) {
+  const set = playingBySrc.get(src);
+  if (!set) return;
+  set.delete(source);
+  if (set.size === 0) playingBySrc.delete(src);
+}
+
+function srcBasename(src) {
+  if (!src) return "";
+  const noQuery = String(src).split("?")[0];
+  const parts = noQuery.split("/");
+  return parts[parts.length - 1];
+}
+
+/** Stop in-flight and not-yet-decoded one-shots for these URLs. */
+function stopPlayingSrcs(srcs) {
+  if (!srcs || !srcs.length) return;
+  const keys = new Set();
+  for (const src of srcs) {
+    if (!src) continue;
+    bumpOneShotGen(src);
+    keys.add(src);
+    keys.add(srcBasename(src));
+  }
+  for (const [playingSrc, set] of [...playingBySrc.entries()]) {
+    if (!keys.has(playingSrc) && !keys.has(srcBasename(playingSrc))) continue;
+    bumpOneShotGen(playingSrc);
+    for (const source of [...set]) {
+      try {
+        source.stop();
+      } catch {
+        /* already stopped */
+      }
+      untrackSource(playingSrc, source);
+    }
+  }
+}
+
+function _play(ctx, buffer, volume, duration, playbackRate = 1.0, loop = false, pan = 0, src = null) {
   try {
     const source = ctx.createBufferSource();
     const gainNode = ctx.createGain();
@@ -204,7 +259,9 @@ function _play(ctx, buffer, volume, duration, playbackRate = 1.0, loop = false, 
       gainNode.connect(getMasterEQ());
     }
 
+    trackSource(src, source);
     source.onended = () => {
+      untrackSource(src, source);
       try {
         source.disconnect();
         gainNode.disconnect();
@@ -286,18 +343,26 @@ function createStreamedCrossfadeLoop(
   src,
   volume = 1.0,
   crossfadeDuration = 2.0,
-  initialFadeIn = 0
+  initialFadeIn = 0,
+  { startPaused = false } = {}
 ) {
   const pool = [new Audio(), new Audio()];
   for (const el of pool) {
     el.preload = "auto";
     el.src = src;
     el.loop = false;
+    try {
+      el.load();
+    } catch {
+      /* ignore */
+    }
   }
   let poolIdx = 0;
   let activeEl = null;
   let durationSec = NaN;
   let stopped = false;
+  let paused = !!startPaused;
+  let pauseGen = 0;
   let isFirstPlay = true;
   let nextTimer = null;
   let stopHoldTimer = null;
@@ -318,7 +383,7 @@ function createStreamedCrossfadeLoop(
   };
 
   function scheduleNext() {
-    if (stopped) return;
+    if (stopped || paused) return;
     const el = pool[poolIdx++ % 2];
     try {
       el.pause();
@@ -328,7 +393,7 @@ function createStreamedCrossfadeLoop(
     }
 
     const startPlayback = () => {
-      if (stopped) return;
+      if (stopped || paused) return;
       if (Number.isFinite(el.duration) && el.duration > 0) {
         durationSec = el.duration;
       }
@@ -383,14 +448,73 @@ function createStreamedCrossfadeLoop(
     }
   }
 
-  scheduleNext();
+  if (!paused) scheduleNext();
+
+  function playingPoolEls() {
+    return pool.filter((el) => !el.paused || el === activeEl);
+  }
 
   return {
+    pause({ fadeOut = 0.5 } = {}) {
+      if (stopped || paused) return;
+      paused = true;
+      const gen = ++pauseGen;
+      if (nextTimer) {
+        clearTimeout(nextTimer);
+        nextTimer = null;
+      }
+      clearRamps();
+      const fade = Math.max(0.05, fadeOut);
+      for (const el of playingPoolEls()) {
+        const from = el.volume;
+        trackCancel(
+          rampHtmlVolume(el, from, 0, fade, () => {
+            if (stopped || !paused || gen !== pauseGen) return;
+            try {
+              el.pause();
+            } catch {
+              /* ignore */
+            }
+          })
+        );
+      }
+    },
+    resume({ fadeIn = 0.5 } = {}) {
+      if (stopped || !paused) return;
+      paused = false;
+      pauseGen += 1;
+      clearRamps();
+      // Prepared before first play (HAKKIYOI): start from 0 using initialFadeIn.
+      if (!activeEl) {
+        scheduleNext();
+        return;
+      }
+      const el = activeEl;
+      const fade = Math.max(0.05, fadeIn);
+      el.volume = 0;
+      el.play().catch(() => {});
+      trackCancel(rampHtmlVolume(el, 0, volume, fade));
+      const d =
+        Number.isFinite(el.duration) && el.duration > 0
+          ? el.duration
+          : durationSec;
+      const remaining = Math.max(
+        0.25,
+        (d || 30) - (el.currentTime || 0) - crossfadeDuration
+      );
+      nextTimer = setTimeout(scheduleNext, remaining * 1000);
+      pendingTimers.push(nextTimer);
+    },
+    isPaused() {
+      return paused && !stopped;
+    },
     stop({ fadeOut = 0.5, hold = 0 } = {}) {
       if (stopHoldTimer) {
         clearTimeout(stopHoldTimer);
         stopHoldTimer = null;
       }
+      paused = false;
+      pauseGen += 1;
 
       const beginFade = () => {
         stopHoldTimer = null;
@@ -400,7 +524,7 @@ function createStreamedCrossfadeLoop(
         if (nextTimer) clearTimeout(nextTimer);
         clearRamps();
         const duration = Math.max(0.05, fadeOut);
-        const targets = pool.filter((el) => !el.paused || el === activeEl);
+        const targets = playingPoolEls();
         for (const el of targets) {
           trackCancel(
             rampHtmlVolume(el, el.volume, 0, duration, () => {
@@ -600,9 +724,10 @@ function createCrossfadeLoop(
   src,
   volume = 1.0,
   crossfadeDuration = 2.0,
-  initialFadeIn = 0
+  initialFadeIn = 0,
+  opts = {}
 ) {
-  if (audioBuffers.has(src)) {
+  if (audioBuffers.has(src) && !opts.startPaused) {
     return createBufferCrossfadeLoop(
       src,
       volume,
@@ -614,7 +739,8 @@ function createCrossfadeLoop(
     src,
     volume,
     crossfadeDuration,
-    initialFadeIn
+    initialFadeIn,
+    opts
   );
 }
 
@@ -624,6 +750,7 @@ export {
   preloadMusic,
   preloadMusicTracks,
   playBuffer,
+  stopPlayingSrcs,
   ensureContextResumed,
   createCrossfadeLoop,
   setMasterSfxGain,

@@ -18,6 +18,8 @@ const {
   armPalmPhase,
   armChargedPhase,
   placeAtGap,
+  clampSlapActiveAge,
+  slapConfirmableActiveAge,
 } = require("./helpers/scenarioHarness");
 const {
   limbOnlyGap,
@@ -77,7 +79,7 @@ function lastHit(io) {
   return hits.length ? hits[hits.length - 1].payload : null;
 }
 
-function armSlapActive(player, now, agePastStartup = 60) {
+function armSlapActive(player, now, agePastStartup) {
   player.isAttacking = true;
   player.isSlapAttack = true;
   player.attackType = "slap";
@@ -85,14 +87,28 @@ function armSlapActive(player, now, agePastStartup = 60) {
   player.slapFacingDirection = player.facing;
   player.currentAction = "slap";
   player.isInStartupFrames = false;
-  player.attackStartTime = now - SLAP_STARTUP_MS - agePastStartup;
+  const age = clampSlapActiveAge(
+    agePastStartup == null ? slapConfirmableActiveAge(10) : agePastStartup
+  );
+  player.attackStartTime = now - SLAP_STARTUP_MS - age;
   player.slapActiveEndTime =
     player.attackStartTime + SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
   player.attackEndTime = player.slapActiveEndTime + SLAP_RECOVERY_MS;
 }
 
 function armSlapRecovery(player, now) {
-  armSlapActive(player, now, SLAP_ACTIVE_MS + 10);
+  player.isAttacking = true;
+  player.isSlapAttack = true;
+  player.attackType = "slap";
+  player.slapAnimation = 1;
+  player.slapFacingDirection = player.facing;
+  player.currentAction = "slap";
+  player.isInStartupFrames = false;
+  const age = SLAP_ACTIVE_MS + 10;
+  player.attackStartTime = now - SLAP_STARTUP_MS - age;
+  player.slapActiveEndTime =
+    player.attackStartTime + SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
+  player.attackEndTime = player.slapActiveEndTime + SLAP_RECOVERY_MS;
 }
 
 function empowerPalm(player, now) {
@@ -234,7 +250,7 @@ describe("Phase 4A limb-contact correction — no torso park on limb-only", () =
     setAuthoredSlapHurtboxForTests(true);
     const s = createFoundationScenario({ sizeA: SIZE, sizeB: SIZE });
     const t0 = s.room.simTime;
-    armSlapActive(s.right, t0, 60);
+    armSlapActive(s.right, t0, slapConfirmableActiveAge(0));
     armPalmPhase(s.left, "active", t0);
     empowerPalm(s.left, t0);
     s.left.chargingFacingDirection = s.left.facing;

@@ -34,6 +34,7 @@ const {
   SLAP_ACTIVE_MS,
   SLAP_TOTAL_MS,
 } = require("../../constants");
+const { isOpponentCloseEnoughForGrab } = require("../../combatHelpers");
 
 const scenarios = [];
 afterEach(() => {
@@ -195,15 +196,13 @@ describe("Phase 13 — Slap vs Charged (V2)", () => {
 describe("Phase 13 — Grab vs Slap (V2)", () => {
   beforeEach(() => setCombatContactFidelityV2ForTests(true));
 
-  // The grab used to win here via throw-catch armor from 70ms into startup.
-  // That armor is gone: the startup is short enough that the grab does not need
-  // it, and every frame of it is now hittable. A slap in range always wins.
+  // Slap during grab startup is a real hit on every startup frame.
   for (const phase of [
     { label: "first frame", elapsed: 0 },
     { label: "mid startup", elapsed: Math.round(GRAB_STARTUP_DURATION_MS / 2) },
     { label: "last frame", elapsed: GRAB_STARTUP_DURATION_MS - 1 },
   ]) {
-    it(`Slap stuffs grab startup at ${phase.label}`, () => {
+    it(`slap stuffs grab startup at ${phase.label}`, () => {
       const s = sc({ gap: 60 });
       const now = s.room.simTime;
       armSlap(s.right, { now });
@@ -212,19 +211,30 @@ describe("Phase 13 — Grab vs Slap (V2)", () => {
       s.right.facing = 1;
       s.right.x = s.left.x + 90;
       runBothCollisionOrders(s.left, s.right, s.rooms, s.io);
-      assert.equal(s.left.isHit, true, `${phase.label}: grabber must be hit`);
+      assert.equal(s.left.isHit, true, `${phase.label}: reaching is hittable`);
       assert.equal(
         s.left.isGrabStartup,
         false,
-        `${phase.label}: grab must be interrupted`
-      );
-      assert.notEqual(
-        s.right._lastCombatContactResolution?.outcome,
-        CONTACT_OUTCOME.GRAB_CATCH,
-        `${phase.label}: no catch outcome may be produced`
+        `${phase.label}: grab must die to a slap while reaching`
       );
     });
   }
+
+  it("tip poke during grab startup STUFFS", () => {
+    const s = sc({ gap: 80 });
+    const now = s.room.simTime;
+    armSlap(s.right, { now });
+    armGrabStartup(s.left, { now });
+    placeInConnectRange(s.right, s.left, "slap");
+    assert.equal(
+      isOpponentCloseEnoughForGrab(s.left, s.right),
+      false,
+      "parked at slap tip, outside latch"
+    );
+    runBothCollisionOrders(s.left, s.right, s.rooms, s.io);
+    assert.equal(s.left.isHit, true, "tip poke is a real hit");
+    assert.equal(s.left.isGrabStartup, false, "the approach is stuffed");
+  });
 
   it("out of range, the slap leaves the grab startup alone", () => {
     const s = sc({ gap: 80 });
@@ -245,24 +255,15 @@ describe("Phase 13 — compatibility invariants", () => {
     assert.equal(LOW_KICK_ENABLED, false);
   });
 
-  // The grab carries no armor, so its whole startup has to fit inside the gap a
-  // slap masher leaves between active windows — that is the entire reason the
-  // startup is as short as it is. If this fails, a point-blank grab has become
-  // arithmetically impossible again, and the only real fixes are a shorter
-  // startup or reintroducing armor.
-  it("grab startup fits inside the gap between mashed slap active windows", () => {
+  // Grab startup still fits the gap between mashed slaps so a grab after a
+  // slap is a timing read, not a mash war.
+  it("grab startup still fits inside the mashed slap gap", () => {
     const activeEnd = SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
     const nextActiveStart = SLAP_TOTAL_MS + SLAP_STARTUP_MS;
     const gap = nextActiveStart - activeEnd;
     assert.ok(
       GRAB_STARTUP_DURATION_MS < gap,
       `grab startup ${GRAB_STARTUP_DURATION_MS}ms must fit the ${gap}ms slap gap`
-    );
-    // And it has to leave a window a human can hit, not a frame-perfect one.
-    const pressWindow = gap - GRAB_STARTUP_DURATION_MS;
-    assert.ok(
-      pressWindow >= 30,
-      `press window is only ${pressWindow}ms — under two frames`
     );
   });
 

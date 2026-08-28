@@ -24,7 +24,6 @@ const {
   FLAP_GRAVITY,
   FLAP_MAX_HEIGHT,
   FLAP_AIR_MOVE_SPEED,
-  FLAP_FASTFALL_GRAVITY,
   FLAP_DIVE_MIN_DOWN_VELOCITY,
   FLAP_CEILING_CUSHION,
   FLAP_CEILING_HANG_GRAVITY,
@@ -49,6 +48,10 @@ const {
   MAP_RIGHT_BOUNDARY,
   clearSlideJumpState,
   shouldCommitSlideJumpDive,
+  beginSlideJumpDiveCommit,
+  beginSlideJumpDiveDrop,
+  stepSlideJumpDiveMotion,
+  SLIDE_JUMP_DIVE_PHASE,
   cancelPendingSlapWork,
   armSlideJumpFlapCharges,
   slideJumpHorizontalToMovementVelocity,
@@ -217,6 +220,9 @@ function beginSlideJumpFlight(player, opts = {}) {
   player.slideJumpDiveCommitted = !!opts.dive;
   player.slideJumpDiveBuffered = !!opts.dive;
   player.slideJumpDiveBufferUntil = 0;
+  player.slideJumpDivePhase = opts.dive ? SLIDE_JUMP_DIVE_PHASE.DROP : null;
+  player.slideJumpDivePopStartTime = 0;
+  player.slideJumpDivePopFromHeight = 0;
   player.slideJumpDiveLockX = opts.dive ? player.x : 0;
   player.slideJumpHitLanded = false;
   player.slideJumpHitRecoverDuration = 0;
@@ -248,11 +254,8 @@ function beginSlideJumpFlight(player, opts = {}) {
     player.slideJumpVelocityX = 0;
     player.flapVelocityX = 0;
     player.flapCharges = 0;
-    if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
-    if (player.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
-      player.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
-    }
     player.slideJumpDiveLockX = player.x;
+    beginSlideJumpDiveDrop(player);
   }
 
   // Mirror production outcome-contract arming rules.
@@ -384,17 +387,7 @@ function stepSlideJumpTick(scenario, options = {}) {
       }
 
       if (shouldCommitSlideJumpDive(attacker, now)) {
-        attacker.slideJumpDiveCommitted = true;
-        attacker.slideJumpDiveBuffered = false;
-        attacker.slideJumpDiveBufferUntil = 0;
-        attacker.slideJumpDiveLockX = attacker.x;
-        attacker.slideJumpVelocityX = 0;
-        attacker.flapVelocityX = 0;
-        attacker.flapCharges = 0;
-        if (attacker.slideJumpVelocityY > 0) attacker.slideJumpVelocityY = 0;
-        if (attacker.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
-          attacker.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
-        }
+        beginSlideJumpDiveCommit(attacker, now);
         beginOffensiveAerialActivation(attacker, {
           moveType: OFFENSIVE_AERIAL_MOVE_TYPE.BODY_SLAM_DIVE,
           offensiveArmed: true,
@@ -412,94 +405,81 @@ function stepSlideJumpTick(scenario, options = {}) {
       }
     }
 
-    attacker.slideJumpFastFalling =
-      !parryRecoil && attacker.slideJumpDiveCommitted;
     const isDiveLocked = !parryRecoil && attacker.slideJumpDiveCommitted;
+    const diveStep = isDiveLocked
+      ? stepSlideJumpDiveMotion(attacker, now)
+      : { active: false, dropping: false };
+    attacker.slideJumpFastFalling = !!diveStep.dropping;
     const flapFlight = !parryRecoil && !!attacker.slideJumpFlapFlightActive;
 
     if (parryRecoil) {
       stepParriedRecoil(attacker, defender, now);
+    } else if (isDiveLocked) {
+      attacker.slideJumpVelocityX = 0;
+      attacker.flapVelocityX = 0;
+      attacker.x = attacker.slideJumpDiveLockX;
+      if (flapFlight) {
+        const ceiling = GROUND_LEVEL + FLAP_MAX_HEIGHT;
+        if (attacker.y > ceiling) {
+          attacker.y = ceiling;
+          if (attacker.slideJumpVelocityY > 0) attacker.slideJumpVelocityY = 0;
+        }
+      }
     } else if (flapFlight) {
       const ceiling = GROUND_LEVEL + FLAP_MAX_HEIGHT;
       const cushionStart = ceiling - FLAP_CEILING_CUSHION;
       const inCeilingZone = attacker.y > cushionStart;
-      if (!isDiveLocked && inCeilingZone && attacker.slideJumpVelocityY > 0) {
+      if (inCeilingZone && attacker.slideJumpVelocityY > 0) {
         const into = Math.min(
           1,
           (attacker.y - cushionStart) / FLAP_CEILING_CUSHION
         );
         attacker.slideJumpVelocityY *= Math.max(0, 1 - into);
       }
-      const gravity = isDiveLocked
-        ? FLAP_FASTFALL_GRAVITY
-        : inCeilingZone
-          ? FLAP_CEILING_HANG_GRAVITY
-          : FLAP_GRAVITY;
+      const gravity = inCeilingZone
+        ? FLAP_CEILING_HANG_GRAVITY
+        : FLAP_GRAVITY;
       attacker.slideJumpVelocityY -= gravity;
-      if (isDiveLocked) {
-        if (attacker.slideJumpVelocityY > 0) attacker.slideJumpVelocityY = 0;
-        if (attacker.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
-          attacker.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
-        }
-      }
       attacker.y += attacker.slideJumpVelocityY;
       if (attacker.y > ceiling) {
         attacker.y = ceiling;
         if (attacker.slideJumpVelocityY > 0) attacker.slideJumpVelocityY = 0;
       }
-      if (isDiveLocked) {
-        attacker.slideJumpVelocityX = 0;
-        attacker.flapVelocityX = 0;
-        attacker.x = attacker.slideJumpDiveLockX;
-      } else {
-        if (attacker.keys.d && !attacker.keys.a) {
-          attacker.x += FLAP_AIR_MOVE_SPEED;
-          if (aerialFacingAllowsSteer(attacker)) {
-            updateOffensiveAerialFacingLockDirection(attacker, -1);
-            attacker.facing = -1;
-          }
-        } else if (attacker.keys.a && !attacker.keys.d) {
-          attacker.x -= FLAP_AIR_MOVE_SPEED;
-          if (aerialFacingAllowsSteer(attacker)) {
-            updateOffensiveAerialFacingLockDirection(attacker, 1);
-            attacker.facing = 1;
-          }
+      if (attacker.keys.d && !attacker.keys.a) {
+        attacker.x += FLAP_AIR_MOVE_SPEED;
+        if (aerialFacingAllowsSteer(attacker)) {
+          updateOffensiveAerialFacingLockDirection(attacker, -1);
+          attacker.facing = -1;
         }
-        if (attacker.flapVelocityX !== 0) {
-          attacker.x += attacker.flapVelocityX;
-          attacker.flapVelocityX *= FLAP_H_FRICTION;
-          if (Math.abs(attacker.flapVelocityX) < 0.1) attacker.flapVelocityX = 0;
+      } else if (attacker.keys.a && !attacker.keys.d) {
+        attacker.x -= FLAP_AIR_MOVE_SPEED;
+        if (aerialFacingAllowsSteer(attacker)) {
+          updateOffensiveAerialFacingLockDirection(attacker, 1);
+          attacker.facing = 1;
         }
+      }
+      if (attacker.flapVelocityX !== 0) {
+        attacker.x += attacker.flapVelocityX;
+        attacker.flapVelocityX *= FLAP_H_FRICTION;
+        if (Math.abs(attacker.flapVelocityX) < 0.1) attacker.flapVelocityX = 0;
       }
     } else {
-      const gravity = isDiveLocked ? FLAP_FASTFALL_GRAVITY : SLIDE_JUMP_GRAVITY;
-      attacker.slideJumpVelocityY -= gravity;
-      if (isDiveLocked) {
-        if (attacker.slideJumpVelocityY > 0) attacker.slideJumpVelocityY = 0;
-        if (attacker.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
-          attacker.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
-        }
-      }
+      attacker.slideJumpVelocityY -= SLIDE_JUMP_GRAVITY;
       attacker.y += attacker.slideJumpVelocityY;
-      if (isDiveLocked) {
-        attacker.slideJumpVelocityX = 0;
-        attacker.x = attacker.slideJumpDiveLockX;
-      } else {
-        attacker.x += attacker.slideJumpVelocityX;
-        if (attacker.keys.d && !attacker.keys.a) {
-          attacker.x += SLIDE_JUMP_AIR_STEER;
-          attacker.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
-          if (aerialFacingAllowsSteer(attacker)) {
-            updateOffensiveAerialFacingLockDirection(attacker, -1);
-            attacker.facing = -1;
-          }
-        } else if (attacker.keys.a && !attacker.keys.d) {
-          attacker.x -= SLIDE_JUMP_AIR_STEER;
-          attacker.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
-          if (aerialFacingAllowsSteer(attacker)) {
-            updateOffensiveAerialFacingLockDirection(attacker, 1);
-            attacker.facing = 1;
-          }
+      attacker.x += attacker.slideJumpVelocityX;
+      if (attacker.keys.d && !attacker.keys.a) {
+        attacker.x += SLIDE_JUMP_AIR_STEER;
+        attacker.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
+        if (aerialFacingAllowsSteer(attacker)) {
+          updateOffensiveAerialFacingLockDirection(attacker, -1);
+          attacker.facing = -1;
+        }
+      } else if (attacker.keys.a && !attacker.keys.d) {
+        attacker.x -= SLIDE_JUMP_AIR_STEER;
+        attacker.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
+        if (aerialFacingAllowsSteer(attacker)) {
+          updateOffensiveAerialFacingLockDirection(attacker, 1);
+          attacker.facing = 1;
         }
       }
     }
@@ -740,6 +720,7 @@ function placeDescendingOverOpponent(scenario, opts = {}) {
   attacker.slideJumpVelocityX = opts.velX != null ? opts.velX : 0;
   if (opts.dive !== false) {
     attacker.slideJumpDiveCommitted = true;
+    attacker.slideJumpDivePhase = SLIDE_JUMP_DIVE_PHASE.DROP;
     attacker.slideJumpDiveLockX = attacker.x;
     if (!attacker.offensiveAerial) {
       beginOffensiveAerialActivation(attacker, {

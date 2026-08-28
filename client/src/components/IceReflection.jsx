@@ -192,6 +192,8 @@ const IceReflection = memo(
         zIndex = 2,
         /** Foot AO / wet meniscus / sparkles — off for supporting-cast actors. */
         contactFx = true,
+        /** Display-only size (grab-attempt placeholder restore). Latch unchanged. */
+        displayScale = 1,
       },
       ref
     ) => {
@@ -267,6 +269,12 @@ const IceReflection = memo(
             opacity: reflectOpacity,
             visibility: "visible",
             display: "block",
+            ...(displayScale !== 1
+              ? {
+                  transform: `scale(${displayScale})`,
+                  transformOrigin: "center bottom",
+                }
+              : {}),
           }}
         >
           {contactFx && (
@@ -433,6 +441,7 @@ IceReflection.propTypes = {
   planeTipDeg: PropTypes.number,
   zIndex: PropTypes.number,
   contactFx: PropTypes.bool,
+  displayScale: PropTypes.number,
 };
 
 export default IceReflection;

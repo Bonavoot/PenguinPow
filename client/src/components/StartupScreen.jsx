@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import styled, { keyframes } from "styled-components";
 import gamepadHandler from "../utils/gamepadHandler";
 import Snowfall from "./Snowfall";
+import { setMusic, unlockScreenMusic } from "../utils/soundUtils";
 import {
   C,
   FONT_BODY,
@@ -227,6 +228,17 @@ const PressKeyText = styled.p`
 const StartupScreen = ({ onContinue, connectionError, steamDeckMode }) => {
   const [showPressKey, setShowPressKey] = useState(false);
   const [isConnecting, setIsConnecting] = useState(true);
+
+  useEffect(() => {
+    setMusic("title");
+    const unlock = () => unlockScreenMusic();
+    document.addEventListener("pointerdown", unlock, true);
+    document.addEventListener("keydown", unlock, true);
+    return () => {
+      document.removeEventListener("pointerdown", unlock, true);
+      document.removeEventListener("keydown", unlock, true);
+    };
+  }, []);
 
   useEffect(() => {
     const connectingTimer = setTimeout(() => {

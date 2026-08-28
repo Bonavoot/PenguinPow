@@ -1,18 +1,15 @@
 import buttonHoverSound from "../sounds/button-hover-sound.mp3";
 import buttonPressSound from "../sounds/button-press-sound.mp3";
 import buttonPressSound2 from "../sounds/button-press-sound-2.mp3";
-import menuMusic from "../sounds/menu-music.mp3";
 import powerUpSelectionHoverSound from "../sounds/power-up-selection-button-hover.mp3";
 import powerUpSelectionPressSound from "../sounds/power-up-selection-button-press.mp3";
 import bellSound from "../sounds/bell-sound.mp3";
 import clapSound from "../sounds/clap2-sound.mp3";
 import roundVictorySound from "../sounds/round-victory-sound.mp3";
 import roundDefeatSound from "../sounds/round-defeat-sound.mp3";
-import winnerSound from "../sounds/winner-sound1.mp3";
-import { getGlobalVolume } from "../components/Settings";
-import { preloadSounds, playBuffer } from "./audioEngine";
-
-let backgroundMusic = null;
+import winnerSound from "../sounds/winner-sound.ogg";
+import { preloadSounds, playBuffer, stopPlayingSrcs } from "./audioEngine";
+import { setMusic, stopScreenMusic, cueForPage, unlockScreenMusic, resultsCue, warmCues } from "./musicDirector";
 
 preloadSounds([
   buttonHoverSound,
@@ -22,64 +19,15 @@ preloadSounds([
   powerUpSelectionPressSound,
   bellSound,
   clapSound,
-  roundVictorySound,
-  roundDefeatSound,
-  winnerSound,
 ]);
 
-const updateBackgroundMusicVolume = () => {
-  if (backgroundMusic) {
-    backgroundMusic.volume = 0.009 * getGlobalVolume();
-  }
-};
-
 const playBackgroundMusic = () => {
-  try {
-    if (!backgroundMusic) {
-      backgroundMusic = new Audio(menuMusic);
-      backgroundMusic.loop = true;
-    }
-    updateBackgroundMusicVolume();
-    // Only play if it's not already playing
-    if (backgroundMusic.paused) {
-      backgroundMusic.play().catch((error) => {
-        if (error.name !== "AbortError") {
-          console.error("Error playing background music:", error);
-        }
-      });
-    }
-    // Start volume sync interval while music is playing
-    startVolumeSyncInterval();
-  } catch (error) {
-    console.error("Error creating background music:", error);
-  }
+  setMusic("menu");
 };
 
 const stopBackgroundMusic = () => {
-  if (backgroundMusic) {
-    backgroundMusic.pause();
-    // Don't reset currentTime, just pause
-  }
-  // Stop the volume sync interval when music is paused
-  stopVolumeSyncInterval();
+  stopScreenMusic();
 };
-
-// PERFORMANCE: Only run volume sync interval while music is actually playing.
-// Previously this ran forever (10 calls/sec), even when no music was playing.
-let volumeSyncInterval = null;
-
-function startVolumeSyncInterval() {
-  if (!volumeSyncInterval) {
-    volumeSyncInterval = setInterval(updateBackgroundMusicVolume, 100);
-  }
-}
-
-function stopVolumeSyncInterval() {
-  if (volumeSyncInterval) {
-    clearInterval(volumeSyncInterval);
-    volumeSyncInterval = null;
-  }
-}
 
 const playButtonHoverSound = () => {
   playBuffer(buttonHoverSound, 0.06);
@@ -112,20 +60,17 @@ const playBashoPurseTick = () => {
   playBuffer(powerUpSelectionPressSound, 0.05);
 };
 
-const playBashoFanfare = () => {
-  playBuffer(roundVictorySound, 0.05);
+const playBashoApplause = () => {
+  playBuffer(clapSound, 0.08);
 };
 
 const playBashoSomber = () => {
-  playBuffer(roundDefeatSound, 0.2);
+  playBuffer(roundDefeatSound, 0.03);
 };
 
-const playBashoApplause = () => {
-  playBuffer(clapSound, 0.3);
-};
-
-const playBashoYusho = () => {
-  playBuffer(winnerSound, 0.3);
+/** Kill leftover KO win/loss stingers so they can't sit under results BGM. */
+const silenceResultStingers = () => {
+  stopPlayingSrcs([roundVictorySound, roundDefeatSound, winnerSound]);
 };
 
 export {
@@ -134,12 +79,17 @@ export {
   playButtonPressSound2,
   playBackgroundMusic,
   stopBackgroundMusic,
+  setMusic,
+  stopScreenMusic,
+  cueForPage,
+  unlockScreenMusic,
+  resultsCue,
   playPowerUpSelectionHoverSound,
   playPowerUpSelectionPressSound,
   playBashoGong,
   playBashoPurseTick,
-  playBashoFanfare,
-  playBashoSomber,
   playBashoApplause,
-  playBashoYusho,
+  playBashoSomber,
+  silenceResultStingers,
+  warmCues,
 };

@@ -54,9 +54,16 @@ const {
   ICE_SLIDE_MAX_SPEED,
   GRAB_STATES,
   GRAB_STARTUP_DURATION_MS,
+  GRAB_ACTIVE_MS,
   SLIDE_JUMP_DIVE_MIN_AIR_MS,
   SLIDE_JUMP_DIVE_MIN_HEIGHT,
   SLIDE_JUMP_DIVE_BUFFER_MS,
+  SLIDE_JUMP_DIVE_POP_HEIGHT,
+  SLIDE_JUMP_DIVE_POP_MS,
+  SLIDE_JUMP_DIVE_POP_IMPULSE,
+  SLIDE_JUMP_GRAVITY,
+  FLAP_FASTFALL_GRAVITY,
+  FLAP_DIVE_MIN_DOWN_VELOCITY,
   SLIDE_JUMP_H_MIN,
   SLIDE_JUMP_H_CARRY,
   SLIDE_JUMP_H_MAX_MULT,
@@ -74,7 +81,7 @@ const { handoffVelocity, pxToKbVelocity } = require("./momentumTransfer");
 const { clearAirHitOverlapEject } = require("./airHitOverlapEject");
 // Constants-only module — safe to require here without a cycle.
 const { stampGrabVariant } = require("./commandGrabInput");
-const { getGrabLungeImpulse } = require("./combatHelpers");
+const { getGrabAttemptSpeed } = require("./combatHelpers");
 const {
   OFFENSIVE_AERIAL_OUTCOME,
   OFFENSIVE_AERIAL_CLEANUP_STAGE,
@@ -481,6 +488,17 @@ function canArmMatador(player, _simTime) {
   );
 }
 
+// True while the BACK+SPACE read is past its 180ms arm window and Space is
+// still held. Same role as AP's isGuarding — but the outcome stays MATADOR
+// (one type; no block/perfect grades). Collision still keys off isMatadorParrying.
+function isMatadorHoldFloor(player) {
+  return !!(
+    player &&
+    player.isMatadorParrying &&
+    !(player.matadorActiveUntil > 0)
+  );
+}
+
 function cancelMatadorWindow(player, simTime) {
   player.isMatadorParrying = false;
   player.isMatadorSuccess = false;
@@ -506,7 +524,9 @@ function clearMatadorWindow(player) {
   player.matadorRecoveryUntil = 0;
 }
 
-// Open a MATADOR window (BACK+SPACE tap). Tap-only — never becomes GUARD.
+// Open a MATADOR window (BACK+SPACE). Press arms a 180ms read; holding Space
+// keeps the same grab-parry live indefinitely (AP hold → GUARD analog, but
+// Matador has only one outcome — it never becomes GUARD / never grades).
 function armMatador(player, simTime, startTime) {
   // Cancel any live AP so the two stances can't coexist on one Space press.
   player.isRawParrying = false;
@@ -534,8 +554,11 @@ function armMatador(player, simTime, startTime) {
   player.pendingSlapCount = 0;
 }
 
-// Per-tick MATADOR SM. Tap-only: release OR window expiry → whiff jail.
-// No hold→guard path (unlike AP).
+// Per-tick MATADOR SM. Mirrors AP press-and-hold, with one outcome:
+//   • Live 180ms window + Space up → CANCEL (empty-tap whiff jail).
+//   • Window expires while still holding → HOLD FLOOR (stay isMatadorParrying
+//     forever; grabs still pull). matadorActiveUntil = 0 marks this floor.
+//   • Dropping the hold floor → clean drop (no jail), same as dropping GUARD.
 function updateMatadorState(player, simTime, spaceHeld) {
   if (player.isMatadorWhiffRecovering && simTime >= (player.matadorRecoveryUntil || 0)) {
     player.isMatadorWhiffRecovering = false;
@@ -555,8 +578,29 @@ function updateMatadorState(player, simTime, spaceHeld) {
   if (!player.isMatadorParrying) return;
 
   const activeUntil = player.matadorActiveUntil || 0;
-  if (activeUntil <= 0 || simTime >= activeUntil || !spaceHeld) {
+  const inTimedWindow = activeUntil > 0 && simTime < activeUntil;
+
+  if (inTimedWindow) {
+    if (!spaceHeld) {
+      cancelMatadorWindow(player, simTime);
+    }
+    return;
+  }
+
+  // Timed window closed, or already on the hold floor (activeUntil === 0).
+  if (spaceHeld) {
+    player.matadorActiveUntil = 0;
+    return;
+  }
+
+  if (activeUntil > 0) {
+    // Expired with Space already up → empty tap jail (same as AP).
     cancelMatadorWindow(player, simTime);
+  } else {
+    // Hold-floor drop — no jail. Latch already clears on the falling Space edge.
+    clearMatadorWindow(player);
+    player.apSpaceConsumed = false;
+    player.spaceJustPressed = false;
   }
 }
 
@@ -1418,10 +1462,11 @@ function clearAllActionStates(player) {
   player.grabbedOpponent = null;
   player.grabMovementStartTime = 0;
   player.grabMovementDirection = 0;
+  player.grabFacingDirection = null;
   player.grabMovementVelocity = 0;
   player.grabStartupStartTime = 0;
   player.grabStartupDuration = 0;
-  player.grabStartupArmorUsed = false;
+  player.grabActiveDuration = 0;
   player.grabStartTime = 0;
   player.grabState = "initial";
   player.grabAttemptType = null;
@@ -1712,6 +1757,9 @@ function clearSlideJumpState(player, opts = {}) {
   player.slideJumpDiveCommitted = false;
   player.slideJumpDiveBuffered = false;
   player.slideJumpDiveBufferUntil = 0;
+  player.slideJumpDivePhase = null;
+  player.slideJumpDivePopStartTime = 0;
+  player.slideJumpDivePopFromHeight = 0;
   player.slideJumpFastFalling = false;
   player.slideJumpDiveLockX = 0;
   player.slideJumpHitLanded = false;
@@ -1784,6 +1832,14 @@ function beginGrabStartup(player, room) {
 
   const now = simNowForPlayer(player);
   const entryVel = player.movementVelocity || 0;
+  const moveMult = getEffectiveMoveSpeedMult(player);
+  let inherited = entryVel;
+  if (MASTERY_P1_MOMENTUM) {
+    inherited = takeInheritedVelocity(player, entryVel, now);
+  }
+  // Happy Feet multiplies travel, not the raw velocity unit. Cap that
+  // effective speed so stacks get you there but do not write the grab.
+  const attemptSpeed = getGrabAttemptSpeed(Math.abs(inherited) * moveMult);
 
   // Grab-start M2 must not later complete a throw/pull chord on connect.
   player.clinchMouse2BufferTime = 0;
@@ -1799,17 +1855,29 @@ function beginGrabStartup(player, room) {
 
   clearChargeState(player, true);
 
+  // Buffered slap→grab used to leave isSlapAttack latched through the run.
+  // Grab-attempt art outranks slap during the lunge; on latch isSlapAttack
+  // beat isGrabbing and froze the jab hit pose. Clear the swing here.
+  cancelPendingSlapWork(player);
+  player.isAttacking = false;
+  player.isSlapAttack = false;
+  player.isPalmThrust = false;
+  player.isLowKick = false;
+  player.attackType = null;
+  player.attackStartTime = 0;
+  player.attackEndTime = 0;
+
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
 
-  // Refresh Thick Blubber absorb at the START of every grab attempt.
+  // Refresh Thick Blubber at the START of every grab attempt.
   player.hitAbsorptionUsed = false;
   player.lastGrabAttemptTime = now;
 
   player.isGrabStartup = true;
   player.grabStartupStartTime = now;
   player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
-  player.grabStartupArmorUsed = false;
+  player.grabActiveDuration = GRAB_ACTIVE_MS;
   player.currentAction = "grab_startup";
   player.actionLockUntil = now + GRAB_STARTUP_DURATION_MS;
   player.grabState = GRAB_STATES.ATTEMPTING;
@@ -1825,12 +1893,14 @@ function beginGrabStartup(player, room) {
   if (grabOpponent && player.atTheRopesFacingDirection == null) {
     player.facing = player.x < grabOpponent.x ? -1 : 1;
   }
+  player.grabFacingDirection = player.facing;
+  player.grabMovementDirection = -player.facing;
 
-  // Shove off into the dive. This is the whole move's movement — one impulse,
-  // after which friction owns the trajectory, so the grab keeps travelling through
-  // its active frames and skids out through the whiff. Set after facing resolves,
-  // because the direction of the dive is the direction we just committed to.
-  player.grabMovementVelocity = -player.facing * getGrabLungeImpulse();
+  // The run — and later the Drive — use this capped speed. One identity
+  // after the dip from slide/stacks.
+  player.grabAttemptSpeed = attemptSpeed;
+  player.grabApproachSpeed = attemptSpeed;
+  player.grabMovementVelocity = player.grabMovementDirection * attemptSpeed;
 
   // COMMAND GRAB: which grab this is gets decided here from the direction around
   // the M2 edge, and stays revisable until the grab goes active. Harmless with
@@ -1844,20 +1914,13 @@ function beginGrabStartup(player, room) {
     acquireActionFacingLock(player, {
       ownerType: ACTION_FACING_OWNER.GRAB_STARTUP,
       ownerInstanceId: grabId,
-      direction: player.facing,
+      direction: player.grabFacingDirection,
       reason: ACTION_FACING_REASON.COMMIT,
       allowDirectionUpdate: false,
       supersede: true,
       syncLegacy: false,
     });
   }
-
-  // Inherit slide/dodge speed for clinch burst only — not for attempt range.
-  let approachVel = entryVel;
-  if (MASTERY_P1_MOMENTUM) {
-    approachVel = takeInheritedVelocity(player, entryVel, now);
-  }
-  player.grabApproachSpeed = Math.abs(approachVel);
 
   player.movementVelocity = 0;
   player.isStrafing = false;
@@ -2182,6 +2245,110 @@ function shouldCommitSlideJumpDive(player, now = 0) {
   return isSlideJumpDiveEnabled(player, now);
 }
 
+const SLIDE_JUMP_DIVE_PHASE = Object.freeze({
+  POP: "pop",
+  DROP: "drop",
+});
+
+/** Honda pop on S — pin X, declare the slam, rise or hang. Drop comes later. */
+function beginSlideJumpDiveCommit(player, now = 0) {
+  if (!player) return;
+  player.slideJumpDiveCommitted = true;
+  player.slideJumpDiveBuffered = false;
+  player.slideJumpDiveBufferUntil = 0;
+  player.slideJumpDiveLockX = player.x;
+  player.slideJumpVelocityX = 0;
+  player.flapVelocityX = 0;
+  player.flapCharges = 0;
+  player.slideJumpDivePhase = SLIDE_JUMP_DIVE_PHASE.POP;
+  player.slideJumpDivePopStartTime = now;
+  const height = (player.y || 0) - GROUND_LEVEL;
+  player.slideJumpDivePopFromHeight = height;
+  if (height >= SLIDE_JUMP_DIVE_POP_HEIGHT) {
+    player.slideJumpVelocityY = 0;
+  } else {
+    player.slideJumpVelocityY = SLIDE_JUMP_DIVE_POP_IMPULSE;
+  }
+}
+
+function beginSlideJumpDiveDrop(player) {
+  if (!player) return;
+  player.slideJumpDivePhase = SLIDE_JUMP_DIVE_PHASE.DROP;
+  if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
+  if (player.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
+    player.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
+  }
+}
+
+function isSlideJumpDivePopping(player) {
+  return (
+    !!player?.slideJumpDiveCommitted &&
+    player.slideJumpDivePhase === SLIDE_JUMP_DIVE_PHASE.POP
+  );
+}
+
+/**
+ * Slam plummet. Missing phase + committed = legacy / placed mid-drop
+ * (characterization harness, older tests).
+ */
+function isSlideJumpDiveDropping(player) {
+  if (!player?.slideJumpDiveCommitted) return false;
+  if (player.slideJumpDivePhase === SLIDE_JUMP_DIVE_PHASE.POP) return false;
+  return (
+    player.slideJumpDivePhase === SLIDE_JUMP_DIVE_PHASE.DROP ||
+    player.slideJumpDivePhase == null
+  );
+}
+
+function advanceSlideJumpDivePhase(player, now = 0) {
+  if (!isSlideJumpDivePopping(player)) return;
+  if (now - (player.slideJumpDivePopStartTime || 0) >= SLIDE_JUMP_DIVE_POP_MS) {
+    beginSlideJumpDiveDrop(player);
+  }
+}
+
+function stepSlideJumpDivePopMotion(player) {
+  const capY = GROUND_LEVEL + SLIDE_JUMP_DIVE_POP_HEIGHT;
+  const startedBelow =
+    (player.slideJumpDivePopFromHeight || 0) < SLIDE_JUMP_DIVE_POP_HEIGHT;
+  if (!startedBelow) {
+    player.slideJumpVelocityY = 0;
+    return;
+  }
+  player.slideJumpVelocityY -= SLIDE_JUMP_GRAVITY;
+  player.y += player.slideJumpVelocityY;
+  if (player.y >= capY) {
+    player.y = capY;
+    player.slideJumpVelocityY = 0;
+  }
+}
+
+function stepSlideJumpDiveDropMotion(player) {
+  player.slideJumpVelocityY -= FLAP_FASTFALL_GRAVITY;
+  if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
+  if (player.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
+    player.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
+  }
+  player.y += player.slideJumpVelocityY;
+}
+
+/** Owns dive Y for the tick (pop or drop). Call once per flight integrate. */
+function stepSlideJumpDiveMotion(player, now = 0) {
+  if (!player?.slideJumpDiveCommitted) {
+    return { active: false, dropping: false };
+  }
+  advanceSlideJumpDivePhase(player, now);
+  if (isSlideJumpDivePopping(player)) {
+    stepSlideJumpDivePopMotion(player);
+    return { active: true, dropping: false };
+  }
+  if (isSlideJumpDiveDropping(player)) {
+    stepSlideJumpDiveDropMotion(player);
+    return { active: true, dropping: true };
+  }
+  return { active: false, dropping: false };
+}
+
 /** Prior vertical velocity to carry into an air-hit fall (call BEFORE clearAllActionStates). */
 function captureAirVerticalVelocity(player) {
   if (!player) return 0;
@@ -2212,8 +2379,9 @@ function captureAirHorizontalVelocity(player) {
 /**
  * Anti-air send: whatever the strike already wrote + a fixed extra shove.
  * That extra is the punishment — not a silent hurtbox, not an eject channel.
+ * `extraBonusPx` is slap-only air punish (see SLAP_AIR_PUNISH_KB_BONUS_PX).
  */
-function applyAirHitKnockbackBoost(player, _airCarryX = 0, attacker = null) {
+function applyAirHitKnockbackBoost(player, _airCarryX = 0, attacker = null, extraBonusPx = 0) {
   if (!player) return;
   if (!player.knockbackVelocity) {
     player.knockbackVelocity = { x: 0, y: 0 };
@@ -2224,13 +2392,14 @@ function applyAirHitKnockbackBoost(player, _airCarryX = 0, attacker = null) {
     dir = dx > 0 ? 1 : dx < 0 ? -1 : attacker.facing === 1 ? -1 : 1;
   }
   if (!dir) dir = 1;
-  player.knockbackVelocity.x += dir * pxToKbVelocity(AIR_HIT_KB_BONUS_PX);
+  const extra = Number.isFinite(extraBonusPx) && extraBonusPx > 0 ? extraBonusPx : 0;
+  player.knockbackVelocity.x += dir * pxToKbVelocity(AIR_HIT_KB_BONUS_PX + extra);
 }
 
 /**
  * Start the anti-air fall. Kill rise — no pop. Gravity drops them from
  * current height. Horizontal travel is authored KB + AIR_HIT_KB_BONUS_PX
- * (applied by the caller before this). No overlap eject.
+ * (+ slap air punish when the caller passed it). No overlap eject.
  */
 function beginAirHitFall(player, {
   now = 0,
@@ -2785,6 +2954,7 @@ module.exports = {
   wantsMatadorChord,
   canArmMatador,
   armMatador,
+  isMatadorHoldFloor,
   cancelMatadorWindow,
   clearMatadorWindow,
   updateMatadorState,
@@ -2853,6 +3023,13 @@ module.exports = {
   isSlideJumpDiveEnabled,
   bufferSlideJumpDiveInput,
   shouldCommitSlideJumpDive,
+  SLIDE_JUMP_DIVE_PHASE,
+  beginSlideJumpDiveCommit,
+  beginSlideJumpDiveDrop,
+  isSlideJumpDivePopping,
+  isSlideJumpDiveDropping,
+  advanceSlideJumpDivePhase,
+  stepSlideJumpDiveMotion,
   captureAirVerticalVelocity,
   captureAirHorizontalVelocity,
   applyAirHitKnockbackBoost,

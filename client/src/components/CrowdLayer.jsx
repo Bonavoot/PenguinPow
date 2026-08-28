@@ -637,7 +637,9 @@ const CrowdLayer = ({ crowdEvent = null, bashoRank = null }) => {
       }, CHEER_DURATION_MS);
 
       const pitch = CHEER_PITCH[crowdEvent.intensity] || 1.0;
-      playBuffer(winnerSound, volume, CHEER_DURATION_MS, pitch);
+      if (!crowdEvent.skipCheerSfx) {
+        playBuffer(winnerSound, volume, CHEER_DURATION_MS, pitch);
+      }
     }
   }, [crowdEvent, schedulePaint]);
 

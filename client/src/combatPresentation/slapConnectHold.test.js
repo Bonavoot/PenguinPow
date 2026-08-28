@@ -10,6 +10,7 @@ import {
   resolveSlapConnectHold,
   slapConnectHoldNeedsTick,
   isSlapConnectHoldEligible,
+  clearSlapConnectHold,
   SLAP_CONNECT_HOLD_BRIDGE_MS,
 } from "./slapConnectHold.js";
 
@@ -99,5 +100,14 @@ describe("slapConnectHold", () => {
     const bridging = createSlapConnectHold();
     armSlapConnectHold(bridging, slapHit(), ATTACKER, 1000, 0);
     assert.equal(slapConnectHoldNeedsTick(bridging, 1010, false), true);
+  });
+
+  it("clear drops a live hold so grab hitstop cannot restick the jab pose", () => {
+    const hold = createSlapConnectHold();
+    armSlapConnectHold(hold, slapHit(), ATTACKER, 1000, 1180);
+    clearSlapConnectHold(hold);
+    assert.equal(resolveSlapConnectHold(hold, 1100, 2000), false);
+    assert.equal(hold.until, 0);
+    assert.equal(hold.pendingUntil, 0);
   });
 });

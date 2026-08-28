@@ -40,7 +40,7 @@ describe("offensive aerial — interaction ordering", () => {
     placeDescendingOverOpponent(s, { height: 40 });
     stepSlideJumpTick(s);
     assert.equal(s.defender.isHit, false);
-    assert.equal(s.attacker.isRecovering, true);
+    assert.equal(s.attacker.isRawParryStun, true);
     assert.ok(s.io.find("raw_parry_success").length >= 1);
     assert.equal(s.io.find("player_hit").length, 0);
   });

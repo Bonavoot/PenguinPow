@@ -668,13 +668,15 @@ describe("struck-limb hold — final sprite precedence", () => {
         ...base,
         justLandedFromDodge: true,
         rawSpriteSrc: IDLE,
+        dodgeLandSrc: "sliding.png",
       }),
-      RECOVERING
+      "sliding.png",
+      "tap-dodge land holds the dodge squat, not idle or recovering"
     );
     assert.equal(
       resolveFighterDisplaySprite({ ...base, justLandedFromDodge: true }),
       HIT_SPRITE,
-      "landing swap only replaces idle"
+      "landing flag never stomps a non-idle pose"
     );
   });
 

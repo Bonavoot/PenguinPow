@@ -30,6 +30,7 @@ const {
   SLIDE_SLAP_ARM_SPEED,
   SLIDE_SLAP_EXTRA_RECOVERY_MS,
   SLIDE_SLAP_ADVANTAGE_MS,
+  SLIDE_SLAP_HITSTOP_FLOOR_MS,
   SLIDE_SLAP_HITSTOP_CAP_MS,
   SLIDE_SLAP_FOLLOW_VEL,
   SLIDE_SLAP_FOLLOW_FRICTION,
@@ -98,7 +99,7 @@ describe("slide-slap convert — profiles", () => {
     assert.equal(SLIDE_SLAP_FOLLOW_FRICTION, 1, "no decay — decay was the chop");
   });
 
-  it("caps convert hitstop so a fast slide stays a punch", () => {
+  it("floors and caps convert hitstop so the pause is a punch, not a poke or a cutscene", () => {
     const hs = M.hitstopMsFor(3.6, M.impactWeightFor("slideSlap"), 1, M.hitstopPowerWeightFor("slideSlap"));
     assert.ok(hs > SLIDE_SLAP_HITSTOP_CAP_MS, "uncapped freeze would overshoot");
     const fake = {
@@ -116,7 +117,25 @@ describe("slide-slap convert — profiles", () => {
       selfOverride: 2.4,
     });
     assert.ok(resolved.hitstopMs <= SLIDE_SLAP_HITSTOP_CAP_MS);
-    assert.ok(resolved.hitstopMs >= 45);
+    assert.ok(resolved.hitstopMs >= SLIDE_SLAP_HITSTOP_FLOOR_MS);
+
+    const glancing = M.resolveTransfer({
+      attacker: {
+        movementVelocity: 1.45,
+        facing: 1,
+        slapEntryAligned: 1.45,
+      },
+      victim: { x: 400, movementVelocity: 1.4, keys: {} },
+      moveKey: "slideSlap",
+      dirToVictim: 1,
+      nowSim: 1000,
+      selfOverride: 1.45,
+    });
+    assert.ok(
+      glancing.hitstopMs >= SLIDE_SLAP_HITSTOP_FLOOR_MS,
+      "low closing-speed convert must still freeze like a body check"
+    );
+    assert.ok(glancing.hitstopMs <= SLIDE_SLAP_HITSTOP_CAP_MS);
   });
 });
 

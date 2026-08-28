@@ -29,10 +29,10 @@
 // and drive owns the tank finish. A gassed attacker still gets a shorter carry.
 //
 // The Drive carry is a SERVER-STAMPED TWEEN (start time, duration, start X, target
-// X) rather than per-tick input-driven displacement. That is deliberate: the old
-// clinch shove had to be resolved every tick from live key state, which is why the
-// client suspended movement prediction for its entire duration. A carry whose
-// trajectory is fully known at connect can just be interpolated.
+// X) rather than per-tick input-driven displacement. Distance is still authored
+// (momentum + posture). The curve opens at latch speed and speeds up into
+// the shove-off (grabee pushing the grabber off). Known at connect so the
+// client can interpolate.
 //
 // NOTE ON CONSTANT NAMES: throw/pull geometry still reads from CLINCH_*
 // constants. Those values are tuned and shared with the surviving throw-arc and
@@ -133,6 +133,11 @@ const {
 } = require("./combatPresentationEvent");
 
 const MomentumTransfer = require("./momentumTransfer");
+const {
+  getDriveCarrySpeed,
+  getDriveCarryDurationMs,
+  driveCarryTravelT,
+} = require("./combatHelpers");
 
 // Posture is no longer the distance FUNCTION for grabs — momentum is. It is a
 // multiplier on top, so a battered opponent travels further from the same
@@ -150,11 +155,9 @@ const DRIVE_COUNTER_CHARGE = 0.6;
 // without the combined multipliers running away past it.
 const DRIVE_MAX_CARRY_PX = 310;
 
-// Target carry pace. Walking is ~240px/s, so this reads as a committed drive
-// (~1.75x walking) rather than a slide that outruns its own animation.
-const DRIVE_CARRY_SPEED_PX_PER_SEC = 420;
-const DRIVE_CARRY_MIN_MS = 500; // pocket drive has to last long enough to read
-const DRIVE_CARRY_MAX_MS = 760; // and long ones must still end
+// Safety rails only. Live duration is D·p/v0 (accel from attempt speed).
+const DRIVE_CARRY_MIN_MS = 180;
+const DRIVE_CARRY_MAX_MS = 1100;
 
 const CMD_PHASE = {
   STARTUP: "startup",
@@ -321,6 +324,12 @@ function clearCommandGrabState(player) {
 // danger line the HUD was advertising when the player committed.
 function beginCommandGrab(grabber, victim, room, io) {
   if (!grabber || !victim) return;
+  // Latch speed is this frame's slide. Index zeros the live impulse on
+  // connect; if it is still here (harness / same-tick), write it onto
+  // grabAttemptSpeed so Drive can decel from the real catch, not the stamp.
+  if (Math.abs(grabber.grabMovementVelocity || 0) > 0) {
+    grabber.grabAttemptSpeed = getDriveCarrySpeed(grabber);
+  }
   const now = simNow(room);
   const variant = grabber.grabVariant || CMD_GRAB_VARIANT.DRIVE;
 
@@ -535,20 +544,15 @@ function beginDriveCarry(grabber, victim, room) {
   grabber.cmdGrabPhaseStart = now;
   grabber.cmdGrabCarryStartX = grabber.x;
   grabber.cmdGrabCarryTargetX = grabber.x + dir * distance;
-  // ── CARRY SPEED, NOT JUST CARRY DISTANCE ─────────────────────────────────
-  // The carry used to run a FIXED 520ms no matter how far it went, so distance
-  // and speed were the same dial: a 340px drive crossed ground at ~654px/s
-  // against a walking speed of 240. Momentum made the drive not just stronger
-  // but nearly 3x walking pace, which is past what the presentation can sell.
-  //
-  // Duration now scales with distance so the carry holds a roughly constant,
-  // animatable speed. A big momentum drive reads as a long, heavy drive across
-  // the ring rather than a teleport — and it costs proportionally more
-  // commitment, which is the right trade for its payoff.
-  grabber.cmdGrabCarryDuration = Math.round(
-    Math.max(
-      DRIVE_CARRY_MIN_MS,
-      Math.min((distance / DRIVE_CARRY_SPEED_PX_PER_SEC) * 1000, DRIVE_CARRY_MAX_MS)
+  // Same authored distance. Opens at the attempt slide, speeds up into
+  // the shove-off. Duration follows that accel so a pin cannot sit for
+  // a second-plus and dump a full tank.
+  const carrySpeed = getDriveCarrySpeed(grabber);
+  grabber.cmdGrabCarryDuration = Math.max(
+    DRIVE_CARRY_MIN_MS,
+    Math.min(
+      getDriveCarryDurationMs(distance, carrySpeed) || CMD_DRIVE_CARRY_MS,
+      DRIVE_CARRY_MAX_MS
     )
   );
   grabber.cmdGrabCarryDir = dir;
@@ -595,10 +599,9 @@ function advanceDriveCarry(grabber, victim, room, io, rooms, now, delta) {
   const duration = grabber.cmdGrabCarryDuration || CMD_DRIVE_CARRY_MS;
   const elapsed = now - (grabber.cmdGrabPhaseStart || now);
   const t = duration > 0 ? Math.min(1, elapsed / duration) : 1;
-  // Mild ease-out (quadratic): bites at contact then settles, so the shove reads as
-  // weight rather than a conveyor. Cubic was too extreme — it spent 96% of the
-  // distance in 65% of the time, which lurched and then visibly stalled.
-  const eased = 1 - Math.pow(1 - t, 2);
+  // Accel from attempt speed into the shove-off. Contact stays v0;
+  // the end is the grabee pushing the grabber off.
+  const travelT = driveCarryTravelT(t, getDriveCarrySpeed(grabber));
   const startX = grabber.cmdGrabCarryStartX;
   const targetX = grabber.cmdGrabCarryTargetX;
   const dir = grabber.cmdGrabCarryDir || (grabber.x < victim.x ? 1 : -1);
@@ -619,7 +622,7 @@ function advanceDriveCarry(grabber, victim, room, io, rooms, now, delta) {
 
   grabber.x = Math.max(
     MAP_LEFT_BOUNDARY,
-    Math.min(MAP_RIGHT_BOUNDARY, startX + (targetX - startX) * eased)
+    Math.min(MAP_RIGHT_BOUNDARY, startX + (targetX - startX) * travelT)
   );
   let victimX = grabber.x + dir * attach;
 
@@ -1100,7 +1103,7 @@ function executeCommandGrabClash(p1, p2, room, io) {
     p.isGrabbingMovement = false;
     // isWhiffingGrab holds every gameplay gate on its own (movement, action, tech,
     // combat volume). isGrabWhiffRecovery is POSE-relevant and deliberately deferred:
-    // it forces the grab-attempt sprite, and for the clash beat both fighters should
+    // it forces the recovering sprite, and for the clash beat both fighters should
     // be locked together in the belt grip instead. It arms when that beat ends.
     p.isWhiffingGrab = true;
     p.grabMovementVelocity = 0;

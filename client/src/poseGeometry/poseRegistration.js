@@ -174,13 +174,10 @@ export const POSE_REGISTRY = Object.freeze({
     pivotY: 0.5,
     mirrorRule: MIRROR_RULE.SCALE_X_ART_LEFT,
   }),
-  // Placeholder convert art — 1254² canvas, more sole pad than the 960 set.
-  // displayScale matches slap-hit body height; support plants the feet.
   belly_bump: Object.freeze({
     asset: "belly-bump.png",
     grounded: true,
-    supportFromBottomPct: 0.136,
-    displayScale: 1.17,
+    supportFromBottomPct: null,
     visualOffsetX: 0,
     pivotX: 0.5,
     pivotY: 0.5,
@@ -501,7 +498,6 @@ export function resolvePoseRender(opts = {}) {
       renderY: gameplayY,
       appliedOffsetX: 0,
       appliedOffsetY: 0,
-      displayScale: 1,
       soleFromBottomPct: LEGACY_SOLE_FROM_BOTTOM_PCT,
       pivotX: finite(reg.pivotX, 0.5),
       pivotY: finite(reg.pivotY, 0.5),
@@ -520,11 +516,8 @@ export function resolvePoseRender(opts = {}) {
   if (grounded && typeof reg.supportFromBottomPct === "number") {
     soleFromBottomPct = reg.supportFromBottomPct;
     // Positive pad above target → feet float → lower the CSS box.
-    const boxScale = finite(reg.displayScale, 1) || 1;
     appliedOffsetY =
-      -(soleFromBottomPct - LEGACY_SOLE_FROM_BOTTOM_PCT) *
-      SPRITE_WORLD_SIZE *
-      boxScale;
+      -(soleFromBottomPct - LEGACY_SOLE_FROM_BOTTOM_PCT) * SPRITE_WORLD_SIZE;
   } else if (!grounded) {
     appliedOffsetY = finite(reg.visualOffsetY, 0);
     soleFromBottomPct = LEGACY_SOLE_FROM_BOTTOM_PCT;
@@ -549,7 +542,6 @@ export function resolvePoseRender(opts = {}) {
     renderY,
     appliedOffsetX,
     appliedOffsetY,
-    displayScale: finite(reg.displayScale, 1) || 1,
     soleFromBottomPct,
     pivotX: finite(reg.pivotX, 0.5),
     pivotY: finite(reg.pivotY, 0.5),

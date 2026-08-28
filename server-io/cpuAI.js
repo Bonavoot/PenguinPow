@@ -401,85 +401,53 @@ function faceTrainingDummy(cpu, human) {
   cpu.facing = cpu.x < human.x ? -1 : 1;
 }
 
+function resetTrainingDummyBrain(cpu, human, aiState) {
+  aiState.pendingParry = false;
+  aiState.parryReleaseTime = 0;
+  aiState.reactionTarget = null;
+  aiState.commitAction = null;
+  aiState.commitCount = 0;
+  aiState.grabApproachIntent = false;
+  aiState.easySlapPhase = null;
+  aiState.easySlapPhaseUntil = 0;
+  aiState.mouse1ReleaseTime = 0;
+  aiState.mouse2ReleaseTime = 0;
+  aiState.shiftReleaseTime = 0;
+  aiState.postClinchBreakReactionUntil = 0;
+  resetAllKeys(cpu);
+  cpu.palmThrustQueued = false;
+  faceTrainingDummy(cpu, human);
+}
+
+// One rising edge, then a mandatory off-tick so the next legal frame can
+// press again. Never walks. Never holds the button through recovery.
+function dummyRisingEdge(cpu, key, canFire) {
+  if (!canFire) return;
+  if (!cpu._prevKeys) cpu._prevKeys = createEmptyKeys();
+  if (cpu._prevKeys[key]) return;
+  cpu.keys[key] = true;
+}
+
 function runStandbyDummy(cpu, human) {
   resetAllKeys(cpu);
   cpu.palmThrustQueued = false;
   faceTrainingDummy(cpu, human);
 }
 
-function runPalmDummy(cpu, human, aiState, currentTime, distance) {
-  aiState.pendingParry = false;
-  aiState.parryReleaseTime = 0;
-  aiState.reactionTarget = null;
-  aiState.commitAction = null;
-  aiState.commitCount = 0;
-  aiState.grabApproachIntent = false;
-
-  resetAllKeys(cpu);
-  faceTrainingDummy(cpu, human);
-
-  const maxReach =
-    getConnectDistance("palm", cpu, human) + AI_CONFIG.PALM_COUNTERPOKE_REACH_SLACK;
-
-  if (distance > maxReach) {
-    cpu.palmThrustQueued = false;
-    const dir = getDirectionToOpponent(cpu, human);
-    if (dir === 1) cpu.keys.d = true;
-    else if (dir === -1) cpu.keys.a = true;
-    aiState.lastActionType = "palm_dummy_approach";
-    return;
-  }
-
-  const PRESS_MS = 50;
-  const RELEASE_MS = 80;
-  if (
-    !aiState.easySlapPhase ||
-    currentTime >= (aiState.easySlapPhaseUntil || 0)
-  ) {
-    if (aiState.easySlapPhase === "press") {
-      aiState.easySlapPhase = "release";
-      aiState.easySlapPhaseUntil = currentTime + RELEASE_MS;
-    } else {
-      aiState.easySlapPhase = "press";
-      aiState.easySlapPhaseUntil = currentTime + PRESS_MS;
-    }
-  }
-  const pressing = aiState.easySlapPhase === "press";
-  cpu.keys.mouse1 = pressing;
-  cpu.palmThrustQueued = pressing;
+function runPalmDummy(cpu, human, aiState) {
+  resetTrainingDummyBrain(cpu, human, aiState);
+  dummyRisingEdge(cpu, "mouse1", canAttack(cpu));
+  cpu.palmThrustQueued = !!cpu.keys.mouse1;
   aiState.lastActionType = "palm_dummy_mash";
 }
 
-function runEasySlapOnlyDummy(cpu, human, aiState, currentTime, distance) {
-  aiState.pendingParry = false;
-  aiState.parryReleaseTime = 0;
-  aiState.reactionTarget = null;
-  aiState.commitAction = null;
-  aiState.commitCount = 0;
-  aiState.grabApproachIntent = false;
-
-  resetAllKeys(cpu);
-  cpu.palmThrustQueued = false;
-
-  // Face the opponent so slaps fire the right way (no movement keys).
-  cpu.facing = cpu.x < human.x ? -1 : 1;
-
-  // Tap mouse1 on a short press/release cycle so processCPUInputs sees rising edges.
-  const PRESS_MS = 50;
-  const RELEASE_MS = 50;
-  if (
-    !aiState.easySlapPhase ||
-    currentTime >= (aiState.easySlapPhaseUntil || 0)
-  ) {
-    if (aiState.easySlapPhase === "press") {
-      aiState.easySlapPhase = "release";
-      aiState.easySlapPhaseUntil = currentTime + RELEASE_MS;
-    } else {
-      aiState.easySlapPhase = "press";
-      aiState.easySlapPhaseUntil = currentTime + PRESS_MS;
-    }
+function runEasySlapOnlyDummy(cpu, human, aiState, currentTime) {
+  resetTrainingDummyBrain(cpu, human, aiState);
+  if (cpu.isAttacking && cpu.attackType === "slap" && (cpu.pendingSlapCount || 0) < 1) {
+    cpu.pendingSlapCount = 1;
+    cpu.pendingSlapPressTime = currentTime;
   }
-  cpu.keys.mouse1 = aiState.easySlapPhase === "press";
+  dummyRisingEdge(cpu, "mouse1", canAttack(cpu));
   aiState.lastActionType = "slap_dummy_mash";
 }
 
@@ -497,6 +465,7 @@ function cancelEasyGrabDummyPush(cpu, human) {
   cpu.isAtBoundaryDuringGrab = false;
   cpu.grabPushStartTime = 0;
   cpu.grabApproachSpeed = 0;
+  cpu.grabAttemptSpeed = 0;
   cpu.clinchAction = "neutral";
   if (human) {
     human.isBeingGrabPushed = false;
@@ -504,58 +473,10 @@ function cancelEasyGrabDummyPush(cpu, human) {
   }
 }
 
-// Grab-only + infinite resources training dummy (Easy only, gated by flag above).
-// Walks in and spam-grabs so you can lab MATADOR. No slap / parry / dodge / charge.
-// On connect: never push / never clinch actions — grab-break ASAP.
-function runEasyGrabMatadorDummy(cpu, human, aiState, currentTime, distance) {
-  // Never defend / slap / charge — offense is open-game grabs only.
-  cpu.palmThrustQueued = false;
-  aiState.pendingParry = false;
-  aiState.parryReleaseTime = 0;
-  aiState.reactionTarget = null;
-  aiState.commitAction = null;
-  aiState.commitCount = 0;
-
-  // Grab in progress → the command grab resolves itself; the dummy just waits.
-  if (
-    cpu.inClinch ||
-    cpu.isGrabbing ||
-    cpu.isBeingGrabbed ||
-    (human && human.inClinch)
-  ) {
-    resetAllKeys(cpu);
-    return;
-  }
-
-  // Already lunging — let the grab attempt play out.
-  if (cpu.isGrabStartup || cpu.isGrabbingMovement) {
-    aiState.lastActionType = "grab_dummy_lunge";
-    return;
-  }
-
-  resetAllKeys(cpu);
-
-  // In range + can grab → Mouse2 rising edge (processed later as beginGrabStartup).
-  // Intentionally ignores "good opportunity" / raw-parry skips — the whole point
-  // is to keep throwing grabs at the player for MATADOR reads.
-  if (
-    canGrab(cpu) &&
-    isOpponentGrabbable(human) &&
-    isFacingOpponent(cpu, human) &&
-    isAtGrabRange(cpu, human)
-  ) {
-    cpu.keys.mouse2 = true;
-    aiState.mouse2ReleaseTime = currentTime + 50;
-    aiState.lastDecisionTime = currentTime;
-    aiState.lastActionType = "grab_dummy_grab";
-    return;
-  }
-
-  // Out of grab range — walk in. No other verbs.
-  const dir = getDirectionToOpponent(cpu, human);
-  if (dir === 1) cpu.keys.d = true;
-  else if (dir === -1) cpu.keys.a = true;
-  aiState.lastActionType = "grab_dummy_approach";
+function runEasyGrabMatadorDummy(cpu, human, aiState) {
+  resetTrainingDummyBrain(cpu, human, aiState);
+  dummyRisingEdge(cpu, "mouse2", canGrab(cpu));
+  aiState.lastActionType = "grab_dummy_mash";
 }
 
 function resolveDifficulty(difficulty) {
@@ -1486,6 +1407,31 @@ function updateCPUAI(cpu, human, room, currentTime) {
     ? DIVISION_KIT[cpu.aiDivision]
     : null;
 
+  if (!cpu.keys) cpu.keys = createEmptyKeys();
+
+  // Training verb dummies: stand still and pulse on the first legal tick.
+  // Must run before post-clinch reaction delay / DI / walk-up so they never
+  // wait on AI timers or walk into range.
+  if (room.matchMode === "training") {
+    const trainingBehavior = room.cpuTrainingBehavior || "standby";
+    if (trainingBehavior === "standby") {
+      runStandbyDummy(cpu, human);
+      return;
+    }
+    if (trainingBehavior === "slap") {
+      runEasySlapOnlyDummy(cpu, human, aiState, currentTime);
+      return;
+    }
+    if (trainingBehavior === "palm") {
+      runPalmDummy(cpu, human, aiState);
+      return;
+    }
+    if (trainingBehavior === "grab") {
+      runEasyGrabMatadorDummy(cpu, human, aiState);
+      return;
+    }
+  }
+
   // Don't process AI during grab break - both players are locked
   const inClinchBreak = cpu.isGrabBreaking || cpu.isGrabBreakCountered || cpu.isGrabBreakSeparating ||
       human.isGrabBreaking || human.isGrabBreakCountered || human.isGrabBreakSeparating;
@@ -1571,35 +1517,16 @@ function updateCPUAI(cpu, human, room, currentTime) {
   // Handle pending key releases
   handlePendingKeyReleases(cpu, aiState, currentTime);
 
-  const trainingBehavior =
-    room.matchMode === "training" ? (room.cpuTrainingBehavior || "standby") : null;
-  if (trainingBehavior === "standby") {
-    runStandbyDummy(cpu, human);
-    return;
-  }
-  if (trainingBehavior === "slap") {
-    runEasySlapOnlyDummy(cpu, human, aiState, currentTime, distance);
-    return;
-  }
-  if (trainingBehavior === "palm") {
-    runPalmDummy(cpu, human, aiState, currentTime, distance);
-    return;
-  }
-  if (trainingBehavior === "grab") {
-    runEasyGrabMatadorDummy(cpu, human, aiState, currentTime, distance);
-    return;
-  }
-
   // Slap lab: Easy = mash mouse1 only (no movement).
   if (isEasySlapOnlyDummy()) {
-    runEasySlapOnlyDummy(cpu, human, aiState, currentTime, distance);
+    runEasySlapOnlyDummy(cpu, human, aiState, currentTime);
     return;
   }
 
   // Matador lab: Easy = grab-only dummy (no slap/parry/dodge/charge).
   // Clinch connect → instant grab-break path inside the dummy (never push/throw).
   if (isEasyGrabMatadorDummy()) {
-    runEasyGrabMatadorDummy(cpu, human, aiState, currentTime, distance);
+    runEasyGrabMatadorDummy(cpu, human, aiState);
     return;
   }
 
@@ -4240,8 +4167,17 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   // MASTERY Phase 3: schedule/release the CPU's cadence-timed follow-up slap. Runs
   // BEFORE the shouldBlockAction early-return below (which fires during our own
   // active slap) so it can buffer the next press mid-cycle. No-op with the flag
-  // off (byte-identical CPU behavior).
-  scheduleCpuCadence(cpu, opponent, currentTime);
+  // off (byte-identical CPU behavior). Training verb dummies mash through
+  // pendingSlapCount themselves — don't let cadence delay their follow-up.
+  const trainingVerbDummy =
+    room.matchMode === "training" &&
+    (room.cpuTrainingBehavior === "slap" ||
+     room.cpuTrainingBehavior === "palm" ||
+     room.cpuTrainingBehavior === "grab" ||
+     room.cpuTrainingBehavior === "standby");
+  if (!trainingVerbDummy) {
+    scheduleCpuCadence(cpu, opponent, currentTime);
+  }
 
   const shouldBlockAction = (allowThrowFromGrab = false) => {
     if (cpu.isAttacking) return true;

@@ -16,6 +16,12 @@ import {
   resolveDebugVolumeRoot,
   resolveStrikeLifecycleDebug,
 } from "./combatVolumeDebug.js";
+import {
+  SLAP_STARTUP_MS,
+  SLAP_ACTIVE_MS,
+  PALM_THRUST_STARTUP_MS,
+  PALM_THRUST_ACTIVE_MS,
+} from "../config/combatTiming.js";
 
 const DESIGN_W = 1280;
 const DESIGN_H = 720;
@@ -93,10 +99,8 @@ function resolveMirrorFacing(f) {
 }
 
 // Mirrored server slap/palm clocks (combatTiming) for local phase when hints exist.
-const SLAP_STARTUP_MS = 55;
-const SLAP_ACTIVE_MS = 130;
-const PALM_STARTUP_MS = 90;
-const PALM_ACTIVE_MS = 90;
+const PALM_STARTUP_MS = PALM_THRUST_STARTUP_MS;
+const PALM_ACTIVE_MS = PALM_THRUST_ACTIVE_MS;
 const CHARGED_STARTUP_MS = 150;
 
 function attackDir(facing) {

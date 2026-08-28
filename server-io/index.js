@@ -44,7 +44,7 @@ const {
   GRAB_WALK_SPEED_MULTIPLIER, GRAB_WALK_ACCEL_MULTIPLIER,
   CHARGE_FULL_POWER_MS,
   GRAB_STARTUP_DURATION_MS, GRAB_ACTIVE_MS,
-  GRAB_STARTUP_HOP_HEIGHT, GRAB_LUNGE_FRICTION, SLAP_ATTACK_STARTUP_MS,
+  GRAB_STARTUP_HOP_HEIGHT, GRAB_LUNGE_FRICTION, GRAB_WHIFF_FRICTION, SLAP_ATTACK_STARTUP_MS,
   GRAB_WHIFF_RECOVERY_MS, GRAB_CATCH_MIN_BURST_SPEED,
   GRAB_BREAK_STAMINA_COST, GRAB_BREAK_FORCED_DISTANCE,
   GRAB_BREAK_TWEEN_DURATION, GRAB_BREAK_RESIDUAL_VEL,
@@ -54,7 +54,6 @@ const {
   ROPE_JUMP_STARTUP_MS, ROPE_JUMP_ACTIVE_MS, ROPE_JUMP_LANDING_RECOVERY_MS,
   ROPE_JUMP_ARC_HEIGHT,
   FLAP_IMPULSE, FLAP_GRAVITY, FLAP_MAX_HEIGHT, FLAP_AIR_MOVE_SPEED,
-  FLAP_FASTFALL_GRAVITY, FLAP_DIVE_MIN_DOWN_VELOCITY,
   FLAP_CEILING_CUSHION, FLAP_CEILING_HANG_GRAVITY,
   FLAP_FLAP_H_IMPULSE, FLAP_H_FRICTION, FLAP_CHARGE_COOLDOWN_MS,
   FLAP_LANDING_RECOVERY_MS,
@@ -72,8 +71,7 @@ const {
   BURST_KB_FRICTION,
   SLAP_ROPE_RESIST_BUFFER,
   SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS, SIDESTEP_RECOVERY_MS,
-  SIDESTEP_ARC_DEPTH, SIDESTEP_TRAVEL, SIDESTEP_TRAVEL_EDGE, SIDESTEP_GRAB_TRACK_RANGE,
-  SIDESTEP_GRAB_TRACK_RANGE_P5,
+  SIDESTEP_ARC_DEPTH, SIDESTEP_TRAVEL, SIDESTEP_TRAVEL_EDGE,
   SIDESTEP_RECOVERY_OVERLAP_THRESHOLD,
   POST_SIDESTEP_FACING_TRACK_MS,
   CLINCH_KILL_THROW_ARC_HEIGHT,
@@ -144,6 +142,8 @@ const {
   applySlideJumpContinueOnLandDone,
   clearSlideJumpState,
   shouldCommitSlideJumpDive,
+  beginSlideJumpDiveCommit,
+  stepSlideJumpDiveMotion,
   armSlideJumpFlapCharges,
   cancelPendingSlapWork,
   stampMomentumWindow,
@@ -154,6 +154,7 @@ const {
   clearSlideJumpLandSettle,
 } = require("./slideJumpLandSettle");
 const { applyAirHitOverlapEject } = require("./airHitOverlapEject");
+const { getGrabActiveMs, inGrabLatchRange } = require("./grabStartupArmor");
 
 const {
   BOUT_SECONDS,
@@ -240,6 +241,7 @@ const {
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
   grabSeparationEase,
+  getGrabAttemptSpeed,
 } = require("./combatHelpers");
 
 // Import CPU AI
@@ -1426,34 +1428,44 @@ function tick(delta) {
         executeInputBuffer(player, rooms);
       }
 
-      // ── GRAB DIVE ───────────────────────────────────────────────────────
-      // One impulse is stamped at grab start (beginGrabStartup); from here it is
-      // pure friction, integrated exactly like every other moving thing on this
-      // ice. Deliberately runs across the WHOLE dive — startup, active frames AND
-      // whiff recovery — not just startup.
-      //
-      // That span is the point. The old fixed-distance version stopped the instant
-      // startup ended, which turned the 110ms active window into a stationary
-      // suction field (stand still, grab anyone who wanders inside GRAB_RANGE) and
-      // made a whiffed grab stop dead as though it hit a wall. Carrying the
-      // momentum makes the active window a moving body that catches what it runs
-      // into, and makes the whiff a skid — the punish window reading as a punish.
+      // ── GRAB RUN ────────────────────────────────────────────────────────
+      // Stamp a run speed at grab start. While isGrabStartup (the whole hot
+      // window) friction is a kiss — you keep charging. Recovery is the only
+      // place that actually brakes.
+      // Close grab: once you're in latch, hold still. The run is how you GET
+      // to grab range, not what the grab is. Velocity stays so walking out
+      // of latch resumes the chase (startup) or the remaining hot window.
       if (
         player.grabMovementVelocity &&
         (player.isGrabStartup ||
           player.isWhiffingGrab ||
           player.isGrabWhiffRecovery)
       ) {
-        player.x = Math.max(
-          MAP_LEFT_BOUNDARY,
-          Math.min(
-            player.x + delta * speedFactor * player.grabMovementVelocity,
-            MAP_RIGHT_BOUNDARY
-          )
-        );
-        player.grabMovementVelocity *= GRAB_LUNGE_FRICTION;
-        if (Math.abs(player.grabMovementVelocity) < MIN_MOVEMENT_THRESHOLD) {
-          player.grabMovementVelocity = 0;
+        if (player.grabMovementDirection) {
+          player.grabMovementVelocity =
+            player.grabMovementDirection *
+            Math.abs(player.grabMovementVelocity);
+        }
+        const grabOpponent = player.isGrabStartup
+          ? room.players.find((p) => p.id !== player.id)
+          : null;
+        const holdAtLatch =
+          !!grabOpponent && inGrabLatchRange(player, grabOpponent);
+        if (!holdAtLatch) {
+          player.x = Math.max(
+            MAP_LEFT_BOUNDARY,
+            Math.min(
+              player.x + delta * speedFactor * player.grabMovementVelocity,
+              MAP_RIGHT_BOUNDARY
+            )
+          );
+          const grabFriction = player.isGrabStartup
+            ? GRAB_LUNGE_FRICTION
+            : GRAB_WHIFF_FRICTION;
+          player.grabMovementVelocity *= grabFriction;
+          if (Math.abs(player.grabMovementVelocity) < MIN_MOVEMENT_THRESHOLD) {
+            player.grabMovementVelocity = 0;
+          }
         }
       } else if (player.grabMovementVelocity) {
         // Left every dive state — connected, got hit out of it, teched. Self-heal
@@ -1474,33 +1486,20 @@ function tick(delta) {
           lockGrabVariant(player);
         }
 
-        // CONNECT WINDOW: startup end through active end. Startup itself is
-        // fully hittable — the grab carries no armor, so it only lands in a gap
-        // between the opponent's active frames.
+        // CONNECT WINDOW: startup end through active end. Tip pokes stuff
+        // the run. A late slap at grip range was skipped this tick so the
+        // latch can fire.
         if (elapsed >= startupMs) {
-          const withinConnectWindow = elapsed < startupMs + GRAB_ACTIVE_MS;
+          const withinConnectWindow =
+            elapsed < startupMs + getGrabActiveMs(player);
           const opponent = room.players.find((p) => p.id !== player.id);
 
-          // Grab tracks sidestep ONLY when the sidestepper is in a vulnerable,
-          // CLEANLY SEPARATED state — i.e. startup, OR recovery once they are
-          // no longer LITERALLY clipping the grabber (within
-          // SIDESTEP_RECOVERY_OVERLAP_THRESHOLD = 80px). The active arc is
-          // full i-frames, and during recovery while still clipping the grab
-          // also whiffs (mirrors the strike i-frame rule in collisionSystem.js).
-          // Without this, a sidestepper who landed inside the grabber would eat
-          // a point-blank grab while still visually inside them — messy, not
-          // skilful. Bad timing on startup, or recovery in a clean position,
-          // both still get the grab.
-          //
-          // SUCCESS-ONLY: the recovery overlap i-frame applies only when the
-          // sidestep PASSED the opponent (successful side switch). A failed
-          // sidestep that ended overlapping the opponent is intentionally
-          // exposed — that's the punish for bad range/timing.
-          //
-          // Threshold tightened from full pushbox (~116px @ 0.85 size) to 80px
-          // (literal clipping) to match the strike i-frame fix — see
-          // collisionSystem.js for the math on why the previous threshold ate
-          // almost the entire 150ms recovery window.
+          // Sidestep vs grab: the attempt stays on its committed line.
+          // Active arc is full i-frames. Recovery while still clipping after
+          // a successful pass also whiffs (same 80px clip rule as strikes).
+          // Startup, or a failed sidestep that stays in FRONT, can still be
+          // latched — there is no 400px rear-track that turns the grabber
+          // around onto someone who already crossed.
           const opponentSidestepping = opponent && opponent.isSidestepping;
           const sidestepPushboxOverlap = opponentSidestepping &&
             Math.abs(player.x - opponent.x) < SIDESTEP_RECOVERY_OVERLAP_THRESHOLD;
@@ -1509,17 +1508,12 @@ function tick(delta) {
           const opponentInSidestepInvuln = opponentSidestepping &&
             !opponent.isSidestepStartup &&
             (!opponent.isSidestepRecovery || (sidestepPushboxOverlap && opponentPassedPlayer));
-          // MASTERY Phase 5 (5.1): tighten the grab's sidestep-tracking range so
-          // spacing — not an auto-track table — answers the sidestep. A
-          // point-blank read still catches the startup/recovery; a spaced
-          // sidestep now escapes. Flag off ⇒ the original 400 range (unchanged).
-          const sidestepGrabTrackRange = MASTERY_P5_ASSISTS
-            ? SIDESTEP_GRAB_TRACK_RANGE_P5
-            : SIDESTEP_GRAB_TRACK_RANGE;
-          const sidestepTrackInRange = opponentSidestepping &&
-            !opponentInSidestepInvuln &&
-            Math.abs(player.x - opponent.x) < sidestepGrabTrackRange;
-          const normalGrabInRange = opponent && !opponentSidestepping && isOpponentCloseEnoughForGrab(player, opponent) && isOpponentInFrontOfGrabber(player, opponent);
+          const sidestepVulnerable = opponentSidestepping && !opponentInSidestepInvuln;
+          const normalGrabInRange =
+            opponent &&
+            (!opponentSidestepping || sidestepVulnerable) &&
+            isOpponentCloseEnoughForGrab(player, opponent) &&
+            isOpponentInFrontOfGrabber(player, opponent);
 
           // Ground grab only — airborne / air-hit-dump victims are ungrabbable
           // (CPU + humans). Matches cpuAI isOpponentAirborne.
@@ -1532,7 +1526,7 @@ function tick(delta) {
               typeof opponent.y === "number" &&
               opponent.y > GROUND_LEVEL + 8);
           const opponentRedirectInvuln = isInSlideRedirectIFrames(opponent, now);
-          const grabInRange = !!(normalGrabInRange || sidestepTrackInRange);
+          const grabInRange = !!normalGrabInRange;
           // In-range grab into a live redirect hop is a WHIFF, not a delayed
           // catch after the hop. That's the punish window.
           if (opponent && opponentRedirectInvuln && grabInRange && withinConnectWindow) {
@@ -1569,11 +1563,10 @@ function tick(delta) {
               !player.isBeingGrabbed &&
               !player.throwTechCooldown &&
               !opponentGrabImmune;
-            // Any live attack blocks the connect — slap included, now that the
-            // throw-catch is gone. A grab that reaches active frames while the
-            // opponent is still swinging simply does not connect.
-            const canConnect =
-              opponentGrabbableNeutral && !opponent.isAttacking;
+            // Swinging does not auto-deny connect. Collision already stuffed
+            // any poke that reached before latch. A late mash at latch range
+            // was skipped so this catch can throw them out of the swing.
+            const canConnect = opponentGrabbableNeutral;
 
             if (canConnect) {
               // MATADOR: grab would have connected into a live grab-parry →
@@ -1595,6 +1588,13 @@ function tick(delta) {
                 player.grabFacingInstanceId = null;
               }
               player.y = GROUND_LEVEL;
+              // Snapshot the slide before the impulse is cleared so Drive
+              // starts at this-frame speed, not the startup stamp.
+              if (Math.abs(player.grabMovementVelocity || 0) > 0) {
+                player.grabAttemptSpeed = getGrabAttemptSpeed(
+                  Math.abs(player.grabMovementVelocity)
+                );
+              }
               player.grabMovementVelocity = 0;
               player.movementVelocity = 0;
               player.isStrafing = false;
@@ -1735,21 +1735,22 @@ function tick(delta) {
               lockGrabVariant(player);
               beginCommandGrab(player, opponent, room, io);
             } else if (withinConnectWindow) {
-              // In range but ungrabbable (charged/palm, immune, etc.) — retest.
+              // In range but ungrabbable — retest next tick.
               return;
             } else {
               // Connect window expired still ungrabbable — whiff
               executeGrabWhiff(player);
             }
           } else if (withinConnectWindow) {
-            // Out of range — keep lunging/waiting; opponent may enter range.
+            // Out of range — keep lunging; opponent may enter range.
             return;
           } else {
             // Connect window expired out of range — whiff
             executeGrabWhiff(player);
           }
         } else {
-          // Startup — lunge only, fully hittable on every frame.
+          // Startup — lunge only. Fully hittable: meaties stuff here
+          // (slap 55ms beats grab 85ms on a simultaneous press).
           return;
         }
       }
@@ -2907,6 +2908,9 @@ function tick(delta) {
             player.slideJumpDiveCommitted = false;
             player.slideJumpDiveBuffered = false;
             player.slideJumpDiveBufferUntil = 0;
+            player.slideJumpDivePhase = null;
+            player.slideJumpDivePopStartTime = 0;
+            player.slideJumpDivePopFromHeight = 0;
             player.slideJumpDiveLockX = 0;
             player.slideJumpHitLanded = false;
             player.slideJumpHitRecoverDuration = 0;
@@ -3006,20 +3010,10 @@ function tick(delta) {
               player.wJustPressed = false;
             }
 
-            // S belly-flop — pin X, kill horizontal, heavy plummet; burns charges.
+            // S belly-flop — Honda pop (rise/hang), then locked plummet.
             // Early S buffers through the min-air/height lock (no eaten input).
             if (shouldCommitSlideJumpDive(player, now)) {
-              player.slideJumpDiveCommitted = true;
-              player.slideJumpDiveBuffered = false;
-              player.slideJumpDiveBufferUntil = 0;
-              player.slideJumpDiveLockX = player.x;
-              player.slideJumpVelocityX = 0;
-              player.flapVelocityX = 0;
-              player.flapCharges = 0;
-              if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
-              if (player.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
-                player.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
-              }
+              beginSlideJumpDiveCommit(player, now);
               // Dive arms offense on plain jumps; upgrades FLAP activation in place.
               beginOffensiveAerialActivation(player, {
                 moveType: OFFENSIVE_AERIAL_MOVE_TYPE.BODY_SLAM_DIVE,
@@ -3039,20 +3033,35 @@ function tick(delta) {
             }
           }
 
-          player.slideJumpFastFalling = !parryRecoil && player.slideJumpDiveCommitted;
           const isDiveLocked = !parryRecoil && player.slideJumpDiveCommitted;
+          const diveStep = isDiveLocked
+            ? stepSlideJumpDiveMotion(player, now)
+            : { active: false, dropping: false };
+          player.slideJumpFastFalling = !!diveStep.dropping;
           const flapFlight = !parryRecoil && !!player.slideJumpFlapFlightActive;
 
           if (parryRecoil) {
             // Phase 4: reaction-owned heavy parry recoil (flag ON only).
             stepParriedRecoil(player, sjOpponent, now);
+          } else if (isDiveLocked) {
+            // Pop / drop owns Y. X stays pinned at the S aim point.
+            player.slideJumpVelocityX = 0;
+            player.flapVelocityX = 0;
+            player.x = player.slideJumpDiveLockX;
+            if (flapFlight) {
+              const ceiling = GROUND_LEVEL + FLAP_MAX_HEIGHT;
+              if (player.y > ceiling) {
+                player.y = ceiling;
+                if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
+              }
+            }
           } else if (flapFlight) {
             // ── Classic FLAP flight integrator ──
             const ceiling = GROUND_LEVEL + FLAP_MAX_HEIGHT;
             const cushionStart = ceiling - FLAP_CEILING_CUSHION;
             const inCeilingZone = player.y > cushionStart;
 
-            if (!isDiveLocked && inCeilingZone && player.slideJumpVelocityY > 0) {
+            if (inCeilingZone && player.slideJumpVelocityY > 0) {
               const into = Math.min(
                 1,
                 (player.y - cushionStart) / FLAP_CEILING_CUSHION
@@ -3060,79 +3069,53 @@ function tick(delta) {
               player.slideJumpVelocityY *= Math.max(0, 1 - into);
             }
 
-            const gravity = isDiveLocked
-              ? FLAP_FASTFALL_GRAVITY
-              : inCeilingZone
+            const gravity = inCeilingZone
               ? FLAP_CEILING_HANG_GRAVITY
               : FLAP_GRAVITY;
             player.slideJumpVelocityY -= gravity;
-            if (isDiveLocked) {
-              if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
-              if (player.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
-                player.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
-              }
-            }
             player.y += player.slideJumpVelocityY;
             if (player.y > ceiling) {
               player.y = ceiling;
               if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
             }
 
-            if (isDiveLocked) {
-              player.slideJumpVelocityX = 0;
-              player.flapVelocityX = 0;
-              player.x = player.slideJumpDiveLockX;
-            } else {
-              if (player.keys.d && !player.keys.a) {
-                player.x += FLAP_AIR_MOVE_SPEED;
-                if (aerialFacingAllowsSteer(player)) {
-                  updateOffensiveAerialFacingLockDirection(player, -1);
-                  player.facing = -1;
-                }
-              } else if (player.keys.a && !player.keys.d) {
-                player.x -= FLAP_AIR_MOVE_SPEED;
-                if (aerialFacingAllowsSteer(player)) {
-                  updateOffensiveAerialFacingLockDirection(player, 1);
-                  player.facing = 1;
-                }
+            if (player.keys.d && !player.keys.a) {
+              player.x += FLAP_AIR_MOVE_SPEED;
+              if (aerialFacingAllowsSteer(player)) {
+                updateOffensiveAerialFacingLockDirection(player, -1);
+                player.facing = -1;
               }
-              if (player.flapVelocityX !== 0) {
-                player.x += player.flapVelocityX;
-                player.flapVelocityX *= FLAP_H_FRICTION;
-                if (Math.abs(player.flapVelocityX) < 0.1) player.flapVelocityX = 0;
+            } else if (player.keys.a && !player.keys.d) {
+              player.x -= FLAP_AIR_MOVE_SPEED;
+              if (aerialFacingAllowsSteer(player)) {
+                updateOffensiveAerialFacingLockDirection(player, 1);
+                player.facing = 1;
               }
+            }
+            if (player.flapVelocityX !== 0) {
+              player.x += player.flapVelocityX;
+              player.flapVelocityX *= FLAP_H_FRICTION;
+              if (Math.abs(player.flapVelocityX) < 0.1) player.flapVelocityX = 0;
             }
           } else {
             // ── Plain slide-jump arc (unchanged when no charges spent) ──
-            const gravity = isDiveLocked ? FLAP_FASTFALL_GRAVITY : SLIDE_JUMP_GRAVITY;
-            player.slideJumpVelocityY -= gravity;
-            if (isDiveLocked) {
-              if (player.slideJumpVelocityY > 0) player.slideJumpVelocityY = 0;
-              if (player.slideJumpVelocityY > -FLAP_DIVE_MIN_DOWN_VELOCITY) {
-                player.slideJumpVelocityY = -FLAP_DIVE_MIN_DOWN_VELOCITY;
-              }
-            }
+            player.slideJumpVelocityY -= SLIDE_JUMP_GRAVITY;
             player.y += player.slideJumpVelocityY;
 
-            if (isDiveLocked) {
-              player.slideJumpVelocityX = 0;
-              player.x = player.slideJumpDiveLockX;
-            } else {
-              player.x += player.slideJumpVelocityX;
-              if (player.keys.d && !player.keys.a) {
-                player.x += SLIDE_JUMP_AIR_STEER;
-                player.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
-                if (aerialFacingAllowsSteer(player)) {
-                  updateOffensiveAerialFacingLockDirection(player, -1);
-                  player.facing = -1;
-                }
-              } else if (player.keys.a && !player.keys.d) {
-                player.x -= SLIDE_JUMP_AIR_STEER;
-                player.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
-                if (aerialFacingAllowsSteer(player)) {
-                  updateOffensiveAerialFacingLockDirection(player, 1);
-                  player.facing = 1;
-                }
+            player.x += player.slideJumpVelocityX;
+            if (player.keys.d && !player.keys.a) {
+              player.x += SLIDE_JUMP_AIR_STEER;
+              player.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
+              if (aerialFacingAllowsSteer(player)) {
+                updateOffensiveAerialFacingLockDirection(player, -1);
+                player.facing = -1;
+              }
+            } else if (player.keys.a && !player.keys.d) {
+              player.x -= SLIDE_JUMP_AIR_STEER;
+              player.slideJumpVelocityX *= SLIDE_JUMP_AIR_STEER_BLEED;
+              if (aerialFacingAllowsSteer(player)) {
+                updateOffensiveAerialFacingLockDirection(player, 1);
+                player.facing = 1;
               }
             }
           }
@@ -3887,8 +3870,9 @@ function tick(delta) {
         !player.isAtTheRopes
       ) {
         if (player.spaceJustPressed) {
-          // Fresh tap → MATADOR (BACK+SPACE) or AP (SPACE). Fallback for the
+          // Fresh press → MATADOR (BACK+SPACE) or AP (SPACE). Fallback for the
           // socket edge path. Arm clears spaceJustPressed so a held key can't re-fire.
+          // Hold is owned by updateMatadorState / updateAttackParryState.
           if (wantsMatadorChord(player) && canArmMatador(player, now)) {
             armMatador(player, now, lagCompensatedParryStart(player, now));
             clearChargeState(player, true);
@@ -3911,7 +3895,7 @@ function tick(delta) {
         ) {
           // Held with no live parry window → GUARD (the block floor).
           // Also covers post-land hold if collision already left us unarmed.
-          // MATADOR never enters GUARD — tap-only.
+          // MATADOR hold stays isMatadorParrying (gated above) — never GUARD.
           enterGuard(player);
           clearChargeState(player, true);
           if (!player.isAttacking && !player.isChargingAttack) {

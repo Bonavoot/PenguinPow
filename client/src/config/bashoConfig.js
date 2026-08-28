@@ -102,7 +102,7 @@ export const LOADOUT_OPTIONS = {
       cost: 1,
       replaces: "Palm thrust",
       unlock: "loadout_shattering_palm",
-      desc: "Your palm thrust shatters grab startup armor instead of being absorbed — the same armor-break read as a charged attack, without the forward lunge commitment.",
+      desc: "Your palm thrust always stuffs a live grab — even a late one. The anti-grab meaty, without the charged-attack lunge.",
     },
   ],
   defense: [],
@@ -123,7 +123,7 @@ export const LOADOUT_OPTIONS = {
       kanji: "脂",
       cost: 1,
       unlock: "loadout_thick_blubber",
-      desc: "Your grab shrugs off one hit during its startup — a single slap, palm, or charged blow that would stuff the grab is absorbed instead, letting the grab complete. Refreshes every grab attempt. Grabs only: it does NOT protect your palm thrust or charged attacks. The read-grab specialist's answer to a jabby opponent.",
+      desc: "Your grab shrugs off one strike that would have stuffed it — a slap, palm, or charged blow that was already swinging. A late slap after you have the grip already loses; this is the answer to someone who pre-committed the swing. Refreshes every grab attempt. Grabs only: it does NOT protect your palm thrust or charged attacks.",
     },
   ],
   shinto: [],
@@ -224,7 +224,7 @@ export const UNLOCKS = [
     sub: "Attack Sidegrade",
     kanji: "砕",
     cost: 150,
-    desc: "Unlock Shatter Palm: palm thrust breaks grab startup armor like a charged attack.",
+    desc: "Unlock Shatter Palm: palm thrust always stuffs a live grab, even if you press late.",
   },
   {
     id: "loadout_thick_blubber",
@@ -232,7 +232,7 @@ export const UNLOCKS = [
     sub: "Grappling Sidegrade",
     kanji: "脂",
     cost: 150,
-    desc: "Unlock Thick Blubber: your grab absorbs one hit during startup (refreshes every grab). Grabs only.",
+    desc: "Unlock Thick Blubber: your grab absorbs one strike that would have stuffed it (refreshes every grab). Grabs only.",
   },
 ];
 

@@ -20,6 +20,7 @@ const {
 } = require("./helpers/contactSim");
 const {
   PALM_THRUST_STARTUP_MS,
+  PALM_THRUST_ACTIVE_MS,
   PALM_VS_SLAP_TRADE_WINDOW_MS,
   PALM_VS_SLAP_TRADE_KB_ON_SLAPPER,
   PALM_VS_SLAP_TRADE_KB_ON_PALM,
@@ -53,7 +54,7 @@ describe("palm vs slap — timing priority / trade", () => {
 
     armPalm(s.left, {
       now,
-      startOffset: PALM_THRUST_STARTUP_MS + 60,
+      startOffset: PALM_THRUST_STARTUP_MS + Math.min(60, PALM_THRUST_ACTIVE_MS - 8),
     });
     armSlap(s.right, {
       now,
@@ -86,14 +87,16 @@ describe("palm vs slap — timing priority / trade", () => {
     const now = s.room.simTime;
     placeInConnectRange(s.left, s.right, "slap");
 
-    // Slap started well before palm — palm's fake charge power must NOT save it.
+    // Slap is live; palm is still in startup. A jab's active window cannot
+    // overlap a medium that's already striking — stuffing the thrust means
+    // hitting the windup.
     armSlap(s.left, {
       now,
-      startOffset: SLAP_ACTIVE_TEST_OFFSET + 40,
+      startOffset: SLAP_ACTIVE_TEST_OFFSET,
     });
     armPalm(s.right, {
       now,
-      startOffset: PALM_THRUST_STARTUP_MS + 5,
+      startOffset: SLAP_ACTIVE_TEST_OFFSET - PALM_VS_SLAP_TRADE_WINDOW_MS - 8,
       power: PALM_THRUST_POWER,
     });
     assert.ok(s.left.attackStartTime < s.right.attackStartTime);
@@ -119,15 +122,15 @@ describe("palm vs slap — timing priority / trade", () => {
     const now = s.room.simTime;
     placeInConnectRange(s.left, s.right, "palm");
 
-    // Align attackStartTime within the palm-vs-slap trade window.
-    const sharedStart = now - (PALM_THRUST_STARTUP_MS + 20);
+    // Both still in their active windows (jab active is shorter than palm startup+20).
+    const sharedOffset = PALM_THRUST_STARTUP_MS + 6;
     armPalm(s.left, {
       now,
-      startOffset: now - sharedStart,
+      startOffset: sharedOffset,
     });
     armSlap(s.right, {
       now,
-      startOffset: now - sharedStart,
+      startOffset: sharedOffset,
     });
     assert.ok(
       Math.abs(s.left.attackStartTime - s.right.attackStartTime) <=

@@ -67,7 +67,7 @@ test("simultaneous grab", async (t) => {
   });
 
   await t.test("the clash beat shows the belt grip, not the grab-attempt pose", () => {
-    // isGrabWhiffRecovery forces the grab-attempt sprite, so it is deliberately
+    // isGrabWhiffRecovery forces the recovering sprite, so it is deliberately
     // deferred: for the clash beat both fighters should be locked in the grip.
     const s = clashScenario();
     executeCommandGrabClash(s.p1, s.p2, s.room, s.io);

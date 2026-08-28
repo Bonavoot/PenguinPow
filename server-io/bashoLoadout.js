@@ -32,15 +32,15 @@ function deriveLoadout(selected = {}) {
     ? selected.grappling
     : [];
   return {
-    // ATTACK sidegrade: palm thrust shatters grab startup armor (charged-style).
+    // ATTACK sidegrade: palm thrust always stuffs a live grab (anti-grab meaty).
     palmBreaksGrabArmor: attack.includes("shattering_palm"),
     // MOVEMENT sidegrade: slide-jump takeoffs grant FLAP air charges.
     // Also accepts legacy defense-slot saves that still list "flap".
     hasFlap: movement.includes("flap") || defense.includes("flap"),
-    // GRAPPLING sidegrade: Thick Blubber — your grab absorbs one hit during its
-    // startup (refreshed every grab attempt). Grabs-only; does not protect palm
-    // thrust or charged attacks. Read grabs-only inside hasHitAbsorption's call
-    // sites (collisionSystem / projectileUpdates).
+    // GRAPPLING sidegrade: Thick Blubber — absorb one strike that would have
+    // stuffed the grab (refreshed every grab attempt). Grabs-only; does not
+    // protect palm thrust or charged attacks. A late slap after the grip is
+    // on already loses without this perk.
     thickBlubberGrabs: grappling.includes("thick_blubber"),
   };
 }

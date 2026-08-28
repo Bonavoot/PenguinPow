@@ -80,6 +80,7 @@ import PerfectBraceEffect from "./PerfectBraceEffect";
 import HitEffect from "./HitEffect";
 import RawParryEffect from "./RawParryEffect";
 import { playBuffer, createCrossfadeLoop } from "../utils/audioEngine";
+import { stopScreenMusic } from "../utils/musicDirector";
 import {
   CUE,
   SWING_STARTUP_MS as COMBAT_SWING_STARTUP_MS,
@@ -183,14 +184,16 @@ import {
   isPoseGeometryV2Enabled,
 } from "../poseGeometry";
 
-// Eeshi = pre-bout bed; battle BGM sits lower so hits/SFX stay forward in the mix.
+// Eeshi = ritual / between-round bed (Day Card, salt throw, power-up). Battle
+// is the live-round bed — paused in place between rounds, never rewound.
 const EESHI_MUSIC_VOL = 0.018;
 const BATTLE_MUSIC_VOL = 0.014;
 const EESHI_LOOP_CROSSFADE = 1.5;
-const BATTLE_LOOP_CROSSFADE = 2.0;
 const EESHI_ENTRY_FADE = 0.9;
+const BATTLE_LOOP_CROSSFADE = 2.0;
 const BATTLE_ENTRY_FADE = 0;
-// After round end: keep BGM going briefly, then a longer fade (not a hard cut).
+const BATTLE_PAUSE_FADE = 0.7;
+const BATTLE_RESUME_FADE = 0.5;
 const BATTLE_EXIT_HOLD = 1.5;
 const BATTLE_EXIT_FADE = 2.8;
 
@@ -198,6 +201,7 @@ const BATTLE_EXIT_FADE = 2.8;
 import {
   pumo,
   dodging,
+  sliding,
   recovering,
   saltBasket,
   saltBasketEmpty,
@@ -212,7 +216,7 @@ import {
   hakkiyoiSound,
   teWoTsuiteSound,
   bellSound,
-  battleMusicTracks,
+  battleMusic,
   eeshiMusic,
   slapParrySound,
   saltSound,
@@ -282,6 +286,7 @@ import {
   armSlapConnectHold,
   resolveSlapConnectHold,
   slapConnectHoldNeedsTick,
+  clearSlapConnectHold,
 } from "../combatPresentation/slapConnectHold";
 import {
   isSlapLimbOut,
@@ -470,6 +475,10 @@ function isSlapAttackBlocked(state) {
     state.isHitFalling === true ||
     state.isBeingGrabbed === true ||
     state.isBeingThrown === true ||
+    state.isGrabbing === true ||
+    state.isGrabStartup === true ||
+    state.isGrabbingMovement === true ||
+    state.inClinch === true ||
     state.isRawParryStun === true ||
     state.isAtTheRopes === true
   );
@@ -501,6 +510,7 @@ const GameFighter = ({
   bashoDraftedPowerUps = null, // BASHO-only: stacked in-run power-up draft for the boon tray
   bashoOpponentPowerUps = null, // BASHO-only: CPU rival's passive/active draft loadout
   bashoDay = 1, // BASHO-only: current honbasho day (caption under the clock)
+  bashoTotalBouts = 0, // BASHO-only: run length so the last day can skip KO stings
   bashoOpponentName = null, // BASHO-only: CPU rival name for the HUD nameplate
 }) => {
   const { socket } = useContext(SocketContext);
@@ -1185,6 +1195,9 @@ const GameFighter = ({
   const AP_FLURRY_COVER_REGULAR_MS_CLIENT = 345;
   const predictedParryCommitUntilRef = useRef(0);
   const predictedFlurryUntilRef = useRef(0);
+  // Local deadline of the 180ms MATADOR arm window. Past this, Space-up is a
+  // hold-floor drop (no whiff jail), matching updateMatadorState.
+  const predictedMatadorWindowUntilRef = useRef(0);
   // Local Space-up whiff pose — snaps to success-f1 before server isApWhiffRecovering.
   // Gated: live read only (not guard), not during flurry soft-clear.
   const apWhiffPredictRef = useRef({ until: 0, startedAt: 0, sawServerWhiff: false });
@@ -1267,6 +1280,9 @@ const GameFighter = ({
         !penguin.isHit &&
         !penguin.isRawParryStun &&
         !penguin.isRawParrying &&
+        !penguin.isMatadorParrying &&
+        !penguin.isMatadorSuccess &&
+        !penguin.isMatadorWhiffRecovering &&
         !penguin.isThrowingSnowball &&
         !penguin.isAtTheRopes &&
         // Clinch: SPACE in a clinch is a GRAB BREAK, not an AP — never predict a
@@ -1371,6 +1387,51 @@ const GameFighter = ({
     [penguin, isLocalParryActive]
   );
 
+  const [attackerBellyPlant, setAttackerBellyPlant] = useState(false);
+  const attackerBellyPlantTimeoutRef = useRef(null);
+  const [bellyBumpSwing, setBellyBumpSwing] = useState(false);
+  const bellyBumpSwingTimeoutRef = useRef(null);
+  // Ice dump when the slide converts into a belly bump — once per swing
+  // (local predict + server confirm share a debounce so they don't double).
+  const bellyBumpIceDumpAtRef = useRef(0);
+  const emitBellyBumpConvertFx = useCallback(() => {
+    const nowFx = performance.now();
+    if (nowFx - bellyBumpIceDumpAtRef.current < 280) return;
+    bellyBumpIceDumpAtRef.current = nowFx;
+    const pos = interpolatedPositionRef.current;
+    const p = penguinRef.current;
+    const x = pos?.x ?? p?.x ?? 0;
+    const dir = normalizeMoveDir(
+      p?.facing,
+      p?.iceSlideDir || lastDodgeDirRef.current || iceSlideDirRef.current || 1
+    );
+    emitParticles("iceSlideStart", {
+      x,
+      y: MOVEMENT_SMOKE_GROUND_Y,
+      direction: dir,
+      facing: dir,
+      playerNumber,
+    });
+    emitParticles("slapSkidDust", {
+      x,
+      y: MOVEMENT_SMOKE_GROUND_Y,
+      dir,
+    });
+    emitParticles("slapSkidDust", {
+      x: x + dir * 10,
+      y: MOVEMENT_SMOKE_GROUND_Y,
+      dir,
+    });
+    setBellyBumpSwing(true);
+    if (bellyBumpSwingTimeoutRef.current) {
+      clearTimeout(bellyBumpSwingTimeoutRef.current);
+    }
+    bellyBumpSwingTimeoutRef.current = setTimeout(() => {
+      setBellyBumpSwing(false);
+      bellyBumpSwingTimeoutRef.current = null;
+    }, 180);
+  }, [emitParticles, playerNumber]);
+
   // Function to apply a prediction (called from Game.jsx via callback)
   const applyPrediction = useCallback(
     (action) => {
@@ -1416,6 +1477,9 @@ const GameFighter = ({
               timestamp: now,
             };
             predictionChanged = true;
+            if (predictedState.current.slideSlapArmed) {
+              emitBellyBumpConvertFx();
+            }
             // Predicted swing audio — scheduled to land at the ACTIVE window
             // (press + startup), when the hand actually cuts air. Cancellable:
             // an interrupt during startup clears it (no phantom whoosh).
@@ -1683,6 +1747,7 @@ const GameFighter = ({
               now + AP_ACTIVE_MS_CLIENT,
               predictedFlurryUntilRef.current
             );
+            predictedMatadorWindowUntilRef.current = now + AP_ACTIVE_MS_CLIENT;
           }
           if (canPredictAction(gameStarted) && !penguin.isChargingAttack) {
             predictedState.current = {
@@ -1707,8 +1772,12 @@ const GameFighter = ({
             !penguin.isMatadorSuccess &&
             (penguin.isMatadorParrying ||
               predictedState.current.isMatadorParrying);
-          // Jail empty taps only. A landed pull must not lock offense for 300ms.
-          if (gameStarted && inLiveMatador) {
+          // Hold floor (past the 180ms arm window) drops clean — no 300ms jail.
+          // Empty taps still inside the arm window pay whiff recovery.
+          const inHoldFloor =
+            predictedMatadorWindowUntilRef.current > 0 &&
+            now >= predictedMatadorWindowUntilRef.current;
+          if (gameStarted && inLiveMatador && !inHoldFloor) {
             predictedParryCommitUntilRef.current =
               now + AP_CANCEL_RECOVERY_MS_CLIENT;
             apWhiffPredictRef.current.until = now + AP_WHIFF_RECOVERY_MS;
@@ -1716,6 +1785,7 @@ const GameFighter = ({
             apWhiffPredictRef.current.sawServerWhiff = false;
             forceVisualRender();
           }
+          predictedMatadorWindowUntilRef.current = 0;
           if (
             penguin.isMatadorParrying ||
             predictedState.current.isMatadorParrying
@@ -1903,6 +1973,7 @@ const GameFighter = ({
       isLocalParryActive,
       forceVisualRender,
       emitParticles,
+      emitBellyBumpConvertFx,
       scheduleSwingSound,
       penguin.x,
       penguin.y,
@@ -2197,6 +2268,11 @@ const GameFighter = ({
       // ICE PHYSICS: Movement predictions
       isPowerSliding: p.isPowerSliding || penguin.isPowerSliding,
       isBraking: p.isBraking || penguin.isBraking,
+      // Predicted convert must paint belly-bump art on the press frame —
+      // waiting for the server flag flashes a slap limb for one RTT.
+      slideSlapArmed: p.isSlapAttack
+        ? !!p.slideSlapArmed
+        : !!penguin.slideSlapArmed,
     };
 
     if (penguin.isHit || performance.now() < grabPredictLockUntilRef.current) {
@@ -2209,6 +2285,16 @@ const GameFighter = ({
       merged.isPalmThrust = false;
       merged.isLowKick = false;
       merged.isAttacking = false;
+    }
+
+    if (
+      penguin.isGrabbing ||
+      penguin.isGrabStartup ||
+      penguin.isGrabbingMovement ||
+      penguin.isBeingGrabbed ||
+      penguin.inClinch
+    ) {
+      merged.isSlapAttack = false;
     }
 
     // ── VISUAL EXCLUSIVITY GUARD ──────────────────────────────────────────
@@ -2316,6 +2402,12 @@ const GameFighter = ({
   const [boutLive, setBoutLive] = useState(!!isTrainingMatch);
   const isTrainingMatchRef = useRef(isTrainingMatch);
   isTrainingMatchRef.current = isTrainingMatch;
+  const isBashoMatchRef = useRef(isBashoMatch);
+  isBashoMatchRef.current = isBashoMatch;
+  const bashoDayRef = useRef(bashoDay);
+  bashoDayRef.current = bashoDay;
+  const bashoTotalBoutsRef = useRef(bashoTotalBouts);
+  bashoTotalBoutsRef.current = bashoTotalBouts;
   /* {player1, player2} 0-100 judges' scores — set only on a time-expired
      bout, printed over each wrestler's head with the result. */
   const [hanteiScores, setHanteiScores] = useState(null);
@@ -3250,11 +3342,11 @@ const GameFighter = ({
   const eeshiMusicRef = useRef(null);
   // Set when match_over fires (2-round win); suppresses eeshi through MatchOver/rematch UI.
   const matchEndingRef = useRef(false);
-  const battleMusicRoundRef = useRef(0);
   const ownsMatchMusic = index === 0;
 
   const startEeshi = useCallback((withFadeIn = false) => {
     if (!ownsMatchMusic || eeshiMusicRef.current) return;
+    stopScreenMusic();
     eeshiMusicRef.current = createCrossfadeLoop(
       eeshiMusic,
       EESHI_MUSIC_VOL,
@@ -3291,23 +3383,47 @@ const GameFighter = ({
     loop.stop({ fadeOut: BATTLE_EXIT_FADE, hold: BATTLE_EXIT_HOLD });
   }, [ownsMatchMusic]);
 
+  const pauseBattleMusic = useCallback(() => {
+    if (!ownsMatchMusic || !battleMusicRef.current) return;
+    if (typeof battleMusicRef.current.pause === "function") {
+      battleMusicRef.current.pause({ fadeOut: BATTLE_PAUSE_FADE });
+    }
+  }, [ownsMatchMusic]);
+
   const startBattleMusic = useCallback(() => {
-    if (!ownsMatchMusic || battleMusicRef.current) return;
-    // Drop any leftover exit tail so the new round starts clean.
+    if (!ownsMatchMusic) return;
+    stopScreenMusic();
     if (battleMusicStoppingRef.current) {
       const fading = battleMusicStoppingRef.current;
       battleMusicStoppingRef.current = null;
       fading.stop({ fadeOut: 0.35, hold: 0 });
     }
-    battleMusicRoundRef.current += 1;
-    const trackIndex =
-      (battleMusicRoundRef.current - 1) % battleMusicTracks.length;
-    const track = battleMusicTracks[trackIndex];
+    if (battleMusicRef.current) {
+      if (typeof battleMusicRef.current.resume === "function") {
+        battleMusicRef.current.resume({ fadeIn: BATTLE_RESUME_FADE });
+      }
+      return;
+    }
     const loop = createCrossfadeLoop(
-      track,
+      battleMusic,
       BATTLE_MUSIC_VOL,
       BATTLE_LOOP_CROSSFADE,
       BATTLE_ENTRY_FADE
+    );
+    if (loop) battleMusicRef.current = loop;
+  }, [ownsMatchMusic]);
+
+  // Build the battle HTMLAudio pool during eeshi / prematch so HAKKIYOI only
+  // resumes — creating + decoding ~4MB ogg on the first input frame hitchs.
+  const prepareBattleMusic = useCallback(() => {
+    if (!ownsMatchMusic) return;
+    if (battleMusicRef.current || battleMusicStoppingRef.current) return;
+    const loop = createCrossfadeLoop(
+      battleMusic,
+      BATTLE_MUSIC_VOL,
+      BATTLE_LOOP_CROSSFADE,
+      BATTLE_ENTRY_FADE,
+      { startPaused: true }
     );
     if (loop) battleMusicRef.current = loop;
   }, [ownsMatchMusic]);
@@ -3633,6 +3749,7 @@ const GameFighter = ({
           prev.isRawParryStun !== newState.isRawParryStun ||
           prev.grabState !== newState.grabState ||
           prev.isSlapAttack !== newState.isSlapAttack ||
+          prev.slideSlapArmed !== newState.slideSlapArmed ||
           prev.isPalmThrust !== newState.isPalmThrust ||
           prev.isLowKick !== newState.isLowKick ||
           // Per-thrust VFX nonce — MUST force a commit so the palm-thrust cone
@@ -3893,6 +4010,7 @@ const GameFighter = ({
         // Palm thrust skips the outline flash — burst VFX/hitstop already sell it.
         if (data.attackerId && data.attackerId === player.id && !data.isPalmThrust) {
           let tier = "slap";
+          if (data.slideSlap || data.hitFromAir) tier = "burst";
           if (data.attackType === "charged" || data.attackType === "flap") {
             tier = "charged";
           }
@@ -3906,6 +4024,7 @@ const GameFighter = ({
           const dur =
             tier === "cinematic" ? 280 :
             tier === "charged" ? 200 :
+            data.slideSlap || data.hitFromAir ? 190 :
             155;
           attackerConfirmTimeoutRef.current = setTimeout(() => {
             setAttackerConfirmTier(null);
@@ -3915,15 +4034,18 @@ const GameFighter = ({
 
         // PROCEDURAL ANIMATION — attacker contact recoil. On connect, the
         // attacker's body jolts back for ~0.12s (attackerContactRecoil
-        // keyframes) before resuming the swing loop. Charged headbutts + belly
-        // slams PLANT (no CSS bounce). Cinematic kills keep their scripted pose.
+        // keyframes) before resuming the swing loop. Charged headbutts, flap
+        // slams, and the ice-slide belly bump PLANT (no slap bounce).
+        // Cinematic kills keep their scripted pose.
         // The 120ms auto-clear ends before the fastest slap re-chain.
         if (
           data.attackerId &&
           data.attackerId === player.id &&
           !data.cinematicKill &&
           data.attackType !== "charged" &&
-          data.attackType !== "flap"
+          data.attackType !== "flap" &&
+          !data.slideSlap &&
+          !data.hitFromAir
         ) {
           setAttackerRecoil(true);
           if (attackerRecoilTimeoutRef.current) {
@@ -3933,6 +4055,27 @@ const GameFighter = ({
             setAttackerRecoil(false);
             attackerRecoilTimeoutRef.current = null;
           }, 120);
+        }
+        // Belly bump — forward compress into the gut check (mass arriving).
+        if (
+          data.attackerId &&
+          data.attackerId === player.id &&
+          data.slideSlap &&
+          !data.cinematicKill
+        ) {
+          setBellyBumpSwing(false);
+          if (bellyBumpSwingTimeoutRef.current) {
+            clearTimeout(bellyBumpSwingTimeoutRef.current);
+            bellyBumpSwingTimeoutRef.current = null;
+          }
+          setAttackerBellyPlant(true);
+          if (attackerBellyPlantTimeoutRef.current) {
+            clearTimeout(attackerBellyPlantTimeoutRef.current);
+          }
+          attackerBellyPlantTimeoutRef.current = setTimeout(() => {
+            setAttackerBellyPlant(false);
+            attackerBellyPlantTimeoutRef.current = null;
+          }, 160);
         }
 
         // Contact freeze pin — snap interpolated X to the server park pose so
@@ -4102,10 +4245,16 @@ const GameFighter = ({
               scale: momentumScale(1.15),
             });
           } else if (data.slideSlap) {
-            // Ice-slide convert — snappy crack, not a throw-land rattle.
+            // Ice-slide belly bump — hard directional kick, not a throw-land rattle.
             addShake("slide_slap_hit", {
               dirX: shakeDir,
-              scale: momentumScale(1.08),
+              scale: momentumScale(1.12),
+            });
+          } else if (data.hitFromAir && data.attackType === "slap") {
+            // Air slap punish — still a slap crack, just heavier than a poke.
+            addShake("slap_hit", {
+              dirX: shakeDir,
+              scale: momentumScale(1.18),
             });
           } else {
             // Slaps: base stays light so a poke reads as a poke, but a chained
@@ -4150,6 +4299,8 @@ const GameFighter = ({
               playSound(baseSound, 0.022, null, 0.78, pan);
             } else if (data.isPunish) {
               playSound(baseSound, 0.020, null, 1.32, pan);
+            } else if (data.hitFromAir) {
+              playSound(baseSound, 0.020, null, 0.8, pan);
             }
             // MASTERY Phase 3 (tsuppari cadence): an enhanced (rhythm-timed) slap
             // layers a sharper, higher "crack" whose pitch RISES with each
@@ -4170,7 +4321,9 @@ const GameFighter = ({
             // (the dig-in skid below) — replaying the hit sample here was the
             // other half of the doubling. Server-gated ⇒ silent with the flag off.
             if (data.slideSlap) {
-              playSound(baseSound, 0.02, null, 0.55, pan);
+              // Gut-check body: louder/deeper slap sub + a quiet charged thud.
+              playSound(baseSound, 0.034, null, 0.48, pan);
+              playSound(pickRandomSound(chargedHitSounds), 0.018, null, 0.62, pan);
             } else if (data.momentumHit) {
               playSound(baseSound, 0.012, null, 0.6, pan);
             }
@@ -4268,6 +4421,8 @@ const GameFighter = ({
               hitId: data.hitId,
               attackType: data.attackType || "slap",
               isPalmThrust: data.isPalmThrust || false,
+              slideSlap: !!data.slideSlap,
+              hitFromAir: !!data.hitFromAir,
               isLowKick: isLowKickHit,
               isCounterHit: data.isCounterHit || false,
               isPunish: data.isPunish || false,
@@ -4393,8 +4548,9 @@ const GameFighter = ({
             y: data.y,
             dir: skidDir,
           });
-          if (data.attackType === "flap") {
-            // Extra plant tell — reuse land dust so the belly slam reads grounded.
+          if (data.attackType === "flap" || data.slideSlap) {
+            // Extra plant tell — reuse land dust so the belly slam / convert
+            // reads grounded (ice dump on the shove, not just a slap poke).
             emitParticles("throwLand", { x: data.x, y: data.y });
             emitParticles("slapSkidDust", {
               x: data.x + skidDir * 8,
@@ -4443,7 +4599,7 @@ const GameFighter = ({
           } else if (data.attackType === "flap") {
             amp = 1.35;
           } else if (data.attackType === "slap") {
-            amp = data.slideSlap ? 1.35 : 1.08;
+            amp = data.slideSlap ? 1.55 : data.hitFromAir ? 1.28 : 1.08;
           } else if (data.isLowKick || data.attackType === "lowKick") {
             amp = 0.9;
           }
@@ -4497,6 +4653,8 @@ const GameFighter = ({
             amp:
               data.attackType === "charged"
                 ? 4.5
+                : data.slideSlap
+                  ? 4
                 : isRopeEdge
                   ? edgeRehit
                     ? 2.5
@@ -5470,9 +5628,9 @@ const GameFighter = ({
         });
       }, 1000);
 
-      // Back to power-up selection: battle BGM off, pre-bout eeshi on.
+      // Between rounds: pause battle in place, bring eeshi back for the ritual.
       matchEndingRef.current = false;
-      stopBattleMusic();
+      pauseBattleMusic();
       if (!opponentDisconnected) {
         startEeshi(true);
       }
@@ -5548,6 +5706,10 @@ const GameFighter = ({
           showRoundResultRafRef.current = null;
         });
       });
+      pauseBattleMusic();
+      if (!opponentDisconnected) {
+        startEeshi(true);
+      }
     };
     socket.on("bout_draw", handleBoutDraw);
 
@@ -5650,10 +5812,15 @@ const GameFighter = ({
       }, 2000);
       pendingSocketTimeouts.current.push(gyojiIdleTid);
 
-      // Play round victory or defeat sound based on local player result.
-      // Kill throws: defer sound to align with the visual landing (state update + render).
-      // The game_over event arrives before the fighter_action state that shows the player
-      // at ground level, so playing immediately sounds ahead of the visual impact.
+      // Round KO sting plays on every fall, including the last basho day —
+      // RoundResult is still up for a few seconds before BashoResults. Leftover
+      // clips are cut when that results card mounts, not here.
+      if (data.isMatchEnd) matchEndingRef.current = true;
+      const lastBashoDay =
+        isBashoMatchRef.current &&
+        bashoTotalBoutsRef.current > 0 &&
+        bashoDayRef.current >= bashoTotalBoutsRef.current;
+      if (lastBashoDay) matchEndingRef.current = true;
       if (index === 0) {
         const playRoundSound = () => {
           if (data.winner.id === localId) {
@@ -5696,22 +5863,24 @@ const GameFighter = ({
         });
       });
 
-      // Round over: battle BGM off; eeshi only if another round follows (not match end).
-      if (data.wins > 1) {
-        matchEndingRef.current = true;
-      }
-      stopBattleMusic();
-      if (!matchEndingRef.current && !opponentDisconnected) {
-        startEeshi(true);
+      // Round over: pause battle (keep playback position) and return to eeshi
+      // until the next HAKKIYOI. Match end drops both beds for results music.
+      if (matchEndingRef.current) {
+        stopBattleMusic();
+      } else {
+        pauseBattleMusic();
+        if (!opponentDisconnected) {
+          startEeshi(true);
+        }
       }
     };
     socket.on("game_over", handleGameOver);
 
     const handleMatchOver = (data) => {
-      // match_over is emitted before game_over on the winning match — silence all BGM
-      // through MatchOver / rematch (game_reset does not run when matchOver is set).
+      // match_over is emitted before game_over on the winning match — drop the
+      // battle bed; MatchOver / BashoResults start results music on mount.
       matchEndingRef.current = true;
-      stopBattleMusic();
+      stopBattleMusic(true);
       stopEeshi();
 
       const tid = setTimeout(() => {
@@ -5733,7 +5902,7 @@ const GameFighter = ({
       setHanteiScores(null);
       setBoutSeconds(BOUT_SECONDS);
       matchEndingRef.current = false;
-      battleMusicRoundRef.current = 0;
+      stopBattleMusic(true);
       if (!opponentDisconnected) {
         startEeshi(true);
       }
@@ -5760,6 +5929,14 @@ const GameFighter = ({
       if (attackerRecoilTimeoutRef.current) {
         clearTimeout(attackerRecoilTimeoutRef.current);
         attackerRecoilTimeoutRef.current = null;
+      }
+      if (attackerBellyPlantTimeoutRef.current) {
+        clearTimeout(attackerBellyPlantTimeoutRef.current);
+        attackerBellyPlantTimeoutRef.current = null;
+      }
+      if (bellyBumpSwingTimeoutRef.current) {
+        clearTimeout(bellyBumpSwingTimeoutRef.current);
+        bellyBumpSwingTimeoutRef.current = null;
       }
       if (knockbackTrailIntervalsRef.current.length > 0) {
         knockbackTrailIntervalsRef.current.forEach((id) => clearInterval(id));
@@ -5824,13 +6001,14 @@ const GameFighter = ({
       startBattleMusic();
     } else if (!opponentDisconnected && !matchEndingRef.current) {
       startEeshi(false);
+      prepareBattleMusic();
     }
 
     return () => {
       stopEeshi();
       stopBattleMusic(true);
     };
-  }, [opponentDisconnected, ownsMatchMusic, isTrainingMatch, startEeshi, startBattleMusic, stopEeshi, stopBattleMusic]);
+  }, [opponentDisconnected, ownsMatchMusic, isTrainingMatch, startEeshi, startBattleMusic, prepareBattleMusic, stopEeshi, stopBattleMusic]);
 
   // NOTE: game_start and game_over music handling is now consolidated into the main socket useEffect
   // to prevent duplicate listeners and cleanup race conditions
@@ -6245,6 +6423,15 @@ const GameFighter = ({
     playerNumber,
     emitParticles,
   ]);
+
+  const prevSlideSlapArmedForFx = useRef(false);
+  useEffect(() => {
+    const armed = !!penguin.slideSlapArmed;
+    if (armed && !prevSlideSlapArmedForFx.current) {
+      emitBellyBumpConvertFx();
+    }
+    prevSlideSlapArmedForFx.current = armed;
+  }, [penguin.slideSlapArmed, emitBellyBumpConvertFx]);
 
   const prevRopeKickoffFxId = useRef(penguin.ropeKickoffFxId || 0);
   useEffect(() => {
@@ -8359,7 +8546,18 @@ const GameFighter = ({
   // Anchor on the isSlapAttack rising edge AND on slapAnimation change
   // (consecutive slaps always differ — toggle 1↔2), so a back-to-back
   // slap1→slap2 (where isSlapAttack never drops) still replays frame 0.
-  const inSlapPhaseAnim = displayPenguin.isSlapAttack;
+  // Grab owns the body the instant latch/startup is live — do not keep
+  // directing the jab hit pose through grab hitstop.
+  const slapBlockedByGrab =
+    penguin.isGrabbing ||
+    penguin.isBeingGrabbed ||
+    penguin.isGrabStartup ||
+    penguin.isGrabbingMovement ||
+    penguin.inClinch;
+  if (slapBlockedByGrab) {
+    clearSlapConnectHold(slapConnectHoldRef.current);
+  }
+  const inSlapPhaseAnim = displayPenguin.isSlapAttack && !slapBlockedByGrab;
   if (inSlapPhaseAnim) {
     const animId = displayPenguin.slapAnimation || 0;
     if (!slapAnimRef.current.startedAt || animId !== slapAnimRef.current.anim) {
@@ -8516,7 +8714,7 @@ const GameFighter = ({
     displayPenguin.isSlapAttack,
     penguin.isThrowing,
     displayPenguin.isGrabbing,
-    penguin.isGrabbingMovement,
+    penguin.isGrabbingMovement || penguin.isGrabStartup,
     penguin.isBeingGrabbed,
     penguin.isThrowingSalt,
     displayPenguin.slapAnimation,
@@ -8539,7 +8737,7 @@ const GameFighter = ({
     penguin.isCrouchStrafing,
     displayPenguin.isPowerSliding,
     penguin.isGrabBreakCountered,
-    penguin.isGrabbingMovement,
+    penguin.isGrabbingMovement || penguin.isGrabStartup,
     false, // dead positional slot — used to be isGrabClashActive
     penguin.isAttemptingGrabThrow,
     null, // ritualAnimationSrc - handled separately
@@ -8609,13 +8807,10 @@ const GameFighter = ({
     lastNonHitSpriteRef.current = rawSpriteSrc;
   }
 
-  // Dash frames: the dodge now has real anticipation + landing poses.
-  // getImageSrc returns the tucked `dodging` pose for the whole dodge; here we
-  // swap in the braced `recovering` pose for the brief startup windup, and again
-  // for the post-hop landing settle (justLandedFromDodge), so the jump gets the
-  // bookend frames that sell its weight. Landing only overrides an idle (pumo)
-  // frame so it never stomps an action buffered out of the (0ms) recovery, nor
-  // the power-slide crouch pose.
+  // Dash frames: getImageSrc returns the ice-slide squat (`sliding`) for the
+  // whole dodge; here we swap in the braced `recovering` pose for the brief
+  // startup windup. Tap-dodge land keeps that same squat (no recovering, no
+  // idle). Held SHIFT is already on `sliding` via isIceSliding.
   // PHASE 4A/4B struck-limb hold outranks the generic hit sprite for the
   // duration of the existing display hitstop, so the player can actually SEE the
   // arm that was hit (and the spark that lands on it) before the hit reaction
@@ -8628,6 +8823,7 @@ const GameFighter = ({
     rawSpriteSrc,
     idleSrc: pumo,
     recoveringSrc: recovering,
+    dodgeLandSrc: sliding,
   });
 
   // Hold previous sprite briefly when transitioning to idle to prevent
@@ -8640,6 +8836,7 @@ const GameFighter = ({
   if (displaySpriteSrc === pumo && lastNonIdleSpriteRef.current) {
     if (
       lastNonIdleSpriteRef.current === dodging ||
+      lastNonIdleSpriteRef.current === sliding ||
       lastNonIdleSpriteRef.current === recovering ||
       lastNonIdleSpriteRef.current === grabbingSprite
     ) {
@@ -9102,10 +9299,11 @@ const GameFighter = ({
     // player_hit handler and fighterStyledComponents keyframes).
     $impactAmp: impactAmp,
     $attackerRecoil: attackerRecoil,
+    $attackerBellyPlant: attackerBellyPlant,
+    $bellyBumpSwing: bellyBumpSwing,
     $isDead: penguin.isDead,
     $isSlapAttack: displayPenguin.isSlapAttack,
     $slideSlapArmed: !!displayPenguin.slideSlapArmed,
-    $spriteBoxScale: poseResolved.displayScale || 1,
     // Limb-out z: smear/hit pose (not isAttacking — that's the hitbox and can
     // die while the arm is still painted). Simultaneous: first swing leads.
     $strikeExtendZ: strikeExtendZ,
@@ -9142,6 +9340,7 @@ const GameFighter = ({
     $lastGrabAttemptTime: penguin.lastGrabAttemptTime,
     $dodgeDirection: displayPenguin.dodgeDirection,
     $justLandedFromDodge: penguin.justLandedFromDodge,
+    $isIceSliding: !!penguin.isIceSliding,
     $speedFactor: penguin.speedFactor,
     $sizeMultiplier: penguin.sizeMultiplier,
     $isRecovering:
@@ -9593,6 +9792,7 @@ const GameFighter = ({
             loop={spriteConfig?.loop !== false}
             isSidestepping={penguin.isSidestepping}
             forceHide={isRoundLoser}
+            displayScale={spriteConfig?.displayScale || 1}
           />
         );
         return (
@@ -9657,6 +9857,7 @@ const GameFighter = ({
           $isCinematicKillAttacker={isCinematicKillAttacker}
           $attackerConfirmTier={attackerConfirmTier}
           $isPostureBroken={!!penguin.isPostureBroken && !gameOver}
+          $displayScale={spriteConfig?.displayScale || 1}
         >
           <AnimatedFighterImage
             key={`${baseSpriteSrc}|${spriteColorKey}`}
@@ -9971,6 +10172,7 @@ GameFighter.propTypes = {
   bashoDraftedPowerUps: PropTypes.arrayOf(PropTypes.string),
   bashoOpponentPowerUps: PropTypes.arrayOf(PropTypes.string),
   bashoDay: PropTypes.number,
+  bashoTotalBouts: PropTypes.number,
   bashoOpponentName: PropTypes.string,
 };
 
@@ -10014,6 +10216,7 @@ export default React.memo(GameFighter, (prevProps, nextProps) => {
     prevProps.bashoDraftedPowerUps === nextProps.bashoDraftedPowerUps &&
     prevProps.bashoOpponentPowerUps === nextProps.bashoOpponentPowerUps &&
     prevProps.bashoDay === nextProps.bashoDay &&
+    prevProps.bashoTotalBouts === nextProps.bashoTotalBouts &&
     prevProps.bashoOpponentName === nextProps.bashoOpponentName
   );
 });

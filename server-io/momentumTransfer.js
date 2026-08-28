@@ -10,6 +10,7 @@ const {
   ICE_SLIDE_MAX_SPEED,
   MATADOR_PULL_DISTANCE,
   MATADOR_PULL_DISTANCE_MAX,
+  SLIDE_SLAP_HITSTOP_FLOOR_MS,
   SLIDE_SLAP_HITSTOP_CAP_MS,
 } = require("./constants");
 
@@ -552,9 +553,10 @@ function resolveTransfer(opts) {
     powerScalar,
     hitstopPowerWeightFor(moveKey)
   );
-  // Fast slides were minting ~200ms freezes. The convert pause should
-  // read as a punch, not a cutscene.
+  // Fast slides were minting ~200ms freezes. Floor so a body check never
+  // reads as a poke; cap so the pause stays a punch, not a cutscene.
   if (moveKey === "slideSlap") {
+    hitstopMs = Math.max(hitstopMs, SLIDE_SLAP_HITSTOP_FLOOR_MS);
     hitstopMs = Math.min(hitstopMs, SLIDE_SLAP_HITSTOP_CAP_MS);
   }
 

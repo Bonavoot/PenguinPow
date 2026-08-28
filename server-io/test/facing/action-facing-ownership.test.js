@@ -387,6 +387,7 @@ describe("Phase 12 — lifecycle handoffs", () => {
       x: 500,
       facing: -1,
       grabFacingInstanceId: null,
+      grabFacingDirection: -1,
       isGrabStartup: true,
       keys: {},
     });

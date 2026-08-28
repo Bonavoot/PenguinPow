@@ -981,6 +981,10 @@ export const StyledImage = styled("img")
         ? "airHitCarry 0.22s cubic-bezier(0.22, 0.6, 0.35, 1) forwards"
         : props.$isHit
         ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
+        // Belly-bump plant: mass compresses FORWARD into the hit (not the
+        // slap's backward recoil). Outranks the swing punch so connect wins.
+        : props.$attackerBellyPlant
+        ? "bellyBumpPlant 0.16s cubic-bezier(0.2, 0.85, 0.3, 1)"
         // Attacker contact recoil: their own body jolts back a beat when a
         // strike CONNECTS (impact resistance — the target has mass). Sits
         // above slapRush/attackPunch so it briefly interrupts the swing loop.
@@ -991,6 +995,7 @@ export const StyledImage = styled("img")
         : props.$isDodging
         ? "dashJump 0.085s linear forwards"
         : props.$justLandedFromDodge &&
+          props.$isIceSliding &&
           !props.$isPowerSliding &&
           !props.$isBraking
         ? "dashLanding 0.2s ease-out forwards"
@@ -1005,6 +1010,8 @@ export const StyledImage = styled("img")
         ? "chargeShake 0.08s linear infinite"
         : props.$isAttacking && !props.$isSlapAttack
         ? "attackPunch 0.2s ease-out"
+        : props.$bellyBumpSwing
+        ? "bellyBumpPunch 0.18s cubic-bezier(0.22, 0.85, 0.3, 1) both"
         : props.$isSlapAttack && !props.$slideSlapArmed
         ? "slapRush 0.12s ease-in-out infinite"
         // MASTERY Phase 2: broken-posture teeter is an IDLE tell only.
@@ -1067,8 +1074,6 @@ export const StyledImage = styled("img")
         // pose — spin / pull-kill / everyone else stay on the standard size.
         props.$showClinchKillThrowLanding
           ? "min(12.75%, 393px)"
-          : props.$spriteBoxScale && props.$spriteBoxScale !== 1
-          ? `min(${(12.3 * props.$spriteBoxScale).toFixed(2)}%, ${Math.round(379 * props.$spriteBoxScale)}px)`
           : props.$isAtTheRopes && props.$fighter === "player 1"
           ? "min(11.56%, 356px)"
           : "min(12.30%, 379px)",
@@ -1125,6 +1130,23 @@ export const StyledImage = styled("img")
     30% { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(0.96) translateX(calc(var(--facing, 1) * -1.5%)) skewX(calc(var(--facing, 1) * -1.5deg)); }
     65% { transform: scaleX(calc(var(--facing, 1) * 0.99)) scaleY(1.008) translateX(calc(var(--facing, 1) * -0.35%)) skewX(calc(var(--facing, 1) * 0.35deg)); }
     100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); }
+  }
+  /* Belly-bump swing — one-shot gather then drive into the squat. Sole-pivoted
+     so the plant stays glued; translateX is toward facing (mass arriving). */
+  @keyframes bellyBumpPunch {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    18% { transform: scaleX(calc(var(--facing, 1) * 1.12)) scaleY(0.88) translateX(calc(var(--facing, 1) * 1.2%)) skewX(calc(var(--facing, 1) * -2deg)); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    42% { transform: scaleX(calc(var(--facing, 1) * 0.92)) scaleY(1.06) translateX(calc(var(--facing, 1) * 3.5%)) skewX(calc(var(--facing, 1) * 2deg)); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    70% { transform: scaleX(calc(var(--facing, 1) * 1.04)) scaleY(0.96) translateX(calc(var(--facing, 1) * 0.8%)) skewX(calc(var(--facing, 1) * -0.5deg)); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
+  /* Belly-bump connect — forward compress into the gut check, then settle.
+     Opposite of attackerContactRecoil (that jolts back like a limb strike). */
+  @keyframes bellyBumpPlant {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    18% { transform: scaleX(calc(var(--facing, 1) * 1.16)) scaleY(0.84) translateX(calc(var(--facing, 1) * 2.8%)) skewX(calc(var(--facing, 1) * -3deg)); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    45% { transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.92) translateX(calc(var(--facing, 1) * 1.4%)) skewX(calc(var(--facing, 1) * -1deg)); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
   @keyframes attackPunch {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1); }
@@ -1479,12 +1501,12 @@ export const StyledImage = styled("img")
      The dodge is now a proper jump with bookend frames:
        - dashWindup  plays during isDodgeStartup on the braced recovering pose:
          a quick crouch that gathers before the leap (anticipation).
-       - dashJump    plays during the active phase on the tucked dodging pose:
+       - dashJump    plays during the active phase on the ice-slide squat pose:
          an explosive pushoff off the crouch, a real apex with hang time, then
          a gravity-accelerated fall. Linear timing so the height values (not the
          easing curve) shape the arc.
-       - dashLanding plays on justLandedFromDodge back on the recovering pose:
-         an impact squash that catches the landing before the ice slide.
+       - dashLanding plays on justLandedFromDodge only when SHIFT held into
+         ice slide (tap-dodge lands straight to idle, no recovering settle).
      All squash is VERTICAL only (scaleY, sole origin) so scaleX stays
      locked to facing and the character never stretches horizontally. */
   /* Intentional hop — translateY is the jump. Crouch squash uses sole origin. */
@@ -1590,16 +1612,20 @@ export const AnimatedFighterContainer = styled.div
         "x", "y", "facing", "fighter", "isThrowing", "isDodging",
         "isGrabbing", "isRingOutThrowCutscene", "isAtTheRopes", "isHit", "isHitFalling", "isBurstKnockback",
         "isRawParryStun", "isCinematicKillAttacker", "isSidestepping",
-        "attackerConfirmTier", "isPostureBroken",
+        "attackerConfirmTier", "isPostureBroken", "displayScale",
       ].includes(prop),
   })
   .attrs((props) => {
     const sidestepping = props.$isSidestepping;
     const sidestepScale = sidestepping ? 1.07 : 1;
+    // grabAttempt.displayScale is a placeholder visual restore (padded 560
+    // cells). Sole-pivoted, display-only — does not change grab latch.
+    const displayScale = Number(props.$displayScale) > 0 ? Number(props.$displayScale) : 1;
     const baseScaleX = props.$facing === 1
       ? (props.$isRawParryStun ? 1.08 : 1)
       : (props.$isRawParryStun ? -1.08 : -1);
-    const finalScaleX = baseScaleX * (baseScaleX > 0 ? sidestepScale : sidestepScale);
+    const finalScaleX = baseScaleX * sidestepScale * displayScale;
+    const finalScaleY = sidestepScale * displayScale;
 
     return {
       style: {
@@ -1616,7 +1642,7 @@ export const AnimatedFighterContainer = styled.div
         // Per-hit reaction amplitude — same contract as StyledImage's var
         // (hitSquashContainer / burstHitSquash keyframes scale with it).
         "--impact-amp": (props.$impactAmp ?? 1) * IMPACT_SQUASH_INTENSITY,
-        transform: `scaleX(${finalScaleX}) scaleY(${sidestepScale})`,
+        transform: `scaleX(${finalScaleX}) scaleY(${finalScaleY})`,
         overflow: "hidden",
         zIndex: isOutsideDohyo(props.$x, props.$y)
           ? 0
@@ -1709,6 +1735,7 @@ export const AnimatedFighterImage = styled.img
         display: "block",
         height: "100%",
         width: isOverlay ? "auto" : "auto",
+        maxWidth: "none",
         backfaceVisibility: "hidden",
         filter: props.$noFilter ? "none" : getFighterPopFilter(props),
         zIndex: isOverlay ? 2 : 1,

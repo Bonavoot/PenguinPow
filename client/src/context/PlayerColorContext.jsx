@@ -111,7 +111,7 @@ const GAME_FIGHTER_STATIC_SPRITES = [
   recovering, rawParrySuccess, rawParrySuccessFrame1, rawParrySuccessFrame2,
   rawParrySuccessFrame3,
   slapAttack1, slapAttack2, palmThrust,
-  palmThrustStartup, palmThrustSmear, lowKick,
+  palmThrustStartup, palmThrustSmear, STATIC_SPRITES.player1.bellyBump, lowKick,
   crouching, bow, bellyLaying, bellyLayingEyesOpen, cinematicThrowKillLanding,
   flap1, flap2,
   // Bald underlays — used when a topper is equipped (must share recolor cache keys)

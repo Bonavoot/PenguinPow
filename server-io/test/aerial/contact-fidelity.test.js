@@ -114,7 +114,7 @@ describe("offensive aerial — contact fidelity preservation", () => {
     placeDescendingOverOpponent(s, { height: 40 });
     stepSlideJumpTick(s);
     assert.equal(s.defender.isHit, false);
-    assert.equal(s.attacker.isRecovering, true);
+    assert.equal(s.attacker.isRawParryStun, true);
     assert.equal(s.attacker.offensiveAerial.outcome, OFFENSIVE_AERIAL_OUTCOME.PARRIED);
     assert.equal(typeof s.attacker.offensiveAerial.contactX, "number");
     const ev = s.io.last("raw_parry_success");
@@ -183,7 +183,7 @@ describe("offensive aerial — contact fidelity preservation", () => {
 });
 
 describe("offensive aerial — lateral contact geometry", () => {
-  it("attacker from left: contact near facing surfaces, not root midpoint", () => {
+  it("attacker from left: contact on facing pushbox surfaces", () => {
     const s = createSlideJumpScenario({
       name: "lateral_left",
       armFlap: true,
@@ -203,8 +203,8 @@ describe("offensive aerial — lateral contact geometry", () => {
     const c = computeOffensiveAerialContact(s.attacker, s.defender);
     assertFiniteContact(c);
     assert.equal(c.contactAxis, CONTACT_AXIS.LATERAL);
-    assert.ok(Math.abs(c.contactX - mid.x) > 0.5, "should leave root midpoint");
-    // Attacker on left → contact should sit between centers, biased to surfaces
+    // Equal pushbox halves: facing-surface midpoint is the root midpoint.
+    assert.ok(Math.abs(c.contactX - mid.x) < 1);
     assert.ok(c.attackerContactX > s.attacker.x);
     assert.ok(c.defenderContactX < s.defender.x);
     // Normal from defender toward attacker: attacker on left ⇒ normal X negative
@@ -440,7 +440,7 @@ describe("offensive aerial — degenerate / outcome contact rules", () => {
   });
 
   it("width scale constant matches detector", () => {
-    assert.equal(FLAP_BODYSLAM_WIDTH_SCALE, 0.7);
+    assert.equal(FLAP_BODYSLAM_WIDTH_SCALE, 1);
   });
 });
 

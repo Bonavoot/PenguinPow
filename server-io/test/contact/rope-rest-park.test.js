@@ -120,6 +120,30 @@ describe("rope-rest park", () => {
     );
   });
 
+  it("slap recovery does not tip-park — incoming grabber can close to latch", () => {
+    const SLAP_ACTIVE_END = 102;
+    const attacker = fighter({
+      x: 500,
+      facing: -1,
+      attackStartTime: 0,
+      slapActiveEndTime: SLAP_ACTIVE_END,
+    });
+    const grabber = fighter({
+      x: 545,
+      facing: 1,
+      isAttacking: false,
+      attackType: undefined,
+      isGrabStartup: true,
+    });
+    const before = grabber.x;
+    enforceStrikeExtensionSeparation(attacker, grabber, SLAP_ACTIVE_END + 20);
+    assert.equal(
+      grabber.x,
+      before,
+      "dead jab must not shove a grabber out to slap-tip spacing"
+    );
+  });
+
   it("ideal mid-ring park is unchanged", () => {
     const attacker = fighter({ x: 600, facing: -1 });
     const victim = fighter({

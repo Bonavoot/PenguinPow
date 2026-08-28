@@ -12,6 +12,7 @@ const {
 } = require("../../../gameUtils");
 const { checkCollision, processHit } = require("../../../collisionSystem");
 const { getConnectDistance } = require("../../../strikeContact");
+const { getGrabConnectDistance } = require("../../../combatHelpers");
 const {
   GROUND_LEVEL,
   GRAB_STARTUP_DURATION_MS,
@@ -19,6 +20,8 @@ const {
   SLAP_STARTUP_MS,
   CHARGED_STARTUP_MS,
   AP_LATE_PARRY_MS,
+  SLAP_ACTIVE_MS,
+  SLAP_TOTAL_MS,
   GRAB_RANGE,
   PALM_THRUST_STARTUP_MS,
   PALM_THRUST_ACTIVE_MS,
@@ -27,6 +30,13 @@ const {
 
 /** Past slap startup + open-hit grace so processHit is not deferred. */
 const SLAP_ACTIVE_TEST_OFFSET = SLAP_STARTUP_MS + AP_LATE_PARRY_MS + 15;
+if (SLAP_ACTIVE_TEST_OFFSET >= SLAP_STARTUP_MS + SLAP_ACTIVE_MS) {
+  throw new Error(
+    `SLAP_ACTIVE_TEST_OFFSET ${SLAP_ACTIVE_TEST_OFFSET} is past slap active end ${
+      SLAP_STARTUP_MS + SLAP_ACTIVE_MS
+    }`
+  );
+}
 const { createMockIo } = require("../../helpers/mockIo");
 
 let harnessId = 0;
@@ -100,8 +110,9 @@ function armSlap(player, { startOffset = SLAP_ACTIVE_TEST_OFFSET, now } = {}) {
   player.slapAnimation = 1;
   player.isInStartupFrames = false;
   player.attackStartTime = t - startOffset;
-  player.attackEndTime = player.attackStartTime + 200;
-  player.slapActiveEndTime = player.attackStartTime + 200;
+  player.attackEndTime = player.attackStartTime + SLAP_STARTUP_MS + SLAP_ACTIVE_MS;
+  player.slapActiveEndTime = player.attackEndTime;
+  player.attackCooldownUntil = player.attackStartTime + SLAP_TOTAL_MS;
   player.slapFacingDirection = player.facing;
   player.movementVelocity = 0;
   return player;
@@ -156,8 +167,7 @@ function armPalm(player, opts = {}) {
   return player;
 }
 
-// Defaults to mid-startup, which is now a fully hittable frame like every other
-// frame of startup — the grab carries no armor at any point on its timeline.
+// Defaults to mid-startup. A slap while reaching stuffs; a late slap after the grip is on does not.
 function armGrabStartup(
   player,
   { elapsed = Math.round(GRAB_STARTUP_DURATION_MS / 2), now } = {}
@@ -166,9 +176,25 @@ function armGrabStartup(
   player.isGrabStartup = true;
   player.grabStartupStartTime = t - elapsed;
   player.grabStartupDuration = GRAB_STARTUP_DURATION_MS;
+  player.grabActiveDuration = 0;
   player.grabState = "attempting";
   player.currentAction = "grab_startup";
   return player;
+}
+
+function placeInGrabLatchRange(grabber, defender) {
+  const latch = getGrabConnectDistance(grabber, defender);
+  const gap = Math.max(24, latch - 6);
+  const dir = grabber.facing === 1 ? -1 : 1;
+  defender.x = grabber.x + dir * gap;
+  if (grabber.x < defender.x) {
+    grabber.facing = -1;
+    defender.facing = 1;
+  } else {
+    grabber.facing = 1;
+    defender.facing = -1;
+  }
+  grabber.grabFacingDirection = grabber.facing;
 }
 
 function placeInConnectRange(attacker, defender, kind = "slap") {
@@ -223,6 +249,7 @@ module.exports = {
   armPalm,
   armGrabStartup,
   placeInConnectRange,
+  placeInGrabLatchRange,
   runBothCollisionOrders,
   snapshotOutcome,
   CHARGE_PRIORITY_THRESHOLD,

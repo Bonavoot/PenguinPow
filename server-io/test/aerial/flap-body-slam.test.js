@@ -12,6 +12,7 @@ const {
   BURST_STUN_MS,
   HITBOX_DISTANCE_VALUE,
   AP_STAGGER_FLAP_MS,
+  CLINCH_THROW_KILL_THRESHOLD,
 } = require("../../constants");
 const {
   FLAP_BODYSLAM_CONTACT_HEIGHT,
@@ -45,7 +46,7 @@ afterEach(() => {
 describe("offensive aerial — body-slam geometry (current)", () => {
   it("contact height and width scale match collisionSystem exports", () => {
     assert.equal(FLAP_BODYSLAM_CONTACT_HEIGHT, 100);
-    assert.equal(FLAP_BODYSLAM_WIDTH_SCALE, 0.7);
+    assert.equal(FLAP_BODYSLAM_WIDTH_SCALE, 1);
   });
 
   it("ascent does not open the body-slam window", () => {
@@ -209,6 +210,63 @@ describe("offensive aerial — FLAP / slide-jump clean hit", () => {
     assert.equal(s.attacker.slideJumpHitLanded, true);
   });
 
+  it("full-posture rope slam clamps — cannot ring out", () => {
+    const s = createSlideJumpScenario({
+      name: "rope_full_posture",
+      attackerX: MAP_RIGHT_BOUNDARY - 30,
+      defenderX: MAP_RIGHT_BOUNDARY - 10,
+      defenderBalance: 100,
+      velY: -8,
+      hSpeed: 0,
+      attackerY: GROUND_LEVEL + 40,
+    });
+    placeDescendingOverOpponent(s, {
+      x: MAP_RIGHT_BOUNDARY - 20,
+      height: 40,
+      dive: true,
+    });
+    stepSlideJumpTick(s);
+    assert.equal(s.attacker.slideJumpHitLanded, true);
+    assert.equal(s.defender.isSlapKnockback, true);
+    assert.equal(s.defender.slapKnockbackCanRingOut, false);
+  });
+
+  it("lethal-posture slam can ring out, even from mid-ring", () => {
+    const s = createSlideJumpScenario({
+      name: "midscreen_lethal_posture",
+      defenderBalance: CLINCH_THROW_KILL_THRESHOLD - 1,
+      velY: -8,
+      hSpeed: 0,
+      attackerY: GROUND_LEVEL + 40,
+    });
+    placeDescendingOverOpponent(s, { height: 40, dive: true });
+    stepSlideJumpTick(s);
+    assert.equal(s.attacker.slideJumpHitLanded, true);
+    assert.equal(s.defender.isSlapKnockback, true);
+    assert.equal(s.defender.slapKnockbackCanRingOut, true);
+  });
+
+  it("slam that cracks posture still clamps — next hit is the KO", () => {
+    const s = createSlideJumpScenario({
+      name: "crack_still_clamps",
+      attackerX: MAP_RIGHT_BOUNDARY - 30,
+      defenderX: MAP_RIGHT_BOUNDARY - 10,
+      defenderBalance: CLINCH_THROW_KILL_THRESHOLD + 1,
+      velY: -8,
+      hSpeed: 0,
+      attackerY: GROUND_LEVEL + 40,
+    });
+    placeDescendingOverOpponent(s, {
+      x: MAP_RIGHT_BOUNDARY - 20,
+      height: 40,
+      dive: true,
+    });
+    stepSlideJumpTick(s);
+    assert.equal(s.attacker.slideJumpHitLanded, true);
+    assert.ok(s.defender.balance < CLINCH_THROW_KILL_THRESHOLD);
+    assert.equal(s.defender.slapKnockbackCanRingOut, false);
+  });
+
   it("hit immediately before touchdown still latches before landing phase", () => {
     const s = createSlideJumpScenario({
       name: "pre_touchdown_hit",
@@ -284,7 +342,7 @@ describe("offensive aerial — whiff outcomes", () => {
     );
   });
 
-  it("body width miss: close but outside scaled pushbox does not hit", () => {
+  it("body width miss: outside full pushbox does not hit", () => {
     const s = createSlideJumpScenario({
       name: "width_miss",
       attackerX: 500,
@@ -300,11 +358,31 @@ describe("offensive aerial — whiff outcomes", () => {
     stepSlideJumpTick(s);
     assert.equal(s.attacker.slideJumpHitLanded, false);
     assert.equal(s.defender.isHit, false);
-    // Sanity: width uses scaled HITBOX formula.
-    assert.ok(
-      Math.abs(width - HITBOX_DISTANCE_VALUE * 2 * 0.7 * 0.85) < 1e-6 ||
-        width > 0
-    );
+    const size = s.attacker.sizeMultiplier || 1;
+    assert.ok(Math.abs(width - HITBOX_DISTANCE_VALUE * 2 * size) < 1e-6);
+  });
+
+  it("pushbox-flush overlap is a slam, not a slide-off whiff", () => {
+    const s = createSlideJumpScenario({
+      name: "width_pushbox_hit",
+      attackerX: 500,
+      defenderX: 500,
+      dive: true,
+      velY: -8,
+      hSpeed: 0,
+      attackerY: GROUND_LEVEL + 40,
+    });
+    const width = bodySlamBodyWidth(s.attacker, s.defender);
+    const oldNarrow = width * 0.7;
+    // Midway between the old 0.7 cap and full pushbox — used to slide off.
+    placeDescendingOverOpponent(s, {
+      x: s.defender.x + (oldNarrow + width) / 2,
+      height: 40,
+      dive: true,
+    });
+    stepSlideJumpTick(s);
+    assert.equal(s.attacker.slideJumpHitLanded, true);
+    assert.equal(s.defender.isHit, true);
   });
 });
 
@@ -323,7 +401,7 @@ describe("offensive aerial — parry outcomes", () => {
     stepSlideJumpTick(s);
     assert.equal(s.attacker.isSlideJumping, false);
     assert.equal(s.attacker.y, GROUND_LEVEL);
-    assert.equal(s.attacker.isRecovering, true);
+    assert.equal(s.attacker.isRawParryStun, true);
     assert.equal(s.defender.isHit, false);
     assert.equal(s.defender.lastHitType, null);
     assert.ok(s.io.find("raw_parry_success").length >= 1);
@@ -354,21 +432,44 @@ describe("offensive aerial — parry outcomes", () => {
     assert.equal(s.io.find("player_hit").length, 0);
   });
 
-  it("perfect parry grades when pressed inside PERFECT window", () => {
+  it("any live parry on the slam grades Perfect", () => {
     const s = createSlideJumpScenario({
-      name: "perfect_parry",
+      name: "slam_parry_always_perfect",
       attackerX: 500,
       defenderX: 500,
       velY: -8,
       hSpeed: 0,
       attackerY: GROUND_LEVEL + 40,
-      defenderParry: "perfect",
+      defenderParry: "regular",
     });
     placeDescendingOverOpponent(s, { height: 40 });
     stepSlideJumpTick(s);
     const ev = s.io.last("raw_parry_success");
     assert.ok(ev);
     assert.equal(ev.payload.isPerfect, true);
+    assert.equal(s.defender.isPerfectRawParrySuccess, true);
+    assert.equal(s.attacker.isRawParryStun, true);
+  });
+
+  it("guard still stuffs the slam at the regular tier", () => {
+    const s = createSlideJumpScenario({
+      name: "slam_guard",
+      attackerX: 500,
+      defenderX: 500,
+      velY: -8,
+      hSpeed: 0,
+      attackerY: GROUND_LEVEL + 40,
+      defenderParry: "guard",
+    });
+    placeDescendingOverOpponent(s, { height: 40 });
+    stepSlideJumpTick(s);
+    assert.equal(s.defender.isHit, false);
+    assert.equal(s.attacker.isSlideJumping, false);
+    const ev = s.io.last("raw_parry_success");
+    assert.ok(ev);
+    assert.equal(ev.payload.isPerfect, false);
+    assert.equal(s.attacker.isRecovering, true);
+    assert.equal(s.attacker.isRawParryStun, false);
   });
 
   it("parry near boundary still grounds attacker", () => {
@@ -402,7 +503,7 @@ describe("offensive aerial — parry outcomes", () => {
     });
     placeDescendingOverOpponent(s, { x: 600, height: 20 });
     stepSlideJumpTick(s);
-    assert.equal(s.attacker.isRecovering, true);
+    assert.equal(s.attacker.isRawParryStun, true);
     assert.equal(s.defender.isHit, false);
   });
 });

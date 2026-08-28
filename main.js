@@ -5,6 +5,8 @@ const os = require("os");
 const net = require("net");
 
 app.commandLine.appendSwitch('no-sandbox');
+// Title-screen BGM has to start before any keypress.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 const isDev = !app.isPackaged;
 
@@ -236,6 +238,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
+      autoplayPolicy: 'no-user-gesture-required',
     },
     backgroundColor: "#000000",
     show: false,

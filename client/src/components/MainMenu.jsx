@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useContext } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useContext, useCallback } from "react";
 import PropTypes from "prop-types";
 
 import Lobby from "./Lobby";
@@ -17,8 +17,8 @@ import {
   getActiveOutfit,
   applyOutfitToPlayer1Setters,
 } from "../lib/outfits";
-import { getEquippedHeadGearId } from "../config/cosmetics";
 import { buildIdlePortraitSrc } from "../utils/hatComposite";
+import { protectBlobUrl, unprotectBlobUrl } from "../utils/SpriteRecolorizer";
 import {
   startDay,
   currentOpponent,
@@ -62,24 +62,25 @@ function boutDifficulty(run, boutIndex) {
   const oi = DIFFICULTY_ORDER.indexOf(oppFloor);
   return oi > ri ? oppFloor : ramp;
 }
-import lobbyBackground from "../assets/lobby-bkg.webp";
-
 import pumo from "../assets/pumo-idle.png";
 /*
- * Hero portrait for the main menu — player's active outfit on the
- * dedicated main-menu-pumo pose (recolored + head-gear when overlays exist).
+ * Hero portrait — dedicated main-menu pose, recolored + head-gear
+ * from the active outfit.
  */
 import mainMenuPumo from "../assets/main-menu-pumo.png";
 /*
- * Single locked-in hero scene — the two-penguins-fighting sketch reads as
- * "this is what the game IS." Static hero image; no slideshow.
+ * Title plate is the live match stage (sky + floor plate), not the
+ * older zoomed-out look-test.
  */
-import mainMenuBackground from "../assets/main-menu-bkg-4.webp";
+import titleSky from "../assets/map-antarctica-sky.webp";
+import titleWorld from "../assets/game-map-floor.png";
 import {
   playButtonHoverSound,
   playButtonPressSound2,
-  playBackgroundMusic,
-  stopBackgroundMusic,
+  setMusic,
+  cueForPage,
+  resultsCue,
+  silenceResultStingers,
 } from "../utils/soundUtils";
 import Snowfall from "./Snowfall";
 import { useLowSpec } from "../utils/lowSpecMode";
@@ -88,16 +89,13 @@ import PumoLogo from "./PumoLogo";
 import {
   C,
   FONT_BODY,
-  FONT_KANJI,
   FONT_UI,
   FONT_WEIGHT,
   TRACK,
   fadeIn,
   fadeUp,
   slideInLeft,
-  broadcastSlideDown,
   FONT_RENDER,
-  TEXT_SHADOW_DISPLAY_SOFT,
 } from "./menuTheme";
 
 // ============================================
@@ -105,24 +103,14 @@ import {
 // ============================================
 
 const kenBurns = keyframes`
-  0%   { transform: scale(1.05) translate(0, 0); }
-  100% { transform: scale(1.11) translate(-1%, -0.6%); }
-`;
-
-const grainDrift = keyframes`
-  0%   { transform: translate(0, 0); }
-  100% { transform: translate(-1.2%, 0.8%); }
+  0%   { transform: scale(1.02) translate(0, 0); }
+  100% { transform: scale(1.06) translate(-1.2%, -0.4%); }
 `;
 
 /* Same idle breathe as Lobby / BashoHub portraits — scale from the feet. */
 const pumoBreathe = keyframes`
   0%, 100% { transform: scaleY(1); }
   50%      { transform: scaleY(1.022); }
-`;
-
-const hintFade = keyframes`
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
 `;
 
 // ============================================
@@ -136,22 +124,21 @@ const MainMenuContainer = styled.div`
   height: 100%;
   position: relative;
   overflow: hidden;
-  background: #080a0e;
+  background: #10161f;
   container-type: size;
   font-family: ${FONT_BODY};
 `;
 
 /*
- * Scene plate: sharp courtyard + hero pocket; soft only at far edges
- * so the render feels cinematic without fogging the ground under Pumo.
+ * Title plate: real stage, not a second illustration.
+ * Sky fills the hole in the ice shelf. Ken Burns is a slow poster drift.
  */
 const BackgroundPlate = styled.div`
   position: absolute;
-  inset: -3%;
+  inset: -4%;
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  /* Low Spec: freeze Ken Burns — animating a filtered plate forces re-blur. */
   ${(p) =>
     p.$lowSpec
       ? css`
@@ -159,103 +146,36 @@ const BackgroundPlate = styled.div`
           will-change: auto;
         `
       : css`
-          animation: ${kenBurns} 40s ease-in-out infinite alternate;
+          animation: ${kenBurns} 48s ease-in-out infinite alternate;
           will-change: transform;
         `}
 `;
 
-const BackgroundImage = styled.img`
+const SkyImage = styled.img`
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 50% 52%;
-  /*
-   * Light global soften — the main "AI coverup": kills hyper-sharp
-   * gen artifacts without turning the plate into mud.
-   * Low Spec: same grade, no live blur.
-   */
-  filter: ${(p) =>
-    p.$lowSpec
-      ? "saturate(1.06) brightness(0.88) contrast(1.06)"
-      : "saturate(1.06) brightness(0.88) contrast(1.06) blur(0.7px)"};
+  object-position: 50% 22%;
+  filter: saturate(0.98) brightness(0.82) contrast(1.08);
+`;
+
+const WorldImage = styled.img`
+  position: absolute;
+  /* Ice is the ground the wrestler stands on. Sky still has room above
+   * the mountains — not the old snow-field crop, not a sliver at the lip. */
+  left: -14%;
+  top: -2%;
+  width: 128%;
+  height: 128%;
+  object-fit: fill;
+  filter: saturate(0.96) brightness(0.9) contrast(1.05);
 `;
 
 /*
- * Stronger edge DOF — soft periphery sells depth + hides gen edges;
- * courtyard / hero pocket stay clearer than the rim.
- */
-const BackgroundDepth = styled.img`
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: 50% 52%;
-  filter: blur(14px) saturate(1.04) brightness(0.86);
-  transform: scale(1.06);
-  opacity: 0.88;
-  -webkit-mask-image: radial-gradient(
-    ellipse 70% 64% at 54% 46%,
-    transparent 0%,
-    transparent 34%,
-    rgba(0, 0, 0, 0.45) 60%,
-    #000 86%
-  );
-  mask-image: radial-gradient(
-    ellipse 70% 64% at 54% 46%,
-    transparent 0%,
-    transparent 34%,
-    rgba(0, 0, 0, 0.45) 60%,
-    #000 86%
-  );
-`;
-
-/* Festival grade — authored film look over the raw plate. */
-const AtmosphereGrade = styled.div`
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  mix-blend-mode: soft-light;
-  opacity: 0.8;
-  background:
-    radial-gradient(
-      ellipse 70% 42% at 52% 14%,
-      rgba(255, 196, 120, 0.5) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse 45% 40% at 70% 68%,
-      rgba(255, 236, 200, 0.16) 0%,
-      transparent 65%
-    ),
-    linear-gradient(
-      160deg,
-      rgba(255, 220, 170, 0.22) 0%,
-      transparent 36%,
-      rgba(30, 48, 80, 0.22) 100%
-    );
-`;
-
-/* Sky atmosphere only — no courtyard milk. */
-const AtmosphereHaze = styled.div`
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    rgba(160, 190, 220, 0.16) 0%,
-    rgba(160, 190, 220, 0.05) 16%,
-    transparent 34%
-  );
-`;
-
-/*
- * Poster frame — soft letterbox + light left seat for type.
- * Courtyard stays open; no panel wash.
+ * Poster frame only: left air for type, letterbox, cool rim.
+ * No panel, no plaque, no gold wash.
  */
 const CinematicOverlay = styled.div`
   position: absolute;
@@ -265,120 +185,24 @@ const CinematicOverlay = styled.div`
   background:
     linear-gradient(
       90deg,
-      rgba(4, 6, 10, 0.55) 0%,
-      rgba(4, 6, 10, 0.28) 16%,
-      rgba(4, 6, 10, 0.08) 32%,
-      transparent 48%
-    ),
-    radial-gradient(
-      ellipse 50% 55% at 78% 62%,
-      rgba(255, 248, 235, 0.05) 0%,
-      transparent 58%
-    ),
-    radial-gradient(
-      ellipse 72% 68% at 52% 42%,
-      transparent 0%,
-      rgba(4, 6, 10, 0.12) 60%,
-      rgba(4, 6, 10, 0.48) 100%
+      rgba(6, 10, 18, 0.78) 0%,
+      rgba(6, 10, 18, 0.42) 16%,
+      rgba(6, 10, 18, 0.12) 30%,
+      transparent 46%
     ),
     linear-gradient(
       180deg,
-      rgba(4, 6, 10, 0.45) 0%,
-      transparent 20%,
-      transparent 76%,
-      rgba(4, 6, 10, 0.38) 100%
-    );
-`;
-
-/* Giant ink watermark — depth behind the title stack (Startup kin). */
-const AtmosphereKanji = styled.div`
-  position: absolute;
-  top: 46%;
-  left: clamp(12px, 2cqw, 40px);
-  transform: translateY(-50%);
-  z-index: 2;
-  font-family: ${FONT_KANJI};
-  font-weight: 700;
-  font-size: clamp(9rem, 28cqh, 18rem);
-  line-height: 1;
-  letter-spacing: 0.06em;
-  color: #fff;
-  opacity: 0.045;
-  pointer-events: none;
-  user-select: none;
-  white-space: nowrap;
-`;
-
-/* Film grain — the other half of the coverup. */
-const GrainOverlay = styled.div`
-  position: absolute;
-  inset: -8%;
-  z-index: 2;
-  pointer-events: none;
-  opacity: 0.14;
-  mix-blend-mode: overlay;
-  animation: ${grainDrift} 10s linear infinite;
-  background-image:
-    repeating-linear-gradient(
-      0deg,
-      rgba(60, 40, 20, 0.08) 0,
-      transparent 1px,
-      transparent 2px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      rgba(60, 40, 20, 0.06) 0,
-      transparent 1px,
-      transparent 3px
+      rgba(6, 10, 18, 0.18) 0%,
+      transparent 18%,
+      transparent 92%,
+      rgba(6, 10, 18, 0.12) 100%
     ),
     radial-gradient(
-      circle at 40% 35%,
-      rgba(255, 255, 255, 0.04) 0%,
-      transparent 45%
+      ellipse 64% 58% at 80% 42%,
+      transparent 0%,
+      rgba(6, 10, 18, 0.12) 70%,
+      rgba(6, 10, 18, 0.32) 100%
     );
-`;
-
-// ============================================
-// TOP SLUG — PreMatch broadcast chrome
-// ============================================
-
-const TopSlug = styled.div`
-  position: absolute;
-  top: clamp(12px, 1.8cqh, 20px);
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: clamp(8px, 1.1cqw, 12px);
-  z-index: 30;
-  will-change: transform, opacity;
-  animation: ${broadcastSlideDown} 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) 0.04s
-    backwards;
-`;
-
-const SlugText = styled.span`
-  font-family: ${FONT_BODY};
-  font-weight: ${FONT_WEIGHT.medium};
-  font-size: clamp(0.48rem, 0.78cqw, 0.62rem);
-  color: ${(p) =>
-    p.$warn ? C.vermillionBright : p.$accent ? C.ice : C.creamMute};
-  letter-spacing: ${TRACK.label};
-  text-transform: uppercase;
-  ${FONT_RENDER}
-  text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
-  white-space: nowrap;
-  opacity: 0.92;
-
-  strong {
-    color: ${C.cream};
-    letter-spacing: 0.12em;
-  }
-`;
-
-const SlugRule = styled.span`
-  width: 18px;
-  height: 1px;
-  background: rgba(245, 236, 217, 0.45);
 `;
 
 // ============================================
@@ -391,21 +215,21 @@ const HeroStage = styled.main`
   flex: 1;
   min-height: 0;
   display: flex;
-  align-items: center;
-  padding: clamp(56px, 9cqh, 88px) clamp(40px, 5.5cqw, 80px)
-    clamp(48px, 7cqh, 72px);
+  align-items: flex-start;
+  padding: clamp(52px, 8cqh, 72px) clamp(40px, 5.5cqw, 80px)
+    clamp(32px, 5cqh, 48px);
 `;
 
 /*
  * Title stack — brand mark, then a type list in open air.
- * The courtyard is the poster; the menu is ink on it, not a panel.
+ * The stage is the poster; the menu is ink on it, not a panel.
  */
 const LeftColumn = styled.div`
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: clamp(32px, 5cqh, 52px);
+  gap: clamp(28px, 4.2cqh, 40px);
   min-width: 0;
   max-width: clamp(280px, 36cqw, 420px);
   will-change: transform, opacity;
@@ -424,91 +248,94 @@ const MenuList = styled.nav`
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: clamp(20px, 3.2cqh, 32px);
+  gap: clamp(18px, 2.8cqh, 28px);
 `;
 
 /*
- * Open type — Chillax, not the placeholder Bungee mark.
- * Hierarchy is size, vermillion, and air. No rings, strokes, or plaques.
+ * Open type. Selection is vermillion + a left rule — never a box.
+ * Featured items are larger. Quiet items are chrome (Back / Options).
  */
 const MenuButton = styled.button`
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.4em;
+  display: block;
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 0.9em;
   border: none;
   background: none;
   cursor: pointer;
   text-align: left;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  animation: ${slideInLeft} 0.45s ease-out backwards;
-  animation-delay: ${(p) => 0.4 + p.$index * 0.07}s;
+  animation: ${slideInLeft} 0.4s ease-out backwards;
+  animation-delay: ${(p) => 0.28 + p.$index * 0.06}s;
 
-  ${(p) =>
-    p.$system &&
-    css`
-      margin-top: clamp(10px, 1.8cqh, 18px);
-      gap: 0;
-    `}
+  &::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 3px;
+    height: 0.72em;
+    border-radius: 1px;
+    background: ${C.vermillionBright};
+    transform: translateY(-50%) scaleY(${(p) => (p.$active ? 1 : 0.35)});
+    opacity: ${(p) => (p.$active ? 1 : 0)};
+    transition:
+      opacity 0.16s ease,
+      transform 0.16s ease;
+  }
 
   .mode-label {
-    display: block;
+    display: flex;
+    align-items: baseline;
+    gap: 0.55em;
     font-family: ${FONT_UI};
     font-size: ${(p) =>
-      p.$system
-        ? "clamp(0.7rem, 1.02cqw, 0.84rem)"
-        : p.$primary
-          ? "clamp(1.85rem, 3.1cqw, 2.45rem)"
-          : "clamp(1.12rem, 1.85cqw, 1.42rem)"};
+      p.$quiet
+        ? "clamp(0.88rem, 1.32cqw, 1.06rem)"
+        : p.$featured
+          ? "clamp(1.9rem, 3.2cqw, 2.55rem)"
+          : "clamp(1.18rem, 1.95cqw, 1.48rem)"};
     font-weight: ${(p) =>
-      p.$system
+      p.$quiet
         ? FONT_WEIGHT.medium
-        : p.$primary
+        : p.$featured
           ? FONT_WEIGHT.bold
           : FONT_WEIGHT.semibold};
     letter-spacing: ${(p) =>
-      p.$system ? "0.16em" : p.$primary ? "0.04em" : "0.06em"};
+      p.$quiet ? "0.16em" : p.$featured ? "0.04em" : "0.06em"};
     text-transform: uppercase;
     line-height: 1;
     color: ${(p) =>
-      p.$system
-        ? "rgba(245, 236, 217, 0.42)"
-        : p.$primary
-          ? C.vermillionBright
-          : "rgba(255, 255, 255, 0.88)"};
+      p.$active
+        ? C.vermillionBright
+        : p.$quiet
+          ? "rgba(245, 236, 217, 0.62)"
+          : "rgba(255, 255, 255, 0.9)"};
     ${FONT_RENDER}
-    text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
+    text-shadow:
+      0 0 18px rgba(0, 0, 0, 0.55),
+      0 2px 8px rgba(0, 0, 0, 0.8),
+      0 1px 2px rgba(0, 0, 0, 0.9);
     transform-origin: left center;
+    transform: translateX(${(p) => (p.$active ? "4px" : "0")});
     transition:
-      color 0.2s ease,
-      transform 0.2s cubic-bezier(0.25, 0.85, 0.2, 1),
-      opacity 0.2s ease;
+      color 0.16s ease,
+      transform 0.16s cubic-bezier(0.25, 0.85, 0.2, 1);
   }
 
-  .mode-hint {
-    font-family: ${FONT_BODY};
+  .mode-soon {
+    font-size: 0.42em;
     font-weight: ${FONT_WEIGHT.medium};
-    font-size: clamp(0.52rem, 0.76cqw, 0.62rem);
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: rgba(245, 236, 217, 0.55);
-    ${FONT_RENDER}
-    text-shadow: ${TEXT_SHADOW_DISPLAY_SOFT};
-    animation: ${hintFade} 0.4s ease-out 0.7s both;
+    letter-spacing: 0.18em;
+    color: rgba(245, 236, 217, 0.7);
+    animation: ${fadeIn} 0.2s ease-out;
   }
 
-  &:hover .mode-label {
-    transform: translateX(5px);
-    color: ${(p) =>
-      p.$system
-        ? "rgba(245, 236, 217, 0.88)"
-        : p.$primary
-          ? "#ff6d5c"
-          : C.iceBright};
+  &:hover .mode-label,
+  &:focus-visible .mode-label {
+    color: ${(p) => (p.$quiet ? "rgba(245, 236, 217, 0.88)" : "#ff6d5c")};
+    transform: translateX(4px);
   }
 
   &:active .mode-label {
@@ -516,55 +343,51 @@ const MenuButton = styled.button`
     opacity: 0.88;
   }
 
-  &:focus-visible {
+  &:focus {
     outline: none;
-  }
-  &:focus-visible .mode-label {
-    transform: translateX(5px);
-    color: ${(p) =>
-      p.$system
-        ? "rgba(245, 236, 217, 0.88)"
-        : p.$primary
-          ? "#ff6d5c"
-          : C.iceBright};
   }
 `;
 /*
- * Key-art poster — right third, intentional foot crop,
- * planted on the snow line. Classic fighting-game title sit.
+ * Key-art sit: large on the right, feet on the ice, head in the sky.
  */
 const PumoHeroWrapper = styled.div`
   position: absolute;
-  right: clamp(-8px, 0.5cqw, 20px);
-  bottom: clamp(-96px, -12cqh, -52px);
-  height: clamp(460px, 90cqh, 720px);
+  right: clamp(8px, 1.8cqw, 28px);
+  bottom: clamp(12px, 2.8cqh, 24px);
+  height: clamp(440px, 80cqh, 620px);
   width: auto;
   z-index: 4;
+  overflow: visible;
   pointer-events: none;
   user-select: none;
   animation: ${fadeUp} 0.85s ease-out 0.18s backwards;
 
-  &::after {
-    content: "";
-    position: absolute;
-    left: 18%;
-    right: 20%;
-    bottom: 11%;
-    height: 9%;
-    background: radial-gradient(
-      ellipse at center,
-      rgba(0, 0, 0, 0.45) 0%,
-      rgba(0, 0, 0, 0.14) 48%,
-      transparent 72%
-    );
-    filter: blur(12px);
-    z-index: 0;
-    pointer-events: none;
-  }
-
   @media (max-width: 720px) {
     display: none;
   }
+`;
+
+/* Sized to the opaque penguin (~63% of the 960 pad), not the square
+ * canvas. Same slate as the Basho portrait oval. */
+const HeroFloorShadow = styled.div`
+  position: absolute;
+  left: 49.5%;
+  bottom: 1%;
+  transform: translate(-50%, 16%);
+  width: 58%;
+  height: 8.5%;
+  min-height: 32px;
+  max-height: 48px;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse 100% 100% at 50% 50%,
+    rgba(6, 12, 24, 0.38) 0%,
+    rgba(8, 16, 30, 0.2) 48%,
+    rgba(10, 20, 36, 0.07) 74%,
+    transparent 100%
+  );
+  z-index: 0;
+  pointer-events: none;
 `;
 
 const PumoHero = styled.img`
@@ -574,8 +397,8 @@ const PumoHero = styled.img`
   height: 100%;
   width: auto;
   transform-origin: center bottom;
-  filter: brightness(0.98) contrast(1.02) saturate(1.04)
-    drop-shadow(0 16px 28px rgba(0, 0, 0, 0.4));
+  filter: brightness(0.98) contrast(1.04) saturate(1.02)
+    drop-shadow(0 8px 16px rgba(4, 10, 22, 0.22));
   animation: ${pumoBreathe} 2.6s ease-in-out infinite;
 `;
 
@@ -612,7 +435,26 @@ const ConnectionErrorBanner = styled.div`
 // PRELOAD ASSETS
 // ============================================
 
-const preGameImages = [lobbyBackground, pumo, mainMenuBackground];
+// ============================================
+// MENU GRAPH
+// ============================================
+
+const ROOT_ITEMS = [
+  { id: "play", label: "Play", featured: true, action: "openPlay" },
+  { id: "shop", label: "Shop", action: "shop" },
+  { id: "customize", label: "Customize", action: "customize" },
+  { id: "options", label: "Options", quiet: true, action: "options" },
+];
+
+const PLAY_ITEMS = [
+  { id: "basho", label: "Basho", featured: true, action: "basho" },
+  { id: "online", label: "Online", action: "online" },
+  { id: "cpu", label: "VS CPU", action: "cpu" },
+  { id: "training", label: "Training", action: "training" },
+  { id: "back", label: "Back", quiet: true, action: "back" },
+];
+
+const preGameImages = [titleSky, titleWorld, pumo];
 
 // ============================================
 // MAIN COMPONENT
@@ -628,10 +470,20 @@ const MainMenu = ({
 }) => {
   const [roomName, setRoomName] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [menuLayer, setMenuLayer] = useState("root");
+  const [activeId, setActiveId] = useState("play");
+  const [shopSoon, setShopSoon] = useState(false);
+  const shopSoonTimerRef = useRef(null);
   const [isCPUMatch, setIsCPUMatch] = useState(false);
   const [isTrainingMatch, setIsTrainingMatch] = useState(false);
   const { socket } = useContext(SocketContext);
   const lowSpec = useLowSpec();
+
+  useEffect(() => {
+    return () => {
+      if (shopSoonTimerRef.current) clearTimeout(shopSoonTimerRef.current);
+    };
+  }, []);
 
   // ── BASHO run state machine (single-player only; gated from PvP/VS CPU) ──
   const {
@@ -711,6 +563,7 @@ const MainMenu = ({
       tier,
       withdrawn: !!withdrawn,
     });
+    silenceResultStingers();
     setCurrentPage("bashoResults");
   };
 
@@ -930,33 +783,21 @@ const MainMenu = ({
     });
   };
 
-  // Active outfit gear for the main-menu hero (colors live in PlayerColorContext).
-  const heroGearIdsRef = useRef([]);
-  const [heroHeadGearId, setHeroHeadGearId] = useState(null);
+  // Title hero is a recolored blob. Game teardown revokes combat blobs;
+  // we protect the live hero URL and rebuild from the saved outfit whenever
+  // we land on the menu. Don't snap back to the default PNG on the way out —
+  // that race is what left Customize returns showing stock Pumo.
   const [heroSrc, setHeroSrc] = useState(mainMenuPumo);
+  const heroSrcRef = useRef(mainMenuPumo);
   const heroMountedRef = useRef(true);
 
-  // Apply saved active outfit to P1 context so VS CPU / Custom / BASHO
-  // all start from the wardrobe loadout without visiting Customize first.
-  // Re-run when returning to the main menu so Customize edits show up.
-  useEffect(() => {
-    if (currentPage !== "mainMenu") return;
-    let cancelled = false;
-    loadSave().then((doc) => {
-      if (cancelled) return;
-      const outfit = getActiveOutfit(doc.customization);
-      applyOutfitToPlayer1Setters(outfit, {
-        setPlayer1Color,
-        setPlayer1BodyColor,
-      });
-      const gearIds = Array.isArray(outfit?.gearIds) ? outfit.gearIds : [];
-      heroGearIdsRef.current = gearIds;
-      setHeroHeadGearId(getEquippedHeadGearId(gearIds));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [currentPage, setPlayer1Color, setPlayer1BodyColor]);
+  const commitHeroSrc = useCallback((src) => {
+    const prev = heroSrcRef.current;
+    if (prev && prev !== src) unprotectBlobUrl(prev);
+    protectBlobUrl(src);
+    heroSrcRef.current = src;
+    setHeroSrc(src);
+  }, []);
 
   useEffect(() => {
     heroMountedRef.current = true;
@@ -965,37 +806,40 @@ const MainMenu = ({
     };
   }, []);
 
-  // Build the hero from the player's outfit on the main-menu pose.
   useEffect(() => {
+    if (currentPage !== "mainMenu") return undefined;
     let cancelled = false;
-    buildIdlePortraitSrc({
-      baseSrc: mainMenuPumo,
-      mawashiColor: player1Color,
-      bodyColor: player1BodyColor,
-      gearIds: heroGearIdsRef.current,
-      // Large hero makes body-recolor AA leaks obvious — restore ink after.
-      preserveLinework: true,
-    })
-      .then((src) => {
-        if (!cancelled && heroMountedRef.current) setHeroSrc(src);
+    loadSave()
+      .then(async (doc) => {
+        if (cancelled) return;
+        const outfit = getActiveOutfit(doc.customization);
+        applyOutfitToPlayer1Setters(outfit, {
+          setPlayer1Color,
+          setPlayer1BodyColor,
+        });
+        const gearIds = Array.isArray(outfit?.gearIds) ? outfit.gearIds : [];
+        const src = await buildIdlePortraitSrc({
+          baseSrc: mainMenuPumo,
+          mawashiColor: outfit?.mawashiColor || SPRITE_BASE_COLOR,
+          bodyColor: outfit?.bodyColor ?? null,
+          gearIds,
+          preserveLinework: true,
+        });
+        if (!cancelled && heroMountedRef.current) commitHeroSrc(src);
       })
       .catch(() => {
-        if (!cancelled && heroMountedRef.current) {
-          setHeroSrc(mainMenuPumo);
-        }
+        if (!cancelled && heroMountedRef.current) commitHeroSrc(mainMenuPumo);
       });
     return () => {
       cancelled = true;
     };
-  }, [player1Color, player1BodyColor, heroHeadGearId]);
+  }, [currentPage, setPlayer1Color, setPlayer1BodyColor, commitHeroSrc]);
 
   useEffect(() => {
     preGameImages.forEach((src) => {
       const img = new Image();
       img.src = src;
     });
-
-    playBackgroundMusic();
 
     const handleCPUMatchCreated = (data) => {
       console.log("CPU match created:", data);
@@ -1062,7 +906,6 @@ const MainMenu = ({
     socket.on("training_match_failed", handleTrainingMatchFailed);
 
     return () => {
-      stopBackgroundMusic();
       socket.off("cpu_match_created", handleCPUMatchCreated);
       socket.off("cpu_match_failed", handleCPUMatchFailed);
       socket.off("training_match_created", handleTrainingMatchCreated);
@@ -1187,12 +1030,19 @@ const MainMenu = ({
   ]);
 
   useEffect(() => {
-    if (currentPage === "game") {
-      stopBackgroundMusic();
-    } else if (currentPage === "mainMenu") {
-      playBackgroundMusic();
+    if (currentPage === "bashoResults") {
+      const won = !!(
+        bashoResult &&
+        !bashoResult.withdrawn &&
+        bashoResult.movement?.kachiKoshi
+      );
+      setMusic(resultsCue(won));
+      return;
     }
-  }, [currentPage]);
+    const cue = cueForPage(currentPage);
+    if (cue) setMusic(cue);
+    else setMusic(null);
+  }, [currentPage, bashoResult]);
 
   const handleMainMenuPage = () => {
     setIsCPUMatch(false);
@@ -1269,6 +1119,75 @@ const MainMenu = ({
     setCurrentPage("basho");
   };
 
+  const menuItems = menuLayer === "play" ? PLAY_ITEMS : ROOT_ITEMS;
+
+  const activateItem = (item) => {
+    switch (item?.action) {
+      case "openPlay":
+        playButtonPressSound2();
+        setMenuLayer("play");
+        setActiveId("basho");
+        break;
+      case "back":
+        playButtonPressSound2();
+        setMenuLayer("root");
+        setActiveId("play");
+        break;
+      case "basho":
+        handleBasho();
+        break;
+      case "online":
+        playButtonPressSound2();
+        handleDisplayRooms();
+        break;
+      case "cpu":
+        handleVsCPU();
+        break;
+      case "training":
+        handleTraining();
+        break;
+      case "customize":
+        playButtonPressSound2();
+        setCurrentPage("customize");
+        break;
+      case "shop":
+        playButtonPressSound2();
+        setShopSoon(true);
+        if (shopSoonTimerRef.current) clearTimeout(shopSoonTimerRef.current);
+        shopSoonTimerRef.current = setTimeout(() => setShopSoon(false), 1800);
+        break;
+      case "options":
+        playButtonPressSound2();
+        handleSettings();
+        break;
+      default:
+        break;
+    }
+  };
+
+  const activateRef = useRef(activateItem);
+  activateRef.current = activateItem;
+
+  const moveActive = (delta) => {
+    const items = menuLayer === "play" ? PLAY_ITEMS : ROOT_ITEMS;
+    const idx = Math.max(
+      0,
+      items.findIndex((entry) => entry.id === activeId),
+    );
+    const next = items[(idx + delta + items.length) % items.length];
+    setActiveId(next.id);
+    playButtonHoverSound();
+  };
+  const moveRef = useRef(moveActive);
+  moveRef.current = moveActive;
+
+  useEffect(() => {
+    if (currentPage === "mainMenu") {
+      setMenuLayer("root");
+      setActiveId("play");
+    }
+  }, [currentPage]);
+
   const handleClickOutside = (e) => {
     if (
       showSettings &&
@@ -1286,33 +1205,102 @@ const MainMenu = ({
     };
   }, [showSettings]);
 
+  useEffect(() => {
+    if (currentPage !== "mainMenu") return;
+    const onKey = (e) => {
+      if (showSettings) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setShowSettings(false);
+        }
+        return;
+      }
+      const items = menuLayer === "play" ? PLAY_ITEMS : ROOT_ITEMS;
+      if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        moveRef.current(1);
+      } else if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") {
+        e.preventDefault();
+        moveRef.current(-1);
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        const item = items.find((entry) => entry.id === activeId) || items[0];
+        activateRef.current(item);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        if (menuLayer === "play") {
+          playButtonPressSound2();
+          setMenuLayer("root");
+          setActiveId("play");
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [currentPage, showSettings, menuLayer, activeId]);
+
+  useEffect(() => {
+    if (currentPage !== "mainMenu") return;
+    let lastDir = 0;
+    let lastA = false;
+    let lastB = false;
+    let lastNavAt = 0;
+    const id = window.setInterval(() => {
+      const pads = navigator.getGamepads?.();
+      if (!pads) return;
+      let pad = null;
+      for (let i = 0; i < pads.length; i += 1) {
+        if (pads[i]) {
+          pad = pads[i];
+          break;
+        }
+      }
+      if (!pad) return;
+      const confirm = !!pad.buttons[0]?.pressed;
+      const cancel = !!pad.buttons[1]?.pressed;
+      if (showSettings) {
+        if (cancel && !lastB) setShowSettings(false);
+        lastB = cancel;
+        lastA = confirm;
+        return;
+      }
+      const axisY = pad.axes[1] || 0;
+      const up = !!pad.buttons[12]?.pressed || axisY < -0.55;
+      const down = !!pad.buttons[13]?.pressed || axisY > 0.55;
+      const now = performance.now();
+      let dir = 0;
+      if (down) dir = 1;
+      else if (up) dir = -1;
+      if (dir !== 0 && (dir !== lastDir || now - lastNavAt > 220)) {
+        moveRef.current(dir);
+        lastNavAt = now;
+      }
+      lastDir = dir;
+      if (confirm && !lastA) {
+        const items = menuLayer === "play" ? PLAY_ITEMS : ROOT_ITEMS;
+        const item = items.find((entry) => entry.id === activeId) || items[0];
+        activateRef.current(item);
+      }
+      lastA = confirm;
+      if (cancel && !lastB && menuLayer === "play") {
+        playButtonPressSound2();
+        setMenuLayer("root");
+        setActiveId("play");
+      }
+      lastB = cancel;
+    }, 50);
+    return () => window.clearInterval(id);
+  }, [currentPage, showSettings, menuLayer, activeId]);
+
   const renderMainMenu = () => {
     return (
       <MainMenuContainer>
         <BackgroundPlate aria-hidden $lowSpec={lowSpec}>
-          <BackgroundImage src={mainMenuBackground} alt="" $lowSpec={lowSpec} />
-          {!lowSpec && (
-            <BackgroundDepth src={mainMenuBackground} alt="" />
-          )}
+          <SkyImage src={titleSky} alt="" />
+          <WorldImage src={titleWorld} alt="" />
         </BackgroundPlate>
-        {!lowSpec && <AtmosphereGrade aria-hidden />}
-        <AtmosphereHaze aria-hidden />
         <CinematicOverlay />
-        <AtmosphereKanji aria-hidden>相撲</AtmosphereKanji>
-        {!lowSpec && <GrainOverlay aria-hidden />}
-        {!lowSpec && <Snowfall intensity={13} showFrost zIndex={3} />}
-
-        <TopSlug>
-          <SlugText $accent>
-            <strong>VER.</strong> HATSU
-          </SlugText>
-          <SlugRule aria-hidden />
-          {connectionError ? (
-            <SlugText $warn>Ring Closed</SlugText>
-          ) : (
-            <SlugText>Dohyo Open</SlugText>
-          )}
-        </TopSlug>
+        {!lowSpec && <Snowfall intensity={10} showFrost={false} zIndex={3} />}
 
         {connectionError && (
           <ConnectionErrorBanner>
@@ -1326,74 +1314,44 @@ const MainMenu = ({
               <PumoLogo size="menu" />
             </BrandBlock>
 
-            <MenuList>
-              <MenuButton
-                $primary
-                $index={0}
-                onClick={handleBasho}
-                onMouseEnter={playButtonHoverSound}
-              >
-                <span className="mode-label">Basho</span>
-                <span className="mode-hint">Sumo career mode</span>
-              </MenuButton>
-
-              <MenuButton
-                $index={1}
-                onClick={() => {
-                  handleDisplayRooms();
-                  playButtonPressSound2();
-                }}
-                onMouseEnter={playButtonHoverSound}
-              >
-                <span className="mode-label">Custom Match</span>
-              </MenuButton>
-
-              <MenuButton
-                $index={2}
-                onClick={handleVsCPU}
-                onMouseEnter={playButtonHoverSound}
-              >
-                <span className="mode-label">VS CPU</span>
-              </MenuButton>
-
-              <MenuButton
-                $index={3}
-                onClick={handleTraining}
-                onMouseEnter={playButtonHoverSound}
-              >
-                <span className="mode-label">Training</span>
-                <span className="mode-hint">Dummy lab</span>
-              </MenuButton>
-
-              <MenuButton
-                $index={4}
-                onClick={() => {
-                  playButtonPressSound2();
-                  setCurrentPage("customize");
-                }}
-                onMouseEnter={playButtonHoverSound}
-              >
-                <span className="mode-label">Customize</span>
-              </MenuButton>
-
-              <MenuButton
-                $system
-                $index={5}
-                className="settings-button"
-                onClick={() => {
-                  handleSettings();
-                  playButtonPressSound2();
-                }}
-                onMouseEnter={playButtonHoverSound}
-              >
-                <span className="mode-label">Options</span>
-              </MenuButton>
+            <MenuList key={menuLayer} aria-label="Main menu">
+              {menuItems.map((item, index) => (
+                <MenuButton
+                  key={item.id}
+                  $index={index}
+                  $featured={!!item.featured}
+                  $quiet={!!item.quiet}
+                  $active={activeId === item.id}
+                  className={item.action === "options" ? "settings-button" : undefined}
+                  onClick={() => activateItem(item)}
+                  onMouseEnter={() => {
+                    setActiveId(item.id);
+                    playButtonHoverSound();
+                  }}
+                >
+                  <span className="mode-label">
+                    {item.label}
+                    {item.id === "shop" && shopSoon ? (
+                      <span className="mode-soon">Soon</span>
+                    ) : null}
+                  </span>
+                </MenuButton>
+              ))}
             </MenuList>
           </LeftColumn>
         </HeroStage>
 
         <PumoHeroWrapper>
-          <PumoHero src={heroSrc} alt="Your wrestler" />
+          <HeroFloorShadow aria-hidden />
+          <PumoHero
+            src={heroSrc}
+            alt=""
+            onError={() => {
+              if (heroSrcRef.current !== mainMenuPumo) {
+                commitHeroSrc(mainMenuPumo);
+              }
+            }}
+          />
         </PumoHeroWrapper>
 
         {showSettings && <Settings onClose={() => setShowSettings(false)} />}

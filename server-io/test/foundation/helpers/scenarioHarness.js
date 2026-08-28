@@ -20,6 +20,7 @@ const {
   SLAP_STARTUP_MS,
   SLAP_ACTIVE_MS,
   SLAP_RECOVERY_MS,
+  AP_LATE_PARRY_MS,
   PALM_THRUST_STARTUP_MS,
   PALM_THRUST_ACTIVE_MS,
   PALM_THRUST_HOLD_MS,
@@ -167,6 +168,17 @@ function stepCollisionBothOrders(scenario) {
   const [a, b] = scenario.room.players;
   if (a.isAttacking) checkCollision(a, b, scenario.rooms, scenario.io);
   if (b.isAttacking) checkCollision(b, a, scenario.rooms, scenario.io);
+}
+
+/** Age past slap startup: past open-hit grace, still inside the active window. */
+function slapConfirmableActiveAge(extraMs = 0) {
+  const floor = AP_LATE_PARRY_MS + 2;
+  const cap = SLAP_ACTIVE_MS - 4;
+  return Math.max(0, Math.min(cap, floor + extraMs));
+}
+
+function clampSlapActiveAge(agePastStartup) {
+  return Math.max(0, Math.min(agePastStartup, SLAP_ACTIVE_MS - 4));
 }
 
 function armSlapPhase(player, phase, now) {
@@ -566,6 +578,8 @@ module.exports = {
   stepCollisionBothOrders,
   checkCollision,
   armSlapPhase,
+  slapConfirmableActiveAge,
+  clampSlapActiveAge,
   armPalmPhase,
   armChargedPhase,
   armLowKickPhase,

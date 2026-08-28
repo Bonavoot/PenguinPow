@@ -19,6 +19,7 @@ const {
   runBothCollisionOrders,
   snapshotOutcome,
   CHARGE_PRIORITY_THRESHOLD,
+  SLAP_ACTIVE_TEST_OFFSET,
 } = require("./helpers/contactSim");
 const scenarios = [];
 afterEach(() => {
@@ -72,23 +73,23 @@ describe("Phase 13 — baseline outcome preservation", () => {
       assert.equal(s.right.isHit, false, "charged winner must not be hit");
     });
 
-    it("Slap stuffs grab startup — no throw-catch armor anywhere on it", () => {
+    it("Slap during grab startup — real hit, no clang", () => {
       const s = sc({ gap: 80 });
       const now = s.room.simTime;
       armSlap(s.right, { now });
       armGrabStartup(s.left, { now });
       placeInConnectRange(s.right, s.left, "slap");
       runBothCollisionOrders(s.left, s.right, s.rooms, s.io);
-      assert.equal(s.left.isHit, true, "grabber must eat the slap");
-      assert.equal(s.left.isGrabStartup, false, "grab must be interrupted");
+      assert.equal(s.left.isHit, true, "reaching is hittable");
+      assert.equal(s.left.isGrabStartup, false, "grab must die to a slap while reaching");
     });
 
     it("Slap vs Slap earlier start wins", () => {
       const s = sc({ gap: 90 });
       const now = s.room.simTime;
-      // Both past open-hit grace; left pressed earlier (larger startOffset).
-      armSlap(s.left, { now, startOffset: 140 });
-      armSlap(s.right, { now, startOffset: 120 });
+      // Both past open-hit grace and still inside the jab active window.
+      armSlap(s.left, { now, startOffset: SLAP_ACTIVE_TEST_OFFSET + 12 });
+      armSlap(s.right, { now, startOffset: SLAP_ACTIVE_TEST_OFFSET });
       placeInConnectRange(s.left, s.right, "slap");
       runBothCollisionOrders(s.left, s.right, s.rooms, s.io);
       // left started earlier (attackStartTime smaller) → left wins

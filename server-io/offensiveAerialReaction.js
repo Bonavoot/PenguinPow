@@ -371,6 +371,9 @@ function armParriedRecoilFlight(flapper, opponent, contact, meta = {}) {
   flapper.slideJumpDiveCommitted = false;
   flapper.slideJumpDiveBuffered = false;
   flapper.slideJumpDiveBufferUntil = 0;
+  flapper.slideJumpDivePhase = null;
+  flapper.slideJumpDivePopStartTime = 0;
+  flapper.slideJumpDivePopFromHeight = 0;
   flapper.slideJumpFastFalling = false;
   flapper.wJustPressed = false;
 

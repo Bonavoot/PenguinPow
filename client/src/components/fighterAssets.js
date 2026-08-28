@@ -3,7 +3,7 @@ import {
   preloadMusicTracks,
   playBuffer,
 } from "../utils/audioEngine";
-import { ANIMATED_SPRITES } from "../config/spriteConfig";
+import { ANIMATED_SPRITES, STATIC_SPRITES } from "../config/spriteConfig";
 import { ALL_HEAD_OVERLAYS } from "../config/cosmetics";
 import { ALL_BALD_BODY_SRCS } from "../config/baldSprites";
 
@@ -34,7 +34,6 @@ import slapAttack1Blur from "../assets/slap-attack-1-blur-frame.png";
 import slapAttack1Hit from "../assets/slap-attack-1-hit-frame.png";
 import slapAttack2Blur from "../assets/slap-attack-2-blur-frame.png";
 import slapAttack2Hit from "../assets/slap-attack-2-hit-frame.png";
-import bellyBump from "../assets/belly-bump.png";
 import palmThrust from "../assets/palm-thrust.png";
 import palmThrustStartup from "../assets/palm-thrust-startup.png";
 import palmThrustSmear from "../assets/palm-thrust-smear.png";
@@ -92,9 +91,7 @@ import winnerSound from "../sounds/winner-sound.ogg";
 import hakkiyoiSound from "../sounds/hakkiyoi-sound.mp3";
 import teWoTsuiteSound from "../sounds/tewotsuite.ogg";
 import bellSound from "../sounds/bell-sound.mp3";
-import battleMusic from "../sounds/battle-music-sound.ogg";
-import battleMusic2 from "../sounds/battle-music-sound-2.ogg";
-import battleMusic3 from "../sounds/battle-music-sound-3.ogg";
+import battleMusic from "../sounds/battle-music.ogg";
 import eeshiMusic from "../sounds/eeshi.ogg";
 import slapParrySound from "../sounds/slap-parry-sound.mp3";
 import saltSound from "../sounds/salt-sound.mp3";
@@ -140,8 +137,6 @@ import rawParry02 from "../sounds/raw-parry-02.ogg";
 import rawParry03 from "../sounds/raw-parry-03.ogg";
 import chargeAttackLaunchSound from "../sounds/charge-attack-launch-sound.ogg";
 import gunLaunchSound from "../sounds/gun-launch.ogg";
-
-const battleMusicTracks = [battleMusic, battleMusic2, battleMusic3];
 
 // ============================================
 // PRELOAD-ONLY IMPORTS (not exported — consumed internally by preloading)
@@ -246,6 +241,9 @@ export const grabHitSounds = [grabHit01, grabHit02, grabHit03];
 export const rawParrySounds = [rawParry01, rawParry02, rawParry03];
 export { chargeAttackLaunchSound, gunLaunchSound, chargedHit04 };
 export const pickRandomSound = (sounds) => sounds[Math.floor(Math.random() * sounds.length)];
+
+// Same URL STATIC_SPRITES / preloadSprites recolor — cache keys must match.
+const bellyBump = STATIC_SPRITES.player1.bellyBump;
 
 // ============================================
 // IMAGE PRELOADING
@@ -431,7 +429,7 @@ preloadSounds([
 ]);
 
 // Battle music: stream (HTMLAudioElement), do not decodeAudioData into RAM.
-preloadMusicTracks(battleMusicTracks);
+preloadMusicTracks([battleMusic]);
 
 // ============================================
 // SOUND PLAYBACK HELPER
@@ -551,7 +549,7 @@ export {
   hakkiyoiSound,
   teWoTsuiteSound,
   bellSound,
-  battleMusicTracks,
+  battleMusic,
   eeshiMusic,
   slapParrySound,
   saltSound,

@@ -11,12 +11,12 @@ import { FONT_DISPLAY, FONT_KANJI, FONT_BODY, FONT_UI, FONT_WEIGHT, TRACK, C, TE
 import { formatRank } from "../config/bashoConfig";
 import envelopeImg from "../assets/envelope.png";
 import {
-  playBashoGong,
   playBashoPurseTick,
-  playBashoFanfare,
-  playBashoSomber,
   playBashoApplause,
-  playBashoYusho,
+  playBashoSomber,
+  setMusic,
+  resultsCue,
+  silenceResultStingers,
 } from "../utils/soundUtils";
 import BanzukeBoard from "./BanzukeBoard";
 
@@ -755,6 +755,11 @@ function BashoResults({
   const dir = movement?.promoted ? "up" : movement?.demoted ? "down" : "flat";
   const yusho = !!movement?.yusho;
 
+  useEffect(() => {
+    silenceResultStingers();
+    setMusic(resultsCue(!withdrawn && !!kk));
+  }, [withdrawn, kk]);
+
   const movementNote = movement?.promoted
     ? "Promoted"
     : movement?.demoted
@@ -808,7 +813,8 @@ function BashoResults({
   }, [phase, recompute]);
 
   // Schedule the ceremony beats. Yūshō/stat steps are skipped when absent so
-  // the pacing stays tight. Each beat fires its stinger as it lands.
+  // the pacing stays tight. Header is silent (results BGM only) — rank and
+  // purse beats keep their stingers.
   useEffect(() => {
     const timers = timersRef.current;
     let t = 0;
@@ -816,16 +822,14 @@ function BashoResults({
 
     t += 220;
     at(t, () => {
+      silenceResultStingers();
       setPhase(PHASE.HEADER);
-      if (kk) playBashoGong();
-      else playBashoSomber();
     });
 
     if (yusho) {
       t += 1100;
       at(t, () => {
         setPhase(PHASE.YUSHO);
-        playBashoYusho();
       });
     }
 
@@ -839,11 +843,9 @@ function BashoResults({
     t += 1300;
     at(t, () => {
       setPhase(PHASE.PURSE);
-      // Light ticks as the itemised lines stagger in.
       breakdown.forEach((_, i) =>
         at(i * 130, () => playBashoPurseTick()),
       );
-      if (earned > 0) at(breakdown.length * 130 + 120, () => playBashoFanfare());
     });
 
     if (drip > 0) {

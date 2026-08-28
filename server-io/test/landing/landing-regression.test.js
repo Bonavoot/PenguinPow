@@ -13,7 +13,13 @@ const {
   ROPE_JUMP_CENTER_FRACTION,
   SLAP_STARTUP_MS,
   SLAP_ACTIVE_MS,
+  SLAP_RECOVERY_MS,
+  SLAP_TOTAL_MS,
   CHARGED_STARTUP_MS,
+  PALM_THRUST_STARTUP_MS,
+  PALM_THRUST_ACTIVE_MS,
+  PALM_THRUST_HOLD_MS,
+  AP_LATE_PARRY_MS,
   LOW_KICK_HITBOX_DISTANCE_VALUE,
   GROUND_LEVEL,
 } = require("../../constants");
@@ -94,9 +100,27 @@ describe("landing Phase A — regression guards", () => {
     assert.equal(arePlayersColliding(p1, p2), false);
   });
 
-  it("slap / charged timing constants untouched", () => {
+  it("slap / charged / palm frame data (SF jab vs medium-heavy)", () => {
     assert.equal(SLAP_STARTUP_MS, 55);
-    assert.equal(SLAP_ACTIVE_MS, 130);
+    assert.equal(SLAP_ACTIVE_MS, 47);
+    assert.equal(SLAP_RECOVERY_MS, 158);
+    assert.equal(SLAP_TOTAL_MS, 260);
+    assert.equal(PALM_THRUST_STARTUP_MS, 90);
+    assert.equal(PALM_THRUST_ACTIVE_MS, 90);
+    assert.equal(PALM_THRUST_HOLD_MS, 380);
+    assert.equal(AP_LATE_PARRY_MS, 16);
+    assert.ok(
+      SLAP_STARTUP_MS < PALM_THRUST_STARTUP_MS,
+      "palm telegraph must outlast the jab"
+    );
+    assert.ok(
+      SLAP_ACTIVE_MS < PALM_THRUST_ACTIVE_MS,
+      "palm active must outlast the jab"
+    );
+    assert.ok(
+      AP_LATE_PARRY_MS + 15 < SLAP_ACTIVE_MS,
+      "open-hit grace must leave confirmable jab active frames"
+    );
     assert.equal(CHARGED_STARTUP_MS, 150);
   });
 

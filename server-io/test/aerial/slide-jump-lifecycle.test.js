@@ -158,7 +158,7 @@ describe("offensive aerial — slide-jump lifecycle", () => {
     assert.equal(s.attacker.slideJumpHitLanded, false);
   });
 
-  it("S dive during ascent opens active window once hop lock clears", () => {
+  it("S dive during ascent commits a Honda pop, not an instant slam window", () => {
     const s = createSlideJumpScenario({
       name: "dive_opens",
       attackerX: 500,
@@ -177,8 +177,9 @@ describe("offensive aerial — slide-jump lifecycle", () => {
       runUntil(s, () => s.attacker.slideJumpDiveCommitted, 40);
     }
     assert.equal(s.attacker.slideJumpDiveCommitted, true);
-    // Dive commit forces descending qualification even if vel was cleared.
-    assert.ok(s.attacker.slideJumpVelocityY <= 0);
+    assert.equal(s.attacker.slideJumpDivePhase, "pop");
+    assert.equal(isBodySlamWindowOpen(s.attacker), false);
+    assert.ok(s.attacker.slideJumpVelocityY > 0);
   });
 
   it("parry of plain slide-jump body contact grounds attacker", () => {
@@ -194,7 +195,7 @@ describe("offensive aerial — slide-jump lifecycle", () => {
     placeDescendingOverOpponent(s, { height: 40 });
     stepSlideJumpTick(s);
     assert.equal(s.attacker.isSlideJumping, false);
-    assert.equal(s.attacker.isRecovering, true);
+    assert.equal(s.attacker.isRawParryStun, true);
   });
 
   it("side crossing without hit: attacker can pass through during flight", () => {

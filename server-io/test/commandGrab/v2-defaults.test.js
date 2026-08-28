@@ -40,7 +40,7 @@ const {
   HITSTOP_THROW_MS,
   GRAB_RANGE,
   GRAB_STARTUP_MS,
-  GRAB_LUNGE_DISTANCE,
+  GRAB_ACTIVE_MS,
   HITBOX_DISTANCE_VALUE,
   SLAP_STARTUP_MS,
   CLINCH_THROW_KILL_THRESHOLD,
@@ -48,7 +48,7 @@ const {
   DELTA_TRACKED_PROPS,
 } = require("../../constants");
 const { getConnectDistance } = require("../../strikeContact");
-const { getGrabThreatTravel } = require("../../combatHelpers");
+const { getGrabThreatTravel, getGrabConnectDistance } = require("../../combatHelpers");
 const { MAP_LEFT_BOUNDARY, MAP_RIGHT_BOUNDARY } = require("../../gameUtils");
 const { profileFor } = require("../../momentumTransfer");
 
@@ -88,14 +88,22 @@ test("command grab defaults", async (t) => {
     // The load-bearing relationship of the entire move, and the one that is easiest
     // to destroy by accident from the slap side of the ledger.
     //
-    // The grab carries no armor, and its startup only fits a ~45ms window inside a
-    // slap masher's 130ms gap. Reach is therefore the ONLY thing giving it a home:
-    // past the slap's connect distance the jab physically cannot touch you, so the
-    // frame window stops mattering and the exchange becomes a spacing read instead
-    // of a priority coin-flip. At the old GRAB_RANGE of 146 this band was 3.6px
-    // wide — unstandable — and grabs read as flailing.
+    // The dive may START from far (lunge). The LATCH must sit inside slap
+    // tip — otherwise the 175 vacuum grabs you before a tip poke can clang,
+    // and two slaps are arithmetically impossible. At the old GRAB_RANGE of
+    // 146 this *attempt* band was 3.6px wide; that number is not the latch.
+    assert.ok(
+      GRAB_ACTIVE_MS >= 650,
+      `running-grab active ${GRAB_ACTIVE_MS}ms must last long enough to see and walk out`
+    );
     const dummy = (id) => ({ id, x: 0, facing: -1, sizeMultiplier: 1 });
     const slapConnect = getConnectDistance("slap", dummy("a"), dummy("b"));
+    const latch = getGrabConnectDistance(dummy("a"), dummy("b"));
+    assert.ok(
+      latch < slapConnect - 8,
+      `grab latch ${latch.toFixed(1)} must sit inside slap tip ${slapConnect.toFixed(1)} ` +
+        `or a tip poke can never land before the dive connects`
+    );
     const band = GRAB_RANGE - slapConnect;
 
     assert.ok(
@@ -107,27 +115,22 @@ test("command grab defaults", async (t) => {
 
     // Upper bound, so "give it reach" can't drift into "grab is a projectile".
     //
-    // Threat is reach plus how far the dive carries WHILE IT CAN STILL CATCH —
-    // startup plus active. Not GRAB_LUNGE_DISTANCE, which is the full decay
-    // including the skid through whiff recovery: that tail is travel you cannot
-    // grab during, so counting it would measure commitment as if it were reach.
+    // Threat is latch (pushbox-touch) plus how far the dive carries WHILE IT
+    // CAN STILL CATCH. Not GRAB_RANGE — that is attempt/release daylight, not
+    // arm length — and not the recovery skid.
     const ringWidth = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
-    const threat = GRAB_RANGE + getGrabThreatTravel();
+    const threatTravel = getGrabThreatTravel();
+    const threat = latch + threatTravel;
+    // A 1-second run covers real ground. It must not fullscreen the ring
+    // from the far corner — walk-out still has to work.
     assert.ok(
-      threat < ringWidth * 0.4,
-      `grab threat range ${threat.toFixed(1)} must stay under 40% of the ` +
-        `${ringWidth}px ring — beyond that it stops being an approach tool and ` +
-        `starts covering neutral`
+      threat < ringWidth * 0.8,
+      `grab threat range ${threat.toFixed(1)} must stay under 80% of the ` +
+        `${ringWidth}px ring — beyond that it covers the whole dohyo`
     );
-
-    // And the skid has to be a real consequence, not a cosmetic nudge: most of the
-    // dive's travel should land AFTER the grab can catch anything, so fishing from
-    // max range carries you past your opponent rather than parking you in front.
     assert.ok(
-      GRAB_LUNGE_DISTANCE - getGrabThreatTravel() > getGrabThreatTravel() * 0.5,
-      `the whiff skid (${(GRAB_LUNGE_DISTANCE - getGrabThreatTravel()).toFixed(1)}px) ` +
-        `must be substantial next to the ${getGrabThreatTravel().toFixed(1)}px of ` +
-        `threat travel, or a blown grab stops dead where it started`
+      threatTravel > 200,
+      `the run must cover real ice while hot, got ${threatTravel.toFixed(1)}px`
     );
   });
 
