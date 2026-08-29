@@ -166,6 +166,8 @@ const {
   isInDodgeStrikeIFrames,
   isInSlideRedirectIFrames,
   applyBalanceDamage,
+  armPerfectParryStun,
+  endPerfectParryStun,
 } = require("./gameUtils");
 
 const {
@@ -205,9 +207,27 @@ const {
   consumeLifecycleOwner,
 } = require("./actionLifecycleOwnership");
 
-/** Block floor: kill the incoming string and park the attacker in a short settle. */
-function consumeGuardedAttack(attacker, currentTime) {
+/**
+ * Remaining lock after a blocked connect. Matches leftover slap/palm cycle so
+ * the swing can finish; GUARD_ATTACKER_RECOVERY_MS is only a floor if the
+ * cooldown deadline is already gone.
+ */
+function guardedRecoverMs(attacker, currentTime) {
+  const until = attacker.attackCooldownUntil || 0;
+  const rest = until > currentTime ? until - currentTime : 0;
+  return Math.max(GUARD_ATTACKER_RECOVERY_MS, rest);
+}
+
+/**
+ * Block floor: kill the HITBOX and the mash buffer, keep the attack POSE.
+ * A connected hit leaves isSlapAttack/isPalmThrust up through recovery so the
+ * director can finish smear → strike → settle. Clearing those and setting
+ * isRecovering snapped to recovering.png mid-swing.
+ */
+function consumeGuardedAttack(attacker, defender, currentTime) {
   if (!attacker) return;
+  const recoverMs = guardedRecoverMs(attacker, currentTime);
+
   attacker.isAttacking = false;
   attacker.slapActiveEndTime = 0;
   attacker.chargedActiveEndTime = 0;
@@ -218,46 +238,25 @@ function consumeGuardedAttack(attacker, currentTime) {
   attacker.slapOpenHitPending = false;
   attacker.pendingSlapCount = 0;
   attacker.pendingPalmThrust = false;
+  attacker.pendingGrab = false;
   attacker.isHit = false;
-  timeoutManager.clearPlayerSpecific(attacker.id, "slapCycle");
-  timeoutManager.clearPlayerSpecific(attacker.id, "palmThrustVisualEnd");
-  timeoutManager.clearPlayerSpecific(attacker.id, "palmThrustStartupEnd");
+  attacker.cadenceChain = 0;
+  if (attacker.isSlapAttack) {
+    // Treat the block as a connect so slapCycle skips whiff extra recovery.
+    attacker.currentSlapHitConnected = true;
+  }
   timeoutManager.clearPlayerSpecific(attacker.id, "guardAttackerRecover");
 
-  if (isActionLifecycleOwnershipV2Enabled()) {
-    const attackOwnerId =
-      attacker.slapLifecycleInstanceId ||
-      attacker.chargedLifecycleInstanceId ||
-      null;
-    if (attackOwnerId) {
-      consumeLifecycleOwner(
-        attacker,
-        LIFECYCLE_DOMAIN.PRIMARY_ACTION,
-        attackOwnerId,
-        { reason: "GUARD_CONSUME_ATTACK", keepActive: false }
-      );
-    }
-  }
-
-  attacker.isSlapAttack = false;
-  attacker.isPalmThrust = false;
-  attacker.attackType = null;
-  releaseStrikeFacingLock(attacker, {
-    reason: ACTION_FACING_RELEASE.INTERRUPT,
-  });
-  attacker.isRecovering = true;
   attacker.inputLockUntil = Math.max(
     attacker.inputLockUntil || 0,
-    currentTime + GUARD_ATTACKER_RECOVERY_MS
+    currentTime + recoverMs
   );
-  setPlayerTimeout(
-    attacker.id,
-    () => {
-      attacker.isRecovering = false;
-    },
-    GUARD_ATTACKER_RECOVERY_MS,
-    "guardAttackerRecover"
-  );
+  if (defender) {
+    defender.inputLockUntil = Math.max(
+      defender.inputLockUntil || 0,
+      currentTime + recoverMs
+    );
+  }
 }
 
 function beginHitstunLifecycle(victim) {
@@ -2436,8 +2435,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
 
   // ── Early-active slap grace (AP_OPEN_HIT_GRACE_ENABLED) ────────────────────
   // First N ms of slap ACTIVE: live PARRY/GUARD still resolve immediately, but
-  // open hits are deferred so a slightly-late tap can Regular. A grace save
-  // cannot Perfect. Palm / charged unchanged.
+  // open hits are deferred so a clap tap can still land (just → Perfect).
+  // Palm / charged unchanged.
   //
   // NEVER defer when slap-vs-slap priority already committed this hit. Orphaning
   // consumeLosingAttackInstance on the later slap (clear tip/limb, no damage)
@@ -2514,7 +2513,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       parrier.isAlreadyHit = true;
       parrier.apChainCount = 0;    // a block breaks the parry chain
       parrier.apFlurryUntil = 0;   // block breaks tap-every-slap flurry cover
-      consumeGuardedAttack(attacker, currentTime);
+      consumeGuardedAttack(attacker, parrier, currentTime);
 
       // GUARD CRUSH — bled dry while blocking: drop the guard into a brief stun
       // AND enter gassed immediately. Do not wait for the end-of-tick gassed
@@ -2558,11 +2557,14 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           "guard_block",
           attachCombatPresentation(
             {
+              attackerId: attacker.id,
               attackerX: attacker.x,
               parrierX: parrier.x,
               // ATTACKER facing — BlockingEffect front offsets calibrated for this.
               facing: attacker.facing,
               isPalm,
+              attackType: isPalm ? "palm" : "slap",
+              isPalmThrust: isPalm,
               guardCrushed,
               timestamp: Date.now(),
               blockId,
@@ -2579,9 +2581,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     }
 
     // ── PARRY — already in = Regular. Last 2 apply-ticks = Perfect (just).
-    // Grace-held slap (open hit deferred for a late tap) still Regulars.
-    const graceHeldSlap = isSlapAttack && !!attacker.slapOpenHitPending;
-    const isPerfect = !graceHeldSlap && isAttackParryJust(parrier, currentTime);
+    // A clap tap during open-hit grace is the same just (press on the hit pose).
+    const isPerfect = isAttackParryJust(parrier, currentTime);
     attacker.slapOpenHitPending = false;
 
     // KILL CHECK — dormant while AP_KILL_ENABLED is false. Branch + cinematic
@@ -2715,7 +2716,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       // ── NON-LETHAL PARRY — freeze the attacker, then shove + recover ───
       // Hitbox dies; ATTACK pose stays through hitstop. After freeze they slide
       // back via slap-parry slide (not knockbackVelocity+isHit). Regular slap
-      // is +0 (stagger + begin delay = plant). Perfect: starstun, max(move, 420).
+      // is +0 (stagger + begin delay = plant). Perfect: starstun, max(move, PERFECT_PARRY_ATTACKER_STUN_DURATION).
       attacker.isAttacking = false;      // kill the hitbox (pose stays via isSlapAttack/isPalmThrust)
       attacker.slapActiveEndTime = 0;
       attacker.chargedActiveEndTime = 0;
@@ -2747,8 +2748,9 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         : moveStaggerMs;
       // Immediate lock covers the freeze + stagger (can't act during the freeze).
       attacker.inputLockUntil = Math.max(attacker.inputLockUntil || 0, currentTime + staggerMs);
-      timeoutManager.clearPlayerSpecific(attacker.id, "perfectParryStunReset");
-      attacker.isRawParryStun = false;
+      if (!isPerfect) {
+        endPerfectParryStun(attacker);
+      }
 
       // After the freeze (~1 tick past the sim-frozen hitstop): drop the attack
       // pose into recovery and apply the shove slide.
@@ -2798,7 +2800,11 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
             reason: ACTION_FACING_RELEASE.INTERRUPT,
           });
           attacker.isRecovering = !isPerfect;
-          attacker.isRawParryStun = !!isPerfect;
+          if (isPerfect) {
+            armPerfectParryStun(attacker, staggerMs);
+          } else {
+            attacker.isRawParryStun = false;
+          }
           attacker.slapParryKnockbackVelocity = shoveVel;
           attacker.inputLockUntil = Math.max(attacker.inputLockUntil || 0, simNow(currentRoom) + staggerMs);
           timeoutManager.clearPlayerSpecific(attacker.id, "parryStaggerReset");
@@ -2817,7 +2823,6 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
                 return;
               }
               attacker.isRecovering = false;
-              attacker.isRawParryStun = false;
               if (isActionLifecycleOwnershipV2Enabled()) {
                 completeLifecycleOwner(
                   attacker,
@@ -3005,7 +3010,6 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     // Clear any existing hit state cleanup to prevent conflicts
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "hitStateReset");
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "parryKnockbackReset");
-    timeoutManager.clearPlayerSpecific(otherPlayer.id, "perfectParryStunReset");
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "grabMovementTimeout");
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "atTheRopesTimeout");
     timeoutManager.clearPlayerSpecific(otherPlayer.id, "slapEndlagReset");
@@ -4319,13 +4323,16 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
   flapper.isHit = false;
   flapper.isParryKnockback = false;
   flapper.lastHitTime = currentTime;
-  timeoutManager.clearPlayerSpecific(flapper.id, "perfectParryStunReset");
-  flapper.isRawParryStun = false;
+  if (!isPerfect) {
+    endPerfectParryStun(flapper);
+  }
 
   if (!useV2Recoil) {
     flapper.slapParryKnockbackVelocity = shove * knockbackDirection;
     flapper.isRecovering = !isPerfect;
-    flapper.isRawParryStun = !!isPerfect;
+    if (isPerfect) {
+      armPerfectParryStun(flapper, flapStaggerMs);
+    }
     flapper.inputLockUntil = Math.max(
       flapper.inputLockUntil || 0,
       currentTime + flapStaggerMs
@@ -4335,7 +4342,6 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
       flapper.id,
       () => {
         flapper.isRecovering = false;
-        flapper.isRawParryStun = false;
         flapper.isAlreadyHit = false;
       },
       flapStaggerMs,
@@ -4346,7 +4352,7 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
     // shove unused in air — horizontal rejection comes from contact normal.
     flapper.slapParryKnockbackVelocity = 0;
     if (isPerfect) {
-      flapper.isRawParryStun = true;
+      armPerfectParryStun(flapper, flapStaggerMs);
       flapper.inputLockUntil = Math.max(
         flapper.inputLockUntil || 0,
         currentTime + flapStaggerMs
@@ -4355,15 +4361,6 @@ function resolveFlapRawParry(flapper, opponent, currentRoom, io) {
         flapper.offensiveAerialReaction.controlRestoreAt =
           currentTime + flapStaggerMs;
       }
-      timeoutManager.clearPlayerSpecific(flapper.id, "parryStaggerReset");
-      setPlayerTimeout(
-        flapper.id,
-        () => {
-          flapper.isRawParryStun = false;
-        },
-        flapStaggerMs,
-        "parryStaggerReset"
-      );
     }
   }
 

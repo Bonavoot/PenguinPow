@@ -33,7 +33,10 @@ const {
   alignedEntryVelocity,
   takeInheritedVelocity,
   beginGrabStartup,
+  groundPlayerIfNotAirborne,
+  cancelDodgeHop,
   emitStaminaBlocked,
+  endPerfectParryStun,
 } = require("./gameUtils");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum inheritance, Phase 3: cadence,
@@ -779,7 +782,7 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
     p.rawParryCooldownUntil = 0;
     p.isRawParrySuccess = false;
     p.isPerfectRawParrySuccess = false;
-    p.isRawParryStun = false;
+    endPerfectParryStun(p);
     // Guard & Parry (AP) state
     p.apActiveUntil = 0;
     p.apFlowUntil = 0;
@@ -976,6 +979,9 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
   if (player.isPowerSliding) {
     player.isPowerSliding = false;
   }
+
+  cancelDodgeHop(player);
+  groundPlayerIfNotAirborne(player);
   
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
@@ -1448,6 +1454,9 @@ function executePalmThrust(player, rooms) {
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
 
+  cancelDodgeHop(player);
+  groundPlayerIfNotAirborne(player);
+
   clearChargeState(player);
 
   // This press already spent itself on the thrust. Keep mouse1 from auto-
@@ -1604,6 +1613,9 @@ function executeLowKick(player, rooms) {
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
 
+  cancelDodgeHop(player);
+  groundPlayerIfNotAirborne(player);
+
   clearChargeState(player);
   player.mouse1ConsumedUntilRelease = true;
 
@@ -1722,6 +1734,11 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   if (player.isThrowing || player.isBeingThrown) {
     return;
   }
+
+  // Charging is allowed during dodge; the release is a grounded headbutt.
+  // Cancel the hop so lunge Y cannot sit on the dodge parabola.
+  cancelDodgeHop(player);
+  groundPlayerIfNotAirborne(player);
 
   // MASTERY Phase 0 telemetry — entry velocity at charge release (typically ~0
   // since charging is rooted, but recorded for a complete per-verb picture).

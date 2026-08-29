@@ -98,6 +98,8 @@ const {
   canPlayerSidestep,
   resetPlayerAttackStates,
   clearAllActionStates,
+  groundPlayerIfNotAirborne,
+  cancelDodgeHop,
   isWithinMapBoundaries,
   constrainToMapBoundaries,
   startCharging,
@@ -148,6 +150,7 @@ const {
   cancelPendingSlapWork,
   stampMomentumWindow,
   applyBalanceDamage,
+  endPerfectParryStun,
 } = require("./gameUtils");
 const {
   beginSlideJumpLandSettle,
@@ -1475,6 +1478,9 @@ function tick(delta) {
 
       // Handle grab startup — dive carries it forward, then range check at the end.
       if (player.isGrabStartup) {
+        // Startup returns early below (skips gravity-snap). Re-pin leftover
+        // dodge / reverse-hop Y every tick so the lunge cannot freeze in air.
+        groundPlayerIfNotAirborne(player);
         const elapsed = room.simTime - player.grabStartupStartTime;
         const startupMs = player.grabStartupDuration || GRAB_STARTUP_DURATION_MS;
 
@@ -1700,6 +1706,7 @@ function tick(delta) {
               player.isPerfectRawParrySuccess = false;
 
               clearAllActionStates(opponent);
+              endPerfectParryStun(opponent);
               opponent.y = GROUND_LEVEL;
               opponent.isBeingGrabbed = true;
               opponent.isBeingGrabPushed = false;
@@ -2306,9 +2313,7 @@ function tick(delta) {
 
       // Grounded dash dodge — slides forward on the ground, triggers dodge slap if deep enough into opponent
       if (player.isDodging && player.isBeingGrabbed) {
-        player.isDodging = false;
-        player.isDodgeStartup = false;
-        player.dodgeDirection = null;
+        cancelDodgeHop(player);
         if (isActionFacingOwnershipV2Enabled()) {
           releaseActionFacingLock(player, {
             expectedInstanceId: player.dodgeFacingInstanceId,
@@ -2898,6 +2903,10 @@ function tick(delta) {
             const hSpeed = slideJumpTakeoffHorizontalSpeed(player);
             const jumpDir =
               player.iceSlideDir || (player.movementVelocity >= 0 ? 1 : -1);
+
+            // Reverse-hop Y must not carry into flight (clearIceSlideState
+            // will skip the snap once isSlideJumping is latched).
+            groundPlayerIfNotAirborne(player);
 
             player.isSlideJumping = true;
             player.slideJumpPhase = "flight";
@@ -3794,21 +3803,30 @@ function tick(delta) {
             player.isGrabWalking = false;
           }
         }
-
-        // Gravity-snap to ground for stray elevated states. Flap / slide-jump /
-        // ice-slide reverse hop own their own Y — exclude them here.
-        if (
-          player.y > GROUND_LEVEL &&
-          !player.isRopeJumping &&
-          !player.isFlapping &&
-          !player.isSlideJumping &&
-          !player.isIceSlideReverseHopping &&
-          !player.isDodging &&
-          !player.isHitFalling
-        ) {
-          player.y -= delta * speedFactor + 10;
-          player.y = Math.max(player.y, GROUND_LEVEL);
-        }
+      }
+      // Gravity-snap leftover hop Y. MUST live outside the strafe gate:
+      // parry / grab / matador skip that block, which is what froze fighters
+      // in the air after a cancelled dodge or reverse hop.
+      if (
+        player.y > GROUND_LEVEL &&
+        !player.isRopeJumping &&
+        !player.isFlapping &&
+        !player.isSlideJumping &&
+        !player.isIceSlideReverseHopping &&
+        !player.isDodging &&
+        !player.isHitFalling &&
+        !player.isBeingThrown &&
+        !player.isGrabBreakSeparating &&
+        !player.isFallingOffDohyo &&
+        !player.isSidestepping &&
+        !player.isSidestepHitReturn &&
+        !player.isCinematicKillVictim &&
+        !player.isClinchKillThrowVictim &&
+        !player.isClinchKillPullVictim &&
+        !player.isRingOutPushCutscene
+      ) {
+        player.y -= delta * speedFactor + 10;
+        player.y = Math.max(player.y, GROUND_LEVEL);
       }
       if (
         (!player.keys.a &&
@@ -3917,9 +3935,7 @@ function tick(delta) {
       if (rootApStance) {
         player.isStrafing = false;
         player.movementVelocity = 0;
-        player.isDodging = false;
-        player.isDodgeStartup = false;
-        player.isDodgeRecovery = false;
+        cancelDodgeHop(player);
         player.isAttacking = false;
         player.isJumping = false;
         player.isCrouchStance = false;

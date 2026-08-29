@@ -7,6 +7,7 @@ const {
   PERFECT_PARRY_WINDOW,
   SLAP_STARTUP_MS,
 } = require("../../constants");
+const { updateAttackParryState } = require("../../gameUtils");
 const {
   createContactScenario,
   armSlap,
@@ -84,7 +85,7 @@ describe("Attack parry just / callout / late", () => {
     assert.equal(ev.payload.isPerfect, true, "live just is not a grace save");
   });
 
-  it("slightly-late tap during slap grace Regulars — it cannot Perfect", () => {
+  it("clap tap during slap grace Perfects — press on the hit pose is the just", () => {
     const s = sc({ gap: 80 });
     const now = s.simTime;
     armSlap(s.left, { now, startOffset: SLAP_STARTUP_MS + 10 });
@@ -99,8 +100,28 @@ describe("Attack parry just / callout / late", () => {
     runBothCollisionOrders(s.left, s.right, s.rooms, s.io);
 
     const ev = s.io.last("raw_parry_success");
-    assert.ok(ev, "late tap still parries");
-    assert.equal(ev.payload.isPerfect, false, "grace save cannot Perfect");
-    assert.equal(s.right.isRawParrySuccess, true);
+    assert.ok(ev, "clap tap still parries");
+    assert.equal(ev.payload.isPerfect, true, "press on the hit pose is Perfect");
+    assert.equal(s.right.isPerfectRawParrySuccess, true);
+  });
+
+  it("Space-up during a live window keeps the read armed (tap parry)", () => {
+    const s = sc({ gap: 80 });
+    const now = s.simTime;
+    armLiveParry(s.right, now, { just: true });
+    s.right.keys[" "] = false;
+    updateAttackParryState(s.right, now, false);
+
+    assert.equal(s.right.isRawParrying, true, "window stays armed");
+    assert.equal(s.right.isApWhiffRecovering, false, "tap does not jail");
+    assert.ok(s.right.apActiveUntil > now);
+
+    armSlap(s.left, { now, startOffset: SLAP_ACTIVE_TEST_OFFSET });
+    placeInConnectRange(s.left, s.right, "slap");
+    runBothCollisionOrders(s.left, s.right, s.rooms, s.io);
+
+    const ev = s.io.last("raw_parry_success");
+    assert.ok(ev, "released tap still deflects");
+    assert.equal(ev.payload.isPerfect, true);
   });
 });

@@ -108,6 +108,7 @@ const {
   timeoutManager,
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
+  endPerfectParryStun,
 } = require("./gameUtils");
 
 const {
@@ -378,6 +379,9 @@ function beginCommandGrab(grabber, victim, room, io) {
   victim.clinchAttachDistance = gap;
 
   applyStartupPoses(grabber, victim);
+  // Starstun is a standing confirm. Belt-grip is a new state — drop dizzy so
+  // clinch poses and victim control aren't fighting the stun lock.
+  endPerfectParryStun(victim);
   // Every grab already gets HITSTOP_GRAB_MS from the shared connect path; this is the
   // extra weight on top, and Drive deliberately adds none — a shove must start moving.
   const extraFreeze = connectHitstopMsFor(variant);
@@ -880,6 +884,7 @@ function resolveThrow(grabber, victim, room, io, isKill) {
   }
 
   clearAllActionStates(victim);
+  endPerfectParryStun(victim);
   victim.isBeingThrown = true;
   victim.isHit = true;
   victim.beingThrownFacingDirection = victim.facing;

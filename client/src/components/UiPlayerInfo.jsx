@@ -30,6 +30,7 @@ import {
   TRACK,
 } from "./menuTheme";
 import BalanceGauge from "./BalanceGauge";
+import { useStaminaBarMotion } from "./useStaminaBarMotion";
 
 /*
  * Pumo Pumo HUD — "cream chrome" broadcast band.
@@ -248,13 +249,9 @@ const recoveryTextPop = keyframes`
 `;
 
 /* Impact strike — a thin sharp vertical hairline at the trailing edge of
- * the stamina fill. Replaces the previous radial-blob ImpactSpark which
- * (a) lagged behind the bar's width transition because it was positioned
- * by data-value while the bar animated, and (b) read as a soft AI-style
- * white smudge instead of a designed mark. The new strike is mounted as
- * a CHILD of BarFill, pinned to the parent's trailing edge — so it
- * tracks the bar's animated width pixel-perfect with no transition
- * mismatch. Single quick squeeze + fade, no blur, no mix-blend-mode. */
+ * the stamina fill. Mounted as a CHILD of BarFill, pinned to the parent's
+ * trailing edge, so it rides the rAF-driven width with no lag. Single
+ * quick squeeze + fade, no blur, no mix-blend-mode. */
 const impactStrike = keyframes`
   0% {
     opacity: 0.95;
@@ -767,17 +764,16 @@ const StaTickMark = styled.div`
  * opacity flash (which faded the fill to 55% and read as the bar
  * disappearing rather than as an alarm). Danger is carried by the hue
  * ramp plus the frame's vermillion stroke. */
-const BarFill = styled.div.attrs((p) => ({
-  style: {
-    width: `${p.$stamina}%`,
-  },
-}))`
+/* Width is owned by useStaminaBarMotion (rAF lerp). A CSS width
+ * transition restarts on every 32 Hz stamina packet and is what made
+ * high-rate drains look cheap — do not put `transition: width` back. */
+const BarFill = styled.div`
   position: absolute;
   top: 0;
   bottom: 0;
   ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
+  width: 0%;
   border-radius: 0;
-  transition: width 0.3s ease;
   z-index: 2;
   overflow: hidden;
 
@@ -792,23 +788,27 @@ const BarFill = styled.div.attrs((p) => ({
 `;
 
 /* Impact strike — crisp 2px cream hairline pinned to the trailing edge
- * of the BarFill. Mounts as a CHILD of BarFill so it follows the bar's
- * animated width transition without lag — by construction, the strike
- * sits exactly where the fill currently ends, no matter what frame of
- * the 0.3s width transition we're in.
- *
- * Replaces the previous ImpactSpark which (a) used a radial-gradient
- * blob with blur + screen-blend (the AI-tell rendering pattern), and
- * (b) was positioned by stamina value while the bar's width transitioned,
- * so the spark snapped to the FINAL position while the bar was still
- * draining — visible misalignment for ~300ms.
- *
- * No blur, no mix-blend-mode, no radial gradient. Just a deliberate
- * thin stroke that fades in 0.18s. Subtle by design.
+ * of the BarFill. Child of BarFill so it sits on the live edge the rAF
+ * motion is at, not the server target.
  *
  * Position: anchored to the trailing edge of the fill, which is the
  * OPPOSITE side from where BarFill is positioned (BarFill anchored on
  * left → trailing edge on right; anchored on right → trailing on left). */
+
+/* Permanent instrument needle on the live edge. ImpactStrike is a one-shot
+ * flash on top of this; the needle itself never animates, so a 70 stam/s
+ * clamp is still readable as a hard moving edge against ghost + well. */
+const FillEdge = styled.div`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  ${(p) => (p.$isRight ? "right: 0;" : "left: 0;")}
+  width: 2px;
+  z-index: 5;
+  pointer-events: none;
+  background: ${(p) =>
+    p.$regen ? "rgba(186, 255, 220, 0.88)" : "rgba(245, 236, 217, 0.7)"};
+`;
 const ImpactStrike = styled.div`
   position: absolute;
   top: 0;
@@ -825,30 +825,30 @@ const ImpactStrike = styled.div`
   animation: ${impactStrike} 0.18s ease-out forwards;
 `;
 
-/* Ghost bar — matte trailing damage indicator.
- *
- * Dialed back from the previous smoked-glass treatment (radial highlight +
- * vertical sheen + diagonal sweep + dual box-shadow + double pseudo-element
- * highlights) which competed with the impact spark and the fill's own
- * sheen during damage. Now it's a flat slightly-translucent matte panel
- * with one subtle top edge highlight — clear "this is where stamina was"
- * without piling on extra glass effects. */
-const BarGhost = styled.div.attrs((p) => ({
-  style: {
-    width: `${p.$stamina}%`,
-    transition: p.$catching
-      ? "width 0.55s ease-out"
-      : "width 0.05s linear",
-  },
-}))`
+/* Ghost bar — total stamina lost in the current drain sequence.
+ * Parks at the value when the move started, holds a beat, then
+ * empties toward the live fill at a constant speed. */
+const BarGhost = styled.div`
   position: absolute;
   top: 0;
   bottom: 0;
   ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
+  width: 0%;
   border-radius: 0;
   z-index: 1;
   pointer-events: none;
   background: #8d97a8;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    ${(p) => (p.$isRight ? "right: 0;" : "left: 0;")}
+    width: 2px;
+    background: rgba(245, 236, 217, 0.55);
+    pointer-events: none;
+  }
 `;
 
 /* Regen overlay — "catch your breath".
@@ -859,19 +859,15 @@ const BarGhost = styled.div.attrs((p) => ({
  * blur cost. One flat mint wash, brightest at the leading edge where
  * stamina is being added, pulsing gently. Sits over the live fill but
  * under the parry-refund flash. */
-const RegenGlow = styled.div.attrs((p) => ({
-  style: {
-    width: `${p.$stamina}%`,
-  },
-}))`
+const RegenGlow = styled.div`
   position: absolute;
   top: 0;
   bottom: 0;
   ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
+  width: 0%;
   border-radius: 0;
   z-index: 3;
   pointer-events: none;
-  transition: width 0.3s ease;
 
   background: linear-gradient(
     ${(p) => (p.$isRight ? "270deg" : "90deg")},
@@ -884,19 +880,15 @@ const RegenGlow = styled.div.attrs((p) => ({
 `;
 
 /* Instant bright green flash overlay for parry stamina refund */
-const ParryRefundFlash = styled.div.attrs((p) => ({
-  style: {
-    width: `${p.$stamina}%`,
-  },
-}))`
+const ParryRefundFlash = styled.div`
   position: absolute;
   top: 0;
   bottom: 0;
   ${(p) => (p.$isRight ? "left: 0;" : "right: 0;")}
+  width: 0%;
   border-radius: 0;
   z-index: 6;
   pointer-events: none;
-  transition: width 0.3s ease;
   background: rgba(74, 255, 160, 0.62);
   animation: ${parryRefundFlash} 0.5s ease-out forwards;
 `;
@@ -1754,25 +1746,8 @@ const UiPlayerInfo = ({
   const b1Danger = b1 < BALANCE_DANGER_THRESHOLD;
   const b2Danger = b2 < BALANCE_DANGER_THRESHOLD;
 
-  // ── Display stamina (throttled regen for smooth bar animation) ──
-  const [p1DisplayStamina, setP1DisplayStamina] = useState(s1);
-  const [p2DisplayStamina, setP2DisplayStamina] = useState(s2);
-  const [p1LastDecreaseAt, setP1LastDecreaseAt] = useState(0);
-  const [p2LastDecreaseAt, setP2LastDecreaseAt] = useState(0);
-  const MAX_INCREASE_PER_UPDATE = 15;
-
-  // ── Ghost bar — trailing damage indicator ("white health" system) ──
-  const [p1Ghost, setP1Ghost] = useState(s1);
-  const [p2Ghost, setP2Ghost] = useState(s2);
-  const [p1GhostCatching, setP1GhostCatching] = useState(false);
-  const [p2GhostCatching, setP2GhostCatching] = useState(false);
-  const p1GhostTimer = useRef(null);
-  const p2GhostTimer = useRef(null);
   const p1PrevStamina = useRef(s1);
   const p2PrevStamina = useRef(s2);
-  const p1LastDecreaseAtRef = useRef(0);
-  const p2LastDecreaseAtRef = useRef(0);
-
 
   // ── Regen indicator (green leading-edge glow) ──
   const [p1Regen, setP1Regen] = useState(false);
@@ -1783,16 +1758,12 @@ const UiPlayerInfo = ({
   // ── Parry refund flash (instant green burst) ──
   const [p1ParryFlash, setP1ParryFlash] = useState(0);
   const [p2ParryFlash, setP2ParryFlash] = useState(0);
-  const p1ParryRefundPending = useRef(false);
-  const p2ParryRefundPending = useRef(false);
 
   // ── Gassed recovery ("second wind") ──
   const [p1Recovery, setP1Recovery] = useState(0);
   const [p2Recovery, setP2Recovery] = useState(0);
   const p1WasGassed = useRef(false);
   const p2WasGassed = useRef(false);
-  const p1RecoveryPending = useRef(false);
-  const p2RecoveryPending = useRef(false);
 
   // ── Perfect-parry balance gain flash ──
   // Each truthy value (a server timestamp) drives a 700ms inner-fill +
@@ -1832,12 +1803,16 @@ const UiPlayerInfo = ({
   // component and replays the strike animation. The strike anchors itself
   // to the trailing edge of <BarFill> via CSS (right: 0 / left: 0), so
   // we no longer need to track the stamina value at the moment of impact —
-  // the strike rides whatever edge the bar's width-transition is at.
+  // the strike rides whatever edge the rAF motion is at.
   const p1ShakeTimer = useRef(null);
   const p2ShakeTimer = useRef(null);
+  const p1JustReset = useRef(false);
+  const p2JustReset = useRef(false);
   // Min stamina drop (in points) needed to register as a "heavy" hit. Tuned
   // low enough that meaningful damage feels punchy, high enough that idle
   // drain (e.g. crouch holds losing 1 sta) doesn't constantly spark.
+  const p1LastImpactAt = useRef(0);
+  const p2LastImpactAt = useRef(0);
   const IMPACT_DROP_THRESHOLD = 4;
 
   // ── Go-stone place ripple ──
@@ -1850,14 +1825,12 @@ const UiPlayerInfo = ({
   useEffect(() => {
     if (player1ParryRefund > 0) {
       setP1ParryFlash(player1ParryRefund);
-      p1ParryRefundPending.current = true;
     }
   }, [player1ParryRefund]);
 
   useEffect(() => {
     if (player2ParryRefund > 0) {
       setP2ParryFlash(player2ParryRefund);
-      p2ParryRefundPending.current = true;
     }
   }, [player2ParryRefund]);
 
@@ -1922,25 +1895,10 @@ const UiPlayerInfo = ({
     p2DrainTimer.current = setTimeout(() => setP2DrainKey(0), 420);
   }, [b2]);
 
-  // ── Post-reset throttle bypass ──
-  // After a round reset, the first stamina update from the server may arrive
-  // AFTER game_reset (race condition). This flag lets that first update snap
-  // to the new value instead of being throttled by MAX_INCREASE_PER_UPDATE.
-  const p1JustReset = useRef(false);
-  const p2JustReset = useRef(false);
-
   // ── Round reset ──
   useEffect(() => {
-    setP1DisplayStamina(s1);
-    setP2DisplayStamina(s2);
-    setP1Ghost(s1);
-    setP2Ghost(s2);
-    setP1GhostCatching(false);
-    setP2GhostCatching(false);
     setP1Regen(false);
     setP2Regen(false);
-    setP1LastDecreaseAt(0);
-    setP2LastDecreaseAt(0);
     p1PrevStamina.current = s1;
     p2PrevStamina.current = s2;
     p1PrevBalance.current = null;
@@ -1953,19 +1911,14 @@ const UiPlayerInfo = ({
     if (p2DrainTimer.current) clearTimeout(p2DrainTimer.current);
     p1JustReset.current = true;
     p2JustReset.current = true;
-    if (p1GhostTimer.current) clearTimeout(p1GhostTimer.current);
-    if (p2GhostTimer.current) clearTimeout(p2GhostTimer.current);
+    p1LastImpactAt.current = 0;
+    p2LastImpactAt.current = 0;
     if (p1RegenTimer.current) clearTimeout(p1RegenTimer.current);
     if (p2RegenTimer.current) clearTimeout(p2RegenTimer.current);
-    p1LastDecreaseAtRef.current = 0;
-    p2LastDecreaseAtRef.current = 0;
     p1WasGassed.current = false;
     p2WasGassed.current = false;
-    p1RecoveryPending.current = false;
-    p2RecoveryPending.current = false;
     setP1Recovery(0);
     setP2Recovery(0);
-    // Clear any in-flight shake / impact state so a new round starts clean.
     if (p1ShakeTimer.current) clearTimeout(p1ShakeTimer.current);
     if (p2ShakeTimer.current) clearTimeout(p2ShakeTimer.current);
     setP1Shake(false);
@@ -1974,26 +1927,14 @@ const UiPlayerInfo = ({
 
   // ── Gassed → recovered transition detection ──
   useEffect(() => {
-    if (!p1WasGassed.current && player1IsGassed) {
-      setP1Ghost(0);
-      setP1GhostCatching(false);
-      if (p1GhostTimer.current) clearTimeout(p1GhostTimer.current);
-    }
     if (p1WasGassed.current && !player1IsGassed) {
-      p1RecoveryPending.current = true;
       setP1Recovery((c) => c + 1);
     }
     p1WasGassed.current = player1IsGassed;
   }, [player1IsGassed]);
 
   useEffect(() => {
-    if (!p2WasGassed.current && player2IsGassed) {
-      setP2Ghost(0);
-      setP2GhostCatching(false);
-      if (p2GhostTimer.current) clearTimeout(p2GhostTimer.current);
-    }
     if (p2WasGassed.current && !player2IsGassed) {
-      p2RecoveryPending.current = true;
       setP2Recovery((c) => c + 1);
     }
     p2WasGassed.current = player2IsGassed;
@@ -2043,192 +1984,79 @@ const UiPlayerInfo = ({
     return undefined;
   }, [roundHistory.length]);
 
-  // ── Player 1 stamina + ghost + regen ──
+  // ── Player 1 / 2 stamina events (impact spark, regen glow) ──
+  // Motion itself lives in useStaminaBarMotion — these effects only fire
+  // discrete HUD cues so a 32 Hz burn does not rebuild the whole band.
   useEffect(() => {
     const prev = p1PrevStamina.current;
     p1PrevStamina.current = s1;
-    let next = s1;
 
-    // After a round reset, snap immediately to the server value (bypass throttle)
-    // BUT only if stamina didn't decrease — if it dropped, fall through to damage
-    // logic so the ghost bar correctly trails the first hit
     if (p1JustReset.current) {
       p1JustReset.current = false;
-      if (s1 >= prev) {
-        setP1DisplayStamina(s1);
-        setP1Ghost(s1);
-        return;
-      }
+      if (s1 >= prev) return;
     }
 
     if (s1 < prev) {
-      // ▼ DAMAGE — stamina decreased
-      const now = Date.now();
-      setP1LastDecreaseAt(now);
-      p1LastDecreaseAtRef.current = now;
-      // Heavy-hit feedback: edge strike + frame shake on meaningful drops
       const drop = prev - s1;
-      if (drop >= IMPACT_DROP_THRESHOLD) {
+      const now = performance.now();
+      const chunk = drop >= 8;
+      if (
+        drop >= IMPACT_DROP_THRESHOLD &&
+        (chunk || now - p1LastImpactAt.current > 400)
+      ) {
+        p1LastImpactAt.current = now;
         setP1Impact((k) => k + 1);
       }
-      // Ghost stays high (captures "where stamina was" before this drain sequence)
-      setP1Ghost((g) => Math.max(g, p1DisplayStamina));
-      setP1GhostCatching(false);
-      // Schedule ghost catch-up after a visible delay
-      if (p1GhostTimer.current) clearTimeout(p1GhostTimer.current);
-      const closureS1 = s1;
-      const scheduleGhostCatchUp = (delay = 700) => {
-        p1GhostTimer.current = setTimeout(() => {
-          // During continuous drain (e.g. grab push), don't catch up mid-sequence — reschedule
-          const elapsed = Date.now() - p1LastDecreaseAtRef.current;
-          if (elapsed < 500) {
-            scheduleGhostCatchUp(400);
-            return;
-          }
-          setP1GhostCatching(true);
-          setP1Ghost(closureS1);
-        }, delay);
-      };
-      scheduleGhostCatchUp(700);
-      // Clear regen state
       setP1Regen(false);
       if (p1RegenTimer.current) clearTimeout(p1RegenTimer.current);
-    } else if (s1 > prev) {
-      // ▲ REGEN — stamina increased
-      // Ghost catches up so it doesn't show false damage ahead of the fill
-      if (p1GhostTimer.current) clearTimeout(p1GhostTimer.current);
-      setP1GhostCatching(false);
-      setP1Ghost(Math.min(s1, p1DisplayStamina));
-      // Show regen glow (stays on for 500ms after last regen tick)
+    } else if (s1 > prev && s1 - prev <= 10.5) {
       setP1Regen(true);
       if (p1RegenTimer.current) clearTimeout(p1RegenTimer.current);
       p1RegenTimer.current = setTimeout(() => setP1Regen(false), 500);
     }
-
-    // Parry refund bypass: snap instantly, skip all throttling
-    if (p1ParryRefundPending.current && s1 > prev) {
-      p1ParryRefundPending.current = false;
-      setP1DisplayStamina(s1);
-      setP1Ghost(s1);
-      return;
-    }
-
-    // Gassed recovery bypass: snap to new stamina when "second wind" kicks in
-    if (p1RecoveryPending.current && s1 > prev) {
-      p1RecoveryPending.current = false;
-      setP1DisplayStamina(s1);
-      setP1Ghost(s1);
-      return;
-    }
-
-    // Throttle regen display (prevents jarring jumps after recent damage)
-    const justDecreased =
-      Date.now() - p1LastDecreaseAt < 600 || p1DisplayStamina === 0;
-    if (next - p1DisplayStamina > 25 && justDecreased) {
-      next = p1DisplayStamina;
-    }
-    if (next > p1DisplayStamina) {
-      next = Math.min(next, p1DisplayStamina + MAX_INCREASE_PER_UPDATE);
-    }
-    setP1DisplayStamina(next);
-
-    return () => {
-      if (p1GhostTimer.current) {
-        clearTimeout(p1GhostTimer.current);
-        p1GhostTimer.current = null;
-      }
-    };
   }, [s1]);
 
-  // ── Player 2 stamina + ghost + regen ──
   useEffect(() => {
     const prev = p2PrevStamina.current;
     p2PrevStamina.current = s2;
-    let next = s2;
 
-    // After a round reset, snap immediately to the server value (bypass throttle)
-    // BUT only if stamina didn't decrease — if it dropped, fall through to damage
-    // logic so the ghost bar correctly trails the first hit
     if (p2JustReset.current) {
       p2JustReset.current = false;
-      if (s2 >= prev) {
-        setP2DisplayStamina(s2);
-        setP2Ghost(s2);
-        return;
-      }
+      if (s2 >= prev) return;
     }
 
     if (s2 < prev) {
-      // ▼ DAMAGE
-      const now = Date.now();
-      setP2LastDecreaseAt(now);
-      p2LastDecreaseAtRef.current = now;
       const drop = prev - s2;
-      if (drop >= IMPACT_DROP_THRESHOLD) {
+      const now = performance.now();
+      const chunk = drop >= 8;
+      if (
+        drop >= IMPACT_DROP_THRESHOLD &&
+        (chunk || now - p2LastImpactAt.current > 400)
+      ) {
+        p2LastImpactAt.current = now;
         setP2Impact((k) => k + 1);
       }
-      setP2Ghost((g) => Math.max(g, p2DisplayStamina));
-      setP2GhostCatching(false);
-      if (p2GhostTimer.current) clearTimeout(p2GhostTimer.current);
-      const closureS2 = s2;
-      const scheduleGhostCatchUp = (delay = 700) => {
-        p2GhostTimer.current = setTimeout(() => {
-          // During continuous drain (e.g. grab push), don't catch up mid-sequence — reschedule
-          const elapsed = Date.now() - p2LastDecreaseAtRef.current;
-          if (elapsed < 500) {
-            scheduleGhostCatchUp(400);
-            return;
-          }
-          setP2GhostCatching(true);
-          setP2Ghost(closureS2);
-        }, delay);
-      };
-      scheduleGhostCatchUp(700);
       setP2Regen(false);
       if (p2RegenTimer.current) clearTimeout(p2RegenTimer.current);
-    } else if (s2 > prev) {
-      // ▲ REGEN
-      if (p2GhostTimer.current) clearTimeout(p2GhostTimer.current);
-      setP2GhostCatching(false);
-      setP2Ghost(Math.min(s2, p2DisplayStamina));
+    } else if (s2 > prev && s2 - prev <= 10.5) {
       setP2Regen(true);
       if (p2RegenTimer.current) clearTimeout(p2RegenTimer.current);
       p2RegenTimer.current = setTimeout(() => setP2Regen(false), 500);
     }
-
-    // Parry refund bypass: snap instantly, skip all throttling
-    if (p2ParryRefundPending.current && s2 > prev) {
-      p2ParryRefundPending.current = false;
-      setP2DisplayStamina(s2);
-      setP2Ghost(s2);
-      return;
-    }
-
-    // Gassed recovery bypass: snap to new stamina when "second wind" kicks in
-    if (p2RecoveryPending.current && s2 > prev) {
-      p2RecoveryPending.current = false;
-      setP2DisplayStamina(s2);
-      setP2Ghost(s2);
-      return;
-    }
-
-    const justDecreased =
-      Date.now() - p2LastDecreaseAt < 600 || p2DisplayStamina === 0;
-    if (next - p2DisplayStamina > 25 && justDecreased) {
-      next = p2DisplayStamina;
-    }
-    if (next > p2DisplayStamina) {
-      next = Math.min(next, p2DisplayStamina + MAX_INCREASE_PER_UPDATE);
-    }
-    setP2DisplayStamina(next);
-
-    return () => {
-      if (p2GhostTimer.current) {
-        clearTimeout(p2GhostTimer.current);
-        p2GhostTimer.current = null;
-      }
-    };
   }, [s2]);
+
+  const p1Motion = useStaminaBarMotion({
+    target: s1,
+    roundId,
+    isGassed: player1IsGassed,
+    snapKey: `${p1ParryFlash}:${p1Recovery}`,
+  });
+  const p2Motion = useStaminaBarMotion({
+    target: s2,
+    roundId,
+    isGassed: player2IsGassed,
+    snapKey: `${p2ParryFlash}:${p2Recovery}`,
+  });
 
 
   // ── Derived match state ──
@@ -2340,8 +2168,8 @@ const UiPlayerInfo = ({
     return null;
   };
 
-  const p1Danger = shouldShowLowStaminaWarning(p1DisplayStamina);
-  const p2Danger = shouldShowLowStaminaWarning(p2DisplayStamina);
+  const p1Danger = shouldShowLowStaminaWarning(s1);
+  const p2Danger = shouldShowLowStaminaWarning(s2);
   // Push-war HUD: null = not in mutual shove; 0 = EVEN; ±1 = walk lead.
   const p1ShoveActive = player1ShoveLead === 0 || player1ShoveLead === 1 || player1ShoveLead === -1;
   const p2ShoveActive = player2ShoveLead === 0 || player2ShoveLead === 1 || player2ShoveLead === -1;
@@ -2401,10 +2229,13 @@ const UiPlayerInfo = ({
                   </ShoveLeadTag>
                 )}
                 <BarFill
-                  $stamina={p1DisplayStamina}
+                  ref={p1Motion.fill}
                   $danger={p1Danger}
                   $isRight={false}
                 >
+                  {!player1IsGassed && (
+                    <FillEdge $isRight={false} $regen={p1Regen} />
+                  )}
                   {p1Impact > 0 && !player1IsGassed && (
                     <ImpactStrike
                       key={`p1-impact-${p1Impact}`}
@@ -2412,16 +2243,13 @@ const UiPlayerInfo = ({
                     />
                   )}
                 </BarFill>
-                {!player1IsGassed && (
-                  <BarGhost
-                    $stamina={p1Ghost}
-                    $catching={p1GhostCatching}
-                    $isRight={false}
-                  />
-                )}
+                <BarGhost
+                  ref={p1Motion.ghost}
+                  $isRight={false}
+                />
                 {p1Regen && !player1IsGassed && (
                   <RegenGlow
-                    $stamina={p1DisplayStamina}
+                    ref={p1Motion.regen}
                     $isRight={false}
                   />
                 )}
@@ -2437,7 +2265,7 @@ const UiPlayerInfo = ({
                 {p1ParryFlash > 0 && !player1IsGassed && (
                   <ParryRefundFlash
                     key={p1ParryFlash}
-                    $stamina={p1DisplayStamina}
+                    ref={p1Motion.flash}
                     $isRight={false}
                   />
                 )}
@@ -2565,10 +2393,13 @@ const UiPlayerInfo = ({
                   </ShoveLeadTag>
                 )}
                 <BarFill
-                  $stamina={p2DisplayStamina}
+                  ref={p2Motion.fill}
                   $danger={p2Danger}
                   $isRight={true}
                 >
+                  {!player2IsGassed && (
+                    <FillEdge $isRight={true} $regen={p2Regen} />
+                  )}
                   {p2Impact > 0 && !player2IsGassed && (
                     <ImpactStrike
                       key={`p2-impact-${p2Impact}`}
@@ -2576,16 +2407,13 @@ const UiPlayerInfo = ({
                     />
                   )}
                 </BarFill>
-                {!player2IsGassed && (
-                  <BarGhost
-                    $stamina={p2Ghost}
-                    $catching={p2GhostCatching}
-                    $isRight={true}
-                  />
-                )}
+                <BarGhost
+                  ref={p2Motion.ghost}
+                  $isRight={true}
+                />
                 {p2Regen && !player2IsGassed && (
                   <RegenGlow
-                    $stamina={p2DisplayStamina}
+                    ref={p2Motion.regen}
                     $isRight={true}
                   />
                 )}
@@ -2601,7 +2429,7 @@ const UiPlayerInfo = ({
                 {p2ParryFlash > 0 && !player2IsGassed && (
                   <ParryRefundFlash
                     key={p2ParryFlash}
-                    $stamina={p2DisplayStamina}
+                    ref={p2Motion.flash}
                     $isRight={true}
                   />
                 )}

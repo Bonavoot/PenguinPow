@@ -441,6 +441,7 @@ function resetRoomAndPlayers(room, io) {
     player.rawParryMinDurationMet = false;
     player.isRawParryStun = false;
     player.perfectParryStunStartTime = 0;
+    player.perfectParryStunUntil = 0;
     player.perfectParryStunBaseTimeout = null;
     player.isRawParrySuccess = false;
     player.isPerfectRawParrySuccess = false;

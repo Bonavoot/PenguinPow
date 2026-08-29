@@ -72,6 +72,8 @@ function cleanupPlayerStates(player) {
   player.isMatadorWhiffRecovering = false;
   player.matadorRecoveryUntil = 0;
   player.isRawParryStun = false;
+  player.perfectParryStunUntil = 0;
+  player.perfectParryStunStartTime = 0;
   player.isRawParrySuccess = false;
   player.isPerfectRawParrySuccess = false;
   player.postGrabInputBuffer = false;
@@ -285,6 +287,7 @@ function getCleanedRoomData(room) {
       isGuarding: false,
       apChainCount: 0,
       isRawParryStun: false,
+      perfectParryStunUntil: 0,
       isRawParrySuccess: false,
       isPerfectRawParrySuccess: false,
       isSidestepping: false,
@@ -416,6 +419,7 @@ function getCleanedRoomsData(rooms) {
         isGuarding: false,
         apChainCount: 0,
         isRawParryStun: false,
+        perfectParryStunUntil: 0,
         isDodging: false,
         isSidestepping: false,
         isSidestepStartup: false,

@@ -1610,8 +1610,10 @@ export const AnimatedFighterContainer = styled.div
     shouldForwardProp: (prop) =>
       ![
         "x", "y", "facing", "fighter", "isThrowing", "isDodging",
-        "isGrabbing", "isRingOutThrowCutscene", "isAtTheRopes", "isHit", "isHitFalling", "isBurstKnockback",
+        "isGrabbing", "isRingOutThrowCutscene", "isAtTheRopes",
+        "isHit", "isHitFalling", "isBurstKnockback",
         "isRawParryStun", "isCinematicKillAttacker", "isSidestepping",
+        "isBeingGrabbed", "isBeingThrown",
         "attackerConfirmTier", "isPostureBroken", "displayScale",
       ].includes(prop),
   })
@@ -1621,9 +1623,14 @@ export const AnimatedFighterContainer = styled.div
     // grabAttempt.displayScale is a placeholder visual restore (padded 560
     // cells). Sole-pivoted, display-only — does not change grab latch.
     const displayScale = Number(props.$displayScale) > 0 ? Number(props.$displayScale) : 1;
+    const stunIdle =
+      props.$isRawParryStun &&
+      !props.$isHit &&
+      !props.$isBeingGrabbed &&
+      !props.$isBeingThrown;
     const baseScaleX = props.$facing === 1
-      ? (props.$isRawParryStun ? 1.08 : 1)
-      : (props.$isRawParryStun ? -1.08 : -1);
+      ? (stunIdle ? 1.08 : 1)
+      : (stunIdle ? -1.08 : -1);
     const finalScaleX = baseScaleX * sidestepScale * displayScale;
     const finalScaleY = sidestepScale * displayScale;
 

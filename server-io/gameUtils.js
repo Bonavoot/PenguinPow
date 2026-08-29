@@ -552,6 +552,7 @@ function armMatador(player, simTime, startTime) {
   player.isCrouchStance = false;
   player.isCrouchStrafing = false;
   player.pendingSlapCount = 0;
+  groundPlayerIfNotAirborne(player);
 }
 
 // Per-tick MATADOR SM. Mirrors AP press-and-hold, with one outcome:
@@ -660,6 +661,10 @@ function armAttackParry(player, simTime, startTime) {
   player.isCrouchStance = false;
   player.isCrouchStrafing = false;
   player.pendingSlapCount = 0;
+  // Parry is grounded. A live dodge / reverse-hop parabola must not leave
+  // the stance floating above GROUND_LEVEL (gravity-snap is skipped while
+  // isRawParrying because that block lives inside the strafe gate).
+  groundPlayerIfNotAirborne(player);
 }
 
 // Stamp / refresh the post-parry flurry cover deadline (sim clock).
@@ -730,11 +735,13 @@ function enterGuard(player) {
   player.isPowerSliding = false;
   player.isCrouchStance = false;
   player.isCrouchStrafing = false;
+  groundPlayerIfNotAirborne(player);
 }
 
 // Per-tick GUARD/PARRY state machine (called from the main loop for each player).
-//   • Live window + Space up → CANCEL (short recovery; re-press may re-arm now).
+//   • Live window stays armed on Space-up (tap parry). Re-press restamps just.
 //   • Window expires while still holding → GUARD (grab-vulnerable block floor).
+//   • Window expires with Space up → CANCEL (empty-read jail).
 //   • Dropping guard → tiny AP_COOLDOWN before guard may re-enter.
 //   • Landed parry: GUARD only while still holding; tap-parry drops the floor.
 // Runs AFTER collision so a same-tick release+hit still grades the live window.
@@ -791,20 +798,12 @@ function updateAttackParryState(player, simTime, spaceHeld) {
     return;
   }
 
-  // Still inside the window.
-  // Space up → drop the window so move+offense unlock together (no "moonwalk
-  // in blocking.png"). Post-parry flurry cover: soft clear (no whiff jail)
-  // so piano re-taps stay snappy; the NEXT rising edge still gets apFlurryUntil
-  // extension via armAttackParry. Neutral empty taps pay full whiff recovery.
+  // Still inside the window. Space-up does NOT cancel the read — a tap stays
+  // armed until it lands or the window expires. Cancel-on-release made
+  // "tap = parry" a lie: a fighting-game press+release before contact jailed
+  // 300ms and ate the slap. Hold-past-expiry still becomes GUARD below.
+  // Re-press restamps just timing (apSpaceConsumed already cleared above).
   if (simTime < activeUntil) {
-    if (!spaceHeld) {
-      const flurryUntil = player.apFlurryUntil || 0;
-      if (flurryUntil > 0 && simTime < flurryUntil) {
-        clearAttackParryWindow(player);
-      } else {
-        cancelAttackParryWindow(player, simTime);
-      }
-    }
     return;
   }
 
@@ -1017,6 +1016,44 @@ function clearLifecycleNamedTimeouts(player, names = LIFECYCLE_TIMEOUT_NAMES) {
   }
 }
 
+const PERFECT_PARRY_STUN_TIMEOUT = "perfectParryStunReset";
+
+function isPerfectParryStunLive(player) {
+  if (!player || !player.isRawParryStun) return false;
+  const until = player.perfectParryStunUntil || 0;
+  return until > 0 && simNowForPlayer(player) < until;
+}
+
+/** Starstun is duration-owned. Hits must not cancel this timer. */
+function armPerfectParryStun(player, durationMs) {
+  if (!player) return;
+  const duration =
+    typeof durationMs === "number" && durationMs > 0 ? durationMs : 0;
+  const now = simNowForPlayer(player);
+  player.isRawParryStun = true;
+  player.perfectParryStunStartTime = now;
+  player.perfectParryStunUntil = now + duration;
+  timeoutManager.clearPlayerSpecific(player.id, PERFECT_PARRY_STUN_TIMEOUT);
+  if (duration <= 0) return;
+  setPlayerTimeout(
+    player.id,
+    () => {
+      player.isRawParryStun = false;
+      player.perfectParryStunUntil = 0;
+    },
+    duration,
+    PERFECT_PARRY_STUN_TIMEOUT
+  );
+}
+
+function endPerfectParryStun(player) {
+  if (!player) return;
+  player.isRawParryStun = false;
+  player.perfectParryStunUntil = 0;
+  player.perfectParryStunStartTime = 0;
+  timeoutManager.clearPlayerSpecific(player.id, PERFECT_PARRY_STUN_TIMEOUT);
+}
+
 // Helper functions to reduce code duplication
 // CRITICAL: This is the SINGLE SOURCE OF TRUTH for blocking new actions
 // Any state where the player is "doing something" must be included here
@@ -1138,6 +1175,50 @@ function isInDodgeStrikeIFrames(player, nowSim) {
 }
 
 /**
+ * True when a persistent aerial / tween owns world Y (not the dodge hop or
+ * ice-slide reverse hop). Those two hops are grounded moves that write Y
+ * above GROUND_LEVEL for ~85ms; if their flags die without snapping Y,
+ * later grounded actions (parry, grab) freeze the fighter in the air.
+ */
+function playerOwnsPersistentAirY(player) {
+  return !!(
+    player &&
+    (player.isFlapping ||
+      player.isSlideJumping ||
+      player.isRopeJumping ||
+      player.isHitFalling ||
+      player.isBeingThrown ||
+      player.isGrabBreakSeparating ||
+      player.isFallingOffDohyo ||
+      player.isSidestepping ||
+      player.isSidestepHitReturn ||
+      player.isCinematicKillVictim ||
+      player.isClinchKillThrowVictim ||
+      player.isClinchKillPullVictim ||
+      player.isRingOutPushCutscene)
+  );
+}
+
+/** Snap leftover dodge / reverse-hop Y back to the ice. No-op in real air. */
+function groundPlayerIfNotAirborne(player) {
+  if (!player || playerOwnsPersistentAirY(player)) return false;
+  if (typeof player.y === "number" && player.y > GROUND_LEVEL) {
+    player.y = GROUND_LEVEL;
+    return true;
+  }
+  return false;
+}
+
+function cancelDodgeHop(player) {
+  if (!player) return;
+  player.isDodging = false;
+  player.isDodgeStartup = false;
+  player.isDodgeRecovery = false;
+  player.dodgeDirection = null;
+  groundPlayerIfNotAirborne(player);
+}
+
+/**
  * Start a grounded dodge (full hop + ice-slide kit).
  * Locked while gassed — same as sidestep / rope jump / flap.
  * Caller must already pass situational gates (canPlayerDash, not grabbed, etc.).
@@ -1166,6 +1247,9 @@ function beginPlayerDodge(player, options = {}) {
   player.isPowerSliding = false;
   player.isBraking = false;
   clearIceSlideState(player);
+  // Hop Y is written from GROUND_LEVEL; leftover elevation from a prior hop
+  // would stack into this one.
+  groundPlayerIfNotAirborne(player);
 
   player.isDodging = true;
   player.isDodgeStartup = !options.skipStartup;
@@ -1316,6 +1400,9 @@ function resetPlayerAttackStates(player) {
 // This ensures only ONE state/animation can be active at a time
 // Called when: isHit, isBeingGrabbed, isBeingThrown, isRawParryStun, isAtTheRopes
 function clearAllActionStates(player) {
+  // Perfect-parry starstun is a duration, not a reaction. A follow-up hit
+  // must not wake them early — only perfectParryStunUntil / its timer does.
+  const preservePerfectParryStun = isPerfectParryStunLive(player);
   // Offensive-aerial outcome: preserve already-resolved HIT/PARRIED across the
   // broad clear; record INTERRUPTED when an armed activation is cancelled mid-air.
   const priorOa = player?.offensiveAerial || null;
@@ -1509,7 +1596,10 @@ function clearAllActionStates(player) {
   player.rawParryPressGameTime = 0;
   player.rawParryMinDurationMet = false;
   player.isSlapParrying = false;
-  player.isRawParryStun = false; // Clear stun state when hit
+  if (!preservePerfectParryStun) {
+    player.isRawParryStun = false;
+    player.perfectParryStunUntil = 0;
+  }
   player.isRawParrySuccess = false; // Clear parry success animation
   player.isPerfectRawParrySuccess = false;
   // GUARD & PARRY — clear the window + guard + chain + whiff recovery so a hit ends it.
@@ -1805,6 +1895,7 @@ function clearSlideJumpState(player, opts = {}) {
 }
 
 function clearIceSlideState(player) {
+  const wasReverseHopping = !!player.isIceSlideReverseHopping;
   player.isIceSliding = false;
   player.iceSlideDir = 0;
   player.iceSlideStartTime = 0;
@@ -1818,6 +1909,10 @@ function clearIceSlideState(player) {
   player.iceSlideBrakeArmStart = 0;
   // Keep reverse cooldown across a brief re-entry so repress can't chain-abuse
   // by exiting/re-entering slide mid-spam.
+  // Killing the hop flag used to leave world Y stranded at the parabola.
+  if (wasReverseHopping) {
+    groundPlayerIfNotAirborne(player);
+  }
 }
 
 /**
@@ -1852,6 +1947,9 @@ function beginGrabStartup(player, room) {
   // never a Throw (see resolveGrabVariant's forbidThrow).
   const wasIceSliding = !!player.isIceSliding;
   clearIceSlideState(player);
+  // Grab startup returns early from the player tick (skipping gravity-snap).
+  // Any leftover dodge / reverse-hop Y would freeze the lunge in the air.
+  groundPlayerIfNotAirborne(player);
 
   clearChargeState(player, true);
 
@@ -2970,6 +3068,9 @@ module.exports = {
   canPlayerUseAction,
   canPlayerDash,
   beginPlayerDodge,
+  playerOwnsPersistentAirY,
+  groundPlayerIfNotAirborne,
+  cancelDodgeHop,
   isInDodgeStrikeIFrames,
   isInSlideRedirectIFrames,
   isRopeKickoffEligible,
@@ -3041,4 +3142,7 @@ module.exports = {
   tryIceSlideReverse,
   beginGrabStartup,
   clearLifecycleNamedTimeouts,
+  isPerfectParryStunLive,
+  armPerfectParryStun,
+  endPerfectParryStun,
 };

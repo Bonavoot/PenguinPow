@@ -323,6 +323,7 @@ function createInitialPlayerState(overrides = {}) {
     rawParryRearmUntil: 0,
     isRawParryStun: false,
     perfectParryStunStartTime: 0,
+    perfectParryStunUntil: 0,
     perfectParryStunBaseTimeout: null,
     isRawParrySuccess: false,
     isPerfectRawParrySuccess: false,

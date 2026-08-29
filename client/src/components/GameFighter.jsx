@@ -108,6 +108,7 @@ import {
   PALM_THRUST_ANIM,
   GRAB_SEPARATE_PALM_ANIM,
   AP_WHIFF_RECOVERY_MS,
+  AP_FLURRY_COVER_REGULAR_MS,
   SLIDE_SLAP_ARM_SPEED,
 } from "../config/combatTiming";
 import {
@@ -1186,13 +1187,14 @@ const GameFighter = ({
 
   // Client-side mirror of server parry commitment — suppress OFFENSIVE
   // predictions the server will reject. Server AP:
-  //   • Neutral: live window while held; release → whiff jail (AP_WHIFF_RECOVERY_MS)
-  //   • Post-parry flurry: re-tap may extend window; release soft-clears
-  //     (no linger). predictedFlurryUntilRef only lengthens the NEXT re-arm.
+  //   • Neutral: live window stays armed on Space-up (tap parry); empty
+  //     expiry → whiff jail (AP_WHIFF_RECOVERY_MS)
+  //   • Post-parry flurry: re-tap may extend window; release does not clear.
+  //     predictedFlurryUntilRef only lengthens the NEXT re-arm.
   const AP_ACTIVE_MS_CLIENT = 180;
   const AP_CANCEL_RECOVERY_MS_CLIENT = AP_WHIFF_RECOVERY_MS;
   // Match server: Regular piano only. Perfect is a turn (no cover).
-  const AP_FLURRY_COVER_REGULAR_MS_CLIENT = 345;
+  const AP_FLURRY_COVER_REGULAR_MS_CLIENT = AP_FLURRY_COVER_REGULAR_MS;
   const predictedParryCommitUntilRef = useRef(0);
   const predictedFlurryUntilRef = useRef(0);
   // Local deadline of the 180ms MATADOR arm window. Past this, Space-up is a
@@ -1800,32 +1802,10 @@ const GameFighter = ({
           break;
         }
         case "parry_release": {
-          // Snap whiff pose + offense lock on an EMPTY live read only.
-          // Landed parry and flurry soft-clear must not eat a 300ms convert.
-          const inLiveRead =
-            isLocalPlayer &&
-            !penguin.isGuarding &&
-            !penguin.isRawParrySuccess &&
-            !penguin.isPerfectRawParrySuccess &&
-            (penguin.isRawParrying || predictedState.current.isRawParrying);
-          const inFlurryCover = now < predictedFlurryUntilRef.current;
-          if (gameStarted && inLiveRead && !inFlurryCover) {
-            predictedParryCommitUntilRef.current =
-              now + AP_CANCEL_RECOVERY_MS_CLIENT;
-            apWhiffPredictRef.current.until = now + AP_WHIFF_RECOVERY_MS;
-            apWhiffPredictRef.current.startedAt = now;
-            apWhiffPredictRef.current.sawServerWhiff = false;
-            forceVisualRender();
-          }
-          if (penguin.isRawParrying || predictedState.current.isRawParrying) {
-            predictedState.current = {
-              ...predictedState.current,
-              isRawParrying: false,
-              isMatadorParrying: false,
-              timestamp: now,
-            };
-            predictionChanged = true;
-          }
+          // Tap parry: Space-up must NOT predict a 300ms whiff jail or drop
+          // the stance. Server keeps the live window armed until land or
+          // expiry — a fighting-game tap (press+release before contact) still
+          // deflects. Whiff pose waits for isApWhiffRecovering (empty expiry).
           break;
         }
         case "grab":
@@ -5002,6 +4982,25 @@ const GameFighter = ({
             guardBlockSuccessTimeoutRef.current = null;
           }, BLOCK_SUCCESS_POSE_MS);
         });
+      }
+      // Attacker: hold the extended strike pose through hitstop, same as a
+      // landed slap. Guard used to snap them off the swing the same frame.
+      if (data.attackerId === player.id && !data.isPalm && !data.isPalmThrust) {
+        const nowBlock = performance.now();
+        const hsUntil = getDisplayHitstopUntil();
+        const connectArmed = armSlapConnectHold(
+          slapConnectHoldRef.current,
+          {
+            attackerId: data.attackerId,
+            attackType: "slap",
+            timestamp: data.timestamp,
+            hitId: data.blockId,
+          },
+          player.id,
+          nowBlock,
+          hsUntil
+        );
+        if (connectArmed) forceVisualRender();
       }
       if (index !== 0) return;
       // Phase 9: snapshotted contact from combatPresentation; claim once.
@@ -9854,6 +9853,8 @@ const GameFighter = ({
           $isBurstKnockback={penguin.isBurstKnockback}
           $impactAmp={impactAmp}
           $isRawParryStun={penguin.isRawParryStun}
+          $isBeingGrabbed={!!penguin.isBeingGrabbed}
+          $isBeingThrown={!!penguin.isBeingThrown}
           $isCinematicKillAttacker={isCinematicKillAttacker}
           $attackerConfirmTier={attackerConfirmTier}
           $isPostureBroken={!!penguin.isPostureBroken && !gameOver}

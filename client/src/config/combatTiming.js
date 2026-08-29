@@ -13,11 +13,15 @@ export const SLAP_TOTAL_MS_SLIDE = SLAP_TOTAL_MS + SLIDE_SLAP_EXTRA_RECOVERY_MS;
 /** MUST match server-io/constants.js SLIDE_SLAP_ARM_SPEED. */
 export const SLIDE_SLAP_ARM_SPEED = 1.45;
 
-/** Early-active slap grace — open hits deferred so a late tap can Regular. */
-export const AP_LATE_PARRY_MS = 16;
+/** Early-active slap grace — open hits deferred so a clap tap can still land.
+ *  MUST match server-io/constants.js (PERFECT_PARRY_WINDOW, 2 ticks @ 64Hz). */
+export const AP_LATE_PARRY_MS = (2 * 1000) / 64;
 
-/** Empty-tap AP whiff jail — MUST match server-io/constants.js. */
+/** Empty-window AP whiff jail — MUST match server-io/constants.js. */
 export const AP_WHIFF_RECOVERY_MS = 300;
+
+/** Post-land piano cover — MUST match server-io/constants.js AP_FLURRY_COVER_MS. */
+export const AP_FLURRY_COVER_REGULAR_MS = 20 + 180 + SLAP_STARTUP_MS + 120;
 
 /**
  * Slap pose director boundaries (cumulative ms from isSlapAttack rising edge).

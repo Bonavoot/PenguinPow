@@ -225,7 +225,18 @@ const getImageSrc = (
   // Empty-tap flash only. GameFighter gates this to ~50ms so the 300ms jail
   // does not hold f1 in slow motion.
   if (isApWhiffRecovering) return rawParrySuccessFrame1;
-  if (isRawParryStun) return isPerfectParried;
+  // Starstun pose is idle-only. Hits and grabs keep stars via isRawParryStun
+  // but must show their own reaction — a frozen dizzy sprite during a slap
+  // or belt-grip reads as a stuck state, not a confirm.
+  if (
+    isRawParryStun &&
+    !isHit &&
+    !isBeingGrabbed &&
+    !isBeingThrown &&
+    !isBeingGrabPushed
+  ) {
+    return isPerfectParried;
+  }
   if (isHit) return hit;
   // Stun can end mid-air while the arc is still live. Never fall through to
   // flap / landing-recovery — that is the "recovering instead of hit" bug.
@@ -318,7 +329,7 @@ const getImageSrc = (
   // Distinct asset from recovering so charge hold isn't visually/identity-
   // conflated with post-attack recovery (same art for now; separate file).
   if (isChargingAttack) return charging;
-  if (isRecovering) return recovering;
+  if (isRecovering && !isSlapAttack) return recovering;
   if (isThrowingSnowball) return snowballThrow;
   if (isSpawningPumoArmy) return pumoArmy;
   if (isAttemptingGrabThrow) return attemptingGrabThrow;
@@ -345,11 +356,6 @@ const getImageSrc = (
   if (isAttacking && !isSlapAttack) return attack;
   if (isCrouchStrafing) return crouchStrafingApng;
   if (isCrouchStance) return crouchStance;
-  // if (isSlapAttack) {
-  //   if (slapAnimation === 1) return slapAttack1;
-  //   return slapAttack2;
-  // }
-
   if (isSlapAttack) {
     // Slide convert: same slap cycle, belly-bump art from smear through hold.
     // Windup stays the ready stance so the pop into the bump is readable.
@@ -359,11 +365,8 @@ const getImageSrc = (
     //   1 smear    → slap-attack-{1,2}-blur-frame (a short motion beat before the hit)
     //   2 hit      → slap-attack-{1,2}-hit-frame, the strike, held through active
     //   3 recovery → SETTLE BACK to the ready stance (palm-thrust-startup), NOT idle
-    // The recovery deliberately returns to the SAME ready-stance pose as the
-    // windup so the motion reads as "set → strike → settle" instead of "arm up →
-    // arm down → idle" (idle drops the hands to the sides, which looked like a
-    // flinch). Slap 1 (slapAnimation 1) and slap 2 (slapAnimation 2) have their
-    // OWN smear/hit art; only the shared windup/recovery stance is reused.
+    // Ranked ABOVE generic isRecovering so a blocked slap can finish the swing
+    // instead of snapping to recovering.png mid-smear.
     if (slapFrame === 0) return palmThrustStartup; // windup (ready stance)
     if (slapFrame === 3) return palmThrustStartup; // recovery (settle back to stance)
     const isSlap2 = slapAnimation === 2;

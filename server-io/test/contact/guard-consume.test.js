@@ -29,22 +29,29 @@ function armGuard(player) {
 }
 
 describe("Guard block consumes the incoming string", () => {
-  it("blocked slap dies — attacker cannot keep the cycle", () => {
+  it("blocked slap keeps the swing pose — hitbox dies, mash buffer dies", () => {
     const s = sc({ gap: 80 });
     const now = s.simTime;
     armSlap(s.left, { now });
+    s.left.pendingSlapCount = 1;
     armGuard(s.right);
     placeInConnectRange(s.left, s.right, "slap");
     runBothCollisionOrders(s.left, s.right, s.rooms, s.io);
 
     assert.equal(s.left.isAttacking, false, "hitbox must die");
-    assert.equal(s.left.isSlapAttack, false, "slap pose must drop");
-    assert.equal(s.left.isRecovering, true, "short settle");
+    assert.equal(s.left.isSlapAttack, true, "strike pose must finish like a hit");
+    assert.ok(!s.left.isRecovering, "generic recovering.png must not replace the swing");
+    assert.equal(s.left.currentSlapHitConnected, true, "block is a connect, not a whiff");
+    assert.equal(s.left.pendingSlapCount, 0, "mash string is consumed");
     assert.equal(s.right.isHit, false, "guard is not a hit");
     assert.ok(s.right.balance < 100, "blocker ate chip");
     assert.ok(
       (s.left.inputLockUntil || 0) > now,
-      "attacker locked through the settle"
+      "attacker locked through leftover cycle"
+    );
+    assert.ok(
+      (s.right.inputLockUntil || 0) > now,
+      "defender blockstun matches leftover cycle"
     );
   });
 });

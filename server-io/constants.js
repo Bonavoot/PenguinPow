@@ -641,7 +641,12 @@ const PERFECT_PARRY_KNOCKBACK = 0.65; // Slightly stronger than regular parry
 const PERFECT_PARRY_JUST_TICKS = 2;
 const PERFECT_PARRY_WINDOW = (PERFECT_PARRY_JUST_TICKS * 1000) / TICK_RATE; // 31.25ms @ 64Hz
 const PERFECT_PARRY_SUCCESS_DURATION = 850; // Compressed parry — fast enough to keep pace, long enough for visual read
-const PERFECT_PARRY_ATTACKER_STUN_DURATION = 420; // Starstun floor. Live jail is max(move stagger, this) so flap (500) never pays less than regular. Slap/palm Perfect = +220 vs the 200ms plant.
+// Starstun floor. Armed at parryStaggerBegin (20ms). Must cover the rest of
+// the parrier plant (180) + two mashed slaps through 2nd connect (260+55) +
+// a short mash/react pad so the confirm is not frame-perfect. Live jail is
+// max(move stagger, this).
+const PERFECT_PARRY_STUN_REACT_MS = 85;
+const PERFECT_PARRY_ATTACKER_STUN_DURATION = 580; // 180 + 260 + 55 + 85
 const PERFECT_PARRY_ANIMATION_LOCK = 330; // AP_PERFECT_HITSTOP_MS (210) + 120ms post-freeze cool-pose floor
 const PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK = 200; // Shorter than player parry lock — the reflected snowball is the reward
 
@@ -691,20 +696,21 @@ const PERFECT_PARRY_BALANCE_REFUND = 0;
 // Empty release/expiry = whiff (AP_WHIFF_RECOVERY_MS). Reuses isRawParrying /
 // isRawParrySuccess. Landed parry opens AP_FLURRY_COVER_MS for the next re-tap.
 // Regular vs Perfect: already in the window = Regular (callout). Armed in the
-// last PERFECT_PARRY_JUST_TICKS before contact = Perfect (just). A slightly-late
-// slap tap still Regulars via open-hit grace — it cannot Perfect. Way late = hit.
-// Neither grade KOs while AP_KILL_ENABLED is false (Perfect is a starstun confirm).
+// last PERFECT_PARRY_JUST_TICKS before contact = Perfect (just). A clap tap
+// during early ACTIVE (open-hit grace) is the same just — it can Perfect.
+// Way late = hit. Neither grade KOs while AP_KILL_ENABLED is false (Perfect
+// is a starstun confirm).
 // Guard: chip + pushback + stamina; rooted; does not stop grab/charged.
 // Stamina 0 while guarding → guard-crush → gassed. One parry per physical press.
 const AP_ACTIVE_MS = 180;            // Callout window. Just grade is PERFECT_PARRY_WINDOW (2 ticks).
-// First N ms of slap ACTIVE: open hits wait so a slightly-late tap can still
-// Regular. Live PARRY/GUARD resolve immediately. Slap-only. A grace save
-// cannot Perfect (see collisionSystem). Sized to ONE tick of the 3-tick jab
-// — the old 45ms grace covered most of an 8-frame active and made standing
-// jabs wait until the hitbox was already gone. This game has no SF6 block
-// under a missed just; 1 tick still covers a 16ms-late callout.
+// First N ms of slap ACTIVE: open hits wait so a clap tap can still land.
+// Live PARRY/GUARD resolve immediately. Slap-only. Sized to the just window
+// (2 ticks) so "press on the hit pose" is Perfect, not a coin-flip miss.
+// The old 45ms grace covered most of an 8-frame active and delayed standing
+// jabs until the hitbox was gone; 2 ticks of a 3-tick jab still leaves a
+// confirmable active tick. 1 tick was too tight for 64Hz + the visual clap.
 const AP_OPEN_HIT_GRACE_ENABLED = true;
-const AP_LATE_PARRY_MS = 16;
+const AP_LATE_PARRY_MS = PERFECT_PARRY_WINDOW;
 const SLAP_GRACE_CONFIRM_SLACK_PX = 28;
 const AP_FLOW_WINDOW_MS = 400;       // DEPRECATED (Deflect Flow removed). Kept only so existing imports resolve; unreferenced by the new state machine.
 // IMPACT-pose + post-parry move/offense lock (sim-clock; frozen during hitstop,
@@ -713,8 +719,9 @@ const AP_FLOW_WINDOW_MS = 400;       // DEPRECATED (Deflect Flow removed). Kept 
 // Flurry re-tap still clears/re-arms via armAttackParry (lock flag survives).
 // Long enough that Frame 2 (deflect) stays readable after hitstop ends.
 const AP_SUCCESS_RECOVERY_MS = 200;
-// Cancel / empty-tap recovery: rooted endlag when a live window is released (or
-// expires) into nothing with no deflect. Long enough to read the client whiff
+// Empty-window recovery: rooted endlag when a live window EXPIRES into
+// nothing with no deflect (Space-up mid-window no longer cancels — tap parry
+// stays armed until land or expiry). Long enough to read the client whiff
 // pose (success-f1 hold) and eat a slap punish. LANDED parries never enter
 // this — success uses AP_SUCCESS_RECOVERY_MS plant instead.
 // Re-arm is blocked for the full duration (canArmAttackParry).
@@ -751,8 +758,12 @@ const AP_BALANCE_DRAIN = 7;           // Regular parry (was 12; ~40% less)
 const AP_PERFECT_BALANCE_DRAIN = 11;  // Perfect parry (was 18; ~40% less)
 // Attacker shove via slap-parry slide (slapParryKnockbackVelocity,
 // SLAP_PARRY_KB_FRICTION ≈ 0.82). Travel ≈ v · 16px at 64Hz. ATTACK/recovery pose, not hit reaction.
-const AP_ATTACKER_KNOCKBACK = 1.75;        // Regular ≈ 28px
-const AP_PERFECT_ATTACKER_KNOCKBACK = 2.25; // Perfect ≈ 36px
+// Regular is a pocket reject, not a spacing reset. Mash vs regular parry must
+// stay in slap range for as long as they keep slapping: shove travel has to be
+// recoverable by the next standing slap's step-in during startup+active, even
+// from a tip-range connect. Guard (≈32px) is the tool that creates space.
+const AP_ATTACKER_KNOCKBACK = 0.5;         // Regular ≈ 8px (was 1.75 / 28px)
+const AP_PERFECT_ATTACKER_KNOCKBACK = 0.35; // Perfect ≈ 6px — stun confirm must stay in slap range (was 2.25 / 36px)
 const AP_HITSTOP_MS = 110;
 const AP_PERFECT_HITSTOP_MS = 210;
 const AP_KILL_HITSTOP_MS = 550;      // Matches CINEMATIC_KILL_HITSTOP_MS
@@ -765,7 +776,7 @@ const AP_PERFECT_BALANCE_REFUND = 0;
 const AP_STAGGER_SLAP_MS = 180;
 const AP_STAGGER_PALM_MS = 420;
 const AP_STAGGER_FLAP_MS = 500;
-const AP_PERFECT_ADVANTAGE_MS = 220; // Legacy slap-only add-on. Live Perfect uses max(move stagger, 420).
+const AP_PERFECT_ADVANTAGE_MS = 220; // Legacy slap-only add-on. Live Perfect uses max(move stagger, PERFECT_PARRY_ATTACKER_STUN_DURATION).
 // Post-parry flurry cover (tap-every-slap). After a landed parry, the next
 // rising-edge re-tap may extend its live window to (parryTime + cover). Cover
 // matches REAL ASAP follow-up timing, not the naive stagger alone:
@@ -791,8 +802,8 @@ const GUARD_SLAP_STAMINA_DRAIN = 4;
 const GUARD_PALM_STAMINA_DRAIN = 7;
 const GUARD_SLAP_PUSHBACK = 2.0;      // Slide-model velocity — blocked slap ≈ 32px
 const GUARD_PALM_PUSHBACK = 4.0;      // Blocked palm ≈ 64px
-const GUARD_HITSTOP_MS = 40;
-const GUARD_ATTACKER_RECOVERY_MS = 80; // Block consumes the string; short settle so they cannot instant-cancel. Drop-guard is even / a hair plus.
+const GUARD_HITSTOP_MS = 70;          // Match HITSTOP_SLAP_MS — freeze the strike pose like a connect
+const GUARD_ATTACKER_RECOVERY_MS = 80; // Floor only. Live lock is leftover slap/palm cycle so the swing can finish. Mash buffer is still consumed.
 const GUARD_CRUSH_STUN_MS = 500;      // Guard broken (stamina hit 0 while blocking), then gassed
 
 // ── SLAP TRADE (replaces the slap clash / "slap parry") ─────────────────────
@@ -1267,7 +1278,7 @@ const GASSED_RECOVERY_STAMINA = 55; // Granted on exit
 // HITSTOP TUNING
 // ============================================
 // Sim clock pauses for both players — frame advantage unchanged.
-//   Guard 40 / Grab 55 / Slap 70 / Throw·AP·Matador 100–110
+//   Guard 70 / Grab 55 / Slap 70 / Throw·AP·Matador 100–110
 //   Jolt·Palm·Flap 140–160 / Perfect·full charge 210 / Cinematic·AP kill 550
 // Charged scales 160→280 (floor at burst weight).
 // ============================================
@@ -1506,8 +1517,8 @@ const CPU_CADENCE_IMPOSSIBLE = 0.92;
 //   attackerStun = lerp(PERFECT_PARRY_ATTACKER_STUN_DURATION, _MAX, quality)
 //   parryShove   = lerp(PERFECT_PARRY_KNOCKBACK,              _MAX, quality)
 //   postureRefund= round(lerp(PERFECT_PARRY_BALANCE_REFUND,   _MAX, quality))
-// Quality 0 = base 420 / 0.65 / 12. Regular (non-perfect) parries untouched.
-const PERFECT_PARRY_ATTACKER_STUN_MAX = 500; // analog ceiling; live floor is 420. Must stay ≥ AP_STAGGER_FLAP_MS.
+// Quality 0 = base stun / 0.65 / 12. Regular (non-perfect) parries untouched.
+const PERFECT_PARRY_ATTACKER_STUN_MAX = 660; // analog ceiling; live floor is 580. Must stay ≥ floor.
 const PERFECT_PARRY_KNOCKBACK_MAX = 0.95;    // base PERFECT_PARRY_KNOCKBACK 0.65; SAFE 0.85
 const PERFECT_PARRY_BALANCE_REFUND_MAX = 20; // base PERFECT_PARRY_BALANCE_REFUND 12; SAFE 18
 
@@ -1820,6 +1831,7 @@ module.exports = {
   PERFECT_PARRY_JUST_TICKS,
   PERFECT_PARRY_WINDOW,
   PERFECT_PARRY_SUCCESS_DURATION,
+  PERFECT_PARRY_STUN_REACT_MS,
   PERFECT_PARRY_ATTACKER_STUN_DURATION,
   PERFECT_PARRY_ANIMATION_LOCK,
   PERFECT_PARRY_SNOWBALL_ANIMATION_LOCK,

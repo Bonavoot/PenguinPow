@@ -22,6 +22,7 @@ const {
   AP_LATE_PARRY_MS,
   LOW_KICK_HITBOX_DISTANCE_VALUE,
   GROUND_LEVEL,
+  PERFECT_PARRY_WINDOW,
 } = require("../../constants");
 const {
   MAP_LEFT_BOUNDARY,
@@ -108,7 +109,7 @@ describe("landing Phase A — regression guards", () => {
     assert.equal(PALM_THRUST_STARTUP_MS, 90);
     assert.equal(PALM_THRUST_ACTIVE_MS, 90);
     assert.equal(PALM_THRUST_HOLD_MS, 380);
-    assert.equal(AP_LATE_PARRY_MS, 16);
+    assert.equal(AP_LATE_PARRY_MS, PERFECT_PARRY_WINDOW);
     assert.ok(
       SLAP_STARTUP_MS < PALM_THRUST_STARTUP_MS,
       "palm telegraph must outlast the jab"
