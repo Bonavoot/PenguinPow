@@ -102,7 +102,7 @@ export const LOADOUT_OPTIONS = {
       cost: 1,
       replaces: "Palm thrust",
       unlock: "loadout_shattering_palm",
-      desc: "Your palm thrust always stuffs a live grab — even a late one. The anti-grab meaty, without the charged-attack lunge.",
+      desc: "Palm thrust always stuffs a live grab — even late. No lunge.",
     },
   ],
   defense: [],
@@ -113,7 +113,7 @@ export const LOADOUT_OPTIONS = {
       kanji: "翔",
       cost: 1,
       unlock: "loadout_flap", // must be purchased from the kenshō shop (§Phase 6)
-      desc: "Your slide jumps grant one mid-air flap. After a slide takeoff, tap W once to beat your wings and re-angle, then S to body-slam. Parry stays intact — Flap is pure movement conversion off the ice slide.",
+      desc: "Slide jumps grant one flap. Tap W to re-angle. Parry stays intact.",
     },
   ],
   grappling: [
@@ -123,7 +123,7 @@ export const LOADOUT_OPTIONS = {
       kanji: "脂",
       cost: 1,
       unlock: "loadout_thick_blubber",
-      desc: "Your grab shrugs off one strike that would have stuffed it — a slap, palm, or charged blow that was already swinging. A late slap after you have the grip already loses; this is the answer to someone who pre-committed the swing. Refreshes every grab attempt. Grabs only: it does NOT protect your palm thrust or charged attacks.",
+      desc: "Grab absorbs one stuffing hit. Refreshes each grab. Grabs only.",
     },
   ],
   shinto: [],
