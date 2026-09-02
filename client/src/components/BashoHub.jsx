@@ -4,7 +4,7 @@
  * Winter heya: ice wall, warm washi floor, cream dohyo portrait, solid
  * sumi plaques. Not the night charcoal stage.
  *   LEFT  — portrait (rank stamp / record / looks), then attributes.
- *   RIGHT — technique plate (rows + inspect).
+ *   RIGHT — technique plate (category hanko, tiles, inspect footer).
  *   DOCK  — kachi-koshi pips + Start / Resume.
  *
  * All values read from the persisted save (saveStore); the run loop lives in
@@ -123,40 +123,75 @@ const WASHI_DARK_ON_LIGHT = `
     rgba(60, 40, 20, 0.025) 5px, rgba(60, 40, 20, 0.025) 6px
   )
 `;
-/** Square icon + panel colors for loadout options (matches PowerUpSelection TYPE_COLORS). */
+/** Artwork only — tile fill comes from CAT so a row stays one color. */
 const LOADOUT_OPTION_ICONS = {
-  flap: {
-    icon: flapIcon,
-    main: "#34e0c0",
-    deep: "#15705f",
-  },
-  shattering_palm: {
-    icon: shatterPalmIcon,
-    // Bright armor-break yellow — flat muddy gold read poorly at small size.
-    gradient:
-      "linear-gradient(180deg, #fff9c4 0%, #ffe566 52%, #ffd024 100%)",
-    main: "#ffe566",
-    deep: "#c99200",
-  },
-  thick_blubber: {
-    icon: thickBlubberIcon,
-    // Pink absorb-ring color (matches the Thick Blubber VFX + power-up icon).
-    main: "#ff5087",
-    deep: "#a01f4a",
-  },
+  flap: flapIcon,
+  shattering_palm: shatterPalmIcon,
+  thick_blubber: thickBlubberIcon,
 };
 
 function getLoadoutOptionIcon(optionId) {
   return LOADOUT_OPTION_ICONS[optionId] || null;
 }
 
-const CAT_ACCENT = {
-  attack: C.gold,
-  defense: C.ice,
-  movement: "#34e0c0",
-  grappling: "#ff5087",
-  shinto: "#d4a84b",
+/*
+ * Solid per-category tones. `fill` is a live tile (the loud color). Hankos
+ * sit on `well` so they index the row without matching the tile's brick.
+ * `frame` / `ink` carry the category; `accent` is the inspect rule + the
+ * selected-row frame. No rgba, no gradients.
+ */
+const CAT = {
+  attack: {
+    fill: C.vermillion,
+    deep: C.vermillionDeep,
+    empty: "#2a0c0a",
+    well: "#1c1012",
+    frame: C.vermillionDeep,
+    ink: C.vermillion,
+    accent: C.vermillion,
+  },
+  defense: {
+    fill: "#1b4e82",
+    deep: "#123a5c",
+    empty: "#0b1e30",
+    well: "#101820",
+    frame: "#1b4e82",
+    ink: "#7eb0d2",
+    accent: "#1b4e82",
+  },
+  movement: {
+    fill: "#34e0c0",
+    deep: "#15705f",
+    empty: "#0c2420",
+    well: "#101816",
+    frame: "#15705f",
+    ink: "#34e0c0",
+    accent: "#34e0c0",
+  },
+  grappling: {
+    fill: "#ff5087",
+    deep: "#a01f4a",
+    empty: "#2a1018",
+    well: "#181014",
+    frame: "#a01f4a",
+    ink: "#ff5087",
+    accent: "#ff5087",
+  },
+  shinto: {
+    fill: "#f4eee0",
+    deep: "#c49a22",
+    empty: "#1a1710",
+    well: "#f4eee0",
+    frame: "#b8860b",
+    ink: "#7a5c12",
+    accent: C.gold,
+  },
 };
+
+/** Live tiles — the eye should land here first. */
+const SLOT_SIZE = "min(100%, clamp(52px, 9.2cqh, 80px))";
+/** Category seals sit a step smaller so they index the row, not compete. */
+const HANKO_SIZE = "min(100%, clamp(40px, 7.2cqh, 58px))";
 
 // ============================================
 // LOCAL ANIMATIONS
@@ -464,8 +499,7 @@ const BoardColumn = styled.section`
   display: flex;
   flex-direction: column;
   min-height: 0;
-  gap: clamp(10px, 1.2cqh, 14px);
-  padding: clamp(12px, 1.4cqh, 16px) clamp(14px, 1.6cqw, 20px);
+  padding: 0;
   background: ${D.plate};
   border: 1px solid ${D.plateEdge};
   border-top: 3px solid ${C.vermillion};
@@ -480,7 +514,8 @@ const BoardHead = styled.header`
   align-items: center;
   flex-shrink: 0;
   min-height: 1.15em;
-  margin: 0 0 clamp(6px, 0.7cqh, 8px);
+  margin: 0;
+  padding: clamp(12px, 1.4cqh, 16px) clamp(14px, 1.6cqw, 20px) 0;
 `;
 
 const BoardMeta = styled.div`
@@ -937,52 +972,92 @@ const LoadoutBoard = styled.div`
   position: relative;
   flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: clamp(6px, 0.9cqh, 10px);
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-rows: repeat(${LOADOUT_CATEGORIES.length}, minmax(0, 1fr));
+  align-items: center;
+  column-gap: clamp(10px, 1.3cqw, 18px);
+  row-gap: clamp(6px, 0.9cqh, 10px);
+  padding: clamp(10px, 1.2cqh, 14px) clamp(14px, 1.6cqw, 20px);
   overflow: visible;
 `;
 
 const CategoryRow = styled.div`
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 7.4em minmax(0, 1fr);
-  align-items: center;
-  gap: clamp(10px, 1.2cqw, 16px);
+  display: contents;
 `;
 
 const CategoryIdentity = styled.div`
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  padding-left: 0.55em;
-  border-left: 2px solid ${(p) => p.$accent || "rgba(245, 236, 217, 0.28)"};
+  flex-direction: row;
+  align-items: center;
+  gap: clamp(8px, 1cqw, 12px);
+  flex-shrink: 0;
+  height: ${SLOT_SIZE};
 `;
 
-const CategoryNameRow = styled.div`
-  display: flex;
-  align-items: baseline;
-  gap: 0.45em;
+const CategoryHanko = styled.div`
+  position: relative;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  height: ${HANKO_SIZE};
+  aspect-ratio: 1;
+  width: auto;
+  display: grid;
+  place-items: center;
+  background: ${(p) => p.$fill};
+  border: 2px solid ${(p) => (p.$active ? p.$accent : p.$frame)};
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 10%;
+    border: 1px solid ${(p) => (p.$active ? p.$accent : p.$frame)};
+    pointer-events: none;
+  }
 `;
 
 const CategoryKanji = styled.span`
+  position: relative;
+  z-index: 1;
+  display: block;
   font-family: ${FONT_KANJI};
-  font-weight: 700;
-  font-size: 0.95em;
-  color: ${C.creamMute};
+  font-weight: 900;
+  font-size: clamp(1.25rem, 3.2cqh, 1.75rem);
   line-height: 1;
+  color: ${(p) => p.$ink || C.sumi};
+  /* Noto Serif JP sits low in the em-box — pull the glyph to geometric center. */
+  translate: 0 -0.07em;
+  user-select: none;
+`;
+
+const CategoryCopy = styled.div`
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.3em;
+  min-width: 0;
 `;
 
 const CategoryName = styled.div`
   font-family: ${FONT_UI};
   font-weight: ${FONT_WEIGHT.bold};
-  font-size: clamp(0.58rem, 0.86cqw, 0.72rem);
+  font-size: clamp(0.72rem, 1.05cqw, 0.9rem);
   color: ${C.creamWarm};
   text-transform: uppercase;
   letter-spacing: ${TRACK.meta};
   white-space: nowrap;
+  line-height: 1;
+`;
+
+const CategorySub = styled.div`
+  font-family: ${FONT_UI};
+  font-weight: ${FONT_WEIGHT.bold};
+  font-size: clamp(0.48rem, 0.68cqw, 0.58rem);
+  color: #9a917c;
+  letter-spacing: ${TRACK.meta};
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1;
 `;
 
 const SlotStrip = styled.div`
@@ -992,15 +1067,16 @@ const SlotStrip = styled.div`
   justify-items: center;
   gap: clamp(6px, 0.8cqw, 10px);
   width: 100%;
-  height: 100%;
+  height: ${SLOT_SIZE};
   min-width: 0;
 `;
 
 const Slot = styled.button`
   position: relative;
-  width: min(100%, clamp(48px, 8.2cqh, 72px));
+  height: ${SLOT_SIZE};
+  width: auto;
   aspect-ratio: 1;
-  height: auto;
+  max-width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1092,22 +1168,22 @@ const SlotBanner = styled.span`
 `;
 
 const PlaceholderSlot = styled.div`
-  width: min(100%, clamp(48px, 8.2cqh, 72px));
+  box-sizing: border-box;
+  height: ${SLOT_SIZE};
+  width: auto;
   aspect-ratio: 1;
+  max-width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: ${D.well};
-  border: 2px solid rgba(245, 236, 217, 0.06);
-  box-shadow:
-    inset 0 2px 6px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 1px rgba(245, 236, 217, 0.04);
+  background: ${(p) => p.$fill || D.well};
+  border: 2px solid ${(p) => p.$deep || "#1c1f26"};
 
   &::after {
     content: "";
-    width: 26%;
-    height: 26%;
-    border: 1px solid rgba(245, 236, 217, 0.1);
+    width: 22%;
+    height: 22%;
+    background: ${(p) => p.$deep || "#1c1f26"};
   }
 `;
 
@@ -1123,60 +1199,40 @@ const SlotKanji = styled.span`
   line-height: 1;
 `;
 
-// --- Inspect plaque (same footprint as before — board keeps the vertical room) ---
+// --- Inspect plaque: full-bleed footer of the plate. Same inset as nothing —
+// it IS the floor of the board, so left/right/bottom share one edge.
 
 const DetailStrip = styled.div`
   position: relative;
   flex-shrink: 0;
   box-sizing: border-box;
-  display: flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: clamp(12px, 1.4cqw, 16px);
-  height: clamp(84px, 10.5cqh, 100px);
-  min-height: clamp(84px, 10.5cqh, 100px);
-  margin: clamp(8px, 1cqh, 12px) clamp(-14px, -1.6cqw, -20px)
-    clamp(-12px, -1.4cqh, -16px);
-  padding: 0 clamp(16px, 1.8cqw, 22px) 0 clamp(18px, 2cqw, 24px);
+  gap: clamp(14px, 1.6cqw, 20px);
+  height: clamp(92px, 12cqh, 112px);
+  min-height: clamp(92px, 12cqh, 112px);
+  margin: 0;
+  padding: 0 clamp(16px, 1.8cqw, 22px);
   overflow: hidden;
-  background:
-    linear-gradient(
-      90deg,
-      ${(p) => (p.$accent ? `${p.$accent}22` : "transparent")} 0%,
-      transparent 42%
-    ),
-    ${D.well};
-  border-top: 1px solid ${D.borderSoft};
-  box-shadow: inset 0 1px 0 rgba(245, 236, 217, 0.07);
-
-  &::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: ${(p) => p.$accent || "transparent"};
-    box-shadow: ${(p) =>
-      p.$accent ? `0 0 14px ${p.$accent}` : "none"};
-    pointer-events: none;
-  }
+  background: ${D.deep};
+  border-top: 3px solid ${(p) => p.$accent || "#2a2e36"};
 `;
 
 const DetailIcon = styled.div`
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
-  align-self: center;
   box-sizing: border-box;
-  width: clamp(48px, 5.4cqh, 56px);
-  height: clamp(48px, 5.4cqh, 56px);
+  height: clamp(52px, 6.4cqh, 64px);
+  width: auto;
+  aspect-ratio: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   overflow: hidden;
-  background: ${(p) => p.$gradient || p.$main || D.deep};
+  background: ${(p) => p.$main || D.deep};
   border: 2px solid
     ${(p) =>
       p.$state === "on"
@@ -1187,7 +1243,7 @@ const DetailIcon = styled.div`
   box-shadow: ${(p) =>
     p.$state === "on"
       ? `0 0 0 1px ${C.goldDeep}, 0 0 12px rgba(232, 197, 71, 0.4)`
-      : "inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -3px 6px rgba(0, 0, 0, 0.28)"};
+      : "none"};
   filter: ${(p) =>
     p.$state === "buy" ? "saturate(0.45) brightness(0.7)" : "none"};
 
@@ -1217,18 +1273,17 @@ const DetailIconKanji = styled.span`
   font-size: clamp(1.15rem, 1.8cqw, 1.5rem);
   color: ${C.cream};
   line-height: 1;
+  translate: 0 -0.08em;
 `;
 
 const DetailBody = styled.div`
   position: relative;
   z-index: 1;
-  flex: 1 1 auto;
-  align-self: center;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: clamp(5px, 0.7cqh, 8px);
-  min-width: 0;
   animation: ${detailShift} 0.18s ease-out;
 `;
 
@@ -1264,14 +1319,13 @@ const DetailCost = styled.span`
   letter-spacing: ${TRACK.meta};
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  background: rgba(232, 197, 71, 0.1);
-  border: 1px solid rgba(232, 197, 71, 0.38);
-  box-shadow: inset 0 1px 0 rgba(255, 250, 240, 0.12);
+  background: #2a2410;
+  border: 1px solid ${C.goldDeep};
 
   span {
     font-size: 0.62em;
     font-weight: ${FONT_WEIGHT.bold};
-    color: ${C.creamMute};
+    color: #9a917c;
     letter-spacing: ${TRACK.label};
     text-transform: uppercase;
   }
@@ -1280,11 +1334,12 @@ const DetailCost = styled.span`
 const DetailEmpty = styled.div`
   display: flex;
   align-items: center;
+  grid-column: 1 / -1;
   width: 100%;
   font-family: ${FONT_UI};
   font-weight: ${FONT_WEIGHT.bold};
   font-size: clamp(0.52rem, 0.78cqw, 0.64rem);
-  color: ${C.creamMute};
+  color: #9a917c;
   text-transform: uppercase;
   letter-spacing: ${TRACK.label};
 `;
@@ -1294,7 +1349,7 @@ const DetailDesc = styled.p`
   font-family: ${FONT_BODY};
   font-weight: 500;
   font-size: clamp(0.62rem, 0.9cqw, 0.74rem);
-  color: rgba(245, 236, 217, 0.92);
+  color: ${C.creamWarm};
   letter-spacing: 0.01em;
   line-height: 1.35;
 `;
@@ -1302,15 +1357,13 @@ const DetailDesc = styled.p`
 const DetailAction = styled.div`
   position: relative;
   z-index: 1;
-  flex: 0 0 auto;
-  align-self: stretch;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
   gap: clamp(8px, 1cqw, 12px);
   padding-left: clamp(12px, 1.5cqw, 18px);
-  border-left: 1px solid ${D.borderSoft};
+  border-left: 1px solid #2a2e36;
 `;
 
 const ActionButton = styled.button`
@@ -1360,11 +1413,12 @@ const ActionButton = styled.button`
     p.$variant === "equip" &&
     css`
       color: #fff8ee;
-      border: 2px solid rgba(245, 236, 217, 0.42);
+      border: 2px solid #6a6458;
+      background: ${C.sumiSoft};
       &:hover:not(:disabled) {
         color: #fff;
         border-color: ${C.cream};
-        background: rgba(245, 236, 217, 0.06);
+        background: ${D.softHover};
       }
     `}
   ${(p) =>
@@ -1989,6 +2043,7 @@ function BashoHub({ onBack, onStartRun }) {
     (career.loadout?.[focused.catKey] || []).includes(focusedOpt.id);
   const focusedUnlock = focusedOpt?.unlock ? UNLOCK_BY_ID[focusedOpt.unlock] : null;
   const focusedVisual = focusedOpt ? getLoadoutOptionIcon(focusedOpt.id) : null;
+  const focusedCat = focused ? CAT[focused.catKey] : null;
   const focusedSlotState = focusedLocked
     ? "buy"
     : focusedSelected
@@ -2260,13 +2315,25 @@ function BashoHub({ onBack, onStartRun }) {
                   0,
                   SLOTS_PER_CATEGORY - options.length,
                 );
+                const catTone = CAT[cat.key];
+                const rowActive = focused?.catKey === cat.key;
                 return (
                   <CategoryRow key={cat.key}>
-                    <CategoryIdentity $accent={CAT_ACCENT[cat.key]}>
-                      <CategoryNameRow>
+                    <CategoryIdentity>
+                      <CategoryHanko
+                        $fill={catTone.well}
+                        $frame={catTone.frame}
+                        $accent={catTone.accent}
+                        $active={rowActive}
+                      >
+                        <CategoryKanji $ink={catTone.ink} aria-hidden>
+                          {cat.kanji}
+                        </CategoryKanji>
+                      </CategoryHanko>
+                      <CategoryCopy>
                         <CategoryName>{cat.label}</CategoryName>
-                        <CategoryKanji aria-hidden>{cat.kanji}</CategoryKanji>
-                      </CategoryNameRow>
+                        <CategorySub>{cat.sub}</CategorySub>
+                      </CategoryCopy>
                     </CategoryIdentity>
 
                     <SlotStrip>
@@ -2289,11 +2356,7 @@ function BashoHub({ onBack, onStartRun }) {
                             $interactive={!runLocked}
                             $state={slotState}
                             $focused={isFocused}
-                            $main={visual?.main}
-                            $deep={visual?.deep}
-                            $gradient={visual?.gradient}
-                            $imgSize={visual?.imgSize}
-                            $imgScale={visual?.imgScale}
+                            $main={catTone.fill}
                             title={opt.label}
                             aria-label={opt.label}
                             aria-pressed={isOn}
@@ -2301,7 +2364,7 @@ function BashoHub({ onBack, onStartRun }) {
                             onMouseEnter={() => handleSlotHover(cat.key, opt)}
                           >
                             {visual ? (
-                              <img src={visual.icon} alt="" aria-hidden />
+                              <img src={visual} alt="" aria-hidden />
                             ) : (
                               <SlotKanji
                                 $banner={slotState !== "owned"}
@@ -2321,6 +2384,8 @@ function BashoHub({ onBack, onStartRun }) {
                       {Array.from({ length: placeholders }).map((_, i) => (
                         <PlaceholderSlot
                           key={`ph-${i}`}
+                          $fill={catTone.empty}
+                          $deep={catTone.deep}
                           title="Technique sealed — coming later"
                           aria-label="Technique sealed"
                         />
@@ -2332,18 +2397,16 @@ function BashoHub({ onBack, onStartRun }) {
             </LoadoutBoard>
 
             {/* DETAIL — hover to preview, click/CTA to equip or buy */}
-            <DetailStrip $accent={focusedOpt ? CAT_ACCENT[focused.catKey] : null}>
+            <DetailStrip $accent={focusedCat?.accent || "#2a2e36"}>
               {focusedOpt ? (
                 <>
                   {focusedVisual ? (
                     <DetailIcon
-                      $main={focusedVisual.main}
-                      $deep={focusedVisual.deep}
-                      $gradient={focusedVisual.gradient}
+                      $main={focusedCat?.fill}
                       $state={focusedSlotState}
                       aria-hidden
                     >
-                      <img src={focusedVisual.icon} alt="" />
+                      <img src={focusedVisual} alt="" />
                       {focusedSlotState !== "owned" && (
                         <SlotBanner $state={focusedSlotState}>
                           {focusedLocked ? "Buy" : "Equipped"}
@@ -2351,7 +2414,11 @@ function BashoHub({ onBack, onStartRun }) {
                       )}
                     </DetailIcon>
                   ) : (
-                    <DetailIcon $state={focusedSlotState} aria-hidden>
+                    <DetailIcon
+                      $main={focusedCat?.fill}
+                      $state={focusedSlotState}
+                      aria-hidden
+                    >
                       <DetailIconKanji
                         $banner={focusedSlotState !== "owned"}
                         aria-hidden
