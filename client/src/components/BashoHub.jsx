@@ -135,55 +135,53 @@ function getLoadoutOptionIcon(optionId) {
 }
 
 /*
- * Solid per-category tones. `fill` is a live tile (the loud color). Hankos
- * sit on `well` so they index the row without matching the tile's brick.
- * `frame` / `ink` carry the category; `accent` is the inspect rule + the
- * selected-row frame. No rgba, no gradients.
+ * School colors — jewel tiles on sumi, not outline neon.
+ *
+ * Attack is a true jewel red, not CTA vermillion (rank stamp / Start keep
+ * that) and not coral. Movement aqua + grappling pink stay. Defense is ice-steel so it
+ * matches chroma instead of sinking to navy. Shinto is gold leaf, not a
+ * cream paper invert.
+ *
+ *   fill   — live tile + hanko brick
+ *   deep   — hanko edge (one step down)
+ *   empty  — placeholder well, barely tinted
+ *   ink    — sumi glyph on the colored stamp
+ *   accent — inspect rule
  */
 const CAT = {
   attack: {
-    fill: C.vermillion,
-    deep: C.vermillionDeep,
-    empty: "#2a0c0a",
-    well: "#1c1012",
-    frame: C.vermillionDeep,
-    ink: C.vermillion,
-    accent: C.vermillion,
+    fill: "#e04e4e",
+    deep: "#8f3232",
+    empty: "#141010",
+    ink: C.sumi,
+    accent: "#e04e4e",
   },
   defense: {
-    fill: "#1b4e82",
-    deep: "#123a5c",
-    empty: "#0b1e30",
-    well: "#101820",
-    frame: "#1b4e82",
-    ink: "#7eb0d2",
-    accent: "#1b4e82",
+    fill: "#4a9cc9",
+    deep: "#2d6484",
+    empty: "#101418",
+    ink: C.sumi,
+    accent: "#4a9cc9",
   },
   movement: {
     fill: "#34e0c0",
-    deep: "#15705f",
-    empty: "#0c2420",
-    well: "#101816",
-    frame: "#15705f",
-    ink: "#34e0c0",
+    deep: "#1a8a78",
+    empty: "#101614",
+    ink: C.sumi,
     accent: "#34e0c0",
   },
   grappling: {
     fill: "#ff5087",
-    deep: "#a01f4a",
-    empty: "#2a1018",
-    well: "#181014",
-    frame: "#a01f4a",
-    ink: "#ff5087",
+    deep: "#a03258",
+    empty: "#161214",
+    ink: C.sumi,
     accent: "#ff5087",
   },
   shinto: {
-    fill: "#f4eee0",
-    deep: "#c49a22",
-    empty: "#1a1710",
-    well: "#f4eee0",
-    frame: "#b8860b",
-    ink: "#7a5c12",
+    fill: "#e0b84a",
+    deep: "#8a7020",
+    empty: "#141210",
+    ink: C.sumi,
     accent: C.gold,
   },
 };
@@ -1005,15 +1003,10 @@ const CategoryHanko = styled.div`
   display: grid;
   place-items: center;
   background: ${(p) => p.$fill};
-  border: 2px solid ${(p) => (p.$active ? p.$accent : p.$frame)};
-
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 10%;
-    border: 1px solid ${(p) => (p.$active ? p.$accent : p.$frame)};
-    pointer-events: none;
-  }
+  border: 2px solid ${(p) => (p.$active ? C.cream : p.$deep)};
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.28);
 `;
 
 const CategoryKanji = styled.span`
@@ -1025,6 +1018,7 @@ const CategoryKanji = styled.span`
   font-size: clamp(1.25rem, 3.2cqh, 1.75rem);
   line-height: 1;
   color: ${(p) => p.$ink || C.sumi};
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.22);
   /* Noto Serif JP sits low in the em-box — pull the glyph to geometric center. */
   translate: 0 -0.07em;
   user-select: none;
@@ -1167,24 +1161,19 @@ const SlotBanner = styled.span`
   z-index: 1;
 `;
 
+/* Empty catalog seat — same chrome as a live tile, no art. */
 const PlaceholderSlot = styled.div`
+  position: relative;
   box-sizing: border-box;
   height: ${SLOT_SIZE};
   width: auto;
   aspect-ratio: 1;
   max-width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: ${(p) => p.$fill || D.well};
-  border: 2px solid ${(p) => p.$deep || "#1c1f26"};
-
-  &::after {
-    content: "";
-    width: 22%;
-    height: 22%;
-    background: ${(p) => p.$deep || "#1c1f26"};
-  }
+  background: ${(p) => p.$empty || D.well};
+  border: 2px solid rgba(245, 236, 217, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.4);
 `;
 
 const SlotKanji = styled.span`
@@ -2321,9 +2310,8 @@ function BashoHub({ onBack, onStartRun }) {
                   <CategoryRow key={cat.key}>
                     <CategoryIdentity>
                       <CategoryHanko
-                        $fill={catTone.well}
-                        $frame={catTone.frame}
-                        $accent={catTone.accent}
+                        $fill={catTone.fill}
+                        $deep={catTone.deep}
                         $active={rowActive}
                       >
                         <CategoryKanji $ink={catTone.ink} aria-hidden>
@@ -2384,8 +2372,7 @@ function BashoHub({ onBack, onStartRun }) {
                       {Array.from({ length: placeholders }).map((_, i) => (
                         <PlaceholderSlot
                           key={`ph-${i}`}
-                          $fill={catTone.empty}
-                          $deep={catTone.deep}
+                          $empty={catTone.empty}
                           title="Technique sealed — coming later"
                           aria-label="Technique sealed"
                         />
