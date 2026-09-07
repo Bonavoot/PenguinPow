@@ -821,6 +821,11 @@ function resetRoomAndPlayers(room, io) {
     player.isClinchKillThrowVictim = false;
     player.isClinchKillPullVictim = false;
     player.isClinchKillThrow = false;
+    // Round resolution presentation flags (ring-out topple / winner hold).
+    player.isRingOutLoser = false;
+    player.ringOutDirection = 0;
+    player.ringOutStartTime = 0;
+    player.isRoundWinner = false;
   });
 
   room.playerAvailablePowerUps = {};

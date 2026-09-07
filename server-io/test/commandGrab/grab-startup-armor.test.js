@@ -26,6 +26,8 @@ const {
   getStrikeActiveStartTime,
   getGrabActiveStartTime,
   isGrabAttemptLive,
+  shouldHoldGrabAtLatch,
+  inGrabLatchRange,
 } = require("../../grabStartupArmor");
 const {
   getGrabConnectDistance,
@@ -34,6 +36,7 @@ const {
 const {
   GRAB_STARTUP_DURATION_MS,
   GRAB_ACTIVE_MS,
+  GROUND_LEVEL,
   SLAP_STARTUP_MS,
   SLAP_ACTIVE_MS,
   PALM_THRUST_STARTUP_MS,
@@ -139,6 +142,24 @@ describe("throw vs strike clocks", () => {
   it("idle grabber is not a live attempt", () => {
     assert.equal(isGrabAttemptLive({}), false);
     assert.equal(isGrabAttemptLive({ isGrabStartup: true }), true);
+  });
+
+  it("does not hold the grab run under a slide-jump still in the air", () => {
+    const grabber = { x: 500, facing: -1, grabFacingDirection: -1 };
+    const jumper = {
+      x: 540,
+      y: GROUND_LEVEL + 80,
+      isSlideJumping: true,
+      slideJumpPhase: "flight",
+    };
+    assert.equal(inGrabLatchRange(grabber, jumper), true);
+    assert.equal(shouldHoldGrabAtLatch(grabber, jumper), false);
+  });
+
+  it("still holds the grab run on a grounded belly", () => {
+    const grabber = { x: 500, facing: -1, grabFacingDirection: -1 };
+    const victim = { x: 540, y: GROUND_LEVEL, isSlideJumping: false };
+    assert.equal(shouldHoldGrabAtLatch(grabber, victim), true);
   });
 });
 

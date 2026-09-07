@@ -22,11 +22,14 @@ import {
   ensurePerfRecorder,
   setupPerfShortcut,
 } from "./utils/perf/PerfRecorder";
+import { installBoutLongTaskTrace } from "./utils/perf/boutLongTaskTrace";
 
 // Phase 0: opt-in performance recorder (?perf=1 or localStorage pumo_perf=1).
 // No-op when disabled. Overlay toggle: Ctrl+Shift+P.
 ensurePerfRecorder();
 setupPerfShortcut();
+// Dev / pumo_perf_trace long-task ring for the first 15 s after game_start.
+installBoutLongTaskTrace();
 
 // Warm faces in the background — do not block first paint
 if (document.fonts?.load) {

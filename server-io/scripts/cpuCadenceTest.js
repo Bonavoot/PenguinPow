@@ -3,6 +3,7 @@
 // watches the CPU's broadcast cadenceChain climb — confirming scheduleCpuCadence
 // runs without error and produces enhanced slaps at the top tier.
 const { io } = require("/home/bonavoot/Development/PenguinPow/client/node_modules/socket.io-client");
+const { PROTOCOL_VERSION } = require("../netProtocol.json");
 
 const PORT = process.env.PORT || 3210;
 const URL = `http://localhost:${PORT}`;
@@ -19,12 +20,17 @@ function send(patch) {
   const events = [];
   for (const k in patch) if (!!keys[k] !== !!patch[k]) events.push({ k, a: patch[k] ? "down" : "up", t: Date.now() });
   keys = { ...keys, ...patch };
-  socket.emit("fighter_action", { id, keys, events });
+  socket.emit("fighter_action", { id, keys, events, seq: ++inputSeq });
 }
 
+let inputSeq = 0;
 socket.on("connect", () => {
-  id = socket.id;
-  socket.emit("create_cpu_match", { socketId: id });
+  // Protocol v2 (server-io/netSession.js): hello first; identity is the session playerId.
+  socket.emit("hello", { protocolVersion: PROTOCOL_VERSION }, (ack) => {
+    if (!ack || !ack.ok) { console.error("hello rejected", ack); process.exit(1); }
+    id = ack.playerId;
+    socket.emit("create_cpu_match", { socketId: id });
+  });
 });
 socket.on("cpu_match_created", (d) => {
   roomId = (d && d.roomId) || roomId;

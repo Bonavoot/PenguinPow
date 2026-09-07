@@ -467,6 +467,7 @@ const MainMenu = ({
   setCurrentPage,
   localId,
   connectionError,
+  protocolMismatch,
 }) => {
   const [roomName, setRoomName] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -1302,10 +1303,16 @@ const MainMenu = ({
         <CinematicOverlay />
         {!lowSpec && <Snowfall intensity={10} showFrost={false} zIndex={3} />}
 
-        {connectionError && (
+        {protocolMismatch ? (
           <ConnectionErrorBanner>
-            CONNECTION LOST — RECONNECTING…
+            GAME UPDATE REQUIRED — ONLINE PLAY UNAVAILABLE
           </ConnectionErrorBanner>
+        ) : (
+          connectionError && (
+            <ConnectionErrorBanner>
+              CONNECTION LOST — RECONNECTING…
+            </ConnectionErrorBanner>
+          )
         )}
 
         <HeroStage>
@@ -1512,6 +1519,7 @@ MainMenu.propTypes = {
   setCurrentPage: PropTypes.func.isRequired,
   localId: PropTypes.string.isRequired,
   connectionError: PropTypes.bool,
+  protocolMismatch: PropTypes.object,
 };
 
 export default MainMenu;

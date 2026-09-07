@@ -10,6 +10,7 @@ import {
   resolveSlapConnectHold,
   slapConnectHoldNeedsTick,
   isSlapConnectHoldEligible,
+  isPalmConnectHoldEligible,
   clearSlapConnectHold,
   SLAP_CONNECT_HOLD_BRIDGE_MS,
 } from "./slapConnectHold.js";
@@ -44,6 +45,29 @@ describe("slapConnectHold", () => {
       isSlapConnectHoldEligible(slapHit({ attackType: "charged" }), ATTACKER),
       false
     );
+  });
+
+  it("arms a landed palm so hitstop cannot freeze the smear", () => {
+    const palmHit = {
+      hitId: "p1",
+      attackerId: ATTACKER,
+      victimId: VICTIM,
+      attackType: "charged",
+      isPalmThrust: true,
+      timestamp: 1000,
+    };
+    assert.equal(isPalmConnectHoldEligible(palmHit, ATTACKER), true);
+    assert.equal(isPalmConnectHoldEligible(palmHit, VICTIM), false);
+    assert.equal(
+      isPalmConnectHoldEligible({ ...palmHit, cinematicKill: true }, ATTACKER),
+      false
+    );
+    assert.equal(isSlapConnectHoldEligible(palmHit, ATTACKER), false);
+
+    const hold = createSlapConnectHold();
+    assert.equal(armSlapConnectHold(hold, palmHit, ATTACKER, 1000, 1180), true);
+    assert.equal(resolveSlapConnectHold(hold, 1000, 1180), true);
+    assert.equal(resolveSlapConnectHold(hold, 1180, 1180), false);
   });
 
   it("adopts an existing hitstop deadline immediately", () => {

@@ -108,15 +108,17 @@ export function getBakedSprite(sourceUrl, mawashiColor, bodyColor, tint = "base"
  * sprites + tints — used by preloadSprites to pre-decode + pin the stable files
  * for the current colors so the first pose transition paints warm.
  */
-export function getBakedUrlsForColor(mawashiColor, bodyColor) {
+export function getBakedUrlsForColor(mawashiColor, bodyColor, ids = null) {
   if (!loaded) return [];
   const wantM = (mawashiColor || "none").toLowerCase();
   const wantB = (bodyColor || "none").toLowerCase();
+  const wantIds = ids instanceof Set ? ids : ids ? new Set(ids) : null;
   const out = [];
   for (const key in MANIFEST) {
     // key = `${id}|${mawashi}|${body}|${tint}`
     const parts = key.split("|");
     if (parts.length !== 4) continue;
+    if (wantIds && !wantIds.has(parts[0])) continue;
     if (parts[1] === wantM && parts[2] === wantB) out.push(MANIFEST[key]);
   }
   return out;
@@ -144,10 +146,11 @@ export function getBakedHattedSprite(
 /**
  * All baked hatted URLs for a fighter color + gear (preload / pin).
  */
-export function getBakedHattedUrlsForFighter(mawashiColor, bodyColor, gearId) {
+export function getBakedHattedUrlsForFighter(mawashiColor, bodyColor, gearId, ids = null) {
   if (!loaded || !gearId) return [];
   const wantM = (mawashiColor || "none").toLowerCase();
   const wantB = (bodyColor || "none").toLowerCase();
+  const wantIds = ids instanceof Set ? ids : ids ? new Set(ids) : null;
   const prefix = `hat|${gearId}|`;
   const out = [];
   for (const key in HAT_MANIFEST) {
@@ -155,6 +158,7 @@ export function getBakedHattedUrlsForFighter(mawashiColor, bodyColor, gearId) {
     // hat|gear|bodyId|mawashi|body|tint
     const parts = key.split("|");
     if (parts.length !== 6) continue;
+    if (wantIds && !wantIds.has(parts[2])) continue;
     if (parts[3] === wantM && parts[4] === wantB) out.push(HAT_MANIFEST[key]);
   }
   return out;

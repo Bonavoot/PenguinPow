@@ -25,6 +25,7 @@ const {
   isOpponentCloseEnoughForGrab,
   isOpponentInFrontOfGrabber,
 } = require("./combatHelpers");
+const { isAirborneForGroundCollision } = require("./groundCollision");
 const { timeoutManager } = require("./gameUtils");
 const {
   releaseStrikeFacingLock,
@@ -108,10 +109,21 @@ function inGrabLatchRange(grabber, victim) {
   );
 }
 
+/**
+ * The grab run parks at latch so a standing belly can be caught. An airborne
+ * body has no ground pushbox — parking there is an invisible wall under them.
+ */
+function shouldHoldGrabAtLatch(grabber, victim) {
+  if (!grabber || !victim) return false;
+  if (isAirborneForGroundCollision(victim, { forGrab: true })) return false;
+  return inGrabLatchRange(grabber, victim);
+}
+
 function grabVictimCanBeCaught(grabber, victim, now) {
   if (victim && victim.grabImmune && now < victim.grabImmuneEndTime) return false;
   if (victim && (victim.isBeingThrown || victim.isBeingGrabbed)) return false;
   if (grabber.isBeingGrabbed) return false;
+  if (isAirborneForGroundCollision(victim, { forGrab: true })) return false;
   return true;
 }
 
@@ -204,6 +216,7 @@ module.exports = {
   getGrabActiveStartTime,
   getStrikeActiveStartTime,
   inGrabLatchRange,
+  shouldHoldGrabAtLatch,
   canGrabLatchThisTick,
   resolveStrikeVsGrab,
   shouldStrikeStuffGrab,

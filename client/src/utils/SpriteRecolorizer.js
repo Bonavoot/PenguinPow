@@ -1,4 +1,7 @@
 import { resolveHiRes } from "../config/hiResSprites";
+// Vite: bundle recolorWorker.js (+ recolorCore.js) into an inline classic
+// worker so it runs on the packaged Electron file:// origin too.
+import RecolorWorker from "./recolorWorker.js?worker&inline";
 import {
   idbGetBlob,
   idbPutBlob,
@@ -224,33 +227,27 @@ let workerReady = false;
 let pendingRequests = new Map();
 let requestIdCounter = 0;
 
-function isElectron() {
-  try {
-    return typeof navigator !== "undefined" &&
-      navigator.userAgent.includes("Electron");
-  } catch (_) {
-    return false;
-  }
-}
+// Full-pipeline availability: ImageBitmap transfer + OffscreenCanvas in the
+// worker. Chromium (Electron) and every modern browser support both.
+const canUseBitmapPipeline =
+  typeof createImageBitmap === "function" && typeof OffscreenCanvas !== "undefined";
 
 function initWorker() {
   if (recolorWorker) return;
 
-  if (isElectron()) {
-    console.log("SpriteRecolorizer: Electron detected, using main-thread fallback");
-    workerReady = false;
-    return;
-  }
-
   try {
-    recolorWorker = new Worker(new URL("./recolorWorker.js", import.meta.url), {
-      type: "module",
-    });
+    // Inline classic worker (Vite bundles recolorWorker.js + recolorCore.js
+    // into a Blob-URL script). A MODULE worker fetched by URL is blocked on
+    // the packaged Electron client's file:// origin, which is why the worker
+    // used to be disabled under Electron — leaving every recolor on the
+    // main thread in the shipped build. The inline classic worker works on
+    // file://, http:// and https:// alike.
+    recolorWorker = new RecolorWorker();
 
     recolorWorker.onmessage = (e) => {
       const { type, id, payload } = e.data;
 
-      if (type === "recolor_complete") {
+      if (type === "recolor_complete" || type === "recolor_blob") {
         const pending = pendingRequests.get(id);
         if (pending) {
           pending.resolve(payload);
@@ -356,6 +353,26 @@ function processInWorker(
 }
 
 /**
+ * Full off-main-thread recolor: transfer an ImageBitmap, get a PNG Blob back.
+ * The main thread never touches pixels (no getImageData / putImageData /
+ * toBlob), which is what made the first match stutter while variants built.
+ */
+function processBitmapInWorker(bitmap, params) {
+  return new Promise((resolve, reject) => {
+    if (!workerReady || !recolorWorker) {
+      reject(new Error("Worker not ready"));
+      return;
+    }
+    const id = ++requestIdCounter;
+    pendingRequests.set(id, { resolve, reject });
+    recolorWorker.postMessage(
+      { type: "recolor_bitmap", id, payload: { bitmap, ...params } },
+      [bitmap]
+    );
+  });
+}
+
+/**
  * Recolor an image by replacing specific color ranges with a target color
  *
  * PERFORMANCE: Uses Web Worker to process pixels off main thread
@@ -415,6 +432,51 @@ export async function recolorImage(
 
     img.onload = async () => {
       let canvas = null;
+      // ---- Preferred path: whole pipeline in the worker --------------------
+      if (workerReady && recolorWorker && canUseBitmapPipeline) {
+        try {
+          let tHue, tSat, tLight;
+          if (specialMode) {
+            tHue = 0; tSat = 90; tLight = 50;
+          } else {
+            const hsl = getHslFromHex(targetColorHex);
+            tHue = hsl.h; tSat = hsl.s; tLight = hsl.l;
+          }
+          let bHue = 0, bSat = 0, bLight = 50, bRef = 49;
+          if (bodyColorRange && bodyColorHex) {
+            const bodyHsl = getHslFromHex(bodyColorHex);
+            bHue = bodyHsl.h; bSat = bodyHsl.s; bLight = bodyHsl.l;
+            bRef = (bodyColorRange.minLightness + bodyColorRange.maxLightness) / 2;
+          }
+          const bitmap = await createImageBitmap(img);
+          const result = await processBitmapInWorker(bitmap, {
+            sourceColorRange,
+            targetHue: tHue,
+            targetSat: tSat,
+            targetLight: tLight,
+            referenceLightness: (sourceColorRange.minLightness + sourceColorRange.maxLightness) / 2,
+            specialMode,
+            hitTintRed,
+            chargeTintWhite,
+            blubberTintPurple,
+            armorTintPink,
+            bodyColorRange,
+            bodyTargetHue: bHue,
+            bodyTargetSat: bSat,
+            bodyTargetLight: bLight,
+            bodyReferenceLightness: bRef,
+            skipMawashiRecolor: !specialMode && !hitTintRed && targetColorHex === SPRITE_BASE_COLOR,
+          });
+          const blobUrl = URL.createObjectURL(result.blob);
+          addToCache(cacheKey, blobUrl);
+          if (persistentCacheEnabled) idbPutBlob(cacheKey, result.blob);
+          resolve(blobUrl);
+          return;
+        } catch (workerError) {
+          console.warn("Worker bitmap pipeline failed, falling back:", workerError);
+          // fall through to the canvas path below
+        }
+      }
       try {
         // Get pooled canvas
         canvas = getPooledCanvas(img.width, img.height);

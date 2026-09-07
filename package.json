@@ -36,7 +36,8 @@
     "perf:server-soak": "node server-io/scripts/liveRoomSoak.mjs",
     "encode:display": "node client/scripts/encodeDisplayAssets.mjs",
     "audit:pose-geometry": "node tools/audit-pose-geometry.js",
-    "punch:ghost-alpha": "node tools/punch-ghost-canvas-alpha.mjs"
+    "punch:ghost-alpha": "node tools/punch-ghost-canvas-alpha.mjs",
+    "netlab": "node tools/netlab/runMatrix.mjs"
   },
   "dependencies": {
     "react-player": "^2.15.1",

@@ -20,6 +20,9 @@ function App() {
   const [currentPage, setCurrentPage] = useState("mainMenu");
   const [localId, setLocalId] = useState("");
   const [connectionError, setConnectionError] = useState(false);
+  // Set when the server rejected our protocol version: the build is stale
+  // (or the server is), and online play is impossible until updated.
+  const [protocolMismatch, setProtocolMismatch] = useState(null);
   const [steamDeckMode, setSteamDeckMode] = useState(false);
   const [controllerConnected, setControllerConnected] = useState(false);
   const [showStartupScreen, setShowStartupScreen] = useState(true);
@@ -109,38 +112,59 @@ function App() {
     const controllerCheckInterval = setInterval(checkControllerStatus, 1000);
     let reconnectTimeout = null;
 
-    socket.on("connect", () => {
+    // "connect" is synthesized by the connection facade AFTER the session
+    // handshake, so socket.id here is the stable per-server playerId (it
+    // survives socket.io auto-reconnects and mid-match resume).
+    const handleConnect = () => {
       setLocalId(socket.id);
       setConnectionError(false);
+      setProtocolMismatch(null);
       console.log("Connected to game server");
       // Establish server-clock offset so visual hitstop can end in sync
       // across clients with asymmetric ping. Safe to call repeatedly.
       // (Server switches re-handshake via resyncServerClock in the facade.)
       startServerClock(socket);
-    });
+    };
+    socket.on("connect", handleConnect);
 
-    socket.on("connect_error", (error) => {
+    const handleProtocolMismatch = (info) => {
+      setProtocolMismatch(info || { reason: "protocol_mismatch" });
+    };
+    socket.on("protocol_mismatch", handleProtocolMismatch);
+
+    const handleServerShutdown = (info) => {
+      console.warn("Server shutting down:", info);
+      setConnectionError(true);
+    };
+    socket.on("server_shutdown", handleServerShutdown);
+
+    const handleConnectError = (error) => {
       console.error("Connection error:", error);
       setConnectionError(true);
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       reconnectTimeout = setTimeout(() => socket.connect(), 5000);
-    });
+    };
+    socket.on("connect_error", handleConnectError);
 
-    socket.on("disconnect", (reason) => {
+    const handleDisconnect = (reason) => {
       console.log("Disconnected:", reason);
       setConnectionError(true);
       stopServerClock();
-    });
+    };
+    socket.on("disconnect", handleDisconnect);
 
-    socket.on("rooms", (rooms) => {
+    const handleRooms = (rooms) => {
       setRooms(rooms);
-    });
+    };
+    socket.on("rooms", handleRooms);
 
     return () => {
-      socket.off("connect");
-      socket.off("connect_error");
-      socket.off("disconnect");
-      socket.off("rooms");
+      socket.off("connect", handleConnect);
+      socket.off("protocol_mismatch", handleProtocolMismatch);
+      socket.off("server_shutdown", handleServerShutdown);
+      socket.off("connect_error", handleConnectError);
+      socket.off("disconnect", handleDisconnect);
+      socket.off("rooms", handleRooms);
       stopServerClock();
       clearInterval(controllerCheckInterval);
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
@@ -181,6 +205,7 @@ function App() {
                 setCurrentPage={setCurrentPage}
                 localId={localId}
                 connectionError={connectionError}
+                protocolMismatch={protocolMismatch}
               />
             </>
           )}

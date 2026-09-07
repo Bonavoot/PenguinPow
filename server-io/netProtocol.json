@@ -1,0 +1,18 @@
+{
+  "PROTOCOL_VERSION": 3,
+  "HELLO_TIMEOUT_MS": 10000,
+  "RECONNECT_GRACE_MS": 5000,
+  "PREMATCH_READY_CAP_MS": 25000,
+  "PING_INTERVAL_MS": 2500,
+  "PING_TIMEOUT_MS": 5000,
+  "SESSION_IDLE_TTL_MS": 600000,
+  "INPUT_SEQ_MAX_JUMP": 4096,
+  "REMOTE_INTERP_DELAY_MS": 24,
+  "EVENTS": {
+    "HELLO": "hello",
+    "SESSION": "session",
+    "OPPONENT_RECONNECTING": "opponent_reconnecting",
+    "MATCH_RESUMED": "match_resumed",
+    "MATCH_ABANDONED": "match_abandoned"
+  }
+}

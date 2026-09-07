@@ -7,8 +7,6 @@ import {
   pumoSideProfile,
   pumoTachiaiPosition,
   attack,
-  slapAttack1,
-  slapAttack2,
   slapAttack1Blur,
   slapAttack1Hit,
   slapAttack2Blur,
@@ -132,7 +130,7 @@ const getImageSrc = (
   // Open-palm thrust (back + mouse1) — the planted strike is a client-driven
   // multi-frame animation. isPalmThrust stays true for the whole move; the
   // frame index (see palmThrustFrame) picks which pose to show:
-  //   0 = smear (windup)     1 = smear (whoosh)
+  //   0 = startup tell       1 = smear / blur (still startup — not hittable)
   //   2 = active strike      3 = recovery (reuses the startup pose)
   isPalmThrust,
   palmThrustFrame = 2,
@@ -174,10 +172,18 @@ const getImageSrc = (
   // FORCE OUT (grabPush) loser — held after the shove settles (not idle).
   isGrabPushDefeat = false,
   // Ice-slide convert — belly-bump pose (same slap cycle, different art).
-  slideSlapArmed = false
+  slideSlapArmed = false,
+  // Ring-out loser (server `isRingOutLoser`): struck body held through the
+  // topple and the downed hold. Outranks everything but the ritual and the
+  // dedicated kill-victim poses, which have their own art.
+  isRingOutLoser = false
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
+  }
+
+  if (isRingOutLoser && !isClinchKillThrowVictim && !isClinchKillPullVictim) {
+    return hit;
   }
 
   if (isClinchKillThrowVictim) {
@@ -318,10 +324,10 @@ const getImageSrc = (
   // Server keeps isPalmThrust true from startup through recovery, so we never
   // fall through to the generic recovering sprite — the frame index drives the
   // pose: startup → smear → active strike → recovery (startup pose reused).
+  // Frame 0 is the ready-stance tell, NOT the blur. Hits are only legal from
+  // frame 2 (SMEAR_END === PALM_THRUST_STARTUP_MS).
   if (isPalmThrust) {
-    // Sequence reads smear → active → startup: the smear pose is the lead-in
-    // windup, and the startup pose doubles as the recovery/settle frame.
-    if (palmThrustFrame === 0) return palmThrustSmear;
+    if (palmThrustFrame === 0) return palmThrustStartup;
     if (palmThrustFrame === 1) return palmThrustSmear;
     if (palmThrustFrame === 3) return palmThrustStartup;
     return palmThrust;
@@ -357,9 +363,18 @@ const getImageSrc = (
   if (isCrouchStrafing) return crouchStrafingApng;
   if (isCrouchStance) return crouchStance;
   if (isSlapAttack) {
-    // Slide convert: same slap cycle, belly-bump art from smear through hold.
-    // Windup stays the ready stance so the pop into the bump is readable.
-    if (slideSlapArmed && slapFrame !== 0) return bellyBump;
+    // Slide convert (belly bump): same slap cycle, different beats.
+    //   0 windup   → stay in the slide squat (the body is still travelling at
+    //                full slide speed; a one-frame ready-stance pop here read
+    //                as a flicker, not a windup)
+    //   1–2 smear/hit → belly-bump art, held through contact + freeze + crawl
+    //   3 recovery → planted ready stance, cut in SLIDE_SLAP_PLANT_LEAD_MS
+    //                before the crawl stops (poseBeats holds it after)
+    if (slideSlapArmed) {
+      if (slapFrame === 0) return sliding;
+      if (slapFrame === 3) return palmThrustStartup;
+      return bellyBump;
+    }
     // Slaps play the client-driven windup → smear → hit → recovery cycle:
     //   0 windup   → ready stance (palm-thrust-startup), held long enough to READ
     //   1 smear    → slap-attack-{1,2}-blur-frame (a short motion beat before the hit)

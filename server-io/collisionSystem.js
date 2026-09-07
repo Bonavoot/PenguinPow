@@ -71,6 +71,7 @@ const {
   CHARGE_FULL_POWER_MS,
   CINEMATIC_KILL_HITSTOP_MS,
   CINEMATIC_KILL_KNOCKBACK_BOOST,
+  CINEMATIC_KILL_SPEED_CAP,
   SIDESTEP_HIT_RETURN_BASE_MS,
   SIDESTEP_HIT_RETURN_MIN_MS,
   SLAP_AIR_PUNISH_KB_BONUS_PX,
@@ -402,18 +403,16 @@ function evaluateHitCallouts(victim, currentTime, opts = {}) {
   const timeSinceAttackAttempt = victim.attackAttemptTime
     ? currentTime - victim.attackAttemptTime
     : Infinity;
-  const timeSinceAttackIntent = victim.attackIntentTime
-    ? currentTime - victim.attackIntentTime
-    : Infinity;
-
   // Counter hit = hitting opponent during STARTUP frames of their move
   const counterHitFromAttacking =
     victim.isAttacking && timeSinceAttackAttempt <= COUNTER_HIT_WINDOW_MS;
-  // MASTERY Phase 4 (4.5): pure-intent window shrinks 150→100ms with the flag on.
-  const intentWindow = MASTERY_P4_ANALOG
-    ? COUNTER_HIT_INTENT_WINDOW_MS
-    : COUNTER_HIT_WINDOW_MS;
-  const counterHitFromIntent = timeSinceAttackIntent <= intentWindow;
+  // A bare MOUSE1 press that never became an attack (blocked by cooldown /
+  // lockout / a buffered mash) is NOT a committed action, so being hit after
+  // one is an ordinary hit. The old "intent" window made most exchanges in a
+  // slap trade-off read as COUNTER HIT on both sides at once, which emptied
+  // the word of meaning. Counter now requires a live startup: an attack that
+  // actually began, or a grab / aerial / sidestep / flap startup below.
+  const counterHitFromIntent = false;
   const counterHitFromGrabAttempt =
     allowGrabCounter &&
     (victim.isGrabStartup === true || victim.isGrabbingMovement === true);
@@ -490,6 +489,18 @@ function chargedKillReach(finalMultiplier) {
     CHARGED_KILL_REACH_MIN +
     (finalMultiplier - CHARGED_KILL_MULT_MIN) * slope;
   return Math.max(0, Math.min(raw, CHARGED_KILL_REACH_CAP));
+}
+
+/**
+ * Charged DEMOLISHED fly-out speed. Takes the live charged send (already
+ * power-scaled, already under MAX_SEND_PX) and rockets it, then clamps so
+ * smoke-trail backfill / snapshot interpolation can keep up.
+ */
+function applyCinematicKillSpeed(velocity) {
+  const boosted = (velocity || 0) * CINEMATIC_KILL_KNOCKBACK_BOOST;
+  const mag = Math.abs(boosted);
+  if (mag <= CINEMATIC_KILL_SPEED_CAP) return boosted;
+  return Math.sign(boosted) * CINEMATIC_KILL_SPEED_CAP;
 }
 
 // Slap/palm/body-slam rope clamp opens only when posture was ALREADY in the kill-throw
@@ -1870,6 +1881,12 @@ function applyTradeHit(victim, attacker, room, io, opts = {}) {
         braked: false,
         contactX: tradeContactX,
         contactY: victim.y,
+        // PRESENTATION: both halves of a trade carry the same tradeId so the
+        // client can draw ONE clash (spark / crack / shake) for the pair
+        // instead of two unrelated hits, and put both bodies on the decisive
+        // tier. Never read by the sim.
+        isTrade: true,
+        tradeId: opts.tradeId || null,
       },
       tradePresentation
     )
@@ -1882,8 +1899,9 @@ function applyTradeHit(victim, attacker, room, io, opts = {}) {
 function resolveSlapTrade(player1, player2, rooms, io) {
   const room = rooms.find((r) => r.players.some((p) => p.id === player1.id));
   if (!room) return;
-  applyTradeHit(player1, player2, room, io); // player1 struck by player2's slap
-  applyTradeHit(player2, player1, room, io); // player2 struck by player1's slap
+  const tradeId = `trade_${Math.random().toString(36).substr(2, 9)}`;
+  applyTradeHit(player1, player2, room, io, { tradeId }); // player1 struck by player2's slap
+  applyTradeHit(player2, player1, room, io, { tradeId }); // player2 struck by player1's slap
   // One symmetric freeze (the sim clock pauses for both).
   triggerHitstopAndEmit(io, room, HITSTOP_SLAP_MS, "slap");
 }
@@ -1927,7 +1945,7 @@ function resolveSlapChargedTrade(slapper, charged, rooms, io, meta = {}) {
   });
 
   // Slap values → charged
-  applyTradeHit(charged, slapper, room, io);
+  applyTradeHit(charged, slapper, room, io, { tradeId: interactionId });
 
   // Charged drains → slapper (existing charged balance/stamina constants) +
   // slap-trade shove magnitude for mutual spacing (existing trade feel).
@@ -2060,6 +2078,8 @@ function resolveSlapChargedTrade(slapper, charged, rooms, io, meta = {}) {
         contactY: slapper.y,
         attackerX: charged.x,
         attackerY: charged.y,
+        isTrade: true,
+        tradeId: interactionId,
       },
       tradePresentation
     )
@@ -3553,7 +3573,6 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           }, 0, "cinematicAttackerRecovery");
         }
 
-        const kbBoost = isCinematicKill ? CINEMATIC_KILL_KNOCKBACK_BOOST : 1;
         // MASTERY Phase 1 (1.3): a victim charging INTO a charged hit carries
         // farther; a braced victim eats less. The kill gate above already
         // resolved at the connect position, so this only changes carry distance
@@ -3585,16 +3604,21 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         const chargedEarnedMult =
           chargeDistanceTerm > 0 ? finalKnockbackMultiplier / chargeDistanceTerm : 1;
 
+        // Cinematic ×4 is flight SPEED, applied after the live send. Feeding
+        // it through `mult` made MAX_SEND_PX (450) flatten every KO to the
+        // same crawl as a midscreen charged confirm.
         const chargedTransfer = MomentumTransfer.resolveTransfer({
           attacker: player,
           victim: otherPlayer,
           moveKey: "charged",
           dirToVictim: knockbackDirection,
           nowSim: currentTime,
-          mult: chargedEarnedMult * kbBoost,
+          mult: chargedEarnedMult,
           selfOverride: chargedLungeSpeed,
         });
-        otherPlayer.knockbackVelocity.x = chargedTransfer.velocity;
+        otherPlayer.knockbackVelocity.x = isCinematicKill
+          ? applyCinematicKillSpeed(chargedTransfer.velocity)
+          : chargedTransfer.velocity;
         otherPlayer.movementVelocity = 0;
         lastTransfer = chargedTransfer;
 
@@ -4882,6 +4906,7 @@ module.exports = {
   resolveChargeClash,
   // Callout partition helper — tests only; not a gameplay entry point.
   evaluateHitCallouts,
+  applyCinematicKillSpeed,
   // Geometry constants — exported for characterization / audit tests only.
   FLAP_BODYSLAM_CONTACT_HEIGHT,
   FLAP_BODYSLAM_WIDTH_SCALE,

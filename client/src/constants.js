@@ -1,9 +1,9 @@
 // Game constants shared between client and server
 // These should match the values in server-io/gameUtils.js
 
-// Match server broadcast rate (server-io/constants.js: TICK_RATE=64, BROADCAST_EVERY_N_TICKS=2 → 32 Hz)
+// Match server broadcast rate (server-io/constants.js: TICK_RATE=64, BROADCAST_EVERY_N_TICKS=1 → 64 Hz)
 // Used for interpolation: time between state updates from server
-export const SERVER_BROADCAST_HZ = 32;
+export const SERVER_BROADCAST_HZ = 64;
 
 // Rope / win line — must match server-io/gameUtils.js (ring-out fires here).
 export const MAP_LEFT_BOUNDARY = 340;

@@ -27,7 +27,11 @@ const HIT_FX = {
     grid: 4,
     startFrame: 2, // frames 0–1 are empty windup
     endFrame: 15,
-    durationMs: 200, // dissipation AFTER the hitstop peak-hold
+    // Dissipation AFTER the hitstop peak-hold. Was 200 ms: the spark is pinned
+    // to the contact point in world space, and by 200 ms the struck body had
+    // already slid half a body-width away from it, so the spark read as a
+    // separate object hanging in the air. 110 ms clears it as the slide begins.
+    durationMs: 110,
     sizeCqw: 12.6,
     // Horizontal anchor (% of 1280): base + facing*dir.
     // More negative dirXPct = further toward attacker; less negative = deeper

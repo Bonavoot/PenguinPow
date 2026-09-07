@@ -7,6 +7,7 @@
 // Usage: node scripts/cadenceTest.js            (defaults to ws://localhost:3199)
 //        PORT=3001 node scripts/cadenceTest.js
 const { io } = require("/home/bonavoot/Development/PenguinPow/client/node_modules/socket.io-client");
+const { PROTOCOL_VERSION } = require("../netProtocol.json");
 
 const PORT = process.env.PORT || 3199;
 const URL = `http://localhost:${PORT}`;
@@ -14,7 +15,7 @@ const KEYS = { w:false, a:false, s:false, d:false, " ":false, shift:false, e:fal
 
 function makeClient(name) {
   const socket = io(URL, { transports: ["websocket"] });
-  const c = { name, socket, keys: { ...KEYS }, id: null, state: {}, slot: null,
+  const c = { name, socket, keys: { ...KEYS }, id: null, seq: 0, state: {}, slot: null,
               maxChain: 0, cadenceHits: 0, slapStarts: 0 };
   c.send = (patch) => {
     const events = [];
@@ -22,7 +23,7 @@ function makeClient(name) {
       if (!!c.keys[k] !== !!patch[k]) events.push({ k, a: patch[k] ? "down" : "up", t: Date.now() });
     }
     c.keys = { ...c.keys, ...patch };
-    socket.emit("fighter_action", { id: c.id, keys: c.keys, events });
+    socket.emit("fighter_action", { id: c.id, keys: c.keys, events, seq: ++c.seq });
   };
   return c;
 }
@@ -37,12 +38,17 @@ function wire(c) {
   const DBG = process.env.DBG;
   const log = (...a) => { if (DBG) console.log(c.name, ...a); };
   c.socket.on("connect", () => {
-    c.id = c.socket.id;
-    log("connect", c.id);
-    c.socket.emit("join_room", { roomId, socketId: c.id });
-    setTimeout(() => c.socket.emit("ready_count", { roomId, playerId: c.id, isReady: true }), 400 + (c === p2 ? 400 : 0));
+    // Protocol v2 (server-io/netSession.js): hello first; identity is the
+    // session playerId, not the socket id.
+    c.socket.emit("hello", { protocolVersion: PROTOCOL_VERSION }, (ack) => {
+      if (!ack || !ack.ok) { console.error(c.name, "hello rejected", ack); process.exit(1); }
+      c.id = ack.playerId;
+      log("connect", c.id);
+      c.socket.emit("join_room", { roomId, socketId: c.id });
+      setTimeout(() => c.socket.emit("ready_count", { roomId, playerId: c.id, isReady: true }), 400 + (c === p2 ? 400 : 0));
+    });
   });
-  c.socket.on("initial_game_start", () => { log("initial_game_start"); if (c === p1) c.socket.emit("pre_match_complete", { roomId }); });
+  c.socket.on("initial_game_start", () => { log("initial_game_start"); c.socket.emit("pre_match_complete", { roomId }); // each human reports preload done });
   c.socket.on("power_up_selection_start", (data) => {
     log("power_up_selection_start", data && data.availablePowerUps);
     const pick = data.availablePowerUps[0];

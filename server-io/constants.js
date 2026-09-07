@@ -10,19 +10,29 @@ const GRAB_STATES = {
 
 // Performance: game logic runs at TICK_RATE; broadcasts every N ticks to reduce network + client work
 const TICK_RATE = 64;
-const BROADCAST_EVERY_N_TICKS = 2; // 2 = 32 Hz broadcast (client interpolation smooths to 60fps)
+// 1 = broadcast every sim tick (64 Hz). Was 2 (32 Hz): the extra broadcast
+// interval added up to 31 ms to every non-predicted action (slides, pushes,
+// knockback) and set the floor of the client's interpolation delay. Packets
+// are delta-compressed, so the bandwidth cost is roughly 2× a small number.
+const BROADCAST_EVERY_N_TICKS = 1;
 
-// Phase 5: full tracked snapshot every N room broadcasts (~2s at 32 Hz remote).
+// Phase 5: full tracked snapshot every N room broadcasts (~2s at 64 Hz).
 // Clients use these as gap-recovery anchors; visibility return also requests one.
-const KEYFRAME_EVERY_N_BROADCASTS = 64;
+const KEYFRAME_EVERY_N_BROADCASTS = 128;
 
 // ============================================
 // PERFORMANCE: Delta State Updates
 // Only send properties that changed since last tick
 // ============================================
-const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'balance', 'id', 'fighter', 'color', 'mawashiColor', 'bodyColor', 'gearIds'];
+// Continuous state only. Identity/cosmetics (id, fighter, color, mawashiColor,
+// bodyColor, gearIds) used to ride EVERY 32 Hz packet although they change at
+// most once per match; they are now delta-tracked (present in every keyframe
+// and whenever they change), which the client's accumulating snapshot bus
+// already handles. Measured: ~600 B → ~480 B per delta packet.
+const ALWAYS_SEND_PROPS = ['x', 'y', 'facing', 'stamina', 'balance'];
 
 const DELTA_TRACKED_PROPS = [
+  'id', 'fighter', 'color', 'mawashiColor', 'bodyColor', 'gearIds',
   'isAttacking', 'isSlapAttack', 'isPalmThrust', 'palmThrustFxId', 'isLowKick', 'slapAnimation', 'attackType',
   // Phase 4B: true only while the palm is still HOLDING its extended strike
   // pose during recovery. Debug-overlay consumer (picks palm_recovery's authored
@@ -49,6 +59,10 @@ const DELTA_TRACKED_PROPS = [
   'isMatadorParrying', 'isMatadorSuccess', 'isMatadorWhiffRecovering',
   'isThrowing', 'isBeingThrown', 'isThrowTeching', 'isBeingPulled', 'isBeingPushed',
   'isThrowingSalt', 'isReady', 'isBowing', 'isGrabPushDefeat', 'isAtTheRopes',
+  // Round resolution (see handleWinCondition): the ring-out loser topples and
+  // stays down in the fall direction; the winner holds. Presentation-only flags
+  // — the simulation outcome is already decided when they are set.
+  'isRingOutLoser', 'ringOutDirection', 'isRoundWinner',
   'isThrowingSnowball', 'isSpawningPumoArmy',
   'isGrabBreaking', 'isGrabBreakCountered', 'isGrabBreakSeparating',
   'isAttemptingGrabThrow', 'isInRitualPhase',
@@ -92,6 +106,9 @@ const DELTA_TRACKED_PROPS = [
   // Legacy wire field — always false.
   'isClinchThrowing', 'isClinchPushing', 'isClinchPlanting',
   'isClinchKillThrowVictim', 'isClinchKillPullVictim',
+  // Charged DEMOLISHED victim — client blocks the reaction rig / afterimages
+  // and runs the display-rate fly-out integrator.
+  'isCinematicKillVictim',
   'isCounterGrabbed',
   // Clinch Flow P2 — committed drive lean (visual + counterthrow vulnerability)
   'isClinchCommittedDrive',
@@ -116,7 +133,11 @@ const DELTA_TRACKED_PROPS = [
   'cadenceChain',
   // Ice-slide slap convert — client holds the palm-out pose through the longer
   // recovery so the plant reads as a thrust, not a dropped mash string.
-  'slideSlapArmed'
+  'slideSlapArmed',
+  // Net session contract (netSession.js): last CONSUMED input seq for this
+  // fighter (client reconciles/telemetry against it) and the mid-match
+  // reconnect-hold flag the opponent's client renders.
+  'inputSeqAck', 'inputAckSimTime', 'isDisconnected'
 ];
 
 /**
@@ -354,6 +375,20 @@ const POST_SIDESTEP_FACING_TRACK_MS = 500;
 // Dohyo edge fall physics - fast heavy drop with maintained horizontal momentum
 const DOHYO_FALL_SPEED = 5.93; // Scaled for camera zoom (was 8)
 const DOHYO_FALL_DEPTH = 37; // Scaled for camera zoom (was 50)
+// Ring-out resolution: floor on the loser's exit shove at the win tick
+// (velocity units — one unit travels ~2.89 px/tick). On the dirt apron
+// (PAST_MAP_DIRT_KB_FRICTION 0.88) a unit covers ~24 px, so 4.8 carries the
+// loser ~105 px: off the rope, past the 90 px fall edge, and down onto the
+// lower apron within ~350 ms — the same beat as the client's topple.
+const RING_OUT_EXIT_VELOCITY = 4.8;
+// Round-end hold before the next round auto-resets (non-BASHO). Sized for the
+// resolution beat: exit slide + topple (~0.45 s) → banner reaches full opacity
+// (~0.3 s) → a readable hold. Was 2000 with the banner racing the flag flip.
+const ROUND_END_HOLD_MS = 2600;
+// Training lab: a ring-out plays the same body resolution (topple + landing)
+// before snapping back to the ready marks — long enough to see the fall land,
+// short enough that the lab keeps its rhythm. Non-ring-out ends reset at once.
+const TRAINING_RING_OUT_HOLD_MS = 1500;
 // Legacy alias — live fall/off-ice drag uses OUTSIDE_DOHYO_DIRT_* below.
 const DOHYO_FALL_HORIZONTAL_RETENTION = 0.84;
 
@@ -1141,9 +1176,14 @@ const CLINCH_PULL_INPUT_LOCK_MS = 650;           // Input lock after pull
 // Cinematic Clinch Kill — exaggerated finishers when balance < kill threshold
 // ============================================
 
-// Kill Throw (Mouse2+W): High forward arc — launched above the screen, crashes down
-const CLINCH_KILL_THROW_ARC_HEIGHT = 1000;       // High launch (clears screen) without a pure vertical spike
-const CLINCH_KILL_THROW_DURATION_MS = 1700;
+// Kill Throw (Mouse2+W): big forward arc that STAYS IN FRAME.
+// The old 1000 px / 1700 ms arc left the visible map for ~1.4 s (the map is
+// 720 tall, ground at 286, camera never followed Y) and re-entered to land
+// within ~130 ms — the match-deciding moment was mostly invisible. 240 px is
+// the tallest arc whose crown stays inside the map (286 + 240 + ~170 sprite);
+// 900 ms keeps the same implied gravity (h ∝ t²) so it still reads ballistic.
+const CLINCH_KILL_THROW_ARC_HEIGHT = 240;
+const CLINCH_KILL_THROW_DURATION_MS = 900;
 // Kill throws skip start/land hitstop (0). Constant kept for docs/exports.
 const CLINCH_KILL_THROW_DISTANCE = 300;
 
@@ -1342,6 +1382,14 @@ const CHARGED_HIT_RECOVERY_MS = 280;
 
 const CINEMATIC_KILL_HITSTOP_MS = 550;
 const CINEMATIC_KILL_KNOCKBACK_BOOST = 4.0;
+// Flight SPEED ceiling for charged DEMOLISHED (velocity units, no friction).
+// The ×4 boost is a SPEED multiplier on the live charged send — it must NOT
+// be folded into MomentumTransfer.mult, because MAX_SEND_PX (450) immediately
+// eats it and the victim crawls off at ordinary charged slide speed.
+// 12 sits just above a full-charge ×4 (~11.2) so charge still scales the
+// rocket, and well under the smoke-trail / interpolator keep-up wall
+// (~17 vel = 5 backfilled 24px puffs/frame, or SNAP_JUMP_PX 50).
+const CINEMATIC_KILL_SPEED_CAP = 12;
 const CINEMATIC_KB_FRICTION = 0.985;
 const CINEMATIC_KB_DI_FRICTION = 0.96;
 const CINEMATIC_KB_MOVEMENT_TRANSFER = 0.8;
@@ -1601,6 +1649,9 @@ module.exports = {
   GRAB_RANGE,
   DOHYO_FALL_SPEED,
   DOHYO_FALL_DEPTH,
+  RING_OUT_EXIT_VELOCITY,
+  ROUND_END_HOLD_MS,
+  TRAINING_RING_OUT_HOLD_MS,
   DOHYO_FALL_HORIZONTAL_RETENTION,
   PAST_MAP_DIRT_KB_FRICTION,
   OUTSIDE_DOHYO_DIRT_KB_FRICTION,
@@ -2186,6 +2237,7 @@ module.exports = {
   CHARGED_HIT_RECOVERY_MS,
   CINEMATIC_KILL_HITSTOP_MS,
   CINEMATIC_KILL_KNOCKBACK_BOOST,
+  CINEMATIC_KILL_SPEED_CAP,
   CINEMATIC_KB_FRICTION,
   CINEMATIC_KB_DI_FRICTION,
   CINEMATIC_KB_MOVEMENT_TRANSFER,

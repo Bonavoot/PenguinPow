@@ -15,8 +15,8 @@ import {
   GREY_BODY_RANGES,
   clearRecolorCache,
   preDecodeImages,
-  preDecodeDataUrl,
   pinDecodedImages,
+  pinDecodedImagesAppend,
   getCacheStats,
   flushPersistentCache,
   getDecodedImage,
@@ -29,6 +29,17 @@ import { awaitDecodedReadiness } from "../utils/assetReadiness";
 import { ALL_BALD_BODY_SRCS } from "../config/baldSprites";
 import { getRosterColorCombos } from "../lib/bashoRun";
 import { SPRITESHEET_CONFIG, SPRITESHEET_CONFIG_BY_NAME } from "../config/animatedSpriteConfig";
+import { spriteIdFromUrl } from "../config/bakeSources";
+import {
+  FIRST_BOUT_SPRITE_IDS,
+  isFirstBoutSpriteId,
+  listFirstBoutSources,
+} from "../lib/firstBoutPriority";
+import dohyoDisplay from "../assets/dohyo-display.webp";
+import gameMapBackground from "../assets/game-map-444.webp";
+import antarcticaSky from "../assets/map-antarctica-sky.webp";
+import gyojiImage from "../assets/gyoji.png";
+import gyojiReady from "../assets/gyoji-ready.png";
 
 // Import spritesheets directly to ensure EXACT URL match with GameFighter
 import pumoWaddleSpritesheet from "../assets/spritesheets/pumo-waddle_spritesheet.png";
@@ -123,6 +134,72 @@ const GAME_FIGHTER_APNG_SPRITES = [
   pumoWaddle, pumoArmy, grabAttempt, hit,
   snowballThrow, atTheRopes, crouchStrafing, salt,
 ];
+
+const FIRST_BOUT_ARENA_HUD = [
+  dohyoDisplay,
+  gameMapBackground,
+  antarcticaSky,
+  gyojiImage,
+  gyojiReady,
+];
+
+const PRIORITY_ID_SET = new Set([
+  ...FIRST_BOUT_SPRITE_IDS,
+  ...FIRST_BOUT_SPRITE_IDS.map((id) => `${id}-bald`),
+]);
+
+function isFirstBoutFileUrl(url) {
+  if (!url || typeof url !== "string") return false;
+  if (FIRST_BOUT_ARENA_HUD.includes(url)) return true;
+  if (/dohyo-display|game-map-444|map-antarctica-sky|gyoji-ready|\/gyoji\./.test(url)) {
+    return true;
+  }
+  return isFirstBoutSpriteId(spriteIdFromUrl(url));
+}
+
+let deferredPreloadSrcs = [];
+let deferredIdleHandle = null;
+
+function scheduleIdleWork(fn) {
+  if (typeof requestIdleCallback === "function") {
+    return requestIdleCallback(fn, { timeout: 2000 });
+  }
+  return setTimeout(fn, 32);
+}
+
+function cancelIdleWork(handle) {
+  if (handle == null) return;
+  if (typeof cancelIdleCallback === "function") {
+    try {
+      cancelIdleCallback(handle);
+      return;
+    } catch {
+      /* ignore */
+    }
+  }
+  clearTimeout(handle);
+}
+
+/** Decode leftover sprites during the ritual / idle so the gate is not blocked on them. */
+export function preloadDeferredSprites() {
+  const leftover = deferredPreloadSrcs;
+  deferredPreloadSrcs = [];
+  if (!leftover.length) return;
+  const DECODE_BATCH_SIZE = 4;
+  let i = 0;
+  const step = () => {
+    if (i >= leftover.length) return;
+    const batch = leftover.slice(i, i + DECODE_BATCH_SIZE);
+    i += DECODE_BATCH_SIZE;
+    preDecodeImages(batch)
+      .then(() => pinDecodedImagesAppend(batch))
+      .finally(() => {
+        deferredIdleHandle = scheduleIdleWork(step);
+      });
+  };
+  cancelIdleWork(deferredIdleHandle);
+  deferredIdleHandle = scheduleIdleWork(step);
+}
 
 const PlayerColorContext = createContext(null);
 
@@ -479,12 +556,25 @@ export function PlayerColorProvider({ children }) {
     // recolor for any color not in the manifest, and is a no-op when no bake
     // has been generated (arrays empty → covered=false).
     await bakedReady;
-    const p1Baked = getBakedUrlsForColor(p1Color, p1Body);
-    const p2Baked = getBakedUrlsForColor(p2Color, p2Body);
+    const p1BakedAll = getBakedUrlsForColor(p1Color, p1Body);
+    const p2BakedAll = getBakedUrlsForColor(p2Color, p2Body);
+    const p1Baked = getBakedUrlsForColor(p1Color, p1Body, PRIORITY_ID_SET);
+    const p2Baked = getBakedUrlsForColor(p2Color, p2Body, PRIORITY_ID_SET);
+    const allBakedUrls = [...new Set([...p1BakedAll, ...p2BakedAll])];
+    const priorityBaked = [...new Set([...p1Baked, ...p2Baked])];
+    const priorityBakedSet = new Set(priorityBaked);
+    const firstBoutTokens = listFirstBoutSources({
+      player1Color: p1Color,
+      player2Color: p2Color,
+      player1BodyColor: p1Body,
+      player2BodyColor: p2Body,
+      player1GearIds: p1GearIds,
+      player2GearIds: p2GearIds,
+    });
     const skipP1Recolor =
-      (p1Color === SPRITE_BASE_COLOR && !p1Body) || p1Baked.length > 0;
+      (p1Color === SPRITE_BASE_COLOR && !p1Body) || p1BakedAll.length > 0;
     const skipP2Recolor =
-      (p2Color === SPRITE_BASE_COLOR && !p2Body) || p2Baked.length > 0;
+      (p2Color === SPRITE_BASE_COLOR && !p2Body) || p2BakedAll.length > 0;
 
     const [p1Result, p2Result] = await Promise.all([
       recolorPlayerSprites("player1", p1Color, skipP1Recolor, p1Body),
@@ -545,10 +635,9 @@ export function PlayerColorProvider({ children }) {
       ...player2SourcesRef.current.filter(s => s && (s.startsWith('data:') || s.startsWith('blob:'))),
     ];
     
-    // Baked files are real URLs (e.g. "/baked/<hash>.png"), not blob/data — add
-    // them to the pre-decode + pin set so the first pose paints warm.
-    const bakedUrls = [...new Set([...p1Baked, ...p2Baked])];
-    bakedUrls.forEach((u) => allSourcesToPreload.add(u));
+    // Baked files are real URLs (e.g. "/baked/<hash>.png"), not blob/data.
+    // Priority baked wait in the gate; the rest decode on idle and stay pinned.
+    allBakedUrls.forEach((u) => allSourcesToPreload.add(u));
 
     // Head-gear overlays — needed warm before we composite them onto baked bodies.
     ALL_HEAD_OVERLAYS.forEach((overlay) => {
@@ -558,35 +647,33 @@ export function PlayerColorProvider({ children }) {
     ALL_BALD_BODY_SRCS.forEach((src) => {
       if (src) allSourcesToPreload.add(src);
     });
+    FIRST_BOUT_ARENA_HUD.forEach((src) => {
+      if (src) allSourcesToPreload.add(src);
+    });
 
     const uniqueSources = [...allSourcesToPreload].filter(s => !s.startsWith('data:') && !s.startsWith('blob:'));
-    console.log(`[Preload] Pre-decoding ${uniqueSources.length} original sprites + ${recoloredUrls.length} recolored sprites...`);
-    
-    // Step 4: Pre-decode original images in batches
+    const prioritySources = uniqueSources.filter(isFirstBoutFileUrl);
+    const deferredFiles = uniqueSources.filter((s) => !isFirstBoutFileUrl(s));
+    const deferredBaked = allBakedUrls.filter((u) => !priorityBakedSet.has(u));
+    // Recolor blobs are the URLs GameFighter paints for custom colors — they
+    // must stay in the gate. Deferring them (and replace-pinning only the
+    // short first-bout file list) was the post-A2 ghost-frame regression.
+    deferredPreloadSrcs = [...deferredFiles, ...deferredBaked];
+    console.log(
+      `[Preload] First-bout gate: ${prioritySources.length} urls / ${firstBoutTokens.length} tokens` +
+        ` (defer ${deferredFiles.length} files + ${deferredBaked.length} baked; pin ${recoloredUrls.length} recolors)`
+    );
+
     const DECODE_BATCH_SIZE = 8;
-    for (let i = 0; i < uniqueSources.length; i += DECODE_BATCH_SIZE) {
-      const batch = uniqueSources.slice(i, i + DECODE_BATCH_SIZE);
+    for (let i = 0; i < prioritySources.length; i += DECODE_BATCH_SIZE) {
+      const batch = prioritySources.slice(i, i + DECODE_BATCH_SIZE);
       await preDecodeImages(batch);
     }
-    
-    // Step 5: Pre-decode recolored blob/data URLs and KEEP them in decoded cache
-    // This prevents "invisible frames" - Images stay in DOM so they're ready for instant display
-    for (let i = 0; i < recoloredUrls.length; i += 4) {
-      const batch = recoloredUrls.slice(i, i + 4);
-      await Promise.all(batch.map(preDecodeDataUrl));
-    }
 
-    // Step 5b: PIN the fighter working set so it can never be evicted from the
-    // decoded cache. This is the fix for the progressive "ghost frames after N
-    // rematches" bug: between-round gyoji/ritual decodes were slowly pushing the
-    // in-use fighter sprites out of the (insertion-ordered, no-touch) decoded
-    // cache, after which every pose-change <img> remount went cold → constant
-    // ghost frames + cold-decode spikes on heavy interactions (counter hits).
-    // recoloredUrls = the custom-color blobs both players actually display;
-    // uniqueSources = the original file URLs a DEFAULT-color player displays.
-    // Pinning both covers either color choice. replace=true releases stale pins
-    // from any earlier color selection.
-    await pinDecodedImages([...recoloredUrls, ...uniqueSources, ...bakedUrls], true);
+    await pinDecodedImages(
+      [...prioritySources, ...priorityBaked, ...recoloredUrls],
+      true,
+    );
 
     // Step 5c: Pre-bake hat composites for anyone wearing a top hat, then pin
     // those blob URLs. Without this, every pose swap mints a cold composite URL
@@ -617,14 +704,15 @@ export function PlayerColorProvider({ children }) {
       const hiddenAtStart =
         typeof document !== "undefined" && document.visibilityState !== "visible";
       const criticalSrcs = [
+        ...prioritySources,
+        ...priorityBaked,
         ...recoloredUrls,
-        ...bakedUrls,
         ...hatUrls,
       ];
       const readiness = await awaitDecodedReadiness(
         criticalSrcs,
         getDecodedImage,
-        { timeoutMs: 2500, pollMs: 16 },
+        { timeoutMs: 7000, pollMs: 16 },
       );
       // Brief timer yield only — never rAF — so GPU/main can settle without
       // depending on visibility. Completes while hidden.
@@ -668,6 +756,9 @@ export function PlayerColorProvider({ children }) {
     console.log(`[Preload] Complete! ${elapsed.toFixed(0)}ms, Recolor cache: ${stats.size}/${stats.maxSize}, Decoded cache: ${stats.decodedSize}/${stats.maxDecodedSize}`);
     setIsLoading(false);
     setSpritesReady(true);
+    // Ritual / power-up window: fill the rest of the combat set now, not only
+    // after HAKKIYOI (first palm/block used to race an idle callback).
+    preloadDeferredSprites();
     
     return true;
   }, [player1Color, player2Color, player1BodyColor, player2BodyColor]);
@@ -790,6 +881,7 @@ export function PlayerColorProvider({ children }) {
     spritesReady,
 
     preloadSprites,
+    preloadDeferredSprites,
     resetColors,
     warmupWorker,
     installAllColors,

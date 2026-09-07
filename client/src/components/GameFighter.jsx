@@ -34,10 +34,12 @@ import GrabBreakEffect from "./GrabBreakEffect";
 import GrabTechEffect from "./GrabTechEffect";
 import ClinchJoltEffect from "./ClinchJoltEffect";
 import CounterGrabEffect from "./CounterGrabEffect";
-import PunishBannerEffect from "./PunishBannerEffect";
-import GoredBannerEffect from "./GoredBannerEffect";
+import ContactCallout, {
+  CONTACT_CALLOUT_HEAD_OFFSET_PX,
+} from "./ContactCallout";
+import { retireAllAnnouncements } from "./SumoAnnouncementBanner";
+import { retireAllHypeStamps } from "./SumoHypeStamp";
 import MatadorSuccessEffect from "./MatadorSuccessEffect";
-import CounterHitEffect from "./CounterHitEffect";
 import EdgeDangerEffect from "./EdgeDangerEffect";
 import GripPromptEffect from "./GripPromptEffect";
 import ClinchCalloutEffect from "./ClinchCalloutEffect";
@@ -62,7 +64,8 @@ import {
 } from "../utils/SpriteRecolorizer";
 import { getBakedSprite } from "../utils/bakedSprites";
 import { usePlayerColors } from "../context/PlayerColorContext";
-import { addShake } from "../lib/cameraShake";
+import { addShake, suppressServerShake } from "../lib/cameraShake";
+import { SnapshotInterpolator, LOCAL_INTERP_DELAY_MS } from "../net/snapshotInterpolator";
 import {
   getSharedFighterState,
   isMasteryP5Live,
@@ -97,7 +100,6 @@ import {
 import SnowEffect from "./SnowEffect";
 import "./theme.css";
 import {
-  SERVER_BROADCAST_HZ,
   DOHYO_LEFT_BOUNDARY,
   DOHYO_RIGHT_BOUNDARY,
   isOutsideDohyo,
@@ -107,6 +109,8 @@ import {
   SLAP_ANIM,
   PALM_THRUST_ANIM,
   GRAB_SEPARATE_PALM_ANIM,
+  resolvePalmThrustFrame,
+  shouldRestartPalmThrustClock,
   AP_WHIFF_RECOVERY_MS,
   AP_FLURRY_COVER_REGULAR_MS,
   SLIDE_SLAP_ARM_SPEED,
@@ -133,12 +137,37 @@ function contactFxX(data) {
 function hasContactSeam(data) {
   return data && typeof data.contactX === "number";
 }
-// Kill-throw: swap to flat landing art this many px above GROUND_LEVEL so the
-// KO pose finishes the descent (avoids a hard cut on the impact frame).
-const KILL_THROW_LANDING_EARLY_PX = 80;
+// Kill-throw: swap to the flat landing art this many px above GROUND_LEVEL.
+// Was 80 (≈ 75 ms of fall) — the body flattened in mid-air and floated down.
+// The spin keyframe now arrives horizontal AND on the ground line, so the swap
+// happens on the touchdown frame itself (one frame of fall at terminal speed),
+// and the splat squash starts on that same frame.
+const KILL_THROW_LANDING_EARLY_PX = 14;
 // Must clear this height before early-landing can arm — blocks the pre-rise
-// grounded frames at throw start from looking like "near impact".
-const KILL_THROW_PEAK_ARM_PX = 400;
+// grounded frames at throw start from looking like "near impact". The kill
+// throw arc now peaks ~240 px (in frame), so arm once clearly airborne.
+const KILL_THROW_PEAK_ARM_PX = 110;
+
+// ROUND RESOLUTION — kimarite banner timing relative to the `game_over` tick.
+// Win types with a body beat (ring-out topple, kill-throw landing) mount the
+// banner when that beat lands; the rest mount on the next frames as before.
+const ROUND_RESULT_NO_TOPPLE_WIN_TYPES = new Set([
+  "clinchKillThrow",
+  "clinchKillPull",
+  "cinematicKill",
+  "grabPush",
+  "grabThrow",
+  "timeExpired",
+  "torinaoshi",
+]);
+function roundResultBannerDelayMs(winType) {
+  const type = winType || "ringOut";
+  if (type === "clinchKillThrow") return 160;
+  if (ROUND_RESULT_NO_TOPPLE_WIN_TYPES.has(type)) return 0;
+  // Ring-out: the loser's topple lands at TOPPLE_MS; let the caption arrive
+  // on that impact (its own fade-in then finishes ~0.3 s later).
+  return RIG_TUNING.TOPPLE_MS + 40;
+}
 import { getDisplayHitstopUntil, getEstimatedRtt } from "../lib/serverClock";
 import {
   MovementPredictor,
@@ -204,6 +233,7 @@ import {
   dodging,
   sliding,
   recovering,
+  palmThrustStartup,
   saltBasket,
   saltBasketEmpty,
   snowball,
@@ -283,6 +313,34 @@ import {
   formatStruckLimbHoldHudLine,
 } from "../combatPresentation/struckLimbHold";
 import {
+  POSE_BEAT,
+  POSE_BEAT_TIMING,
+  createPoseBeats,
+  armPoseBeat,
+  clearPoseBeats,
+  resolvePoseBeat,
+  poseBeatNeedsTick,
+  shouldArmPostHitSettle,
+  shouldArmSlideSlapPlant,
+} from "../combatPresentation/poseBeats";
+import {
+  createReactionRig,
+  stepReactionRig,
+  armReactionTier,
+  observeRigDisplayX,
+  rigPoseToCss,
+  isRigBlockedState,
+  resetReactionRig,
+  RIG_TIER,
+  RIG_TUNING,
+} from "../combatPresentation/reactionRig";
+import {
+  createCinematicKillFlight,
+  armCinematicKillFlight,
+  clearCinematicKillFlight,
+  stepCinematicKillFlight,
+} from "../combatPresentation/cinematicKillFlight";
+import {
   createSlapConnectHold,
   armSlapConnectHold,
   resolveSlapConnectHold,
@@ -312,6 +370,7 @@ import { tintFromFlags } from "../utils/bakedSprites";
 import {
   StyledImage,
   DeepGripArmGlow,
+  FighterRigLayer,
   RitualSpriteContainer,
   RitualSpriteImage,
   AnimatedFighterContainer,
@@ -325,10 +384,6 @@ import {
   PumoClone,
   AnimatedPumoCloneContainer,
   AnimatedPumoCloneImage,
-  OpponentDisconnectedOverlay,
-  DisconnectedModal,
-  DisconnectedTitle,
-  DisconnectedMessage,
 } from "./fighterStyledComponents";
 
 
@@ -496,10 +551,7 @@ const GameFighter = ({
   index,
   roomName,
   localId,
-  setCurrentPage,
   opponentDisconnected,
-  disconnectedRoomId,
-  onResetDisconnectState,
   predictionRef,
   playerColor, // Custom color for mawashi/headband recoloring
   playerBodyColor, // Custom body color (null = default grey)
@@ -780,6 +832,23 @@ const GameFighter = ({
   // ============================================
   const lastNonIdleSpriteRef = useRef(null);
   const lastNonHitSpriteRef = useRef(null);
+  // Authored in-between pose beats (combatPresentation/poseBeats): post-hit
+  // settle, belly-bump plant. Edge bookkeeping lives in the render body next
+  // to the other pose directors; the beat itself only ever replaces idle.
+  const poseBeatsRef = useRef(createPoseBeats());
+  const poseBeatEdgeRef = useRef({
+    wasHit: false,
+    wasSlapAttack: false,
+    wasSlideSlapArmed: false,
+  });
+  // Set by player_hit when THIS fighter's belly bump connects; consumed at the
+  // slap cycle's falling edge (the server does not ship currentSlapHitConnected).
+  const bellyBumpConnectedRef = useRef(false);
+  // Plant dust is world VFX — the render body only flags it; the post-commit
+  // effect below emits it (one puff per plant, never from render).
+  const pendingPlantDustRef = useRef(false);
+  // Trade ids whose world-side beats (spark / crack / shake) already fired.
+  const tradeSeenRef = useRef(new Set());
   // Time-based (was render-frame-based): movement no longer re-renders the
   // component, so visual windows are deadlines checked by the rAF loop.
   const idleHoldUntilRef = useRef(0);
@@ -793,9 +862,11 @@ const GameFighter = ({
   const FLAP_WINGBEAT_MS = 90; // ~down-stroke hold (snappy wing flap)
 
   // OPEN-PALM THRUST animation: client-driven timeline anchored to the rising
-  // edge of isPalmThrust. Boundaries from config/combatTiming.js — short smear
-  // lead-in, early strike pose (snappy paint; server hitbox is still 90ms):
-  //   [0,       STARTUP_END) → 0/1 smear
+  // edge of isPalmThrust. Boundaries from config/combatTiming.js — startup
+  // tell, then blur, then the strike pose exactly when the server hitbox
+  // opens (SMEAR_END === PALM_THRUST_STARTUP_MS):
+  //   [0,       STARTUP_END) → 0 startup tell
+  //   [STARTUP, SMEAR_END)   → 1 smear / blur (not hittable)
   //   [SMEAR,   ACTIVE_END)  → 2 strike (held through active + visual hold)
   //   [ACTIVE,  ∞)           → 3 recovery (startup pose settle)
   const palmThrustAnimRef = useRef({
@@ -929,6 +1000,8 @@ const GameFighter = ({
     isMatadorWhiffRecovering: false,
     isReady: false,
     isHit: false,
+    lastHitType: null,
+    isCinematicKillVictim: false,
     isDead: false,
     isSlapAttack: false,
     isThrowing: false,
@@ -986,6 +1059,12 @@ const GameFighter = ({
   const currentState = useRef(null);
   const lastUpdateTime = useRef(performance.now());
   const previousUpdateTime = useRef(0);
+  // Jitter-buffered timeline of authoritative positions (net/snapshotInterpolator).
+  // The REMOTE fighter renders a small adaptive delay behind the newest packet
+  // so arrival bunching never shows as speed changes; the LOCAL fighter renders
+  // undelayed (its X is predicted, its non-predicted moments follow the newest
+  // packet exactly as before).
+  const snapshotInterpRef = useRef(new SnapshotInterpolator());
 
   // DOM nodes driven imperatively by the interpolation loop (position only —
   // all flag-dependent styling still flows through React renders).
@@ -1019,6 +1098,8 @@ const GameFighter = ({
   // that a near-ground Y means "falling into impact" (not the pre-rise start).
   const killThrowAirbornePeakRef = useRef(false);
   const killThrowShowLandingRef = useRef(false);
+  const killThrowLandBundleFiredRef = useRef(false);
+  const onKillThrowVisualLandRef = useRef(null);
   // Bumped by the rAF loop when a time-based visual (hit flash / hit tint /
   // idle sprite hold / dohyo-side flip) needs a re-render to update.
   const [, setVisualTick] = useState(0);
@@ -1391,6 +1472,9 @@ const GameFighter = ({
 
   const [attackerBellyPlant, setAttackerBellyPlant] = useState(false);
   const attackerBellyPlantTimeoutRef = useRef(null);
+  // bellyBumpPlant keyframe length (fighterStyledComponents) — starts at the
+  // hitstop release, never under the freeze.
+  const BELLY_BUMP_PLANT_ACCENT_MS = 160;
   const [bellyBumpSwing, setBellyBumpSwing] = useState(false);
   const bellyBumpSwingTimeoutRef = useRef(null);
   // Ice dump when the slide converts into a belly bump — once per swing
@@ -2392,6 +2476,7 @@ const GameFighter = ({
      bout, printed over each wrestler's head with the result. */
   const [hanteiScores, setHanteiScores] = useState(null);
   const showRoundResultRafRef = useRef(null); // Track rAF so we can cancel on reset
+  const roundResultDelayTidRef = useRef(null); // banner keyed to the body beat
   // PERFORMANCE: Pre-warm RoundResult styled-components CSS on mount.
   // Rendering both variants (victory/defeat) for 1 frame forces styled-components to
   // generate and inject all ~15 CSS classes into the <style> tag. These persist even
@@ -2445,7 +2530,6 @@ const GameFighter = ({
   // Thick Blubber absorb VFX is now the pink "wrap ring" (grab_armor_absorb
   // handler / grabArmorAbsorb particle) — no per-fighter effect state and no
   // body tint needed.
-  const [disconnectCountdown, setDisconnectCountdown] = useState(3);
   const [uiRoundId, setUiRoundId] = useState(0);
 
   // New enhanced effects state
@@ -2453,13 +2537,14 @@ const GameFighter = ({
   const [grabTechEffectPosition, setGrabTechEffectPosition] = useState(null);
   const [counterGrabEffectPosition, setCounterGrabEffectPosition] =
     useState(null);
-  const [punishBannerPosition, setPunishBannerPosition] = useState(null);
-  const [goredBannerPosition, setGoredBannerPosition] = useState(null);
+  // Contact-level callouts (COUNTER HIT / PUNISH / MATADOR BREAK) are drawn ON
+  // the struck body by the victim's own GameFighter instance — see
+  // ContactCallout. `epoch` bumps sweep live words at round boundaries.
+  const [contactCallout, setContactCallout] = useState(null);
+  const contactCalloutEpochRef = useRef(0);
   const [matadorSuccessStampPosition, setMatadorSuccessStampPosition] =
     useState(null);
   const [snowballImpactPosition, setSnowballImpactPosition] = useState(null);
-  const [counterHitEffectPosition, setCounterHitEffectPosition] =
-    useState(null);
   const [clinchJoltEffectPosition, setClinchJoltEffectPosition] = useState(null);
   // Clinch mind-game callouts: COUNTER THROW / RESISTED / DEEP GRIP side banners
   const [clinchCalloutData, setClinchCalloutData] = useState(null);
@@ -2624,9 +2709,6 @@ const GameFighter = ({
     return getSpritesheetConfig(spriteSrc);
   }, []);
 
-  // Fallback interval if we don't have two update timestamps yet
-  const SERVER_UPDATE_INTERVAL = 1000 / SERVER_BROADCAST_HZ;
-
   // Interpolation function for smooth movement (supports factor > 1 for extrapolation)
   const interpolatePosition = useCallback((prevPos, currentPos, factor) => {
     // Don't interpolate discrete jumps — if the position jumped more than 100px
@@ -2646,6 +2728,125 @@ const GameFighter = ({
       y: prevPos.y + (currentPos.y - prevPos.y) * factor,
     };
   }, []);
+
+  // REACTION RIG — continuous body posture for struck / reeling / stunned /
+  // driving / ring-out (see combatPresentation/reactionRig). Stepped once per
+  // rAF from the displayed motion + server flags and written as ONE transform
+  // to the FighterRigLayer wrapper (origin = the fighter's sole), so grounded
+  // bends are shears with planted feet, airborne tilts are rotations, the
+  // sprites' own keyframe animations are untouched, and a sprite remount can
+  // never pop the posture (the wrapper never remounts).
+  const reactionRigRef = useRef(createReactionRig());
+  const nextHitFlashTierRef = useRef("ordinary");
+  const rigLayerDomRef = useRef(null);
+  const rigLastStepTsRef = useRef(0);
+  const rigLastWrittenRef = useRef({ el: null, transform: null, origin: null, z: null });
+  const rigPhaseRef = useRef("IDLE");
+  // Belly-bump follow-through window (attacker): armed from player_hit.
+  const bellyDriveRef = useRef({ untilMs: 0, dir: 0 });
+  const writeReactionRigToDom = useCallback((transform, originX, originY) => {
+    const el = rigLayerDomRef.current;
+    if (!el) return;
+    const last = rigLastWrittenRef.current;
+    if (last.el !== el) {
+      // Layer re-created (e.g. portaled to .fallen-actors) — rewrite everything.
+      last.el = el;
+      last.transform = null;
+      last.origin = null;
+      last.z = null;
+    }
+    const identity = !transform || transform === "none";
+    // While bending, the wrapper is a stacking context; carry the body's own
+    // z so the victim still paints under the striking limb. Identity → auto,
+    // so the sprites' z-index contract is untouched (grab arm over both).
+    const bodyEl = fighterImgDomRef.current || animContainerDomRef.current;
+    const z = identity ? "" : (bodyEl && bodyEl.style.zIndex) || "";
+    const origin = identity
+      ? null
+      : `${((originX / 1280) * 100).toFixed(3)}% ${((1 - originY / 720) * 100).toFixed(3)}%`;
+    if (last.transform !== transform) {
+      el.style.transform = identity ? "none" : transform;
+      last.transform = transform;
+    }
+    if (last.origin !== origin) {
+      el.style.transformOrigin = origin || "";
+      last.origin = origin;
+    }
+    if (last.z !== z) {
+      el.style.zIndex = z;
+      last.z = z;
+    }
+  }, []);
+  const stepReactionRigFrame = useCallback(
+    (timestamp, displayX, displayY, hitstopActive) => {
+      const rig = reactionRigRef.current;
+      const p = penguinRef.current;
+      if (!p) return;
+      const lastTs = rigLastStepTsRef.current;
+      const dtMs = lastTs > 0 ? timestamp - lastTs : 1000 / 60;
+      rigLastStepTsRef.current = timestamp;
+      const velX = observeRigDisplayX(rig, displayX, timestamp);
+      const kb = currentState.current?.knockbackVelocity;
+      const kbX = kb && typeof kb.x === "number" ? kb.x : 0;
+      const drive = bellyDriveRef.current;
+      // The drive bend starts when the contact freeze releases (the CSS
+      // bellyBumpPlant owns the frozen compress), then eases out with the drift.
+      const driveDir =
+        drive.untilMs > timestamp && !hitstopActive ? drive.dir : 0;
+      const pose = stepReactionRig(
+        rig,
+        {
+          isHit: !!p.isHit,
+          isHitFalling: !!p.isHitFalling,
+          isStunned:
+            !!p.isRawParryStun &&
+            !p.isHit &&
+            !p.isBeingGrabbed &&
+            !p.isBeingThrown,
+          blocked: isRigBlockedState(p) && !p.isRingOutLoser,
+          facing: p.facing === -1 ? -1 : 1,
+          kbDir: kbX > 0.01 ? 1 : kbX < -0.01 ? -1 : 0,
+          hitstopActive: !!hitstopActive,
+          velX,
+          heightPx:
+            typeof displayY === "number" ? displayY - SHADOW_GROUND_LEVEL : 0,
+          driveDir,
+          ringOut: !!p.isRingOutLoser,
+          ringOutDir:
+            typeof p.ringOutDirection === "number" && p.ringOutDirection !== 0
+              ? p.ringOutDirection
+              : 0,
+        },
+        timestamp,
+        dtMs
+      );
+      if (pose.events) {
+        for (let i = 0; i < pose.events.length; i++) {
+          if (pose.events[i] === "topple_land") {
+            // The body hitting the apron IS the round-ending impact: one
+            // heavy, low crack with a small push-in — not the tick that
+            // flipped the flag.
+            addShake("ring_out_land", {
+              dirX: rig.dir || 0,
+            });
+            if (typeof onRingOutToppleLandRef.current === "function") {
+              onRingOutToppleLandRef.current(rig.dir || 0);
+            }
+          }
+        }
+      }
+      rigPhaseRef.current = pose.phase;
+      // Sole = sprite bottom centre, ~2.1% up the box (FIGHTER_SOLE_TRANSFORM_ORIGIN).
+      writeReactionRigToDom(
+        rigPoseToCss(pose),
+        typeof displayX === "number" ? displayX : 640,
+        (typeof displayY === "number" ? displayY : SHADOW_GROUND_LEVEL) + 3
+      );
+    },
+    [writeReactionRigToDom]
+  );
+  // Filled in below (needs sound helpers declared later in the component).
+  const onRingOutToppleLandRef = useRef(null);
 
   // MEMORY FIX: Ref for interpolation loop cleanup on unmount
   const interpolationIdRef = useRef(null);
@@ -2710,40 +2911,56 @@ const GameFighter = ({
           }
         }
 
+        // Body posture still advances through the freeze (struck compression
+        // holds; a topple keeps falling) — only translation is pinned.
+        stepReactionRigFrame(
+          timestamp,
+          interpolatedPositionRef.current?.x,
+          interpolatedPositionRef.current?.y,
+          true
+        );
+
         interpolationIdRef.current = requestAnimationFrame(interpolationLoop);
         return;
       }
 
       let newPos = null;
 
-      if (currentState.current && previousState.current) {
-        const timeSinceUpdate = timestamp - lastUpdateTime.current;
-
-        // Use the actual measured interval between the last two server updates.
-        // This makes interpolation rate-agnostic: works equally well at 32Hz or 64Hz.
-        const actualInterval =
-          lastUpdateTime.current - previousUpdateTime.current;
-        const effectiveInterval =
-          actualInterval > 5 ? actualInterval : SERVER_UPDATE_INTERVAL;
-
-        // Allow mild extrapolation (up to 25% past the target) so position
-        // continues moving smoothly while waiting for the next server update.
-        // Without this, the position freezes at factor=1 and the sprite stutters.
-        const interpolationFactor = Math.min(
-          timeSinceUpdate / effectiveInterval,
-          1.25
+      if (currentState.current) {
+        // Both fighters render on a server-time playback timeline, interpolating
+        // between the two snapshots that bracket the render time (no 64 Hz
+        // stepping). Remote: adaptive jitter buffer (base + measured jitter).
+        // Local: a FIXED one-snapshot delay — enough to always have a
+        // bracketing pair, but your own slides/pushes are not held back by the
+        // opponent's jitter allowance. (Rendering the local fighter fully
+        // undelayed was a raw step function; inheriting the adaptive delay
+        // added ~50 ms of felt input lag on non-predicted actions.) The
+        // predictor still takes X over locally while moving and hands back
+        // onto this timeline with a blended offset.
+        const sampled = snapshotInterpRef.current.sample(
+          timestamp,
+          isLocalPlayer ? LOCAL_INTERP_DELAY_MS : null
         );
+        if (sampled) {
+          newPos = { x: sampled.x, y: sampled.y };
+        } else {
+          newPos = { x: currentState.current.x, y: currentState.current.y };
+        }
 
-        newPos = interpolatePosition(
-          { x: previousState.current.x, y: previousState.current.y },
-          { x: currentState.current.x, y: currentState.current.y },
-          interpolationFactor
-        );
-      } else if (currentState.current) {
-        newPos = {
-          x: currentState.current.x,
-          y: currentState.current.y,
-        };
+        // Charged DEMOLISHED: integrate on the display clock so the rocket is
+        // a glide, not 64 Hz steps / interpolator hitch after the freeze.
+        const cineFlight = cinematicFlightRef.current;
+        if (cineFlight.active && newPos) {
+          const latest = snapshotInterpRef.current.latest();
+          const kb = currentState.current?.knockbackVelocity?.x || 0;
+          const flown = stepCinematicKillFlight(cineFlight, {
+            nowMs: timestamp,
+            kbX: kb,
+            authorityX: latest && typeof latest.x === "number" ? latest.x : newPos.x,
+            y: newPos.y,
+          });
+          if (flown) newPos = flown;
+        }
       }
 
       // MOVEMENT PREDICTION: for the local player, let the predictor either
@@ -2817,6 +3034,10 @@ const GameFighter = ({
           fighterEl.style.left = leftPct;
           fighterEl.style.bottom = bottomPct;
         }
+        // Reaction rig: bend with the displayed slide, recover, sway, topple.
+        // Origin follows the SAME anchor the sprite CSS uses (pose offsets +
+        // rope nudge included) so the shear pivots on the drawn feet.
+        stepReactionRigFrame(timestamp, renderX + atRopesNudge, renderY, false);
         // DEV fidelity: publish the same stage anchor the sprite CSS uses so
         // combat-volume overlays share camera + pose root (no getBoundingClientRect).
         if (isCombatFidelityDebugEnabled()) {
@@ -2978,6 +3199,8 @@ const GameFighter = ({
           !p.isBeingThrown &&
           !p.inClinch &&
           !p.isBeingGrabbed &&
+          !p.isCinematicKillVictim &&
+          p.lastHitType !== "cinematicKill" &&
           timestamp - lastGhostAtRef.current >= 55
         ) {
           lastGhostAtRef.current = timestamp;
@@ -3103,12 +3326,25 @@ const GameFighter = ({
             killThrowShowLandingRef.current = showLanding;
             forceVisualRender();
           }
+          // ONE landing moment: the frame the flat KO art takes over is the
+          // impact. Dust, thud, and camera crack fire here together (the
+          // server's own kill_throw_land shake arriving a broadcast later is
+          // suppressed) instead of pose-now / sound-on-flag-clear / banner-
+          // after-fade spread across ~150 ms.
+          if (showLanding && !killThrowLandBundleFiredRef.current) {
+            killThrowLandBundleFiredRef.current = true;
+            if (typeof onKillThrowVisualLandRef.current === "function") {
+              onKillThrowVisualLandRef.current(newPos.x, newPos.y);
+            }
+          }
         } else if (
           killThrowAirbornePeakRef.current ||
-          killThrowShowLandingRef.current
+          killThrowShowLandingRef.current ||
+          killThrowLandBundleFiredRef.current
         ) {
           killThrowAirbornePeakRef.current = false;
           killThrowShowLandingRef.current = false;
+          killThrowLandBundleFiredRef.current = false;
         }
       }
 
@@ -3166,6 +3402,8 @@ const GameFighter = ({
         rendered.rawParrySuccessAnim ||
         // Local AP whiff predict still holding success-f1 — force clear at until.
         rendered.apWhiffPredict ||
+        // Authored pose beat (post-hit settle / bump plant) reached its deadline.
+        poseBeatNeedsTick(poseBeatsRef.current, nowMs, rendered.poseBeat) ||
         // Dash is mid-sequence: force frames so the windup→jump→landing pose
         // and arc advance on their own clock even while briefly stationary
         // (startup) or when no server packet arrives.
@@ -3178,7 +3416,7 @@ const GameFighter = ({
 
       interpolationIdRef.current = requestAnimationFrame(interpolationLoop);
     },
-    [interpolatePosition, isLocalPlayer, index, forceVisualRender]
+    [interpolatePosition, isLocalPlayer, index, forceVisualRender, stepReactionRigFrame]
   );
 
   // Start interpolation loop
@@ -3287,6 +3525,7 @@ const GameFighter = ({
   const struckLimbHoldRef = useRef(createStruckLimbHold());
   const slapConnectHoldRef = useRef(createSlapConnectHold());
 
+
   // What the last committed render showed (flash/tint/hold/prediction
   // visible) — the rAF loop compares against live deadlines to know when a
   // re-render is needed.
@@ -3303,6 +3542,8 @@ const GameFighter = ({
     // moment display hitstop lapses so the extended arm can't outlive the freeze.
     struckLimbHold: false,
     slapConnectHold: false,
+    // An authored pose beat is showing — force the release render on its deadline.
+    poseBeat: false,
   });
   // Debounce flag for rapid multi-hits (e.g. back-to-back slaps). Only the
   // OPENING hit of a string should flash; subsequent hits within the cooldown
@@ -3315,6 +3556,7 @@ const GameFighter = ({
   const lastHitFlashTime = useRef(0);
   const HIT_FLASH_COOLDOWN_MS = 300;
   const HIT_FLASH_MS = 67; // ~4 frames @60fps
+  const HIT_FLASH_DECISIVE_MS = 100; // ~6 frames — counter / punish / break
   const HIT_TINT_MS = 167; // ~10 frames @60fps
   const battleMusicRef = useRef(null);
   // Loop currently in exit hold/fade (ref cleared so a new track can start).
@@ -3407,50 +3649,6 @@ const GameFighter = ({
     );
     if (loop) battleMusicRef.current = loop;
   }, [ownsMatchMusic]);
-
-  // Function to handle exiting from disconnected game
-  const handleExitDisconnectedGame = useCallback(() => {
-    if (disconnectedRoomId) {
-      socket.emit("exit_disconnected_game", { roomId: disconnectedRoomId });
-    }
-
-    stopEeshi();
-    stopBattleMusic(true);
-
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-      countdownRef.current = null;
-    }
-
-    onResetDisconnectState();
-    setCurrentPage("mainMenu");
-  }, [
-    socket,
-    disconnectedRoomId,
-    onResetDisconnectState,
-    setCurrentPage,
-    stopEeshi,
-    stopBattleMusic,
-  ]);
-
-  useEffect(() => {
-    if (opponentDisconnected && player.id === localId) {
-      setDisconnectCountdown(3);
-
-      const countdownInterval = setInterval(() => {
-        setDisconnectCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(countdownInterval);
-            handleExitDisconnectedGame();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      return () => clearInterval(countdownInterval);
-    }
-  }, [opponentDisconnected, player.id, localId, handleExitDisconnectedGame]);
 
   useEffect(() => {
     if (opponentDisconnected && ownsMatchMusic) {
@@ -3630,13 +3828,28 @@ const GameFighter = ({
       currentState.current.facing = playerData.facing;
       currentState.current.knockbackVelocity = playerData.knockbackVelocity;
 
+      // Feed the render timeline: (arrival wall time, server simTime, x, y).
+      snapshotInterpRef.current.push(
+        currentTime,
+        typeof shared.simTime === "number" ? shared.simTime : null,
+        playerData.x,
+        playerData.y
+      );
+
       // MOVEMENT PREDICTION: reconcile the local predictor against this
-      // authoritative snapshot (no-op while the predictor is passive).
+      // authoritative snapshot (no-op while the predictor is passive). The
+      // snapshot's simTime + the echoed input ack let it anchor to an exact
+      // local step instead of guessing with `now − rtt`.
       if (isLocalPlayer && movementPredictorRef.current) {
+        const session = socket && socket.session;
         movementPredictorRef.current.onServerSnapshot(
           playerData,
           currentTime,
-          getEstimatedRtt()
+          getEstimatedRtt(),
+          typeof shared.simTime === "number" ? shared.simTime : null,
+          session && typeof session.sentAt === "function"
+            ? (seq) => session.sentAt(seq)
+            : null
         );
       }
 
@@ -3705,6 +3918,7 @@ const GameFighter = ({
           prev.isHit !== newState.isHit ||
           prev.isHitFalling !== newState.isHitFalling ||
           prev.lastHitType !== newState.lastHitType ||
+          prev.isCinematicKillVictim !== newState.isCinematicKillVictim ||
           prev.isGrabbing !== newState.isGrabbing ||
           prev.isBeingGrabbed !== newState.isBeingGrabbed ||
           prev.isThrowing !== newState.isThrowing ||
@@ -3727,6 +3941,10 @@ const GameFighter = ({
           prev.activePowerUp !== newState.activePowerUp ||
           prev.isAtTheRopes !== newState.isAtTheRopes ||
           prev.isRawParryStun !== newState.isRawParryStun ||
+          // Round resolution (ring-out loser topple / winner hold).
+          prev.isRingOutLoser !== newState.isRingOutLoser ||
+          prev.ringOutDirection !== newState.ringOutDirection ||
+          prev.isRoundWinner !== newState.isRoundWinner ||
           prev.grabState !== newState.grabState ||
           prev.isSlapAttack !== newState.isSlapAttack ||
           prev.slideSlapArmed !== newState.slideSlapArmed ||
@@ -3983,6 +4201,24 @@ const GameFighter = ({
       if (data && typeof data.x === "number" && typeof data.y === "number") {
         lastPlayerHitTime.current = Date.now();
 
+        // TRADE = one contact, two victims. The server emits one player_hit
+        // per struck body (each needs its own pose/flash/callout), but the
+        // world-side beats — spark, crack, shake — must fire ONCE for the
+        // pair or a trade reads as two hits. The second half of a trade is
+        // recognised by its shared tradeId and skips those three.
+        let tradeSecondHalf = false;
+        if (data.isTrade && data.tradeId && index === 0) {
+          const seen = tradeSeenRef.current;
+          if (seen.has(data.tradeId)) {
+            tradeSecondHalf = true;
+          } else {
+            seen.add(data.tradeId);
+            if (seen.size > 16) {
+              seen.delete(seen.values().next().value);
+            }
+          }
+        }
+
         // Attacker-side hit-confirm flash. Fires only on the GameFighter
         // instance whose player.id matches the server-provided attackerId, so each
         // local fighter pulses independently when *they* land a hit. The tier
@@ -4048,14 +4284,40 @@ const GameFighter = ({
             clearTimeout(bellyBumpSwingTimeoutRef.current);
             bellyBumpSwingTimeoutRef.current = null;
           }
-          setAttackerBellyPlant(true);
-          if (attackerBellyPlantTimeoutRef.current) {
-            clearTimeout(attackerBellyPlantTimeoutRef.current);
+          // The cycle's falling edge reads this to hold the planted stance
+          // across the crawl stop (poseBeats SLIDE_SLAP_PLANT).
+          bellyBumpConnectedRef.current = true;
+          // Reaction rig: after the freeze the attacker stays bent INTO the
+          // shove and straightens as the follow-through drift dies, instead of
+          // gliding upright behind the victim.
+          {
+            const hsUntil = getDisplayHitstopUntil();
+            const nowMs = performance.now();
+            // This instance IS the attacker: drive forward along its facing.
+            bellyDriveRef.current.dir =
+              penguinRef.current?.facing === -1 ? -1 : 1;
+            bellyDriveRef.current.untilMs =
+              Math.max(nowMs, hsUntil) + RIG_TUNING.DRIVE_MS;
           }
-          attackerBellyPlantTimeoutRef.current = setTimeout(() => {
+          // Plant compress is a short authored accent for the moment the mass
+          // ARRIVES — that is the hitstop RELEASE, not the contact tick. Fired
+          // on the tick it played under the display freeze (invisible) and
+          // was over before the crawl even started.
+          {
+            const hsUntil = getDisplayHitstopUntil();
+            const releaseIn = Math.max(0, hsUntil - performance.now());
+            if (attackerBellyPlantTimeoutRef.current) {
+              clearTimeout(attackerBellyPlantTimeoutRef.current);
+            }
             setAttackerBellyPlant(false);
-            attackerBellyPlantTimeoutRef.current = null;
-          }, 160);
+            attackerBellyPlantTimeoutRef.current = setTimeout(() => {
+              setAttackerBellyPlant(true);
+              attackerBellyPlantTimeoutRef.current = setTimeout(() => {
+                setAttackerBellyPlant(false);
+                attackerBellyPlantTimeoutRef.current = null;
+              }, BELLY_BUMP_PLANT_ACCENT_MS);
+            }, releaseIn);
+          }
         }
 
         // Contact freeze pin — snap interpolated X to the server park pose so
@@ -4068,6 +4330,12 @@ const GameFighter = ({
               ? plantY
               : interpolatedPositionRef.current?.y ?? 0;
           interpolatedPositionRef.current = { x: plantX, y };
+          const sharedNow = getSharedFighterState();
+          snapshotInterpRef.current.seed(
+            typeof sharedNow?.simTime === "number" ? sharedNow.simTime : performance.now(),
+            plantX,
+            y
+          );
           if (previousState.current) {
             previousState.current = {
               ...previousState.current,
@@ -4139,6 +4407,9 @@ const GameFighter = ({
             ? data.x
             : clampToRopeRest(data.x);
           pinFighterX(pinX, data.y);
+          if (data.cinematicKill) {
+            armCinematicKillFlight(cinematicFlightRef.current, pinX);
+          }
 
           // Kill grab-startup pose thrash immediately — don't wait for the
           // next state delta. Predicted M2 + lingering isGrabStartup/grabState
@@ -4163,6 +4434,9 @@ const GameFighter = ({
             grabAttemptType: null,
             isWhiffingGrab: false,
             isAttemptingGrabThrow: false,
+            ...(data.cinematicKill
+              ? { isCinematicKillVictim: true, lastHitType: "cinematicKill" }
+              : null),
           }));
           setPredictionVersion((v) => v + 1);
         }
@@ -4171,7 +4445,7 @@ const GameFighter = ({
         // crunch profile with zoom + roll; slap pokes stay snappy with no zoom.
         // Fired once per client (index===0). Cinematic kills run their own
         // camera, so we skip here to avoid stepping on it.
-        if (index === 0 && !data.cinematicKill) {
+        if (index === 0 && !data.cinematicKill && !tradeSecondHalf) {
           const shakeDir = data.knockbackDirection || (data.facing === 1 ? -1 : 1);
 
           // ── MOMENTUM-SCALED SHAKE ────────────────────────────────────────
@@ -4236,6 +4510,13 @@ const GameFighter = ({
               dirX: shakeDir,
               scale: momentumScale(1.18),
             });
+          } else if (data.isTrade) {
+            // Trade: one symmetric clash for the pair. No direction bias —
+            // neither body "won" the contact — and a step heavier than a poke.
+            addShake("slap_hit", {
+              dirX: 0,
+              scale: momentumScale(1.2),
+            });
           } else {
             // Slaps: base stays light so a poke reads as a poke, but a chained
             // or dash-in slap escalates continuously instead of flipping a
@@ -4248,7 +4529,7 @@ const GameFighter = ({
           }
         }
 
-        if (index === 0 && !data.cinematicKill) {
+        if (index === 0 && !data.cinematicKill && !tradeSecondHalf) {
           const pan = xToPan(data.x);
           const isLowKickHit =
             data.isLowKick || data.attackType === "lowKick";
@@ -4271,6 +4552,10 @@ const GameFighter = ({
             if (isRopeEdge) {
               // Rope slam body (shared with palm / drive clamp) under the slap crack.
               playRopeClampBody(pan, { mode: "hit", rehit: edgeRehit });
+            } else if (data.isTrade) {
+              // Trade: two slaps landing on the same frame — a second crack a
+              // hair lower so the pair reads as a clash, not a doubled hit.
+              playSound(baseSound, 0.03, null, 0.86, pan);
             } else if (data.isGored) {
               // EXPOSED — heavier than counter: deep thud + sharp crack.
               playSound(baseSound, 0.03, null, 0.62, pan);
@@ -4334,7 +4619,8 @@ const GameFighter = ({
         // index-1 fighter for nothing. Gating to one instance halves the
         // per-hit DOM/animation cost — same single effect on screen. (Shake,
         // sounds, and the counter/punish banner above are already index-0 only.)
-        if (index === 0) {
+        // A trade's second half draws no spark of its own (one clash per pair).
+        if (index === 0 && !tradeSecondHalf) {
           const isLowKickHit =
             data.isLowKick || data.attackType === "lowKick";
           const isFlapSlamHit = data.attackType === "flap";
@@ -4416,31 +4702,37 @@ const GameFighter = ({
           }
         }
 
-        // COUNTER HIT / PUNISH side banners — folded into player_hit (were
-        // separate `counter_hit` / `punish_banner` socket events, each of which
-        // cost an extra unbatched GameFighter re-render on the same frame as the
-        // hit). Index 0 owns the HUD banner state (same as the old handlers).
-        // hitId is the dedup key.
-        if (index === 0) {
-          if (data.showGoredBanner) {
-            setGoredBannerPosition({
-              counterId: `gored-${data.hitId || Date.now()}`,
-              playerNumber: data.attackerPlayerNumber || 1,
-            });
-          } else if (data.showCounterBanner) {
-            setCounterHitEffectPosition({
-              x: contactFxX(data),
-              y: PLAYER_MID_Y,
-              counterId: data.hitId || `counter-hit-${Date.now()}`,
-              playerNumber: data.attackerPlayerNumber || 1,
-              timestamp: data.timestamp,
-            });
-          } else if (data.showPunishBanner) {
-            setPunishBannerPosition({
-              counterId: `punish-${data.hitId || Date.now()}`,
-              grabberPlayerNumber: data.attackerPlayerNumber || 1,
+        // COUNTER HIT / PUNISH / MATADOR BREAK — contact captions. They used
+        // to be HUD-side slabs (1.5 s, on the attacker's HUD side, stacking
+        // with the next exchange). Now the STRUCK fighter's instance draws a
+        // short word at its own head on the impact frame (ContactCallout), so
+        // the caption is where the eye already is and gone before the next
+        // slap lands. hitId is the dedup key.
+        if (data.victimId && data.victimId === player.id) {
+          const calloutType = data.showGoredBanner
+            ? "matadorbreak"
+            : data.showCounterBanner
+            ? "counterhit"
+            : data.showPunishBanner
+            ? "punish"
+            : null;
+          if (calloutType) {
+            const headX =
+              interpolatedPositionRef.current?.x ??
+              (typeof data.x === "number" ? data.x : penguinRef.current?.x ?? 640);
+            const feetY =
+              interpolatedPositionRef.current?.y ??
+              (typeof data.y === "number" ? data.y : penguinRef.current?.y ?? 286);
+            setContactCallout({
+              id: `${calloutType}:${data.hitId || data.timestamp || Date.now()}`,
+              type: calloutType,
+              x: headX,
+              y: feetY + CONTACT_CALLOUT_HEAD_OFFSET_PX,
+              epoch: contactCalloutEpochRef.current,
             });
           }
+        }
+        if (index === 0) {
           // Matador Break — same glass shatter package as shatter-palm /
           // grab-armor break (grabArmorBreak particles + natural glass SFX).
           if (data.isGored) {
@@ -4573,6 +4865,22 @@ const GameFighter = ({
         // Palm-thrust bursts stay near 1 — burstHitSquash keyframes already
         // start much bigger, so their base shape carries the weight.
         if (data.victimId && data.victimId === player.id) {
+          // Reaction rig tier: counters / punishes bend the body further and
+          // hold the struck compression deeper — the same contact reads as a
+          // bigger deal without any extra flash or shake.
+          // A trade is decisive for BOTH bodies: neither fighter won the
+          // contact, and the mutual shove is the round's spacing reset.
+          const decisiveContact = !!(
+            data.isCounterHit ||
+            data.isPunish ||
+            data.isArmorBreak ||
+            data.isTrade
+          );
+          armReactionTier(
+            reactionRigRef.current,
+            decisiveContact ? RIG_TIER.DECISIVE : RIG_TIER.ORDINARY
+          );
+          nextHitFlashTierRef.current = decisiveContact ? "decisive" : "ordinary";
           let amp = 1;
           if (data.attackType === "charged") {
             amp = 1.2 + Math.min((data.chargePercentage || 0) / 100, 1) * 0.25;
@@ -5562,6 +5870,10 @@ const GameFighter = ({
         cancelAnimationFrame(showRoundResultRafRef.current);
         showRoundResultRafRef.current = null;
       }
+      if (roundResultDelayTidRef.current) {
+        clearTimeout(roundResultDelayTidRef.current);
+        roundResultDelayTidRef.current = null;
+      }
       setGyojiState("idle");
       setMatchOver(false);
       setHasUsedPowerUp(false);
@@ -5570,6 +5882,24 @@ const GameFighter = ({
       setHitEffectPosition(null);
       setParryEffectPosition(null);
       setSnowballImpactPosition(null);
+      retireAllAnnouncements();
+      retireAllHypeStamps();
+      contactCalloutEpochRef.current += 1;
+      setContactCallout({
+        id: null,
+        type: null,
+        x: 0,
+        y: 0,
+        epoch: contactCalloutEpochRef.current,
+      });
+      // Body posture back to upright for the walk-up (a downed ring-out loser
+      // must not carry the topple into the next round).
+      resetReactionRig(reactionRigRef.current);
+      clearCinematicKillFlight(cinematicFlightRef.current);
+      bellyDriveRef.current.untilMs = 0;
+      clearPoseBeats(poseBeatsRef.current, "game_reset");
+      bellyBumpConnectedRef.current = false;
+      writeReactionRigToDom("none", 640, SHADOW_GROUND_LEVEL);
       clearPresentationEvents();
       clearPlacementDebug();
       clearPoseGeometryDebug();
@@ -5585,7 +5915,6 @@ const GameFighter = ({
       }
       setChargeClashEffectPosition(null); // Clear any active charge clash effects
       setNoStaminaEffectKey(0); // Clear "No Stamina" effect on round reset
-      onResetDisconnectState(); // Reset opponent disconnected state for new games
 
       // Drop any leftover charge/attack prediction from the previous round so a
       // phantom charge shake can't carry into the next walk-up / HAKKIYOI.
@@ -5651,6 +5980,24 @@ const GameFighter = ({
       setBlockingEffectPosition(null);
       setGuardBlockSuccess(false);
       setChargeClashEffectPosition(null);
+      // Same round-boundary sweep as game_reset: no stale callout or held
+      // posture survives the snap back to the ready marks.
+      retireAllAnnouncements();
+      retireAllHypeStamps();
+      contactCalloutEpochRef.current += 1;
+      setContactCallout({
+        id: null,
+        type: null,
+        x: 0,
+        y: 0,
+        epoch: contactCalloutEpochRef.current,
+      });
+      resetReactionRig(reactionRigRef.current);
+      clearCinematicKillFlight(cinematicFlightRef.current);
+      bellyDriveRef.current.untilMs = 0;
+      clearPoseBeats(poseBeatsRef.current, "training_reset");
+      bellyBumpConnectedRef.current = false;
+      writeReactionRigToDom("none", 640, SHADOW_GROUND_LEVEL);
       clearPresentationEvents();
       clearPlacementDebug();
       clearPoseGeometryDebug();
@@ -5841,6 +6188,20 @@ const GameFighter = ({
       // Bump round ID immediately on winner declaration to reset UI stamina to server value
       setUiRoundId((id) => id + 1);
 
+      // The round is decided: every live callout from the exchange that just
+      // ended leaves NOW, so the only words on screen when the body lands are
+      // the kimarite. (Idempotent — both fighter instances may call these.)
+      retireAllAnnouncements();
+      retireAllHypeStamps();
+      contactCalloutEpochRef.current += 1;
+      setContactCallout({
+        id: null,
+        type: null,
+        x: 0,
+        y: 0,
+        epoch: contactCalloutEpochRef.current,
+      });
+
       // PERFORMANCE: Defer RoundResult mount by 2 animation frames.
       // Without this, the browser has to do ALL of this in a single 16ms frame:
       // - Re-render the 4000+ line GameFighter component
@@ -5855,12 +6216,33 @@ const GameFighter = ({
       // Total delay is ~32ms at 60fps - imperceptible, but prevents the freeze.
       if (showRoundResultRafRef.current)
         cancelAnimationFrame(showRoundResultRafRef.current);
-      showRoundResultRafRef.current = requestAnimationFrame(() => {
+      if (roundResultDelayTidRef.current) {
+        clearTimeout(roundResultDelayTidRef.current);
+        roundResultDelayTidRef.current = null;
+      }
+      // ROUND RESOLUTION ORDER: body first, caption second. For a ring-out the
+      // loser topples over the rope (client reactionRig, ~0.43 s) — the banner
+      // is keyed to that landing so the player sees the fall and THEN reads
+      // the kimarite, instead of a caption racing the flag flip while the
+      // loser is still standing. Kill throws key to their landing beat too.
+      const bannerDelayMs = roundResultBannerDelayMs(data.winType);
+      const mountBanner = () => {
         showRoundResultRafRef.current = requestAnimationFrame(() => {
-          setShowRoundResult(true);
-          showRoundResultRafRef.current = null;
+          showRoundResultRafRef.current = requestAnimationFrame(() => {
+            setShowRoundResult(true);
+            showRoundResultRafRef.current = null;
+          });
         });
-      });
+      };
+      if (bannerDelayMs > 0) {
+        roundResultDelayTidRef.current = setTimeout(() => {
+          roundResultDelayTidRef.current = null;
+          mountBanner();
+        }, bannerDelayMs);
+        pendingSocketTimeouts.current.push(roundResultDelayTidRef.current);
+      } else {
+        mountBanner();
+      }
 
       // Round over: pause battle (keep playback position) and return to eeshi
       // until the next HAKKIYOI. Match end drops both beds for results music.
@@ -6432,6 +6814,23 @@ const GameFighter = ({
     prevSlideSlapArmedForFx.current = armed;
   }, [penguin.slideSlapArmed, emitBellyBumpConvertFx]);
 
+  // Belly-bump PLANT dust: the render body armed the SLIDE_SLAP_PLANT beat on
+  // the cycle's falling edge (the tick the crawl is zeroed). One skid puff at
+  // the feet, kicked back against the travel — the feet dig in and stop.
+  useEffect(() => {
+    if (!pendingPlantDustRef.current) return;
+    pendingPlantDustRef.current = false;
+    const pos = interpolatedPositionRef.current;
+    const p = penguinRef.current;
+    const x = pos?.x ?? p?.x ?? 0;
+    const dir = p?.facing === -1 ? -1 : 1;
+    emitParticles("slapSkidDust", {
+      x,
+      y: MOVEMENT_SMOKE_GROUND_Y,
+      dir: -dir,
+    });
+  });
+
   const prevRopeKickoffFxId = useRef(penguin.ropeKickoffFxId || 0);
   useEffect(() => {
     const id = penguin.ropeKickoffFxId || 0;
@@ -6789,19 +7188,15 @@ const GameFighter = ({
           });
         }
         if (penguin.isClinchKillThrowVictim) {
-          const outsideDohyo =
-            px <= DOHYO_LEFT_BOUNDARY || px >= DOHYO_RIGHT_BOUNDARY;
-          emitParticles("clinchKillThrowLand", {
-            x: px,
-            y: py,
-            behindDohyo: outsideDohyo,
-          });
-          playSound(chargedHit04, 0.09, null, 0.6, xToPan(px));
-          // Aftershock — server already fired the main kill_throw_land boom;
-          // a delayed echo sells the comic "the ground is still ringing" beat.
-          echoId = setTimeout(() => {
-            addShake("kill_throw_land", { scale: 0.55 });
-          }, 95);
+          // Normally already fired on the visual landing frame (rAF early
+          // swap → onKillThrowVisualLandRef). Fallback only if the early
+          // swap never armed (e.g. a throw resolved without a rise).
+          if (!killThrowLandBundleFiredRef.current) {
+            killThrowLandBundleFiredRef.current = true;
+            if (typeof onKillThrowVisualLandRef.current === "function") {
+              onKillThrowVisualLandRef.current(px, py);
+            }
+          }
         } else {
           emitParticles("throwLand", { x: px, y: py });
         }
@@ -6812,6 +7207,56 @@ const GameFighter = ({
       if (echoId) clearTimeout(echoId);
     };
   }, [penguin.isBeingThrown, penguin.isClinchKillThrowVictim, penguin.id, penguin.x, penguin.y, emitParticles]);
+
+  // KILL-THROW LANDING BUNDLE — one moment for dust, thud, and camera crack,
+  // fired from the rAF the frame the flat KO art takes over (see the
+  // interpolation loop). The server's kill_throw_land shake is suppressed for
+  // the next few hundred ms so the impact never double-fires.
+  useEffect(() => {
+    onKillThrowVisualLandRef.current = (px, py) => {
+      const outsideDohyo =
+        px <= DOHYO_LEFT_BOUNDARY || px >= DOHYO_RIGHT_BOUNDARY;
+      emitParticles("clinchKillThrowLand", {
+        x: px,
+        y: py,
+        behindDohyo: outsideDohyo,
+      });
+      playSound(chargedHit04, 0.09, null, 0.6, xToPan(px));
+      suppressServerShake("kill_throw_land", 450);
+      addShake("kill_throw_land", { dirX: px < 640 ? -1 : 1 });
+      // Aftershock — a delayed echo sells the comic "ground still ringing".
+      const echo = setTimeout(() => {
+        addShake("kill_throw_land", { scale: 0.55 });
+      }, 95);
+      pendingSocketTimeouts.current.push(echo);
+    };
+    return () => {
+      onKillThrowVisualLandRef.current = null;
+    };
+  }, [emitParticles]);
+
+  // RING-OUT TOPPLE LANDING — fired by the reaction rig the moment the loser's
+  // body reaches the ground past the rope (see stepReactionRigFrame). Dust +
+  // a low thud land together with the ring_out_land camera crack; the
+  // kimarite banner is timed to arrive on this same beat (handleGameOver).
+  useEffect(() => {
+    onRingOutToppleLandRef.current = (dir) => {
+      const px = interpolatedPositionRef.current?.x ?? penguin.x;
+      const py = interpolatedPositionRef.current?.y ?? penguin.y;
+      const outsideDohyo =
+        px <= DOHYO_LEFT_BOUNDARY || px >= DOHYO_RIGHT_BOUNDARY;
+      emitParticles("ringOutToppleLand", {
+        x: px,
+        y: py,
+        dir: dir || (px < 640 ? -1 : 1),
+        behindDohyo: outsideDohyo,
+      });
+      playSound(chargedHit04, 0.08, null, 0.72, xToPan(px));
+    };
+    return () => {
+      onRingOutToppleLandRef.current = null;
+    };
+  }, [emitParticles, penguin.x, penguin.y]);
 
   // Warm the throw-kill landing pose as soon as the victim flag arms, so the
   // mid-arc hit→landing src swap paints from an already-decoded bitmap instead
@@ -7913,6 +8358,8 @@ const GameFighter = ({
   // Tracks the cinematic-kill smoke-trail rAF so it can be cancelled on unmount
   // / round change (the trail is a distance-based rAF loop, not a setInterval).
   const cinematicTrailRafRef = useRef(null);
+  // Display-rate DEMOLISHED fly-out (walk interpolator cannot carry ~2000 px/s).
+  const cinematicFlightRef = useRef(createCinematicKillFlight());
   // Same pattern for clinch kill-throw descent smoke.
   const killThrowTrailRafRef = useRef(null);
 
@@ -7999,6 +8446,12 @@ const GameFighter = ({
 
       const isVictim = player.id === data.victimId;
       if (isVictim && playSmokeTrail) {
+        armCinematicKillFlight(cinematicFlightRef.current, data.victimX);
+        setPenguin((prev) => ({
+          ...prev,
+          isCinematicKillVictim: true,
+          lastHitType: "cinematicKill",
+        }));
         const trailDir = data.knockbackDirection;
         const trailStartDelay = data.hitstopMs || 550;
 
@@ -8499,11 +8952,12 @@ const GameFighter = ({
       : 1;
 
   // OPEN-PALM THRUST frame. Anchor a local clock when a thrust begins, then
-  // advance startup → smear → active → recovery off elapsed ms. We anchor on
-  // each new palmThrustFxId (a per-executed-thrust server counter) as well as
-  // the rising edge, so buffered back-to-back thrusts — where isPalmThrust
-  // never drops between reps — still replay the full sequence. Ref mutated
-  // during render, same pattern as the flap/idle-hold refs.
+  // advance startup → smear → active → recovery off elapsed ms. We adopt
+  // each new palmThrustFxId (a per-executed-thrust server counter) so
+  // buffered back-to-back thrusts — where isPalmThrust never drops between
+  // reps — still replay the full sequence, but a first confirm of a
+  // predicted thrust does NOT rewind into smear. Ref mutated during render,
+  // same pattern as the flap/idle-hold refs.
   // The command-grab Drive release borrows these same four poses for the
   // fighter being shoved off (server flag `isGrabSeparatePalm`). It is pose-only
   // — no thrust is happening — so it runs on its own, tighter frame table.
@@ -8516,15 +8970,26 @@ const GameFighter = ({
     // Distinct id space from palmThrustFxId so a thrust immediately following a
     // shove-off (or vice versa) re-anchors instead of inheriting stale elapsed.
     const fxId = inSeparatePalm ? "sep" : penguin.palmThrustFxId || 0;
-    if (
-      !palmThrustAnimRef.current.startedAt ||
-      fxId !== palmThrustAnimRef.current.fxId
-    ) {
-      palmThrustAnimRef.current.startedAt = performance.now();
-      palmThrustAnimRef.current.fxId = fxId;
-      palmThrustAnimRef.current.frozenAccum = 0;
-      palmThrustAnimRef.current.freezeStart = 0;
-      palmThrustAnimRef.current.freezeEnd = 0;
+    const clock = palmThrustAnimRef.current;
+    if (!clock.startedAt) {
+      clock.startedAt = performance.now();
+      clock.fxId = fxId;
+      clock.frozenAccum = 0;
+      clock.freezeStart = 0;
+      clock.freezeEnd = 0;
+    } else if (fxId !== clock.fxId) {
+      const anim = inSeparatePalm ? GRAB_SEPARATE_PALM_ANIM : PALM_THRUST_ANIM;
+      const elapsed = computeAnimElapsed(clock, performance.now());
+      // Predicted thrusts start this clock before fxId arrives. Rewinding on
+      // that confirm puts the attacker back on the blur frame while the
+      // server hitbox is already live.
+      if (shouldRestartPalmThrustClock(clock.fxId, fxId, elapsed, anim)) {
+        clock.startedAt = performance.now();
+        clock.frozenAccum = 0;
+        clock.freezeStart = 0;
+        clock.freezeEnd = 0;
+      }
+      clock.fxId = fxId;
     }
   } else if (palmThrustAnimRef.current.startedAt) {
     palmThrustAnimRef.current.startedAt = 0;
@@ -8535,10 +9000,7 @@ const GameFighter = ({
     // Hitstop-aware: the strike frame holds through the on-hit freeze instead of
     // the clock silently advancing past ACTIVE_END while the game is frozen.
     const elapsed = computeAnimElapsed(palmThrustAnimRef.current, performance.now());
-    if (elapsed < anim.STARTUP_END) palmThrustFrame = 0;
-    else if (elapsed < anim.SMEAR_END) palmThrustFrame = 1;
-    else if (elapsed < anim.ACTIVE_END) palmThrustFrame = 2;
-    else palmThrustFrame = 3;
+    palmThrustFrame = resolvePalmThrustFrame(elapsed, anim);
   }
 
   // SLAP frame. Same render-anchored, hitstop-aware model as palm thrust.
@@ -8589,6 +9051,8 @@ const GameFighter = ({
     getDisplayHitstopUntil()
   );
   if (holdSlapHitPose && inSlapPhaseAnim) slapFrame = 2;
+  // Landed palm: same money-shot rule — never freeze on the blur frame.
+  if (holdSlapHitPose && palmPoseActive && !inSeparatePalm) palmThrustFrame = 2;
   // PHASE 4A — resolve the struck-limb hold for THIS render. The deadline is
   // always the existing display hitstop's, so the pose can never outlive the
   // freeze it belongs to.
@@ -8800,7 +9264,11 @@ const GameFighter = ({
     penguin.offensiveAerialReactionType || null,
     penguin.offensiveAerialPresentation || null,
     !!penguin.isGrabPushDefeat,
-    !!displayPenguin.slideSlapArmed
+    !!displayPenguin.slideSlapArmed,
+    // Ring-out loser: hold the struck body through the topple + downed hold
+    // (the reaction rig tips it over) instead of snapping back to idle when
+    // the hitstun timer clears mid-fall.
+    !!penguin.isRingOutLoser
   );
   if (!penguin.isHit && !penguin.isHitFalling) {
     lastNonHitSpriteRef.current = rawSpriteSrc;
@@ -8815,6 +9283,81 @@ const GameFighter = ({
   // arm that was hit (and the spark that lands on it) before the hit reaction
   // takes over. The precedence lives in combatPresentation/struckLimbHold so the
   // ordering is unit-tested against the real authoritative-isHit sprite.
+  // ── Authored pose beats (combatPresentation/poseBeats) ──────────────────
+  // Edge bookkeeping runs here, in the same render that would otherwise draw
+  // idle, so a beat can never leave a one-frame idle gap. Beats only ever
+  // replace idle; any other body owner cancels them (see resolvePoseBeat).
+  {
+    const beats = poseBeatsRef.current;
+    const edge = poseBeatEdgeRef.current;
+    const nowBeat = performance.now();
+    const grounded = !(displayPosition.y > SHADOW_GROUND_LEVEL + 4);
+    // Victim: hitstun cleared on the ground → ~6f brace before idle. The body is
+    // usually still skating back on the ice here; the brace is what makes the
+    // slide read as "driven back and caught it" rather than idle-on-wheels.
+    if (
+      shouldArmPostHitSettle({
+        wasHit: edge.wasHit,
+        isHit: !!penguin.isHit,
+        isHitFalling: !!penguin.isHitFalling,
+        grounded,
+        isRingOutLoser: !!penguin.isRingOutLoser,
+        isRawParryStun: !!penguin.isRawParryStun,
+        isBeingGrabbed: !!penguin.isBeingGrabbed,
+        isBeingThrown: !!penguin.isBeingThrown,
+        isAtTheRopes: !!penguin.isAtTheRopes,
+        isDead: !!penguin.isDead,
+        isReady: !!penguin.isReady,
+      })
+    ) {
+      armPoseBeat(
+        beats,
+        POSE_BEAT.POST_HIT_SETTLE,
+        recovering,
+        nowBeat,
+        POSE_BEAT_TIMING.POST_HIT_SETTLE_MS
+      );
+    }
+    // Attacker: connected belly bump's cycle ended → the server zeroes the
+    // follow-through crawl this tick. Hold the planted stance across the stop.
+    const slapNow = !!displayPenguin.isSlapAttack;
+    if (
+      shouldArmSlideSlapPlant({
+        wasSlapAttack: edge.wasSlapAttack,
+        isSlapAttack: slapNow,
+        wasSlideSlapArmed: edge.wasSlideSlapArmed,
+        bumpConnected: bellyBumpConnectedRef.current,
+      })
+    ) {
+      armPoseBeat(
+        beats,
+        POSE_BEAT.SLIDE_SLAP_PLANT,
+        palmThrustStartup,
+        nowBeat,
+        POSE_BEAT_TIMING.SLIDE_SLAP_PLANT_HOLD_MS
+      );
+      pendingPlantDustRef.current = true;
+    }
+    if (edge.wasSlapAttack && !slapNow) bellyBumpConnectedRef.current = false;
+    edge.wasHit = !!penguin.isHit || !!penguin.isHitFalling;
+    edge.wasSlapAttack = slapNow;
+    edge.wasSlideSlapArmed = slapNow ? !!displayPenguin.slideSlapArmed : false;
+  }
+  const timedPoseBeatSrc = resolvePoseBeat(
+    poseBeatsRef.current,
+    performance.now(),
+    rawSpriteSrc,
+    pumo,
+    // A struck-limb hold is a live hit reaction even when the raw sprite is idle.
+    holdStruckLimbPose
+  );
+  // AP / matador whiff jail: after the 50 ms flinch the server still has the
+  // fighter locked for the rest of AP_WHIFF_RECOVERY_MS. Show that jail as the
+  // recovery pose instead of idle — a whiffed commitment must LOOK committed.
+  // Duration is the server flag's, not a client timer.
+  const apWhiffJailSrc = serverApWhiff && !showApWhiff ? recovering : null;
+  const poseBeatSrc = timedPoseBeatSrc || apWhiffJailSrc;
+
   const displaySpriteSrc = resolveFighterDisplaySprite({
     struckLimbHoldSrc: holdStruckLimbPose ? struckLimbHold.src : null,
     inDashWindup,
@@ -8823,7 +9366,9 @@ const GameFighter = ({
     idleSrc: pumo,
     recoveringSrc: recovering,
     dodgeLandSrc: sliding,
+    poseBeatSrc,
   });
+  renderedHitVisualsRef.current.poseBeat = !!timedPoseBeatSrc;
 
   // Hold previous sprite briefly when transitioning to idle to prevent
   // ghost frames during state transition gaps (e.g. isHit=false before isRecovering=true)
@@ -8920,8 +9465,15 @@ const GameFighter = ({
   // forces the "off" re-render when an active window expires.
   if (penguin.isHit && !lastHitState.current) {
     if (renderNowMs - lastHitFlashTime.current > HIT_FLASH_COOLDOWN_MS) {
-      // Opening / isolated hit: white impact-snap only.
-      hitFlashUntilRef.current = renderNowMs + HIT_FLASH_MS;
+      // Opening / isolated hit: white impact-snap only. Decisive contacts
+      // (counter / punish / armor break) hold the snap a beat longer — the
+      // one place the flash itself carries tier, everything else is body.
+      hitFlashUntilRef.current =
+        renderNowMs +
+        (nextHitFlashTierRef.current === "decisive"
+          ? HIT_FLASH_DECISIVE_MS
+          : HIT_FLASH_MS);
+      nextHitFlashTierRef.current = "ordinary";
       lastHitFlashTime.current = renderNowMs;
     } else {
       // Cooldown-suppressed combo follow-up: red damage tint only.
@@ -9294,6 +9846,8 @@ const GameFighter = ({
     $isHit: penguin.isHit || penguin.isHitFalling,
     $isHitFalling: !!penguin.isHitFalling,
     $lastHitType: penguin.lastHitType,
+    $isCinematicKillVictim: !!penguin.isCinematicKillVictim,
+    $isRingOutLoser: !!penguin.isRingOutLoser,
     // Procedural impact grading + attacker contact recoil (see the
     // player_hit handler and fighterStyledComponents keyframes).
     $impactAmp: impactAmp,
@@ -9833,7 +10387,7 @@ const GameFighter = ({
           platform; otherwise it renders inline in the actors layer. */}
       {(() => {
       const fighterSpriteNodes = (
-      <>
+      <FighterRigLayer ref={rigLayerDomRef} data-fighter-rig={penguin.fighter}>
       {/* Animated Sprite Sheet (when sprite is a spritesheet animation) */}
       {isAnimatedSprite && !showRitualSprite && (
         <AnimatedFighterContainer
@@ -9850,6 +10404,8 @@ const GameFighter = ({
           $isAtTheRopes={penguin.isAtTheRopes}
           $isHit={penguin.isHit || penguin.isHitFalling}
           $isHitFalling={!!penguin.isHitFalling}
+          $lastHitType={penguin.lastHitType}
+          $isCinematicKillVictim={!!penguin.isCinematicKillVictim}
           $isBurstKnockback={penguin.isBurstKnockback}
           $impactAmp={impactAmp}
           $isRawParryStun={penguin.isRawParryStun}
@@ -9947,7 +10503,7 @@ const GameFighter = ({
             <i />
           </DeepGripArmGlow>
         )}
-      </>
+      </FighterRigLayer>
       );
       return isOutsideRingNow && fallenSpriteHost
         ? createPortal(fighterSpriteNodes, fallenSpriteHost)
@@ -10002,10 +10558,8 @@ const GameFighter = ({
       {index === 0 && (
         <PerfectBraceEffect position={perfectBraceStampPosition} />
       )}
-      <PunishBannerEffect position={punishBannerPosition} />
-      <GoredBannerEffect position={goredBannerPosition} />
+      <ContactCallout callout={contactCallout} />
       <MatadorSuccessEffect position={matadorSuccessStampPosition} />
-      <CounterHitEffect position={counterHitEffectPosition} />
       {index === 0 && (
         <SnowballImpactEffect position={snowballImpactPosition} />
       )}
@@ -10135,20 +10689,6 @@ const GameFighter = ({
         </>
       )}
 
-      {/* Opponent Disconnected Overlay - Only show for local player */}
-      {opponentDisconnected && player.id === localId && (
-        <OpponentDisconnectedOverlay>
-          <DisconnectedModal>
-            <DisconnectedTitle>OPPONENT DISCONNECTED</DisconnectedTitle>
-            <DisconnectedMessage>
-              Your opponent has left the match.
-            </DisconnectedMessage>
-            <DisconnectedMessage>
-              Returning to main menu in {disconnectCountdown} seconds...
-            </DisconnectedMessage>
-          </DisconnectedModal>
-        </OpponentDisconnectedOverlay>
-      )}
     </div>
   );
 };
@@ -10158,10 +10698,7 @@ GameFighter.propTypes = {
   index: PropTypes.number.isRequired,
   roomName: PropTypes.string.isRequired,
   localId: PropTypes.string.isRequired,
-  setCurrentPage: PropTypes.func.isRequired,
   opponentDisconnected: PropTypes.bool.isRequired,
-  disconnectedRoomId: PropTypes.string,
-  onResetDisconnectState: PropTypes.func.isRequired,
   predictionRef: PropTypes.object,
   playerColor: PropTypes.string,
   playerBodyColor: PropTypes.string,
@@ -10186,10 +10723,7 @@ export default React.memo(GameFighter, (prevProps, nextProps) => {
     prevProps.index === nextProps.index &&
     prevProps.roomName === nextProps.roomName &&
     prevProps.localId === nextProps.localId &&
-    prevProps.setCurrentPage === nextProps.setCurrentPage &&
     prevProps.opponentDisconnected === nextProps.opponentDisconnected &&
-    prevProps.disconnectedRoomId === nextProps.disconnectedRoomId &&
-    prevProps.onResetDisconnectState === nextProps.onResetDisconnectState &&
     // BASHO no-remount fix (root cause of BOTH the stuck-opponent-color bug AND
     // the progressive ghost frames): the opponent's `player` object reference is
     // stable across bouts (merged in place), so without comparing the colors

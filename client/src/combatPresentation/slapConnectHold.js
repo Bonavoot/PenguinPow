@@ -33,9 +33,21 @@ export const isSlapConnectHoldEligible = (data, playerId) =>
   !data.isPalmThrust &&
   !data.cinematicKill;
 
+/** Same hold for a landed palm — freeze must show palm-thrust.png, never smear. */
+export const isPalmConnectHoldEligible = (data, playerId) =>
+  !!data &&
+  !!playerId &&
+  data.attackerId === playerId &&
+  !!data.isPalmThrust &&
+  !data.cinematicKill;
+
 export const armSlapConnectHold = (hold, data, playerId, now, hitstopUntil) => {
   if (!hold) return false;
-  if (!isSlapConnectHoldEligible(data, playerId)) return false;
+  if (
+    !isSlapConnectHoldEligible(data, playerId) &&
+    !isPalmConnectHoldEligible(data, playerId)
+  )
+    return false;
   const eventId = slapConnectEventId(data);
   if (!eventId || hold.hitId === eventId) return false;
 

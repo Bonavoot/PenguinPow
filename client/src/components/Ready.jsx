@@ -20,26 +20,29 @@ const Ready = ({ rooms, roomName, handleGame, isCPUMatch = false }) => {
   const canShowReadyButton = isCPUMatch || playerCount > 1;
 
   useEffect(() => {
-    socket.on("ready_count", (readyCount) => {
+    const handleReadyCount = (readyCount) => {
       console.log("ready count activated");
       setCount(readyCount);
-    });
+    };
+    socket.on("ready_count", handleReadyCount);
 
-    socket.on("player_left", () => {
+    const handlePlayerLeft = () => {
       setReady(false);
       setCount(0); // Reset count when a player leaves
-    });
+    };
+    socket.on("player_left", handlePlayerLeft);
 
-    socket.on("initial_game_start", () => {
+    const handleInitialGameStart = () => {
       console.log("game start Ready.jsx");
       socket.emit("game_reset", true);
       handleGame();
-    });
+    };
+    socket.on("initial_game_start", handleInitialGameStart);
 
     return () => {
-      socket.off("ready_count");
-      socket.off("player_left");
-      socket.off("initial_game_start");
+      socket.off("ready_count", handleReadyCount);
+      socket.off("player_left", handlePlayerLeft);
+      socket.off("initial_game_start", handleInitialGameStart);
     };
   }, [socket, handleGame]);
 

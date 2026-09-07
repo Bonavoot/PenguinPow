@@ -16,6 +16,16 @@ export const FIGHTER_SOLE_TRANSFORM_ORIGIN = "50% calc(100% - 2.1%)";
 // 1 = authored keyframe amplitudes; 0.9 ≈ 10% less dramatic.
 export const IMPACT_SQUASH_INTENSITY = 0.9;
 
+/** DEMOLISHED fly-out: never run hitSquash. Those keyframes translate/skew
+ *  the sprite, and any React commit while isHit is held (3s) restarts them —
+ *  the victim "jiggles" all the way off the ring. */
+export function isCinematicKillSprite(props) {
+  return !!(
+    props?.$isCinematicKillVictim ||
+    props?.$lastHitType === "cinematicKill"
+  );
+}
+
 const validProps = [
   "src",
   "style",
@@ -626,6 +636,31 @@ export const DeepGripArmGlow = styled.div
   }
 `;
 
+/**
+ * FighterRigLayer — the reaction rig's body-posture layer.
+ *
+ * Wraps a fighter's sprite cluster (body, grab arm, Deep Grip glow) with a box
+ * identical to their containing block (`inset: 0`), so every child keeps its
+ * map-percent `left/bottom` untouched. The rig writes ONE transform here per
+ * frame (skewX bend / rotate tilt / scale squash) with `transform-origin` at
+ * the fighter's sole, so:
+ *   • grounded bends are shears — feet stay planted and level on the ice;
+ *   • the layer never remounts when the sprite src changes, so a bend can
+ *     never pop on a hit → idle swap;
+ *   • the sprites' own keyframe `transform` animations are untouched.
+ * When the rig is identity the transform is `none`, so the layer creates no
+ * stacking context and the sprites' z-index contract (strike layering, grab
+ * arm over both bodies) is exactly what it was. While bending, the layer
+ * carries the body's z (set imperatively) so the victim still paints under
+ * the striking limb. No `will-change: transform` here on purpose — it would
+ * force a permanent stacking context and break that z contract.
+ */
+export const FighterRigLayer = styled.div`
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+`;
+
 export const StyledImage = styled("img")
   .withConfig({
     shouldForwardProp: (prop) =>
@@ -649,6 +684,7 @@ export const StyledImage = styled("img")
         "isHit",
         "isHitFalling",
         "lastHitType",
+        "isCinematicKillVictim",
         "isDead",
         "x",
         "y",
@@ -818,7 +854,8 @@ export const StyledImage = styled("img")
         undefined, // offensiveAerialReactionType
         undefined, // offensiveAerialPresentation
         undefined, // isGrabPushDefeat
-        props.$slideSlapArmed || false
+        props.$slideSlapArmed || false,
+        props.$isRingOutLoser || false
       ),
     style: {
       position: "absolute",
@@ -900,14 +937,23 @@ export const StyledImage = styled("img")
         ? resolveGrabArmAnimation(props)
         : props.$isClinchKillThrowVictim
         ? props.$showClinchKillThrowLanding
-          ? props.$isBeingThrown
-            ? "none"
-            : "clinchKillThrowLandSquash 0.58s cubic-bezier(0.22, 0.55, 0.3, 1) forwards"
-          : "clinchKillThrowSpin 0.9s ease-in forwards"
+          // The SPLAT starts on the frame the flat art takes over (the client
+          // landing frame — see KILL_THROW_LANDING_EARLY_PX), not when the
+          // server's isBeingThrown flag clears a broadcast later. One impact.
+          ? "clinchKillThrowLandSquash 0.58s cubic-bezier(0.22, 0.55, 0.3, 1) forwards"
+          // Matches the server arc (CLINCH_KILL_THROW_DURATION_MS 900): the body
+          // is horizontal AND lowered onto the ground line exactly at touchdown,
+          // so the swap to the flat landing art is a splat, not a cut.
+          : "clinchKillThrowSpin 0.86s ease-in forwards"
         : props.$isClinchKillPullVictim
         // Pull kill uses the belly-laying pose (already a flat-on-ice image) and
         // the server drives the heavy bounce/slide via Y position — so no CSS
         // rotation/transform here, just hold the sprite.
+        ? "none"
+        // DEMOLISHED fly-out: kill EVERY transform anim (squash + ropes wobble
+        // + clinch teeter). hitSquash translateX/skew restarts on React commits
+        // while isHit is held for 3s — that's the "image jiggle" on the rocket.
+        : isCinematicKillSprite(props)
         ? "none"
         : props.$isAtTheRopes
         ? "atTheRopesWobble 0.3s ease-in-out infinite"
@@ -1555,10 +1601,18 @@ export const StyledImage = styled("img")
     85% { transform: scaleX(calc(var(--facing, 1) * 1.01)) scaleY(0.99); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
     100% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
+  /* Kill-throw flight. Rotates about the sprite centre (a tumbling body) and,
+     in the second half, also translates the box DOWN so the horizontal body's
+     UNDERSIDE meets the ground line exactly at touchdown: the rotated standing
+     body (≈75% of the box wide) has its lower edge ~12.5% up the box, the
+     landing art's flat body (+ its translateY(10%)) sits ~5% below the box, so
+     ≈18% closes the gap. Without the drop the swap jumped from a body floating
+     half a sprite up to one lying on the ice — the "fall to splat" cut. */
   @keyframes clinchKillThrowSpin {
-    0% { transform: scaleX(var(--facing, 1)) rotate(0deg); transform-origin: center center; }
-    30% { transform: scaleX(var(--facing, 1)) rotate(30deg); transform-origin: center center; }
-    100% { transform: scaleX(var(--facing, 1)) rotate(90deg); transform-origin: center center; }
+    0%   { transform: translateY(0%)  scaleX(var(--facing, 1)) rotate(0deg);  transform-origin: center center; }
+    30%  { transform: translateY(1%)  scaleX(var(--facing, 1)) rotate(28deg); transform-origin: center center; }
+    62%  { transform: translateY(6%)  scaleX(var(--facing, 1)) rotate(58deg); transform-origin: center center; }
+    100% { transform: translateY(18%) scaleX(var(--facing, 1)) rotate(90deg); transform-origin: center center; }
   }
   /* Heavy body-slam plant: intentional flatten into ice (art padding + plant). */
   @keyframes clinchKillThrowLandSquash {
@@ -1612,6 +1666,7 @@ export const AnimatedFighterContainer = styled.div
         "x", "y", "facing", "fighter", "isThrowing", "isDodging",
         "isGrabbing", "isRingOutThrowCutscene", "isAtTheRopes",
         "isHit", "isHitFalling", "isBurstKnockback",
+        "isCinematicKillVictim", "lastHitType",
         "isRawParryStun", "isCinematicKillAttacker", "isSidestepping",
         "isBeingGrabbed", "isBeingThrown",
         "attackerConfirmTier", "isPostureBroken", "displayScale",
@@ -1664,7 +1719,9 @@ export const AnimatedFighterContainer = styled.div
         clipPath: "inset(0 0.5% 0 0.5%)",
         // Sole origin so sidestep scaleY / hit squash never lift painted feet.
         transformOrigin: FIGHTER_SOLE_TRANSFORM_ORIGIN,
-        animation: props.$isBurstKnockback && !props.$isHitFalling
+        animation: isCinematicKillSprite(props)
+          ? "none"
+          : props.$isBurstKnockback && !props.$isHitFalling
           ? "burstHitSquash 0.35s cubic-bezier(0.22, 0.6, 0.35, 1)"
           : props.$isHitFalling
           ? "airHitCarryContainer 0.22s cubic-bezier(0.22, 0.6, 0.35, 1) forwards"

@@ -25,6 +25,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
 const require = createRequire(import.meta.url);
 const { io } = require(path.join(ROOT, "client/node_modules/socket.io-client"));
+const netProtocol = require(path.join(ROOT, "server-io/netProtocol.json"));
 
 const ROOMS = Math.max(1, Number(process.env.SOAK_ROOMS || 8));
 const SECONDS = Math.max(3, Number(process.env.SOAK_SECONDS || 12));
@@ -96,6 +97,7 @@ function makeMatch(index) {
     lastSeq: null,
     gaps: 0,
     bytes: 0,
+    inputSeq: 0,
   };
 
   match.send = (patch) => {
@@ -110,16 +112,25 @@ function makeMatch(index) {
       id: match.id,
       keys: match.keys,
       events,
+      seq: ++match.inputSeq,
     });
   };
 
   socket.on("connect", () => {
-    match.id = socket.id;
-    socket.emit("create_cpu_match", {
-      socketId: match.id,
-      mawashiColor: "#4169E1",
-      bodyColor: null,
-      gearIds: [],
+    // Protocol v2 (server-io/netSession.js): hello first; identity is the
+    // session playerId, not the socket id.
+    socket.emit("hello", { protocolVersion: netProtocol.PROTOCOL_VERSION }, (ack) => {
+      if (!ack || !ack.ok) {
+        console.error("hello rejected", ack);
+        return;
+      }
+      match.id = ack.playerId;
+      socket.emit("create_cpu_match", {
+        socketId: match.id,
+        mawashiColor: "#4169E1",
+        bodyColor: null,
+        gearIds: [],
+      });
     });
   });
 

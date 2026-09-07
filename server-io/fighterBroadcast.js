@@ -64,6 +64,7 @@ function buildFighterActionPacket(room, opts = {}) {
     isResync: isResync || undefined,
     seq,
     simTime: room.simTime ?? null,
+    roomId: room.id ?? null,
     masteryP5: !!opts.masteryP5,
   };
   if (!packet.isResync) delete packet.isResync;

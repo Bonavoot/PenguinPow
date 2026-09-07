@@ -370,15 +370,26 @@ export function isPredictionEligible(self, opponent, keys, gameActive) {
 
   // Near the opponent's pushbox AND moving toward them: the server runs
   // overlap separation we don't simulate. Moving away is always safe.
+  // Airborne opponents have no ground pushbox — walking under them is ordinary
+  // strafe physics, so stay eligible (otherwise prediction cuts out at an
+  // invisible wall under a slide-jump).
   if (opponent && typeof opponent.x === "number") {
-    const pushboxDistance =
-      C.HITBOX_DISTANCE_VALUE *
-        ((self.sizeMultiplier || 1) + (opponent.sizeMultiplier || 1)) +
-      CONTACT_SUSPEND_MARGIN_PX;
-    const dx = opponent.x - self.x;
-    if (Math.abs(dx) < pushboxDistance) {
-      const towardOpponent = dx > 0 ? keys.d : keys.a;
-      if (towardOpponent) return false;
+    const oppAirborne =
+      (opponent.isSlideJumping && opponent.slideJumpPhase === "flight") ||
+      (opponent.isFlapping && opponent.flapPhase === "flight") ||
+      (opponent.isRopeJumping && opponent.ropeJumpPhase === "active") ||
+      opponent.isHitFalling ||
+      (typeof opponent.y === "number" && opponent.y > C.GROUND_LEVEL + 8);
+    if (!oppAirborne) {
+      const pushboxDistance =
+        C.HITBOX_DISTANCE_VALUE *
+          ((self.sizeMultiplier || 1) + (opponent.sizeMultiplier || 1)) +
+        CONTACT_SUSPEND_MARGIN_PX;
+      const dx = opponent.x - self.x;
+      if (Math.abs(dx) < pushboxDistance) {
+        const towardOpponent = dx > 0 ? keys.d : keys.a;
+        if (towardOpponent) return false;
+      }
     }
   }
 
@@ -406,6 +417,13 @@ export class MovementPredictor {
     };
     this.accumulatorMs = 0;
     this.lastUpdateMs = 0;
+    // Monotonic count of local 64 Hz steps since reset; the history is keyed
+    // by it so a server snapshot can be compared against the exact local step
+    // that corresponds to its simTime (see onServerSnapshot).
+    this.localTick = 0;
+    // Telemetry for the perf recorder / harness: how many snapshots were
+    // reconciled by tick anchoring vs. the RTT fallback.
+    this.stats = { anchored: 0, fallback: 0, skipped: 0, hardSnaps: 0 };
     // Position at the previous sim tick — rendering interpolates between
     // prevTickX and sim.x by the accumulator fraction. Without this, 64Hz
     // ticks sampled at 60fps alias into alternating 1-tick / 2-tick frames
@@ -441,7 +459,7 @@ export class MovementPredictor {
     this.prevTickX = renderedX;
     this.visualOffset = 0;
     this.history.length = 0;
-    this.history.push({ t: nowMs, x: this.sim.x, v: this.sim.v });
+    this.history.push({ t: nowMs, tick: this.localTick, x: this.sim.x, v: this.sim.v });
   }
 
   _deactivate(nowMs, serverRenderedX) {
@@ -527,20 +545,18 @@ export class MovementPredictor {
         ? self.effectiveMoveSpeedMult
         : 1;
 
-    let stepped = false;
     while (this.accumulatorMs >= C.TICK_MS) {
       this.accumulatorMs -= C.TICK_MS;
       this.prevTickX = this.sim.x;
       stepMovement(this.sim, keys, speedMult);
-      stepped = true;
+      this.localTick++;
+      // One history entry PER STEP (not per frame) so tick anchoring can
+      // address any individual step.
+      this.history.push({ t: nowMs, tick: this.localTick, x: this.sim.x, v: this.sim.v });
     }
-
-    if (stepped) {
-      this.history.push({ t: nowMs, x: this.sim.x, v: this.sim.v });
-      const cutoff = nowMs - HISTORY_MAX_AGE_MS;
-      while (this.history.length > 2 && this.history[0].t < cutoff) {
-        this.history.shift();
-      }
+    const cutoff = nowMs - HISTORY_MAX_AGE_MS;
+    while (this.history.length > 2 && this.history[0].t < cutoff) {
+      this.history.shift();
     }
 
     // Bleed visual corrections out (exponential, rate-capped).
@@ -574,29 +590,74 @@ export class MovementPredictor {
   }
 
   /**
-   * Reconcile against an authoritative server snapshot. `rttMs` is the
-   * current round-trip estimate: a snapshot arriving now was simulated with
-   * our inputs from roughly (now - rtt), so that's where we look up our own
-   * predicted position for comparison.
+   * Reconcile against an authoritative server snapshot.
+   *
+   * Preferred (tick anchoring): the snapshot carries `simTime` and, per
+   * fighter, `inputSeqAck` (last consumed input) + `inputAckSimTime` (the sim
+   * time it was consumed). The server applied that input on its first tick
+   * after arrival; we applied the same key change on our first local step
+   * after sending it (`sentAtLookup(seq)` → send time). The snapshot state is
+   * therefore comparable to our step
+   *     firstStepAfter(sendTime) + (simTime − inputAckSimTime) / TICK_MS.
+   * This is exact under any RTT and independent of the RTT estimate, which
+   * is what made the old `now − rtt` lookup correct 30 % of the time on LAN
+   * and 20–30 % of the time at 100 ms.
+   *
+   * Fallback (no ack data / history too short): the old time-based lookup.
    */
-  onServerSnapshot(self, nowMs, rttMs) {
+  onServerSnapshot(self, nowMs, rttMs, snapshotSimTime = null, sentAtLookup = null) {
     if (!this.active || !self || typeof self.x !== "number") return;
 
-    const lookupT = nowMs - (rttMs || 0);
-    const predictedAt = this._historyXAt(lookupT);
-    if (predictedAt === null) return;
+    let predictedAt = null;
+    let anchorWall = null;
+    let anchored = false;
+    if (
+      typeof snapshotSimTime === "number" &&
+      typeof self.inputAckSimTime === "number" &&
+      typeof self.inputSeqAck === "number" &&
+      typeof sentAtLookup === "function"
+    ) {
+      const sentAt = sentAtLookup(self.inputSeqAck);
+      if (typeof sentAt === "number") {
+        // Map server-sim-time → local-wall-time through the ack correspondence:
+        // the acked input was consumed at inputAckSimTime on the server and was
+        // applied locally at `sentAt`. So the snapshot's server state at
+        // snapshotSimTime corresponds to our local state at
+        //   sentAt + (snapshotSimTime − inputAckSimTime).
+        // Interpolating our position history at that wall time is exact and
+        // needs no RTT estimate (the old `now − rtt` guess was wrong by the
+        // RTT-estimate error plus arrival jitter — tens of px under load).
+        anchorWall = sentAt + (snapshotSimTime - self.inputAckSimTime);
+        predictedAt = this._historyXAt(anchorWall);
+        anchored = predictedAt !== null;
+      }
+    }
+    if (predictedAt === null) {
+      anchorWall = nowMs - (rttMs || 0);
+      predictedAt = this._historyXAt(anchorWall);
+      if (predictedAt === null) {
+        this.stats.skipped++;
+        return;
+      }
+      this.stats.fallback++;
+    } else {
+      this.stats.anchored++;
+    }
 
     const error = self.x - predictedAt;
+    this.lastError = error;
+    this.lastAnchored = anchored;
 
     if (Math.abs(error) > HARD_SNAP_ERROR_PX) {
       // Teleport / round reset / unmodeled mechanic — take the server state.
+      this.stats.hardSnaps++;
       this.sim.x = self.x;
       this.prevTickX = self.x;
       this.sim.v =
         typeof self.movementVelocity === "number" ? self.movementVelocity : 0;
       this.visualOffset = 0;
       this.history.length = 0;
-      this.history.push({ t: nowMs, x: this.sim.x, v: this.sim.v });
+      this.history.push({ t: nowMs, tick: this.localTick, x: this.sim.x, v: this.sim.v });
       return;
     }
 
@@ -616,7 +677,7 @@ export class MovementPredictor {
     // the snapshot's velocity is ~RTT old, so comparing it to the current
     // velocity would false-positive during fast transitions (brake turns).
     if (typeof self.movementVelocity === "number") {
-      const histV = this._historyVAt(lookupT);
+      const histV = this._historyVAt(anchorWall);
       if (
         histV !== null &&
         Math.abs(histV - self.movementVelocity) > VELOCITY_RESYNC_THRESHOLD

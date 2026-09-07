@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import PropTypes from "prop-types";
 import styled, { css, keyframes } from "styled-components";
 import { SocketContext } from "../SocketContext";
@@ -225,17 +225,37 @@ const Room = ({ room, setRoomName, handleJoinRoom, index }) => {
   const isFull = room.players.length === 2;
   const rowNum = String((index ?? 0) + 1).padStart(2, "0");
 
+  const [joinError, setJoinError] = useState(null);
+  const [joining, setJoining] = useState(false);
+
+  // join_room is an acked request: only enter the lobby when the server has
+  // actually seated us. The browser's room list can be a moment stale, and
+  // entering a lobby we are not part of used to leave the player stuck with a
+  // Ready button that did nothing.
   const handleJoin = async () => {
-    if (isFull) return;
+    if (isFull || joining) return;
+    setJoining(true);
+    setJoinError(null);
     const save = await loadSave();
     const outfit = getActiveOutfit(save.customization);
-    socket.emit("join_room", {
-      socketId: socket.id,
+    const payload = {
       roomId: room.id,
       mawashiColor: outfit.mawashiColor,
       bodyColor: outfit.bodyColor,
       gearIds: Array.isArray(outfit.gearIds) ? outfit.gearIds : [],
+    };
+    const ack = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve({ ok: false, reason: "No response" }), 4000);
+      socket.emit("join_room", payload, (reply) => {
+        clearTimeout(timer);
+        resolve(reply || { ok: false, reason: "No response" });
+      });
     });
+    setJoining(false);
+    if (!ack.ok) {
+      setJoinError(ack.reason === "Room is full" ? "Room just filled" : ack.reason || "Could not join");
+      return;
+    }
     setRoomName(room.id);
     handleJoinRoom();
   };
@@ -253,7 +273,9 @@ const Room = ({ room, setRoomName, handleJoinRoom, index }) => {
         <SeatCount $isFull={isFull}>{room.players.length}/2</SeatCount>
       </RikishiBlock>
 
-      <StatusBadge $isFull={isFull}>{isFull ? "Full" : "Open"}</StatusBadge>
+      <StatusBadge $isFull={isFull || !!joinError}>
+        {joinError ? joinError : isFull ? "Full" : joining ? "Joining…" : "Open"}
+      </StatusBadge>
 
       <JoinButton
         $isFull={isFull}
@@ -264,7 +286,7 @@ const Room = ({ room, setRoomName, handleJoinRoom, index }) => {
           }
         }}
         onMouseEnter={() => !isFull && playButtonHoverSound()}
-        disabled={isFull}
+        disabled={isFull || joining}
       >
         {isFull ? "—" : "Join"}
         {!isFull && <span className="arrow">▶</span>}

@@ -157,6 +157,20 @@ export function mergeFighterPacket(data, socket = null) {
     sharedFighterState.player2 = { ...(data.player2 || {}) };
   }
 
+  // Input-ack telemetry (net session contract): the server echoes the last
+  // CONSUMED input seq per fighter. Feeds the facade's unacked-input counter.
+  const session = socket && socket.session;
+  if (session && typeof session.noteAck === "function") {
+    const myId = socket.id;
+    const me =
+      sharedFighterState.player1 && sharedFighterState.player1.id === myId
+        ? sharedFighterState.player1
+        : sharedFighterState.player2 && sharedFighterState.player2.id === myId
+          ? sharedFighterState.player2
+          : null;
+    if (me && typeof me.inputSeqAck === "number") session.noteAck(me.inputSeqAck);
+  }
+
   for (let i = 0; i < listeners.length; i++) {
     try {
       listeners[i](sharedFighterState, data);

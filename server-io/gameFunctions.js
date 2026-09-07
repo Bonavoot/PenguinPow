@@ -90,6 +90,7 @@ function classifyWinCategory(winType) {
 }
 const { createInitialKeys } = require("./playerFactory");
 const { getPushboxHalfWidth } = require("./pushboxGeometry");
+const { isAirborneForGroundCollision } = require("./groundCollision");
 const {
   DEFENSE_TYPE,
   buildDefensivePresentation,
@@ -172,6 +173,8 @@ const {
   PULL_BOUNDARY_MARGIN,
   MATADOR_HITSTOP_MS,
   AP_KILL_HITSTOP_MS,
+  RING_OUT_EXIT_VELOCITY,
+  TRAINING_RING_OUT_HOLD_MS,
 } = require("./constants");
 
 // Hit 3 charge functions removed — charged attack is now a standalone move (S + FORWARD + MOUSE1)
@@ -459,15 +462,107 @@ function handleBoutDraw(room, io, scores) {
   }
 }
 
+// Win types whose finish is "the loser was driven out of the ring" — the
+// generic ring-out resolution (topple + exit shove) applies. Everything else
+// (kill throw/pull, cinematic kill, FORCE OUT, overarm throw, time expiry)
+// owns a dedicated presentation and must not be toppled on top of it.
+const RING_OUT_TOPPLE_EXCLUDED_WIN_TYPES = new Set([
+  "clinchKillThrow",
+  "clinchKillPull",
+  "cinematicKill",
+  "grabPush",
+  "grabThrow",
+  "timeExpired",
+  "torinaoshi",
+]);
+
+function isRingOutToppleWinType(winType, loser) {
+  if (RING_OUT_TOPPLE_EXCLUDED_WIN_TYPES.has(winType || "ringOut")) return false;
+  if (!loser) return false;
+  if (
+    loser.isCinematicKillVictim ||
+    loser.isClinchKillThrowVictim ||
+    loser.isClinchKillPullVictim ||
+    loser.isBeingThrown ||
+    loser.isGrabPushDefeat
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Mark a ring-out loser for the client topple and floor their exit shove so
+ * they visibly clear the rope and drop off the platform edge (shared by the
+ * match path and the training lab — see handleWinCondition).
+ */
+function applyRingOutResolution(room, loser) {
+  const fallDir =
+    loser.x <= MAP_LEFT_BOUNDARY
+      ? -1
+      : loser.x >= MAP_RIGHT_BOUNDARY
+      ? 1
+      : loser.knockbackVelocity.x < 0
+      ? -1
+      : loser.knockbackVelocity.x > 0
+      ? 1
+      : loser.x < 640
+      ? -1
+      : 1;
+  loser.isRingOutLoser = true;
+  loser.ringOutDirection = fallDir;
+  loser.ringOutStartTime = simNow(room);
+  // Struck body stays struck for the whole resolution: the hitstun timer
+  // may still clear isHit mid-topple, but the client keys the pose off
+  // isRingOutLoser, so nothing snaps back to idle.
+  const exitSpeed = Math.max(
+    Math.abs(loser.knockbackVelocity.x || 0),
+    RING_OUT_EXIT_VELOCITY
+  );
+  loser.knockbackVelocity.x = fallDir * exitSpeed;
+  loser.knockbackVelocity.y = 0;
+  loser.isHit = true;
+  loser.lastHitTime = simNow(room);
+  return fallDir;
+}
+
 /**
  * @param {object} [extra] merged into the `game_over` payload. Used by the
  *   time-expired path to ship both hantei scores, so the client can print
  *   them over the wrestlers' heads without recomputing the decision.
  */
 function handleWinCondition(room, loser, winner, io, winType, extra) {
-  // Training has no fall / banner / rematch — snap back to ready marks.
+  // Training lab: no banner / score / rematch, but the ring-out itself plays
+  // the same resolution as a match (topple, exit shove, landing beat) and
+  // only THEN snaps back to the ready marks. It used to reset on the very
+  // tick the boundary was crossed, so none of the round-end presentation
+  // was ever visible in training.
   if (isTrainingRoom(room)) {
-    room.trainingResetPending = true;
+    if (room.trainingResolution) return; // already resolving this fall
+    const ringOut = isRingOutToppleWinType(winType, loser);
+    if (ringOut) {
+      applyRingOutResolution(room, loser);
+      // Neither body acts during the beat (the winner may keep moving —
+      // the lab is theirs — but the downed loser must not walk while flat).
+      loser.inputLockUntil = Math.max(
+        loser.inputLockUntil || 0,
+        simNow(room) + TRAINING_RING_OUT_HOLD_MS
+      );
+      room.loserId = loser.id;
+      room.winnerId = winner.id;
+      // Same round-ending beat as a match: the tick's own shake is light,
+      // the body landing (client topple) carries the impact.
+      io.in(room.id).emit("ring_out", {
+        loserId: loser.id,
+        winnerId: winner.id,
+        direction: loser.ringOutDirection < 0 ? "left" : "right",
+        training: true,
+      });
+    }
+    room.trainingResolution = {
+      startedAt: simNow(room),
+      holdMs: ringOut ? TRAINING_RING_OUT_HOLD_MS : 0,
+    };
     return;
   }
   if (room.gameOver) return; // Prevent multiple win declarations
@@ -556,7 +651,7 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
         winner.y = GROUND_LEVEL;
         winner.isBowing = true;
         
-        const killVictimStaysDown = loser.isCinematicKillVictim || loser.isClinchKillThrowVictim || loser.isClinchKillPullVictim;
+        const killVictimStaysDown = loser.isCinematicKillVictim || loser.isClinchKillThrowVictim || loser.isClinchKillPullVictim || loser.isRingOutLoser;
         if (killVictimStaysDown) {
           // Kill victims stay in their final pose — no bowing, no repositioning
         } else {
@@ -575,7 +670,7 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
       winner.y = GROUND_LEVEL;
       winner.isBowing = true;
       
-      const killVictimStaysDown = loser.isCinematicKillVictim || loser.isClinchKillThrowVictim || loser.isClinchKillPullVictim;
+      const killVictimStaysDown = loser.isCinematicKillVictim || loser.isClinchKillThrowVictim || loser.isClinchKillPullVictim || loser.isRingOutLoser;
       if (killVictimStaysDown) {
         // Kill victims stay in their final pose — no bowing, no repositioning
       } else {
@@ -894,6 +989,23 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
   loser.movementVelocity = loserMovementVelocity;
   winner.knockbackVelocity = { x: 0, y: 0 };
   winner.movementVelocity = 0;
+
+  // ── ROUND RESOLUTION (ring-out) ──────────────────────────────────────
+  // The win tick used to be a pure flag flip: the loser kept whatever pose
+  // they had, stopped ON the rope (dirt friction kills a slap's residual
+  // shove within ~40 px), and the only signal was the caption. Now a ring-out
+  // is an event the bodies perform:
+  //   • the loser is marked `isRingOutLoser` with the fall direction, so the
+  //     client tips the struck body over past the rope and holds it down
+  //     (see client reactionRig TOPPLING / DOWNED);
+  //   • their exit shove is floored so they visibly clear the rope and drop
+  //     off the platform edge instead of parking on the apron;
+  //   • the winner is marked `isRoundWinner` for the hold/camera.
+  // Dedicated kill / grab finishes keep their own authored presentations.
+  if (isRingOutToppleWinType(winType, loser)) {
+    applyRingOutResolution(room, loser);
+  }
+  winner.isRoundWinner = true;
   
   // CRITICAL: Force loser Y position AGAIN after all state changes
   // Skip for cinematic/clinch kill victims — they're mid-arc, flying off, or being pulled off
@@ -2028,15 +2140,12 @@ function handleReadyPositions(room, player1, player2, io) {
 }
 
 function arePlayersColliding(player1, player2) {
-  // If either player is dodging, sidestepping, rope jumping, or slide-jumping
-  // (incl. FLAP-armed), return false — airborne bodies have no ground pushbox.
+  // Dodges / sidesteps / any airborne body have no ground pushbox — the
+  // standing fighter must be able to pass underneath.
   if (player1.isDodging || player2.isDodging ||
       player1.isSidestepping || player2.isSidestepping ||
-      player1.isHitFalling || player2.isHitFalling ||
-      (player1.isRopeJumping && player1.ropeJumpPhase === "active") ||
-      (player2.isRopeJumping && player2.ropeJumpPhase === "active") ||
-      (player1.isSlideJumping && player1.slideJumpPhase === "flight") ||
-      (player2.isSlideJumping && player2.slideJumpPhase === "flight")) {
+      isAirborneForGroundCollision(player1) ||
+      isAirborneForGroundCollision(player2)) {
     return false;
   }
 
@@ -2111,15 +2220,8 @@ function adjustPlayerPositions(player1, player2, delta) {
     player1.isThrowing || player2.isThrowing ||
     player1.isBeingThrown || player2.isBeingThrown ||
     player1.isSidestepping || player2.isSidestepping ||
-    (player1.isRopeJumping && player1.ropeJumpPhase === "active") ||
-    (player2.isRopeJumping && player2.ropeJumpPhase === "active") ||
-    (player1.isFlapping && player1.flapPhase === "flight") ||
-    (player2.isFlapping && player2.flapPhase === "flight") ||
-    // Same as flap: pushbox would shove the opponent outside slam reach mid-ring.
-    (player1.isSlideJumping && player1.slideJumpPhase === "flight") ||
-    (player2.isSlideJumping && player2.slideJumpPhase === "flight") ||
-    player1.isHitFalling ||
-    player2.isHitFalling
+    isAirborneForGroundCollision(player1) ||
+    isAirborneForGroundCollision(player2)
   ) {
     return;
   }

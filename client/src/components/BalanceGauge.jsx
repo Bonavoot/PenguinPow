@@ -231,11 +231,15 @@ const BalanceGauge = ({
     const ro = typeof ResizeObserver !== "undefined"
       ? new ResizeObserver(resize)
       : null;
-    ro?.observe(shell);
+    // Observe the canvas itself (that is what resize measures) so a size
+    // change is caught by the observer — NOT by re-measuring every frame.
+    // The per-frame getBoundingClientRect this loop used to do forced a
+    // layout on every rAF for each gauge (~9 s over a profiled match).
+    ro?.observe(canvas);
     resize();
 
     const tick = (now) => {
-      resize();
+      if (!ro) resize(); // no ResizeObserver: fall back to per-frame measure
       const st = stateRef.current;
       const dt = 0.18;
       st.displayBalance += (st.targetBalance - st.displayBalance) * dt;

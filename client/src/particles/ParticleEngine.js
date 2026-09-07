@@ -3145,6 +3145,51 @@ const PRESETS = {
     });
   },
 
+  // Ring-out topple landing — the loser's body hits the apron past the rope.
+  // One heavy ground puff at the body (not the feet: the body is now lying
+  // along `dir`) plus dirt chips thrown along the fall. Renders behind the
+  // platform when the fall ended below the fall edge.
+  ringOutToppleLand(engine, { x, y, dir = 1, behindDohyo = false }) {
+    const bodyX = x + dir * 26;
+    const groundY = GAME_H - y - 12;
+    spawnLandingSmoke(engine, bodyX, groundY, {
+      scale: 1.35,
+      alpha: 1,
+      maxLife: 0.6,
+      behindDohyo,
+    });
+    spawnLandingSmoke(engine, x - dir * 8, groundY, {
+      scale: 0.7,
+      alpha: 0.8,
+      maxLife: 0.45,
+      delay: 0.03,
+      behindDohyo,
+    });
+    for (let i = 0; i < 7; i++) {
+      engine.spawn({
+        x: bodyX + dir * rand(-8, 18),
+        y: groundY - rand(0, 6),
+        vx: dir * rand(90, 240),
+        vy: rand(-170, -60),
+        gravity: rand(380, 520),
+        drag: 0.92,
+        size: rand(3, 7),
+        sizeEnd: rand(1, 2),
+        alpha: rand(0.75, 0.95),
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "inCubic",
+        rotation: 0,
+        rotationSpeed: rand(-14, 14),
+        maxLife: rand(0.3, 0.5),
+        texture: pick([engine.textures.circleIce, engine.textures.circle]),
+        blendMode: "lighter",
+        delay: rand(0, 0.03),
+        behindDohyo,
+      });
+    }
+  },
+
   // Victim feet skid — a small dust kick under a slap victim as the hit shoves
   // them back. The body judder sells the IMPACT; this sells the DISPLACEMENT
   // (ground being lost on every hit). Deliberately small so rapid slap

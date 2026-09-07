@@ -43,7 +43,7 @@
         "palm-thrust.png": { "up": [61, 92], "tipPx": 438, "outerForward": 71.832 }
       },
       "note": "The extended palm arm band is bounded by a hard silhouette step: the frontmost opaque column is 218px (body) at up 92.5, jumps to 408px at up 92.3, and falls back to 259px at up 61.0. 438px is also STRIKE_TIP_PALM_SPRITE_PX, i.e. the arm IS the sprite's frontmost feature — no feet, glow, smear, or padding is included.",
-      "renderedArtWindows": "Client PALM_THRUST_ANIM (GameFighter) draws palm-thrust-smear 0-40ms, palm-thrust.png 40-460ms, palm-thrust-startup.png from 460ms. Server phases are startup [0,90), active [90,180), recovery [180,500) on whiff. The authorized limb window ends at PALM_THRUST_HOLD_MS into recovery (440ms from move start) — 20ms BEFORE the art retracts, so authority can never advertise reach the sprite is not drawing."
+      "renderedArtWindows": "Client PALM_THRUST_ANIM (GameFighter) draws palm-thrust-startup 0-40ms, palm-thrust-smear 40-90ms (startup, not hittable), palm-thrust.png 90-560ms (active + hold), palm-thrust-startup.png from 560ms. Server phases are startup [0,90), active [90,180), recovery [180,560+) on whiff. The authorized limb window ends at PALM_THRUST_HOLD_MS into recovery (440ms from move start) — 20ms BEFORE the art retracts, so authority can never advertise reach the sprite is not drawing."
     }
   },
   "poses": {
@@ -344,7 +344,7 @@
     "palm_startup": {
       "support": "supported",
       "art": "palm-thrust-startup.png",
-      "notes": "Not authoritative (mirrors the slap_startup exclusion). The client swaps to palm-thrust.png ~40ms into the 90ms startup, so the authored arm here is deliberately the SHORTER retracted measurement — an overlay that under-draws is safe, one that over-draws is not.",
+      "notes": "Not authoritative (mirrors the slap_startup exclusion). The client holds palm-thrust-startup 0-40ms then palm-thrust-smear 40-90ms; the extended palm-thrust.png pose does not start until the server hitbox at 90ms. The authored arm here is the SHORTER retracted measurement — an overlay that under-draws is safe, one that over-draws is not.",
       "regions": [
         {
           "kind": "PUSH",

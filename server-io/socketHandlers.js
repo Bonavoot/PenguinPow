@@ -137,6 +137,19 @@ const {
 const { appendInput: appendAuditInput, closeLog: closeAuditLog } = require("./inputAuditLog");
 const { buildFighterActionPacket } = require("./fighterBroadcast");
 const { MASTERY_P5_ASSISTS } = require("./masteryFlags");
+const {
+  getSocketPlayerId,
+  shouldHoldOnDisconnect,
+  isIntentionalDisconnect,
+  isRoomInGameSession,
+  beginReconnectHold,
+  clearReconnectHold,
+  acceptInputSeq,
+  noteInputConsumed,
+  EVENTS: NET_EVENTS,
+  PREMATCH_READY_CAP_MS,
+  _telemetry: netTelemetry,
+} = require("./netSession");
 
 // ============================================
 // FIGHTER_ACTION INPUT RATE LIMIT (B7 — Phase 3)
@@ -300,6 +313,10 @@ function recordParryPressTime(player, data, rising) {
 // execute at deterministic points in the simulation instead of whenever
 // a packet happens to arrive mid-tick, and freezes can't be bypassed.
 function processInputPacket(room, player, data, io, rooms) {
+  // Ack the CONSUMED seq first: even a packet the sim ignores (round over,
+  // pre-round) was received and drained, and the client's send/ack telemetry
+  // must reflect that.
+  noteInputConsumed(player, data, room);
   if (
     (room.gameOver && !room.matchOver) ||
     room.matchOver
@@ -1427,17 +1444,33 @@ function processInputPacket(room, player, data, io, rooms) {
 }
 
 function registerSocketHandlers(socket, io, rooms, context) {
-  const { registerPlayerInMaps, unregisterPlayerFromMaps } = context;
+  const { registerPlayerInMaps, unregisterPlayerFromMaps, sessionStore } = context;
 
-  socket.on("game_reset", (data) => {
-    // Find the room index using the socket's roomId to ensure we're resetting the correct room
-    const roomIndex = rooms.findIndex((room) => room.id === socket.roomId);
-    if (roomIndex !== -1) {
-      // Player explicitly leaving the match — close the audit log if it's
-      // still open (e.g., reset before matchOver).
-      closeAuditLog(rooms[roomIndex]);
-      resetRoomAndPlayers(rooms[roomIndex], io);
-    }
+  // Stable per-session identity (netSession.js). Every gameplay handler binds
+  // to THIS id — never to a client-supplied playerId/socketId, and never to
+  // the transient socket.id. Sockets that have not completed "hello" have no
+  // identity and are ignored by every room-mutating handler.
+  const pid = () => getSocketPlayerId(socket);
+  const setSessionRoom = (roomId) => {
+    const s = sessionStore && sessionStore.get(pid());
+    if (s) s.roomId = roomId;
+  };
+  const rejectUnauthenticated = (eventName, payload) => {
+    netTelemetry.unauthenticatedRejects++;
+    if (eventName) socket.emit(eventName, payload);
+  };
+
+  /** Same player-reset the client used to trigger via "game_reset" on match start. */
+  const applyGameReset = (room) => {
+    if (!room) return;
+    closeAuditLog(room);
+    resetRoomAndPlayers(room, io);
+  };
+
+  socket.on("game_reset", () => {
+    // Harmless no-op: lobby ready flags are cleared server-side when the
+    // match initiates. Round resets still go through resetRoomAndPlayers
+    // on the server (KO / rematch paths).
   });
 
   // BASHO only: reset the shared room for the next bout. The client fires this
@@ -1507,7 +1540,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
 
   // Handle mawashi color updates - broadcast to all players in room
   socket.on("update_mawashi_color", (data) => {
-    const { roomId, playerId, color } = data;
+    if (!data) return;
+    const { roomId, color } = data;
+    const playerId = pid();
+    if (!playerId) return;
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
     
     if (roomIndex === -1) return;
@@ -1544,7 +1580,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
 
   // Handle body color updates — mirrors mawashi_color logic
   socket.on("update_body_color", (data) => {
-    const { roomId, playerId, color } = data;
+    if (!data) return;
+    const { roomId, color } = data;
+    const playerId = pid();
+    if (!playerId) return;
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
     if (roomIndex === -1) return;
 
@@ -1565,7 +1604,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
 
   // Handle gear / cosmetics (e.g. top hat) — mirrors body_color logic
   socket.on("update_gear", (data) => {
-    const { roomId, playerId, gearIds } = data;
+    if (!data) return;
+    const { roomId, gearIds } = data;
+    const playerId = pid();
+    if (!playerId) return;
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
     if (roomIndex === -1) return;
 
@@ -1584,28 +1626,51 @@ function registerSocketHandlers(socket, io, rooms, context) {
     });
   });
 
-  socket.on("join_room", (data) => {
-    socket.join(data.roomId);
-    const roomIndex = rooms.findIndex((room) => room.id === data.roomId);
-
-    // Check if room is in opponent disconnected state - prevent joining
-    if (
-      rooms[roomIndex].opponentDisconnected ||
-      rooms[roomIndex].disconnectedDuringGame
-    ) {
-      socket.emit("join_room_failed", {
-        reason: "Room is currently unavailable",
-        roomId: data.roomId,
-      });
-      socket.leave(data.roomId);
-      return;
+  // join_room is an acked request: the client only enters the lobby view on
+  // { ok: true }. Failures are also emitted as "join_room_failed" so a client
+  // that did not pass a callback still learns why.
+  socket.on("join_room", (data, ack) => {
+    const reply = (payload) => {
+      if (typeof ack === "function") ack(payload);
+      if (!payload.ok) socket.emit("join_room_failed", { reason: payload.reason, roomId: payload.roomId });
+    };
+    if (!data || typeof data.roomId !== "string") return reply({ ok: false, reason: "Bad request", roomId: null });
+    const playerId = pid();
+    if (!playerId) {
+      netTelemetry.unauthenticatedRejects++;
+      return reply({ ok: false, reason: "unauthenticated", roomId: data.roomId });
     }
+    const roomIndex = rooms.findIndex((room) => room.id === data.roomId);
+    if (roomIndex === -1) return reply({ ok: false, reason: "Room not found", roomId: data.roomId });
+    // Already seated somewhere (e.g. duplicate click) — never seat twice.
+    const seatedIn = rooms.find((r) => r.players.some((p) => p.id === playerId));
+    if (seatedIn) {
+      if (seatedIn.id === data.roomId) return reply({ ok: true, roomId: data.roomId, alreadySeated: true });
+      return reply({ ok: false, reason: "Already in a room", roomId: data.roomId });
+    }
+
+    if (
+      rooms[roomIndex].isCPURoom ||
+      rooms[roomIndex].reconnectHold ||
+      rooms[roomIndex].players.length >= 2
+    ) {
+      // Tell the browsing client the truth right away (its list may be stale).
+      socket.emit("rooms", getCleanedRoomsData(rooms));
+      return reply({ ok: false, reason: "Room is full", roomId: data.roomId });
+    }
+    socket.join(data.roomId);
 
     // If someone is joining and there's already one player, ensure clean room state
     if (rooms[roomIndex].players.length === 1) {
       cleanupRoomState(rooms[roomIndex]);
       // Also clean up the existing player's power-up related state
       const existingPlayer = rooms[roomIndex].players[0];
+      // cleanupRoomState zeroes readyCount but the waiting player may already
+      // have clicked Ready. Keep count and flag consistent: otherwise the
+      // second Ready only reached 1 (no initial_game_start, both clients
+      // stuck in the lobby UI) while the tick loop saw two isReady flags and
+      // started the bout with nobody watching.
+      rooms[roomIndex].readyCount = existingPlayer.isReady ? 1 : 0;
       existingPlayer.activePowerUp = null;
       existingPlayer.powerUpMultiplier = 1;
       existingPlayer.selectedPowerUp = null;
@@ -1638,7 +1703,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
     if (rooms[roomIndex].players.length < 1) {
       rooms[roomIndex].players.push(
         createInitialPlayerState({
-          id: data.socketId,
+          id: playerId,
           ...PLAYER_1_SPAWN,
           mawashiColor: joinColors.mawashiColor,
           bodyColor: joinColors.bodyColor,
@@ -1664,7 +1729,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
       }
       rooms[roomIndex].players.push(
         createInitialPlayerState({
-          id: data.socketId,
+          id: playerId,
           ...PLAYER_2_SPAWN,
           mawashiColor,
           bodyColor: joinColors.bodyColor,
@@ -1675,39 +1740,28 @@ function registerSocketHandlers(socket, io, rooms, context) {
       registerPlayerInMaps(rooms[roomIndex].players[1], rooms[roomIndex]);
     }
 
-    // If this is the second player joining and room was in disconnected state, reset it
-    if (
-      rooms[roomIndex].players.length === 2 &&
-      rooms[roomIndex].opponentDisconnected
-    ) {
-      rooms[roomIndex].opponentDisconnected = false;
-      rooms[roomIndex].disconnectedDuringGame = false;
-
-      // Clear any lingering power-up selection state
-      rooms[roomIndex].powerUpSelectionPhase = false;
-      rooms[roomIndex].playersSelectedPowerUps = {};
-      rooms[roomIndex].playerAvailablePowerUps = {};
-
-      // Clear any remaining round start timer
-      if (rooms[roomIndex].roundStartTimer) {
-        clearTimeout(rooms[roomIndex].roundStartTimer);
-        rooms[roomIndex].roundStartTimer = null;
-      }
-
-      // Clean up the room state
-      cleanupRoomState(rooms[roomIndex]);
-    }
-
     socket.roomId = data.roomId;
-    io.to(data.roomId).emit("rooms", getCleanedRoomsData(rooms));
+    setSessionRoom(data.roomId);
+    reply({ ok: true, roomId: data.roomId });
+    // Seat changes are broadcast to EVERY client so a player browsing the room
+    // list never acts on a stale count (this was how two players could end up
+    // "joining" a room that had just filled).
+    io.emit("rooms", getCleanedRoomsData(rooms));
     io.to(data.roomId).emit("lobby", rooms[roomIndex].players);
-    // console.log(rooms[roomIndex].players);
+    // The joiner needs the live count (the other player may already be ready).
+    io.to(data.roomId).emit("ready_count", rooms[roomIndex].readyCount);
   });
 
   // CPU Match creation handler
   socket.on("create_cpu_match", (data) => {
+    data = data || {};
+    const playerId = pid();
+    if (!playerId) {
+      rejectUnauthenticated("cpu_match_failed", { reason: "unauthenticated" });
+      return;
+    }
     // Generate a unique room ID for this CPU match
-    const cpuRoomId = `cpu-${data.socketId}-${Date.now()}`;
+    const cpuRoomId = `cpu-${playerId}-${Date.now()}`;
     
     // Create a new room specifically for this CPU match
     const room = {
@@ -1734,10 +1788,11 @@ function registerSocketHandlers(socket, io, rooms, context) {
     // Add human player as player 1 (seeded from saved outfit when provided)
     socket.join(room.id);
     socket.roomId = room.id;
+    setSessionRoom(room.id);
 
     room.players.push(
       createInitialPlayerState({
-        id: data.socketId,
+        id: playerId,
         ...PLAYER_1_SPAWN,
         mawashiColor: data.mawashiColor || PLAYER_1_SPAWN.mawashiColor,
         bodyColor: data.bodyColor !== undefined ? data.bodyColor : null,
@@ -1770,7 +1825,13 @@ function registerSocketHandlers(socket, io, rooms, context) {
   // CPU colors so the client can skip P2 recolor. PvP / VS CPU / BASHO
   // stay on their own handlers.
   socket.on("create_training_match", (data) => {
-    const trainingRoomId = `training-${data.socketId}-${Date.now()}`;
+    data = data || {};
+    const playerId = pid();
+    if (!playerId) {
+      rejectUnauthenticated("training_match_failed", { reason: "unauthenticated" });
+      return;
+    }
+    const trainingRoomId = `training-${playerId}-${Date.now()}`;
 
     const room = {
       id: trainingRoomId,
@@ -1798,9 +1859,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
 
     socket.join(room.id);
     socket.roomId = room.id;
+    setSessionRoom(room.id);
 
     const human = createInitialPlayerState({
-      id: data.socketId,
+      id: playerId,
       ...PLAYER_1_SPAWN,
       mawashiColor: data.mawashiColor || PLAYER_1_SPAWN.mawashiColor,
       bodyColor: data.bodyColor !== undefined ? data.bodyColor : null,
@@ -1836,7 +1898,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
 
   socket.on("set_training_behavior", (data) => {
     const room = rooms.find(
-      (r) => isTrainingRoom(r) && r.players.some((p) => p.id === socket.id)
+      (r) => isTrainingRoom(r) && r.players.some((p) => p.id === pid())
     );
     if (!room) return;
     applyTrainingBehavior(room, data && data.behavior);
@@ -1860,14 +1922,14 @@ function registerSocketHandlers(socket, io, rooms, context) {
 
   socket.on("request_training_reset", () => {
     const room = rooms.find(
-      (r) => isTrainingRoom(r) && r.players.some((p) => p.id === socket.id)
+      (r) => isTrainingRoom(r) && r.players.some((p) => p.id === pid())
     );
     if (room) room.trainingResetPending = true;
   });
 
   socket.on("set_training_resources", (data) => {
     const room = rooms.find(
-      (r) => isTrainingRoom(r) && r.players.some((p) => p.id === socket.id)
+      (r) => isTrainingRoom(r) && r.players.some((p) => p.id === pid())
     );
     if (!room) return;
     applyTrainingInfiniteResources(room, !!(data && data.infiniteResources));
@@ -1876,7 +1938,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
 
   socket.on("set_training_kit", (data) => {
     const room = rooms.find(
-      (r) => isTrainingRoom(r) && r.players.some((p) => p.id === socket.id)
+      (r) => isTrainingRoom(r) && r.players.some((p) => p.id === pid())
     );
     if (!room) return;
     const settings = setTrainingKit(room, data || {});
@@ -1888,7 +1950,13 @@ function registerSocketHandlers(socket, io, rooms, context) {
   // but flags the room with matchMode:"basho" so best-of-1 scoring + the named
   // opponent's preset colors apply ONLY here, never to a plain VS CPU match.
   socket.on("create_basho_match", (data) => {
-    const bashoRoomId = `basho-${data.socketId}-${Date.now()}`;
+    data = data || {};
+    const playerId = pid();
+    if (!playerId) {
+      rejectUnauthenticated("basho_match_failed", { reason: "unauthenticated" });
+      return;
+    }
+    const bashoRoomId = `basho-${playerId}-${Date.now()}`;
 
     const room = {
       id: bashoRoomId,
@@ -1927,6 +1995,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
 
     socket.join(room.id);
     socket.roomId = room.id;
+    setSessionRoom(room.id);
 
     // Human keeps their customized colors AND gets their BASHO stat modifiers
     // + ability loadout flags. Both are attached to the human ONLY — the CPU
@@ -1935,7 +2004,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
     const playerOverrides = data.player || {};
     room.players.push(
       createInitialPlayerState({
-        id: data.socketId,
+        id: playerId,
         ...PLAYER_1_SPAWN,
         mawashiColor: playerOverrides.mawashiColor || PLAYER_1_SPAWN.mawashiColor,
         bodyColor: playerOverrides.bodyColor ?? null,
@@ -1987,21 +2056,24 @@ function registerSocketHandlers(socket, io, rooms, context) {
   });
 
   socket.on("set_cpu_difficulty", (data) => {
-    const room = rooms.find(r => r.isCPURoom && r.players.some(p => p.id === socket.id));
+    const room = rooms.find(r => r.isCPURoom && r.players.some(p => p.id === pid()));
     if (room && data.difficulty) {
       room.cpuDifficulty = data.difficulty;
     }
   });
 
   socket.on("ready_count", (data) => {
+    if (!data) return;
+    const playerId = pid();
+    if (!playerId) return;
     const roomIndex = rooms.findIndex((room) => room.id === data.roomId);
     if (roomIndex === -1) return; // Room not found
 
     const room = rooms[roomIndex];
 
-    // Find the player in the room
+    // Find the player in the room — bound to the session, not data.playerId.
     const playerIndex = room.players.findIndex(
-      (player) => player.id === data.playerId
+      (player) => player.id === playerId
     );
 
     if (playerIndex === -1) return; // Player not found in room
@@ -2070,6 +2142,12 @@ function registerSocketHandlers(socket, io, rooms, context) {
     if (room.readyCount > 1) {
       // Mark this as the initial round - power-up selection will wait for pre_match_complete
       room.isInitialRound = true;
+      // The room has left the lobby: only from here on may the tick loop's
+      // pre-bout ritual (both fighters at the ready line) start a bout.
+      room.matchInitiated = true;
+      // Clear lobby isReady here so the tick loop cannot start a bout from
+      // leftover ready flags. Client "game_reset" used to do this.
+      applyGameReset(room);
       // Send players with mawashiColor so client shows correct colors on PreMatchScreen (avoids race)
       const payload = {
         roomId: data.roomId,
@@ -2088,22 +2166,59 @@ function registerSocketHandlers(socket, io, rooms, context) {
   });
 
   // Client signals that pre-match screen is done - now start power-up selection
+  // The bout must not start while a client is still preloading. Each human
+  // sends pre_match_complete when its sprites are decoded; the ritual begins
+  // when ALL humans have reported in, or when PREMATCH_READY_CAP_MS elapses
+  // after the first report (so a stalled client can never hold the match
+  // hostage). Measured motivation: a client that was still recoloring when
+  // the bout began showed 1–3 s main-thread stalls during the opening
+  // exchanges — the "laggy at the start" complaint.
+  const startInitialRound = (room) => {
+    if (!room.isInitialRound) return;
+    room.isInitialRound = false;
+    if (room.preMatchCapTimer) {
+      clearTimeout(room.preMatchCapTimer);
+      room.preMatchCapTimer = null;
+    }
+    room.preMatchReadyIds = null;
+    handlePowerUpSelection(room, io);
+  };
   socket.on("pre_match_complete", (data) => {
+    if (!data) return;
     const { roomId } = data;
     const room = rooms.find((r) => r.id === roomId);
     
     if (!room) return;
+    const playerId = pid();
+    if (!playerId || !room.players.some((p) => p.id === playerId)) return; // only seated players
     if (isTrainingRoom(room)) return;
-    
-    // Only proceed if this is still the initial round
-    if (room.isInitialRound) {
-      room.isInitialRound = false; // No longer initial round
-      handlePowerUpSelection(room, io);
+    if (!room.isInitialRound) return;
+
+    if (!room.preMatchReadyIds) room.preMatchReadyIds = new Set();
+    room.preMatchReadyIds.add(playerId);
+    const humans = room.players.filter((p) => !p.isCPU);
+    const allReady = humans.every((p) => room.preMatchReadyIds.has(p.id));
+    if (allReady) {
+      startInitialRound(room);
+      return;
+    }
+    if (!room.preMatchCapTimer) {
+      room.preMatchCapTimer = setTimeout(() => {
+        room.preMatchCapTimer = null;
+        if (room.isInitialRound && room.players.length === 2) {
+          netTelemetry.prematchCapHits = (netTelemetry.prematchCapHits || 0) + 1;
+          startInitialRound(room);
+        }
+      }, PREMATCH_READY_CAP_MS);
+      if (typeof room.preMatchCapTimer.unref === "function") room.preMatchCapTimer.unref();
     }
   });
 
   socket.on("request_power_up_selection_state", (data) => {
-    const { roomId, playerId } = data;
+    if (!data) return;
+    const { roomId } = data;
+    const playerId = pid();
+    if (!playerId) return;
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
 
     if (roomIndex === -1) {
@@ -2137,7 +2252,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
   });
 
   socket.on("power_up_selected", (data) => {
-    const { roomId, playerId, powerUpType } = data;
+    if (!data) return;
+    const { roomId, powerUpType } = data;
+    const playerId = pid();
+    if (!playerId) return;
     const roomIndex = rooms.findIndex((room) => room.id === roomId);
 
     if (roomIndex === -1) return;
@@ -2146,6 +2264,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
     const player = room.players.find((p) => p.id === playerId);
 
     if (!player || !room.powerUpSelectionPhase) return;
+    // Only offered types are valid; a forged type must not become a power-up.
+    const offered = room.playerAvailablePowerUps && room.playerAvailablePowerUps[playerId];
+    if (Array.isArray(offered) && !offered.includes(powerUpType)) return;
+    if (player.selectedPowerUp) return; // idempotent: first selection wins
 
     // Store the player's power-up selection
     player.selectedPowerUp = powerUpType;
@@ -2183,13 +2305,24 @@ function registerSocketHandlers(socket, io, rooms, context) {
   });
 
   socket.on("rematch_count", (data) => {
+    if (!data) return;
+    const playerId = pid();
+    if (!playerId) return;
     const roomIndex = rooms.findIndex((room) => room.id === data.roomId);
 
     if (roomIndex === -1) return; // Room not found
 
     const room = rooms[roomIndex];
+    const player = room.players.find((p) => p.id === playerId);
+    if (!player) return; // only seated players vote
+    if (!room.matchOver) return; // a vote is only meaningful after match_over
 
-    if (data.acceptedRematch && data.playerId === socket.id) {
+    // One vote per player, idempotent: repeated accepts do not double count.
+    const accepted = !!data.acceptedRematch;
+    if (player.rematchVote === accepted) return;
+    player.rematchVote = accepted;
+
+    if (accepted) {
       room.rematchCount++;
       io.in(data.roomId).emit("rematch_count", room.rematchCount);
 
@@ -2198,7 +2331,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
         room.rematchCount++;
         io.in(data.roomId).emit("rematch_count", room.rematchCount);
       }
-    } else if (!data.acceptedRematch && data.playerId === socket.id) {
+    } else if (!accepted) {
       room.rematchCount--;
       io.in(data.roomId).emit("rematch_count", room.rematchCount);
 
@@ -2214,9 +2347,10 @@ function registerSocketHandlers(socket, io, rooms, context) {
       room.gameOver = true;
       room.rematchCount = 0;
       
-      // Reset player wins for the new match
+      // Reset player wins (and votes) for the new match
       room.players.forEach((player) => {
         player.wins = [];
+        player.rematchVote = undefined;
       });
       
       io.in(data.roomId).emit("rematch_count", room.rematchCount);
@@ -2231,7 +2365,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
     if (roomIndex === -1) return; // Room not found
 
     let playerIndex = rooms[roomIndex].players.findIndex(
-      (player) => player.id === socket.id
+      (player) => player.id === pid()
     );
 
     if (playerIndex === -1) return; // Player not found
@@ -2251,7 +2385,7 @@ function registerSocketHandlers(socket, io, rooms, context) {
     if (roomIndex === -1) return;
     const room = rooms[roomIndex];
     if (!room.players || room.players.length < 2) return;
-    if (!room.players.some((p) => p.id === socket.id)) return;
+    if (!room.players.some((p) => p.id === pid())) return;
 
     // Sample prediction lock countdowns the same way the tick broadcast does.
     const simNowForLocks = room.simTime;
@@ -2286,20 +2420,30 @@ function registerSocketHandlers(socket, io, rooms, context) {
     if (roomIndex === -1) return; // Room not found
 
     const room = rooms[roomIndex];
+    if (room.reconnectHold) return; // frozen: nothing is consumed while a player is held
 
-    // SECURITY: bind input to the sending socket — never trust client-supplied IDs.
+    // SECURITY: bind input to the session identity — never trust client-supplied IDs.
     // Prevents one client from forging actions on behalf of the opponent or a CPU.
-    const player = room.players.find((p) => p.id === socket.id);
+    const playerId = pid();
+    if (!playerId) return;
+    const player = room.players.find((p) => p.id === playerId);
     if (!player) return; // Player not found
     // Reject mismatched IDs silently (stale client state or tampered payload)
-    if (data && data.id && data.id !== socket.id) return;
+    if (data && data.id && data.id !== playerId) return;
+    if (!data || typeof data !== "object" || Array.isArray(data)) return;
+    if (data.keys != null && (typeof data.keys !== "object" || Array.isArray(data.keys))) return;
+    if (data.events != null && !Array.isArray(data.events)) return;
+
+    // Input sequence contract: per-session monotonic seq; stale/duplicate
+    // packets are dropped here, before they can flip held-key state back.
+    if (!acceptInputSeq(player, data)) return;
 
     // Per-match input audit log — append after rate limit and ID binding so
     // dropped malicious traffic isn't logged but everything the sim acts on
     // is recorded. No-op if the log isn't open (pre-round, post-match, etc).
     appendAuditInput(room, {
       ts: gameNow(),
-      socketId: socket.id,
+      socketId: playerId,
       roomId: room.id,
       payload: data,
     });
@@ -2321,425 +2465,215 @@ function registerSocketHandlers(socket, io, rooms, context) {
     player.inputQueue.push(data);
   });
 
-  // TEST EVENT - Force opponent disconnection (for debugging)
-  socket.on("test_force_disconnect", (data) => {
-    const roomId = data.roomId;
-    const roomIndex = rooms.findIndex((room) => room.id === roomId);
+  // (The former unauthenticated "test_force_disconnect" debug event — which let
+  // ANY connected client mark ANY room as disconnected — was removed with the
+  // session layer. Disconnect behaviour is exercised by test/net/*.test.js.)
 
-    if (roomIndex !== -1) {
-      rooms[roomIndex].opponentDisconnected = true;
-      rooms[roomIndex].disconnectedDuringGame = true;
+  // -------------------------------------------------------------------------
+  // MATCH LIFECYCLE ON LOSS OF A PLAYER
+  //
+  //   intentional leave (Leave button / clean app close)  → abandonMatch("left")
+  //   transport loss mid-bout                              → short hold (netSession)
+  //        resumed in time                                 → bout continues
+  //        grace lapsed                                    → abandonMatch("disconnected")
+  //   any loss in the lobby (no bout in progress)          → seat freed, room stays
+  //
+  // abandonMatch never leaves a room in an "unavailable" limbo: the remaining
+  // player is told the outcome (match_abandoned) and immediately re-seated as
+  // host of a clean lobby, the room is instantly joinable again, and the
+  // leaver's session forgets the room. The old "opponentDisconnected" state
+  // that made a room unjoinable until the survivor clicked through a countdown
+  // is gone.
+  // -------------------------------------------------------------------------
 
-      // Emit to all players in room
-      io.in(roomId).emit("opponent_disconnected", {
-        roomId: roomId,
-        message: "Opponent disconnected (TEST)",
-      });
-
-      // Emit updated rooms
-      io.emit("rooms", getCleanedRoomsData(rooms));
+  const clearRoomTimers = (room) => {
+    if (room.roundStartTimer) {
+      clearTimeout(room.roundStartTimer);
+      room.roundStartTimer = null;
     }
-  });
-
-  socket.on("exit_disconnected_game", (data) => {
-    const roomId = data.roomId;
-    const roomIndex = rooms.findIndex((room) => room.id === roomId);
-
-    if (roomIndex !== -1 && rooms[roomIndex].opponentDisconnected) {
-      // Match abandoned via opponent-disconnect prompt — close audit log.
-      closeAuditLog(rooms[roomIndex]);
-      // Clean up timeouts for the leaving player
-      timeoutManager.clearPlayer(socket.id);
-
-      // Clear any active round start timer to prevent interference
-      if (rooms[roomIndex].roundStartTimer) {
-        clearTimeout(rooms[roomIndex].roundStartTimer);
-        rooms[roomIndex].roundStartTimer = null;
-      }
-      if (rooms[roomIndex].powerUpNotifyTimer) {
-        clearTimeout(rooms[roomIndex].powerUpNotifyTimer);
-        rooms[roomIndex].powerUpNotifyTimer = null;
-      }
-
-      // PERFORMANCE: Unregister from lookup maps before removal
-      unregisterPlayerFromMaps(socket.id);
-      
-      // Remove the player from the room
-      rooms[roomIndex].players = rooms[roomIndex].players.filter(
-        (player) => player.id !== socket.id
-      );
-
-      // Reset the room to its initial state since this was the last player
-      rooms[roomIndex].opponentDisconnected = false;
-      rooms[roomIndex].disconnectedDuringGame = false;
-      rooms[roomIndex].gameStart = false;
-      rooms[roomIndex].gameOver = false;
-      rooms[roomIndex].matchOver = false;
-      rooms[roomIndex].hakkiyoiCount = 0;
-      rooms[roomIndex].readyCount = 0;
-      rooms[roomIndex].rematchCount = 0;
-      rooms[roomIndex].readyStartTime = null;
-      rooms[roomIndex].powerUpSelectionPhase = false;
-      delete rooms[roomIndex].winnerId;
-      delete rooms[roomIndex].loserId;
-      delete rooms[roomIndex].gameOverTime;
-      delete rooms[roomIndex].playersSelectedPowerUps;
-      delete rooms[roomIndex].playerAvailablePowerUps;
-
-      // Clean up the room state
-      cleanupRoomState(rooms[roomIndex]);
-      // PERFORMANCE: Free cloned player state objects to prevent memory leak
-      rooms[roomIndex].previousPlayerStates = [null, null];
-
-      // Emit updated room data to all clients
-      io.emit("rooms", getCleanedRoomsData(rooms));
-
-      // Confirm exit to the player
-      socket.emit("exit_game_confirmed", { roomId: roomId });
-
-      // Leave the socket room
-      socket.leave(roomId);
+    if (room.powerUpNotifyTimer) {
+      clearTimeout(room.powerUpNotifyTimer);
+      room.powerUpNotifyTimer = null;
     }
-  });
+    if (room.preMatchCapTimer) {
+      clearTimeout(room.preMatchCapTimer);
+      room.preMatchCapTimer = null;
+    }
+    room.preMatchReadyIds = null;
+  };
+
+  /** Return a PvP room to a pristine lobby with `host` (may be null) seated as player 1. */
+  const resetRoomToLobby = (room, host) => {
+    clearRoomTimers(room);
+    clearReconnectHold(room);
+    room.gameStart = false;
+    room.gameOver = false;
+    room.matchOver = false;
+    room.hakkiyoiCount = 0;
+    room.readyCount = 0;
+    room.rematchCount = 0;
+    room.readyStartTime = null;
+    room.teWoTsuiteSent = false;
+    room.powerUpSelectionPhase = false;
+    room.isInitialRound = false;
+    room.boutEndsAtSim = null;
+    room.boutSecondsShown = null;
+    room.hitstopUntil = 0;
+    delete room.winnerId;
+    delete room.loserId;
+    delete room.gameOverTime;
+    delete room.playersSelectedPowerUps;
+    delete room.playerAvailablePowerUps;
+    room.opponentDisconnected = false;
+    room.disconnectedDuringGame = false;
+    cleanupRoomState(room);
+    room.previousPlayerStates = [null, null];
+    room.players = host ? [host] : [];
+    if (host) {
+      timeoutManager.clearPlayer(host.id);
+      cleanupPlayerStates(host);
+      host.fighter = "player 1";
+      host.color = "aqua";
+      host.x = 245;
+      host.facing = 1;
+      host.isReady = false;
+      host.wins = [];
+      host.rematchVote = undefined;
+      host.inputQueue = [];
+      host.isDisconnected = false;
+    }
+  };
+
+  /** Drop `playerId` from `room` entirely (maps, timers, session). */
+  const unseat = (room, playerId) => {
+    timeoutManager.clearPlayer(playerId);
+    unregisterPlayerFromMaps(playerId);
+    room.players = room.players.filter((p) => p.id !== playerId);
+    const s = sessionStore && sessionStore.get(playerId);
+    if (s && s.roomId === room.id) s.roomId = null;
+  };
+
+  /**
+   * A seated player is gone for good while a bout/match was in progress.
+   * reason: "left" | "disconnected"
+   */
+  const abandonMatch = (room, leaverId, reason) => {
+    closeAuditLog(room);
+    // If the OTHER player is currently held (mid-reconnect), they have nothing
+    // to come back to either: the room empties instead of seating a ghost.
+    if (room.reconnectHold && room.reconnectHold.playerId !== leaverId) {
+      const heldId = room.reconnectHold.playerId;
+      clearReconnectHold(room);
+      unseat(room, heldId);
+    }
+    clearReconnectHold(room);
+    unseat(room, leaverId);
+    const remaining = room.players.find((p) => p.id !== leaverId && !p.isDisconnected) || null;
+    if (reason === "left") netTelemetry.matchesAbandonedLeft++;
+    else netTelemetry.matchesAbandonedDisconnected++;
+    io.in(room.id).emit(NET_EVENTS.MATCH_ABANDONED, {
+      roomId: room.id,
+      leaverId,
+      remainingId: remaining ? remaining.id : null,
+      winnerId: remaining ? remaining.id : null,
+      reason,
+    });
+    resetRoomToLobby(room, remaining);
+    if (remaining) {
+      io.in(room.id).emit("lobby", room.players);
+      io.in(room.id).emit("ready_count", 0);
+    }
+    io.emit("rooms", getCleanedRoomsData(rooms));
+  };
+
+  /** A seated player leaves a PvP room that is NOT in a bout. */
+  const leaveLobbySeat = (room, playerId) => {
+    closeAuditLog(room);
+    if (room.reconnectHold && room.reconnectHold.playerId !== playerId) {
+      // A held opponent cannot resume into a room we are abandoning.
+      const heldId = room.reconnectHold.playerId;
+      clearReconnectHold(room);
+      unseat(room, heldId);
+    }
+    unseat(room, playerId);
+    const remaining = room.players[0] || null;
+    resetRoomToLobby(room, remaining);
+    if (remaining) {
+      io.in(room.id).emit("player_left");
+      io.in(room.id).emit("ready_count", 0);
+      io.in(room.id).emit("lobby", room.players);
+    }
+    io.emit("rooms", getCleanedRoomsData(rooms));
+  };
+
+  /** CPU / training / Basho rooms are owned by one human: remove the room. */
+  const dissolveCpuRoom = (room) => {
+    const roomIndex = rooms.indexOf(room);
+    closeAuditLog(room);
+    clearRoomTimers(room);
+    const cpuPlayerId = room.cpuPlayerId || "CPU_PLAYER";
+    timeoutManager.clearPlayer(cpuPlayerId);
+    clearAIState(cpuPlayerId);
+    room.players.forEach((p) => {
+      timeoutManager.clearPlayer(p.id);
+      unregisterPlayerFromMaps(p.id);
+      const s = sessionStore && sessionStore.get(p.id);
+      if (s && s.roomId === room.id) s.roomId = null;
+    });
+    if (roomIndex !== -1) rooms.splice(roomIndex, 1);
+    io.emit("rooms", getCleanedRoomsData(rooms));
+  };
+
+  /** Shared exit for leave_room and disconnect once a player is truly gone. */
+  const removePlayerFromRoom = (room, playerId, reason) => {
+    if (room.isCPURoom) return dissolveCpuRoom(room);
+    const inBout = isRoomInGameSession(room) && room.players.length === 2;
+    if (inBout) return abandonMatch(room, playerId, reason);
+    // Second loss while the other player is already held: the held player has
+    // nothing to come back to either — the room becomes empty.
+    return leaveLobbySeat(room, playerId);
+  };
 
   socket.on("leave_room", (data) => {
-    const roomId = data.roomId;
-    const roomIndex = rooms.findIndex((room) => room.id === roomId);
-
-    if (roomIndex !== -1) {
-      const room = rooms[roomIndex];
-
-      // Per-match audit log cleanup — close stream if open. Idempotent
-      // and safe whether or not the player got far enough to start a match.
-      closeAuditLog(room);
-
-      // Clean up timeouts for the leaving player
-      timeoutManager.clearPlayer(socket.id);
-
-      // Clear any active round start timer to prevent interference
-      if (room.roundStartTimer) {
-        clearTimeout(room.roundStartTimer);
-        room.roundStartTimer = null;
-      }
-      if (room.powerUpNotifyTimer) {
-        clearTimeout(room.powerUpNotifyTimer);
-        room.powerUpNotifyTimer = null;
-      }
-
-      // Handle CPU room cleanup - REMOVE the room entirely when human leaves
-      if (room.isCPURoom) {
-        // Clear CPU player timeouts and AI state using the stored unique ID
-        const cpuPlayerId = room.cpuPlayerId || "CPU_PLAYER";
-        timeoutManager.clearPlayer(cpuPlayerId);
-        clearAIState(cpuPlayerId);
-
-        // Unregister both players from lookup maps before removal
-        room.players.forEach(p => unregisterPlayerFromMaps(p.id));
-
-        // Leave the socket room
-        socket.leave(roomId);
-        delete socket.roomId;
-
-        // Remove the CPU room from the rooms array entirely
-        rooms.splice(roomIndex, 1);
-
-        // Emit updated room list
-        io.emit("rooms", getCleanedRoomsData(rooms));
-        return;
-      }
-
-      // Check if we're leaving during an active game session (not just lobby)
-      // Active game session includes: power-up selection, salt throwing, ready positioning, actual gameplay, and winner declaration
-      const isInGameSession =
-        rooms[roomIndex].powerUpSelectionPhase ||
-        rooms[roomIndex].gameStart ||
-        rooms[roomIndex].gameOver ||
-        rooms[roomIndex].hakkiyoiCount > 0 ||
-        rooms[roomIndex].players.some(
-          (p) =>
-            p.isThrowingSalt ||
-            (p.canMoveToReady === false &&
-              (rooms[roomIndex].gameStart ||
-                rooms[roomIndex].powerUpSelectionPhase))
-        );
-
-      const hadTwoPlayers = rooms[roomIndex].players.length === 2;
-
-      // PERFORMANCE: Unregister from lookup maps before removal
-      unregisterPlayerFromMaps(socket.id);
-      
-      // Remove the player from the room
-      rooms[roomIndex].players = rooms[roomIndex].players.filter(
-        (player) => player.id !== socket.id
-      );
-      // PERFORMANCE: Free cloned player state objects to prevent memory leak
-      rooms[roomIndex].previousPlayerStates = [null, null];
-
-      // Handle opponent disconnection during active game session
-      if (
-        isInGameSession &&
-        hadTwoPlayers &&
-        rooms[roomIndex].players.length === 1
-      ) {
-        rooms[roomIndex].opponentDisconnected = true;
-        rooms[roomIndex].disconnectedDuringGame = true;
-
-        // Emit opponent disconnected event to the remaining player
-        const remainingPlayer = rooms[roomIndex].players[0];
-        io.to(remainingPlayer.id).emit("opponent_disconnected", {
-          roomId: roomId,
-          message: "Opponent disconnected",
-        });
-
-        // Emit rooms data after a small delay to ensure client processes the disconnection event first
-        setTimeout(() => {
-          io.emit("rooms", getCleanedRoomsData(rooms));
-        }, 100);
-      }
-      // If the remaining player from a disconnected game is leaving, reset the room
-      else if (
-        rooms[roomIndex].opponentDisconnected &&
-        rooms[roomIndex].players.length === 0
-      ) {
-        rooms[roomIndex].opponentDisconnected = false;
-        rooms[roomIndex].disconnectedDuringGame = false;
-        rooms[roomIndex].gameStart = false;
-        rooms[roomIndex].gameOver = false;
-        rooms[roomIndex].matchOver = false;
-        rooms[roomIndex].hakkiyoiCount = 0;
-        rooms[roomIndex].readyCount = 0;
-        rooms[roomIndex].rematchCount = 0;
-        rooms[roomIndex].readyStartTime = null;
-        rooms[roomIndex].powerUpSelectionPhase = false;
-        delete rooms[roomIndex].winnerId;
-        delete rooms[roomIndex].loserId;
-        delete rooms[roomIndex].gameOverTime;
-        delete rooms[roomIndex].playersSelectedPowerUps;
-        delete rooms[roomIndex].playerAvailablePowerUps;
-
-        // Clear any remaining round start timer
-        if (rooms[roomIndex].roundStartTimer) {
-          clearTimeout(rooms[roomIndex].roundStartTimer);
-          rooms[roomIndex].roundStartTimer = null;
-        }
-
-        // Clean up the room state
-        cleanupRoomState(rooms[roomIndex]);
-      }
-      // Normal lobby leave - reset ready states
-      else {
-        // Reset ready count and player ready states
-        rooms[roomIndex].readyCount = 0;
-        rooms[roomIndex].players.forEach((player) => {
-          player.isReady = false;
-        });
-
-        // Clean up the room state (includes power-up selection state)
-        cleanupRoomState(rooms[roomIndex]);
-      }
-
-      // If there's only one player left and not in disconnected state, reset their state completely
-      if (
-        rooms[roomIndex].players.length === 1 &&
-        !rooms[roomIndex].opponentDisconnected
-      ) {
-        const p = rooms[roomIndex].players[0];
-        // Reset to player 1 position and appearance
-        p.fighter = "player 1";
-        p.color = "aqua";
-        p.x = 245;
-        p.facing = 1;
-        // Clean up any player-specific state
-        cleanupPlayerStates(p);
-      }
-
-      // Emit updates to all clients (only if not in disconnected state)
-      if (!rooms[roomIndex].opponentDisconnected) {
-        io.in(roomId).emit("player_left");
-        io.in(roomId).emit("ready_count", rooms[roomIndex].readyCount);
-        io.to(roomId).emit("lobby", rooms[roomIndex].players);
-      }
-
-      // Only emit rooms data immediately if not in disconnected state (delayed emit handles disconnected case)
-      if (!rooms[roomIndex].opponentDisconnected) {
-        io.emit("rooms", getCleanedRoomsData(rooms));
-      }
-
-      // Leave the socket room
-      socket.leave(roomId);
-    }
+    if (!data) return;
+    const playerId = pid();
+    if (!playerId) return;
+    const room = rooms.find((r) => r.id === data.roomId);
+    if (!room || !room.players.some((p) => p.id === playerId)) return; // not seated here
+    removePlayerFromRoom(room, playerId, "left");
+    socket.leave(room.id);
+    delete socket.roomId;
   });
 
   socket.on("disconnect", (reason) => {
-    const roomId = socket.roomId;
-    const roomIndex = rooms.findIndex((room) => room.id === roomId);
-
-    // Clean up timeouts for the disconnecting player
-    timeoutManager.clearPlayer(socket.id);
     // B7 rate-limit bucket cleanup — prevents Map growth across reconnects.
     clearInputBucket(socket.id);
+    if (typeof socket.data?.detachSession === "function") socket.data.detachSession();
 
-    if (rooms[roomIndex]) {
-      const room = rooms[roomIndex];
-
-      // Per-match audit log cleanup — close the stream if it was open at
-      // disconnect. Idempotent, safe whether or not gameStart was reached.
-      closeAuditLog(room);
-
-      // Clear any active round start timer to prevent interference
-      if (room.roundStartTimer) {
-        clearTimeout(room.roundStartTimer);
-        room.roundStartTimer = null;
-      }
-      if (room.powerUpNotifyTimer) {
-        clearTimeout(room.powerUpNotifyTimer);
-        room.powerUpNotifyTimer = null;
-      }
-
-      // Handle CPU room cleanup - REMOVE the room entirely when human disconnects
-      if (room.isCPURoom) {
-        // Clear CPU player timeouts and AI state using the stored unique ID
-        const cpuPlayerId = room.cpuPlayerId || "CPU_PLAYER";
-        timeoutManager.clearPlayer(cpuPlayerId);
-        clearAIState(cpuPlayerId);
-
-        // Unregister both players from lookup maps before removal
-        room.players.forEach(p => unregisterPlayerFromMaps(p.id));
-
-        // Remove the CPU room from the rooms array entirely
-        rooms.splice(roomIndex, 1);
-
-        // Emit updated room list
-        io.emit("rooms", getCleanedRoomsData(rooms));
-        return;
-      }
-
-      // Check if we're disconnecting during an active game session (not just lobby)
-      // Active game session includes: power-up selection, salt throwing, ready positioning, actual gameplay, and winner declaration
-      const isInGameSession =
-        rooms[roomIndex].powerUpSelectionPhase ||
-        rooms[roomIndex].gameStart ||
-        rooms[roomIndex].gameOver ||
-        rooms[roomIndex].hakkiyoiCount > 0 ||
-        rooms[roomIndex].players.some(
-          (p) =>
-            p.isThrowingSalt ||
-            (p.canMoveToReady === false &&
-              (rooms[roomIndex].gameStart ||
-                rooms[roomIndex].powerUpSelectionPhase))
-        );
-
-      const hadTwoPlayers = rooms[roomIndex].players.length === 2;
-
-      // Clean up player references
-      const playerIndex = rooms[roomIndex].players.findIndex(
-        (p) => p.id === socket.id
-      );
-      if (playerIndex !== -1) {
-        const player = rooms[roomIndex].players[playerIndex];
-
-        // Clean up all player references
-        cleanupPlayerStates(player);
-
-        // Clean up opponent references
-        const opponent = rooms[roomIndex].players.find(
-          (p) => p.id !== player.id
-        );
-        cleanupOpponentStates(opponent);
-      }
-
-      // PERFORMANCE: Unregister from lookup maps before removal
-      unregisterPlayerFromMaps(socket.id);
-      
-      // Remove the player
-      rooms[roomIndex].players = rooms[roomIndex].players.filter(
-        (player) => player.id !== socket.id
-      );
-      // PERFORMANCE: Free cloned player state objects to prevent memory leak
-      rooms[roomIndex].previousPlayerStates = [null, null];
-
-      // Handle opponent disconnection during active game session
-      if (
-        isInGameSession &&
-        hadTwoPlayers &&
-        rooms[roomIndex].players.length === 1
-      ) {
-        rooms[roomIndex].opponentDisconnected = true;
-        rooms[roomIndex].disconnectedDuringGame = true;
-
-        // Emit opponent disconnected event to the remaining player
-        const remainingPlayer = rooms[roomIndex].players[0];
-        io.to(remainingPlayer.id).emit("opponent_disconnected", {
-          roomId: roomId,
-          message: "Opponent disconnected",
-        });
-
-        // Emit rooms data after a small delay to ensure client processes the disconnection event first
-        setTimeout(() => {
-          io.emit("rooms", getCleanedRoomsData(rooms));
-        }, 100);
-      }
-      // If the remaining player from a disconnected game is leaving, reset the room
-      else if (
-        rooms[roomIndex].opponentDisconnected &&
-        rooms[roomIndex].players.length === 0
-      ) {
-        rooms[roomIndex].opponentDisconnected = false;
-        rooms[roomIndex].disconnectedDuringGame = false;
-        rooms[roomIndex].gameStart = false;
-        rooms[roomIndex].gameOver = false;
-        rooms[roomIndex].matchOver = false;
-        rooms[roomIndex].hakkiyoiCount = 0;
-        rooms[roomIndex].readyCount = 0;
-        rooms[roomIndex].rematchCount = 0;
-        rooms[roomIndex].readyStartTime = null;
-        rooms[roomIndex].powerUpSelectionPhase = false;
-        delete rooms[roomIndex].winnerId;
-        delete rooms[roomIndex].loserId;
-        delete rooms[roomIndex].gameOverTime;
-        delete rooms[roomIndex].playersSelectedPowerUps;
-        delete rooms[roomIndex].playerAvailablePowerUps;
-
-        // Clean up the room state
-        cleanupRoomState(rooms[roomIndex]);
-      }
-      // Normal disconnect - clean up room state
-      else {
-        // Clean up the room state (includes power-up selection state)
-        cleanupRoomState(rooms[roomIndex]);
-      }
-
-      // If there's only one player left and not in disconnected state, reset their state completely
-      if (
-        rooms[roomIndex].players.length === 1 &&
-        !rooms[roomIndex].opponentDisconnected
-      ) {
-        const p = rooms[roomIndex].players[0];
-        // Reset to player 1 position and appearance
-        p.fighter = "player 1";
-        p.color = "aqua";
-        p.x = 245;
-        p.facing = 1;
-        // Clean up any player-specific state
-        cleanupPlayerStates(p);
-        // Reset ready count
-        rooms[roomIndex].readyCount = 0;
-        p.isReady = false;
-      }
-
-      // Emit updates with cleaned data (only if not in disconnected state)
-      if (!rooms[roomIndex].opponentDisconnected) {
-        const cleanedRoom = getCleanedRoomData(rooms[roomIndex]);
-        io.in(roomId).emit("player_left");
-        io.in(roomId).emit("ready_count", rooms[roomIndex].readyCount);
-        io.to(roomId).emit("lobby", cleanedRoom.players);
-      }
-
-      // Only emit rooms data immediately if not in disconnected state (delayed emit handles disconnected case)
-      if (!rooms[roomIndex].opponentDisconnected) {
-        io.emit("rooms", getCleanedRoomsData(rooms));
-      }
+    const playerId = pid();
+    if (!playerId) return; // never completed hello, or evicted by a newer socket of the same session — owns nothing
+    // The seat belongs to the SESSION, so look it up by identity: this socket
+    // may have taken the seat over from a replaced socket and never had
+    // `socket.roomId` set by join_room.
+    const room =
+      rooms.find((r) => r.id === socket.roomId && r.players.some((p) => p.id === playerId)) ||
+      rooms.find((r) => r.players.some((p) => p.id === playerId));
+    if (!room) {
+      timeoutManager.clearPlayer(playerId);
+      return;
     }
+    const player = room.players.find((p) => p.id === playerId);
+    if (!player) return; // already unseated (e.g. evicted while held)
+
+    // Unintentional transport loss mid-bout → brief hold; the session may
+    // resume via "hello" with its token before the grace lapses.
+    if (shouldHoldOnDisconnect(room, player, reason)) {
+      beginReconnectHold(room, player, io, () => {
+        if (room.players.some((p) => p.id === playerId)) removePlayerFromRoom(room, playerId, "disconnected");
+      });
+      return;
+    }
+    removePlayerFromRoom(room, playerId, isIntentionalDisconnect(reason) ? "left" : "disconnected");
   });
 }
 

@@ -33,6 +33,7 @@ import {
   TEXT_SHADOW_UI,
 } from "./menuTheme";
 import { loadSave, patchSave } from "../lib/saveStore";
+import { takeMatchOutcomeNotice } from "../net/matchOutcomeNotice";
 import {
   makeDefaultCustomization,
   normalizeCustomization,
@@ -944,6 +945,34 @@ const CPU_DIFFICULTIES = [
 ];
 const OUTFIT_MARKS = ["1", "2", "3"];
 
+const OutcomeNotice = styled.div`
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  padding: 12px 26px;
+  border: 2px solid ${C.vermillion || "#d23b2e"};
+  border-radius: 4px;
+  background: rgba(10, 12, 18, 0.92);
+  color: #f5ecd9;
+  font-family: ${FONT_DISPLAY};
+  font-size: 20px;
+  letter-spacing: 0.06em;
+  text-align: center;
+  animation: ${fadeIn} 200ms ease-out both;
+  pointer-events: none;
+
+  small {
+    display: block;
+    margin-top: 6px;
+    font-family: ${FONT_UI};
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    opacity: 0.8;
+  }
+`;
+
 const Lobby = ({
   rooms,
   setRooms,
@@ -1135,24 +1164,38 @@ const Lobby = ({
 
   const currentRoom = rooms.find((room) => room.id === roomName);
   const playerCount = currentRoom ? currentRoom.players.length : 0;
-  const canShowReadyButton = isCPUMatch || playerCount > 1;
+  // Ready only means something for a SEATED player facing an opponent.
+  const canShowReadyButton =
+    isCPUMatch || (playerCount > 1 && myPlayerIndex !== -1);
+
+  // Post-abandonment notice: Game.jsx drops the survivor back here after the
+  // opponent left or dropped; show why for a few seconds.
+  const [outcomeNotice, setOutcomeNotice] = useState(() => takeMatchOutcomeNotice());
+  useEffect(() => {
+    if (!outcomeNotice) return undefined;
+    const t = setTimeout(() => setOutcomeNotice(null), 5000);
+    return () => clearTimeout(t);
+  }, [outcomeNotice]);
 
   useEffect(() => {
     socket.emit("lobby", { roomId: roomName });
-    socket.on("lobby", (playerData) => {
+    const handleLobby = (playerData) => {
       setPlayers(playerData);
-    });
+    };
+    socket.on("lobby", handleLobby);
 
-    socket.on("player_left", () => {
+    const handlePlayerLeft = () => {
       setReady(false);
       setReadyCount(0);
-    });
+    };
+    socket.on("player_left", handlePlayerLeft);
 
-    socket.on("ready_count", (count) => {
+    const handleReadyCount = (count) => {
       setReadyCount(count);
-    });
+    };
+    socket.on("ready_count", handleReadyCount);
 
-    socket.on("initial_game_start", (payload) => {
+    const handleInitialGameStart = (payload) => {
       if (payload?.players && Array.isArray(payload.players) && setRooms) {
         const roomId = payload.roomId || roomName;
         if (payload.players[0]?.mawashiColor)
@@ -1181,13 +1224,14 @@ const Lobby = ({
       }
       socket.emit("game_reset", true);
       handleGame();
-    });
+    };
+    socket.on("initial_game_start", handleInitialGameStart);
 
     return () => {
-      socket.off("lobby");
-      socket.off("ready_count");
-      socket.off("player_left");
-      socket.off("initial_game_start");
+      socket.off("lobby", handleLobby);
+      socket.off("ready_count", handleReadyCount);
+      socket.off("player_left", handlePlayerLeft);
+      socket.off("initial_game_start", handleInitialGameStart);
     };
   }, [
     roomName,
@@ -1415,6 +1459,15 @@ const Lobby = ({
         <SlugRule aria-hidden />
         <SlugText>{slugSecondary}</SlugText>
       </TopSlug>
+
+      {outcomeNotice && (
+        <OutcomeNotice role="status" data-outcome={outcomeNotice.reason}>
+          {outcomeNotice.reason === "left"
+            ? "OPPONENT LEFT THE DOHYO — WIN BY FORFEIT"
+            : "OPPONENT DISCONNECTED — WIN BY FORFEIT"}
+          <small>Waiting for a new challenger…</small>
+        </OutcomeNotice>
+      )}
 
       <Stage>
         <FloorPlane aria-hidden />

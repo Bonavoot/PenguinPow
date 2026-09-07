@@ -37,8 +37,13 @@ import {
  * announcementVisibleMs(duration). See ./sumoAnnouncementTiming.
  */
 
-export const ANNOUNCEMENT_DURATION_S = 1.5;
-export const ANNOUNCEMENT_DURATION_MS = 1500;
+// Info-rail hold. Was 1.5 s: with both fighters slapping on a 260 ms cycle
+// the rail was never empty, and a slab describing one contact was still up
+// three contacts later. Contact-level callouts (COUNTER HIT / PUNISH / MATADOR
+// BREAK) now live on the body (ContactCallout); this rail keeps the clinch /
+// grab tells, held just long enough to read.
+export const ANNOUNCEMENT_DURATION_S = 0.85;
+export const ANNOUNCEMENT_DURATION_MS = 850;
 
 const MAX_STACK = 2;
 
@@ -157,6 +162,17 @@ const getSideKey = (isLeftSide) => (isLeftSide ? "left" : "right");
 const notifyRailListeners = () => {
   railListeners.forEach((listener) => listener());
 };
+
+/**
+ * Round resolution: evict every live slab on both rails. Mounted banners see
+ * themselves gone from the stack and play the wipe-out, so stale COUNTER
+ * GRAB / PUNISH slabs never overlap the round-ending kimarite.
+ */
+export function retireAllAnnouncements() {
+  activeAnnouncementRails.left = [];
+  activeAnnouncementRails.right = [];
+  notifyRailListeners();
+}
 
 const previewAssignment = (stack, type, rank) => {
   const sameIdx = stack.findIndex((e) => e.type === type);

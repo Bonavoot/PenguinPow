@@ -243,6 +243,9 @@ export const resolveFighterDisplaySprite = ({
   idleSrc,
   recoveringSrc,
   dodgeLandSrc,
+  // Authored in-between beat (combatPresentation/poseBeats): already resolved
+  // to "draw instead of idle" by the caller, or null.
+  poseBeatSrc = null,
 }) => {
   if (struckLimbHoldSrc) return struckLimbHoldSrc;
   if (inDashWindup) return recoveringSrc;
@@ -252,6 +255,7 @@ export const resolveFighterDisplaySprite = ({
   if (justLandedFromDodge && rawSpriteSrc === idleSrc) {
     return dodgeLandSrc || rawSpriteSrc;
   }
+  if (poseBeatSrc && rawSpriteSrc === idleSrc) return poseBeatSrc;
   return rawSpriteSrc;
 };
 

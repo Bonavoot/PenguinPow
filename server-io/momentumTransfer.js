@@ -106,6 +106,10 @@ const MOMENTUM_CURVE = 1.5;
 // No chain of hits may send further than the single biggest authored hit plus a
 // little headroom, so sustained pressure can finish but cannot spiral.
 // Sits below the centre-to-dohyo-edge distance (390px).
+// LIVE-HIT ceiling only. Charged cinematic KO flight speed is a separate
+// channel (CINEMATIC_KILL_KNOCKBACK_BOOST + CINEMATIC_KILL_SPEED_CAP in
+// collisionSystem) — never feed that boost through `mult` or this cap
+// silently undoes the rocket.
 const MAX_SEND_PX = 450;
 
 // Extra share of the distance a fleeing victim still owes, granted when they

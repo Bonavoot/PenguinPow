@@ -64,6 +64,12 @@ function createInitialPlayerState(overrides = {}) {
     isDead: false,
     isBowing: false,
     isGrabPushDefeat: false, // FORCE OUT (grabPush) loser pose after shove
+    // Round resolution presentation (handleWinCondition): ring-out loser
+    // topples in ringOutDirection and stays down; winner holds.
+    isRingOutLoser: false,
+    ringOutDirection: 0,
+    ringOutStartTime: 0,
+    isRoundWinner: false,
     isInRitualPhase: false,
     canMoveToReady: false,
 
@@ -81,6 +87,7 @@ function createInitialPlayerState(overrides = {}) {
     knockbackImmuneEndTime: 0,
     hitCounter: 0,
     lastHitType: null,
+    isCinematicKillVictim: false,
     lastHitTime: 0,
     isHitFalling: false,
     hitFallStartTime: 0,

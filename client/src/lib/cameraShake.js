@@ -75,7 +75,13 @@ export const SHAKE_PROFILES = {
   // burst itself punches). Sits under charged_hit / cinematic kill ceiling.
   perfect_parry:   { trauma: 0.86, punch: 0.0, rot: 0.52 },
   charge_clash:    { trauma: 0.72, punch: 0.0, rot: 0.45 },
-  ring_out:        { trauma: 0.78, punch: 0.0, rot: 0.40 },
+  // Ring-out TICK (server flag flip). Light by design: the beat that matters
+  // is the body hitting the apron ~0.4 s later (ring_out_land, below).
+  ring_out:        { trauma: 0.42, punch: 0.0, rot: 0.20 },
+  // Ring-out BODY LANDING — the loser's topple reaches the ground. This is the
+  // round's decisive impact: heavy, low, directional, with the one small
+  // push-in the finisher tier is allowed (nothing repeatable gets zoom).
+  ring_out_land:   { trauma: 0.92, punch: 0.08, rot: 0.75, amp: 1.3, dirBias: 0.7 },
   // Legacy alias — clinch kill-throw landing now uses kill_throw_land.
   kill_throw:      { trauma: 0.92, punch: 0.0, rot: 0.60 },
   // Clinch kill-throw BODY SLAM — comically over-the-top, this landing only.
@@ -134,11 +140,26 @@ export function addTrauma(amount, opts = {}) {
   if (dirBias != null) state.dirBias = dirBias;
 }
 
+// Client-authored impacts (fired on the frame the body visibly lands) can
+// pre-empt the server's copy of the same event, which arrives a broadcast
+// later. `suppressServerShake(type, ms)` drops server-sourced shakes of that
+// type for the window, so one landing never rattles twice.
+const serverSuppressUntil = new Map();
+export function suppressServerShake(type, ms) {
+  serverSuppressUntil.set(type, performance.now() + Math.max(0, ms || 0));
+}
+
 // Add a named event's shake using the profile table. `scale` lets a caller
 // nudge intensity (e.g. slap-parry escalation, charge-clash power) without
 // inventing new profiles. `dirX` biases the recoil along an impact axis.
+// `source: "server"` marks shakes relayed from a socket event (see the
+// suppression window above).
 export function addShake(type, opts = {}) {
-  const { scale = 1, dirX = 0 } = opts;
+  const { scale = 1, dirX = 0, source = null } = opts;
+  if (source === "server") {
+    const until = serverSuppressUntil.get(type);
+    if (until && performance.now() < until) return;
+  }
   const p = SHAKE_PROFILES[type] || SHAKE_PROFILES.default;
   addTrauma(p.trauma * scale, {
     dirX,

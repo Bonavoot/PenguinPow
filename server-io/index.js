@@ -10,7 +10,7 @@ const {
   ALWAYS_SEND_PROPS, DELTA_TRACKED_PROPS, ALL_TRACKED_PROPS,
   speedFactor, GROUND_LEVEL, HITBOX_DISTANCE_VALUE,
   GRAB_RANGE,
-  DOHYO_FALL_SPEED, DOHYO_FALL_DEPTH,
+  DOHYO_FALL_SPEED, DOHYO_FALL_DEPTH, ROUND_END_HOLD_MS,
   PAST_MAP_DIRT_KB_FRICTION, OUTSIDE_DOHYO_DIRT_KB_FRICTION,
   PAST_MAP_DIRT_MOVE_FRICTION, OUTSIDE_DOHYO_DIRT_MOVE_FRICTION,
   KILL_PULL_DIRT_OVERSHOOT_SCALE, KILL_PULL_DIRT_FALL_OVERSHOOT_SCALE,
@@ -157,7 +157,8 @@ const {
   clearSlideJumpLandSettle,
 } = require("./slideJumpLandSettle");
 const { applyAirHitOverlapEject } = require("./airHitOverlapEject");
-const { getGrabActiveMs, inGrabLatchRange } = require("./grabStartupArmor");
+const { getGrabActiveMs, shouldHoldGrabAtLatch } = require("./grabStartupArmor");
+const { isAirborneForGroundCollision } = require("./groundCollision");
 
 const {
   BOUT_SECONDS,
@@ -324,6 +325,16 @@ const { openLog: openAuditLog } = require("./inputAuditLog");
 
 // Import socket handler registration
 const { registerSocketHandlers, processInputPacket } = require("./socketHandlers");
+const {
+  SessionStore,
+  attachHello,
+  isRoomHeldForReconnect,
+  snapshotTelemetry: snapshotNetTelemetry,
+  PROTOCOL_VERSION,
+  PING_INTERVAL_MS,
+  PING_TIMEOUT_MS,
+} = require("./netSession");
+const { monitorEventLoopDelay } = require("perf_hooks");
 
 const { getCleanedRoomsData } = require("./playerCleanup");
 
@@ -336,7 +347,13 @@ app.set("port", PORT);
 
 // Add health check endpoint
 app.get("/health", (req, res) => {
-  res.status(200).send("OK");
+  res.status(200).send(shuttingDown ? "DRAINING" : "OK");
+});
+
+// Operational telemetry — bounded counters + tick/event-loop health. No player
+// identifiers, tokens, or per-match detail. Cheap enough to poll every 10–60s.
+app.get("/metrics", (req, res) => {
+  res.status(200).json(buildMetrics());
 });
 
 // Add error handling middleware
@@ -362,10 +379,21 @@ process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
+// Dead-peer detection: engine.io's defaults (25 s interval + 20 s timeout)
+// left a silently vanished opponent frozen on screen for 28 s (measured).
+// 2.5 s / 5 s bounds detection at ~7.5 s worst case for a few bytes/second.
+// Origins: "*" today (Electron file:// origin is "null"); production should
+// set ALLOWED_ORIGINS to the web build's origin(s) when a web build exists.
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
+  : "*";
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: allowedOrigins,
   },
+  pingInterval: PING_INTERVAL_MS,
+  pingTimeout: PING_TIMEOUT_MS,
+  maxHttpBufferSize: 64 * 1024, // largest legitimate client frame is well under 4 KB
 });
 
 const expressSession = session({
@@ -445,6 +473,66 @@ let gameLoop = null;
 let broadcastTickCounter = 0;
 const delta = 1000 / TICK_RATE;
 
+// ---------------------------------------------------------------------------
+// Session identity + tick-health telemetry (see netSession.js, /metrics)
+// ---------------------------------------------------------------------------
+const sessionStore = new SessionStore();
+setInterval(() => sessionStore.sweep(), 60_000).unref();
+
+const TICK_RING = 1024;
+const tickDurations = new Float32Array(TICK_RING);
+let tickDurationIdx = 0;
+let tickDurationCount = 0;
+let ticksOverBudget = 0; // > half the tick period
+// The histogram measures a timer scheduled every `resolution` ms, so a healthy
+// loop reads ≈ resolution; buildMetrics subtracts it to report pure lateness.
+const ELD_RESOLUTION_MS = 5;
+const eventLoopDelay = monitorEventLoopDelay({ resolution: ELD_RESOLUTION_MS });
+eventLoopDelay.enable();
+let shuttingDown = false;
+
+function percentileOf(sortedArr, p) {
+  if (!sortedArr.length) return 0;
+  return sortedArr[Math.min(sortedArr.length - 1, Math.max(0, Math.ceil((p / 100) * sortedArr.length) - 1))];
+}
+
+function buildMetrics() {
+  const n = Math.min(tickDurationCount, TICK_RING);
+  const samples = Array.from(tickDurations.subarray(0, n)).sort((a, b) => a - b);
+  let activeRooms = 0;
+  let heldRooms = 0;
+  for (const room of rooms) {
+    if (room.players && room.players.length === 2) activeRooms++;
+    if (room.reconnectHold) heldRooms++;
+  }
+  const mem = process.memoryUsage();
+  const metrics = {
+    protocolVersion: PROTOCOL_VERSION,
+    uptimeSec: Math.round(process.uptime()),
+    draining: shuttingDown,
+    connections: activeConnectionCount,
+    sessions: sessionStore.size,
+    rooms: { total: rooms.length, active: activeRooms, held: heldRooms },
+    tickMs: {
+      samples: n,
+      p50: +percentileOf(samples, 50).toFixed(3),
+      p99: +percentileOf(samples, 99).toFixed(3),
+      max: +(samples[samples.length - 1] || 0).toFixed(3),
+      overHalfBudget: ticksOverBudget,
+      budget: +delta.toFixed(3),
+    },
+    eventLoopLatenessMs: {
+      p50: +Math.max(0, eventLoopDelay.percentile(50) / 1e6 - ELD_RESOLUTION_MS).toFixed(2),
+      p99: +Math.max(0, eventLoopDelay.percentile(99) / 1e6 - ELD_RESOLUTION_MS).toFixed(2),
+      max: +Math.max(0, eventLoopDelay.max / 1e6 - ELD_RESOLUTION_MS).toFixed(2),
+    },
+    memory: { rssMb: +(mem.rss / 1048576).toFixed(1), heapUsedMb: +(mem.heapUsed / 1048576).toFixed(1) },
+    net: snapshotNetTelemetry(),
+  };
+  eventLoopDelay.reset();
+  return metrics;
+}
+
 // Embedded/local solo server (spawned by the Electron main process with
 // LOCAL_TIGHT_BROADCAST=1): broadcast every sim tick instead of every 2nd.
 // Bandwidth is free on loopback, and the halved broadcast quantization
@@ -480,11 +568,17 @@ function startGameLoop() {
     if (accumulator > maxCatchUp) accumulator = maxCatchUp;
     while (accumulator >= delta) {
       accumulator -= delta;
+      const tickStart = performance.now();
       try {
         tick(delta);
       } catch (error) {
         console.error("Error in game loop:", error);
       }
+      const tickMs = performance.now() - tickStart;
+      tickDurations[tickDurationIdx] = tickMs;
+      tickDurationIdx = (tickDurationIdx + 1) % TICK_RING;
+      tickDurationCount++;
+      if (tickMs > delta / 2) ticksOverBudget++;
     }
   }, Math.floor(delta));
 }
@@ -503,6 +597,12 @@ function tick(delta) {
   // Also skip rooms with < 2 players via continue (no function call overhead).
   for (let _roomIdx = 0; _roomIdx < rooms.length; _roomIdx++) {
     const room = rooms[_roomIdx];
+
+    // RECONNECT HOLD: a room waiting for a dropped player to resume does not
+    // advance at all — no sim time, no timers, no input drain, no broadcast.
+    // Everything sim-clocked (bout clock, cooldowns, recoveries) pauses for
+    // free; the interrupted hitstop is re-armed on resume (netSession.js).
+    if (isRoomHeldForReconnect(room)) continue;
 
     // Advance the room's pausable sim clock (frozen during hitstop) and fire
     // any due player timers. Runs even for sub-2-player rooms so a remaining
@@ -808,6 +908,10 @@ function tick(delta) {
 
       if (
         !isTrainingRoom(room) &&
+        // Lobby guard: `isReady` doubles as the lobby Ready-up flag. Until the
+        // room has actually left the lobby (initial_game_start), two ready
+        // flags must never start the pre-bout ritual by themselves.
+        room.matchInitiated !== false &&
         player1.isReady &&
         player2.isReady &&
         !player1.isRawParrying &&
@@ -972,7 +1076,7 @@ function tick(delta) {
         player.knockbackVelocity.y = 0;
         if (
           room.gameOver &&
-          now - room.gameOverTime >= 2000 &&
+          now - room.gameOverTime >= ROUND_END_HOLD_MS &&
           !room.matchOver &&
           !room.bashoAwaitingReset
         ) {
@@ -981,7 +1085,11 @@ function tick(delta) {
         return;
       }
 
-      const isGameOverLoser = room.gameOver && player.id === room.loserId;
+      // A ring-out loser gets the loser physics (dirt friction past the rope,
+      // no boundary clamp, settle-then-park) whether the room is in a match
+      // (gameOver) or the training lab (resolution hold, gameOver stays false).
+      const isGameOverLoser =
+        (room.gameOver && player.id === room.loserId) || !!player.isRingOutLoser;
       if (isGameOverLoser && !player.isHit && !player.isCinematicKillVictim &&
           !player.isClinchKillPullVictim && !player.isClinchKillThrowVictim &&
           !player.isBeingThrown && !player.isGrabBreakSeparating &&
@@ -1452,8 +1560,7 @@ function tick(delta) {
         const grabOpponent = player.isGrabStartup
           ? room.players.find((p) => p.id !== player.id)
           : null;
-        const holdAtLatch =
-          !!grabOpponent && inGrabLatchRange(player, grabOpponent);
+        const holdAtLatch = shouldHoldGrabAtLatch(player, grabOpponent);
         if (!holdAtLatch) {
           player.x = Math.max(
             MAP_LEFT_BOUNDARY,
@@ -1523,14 +1630,10 @@ function tick(delta) {
 
           // Ground grab only — airborne / air-hit-dump victims are ungrabbable
           // (CPU + humans). Matches cpuAI isOpponentAirborne.
-          const opponentAirborneForGrab =
-            (opponent.isRopeJumping && opponent.ropeJumpPhase === "active") ||
-            (opponent.isFlapping && opponent.flapPhase === "flight") ||
-            (opponent.isSlideJumping && opponent.slideJumpPhase === "flight") ||
-            opponent.isHitFalling ||
-            (!opponent.isDodging &&
-              typeof opponent.y === "number" &&
-              opponent.y > GROUND_LEVEL + 8);
+          const opponentAirborneForGrab = isAirborneForGroundCollision(
+            opponent,
+            { forGrab: true }
+          );
           const opponentRedirectInvuln = isInSlideRedirectIFrames(opponent, now);
           const grabInRange = !!normalGrabInRange;
           // In-range grab into a live redirect hop is a WHIFF, not a delayed
@@ -1932,7 +2035,7 @@ function tick(delta) {
 
       if (
         room.gameOver &&
-        now - room.gameOverTime >= 2000 &&
+        now - room.gameOverTime >= ROUND_END_HOLD_MS &&
         !room.matchOver &&
         !room.bashoAwaitingReset
       ) {
@@ -2375,10 +2478,7 @@ function tick(delta) {
           // descending body-slam connects) and a rope-jumper in its airborne
           // active arc (both are hit-immune while overhead).
           const dodgeOppAirborne =
-            dodgeOpponent &&
-            ((dodgeOpponent.isFlapping && dodgeOpponent.flapPhase === "flight") ||
-              (dodgeOpponent.isRopeJumping && dodgeOpponent.ropeJumpPhase === "active") ||
-              (dodgeOpponent.isSlideJumping && dodgeOpponent.slideJumpPhase === "flight"));
+            dodgeOpponent && isAirborneForGroundCollision(dodgeOpponent);
           if (dodgeOpponent && !dodgeOpponent.isDead && !dodgeOppAirborne) {
             const bodyWidth = HITBOX_DISTANCE_VALUE * 2 * Math.max(player.sizeMultiplier || 1, dodgeOpponent.sizeMultiplier || 1);
             const wouldOverlap = Math.abs(newX - dodgeOpponent.x) < bodyWidth;
@@ -2624,9 +2724,7 @@ function tick(delta) {
             // ground pushbox, so a sidestep should settle freely beneath them
             // (flapper in flight or rope-jumper in its airborne active arc).
             const sidestepOppAirborne =
-              (sidestepOpponent.isFlapping && sidestepOpponent.flapPhase === "flight") ||
-              (sidestepOpponent.isRopeJumping && sidestepOpponent.ropeJumpPhase === "active") ||
-              (sidestepOpponent.isSlideJumping && sidestepOpponent.slideJumpPhase === "flight");
+              isAirborneForGroundCollision(sidestepOpponent);
             if (currentDist < pushboxWidth && passedOpponent && !sidestepOppAirborne) {
               const idealX = sidestepOpponent.x + player.sidestepDirection * LANDING_SEP;
               player.sidestepRecoveryTargetX = Math.max(MAP_LEFT_BOUNDARY,
@@ -4110,10 +4208,7 @@ function tick(delta) {
             // overhead; only the flapper's descending body-slam connects).
             const opponent = room.players.find(p => p.id !== player.id && !p.isDead);
             const oppAirborne =
-              opponent &&
-              ((opponent.isFlapping && opponent.flapPhase === "flight") ||
-                (opponent.isRopeJumping && opponent.ropeJumpPhase === "active") ||
-                (opponent.isSlideJumping && opponent.slideJumpPhase === "flight"));
+              opponent && isAirborneForGroundCollision(opponent);
             if (opponent && !opponent.isDodging && !opponent.isSidestepping && !oppAirborne) {
               // Stop the lunge just inside art-tip connect range so the hit can
               // register, then processHit snaps to exact tip-meets-body for the
@@ -4358,19 +4453,28 @@ function tick(delta) {
     // (e.g., during hitstop, or if loser has isHit=false)
     if (isTrainingRoom(room) && room.trainingResetPending) {
       room.trainingResetPending = false;
+      room.trainingResolution = null;
+      resetRoomAndPlayers(room, io);
+    } else if (
+      isTrainingRoom(room) &&
+      room.trainingResolution &&
+      now - room.trainingResolution.startedAt >= room.trainingResolution.holdMs
+    ) {
+      // Training ring-out: the topple / landing beat has played — snap back.
+      room.trainingResolution = null;
       resetRoomAndPlayers(room, io);
     } else if (
       room.gameOver &&
       room.gameOverTime &&
-      now - room.gameOverTime >= 2000 &&
+      now - room.gameOverTime >= ROUND_END_HOLD_MS &&
       !room.matchOver &&
       !room.bashoAwaitingReset
     ) {
       resetRoomAndPlayers(room, io);
     }
 
-    // PERFORMANCE: Only broadcast every N ticks to reduce network load
-    // Game logic runs at 64Hz, broadcasts at 32Hz — client interpolation smooths to 60fps
+    // Broadcast cadence: BROADCAST_EVERY_N_TICKS (now 1 → every 64 Hz tick;
+    // delta-compressed packets keep this cheap). Client interpolates to 60fps.
     const shouldBroadcast = broadcastTickCounter % EFFECTIVE_BROADCAST_EVERY_N_TICKS === 0 || room.forceBroadcast;
     if (room.forceBroadcast) room.forceBroadcast = false;
     if (shouldBroadcast) {
@@ -4428,6 +4532,23 @@ io.on("connection", (socket) => {
   activeConnectionCount++;
   startGameLoop();
 
+  if (shuttingDown) {
+    // Draining: refuse new sessions so a deploy never seats players on a
+    // process that is about to exit.
+    socket.emit("server_shutdown", { reason: "draining", retryAfterMs: 3000 });
+    socket.disconnect(true);
+    return;
+  }
+
+  // Protocol gate + stable identity + mid-match resume (netSession.js). The
+  // client must "hello" with a matching protocol version before any gameplay
+  // handler will act for it.
+  socket.data.detachSession = attachHello(socket, {
+    io,
+    store: sessionStore,
+    findRoomForPlayer: getRoomByPlayerId,
+  });
+
   // Send the lobby snapshot ONLY to the joining socket — and use the cleaned
   // payload, not the raw rooms array (which contains huge per-player gameplay
   // state). Previously this broadcast the entire raw rooms structure to every
@@ -4452,6 +4573,7 @@ io.on("connection", (socket) => {
   registerSocketHandlers(socket, io, rooms, {
     registerPlayerInMaps,
     unregisterPlayerFromMaps,
+    sessionStore,
   });
 
   socket.on("disconnect", () => {
@@ -4462,6 +4584,33 @@ io.on("connection", (socket) => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Graceful drain. Heroku (and any orchestrator) sends SIGTERM before a
+// restart/deploy. Live matches cannot yet migrate between processes, so the
+// honest behaviour is: stop accepting new sessions, tell every connected
+// client explicitly (instead of a silent socket drop), then exit. The client
+// treats "server_shutdown" as a non-resumable end of match.
+// ---------------------------------------------------------------------------
+const SHUTDOWN_NOTICE_MS = Number(process.env.SHUTDOWN_NOTICE_MS || 1500);
+function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[shutdown] ${signal} received — draining ${activeConnectionCount} connection(s)`);
+  try {
+    server.close(); // stop accepting new HTTP/WebSocket upgrades
+  } catch (_) {}
+  io.emit("server_shutdown", { reason: signal, retryAfterMs: 5000 });
+  const t = setTimeout(() => {
+    try {
+      io.close();
+    } catch (_) {}
+    process.exit(0);
+  }, SHUTDOWN_NOTICE_MS);
+  t.unref();
+}
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 // Update server listen
 server.listen(PORT, () => {

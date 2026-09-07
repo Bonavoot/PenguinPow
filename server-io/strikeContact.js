@@ -24,6 +24,7 @@ const {
   SLAP_TIP_POCKET_SLACK_PX,
   SLAP_ROPE_RESIST_BUFFER,
 } = require("./constants");
+const { isAirborneForGroundCollision } = require("./groundCollision");
 
 // Mirror gameUtils map bounds locally — requiring gameUtils here creates a
 // circular dependency (gameUtils → systems → strikeContact) and MAP_* arrive
@@ -306,9 +307,7 @@ function enforceStrikeExtensionSeparation(attacker, opponent, nowSim) {
     opponent.isSidestepping ||
     opponent.isBeingThrown ||
     opponent.isThrowing ||
-    (opponent.isSlideJumping && opponent.slideJumpPhase === "flight") ||
-    (opponent.isRopeJumping && opponent.ropeJumpPhase === "active") ||
-    opponent.isHitFalling
+    isAirborneForGroundCollision(opponent)
   ) {
     return false;
   }

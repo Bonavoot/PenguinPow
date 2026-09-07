@@ -24,6 +24,7 @@ const { MAP_LEFT_BOUNDARY: GAME_MAP_LEFT, MAP_RIGHT_BOUNDARY: GAME_MAP_RIGHT,
         beginGrabStartup,
         canArmAttackParry, armAttackParry,
         tryIceSlideReverse } = require("./gameUtils");
+const { isAirborneForGroundCollision } = require("./groundCollision");
 const { getConnectDistance, attackKindFromPlayer } = require("./strikeContact");
 const { startRopeJump } = require("./ropeJumpStart");
 const { CMD_GRAB_VARIANT } = require("./commandGrabInput");
@@ -975,15 +976,7 @@ function isAtGrabRange(cpu, human) {
 // Matches server grab immunity (flight / rope / elevated) — CPU must not
 // grab-fish jumpers / FLAP / air-hit dumps.
 function isOpponentAirborne(human) {
-  if (!human) return false;
-  if (human.isSlideJumping && human.slideJumpPhase === "flight") return true;
-  if (human.isFlapping && human.flapPhase === "flight") return true;
-  if (human.isRopeJumping && human.ropeJumpPhase === "active") return true;
-  if (human.isHitFalling) return true;
-  if (human.isIceSlideReverseHopping) return true;
-  if (human.isDodging) return false;
-  if (typeof human.y === "number" && human.y > GROUND_LEVEL + 8) return true;
-  return false;
+  return isAirborneForGroundCollision(human, { forGrab: true });
 }
 
 // Check if the opponent is in a state where a grab can actually connect

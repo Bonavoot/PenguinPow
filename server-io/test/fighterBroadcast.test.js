@@ -37,6 +37,7 @@ describe("fighterBroadcast Phase 5", () => {
     assert.equal(packet.isDelta, false);
     assert.equal(packet.seq, 1);
     assert.equal(packet.simTime, 1_000_000);
+    assert.equal(packet.roomId, "test-room");
     assert.ok(packet.player1.x === 220);
     assert.ok(packet.player2.x === 900);
     assert.ok(previousPlayerStates[0]);

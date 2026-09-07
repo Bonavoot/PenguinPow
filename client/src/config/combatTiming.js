@@ -33,14 +33,24 @@ export const AP_FLURRY_COVER_REGULAR_MS = 20 + 180 + SLAP_STARTUP_MS + 120;
  * sprite does not outlive the jab. Recovery pose plays during SLAP_RECOVERY_MS.
  */
 export const HIT_POSE_HOLD_MS = SLAP_ACTIVE_MS;
-/** Palm-out through the convert cycle (matches the shorter plant). */
-export const SLIDE_SLAP_HIT_POSE_HOLD_MS = SLAP_TOTAL_MS_SLIDE - SLAP_STARTUP_MS;
+/**
+ * Belly bump (slide convert) director. The bump pose is held from the smear
+ * through contact, the freeze and most of the fixed follow-through crawl;
+ * the director then cuts to the planted ready stance SLIDE_SLAP_PLANT_LEAD_MS
+ * BEFORE the server zeroes the crawl, and poseBeats holds that same stance
+ * SLIDE_SLAP_PLANT_HOLD_MS after. The stop therefore lands in the middle of
+ * an already-planted pose — a dig-in, not a glide switched off.
+ * MUST match combatPresentation/poseBeats POSE_BEAT_TIMING.SLIDE_SLAP_PLANT_LEAD_MS.
+ */
+export const SLIDE_SLAP_PLANT_LEAD_MS = 90;
+export const SLIDE_SLAP_HIT_POSE_HOLD_MS =
+  SLAP_TOTAL_MS_SLIDE - SLAP_STARTUP_MS - SLIDE_SLAP_PLANT_LEAD_MS;
 export const SLAP_ANIM = {
   WINDUP_END: 18,
   SMEAR_END: SLAP_STARTUP_MS,
   HIT_POSE_START: SLAP_STARTUP_MS,
   HIT_END: SLAP_STARTUP_MS + HIT_POSE_HOLD_MS,
-  SLIDE_HIT_END: SLAP_TOTAL_MS_SLIDE,
+  SLIDE_HIT_END: SLAP_STARTUP_MS + SLIDE_SLAP_HIT_POSE_HOLD_MS,
 };
 
 export const PALM_THRUST_STARTUP_MS = 90;
@@ -49,9 +59,16 @@ export const PALM_THRUST_HOLD_MS = 380;
 export const PALM_THRUST_END_RECOVERY_MS = 60;
 
 /**
- * Palm pose director — smear through startup so the strike pose lands with
- * the server hitbox (medium/heavy telegraph), then holds through active +
- * the committed pose (PALM_THRUST_HOLD_MS).
+ * Palm pose director — MUST match server phases in server-io/constants.js.
+ *
+ *   [0, STARTUP_END)     frame 0  palm-thrust-startup  (tell, not hittable)
+ *   [STARTUP_END, SMEAR_END) frame 1  palm-thrust-smear (blur, not hittable)
+ *   [SMEAR_END, ACTIVE_END)  frame 2  palm-thrust       (hitbox live + hold)
+ *   [ACTIVE_END, ∞)          frame 3  palm-thrust-startup (settle)
+ *
+ * SMEAR_END === PALM_THRUST_STARTUP_MS so the extended pose and the server
+ * hitbox turn on together. Blur must never share the active window — a hit
+ * frozen on the smear is the "COUNTER HIT on blur frame" bug.
  */
 export const PALM_THRUST_ANIM = {
   STARTUP_END: 40,
@@ -59,6 +76,32 @@ export const PALM_THRUST_ANIM = {
   ACTIVE_END:
     PALM_THRUST_STARTUP_MS + PALM_THRUST_ACTIVE_MS + PALM_THRUST_HOLD_MS,
 };
+
+/** Map director elapsed-ms onto the four palm poses. */
+export function resolvePalmThrustFrame(elapsed, anim = PALM_THRUST_ANIM) {
+  if (elapsed < anim.STARTUP_END) return 0;
+  if (elapsed < anim.SMEAR_END) return 1;
+  if (elapsed < anim.ACTIVE_END) return 2;
+  return 3;
+}
+
+/**
+ * Predicted thrusts start a local clock before palmThrustFxId arrives.
+ * Restarting on that first confirm rewinds into smear while the server is
+ * already active (or the hit packet is in flight). Only restart for a
+ * genuinely new thrust — fxId changed after the smear window.
+ */
+export function shouldRestartPalmThrustClock(
+  prevFxId,
+  nextFxId,
+  elapsed,
+  anim = PALM_THRUST_ANIM
+) {
+  if (nextFxId === prevFxId) return false;
+  if (nextFxId === "sep" || prevFxId === "sep") return true;
+  if (elapsed < anim.SMEAR_END) return false;
+  return true;
+}
 
 /**
  * The same four palm poses, re-paced for the command-grab Drive release, where

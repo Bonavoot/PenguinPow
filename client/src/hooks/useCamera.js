@@ -26,14 +26,31 @@ const SPRITE_HALF_W = 0; // Sprites are now centred on player.x via CSS translat
 // 50*(scale-1) >= Y_OFFSET (see MIN_SCALE).
 const Y_OFFSET = 12;
 
-// ── Flight (flap power-up) vertical follow ──────────────────────────
-// When a wrestler takes flight the camera pans UP a little so the airborne
-// penguin stays framed without losing the grounded opponent. Deliberately
-// subtle and hard-capped — the per-frame edge clamp (maxPanY) still bounds
-// how far this can nudge within available headroom.
+// ── Airborne vertical framing ───────────────────────────────────────
+// Any body above the ground (flap flight, dive, slide-jump, a thrown victim)
+// is framed by panning UP exactly as far as needed to keep its crown inside
+// the frame, bounded by the edge clamp. The old version panned only for FLAP
+// flight and capped at 9%, so a thrown victim or a high aerial left the frame
+// through the HUD. Geometry: with the map scaled about its centre and the
+// clamp |camY| <= 50(s-1), the visible top edge in map coords is
+//   top = 360 + 360/s + (camY/100) * (720/s)
+// so the pan needed to show `neededTop` is camY = ((neededTop-360)*s - 360)/7.2.
+const GAME_HEIGHT = 720;
 const FLIGHT_GROUND_Y = 286; // server GROUND_LEVEL (game-coords) — airborne = y above this
-const FLIGHT_REF_HEIGHT = 300; // server FLAP_MAX_HEIGHT — normalises height → 0..1
-const FLIGHT_PAN_UP = 9; // max extra upward pan (%) at full flight height (kept modest on purpose)
+const AIRBORNE_MIN_HEIGHT = 24; // ignore ground jitter / tiny hops
+const AIRBORNE_CROWN_MARGIN = 172; // sprite (~157 map px) + a little air above the head
+const AIRBORNE_PAN_RISE = 0.09; // per-60fps-frame lerp toward the needed pan (rising)
+const AIRBORNE_PAN_SETTLE = 0.045; // slower return so the camera never bounces
+
+// ── Engagement zoom filtering ───────────────────────────────────────
+// The scale target follows a FILTERED gap, not the raw one. Every slap shoves
+// a body 175–380 px, and with the raw gap driving the zoom the camera pumped
+// on every exchange. Closing is tracked quickly (approaches feel responsive);
+// separating is tracked slowly and inside a deadband, so a single shove
+// barely moves the zoom while a sustained spacing change still reads.
+const ZOOM_GAP_DEADBAND_PX = 48;
+const ZOOM_GAP_TAU_CLOSE_MS = 220;
+const ZOOM_GAP_TAU_OPEN_MS = 650;
 
 // MIN_SCALE must satisfy the edge clamp: 50 * (scale - 1) >= Y_OFFSET  →
 // scale >= 1 + Y_OFFSET/50; the 1.225 floor keeps a margin above that so camera
@@ -55,8 +72,8 @@ const MAX_DT_FRAMES = 4; // clamp huge deltas (tab refocus / GC stalls)
 const SMOOTH_FACTOR = 0.07; // lerp speed per frame (0–1, higher = snappier)
 // Asymmetric zoom: snap toward the action a touch faster than we ease apart, so
 // approaches feel responsive and separations read as calm/deliberate.
-const SMOOTH_ZOOM_IN = 0.1; // players closing → quicker push-in
-const SMOOTH_ZOOM_OUT = 0.05; // players separating → slower pull-out
+const SMOOTH_ZOOM_IN = 0.06; // players closing → quicker push-in
+const SMOOTH_ZOOM_OUT = 0.035; // players separating → slower pull-out
 
 // Ready stance positions (must match server-io/gameFunctions.js handleReadyPositions)
 const PLAYER1_READY_X = 543;
@@ -118,21 +135,37 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
-function getCameraTargetForPositions(p1x, p2x) {
-  const distance = Math.abs(p1x - p2x);
-  const midFraction =
-    (p1x + SPRITE_HALF_W + (p2x + SPRITE_HALF_W)) / 2 / GAME_WIDTH;
+function scaleForGap(distance) {
   const t = clamp(
     (distance - CLOSE_DISTANCE) / (FAR_DISTANCE - CLOSE_DISTANCE),
     0,
     1,
   );
-  const scale = lerp(MAX_SCALE, MIN_SCALE, t);
+  return lerp(MAX_SCALE, MIN_SCALE, t);
+}
+
+/**
+ * @param {number} p1x
+ * @param {number} p2x
+ * @param {number} [gapForScale] filtered gap (see ZOOM_GAP_*); defaults to raw.
+ */
+function getCameraTargetForPositions(p1x, p2x, gapForScale) {
+  const distance = Math.abs(p1x - p2x);
+  const midFraction =
+    (p1x + SPRITE_HALF_W + (p2x + SPRITE_HALF_W)) / 2 / GAME_WIDTH;
+  const scale = scaleForGap(
+    typeof gapForScale === "number" ? gapForScale : distance,
+  );
   return {
     scale,
     x: -(midFraction - 0.5) * scale * 100,
     y: Y_OFFSET,
   };
+}
+
+/** Upward pan (%) needed so a crown at map-y `neededTop` is inside the frame. */
+function panYForVisibleTop(neededTop, scale) {
+  return ((neededTop - GAME_HEIGHT / 2) * scale - GAME_HEIGHT / 2) / 7.2;
 }
 
 const READY_CAMERA = getCameraTargetForPositions(PLAYER1_READY_X, PLAYER2_READY_X);
@@ -166,18 +199,6 @@ export default function useCamera(
     p2x: null,
     p1y: null,
     p2y: null,
-    // Last-known flap-follow flags. fighter_action is delta-encoded so these
-    // only arrive on the ticks they change — persist + recompute so the flight
-    // pan stays gated to FLAP-armed slide-jump flight (never tracks, e.g., a
-    // clinch-thrown player's Y).
-    p1SlideJumping: false,
-    p2SlideJumping: false,
-    p1SlideJumpPhase: null,
-    p2SlideJumpPhase: null,
-    p1SlideJumpHasFlap: false,
-    p2SlideJumpHasFlap: false,
-    p1Flap: false,
-    p2Flap: false,
   });
   const camRef = useRef(
     startTracking
@@ -206,6 +227,14 @@ export default function useCamera(
   // Timestamp (performance.now) until which the perfect-parry micro-hitstop
   // holds the camera frozen. 0 = not freezing.
   const microFreezeUntilRef = useRef(0);
+
+  // Filtered engagement gap that drives the ZOOM (pan still uses raw x).
+  const zoomGapRef = useRef({ filtered: null, committed: null });
+
+  // Round resolution: after `game_over` the zoom holds where it is (the loser
+  // toppling out must not pull the frame wider mid-fall); pan keeps tracking
+  // so the exit and landing stay framed. Cleared on game_reset.
+  const roundEndRef = useRef({ active: false, scale: null });
 
   const prematchRef = useRef(showPreMatchScreen);
   prematchRef.current = showPreMatchScreen;
@@ -245,37 +274,10 @@ export default function useCamera(
       if (p1 && p2 && typeof p1.x === "number" && typeof p2.x === "number") {
         posRef.current.p1x = p1.x;
         posRef.current.p2x = p2.x;
-        // Y is tracked too so the camera can follow flight (FLAP slide-jump).
+        // Y is tracked for every body: any airborne fighter (flight, dive,
+        // slide-jump, thrown victim) drives the upward framing in the tick.
         if (typeof p1.y === "number") posRef.current.p1y = p1.y;
         if (typeof p2.y === "number") posRef.current.p2y = p2.y;
-        // Persist FLAP-armed slide-jump flags across deltas, then derive the
-        // same p1Flap/p2Flap gate the old isFlapping path used for flight pan.
-        if (typeof p1.isSlideJumping === "boolean") {
-          posRef.current.p1SlideJumping = p1.isSlideJumping;
-        }
-        if (typeof p2.isSlideJumping === "boolean") {
-          posRef.current.p2SlideJumping = p2.isSlideJumping;
-        }
-        if (typeof p1.slideJumpPhase !== "undefined") {
-          posRef.current.p1SlideJumpPhase = p1.slideJumpPhase;
-        }
-        if (typeof p2.slideJumpPhase !== "undefined") {
-          posRef.current.p2SlideJumpPhase = p2.slideJumpPhase;
-        }
-        if (typeof p1.slideJumpHasFlap === "boolean") {
-          posRef.current.p1SlideJumpHasFlap = p1.slideJumpHasFlap;
-        }
-        if (typeof p2.slideJumpHasFlap === "boolean") {
-          posRef.current.p2SlideJumpHasFlap = p2.slideJumpHasFlap;
-        }
-        posRef.current.p1Flap =
-          !!posRef.current.p1SlideJumping &&
-          posRef.current.p1SlideJumpPhase === "flight" &&
-          !!posRef.current.p1SlideJumpHasFlap;
-        posRef.current.p2Flap =
-          !!posRef.current.p2SlideJumping &&
-          posRef.current.p2SlideJumpPhase === "flight" &&
-          !!posRef.current.p2SlideJumpHasFlap;
       }
     };
 
@@ -314,6 +316,18 @@ export default function useCamera(
       // Sync with server resetRoomAndPlayers — players teleport to spawn
       // positions and power-up selection begins on this same event.
       trackingEnabledRef.current = false;
+      roundEndRef.current.active = false;
+      roundEndRef.current.scale = null;
+      zoomGapRef.current.filtered = null;
+      zoomGapRef.current.committed = null;
+    };
+
+    // Round decided: hold the zoom for the resolution beat (topple / landing /
+    // kimarite). The kill cinematic owns its own camera and is left alone.
+    const onGameOver = () => {
+      if (cinematicRef.current.active) return;
+      roundEndRef.current.active = true;
+      roundEndRef.current.scale = camRef.current.scale;
     };
 
     // Training snap-back: keep fight tracking on. Never emit game_start /
@@ -357,7 +371,11 @@ export default function useCamera(
     const onScreenShake = (data) => {
       if (cinematicRef.current.active) return;
       if (data?.type) {
-        addShake(data.type, { scale: data.scale ?? 1, dirX: data.dirX ?? 0 });
+        addShake(data.type, {
+          scale: data.scale ?? 1,
+          dirX: data.dirX ?? 0,
+          source: "server",
+        });
         // Perfect parry: stick the trauma crack for a beat (no zoom).
         if (data.type === "perfect_parry") {
           microFreezeUntilRef.current =
@@ -378,10 +396,30 @@ export default function useCamera(
 
     socket.on("cinematic_kill", onCinematicKill);
     socket.on("game_reset", onGameReset);
+    socket.on("game_over", onGameOver);
     socket.on("training_reset", onTrainingReset);
     socket.on("game_start", onGameStart);
     socket.on("perfect_parry", onPerfectParry);
     socket.on("screen_shake", onScreenShake);
+
+    // Layout-free container size: measured once (same offsetWidth/Height the
+    // loop used to read every frame), then only on real resizes.
+    const sizeRef = { current: { w: 1280, h: 720, measured: false } };
+    const measure = () => {
+      const node = containerRef?.current;
+      if (!node) return;
+      const w = node.offsetWidth;
+      const h = node.offsetHeight;
+      if (w > 0 && h > 0) sizeRef.current = { w, h, measured: true };
+    };
+    measure();
+    let resizeObserver = null;
+    if (typeof ResizeObserver !== "undefined" && containerRef?.current) {
+      resizeObserver = new ResizeObserver(() => measure());
+      resizeObserver.observe(containerRef.current);
+    } else {
+      window.addEventListener("resize", measure);
+    }
 
     const tick = () => {
       const { p1x, p2x } = posRef.current;
@@ -399,8 +437,35 @@ export default function useCamera(
       const decayT = (perFrame) => Math.pow(perFrame, dtFrames);
 
       if (el && p1x !== null && p2x !== null) {
-        const { scale: normalTargetScale, x: normalTargetX, y: normalTargetY } =
-          getCameraTargetForPositions(p1x, p2x);
+        // ── Engagement gap filter (zoom only) ──
+        const rawGap = Math.abs(p1x - p2x);
+        const zg = zoomGapRef.current;
+        if (zg.filtered === null || !trackingEnabledRef.current) {
+          // Cold start / between rounds: no history worth smoothing.
+          zg.filtered = rawGap;
+          zg.committed = rawGap;
+        } else if (Math.abs(rawGap - zg.committed) > ZOOM_GAP_DEADBAND_PX) {
+          const tau =
+            rawGap < zg.filtered ? ZOOM_GAP_TAU_CLOSE_MS : ZOOM_GAP_TAU_OPEN_MS;
+          zg.filtered += (rawGap - zg.filtered) * (1 - Math.exp(-dtMs / tau));
+          zg.committed = zg.filtered;
+        } else {
+          // Inside the deadband: drift the filter toward the committed value
+          // so a later exit from the band starts from a settled reading.
+          zg.filtered += (zg.committed - zg.filtered) * (1 - Math.exp(-dtMs / 400));
+        }
+        const target = getCameraTargetForPositions(p1x, p2x, zg.filtered);
+        // Round resolution: zoom holds at the decisive moment's scale. The pan
+        // target is recomputed against that held scale so the midpoint stays
+        // exact (cam.x ∝ scale for a fixed centre).
+        const re = roundEndRef.current;
+        const normalTargetScale =
+          re.active && typeof re.scale === "number" ? re.scale : target.scale;
+        const normalTargetX =
+          normalTargetScale === target.scale
+            ? target.x
+            : target.x * (normalTargetScale / (target.scale || 1));
+        const normalTargetY = target.y;
 
         const cam = camRef.current;
         const cin = cinematicRef.current;
@@ -522,20 +587,27 @@ export default function useCamera(
           cam.scale = lerp(cam.scale, normalTargetScale, lerpT(zoomRate));
           cam.x = lerp(cam.x, normalTargetX, lerpT(SMOOTH_FACTOR));
 
-          // Vertical flight follow: pan up a touch ONLY during FLAP-armed
-          // slide-jump flight (same feel as the old isFlapping takeoff). Gated
-          // so other altitude sources — e.g. a clinch throw — never drag Y.
-          // Scaled by the highest flapper, hard-capped at FLIGHT_PAN_UP, and
-          // still subject to the maxPanY clamp below.
-          const { p1y, p2y, p1Flap, p2Flap } = posRef.current;
-          const air1 =
-            p1Flap && typeof p1y === "number" ? p1y - FLIGHT_GROUND_Y : 0;
-          const air2 =
-            p2Flap && typeof p2y === "number" ? p2y - FLIGHT_GROUND_Y : 0;
+          // Airborne framing: whichever body is highest — flap flight, dive,
+          // slide-jump, a thrown victim — gets exactly the upward pan needed
+          // to keep its crown in frame (see panYForVisibleTop), bounded by the
+          // edge clamp. Rising is tracked briskly; the return is slower so the
+          // camera never bounces on the landing.
+          const { p1y, p2y } = posRef.current;
+          const air1 = typeof p1y === "number" ? p1y - FLIGHT_GROUND_Y : 0;
+          const air2 = typeof p2y === "number" ? p2y - FLIGHT_GROUND_Y : 0;
           const maxAir = Math.max(0, air1, air2);
-          const flightPanUp =
-            clamp(maxAir / FLIGHT_REF_HEIGHT, 0, 1) * FLIGHT_PAN_UP;
-          cam.y = lerp(cam.y, normalTargetY + flightPanUp, lerpT(SMOOTH_FACTOR));
+          let targetY = normalTargetY;
+          if (maxAir > AIRBORNE_MIN_HEIGHT) {
+            const neededTop = FLIGHT_GROUND_Y + maxAir + AIRBORNE_CROWN_MARGIN;
+            const maxPanYNow = 50 * (cam.scale - 1);
+            targetY = clamp(
+              panYForVisibleTop(neededTop, cam.scale),
+              normalTargetY,
+              Math.max(normalTargetY, maxPanYNow),
+            );
+          }
+          const yRate = targetY > cam.y ? AIRBORNE_PAN_RISE : AIRBORNE_PAN_SETTLE;
+          cam.y = lerp(cam.y, targetY, lerpT(yRate));
         } else {
           // ── Pre-fight / between rounds — prematch = wide broadcast, else ready stance ──
           const idleTarget = prematchRef.current ? PREMATCH_CAMERA : READY_CAMERA;
@@ -604,8 +676,14 @@ export default function useCamera(
         }
 
         // ── Snap values and write CSS custom properties ──
-        const cw = el.offsetWidth;
-        const ch = el.offsetHeight;
+        // Container size comes from the ResizeObserver cache below: reading
+        // offsetWidth/Height here forced a synchronous layout EVERY frame
+        // right after other rAF callbacks had written styles (profiled at
+        // ~26 s of main-thread time over a 165 s match — the single largest
+        // CPU consumer in the renderer).
+        if (!sizeRef.current.measured) measure(); // container attached after mount
+        const cw = sizeRef.current.w;
+        const ch = sizeRef.current.h;
 
         // Effective scale includes the punch-in boost
         const effectiveScale = cam.scale + shakeState.punch;
@@ -650,11 +728,14 @@ export default function useCamera(
       unsubFighter();
       socket.off("cinematic_kill", onCinematicKill);
       socket.off("game_reset", onGameReset);
+      socket.off("game_over", onGameOver);
       socket.off("training_reset", onTrainingReset);
       socket.off("game_start", onGameStart);
       socket.off("perfect_parry", onPerfectParry);
       socket.off("screen_shake", onScreenShake);
       if (rafId.current) cancelAnimationFrame(rafId.current);
+      if (resizeObserver) resizeObserver.disconnect();
+      else window.removeEventListener("resize", measure);
     };
   }, [containerRef, socket, startTracking]);
 }

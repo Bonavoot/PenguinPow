@@ -19,8 +19,12 @@ import { withSpacedBang } from "./calloutPrimitives";
  * longer shares ANNOUNCE_Y.
  */
 
-export const HYPE_DURATION_S = 2.4;
-export const HYPE_DURATION_MS = 2400;
+// Hype hold. Was 2.4 s — long enough that a PERFECT! from one exchange was
+// still on screen while the NEXT exchange (and often the round-ending
+// kimarite) arrived, so the rail read as wallpaper. A hype mark is a punch,
+// not a status: land, register, get out of the way of the bodies.
+export const HYPE_DURATION_S = 1.1;
+export const HYPE_DURATION_MS = 1100;
 
 export const HYPE_RAIL_EDGE = "clamp(14px, 1.6cqw, 22px)";
 export const HYPE_RAIL_TOP = "clamp(224px, 35cqh, 272px)";
@@ -62,6 +66,17 @@ const getSideKey = (isLeftSide) => (isLeftSide ? "left" : "right");
 const notifyHypeListeners = () => {
   hypeListeners.forEach((listener) => listener());
 };
+
+/**
+ * Round resolution: retire every live hype mark at once (both sides). Each
+ * mounted stamp sees it is no longer the rail owner and plays its exit, so a
+ * PERFECT! from the last exchange never shares the screen with the kimarite.
+ */
+export function retireAllHypeStamps() {
+  activeHypeRails.left = null;
+  activeHypeRails.right = null;
+  notifyHypeListeners();
+}
 
 const useHypeRail = (isLeftSide, type) => {
   const idRef = useRef(null);

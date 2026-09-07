@@ -173,6 +173,10 @@ function cleanupPlayerStates(player) {
   player.lastFlapChargeTime = 0;
   player.isReady = false;
   player.isBowing = false;
+  player.isRingOutLoser = false;
+  player.ringOutDirection = 0;
+  player.ringOutStartTime = 0;
+  player.isRoundWinner = false;
   player.knockbackVelocity = { x: 0, y: 0 };
 
   // Clean up clinch jolt states
@@ -223,6 +227,7 @@ function cleanupRoomState(room) {
   room.gameStart = false;
   room.gameOver = false;
   room.readyCount = 0;
+  room.matchInitiated = false; // back in the lobby: Ready flags must not start a bout
   room.readyStartTime = null;
   room.roundStartTimer = null;
   room.gameOverTime = null;

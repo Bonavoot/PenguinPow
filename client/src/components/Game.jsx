@@ -28,6 +28,7 @@ import {
 } from "../utils/SpriteRecolorizer";
 import { clearHatCompositeCache, getHatCompositeCacheStats } from "../utils/hatComposite";
 import { getPerfRecorder } from "../utils/perf/PerfRecorder";
+import { markBoutGameStart } from "../utils/perf/boutLongTaskTrace";
 import {
   pickRandomGyojiOutfit,
   GYOJI_OUTFIT_PRESETS,
@@ -47,6 +48,9 @@ import {
 } from "../prediction/localInput";
 import { acquireCursor, releaseCursor } from "../ui/cursorGate";
 import { getServerOffset, isServerClockSynced, getEstimatedRtt } from "../lib/serverClock";
+import { RECONNECT_GRACE_MS, NET_EVENTS } from "../lib/netSessionClient";
+import { setMatchOutcomeNotice } from "../net/matchOutcomeNotice";
+import NetHoldOverlay from "./NetHoldOverlay";
 import { warmCues } from "../utils/musicDirector";
 import {
   requestFighterResync,
@@ -170,7 +174,8 @@ const Game = ({
     return () => releaseCursor("powerup");
   }, [isPowerUpSelectionActive]);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
-  const [disconnectedRoomId, setDisconnectedRoomId] = useState(null);
+  // Mid-match reconnect hold (netSession contract): { kind, deadlineMs } or null.
+  const [netHold, setNetHold] = useState(null);
   const [crowdEvent, setCrowdEvent] = useState(null);
 
   // Pre-match screen state
@@ -204,6 +209,7 @@ const Game = ({
     player1BodyColor,
     player2BodyColor,
     preloadSprites,
+    preloadDeferredSprites,
   } = usePlayerColors();
 
   // Get the current room with null safety
@@ -359,11 +365,6 @@ const Game = ({
       }
     };
   }, [socket]);
-
-  const handleResetDisconnectState = useCallback(() => {
-    setOpponentDisconnected(false);
-    setDisconnectedRoomId(null);
-  }, []);
 
   // Helper function to apply prediction for an action
   const applyPrediction = useCallback((actionType, direction = null) => {
@@ -1049,17 +1050,132 @@ const Game = ({
     if (bashoArmed) beginBashoBout();
   }, [bashoArmed, beginBashoBout]);
 
-  // Handle opponent disconnection - hide power-up selection UI for ALL game phases
+  // ---------------------------------------------------------------------
+  // ONLINE MATCH LIFECYCLE (server-io/netSession.js + socketHandlers.js)
+  //
+  //   opponent_reconnecting  → brief "OPPONENT RECONNECTING" overlay; the bout
+  //                            is frozen server-side (≤ RECONNECT_GRACE_MS)
+  //   match_resumed          → clear overlay, re-send live keys
+  //   match_abandoned        → opponent left/dropped for good: show the
+  //                            outcome, then return to THIS room's lobby (the
+  //                            server has already re-seated us as host)
+  //   own transport drop     → "CONNECTION LOST" overlay while socket.io
+  //                            retries; session{resumed:true} clears it
+  //   session{resumed:false} / reconnect_failed / server_shutdown while in a
+  //                            match → we no longer own a seat: leave to menu
+  //
+  // There is deliberately no state in which this view can stay mounted with
+  // no exit: every terminal event routes to the lobby or the main menu.
+  // Solo modes (CPU rooms) never receive these events.
+  // ---------------------------------------------------------------------
+  const netHoldRef = useRef(null);
   useEffect(() => {
-    const handleOpponentDisconnected = (data) => {
-      setIsPowerUpSelectionActive(false);
-      setOpponentDisconnected(true);
-      setDisconnectedRoomId(data.roomId);
+    netHoldRef.current = netHold;
+  }, [netHold]);
+  useEffect(() => {
+    if (!socket || isCPUMatch) return undefined;
+    let exitTimer = null;
+    let lapseTimer = null;
+    const clearTimers = () => {
+      if (exitTimer) clearTimeout(exitTimer);
+      if (lapseTimer) clearTimeout(lapseTimer);
+      exitTimer = lapseTimer = null;
     };
+    const stopPlay = () => {
+      isGameActiveRef.current = false;
+      setLocalGameActive(false);
+      setIsPowerUpSelectionActive(false);
+    };
+    // We lost our seat (could not resume, gave up reconnecting, server gone).
+    const goLost = (why) => {
+      clearTimers();
+      stopPlay();
+      setOpponentDisconnected(true); // silences match music / result flows in GameFighter
+      setNetHold({ kind: "lost", deadlineMs: 0, why });
+      exitTimer = setTimeout(() => {
+        setNetHold(null);
+        setCurrentPage("mainMenu");
+      }, 2500);
+    };
+    // Opponent is gone for good; we are already re-seated in the lobby.
+    const goAbandoned = (data) => {
+      clearTimers();
+      stopPlay();
+      setOpponentDisconnected(true);
+      const reason = data && data.reason === "left" ? "left" : "disconnected";
+      setNetHold({ kind: "abandoned", deadlineMs: 0, reason });
+      setMatchOutcomeNotice({ reason, roomId: data && data.roomId });
+      exitTimer = setTimeout(() => {
+        setNetHold(null);
+        setCurrentPage("lobby");
+      }, 2600);
+    };
+    const armLapse = (deadlineMs, onLapse) => {
+      if (lapseTimer) clearTimeout(lapseTimer);
+      lapseTimer = setTimeout(onLapse, Math.max(0, deadlineMs - performance.now()) + 1500);
+    };
+    const onOpponentReconnecting = (data) => {
+      const grace = data && typeof data.graceMs === "number" ? data.graceMs : RECONNECT_GRACE_MS;
+      const deadlineMs = performance.now() + grace;
+      setNetHold({ kind: "opponent", deadlineMs });
+      // match_abandoned arrives when the hold lapses; this is only a safety net.
+      armLapse(deadlineMs + 4000, () => goAbandoned({ reason: "disconnected", roomId: roomName }));
+    };
+    const onSelfDisconnect = () => {
+      if (netHoldRef.current && netHoldRef.current.kind !== "opponent") return;
+      const deadlineMs = performance.now() + RECONNECT_GRACE_MS;
+      setNetHold({ kind: "self", deadlineMs });
+      // If the server does not resume us within the grace (+ retry slack),
+      // the seat is gone: leave rather than wait on a frozen screen.
+      armLapse(deadlineMs + 6000, () => goLost("grace"));
+    };
+    const onResumed = () => {
+      clearTimers();
+      setNetHold(null);
+      const keys = getLocalKeyState();
+      if (keys && socket.connected) {
+        const clientSynced = isServerClockSynced();
+        socket.emit("fighter_action", {
+          id: socket.id,
+          keys: { ...keys },
+          events: [],
+          clientSynced,
+          clientOffset: clientSynced ? getServerOffset() : 0,
+          clientRtt: clientSynced ? getEstimatedRtt() : 0,
+        });
+      }
+    };
+    const onSession = (info) => {
+      // Any (re)connection while the match view is mounted must either put
+      // us back in this room or take us out of the view.
+      if (info && info.resumed && info.roomId === roomName) return onResumed();
+      if (info && info.roomId === roomName) return; // still seated (lobby-phase reconnect)
+      goLost("not_resumed");
+    };
+    const onReconnectFailed = () => goLost("reconnect_failed");
+    const onServerShutdown = () => goLost("server_shutdown");
+    socket.on(NET_EVENTS.OPPONENT_RECONNECTING, onOpponentReconnecting);
+    socket.on(NET_EVENTS.MATCH_RESUMED, onResumed);
+    socket.on(NET_EVENTS.MATCH_ABANDONED, goAbandoned);
+    socket.on(NET_EVENTS.SESSION, onSession);
+    socket.on("disconnect", onSelfDisconnect);
+    socket.on("reconnect_failed", onReconnectFailed);
+    socket.on("server_shutdown", onServerShutdown);
+    return () => {
+      clearTimers();
+      socket.off(NET_EVENTS.OPPONENT_RECONNECTING, onOpponentReconnecting);
+      socket.off(NET_EVENTS.MATCH_RESUMED, onResumed);
+      socket.off(NET_EVENTS.MATCH_ABANDONED, goAbandoned);
+      socket.off(NET_EVENTS.SESSION, onSession);
+      socket.off("disconnect", onSelfDisconnect);
+      socket.off("reconnect_failed", onReconnectFailed);
+      socket.off("server_shutdown", onServerShutdown);
+    };
+  }, [socket, isCPUMatch, setCurrentPage, roomName]);
 
+  useEffect(() => {
     const handleGameReset = () => {
       setOpponentDisconnected(false);
-      setDisconnectedRoomId(null);
       setCrowdEvent({ type: "reset", timestamp: Date.now() });
       if (isTrainingMatchRef.current) {
         isGameActiveRef.current = true;
@@ -1104,6 +1220,8 @@ const Game = ({
     const handleGameStart = () => {
       isGameActiveRef.current = true;
       setLocalGameActive(true);
+      markBoutGameStart();
+      if (typeof preloadDeferredSprites === "function") preloadDeferredSprites();
       // PERF: rewarmDecodedImages() used to run HERE, on the exact frame inputs
       // go live (HAKKIYOI). Kicking off the whole pinned-sprite decode batch on
       // the first-input frame was a measured ~110ms longtask right when the
@@ -1210,7 +1328,6 @@ const Game = ({
       }, 240);
     };
 
-    socket.on("opponent_disconnected", handleOpponentDisconnected);
     socket.on("game_reset", handleGameReset);
     socket.on("training_reset", handleTrainingReset);
     socket.on("training_behavior", handleTrainingBehavior);
@@ -1224,7 +1341,6 @@ const Game = ({
     socket.on("ring_out", handleRingOut);
 
     return () => {
-      socket.off("opponent_disconnected", handleOpponentDisconnected);
       socket.off("game_reset", handleGameReset);
       socket.off("training_reset", handleTrainingReset);
       socket.off("training_behavior", handleTrainingBehavior);
@@ -1246,7 +1362,7 @@ const Game = ({
       }
       setLocalGameActive(false);
     };
-  }, [socket]);
+  }, [socket, preloadDeferredSprites]);
 
   // Room can lag a tick behind basho/CPU create (rooms broadcast vs page swap).
   // Never setState during render — and use the real page id ("mainMenu").
@@ -1392,10 +1508,7 @@ const Game = ({
                       player={player}
                       index={i}
                       roomName={roomName}
-                      setCurrentPage={setCurrentPage}
                       opponentDisconnected={opponentDisconnected}
-                      disconnectedRoomId={disconnectedRoomId}
-                      onResetDisconnectState={handleResetDisconnectState}
                       predictionRef={
                         isLocalPlayerFighter ? predictionRef : null
                       }
@@ -1555,6 +1668,7 @@ const Game = ({
             }
           />
         )}
+        <NetHoldOverlay hold={netHold} />
       </div>
       <MobileControls
         isInputBlocked={isPowerUpSelectionActive}
