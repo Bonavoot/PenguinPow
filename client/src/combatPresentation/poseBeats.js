@@ -6,8 +6,6 @@
  * starts and ends (isHit, isSlapAttack, isApWhiffRecovering…) but several
  * transitions used to cut straight from the reaction sprite to idle:
  *
- *   • hit victim:   `hit` → idle on the very tick hitstun clears, while the
- *                   body is still skating backwards on the ice;
  *   • belly bump:   the attacker's bump pose → idle at the exact instant the
  *                   fixed follow-through crawl is zeroed (a glide switched off);
  *   • AP whiff:     a 50 ms flinch, then idle for the remaining ~250 ms of the
@@ -24,7 +22,8 @@
  */
 
 export const POSE_BEAT = Object.freeze({
-  /** Victim: hitstun just cleared on the ground → brace/plant before idle. */
+  /** Retired from the live director — recovering.png as a post-hit brace read
+   *  as a second hit pose. Kept so tests can exercise the generic beat clock. */
   POST_HIT_SETTLE: "POST_HIT_SETTLE",
   /** Belly-bump attacker: follow-through crawl just stopped → planted stance. */
   SLIDE_SLAP_PLANT: "SLIDE_SLAP_PLANT",

@@ -103,6 +103,9 @@ const {
   isWithinMapBoundaries,
   constrainToMapBoundaries,
   startCharging,
+  beginChargeHold,
+  stepChargeHop,
+  cancelChargeHop,
   canPlayerSlap,
   clearChargeState,
   DEFAULT_PLAYER_SIZE_MULTIPLIER,
@@ -173,6 +176,8 @@ const {
   startBoutClock,
   executeSlapAttack,
   executeChargedAttack,
+  requestChargedAttackRelease,
+  flushBufferedChargeRelease,
   executePalmThrust,
   calculateEffectiveHitboxSize,
   handleReadyPositions,
@@ -255,6 +260,7 @@ const {
   checkCollision,
   checkFlapBodySlam,
   resolveSlapChargedFromLunge,
+  resolveChargedBodyFromLunge,
 } = require("./collisionSystem");
 const {
   isCombatContactFidelityV2Enabled,
@@ -296,10 +302,13 @@ const {
   syncOffensiveAerialPresentation,
 } = require("./offensiveAerialPresentation");
 const {
-  getConnectDistance,
-  attackKindFromPlayer,
   enforceStrikeExtensionSeparation,
 } = require("./strikeContact");
+const {
+  chargedLungeTravelSpeed,
+  getChargedActiveMs,
+  planChargedLungeTravel,
+} = require("./chargedHeadbuttContact");
 const { refreshPalmLimbExtended } = require("./authoredSlapHurtTarget");
 const {
   CLINCH_INTERACTION,
@@ -711,6 +720,8 @@ function tick(delta) {
             canPlayerUseAction,
             canPlayerDash,
             startCharging,
+            beginChargeHold,
+            requestChargedAttackRelease,
             clearChargeState,
             isPlayerInActiveState,
             setPlayerTimeout,
@@ -1050,6 +1061,7 @@ function tick(delta) {
             if (player.chargedAttackHit) {
               player.chargedAttackHit = false;
             }
+            player.chargedConnectPoseHold = false;
           }
         }
       });
@@ -4050,22 +4062,31 @@ function tick(delta) {
         // handoff below so the move ends normally.
         // On-hit pose hold: plant in place (no further lunge travel).
         // Lunge Y stays grounded — attack art already reads airborne.
-        if (!player.isPalmThrust && !player.chargedAttackHit) {
+        // Live on release — no rooted coil. Never write attacker X backward.
+        if (
+          !player.isPalmThrust &&
+          !player.chargedAttackHit &&
+          !player.isInStartupFrames
+        ) {
         const attackDirection = player.facing === 1 ? -1 : 1;
-        const chargePower = player.chargeAttackPower || 0;
-        const lungeSpeed = 1.5 + (chargePower / 100) * 5.5;
+        const chargePower = player.chargeAttackPower || player.chargedReleasePower || 0;
+        const lungeSpeed = chargedLungeTravelSpeed(
+          chargePower,
+          getChargedActiveMs(player)
+        );
         const lungeStartX = player.x;
-        const newX = player.x + attackDirection * delta * speedFactor * lungeSpeed;
+        const rawNewX = player.x + attackDirection * delta * speedFactor * lungeSpeed;
+        const opponent = room.players.find(
+          (p) => p.id !== player.id && !p.isDead
+        );
+        const travel = planChargedLungeTravel(player, opponent, rawNewX);
+        const newX = travel.x;
 
         // Phase 13A (V2): earliest slap↔headbutt contact inside this step —
         // advance to contact and resolve before committing the full lunge.
         let chargedContactResolved = false;
-        if (isCombatContactFidelityV2Enabled() && !player.isInStartupFrames) {
-          const opponent = room.players.find(
-            (p) => p.id !== player.id && !p.isDead
-          );
+        if (isCombatContactFidelityV2Enabled() && opponent) {
           if (
-            opponent &&
             opponent.isAttacking &&
             opponent.attackType === "slap" &&
             !opponent.isInStartupFrames
@@ -4078,11 +4099,33 @@ function tick(delta) {
               {
                 delta,
                 speedFactor,
-                proposedX: newX,
+                proposedX: rawNewX,
                 simTime: room.simTime,
               }
             );
           }
+        }
+        // Forehead meets a standing / walking body this step — hit now.
+        if (
+          !chargedContactResolved &&
+          travel.wouldConnect &&
+          opponent &&
+          !(
+            opponent.isAttacking &&
+            opponent.attackType === "slap" &&
+            !opponent.isInStartupFrames
+          )
+        ) {
+          chargedContactResolved = !!resolveChargedBodyFromLunge(
+            player,
+            opponent,
+            rooms,
+            io,
+            {
+              proposedX: rawNewX,
+              simTime: room.simTime,
+            }
+          );
         }
         player._combatPrevX = lungeStartX;
         // Contact resolution already advanced to the hit and consumed the step.
@@ -4195,55 +4238,22 @@ function tick(delta) {
             "atTheRopesTimeout" // Named timeout for cleanup
           );
         } else {
-          // Only update position if it's moving in the correct direction and not hitting boundaries
+          // Forward-only: planChargedLungeTravel already refused a backward
+          // write and stopped at first forehead contact.
           if (
-            (attackDirection === 1 && newX > player.x) ||
-            (attackDirection === -1 && newX < player.x)
+            (attackDirection === 1 && newX >= player.x) ||
+            (attackDirection === -1 && newX <= player.x)
           ) {
-            // Prevent attacker from passing through opponent during charged attack
-            // This ensures the attack direction and facing remain consistent.
-            // EXCEPTION: an airborne opponent has no ground pushbox — a charged
-            // attack passes freely underneath them. Covers a flapper in flight
-            // and a rope-jumper in its airborne active arc (both hit-immune while
-            // overhead; only the flapper's descending body-slam connects).
-            const opponent = room.players.find(p => p.id !== player.id && !p.isDead);
-            const oppAirborne =
-              opponent && isAirborneForGroundCollision(opponent);
-            if (opponent && !opponent.isDodging && !opponent.isSidestepping && !oppAirborne) {
-              // Stop the lunge just inside art-tip connect range so the hit can
-              // register, then processHit snaps to exact tip-meets-body for the
-              // hitstop pose. No more burrowing past visual contact.
-              const connectDist = getConnectDistance(
-                attackKindFromPlayer(player),
-                player,
-                opponent
-              );
-              const minDistance = Math.max(connectDist - 2, 1);
-              const playerToLeft = player.x < opponent.x;
-              const playerToRight = player.x > opponent.x;
-              
-              // If player is to the left of opponent and moving right, don't pass through
-              if (playerToLeft && attackDirection === 1) {
-                const maxX = opponent.x - minDistance;
-                player.x = Math.min(newX, maxX);
-              }
-              // If player is to the right of opponent and moving left, don't pass through
-              else if (playerToRight && attackDirection === -1) {
-                const minX = opponent.x + minDistance;
-                player.x = Math.max(newX, minX);
-              }
-              else {
-                player.x = newX;
-              }
-            } else {
-              player.x = newX;
-            }
+            player.x = newX;
           }
         }
         } // end !chargedContactResolved travel
         } // end !isPalmThrust lunge guard
 
-        if (room.simTime >= player.attackEndTime) {
+        if (
+          room.simTime >= player.attackEndTime &&
+          !player.chargedConnectPoseHold
+        ) {
           // Use helper function to safely end charged attacks
           safelyEndChargedAttack(player, rooms);
         }
@@ -4278,6 +4288,12 @@ function tick(delta) {
       player.sizeMultiplier = DEFAULT_PLAYER_SIZE_MULTIPLIER;
       // }
 
+      if (player.isChargeHopping && player.isChargingAttack) {
+        stepChargeHop(player, now);
+      } else if (player.isChargeHopping) {
+        cancelChargeHop(player);
+      }
+
       // STRANDED-CHARGE GUARD: a charging stance with mouse1 not held can never
       // be released (the release edge already passed — e.g. a buffered charge
       // that fired after a tap, or a dropped release packet). The equivalent
@@ -4286,8 +4302,16 @@ function tick(delta) {
       // frozen in place indefinitely. Self-heal every tick instead. Ordering is
       // safe: input packets (including the release handler, which executes the
       // attack and clears isChargingAttack itself) are processed at tick start,
-      // before this guard runs.
-      if (player.isChargingAttack && player.keys && !player.keys.mouse1 && !player.isAttacking) {
+      // before this guard runs. A tap during min-hold sets chargeReleaseBuffered
+      // and must survive until hop-land / min hold elapses.
+      if (
+        player.isChargingAttack &&
+        player.keys &&
+        !player.keys.mouse1 &&
+        !player.isAttacking &&
+        !player.chargeReleaseBuffered
+      ) {
+        cancelChargeHop(player);
         player.isChargingAttack = false;
         player.chargeStartTime = 0;
         player.chargeAttackPower = 0;
@@ -4303,6 +4327,10 @@ function tick(delta) {
           (chargeDuration / CHARGE_FULL_POWER_MS) * 100,
           100
         );
+      }
+
+      if (player.isChargingAttack && player.chargeReleaseBuffered) {
+        flushBufferedChargeRelease(player, rooms);
       }
 
       // TACHIAI CHARGING: Allow charging during the walk-to-ready and ready phases

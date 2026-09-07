@@ -4131,6 +4131,8 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     canPlayerUseAction,
     canPlayerDash,
     startCharging,
+    beginChargeHold,
+    requestChargedAttackRelease,
     clearChargeState,
     setPlayerTimeout,
     rooms,
@@ -4211,11 +4213,21 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   // MOUSE1 RELEASE: fire charged attack (human parity with socketHandlers).
   // Must run before shouldBlockAction — charging itself isn't an attacking lock.
   if (keyJustReleased("mouse1") && cpu.isChargingAttack && executeChargedAttack) {
-    const chargePercentage = cpu.chargeAttackPower || 1;
-    cpu.isChargingAttack = false;
-    cpu.chargeStartTime = 0;
-    cpu.chargingFacingDirection = null;
-    executeChargedAttack(cpu, chargePercentage, rooms);
+    const fired = requestChargedAttackRelease
+      ? requestChargedAttackRelease(cpu, rooms)
+      : (() => {
+          const chargePercentage = cpu.chargeAttackPower || 1;
+          cpu.isChargingAttack = false;
+          cpu.chargeStartTime = 0;
+          cpu.chargingFacingDirection = null;
+          executeChargedAttack(cpu, chargePercentage, rooms);
+          return true;
+        })();
+    if (!fired) {
+      if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+      else Object.assign(cpu._prevKeys, cpu.keys);
+      return;
+    }
     if (aiState.isChargingIntentional) {
       clearChargeIntent(cpu, aiState, { cancel: false });
       aiState.chargeCooldownUntil = currentTime + AI_CONFIG.CHARGE_COOLDOWN_MS;
@@ -4259,24 +4271,18 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     keyJustPressed("mouse1") &&
     aiState.isChargingIntentional &&
     !cpu.isChargingAttack &&
-    startCharging &&
+    (beginChargeHold || startCharging) &&
     canPlayerSlap(cpu, { ignoreCooldown: true }) &&
     !shouldBlockAction()
   ) {
     const fwd = chargeForwardKey(cpu);
     if (cpu.keys.s && cpu.keys[fwd]) {
-      cpu.chargeAttackPower = 0;
-      cpu.chargeStartTime = 0;
-      startCharging(cpu);
-      cpu.chargingFacingDirection = cpu.facing;
-      cpu.movementVelocity = 0;
-      cpu.isStrafing = false;
-      cpu.isPowerSliding = false;
-      cpu.isBraking = false;
-      cpu.isRawParrySuccess = false;
-      cpu.isPerfectRawParrySuccess = false;
-      cpu.isCrouchStance = false;
-      cpu.isCrouchStrafing = false;
+      if (beginChargeHold) {
+        beginChargeHold(cpu, rooms);
+      } else {
+        startCharging(cpu);
+        cpu.chargingFacingDirection = cpu.facing;
+      }
       if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
       else Object.assign(cpu._prevKeys, cpu.keys);
       return;

@@ -2442,6 +2442,80 @@ const PRESETS = {
     spawnChargedSmoke(engine, footX, footY, { dir, maxLife: 0.46 });
   },
 
+  // Forehead-on-body confirm. Tight flash + bow wave at the seam so the
+  // connect reads on the same frame the pose freezes — not a late spark.
+  chargedHeadbuttImpact(engine, { x, y, direction, power }) {
+    const dir = direction || 1;
+    const p = Math.max(0, Math.min(power == null ? 0.55 : power, 1));
+    const cx = x;
+    const cy = GAME_H - (y ?? 290) - 52;
+    const s = 0.85 + p * 0.45;
+
+    engine.spawn({
+      x: cx,
+      y: cy,
+      vx: 0,
+      vy: 0,
+      gravity: 0,
+      drag: 1,
+      size: 10 * s,
+      sizeEnd: 52 * s,
+      alpha: 0.95,
+      alphaEnd: 0,
+      ease: "outCubic",
+      easeAlpha: "outCubic",
+      rotation: 0,
+      rotationSpeed: 0,
+      maxLife: 0.14,
+      texture: engine.textures.ringThick || engine.textures.ring,
+      stretchX: 1.65,
+      blendMode: "lighter",
+    });
+
+    for (let i = 0; i < 5; i++) {
+      const spd = rand(80, 220) * s;
+      engine.spawn({
+        x: cx + dir * rand(-4, 8),
+        y: cy + rand(-10, 10),
+        vx: dir * spd * rand(0.35, 1),
+        vy: rand(-70, 40),
+        gravity: 280,
+        drag: 0.9,
+        size: rand(3, 7) * s,
+        sizeEnd: 1,
+        alpha: rand(0.75, 1),
+        alphaEnd: 0,
+        ease: "outQuad",
+        easeAlpha: "inQuad",
+        rotationSpeed: rand(-8, 8),
+        maxLife: rand(0.1, 0.2),
+        texture: pick([engine.textures.spark, engine.textures.sparkSmall]),
+        blendMode: "lighter",
+      });
+    }
+
+    engine.spawn({
+      x: cx + dir * 6,
+      y: cy,
+      vx: dir * 40,
+      vy: 0,
+      gravity: 0,
+      drag: 0.88,
+      size: 16 * s,
+      sizeEnd: 4,
+      alpha: 0.7,
+      alphaEnd: 0,
+      ease: "outExpo",
+      easeAlpha: "inQuad",
+      rotation: dir > 0 ? 0 : Math.PI,
+      rotationSpeed: 0,
+      maxLife: 0.16,
+      texture: pick([engine.textures.speedLine, engine.textures.speedLineThin]),
+      stretchX: 2.2,
+      blendMode: "lighter",
+    });
+  },
+
   // Called every ~45ms during the dash. Bright sparks arcing down from the feet
   // like ice skate blades grinding — visually distinct from charged attack's static speed lines.
   dashSparkTrail(engine, { x, y, direction }) {

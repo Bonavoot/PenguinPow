@@ -176,7 +176,9 @@ const getImageSrc = (
   // Ring-out loser (server `isRingOutLoser`): struck body held through the
   // topple and the downed hold. Outranks everything but the ritual and the
   // dedicated kill-victim poses, which have their own art.
-  isRingOutLoser = false
+  isRingOutLoser = false,
+  // Charge-hold hop-back uses dodge squat art; land / hold uses charging.
+  isChargeHopping = false
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -332,6 +334,8 @@ const getImageSrc = (
     if (palmThrustFrame === 3) return palmThrustStartup;
     return palmThrust;
   }
+  // Charge hop-back: dodge squat while airborne, then charging on the plant.
+  if (isChargeHopping) return sliding;
   // Distinct asset from recovering so charge hold isn't visually/identity-
   // conflated with post-attack recovery (same art for now; separate file).
   if (isChargingAttack) return charging;

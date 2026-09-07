@@ -118,9 +118,15 @@ describe("palm vs palm — timing priority / trade", () => {
     assert.equal(s.right.isHit, true);
     assert.equal(hitPayloads(s.io).length, 2, "mutual palm trade hits");
     assert.equal(clashPayloads(s.io).length, 0, "must not charge-clash");
-    for (const e of hitPayloads(s.io)) {
-      assert.equal(e.payload.isPalmThrust, true);
+    const palmHits = hitPayloads(s.io).map((e) => e.payload);
+    for (const hit of palmHits) {
+      assert.equal(hit.isPalmThrust, true);
+      assert.equal(hit.isTrade, true);
+      assert.equal(hit.tradeFx, "mirror");
+      assert.equal(hit.combatPresentation.profileId, "GS_PALM_HIT");
     }
+    assert.ok(palmHits[0].tradeId);
+    assert.equal(palmHits[0].tradeId, palmHits[1].tradeId);
     assert.ok(
       Math.abs(Math.abs(s.left.knockbackVelocity.x) - PALM_TRADE_KNOCKBACK) <
         0.001

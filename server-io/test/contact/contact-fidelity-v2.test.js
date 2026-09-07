@@ -75,6 +75,19 @@ describe("Phase 13 — body presence vs immunity", () => {
     assert.equal(body.intangibilityReason, null);
   });
 
+  it("charged coil (startup) keeps pushbox so bodies cannot walk through", () => {
+    const p = {
+      isAttacking: true,
+      attackType: "charged",
+      isPalmThrust: false,
+      isInStartupFrames: true,
+    };
+    const body = classifyBodyPresence(p);
+    assert.equal(body.present, true);
+    assert.equal(body.contactable, true);
+    assert.equal(body.pushboxActive, true);
+  });
+
   it("rope-jump active is explicitly intangible", () => {
     const body = classifyBodyPresence({
       isRopeJumping: true,

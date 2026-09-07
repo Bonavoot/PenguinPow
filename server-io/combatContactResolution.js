@@ -126,11 +126,12 @@ function classifyBodyPresence(player, opts = {}) {
     };
   }
 
-  // Charged (non-palm) lunge: pushbox yields for hit detection, body remains.
+  // Flying-headbutt ACTIVE lunge: pushbox yields so the forehead can close.
   if (
     player.isAttacking &&
     player.attackType === "charged" &&
-    !player.isPalmThrust
+    !player.isPalmThrust &&
+    !player.isInStartupFrames
   ) {
     classes.push(IMMUNITY_CLASS.PUSHBOX_SUPPRESS);
     return {
@@ -271,6 +272,7 @@ function consumeLosingAttackInstance(player, meta = {}) {
   player.lowKickActiveEndTime = 0;
   player.palmThrustVisualUntil = 0;
   player.chargedAttackHit = false;
+  player.chargedConnectPoseHold = false;
   player.isChargedHitRecoil = false;
   player.currentAction = null;
   player.actionLockUntil = 0;

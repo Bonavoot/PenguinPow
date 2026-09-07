@@ -39,9 +39,12 @@ const DELTA_TRACKED_PROPS = [
   // variant so the drawn box matches the box authority queried). Authority
   // re-derives this window server-side and never reads the wire value.
   'palmLimbExtended',
-  'isChargingAttack', 'chargeAttackPower', 'chargeStartTime',
+  'isChargingAttack', 'isChargeHopping', 'chargeAttackPower', 'chargeStartTime',
   // Stops client lunge trails the moment a charged hit plants.
   'chargedAttackHit',
+  // Flying headbutt is live on release. This flag is still wired for slap /
+  // palm startup and leftover coil checks.
+  'isInStartupFrames',
   'isBurstKnockback',
   // Client prediction gates: actionLockUntil / attackCooldownUntil live on the
   // pausable sim clock (frozen during hitstop) so absolute times can't be
@@ -287,6 +290,19 @@ const GORED_CHARGED_KB_MULT = 1.35;
 const GORED_HITSTOP_BONUS_MS = 45;
 
 const CHARGED_STARTUP_MS = 150;
+// Flying-headbutt lunge velocity (index.js integrates x += dir * delta * speedFactor * speed).
+// Release is live immediately (no rooted coil). Speed is scaled so total
+// distance still matches the old startup+active travel window.
+const CHARGED_LUNGE_BASE_SPEED = 1.5;
+const CHARGED_LUNGE_POWER_SCALE = 5.5;
+// Charge-hold hop-back (S+forward+Mouse1 press). Travel is farther than a
+// dodge; the hop clock IS the minimum hold before release can fire.
+const CHARGE_HOP_DISTANCE = 64;
+const CHARGE_HOP_MS = 200;
+// Plant on the landing / charge pose before release is legal.
+const CHARGE_LAND_HOLD_MS = 150;
+const CHARGE_MIN_HOLD_MS = CHARGE_HOP_MS + CHARGE_LAND_HOLD_MS;
+const CHARGE_HOP_HEIGHT = 18;
 // Active window after startup. Charge scales MIN→MAX; lunge ends with the window.
 const CHARGED_ACTIVE_MIN_MS = 200;
 const CHARGED_ACTIVE_MAX_MS = 450;
@@ -843,9 +859,16 @@ const GUARD_CRUSH_STUN_MS = 500;      // Guard broken (stamina hit 0 while block
 
 // ── SLAP TRADE (replaces the slap clash / "slap parry") ─────────────────────
 // Earlier active slap (attackStartTime, not player index) lands and stuffs the later one.
-// Same-tick tie TRADES: both take a hit + SLAP_TRADE_KNOCKBACK. A 1-frame gap is not a trade.
+// Neutral same-tick tie TRADES: both take a hit + SLAP_TRADE_KNOCKBACK.
+// After a clean slap hit, a same-tick mash-back does NOT trade — the previous
+// hitter's follow-up lands as a counter-hit. Clocks stay +0: a late press still
+// loses, and the victim's slap still stuffs a grab. A 1-frame gap is not a trade.
 // Trade can ring out the boundary-side player (double ring-out is geometrically impossible).
 const SLAP_TRADE_WINDOW_MS = 8;      // Same-tick only (<1 tick @64Hz). A 1-frame gap → earlier wins, no trade.
+// Covers leftover +0 recovery + one follow-up slap (startup+active) + slack so
+// an on-time mash-back stays in the string. After this, dual-commit trades again.
+const SLAP_FOLLOWUP_PRIORITY_WINDOW_MS =
+  SLAP_RECOVERY_MS + SLAP_STARTUP_MS + SLAP_ACTIVE_MS + 80;
 // MOMENTUM TRANSFER rescale: knockback now decays at ICE_COAST_FRICTION (0.982)
 // instead of the slap channel's 0.97, so a velocity travels ~1.67x further.
 // 2.8 -> 1.675 preserves the previous ~269px mutual shove.
@@ -1371,14 +1394,16 @@ const CHARGED_KILL_REACH_CAP = 135;  // absolute max reach — the deadzone guar
 const CHARGED_KILL_MULT_MIN = 0.45;  // finalKnockbackMultiplier at 0% charge (curve floor)
 const CHARGED_KILL_MULT_MAX = 1.2;   // finalKnockbackMultiplier at a neutral 100% charge
 
-// Legacy dials — charged hits now PLANT (Honda headbutt): no attacker bounce-back.
-// Kept exported so old Tunings / imports don't break; unused by hit resolution.
+// On-hit ice recoil (backward). Recovery loop uses CHARGED_RECOIL_FRICTION.
 const CHARGED_ATTACKER_RECOIL_BASE = 0.3;
 const CHARGED_ATTACKER_RECOIL_CHARGE_SCALE = 0.5;
 const CHARGED_RECOIL_FRICTION = 0.85;
-// On-hit recovery AFTER hitstop (sim-clock). Victim hitstun is ~380ms; this is
-// deliberately shorter so a landed charge stays PLUS. Whiff recovery is longer.
+// Recovery AFTER hitstop. Victim hitstun is ~380ms; this stays shorter so a
+// landed charge is still PLUS. Whiff is longer.
 const CHARGED_HIT_RECOVERY_MS = 280;
+// Backward ice pop after a landed flying headbutt (movementVelocity units).
+const CHARGED_HIT_RECOIL_MIN = 1.15;
+const CHARGED_HIT_RECOIL_MAX = 1.85;
 
 const CINEMATIC_KILL_HITSTOP_MS = 550;
 const CINEMATIC_KILL_KNOCKBACK_BOOST = 4.0;
@@ -1771,6 +1796,13 @@ module.exports = {
   GORED_HITSTOP_BONUS_MS,
   SLAP_MIN_HITSTUN_MS,
   CHARGED_STARTUP_MS,
+  CHARGED_LUNGE_BASE_SPEED,
+  CHARGED_LUNGE_POWER_SCALE,
+  CHARGE_HOP_DISTANCE,
+  CHARGE_HOP_MS,
+  CHARGE_LAND_HOLD_MS,
+  CHARGE_MIN_HOLD_MS,
+  CHARGE_HOP_HEIGHT,
   CHARGED_ACTIVE_MS,
   CHARGED_ACTIVE_MIN_MS,
   CHARGED_ACTIVE_MAX_MS,
@@ -1947,6 +1979,7 @@ module.exports = {
   GUARD_ATTACKER_RECOVERY_MS,
   GUARD_CRUSH_STUN_MS,
   SLAP_TRADE_WINDOW_MS,
+  SLAP_FOLLOWUP_PRIORITY_WINDOW_MS,
   SLAP_TRADE_KNOCKBACK,
   PALM_TRADE_WINDOW_MS,
   PALM_TRADE_KNOCKBACK,
@@ -2235,6 +2268,8 @@ module.exports = {
   CHARGED_ATTACKER_RECOIL_CHARGE_SCALE,
   CHARGED_RECOIL_FRICTION,
   CHARGED_HIT_RECOVERY_MS,
+  CHARGED_HIT_RECOIL_MIN,
+  CHARGED_HIT_RECOIL_MAX,
   CINEMATIC_KILL_HITSTOP_MS,
   CINEMATIC_KILL_KNOCKBACK_BOOST,
   CINEMATIC_KILL_SPEED_CAP,

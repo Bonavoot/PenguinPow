@@ -611,7 +611,7 @@ const Game = ({
         applyPrediction("matador_release");
         applyPrediction("parry_release");
       }
-      // Charged-attack release parity with keyboard/mouse Mouse1-up prediction.
+      // Charged-attack release prediction (gated on min hold inside applyPrediction).
       if (
         !gamepadKeyState.mouse1 &&
         keyState.mouse1 &&
@@ -845,10 +845,9 @@ const Game = ({
         keyState.mouse1 = false;
         if (wasPressed) {
           pushEvent("mouse1", "up");
-          // Predict the charged-attack release on the same frame as the
-          // mouse-up. Internally a no-op unless we're actually charging, and
-          // the server unconditionally executes the charged attack on release
-          // while charging — so this prediction can't desync.
+          // Predict the charged-attack release on mouse-up. Internally a
+          // no-op unless we're charging AND the min-hold hop has elapsed;
+          // earlier taps stay on the hold pose (server buffers the fire).
           if (!inputsBlocked) {
             applyPrediction("charge_release");
           }

@@ -123,6 +123,7 @@ const {
   GUARD_ATTACKER_RECOVERY_MS,
   GUARD_CRUSH_STUN_MS,
   SLAP_TRADE_WINDOW_MS,
+  SLAP_FOLLOWUP_PRIORITY_WINDOW_MS,
   SLAP_TRADE_KNOCKBACK,
   PALM_TRADE_WINDOW_MS,
   PALM_TRADE_KNOCKBACK,
@@ -169,6 +170,7 @@ const {
   applyBalanceDamage,
   armPerfectParryStun,
   endPerfectParryStun,
+  cancelChargeHop,
 } = require("./gameUtils");
 
 const {
@@ -193,6 +195,7 @@ const {
 const {
   resolveSlapVersusChargedPhysical,
   isChargedHeadbuttActive,
+  chargedHitRecoilVelocity,
 } = require("./chargedHeadbuttContact");
 const {
   isActionLifecycleOwnershipV2Enabled,
@@ -234,6 +237,8 @@ function consumeGuardedAttack(attacker, defender, currentTime) {
   attacker.chargedActiveEndTime = 0;
   attacker.attackEndTime = 0;
   attacker.isChargingAttack = false;
+  cancelChargeHop(attacker);
+  attacker.chargeReleaseBuffered = false;
   attacker.isSlapSliding = false;
   attacker.slideSlapArmed = false;
   attacker.slapOpenHitPending = false;
@@ -394,8 +399,9 @@ const {
  *
  * @param {object} victim
  * @param {number} currentTime sim clock
- * @param {{ allowGrabCounter?: boolean }} [opts]
+ * @param {{ allowGrabCounter?: boolean, forceCounterHit?: boolean }} [opts]
  *   allowGrabCounter: false when charged armor-break should suppress grab-startup CH
+ *   forceCounterHit: same-tick mash after a clean slap hit
  */
 function evaluateHitCallouts(victim, currentTime, opts = {}) {
   const allowGrabCounter = opts.allowGrabCounter !== false;
@@ -470,7 +476,10 @@ function evaluateHitCallouts(victim, currentTime, opts = {}) {
 
   // Counter and punish are mutually exclusive; GORED supersedes both.
   // Recovery wins over a stale attack-intent press buffering out of endlag.
-  const isCounterHit = !isGored && counterHitRaw && !isPunish;
+  // forceCounterHit: same-tick mash after a clean slap hit — they are swinging
+  // while already losing the exchange.
+  const isCounterHit =
+    !isGored && (!!opts.forceCounterHit || counterHitRaw) && !isPunish;
 
   return { isGored, isPunish, isCounterHit };
 }
@@ -839,7 +848,23 @@ function checkCollision(player, otherPlayer, rooms, io) {
 
         if (otherHasContact) {
           // ── Reciprocal contact: earlier-connect wins; same-tick tie TRADES ─
+          // After a clean slap hit, same-tick mash is a counter-hit for the
+          // previous hitter — not a trade refund. A 1-frame gap still wins.
           if (Math.abs(diff) <= SLAP_TRADE_WINDOW_MS) {
+            const pressurer = getSlapFollowupPressurer(player, otherPlayer, now);
+            if (pressurer) {
+              const loser = pressurer === player ? otherPlayer : player;
+              resolveSlapFollowupPriority({
+                winner: pressurer,
+                loser,
+                current: player,
+                reciprocal,
+                rooms,
+                io,
+                now,
+              });
+              return;
+            }
             if (isAuthoredSlapHurtboxV1Enabled()) {
               noteSlapHurtQuery({
                 simTime: now,
@@ -951,6 +976,10 @@ function checkCollision(player, otherPlayer, rooms, io) {
       }
 
       // Slap vs Charged / palm.
+      // Palm still in startup skips this branch — slap falls through to
+      // processHit (open-hit grace may defer). Same-press therefore usually
+      // trades once palm goes active: grace covers most of the 55–90ms
+      // window, and 64Hz often skips the leftover ~4ms CH slice.
       if (
         otherPlayer.isAttacking &&
         otherPlayer.attackType === "charged" &&
@@ -1529,6 +1558,7 @@ function applyPalmTradeHit(victim, attacker, room, io, opts = {}) {
     defender: victim,
     contactX: tradeContactX,
     isSlapAttack: false,
+    isPalmThrust: true,
     hitId: tradeHitId,
     salt: "palm_trade",
   });
@@ -1561,6 +1591,11 @@ function applyPalmTradeHit(victim, attacker, room, io, opts = {}) {
         braked: false,
         contactX: tradeContactX,
         contactY: victim.y,
+        attackerX: attacker.x,
+        attackerY: attacker.y,
+        isTrade: true,
+        tradeId: opts.tradeId || null,
+        tradeFx: opts.tradeFx || (opts.tradeId ? "mirror" : null),
       },
       tradePresentation
     )
@@ -1572,8 +1607,8 @@ function resolvePalmTrade(player1, player2, rooms, io) {
   const room = rooms.find((r) => r.players.some((p) => p.id === player1.id));
   if (!room) return;
 
+  const tradeId = mintInteractionId("pvt");
   if (isCombatContactFidelityV2Enabled()) {
-    const interactionId = mintInteractionId("pvt");
     consumeLosingAttackInstance(player1, {
       winner: player2,
       winnerMove: "palm",
@@ -1581,7 +1616,7 @@ function resolvePalmTrade(player1, player2, rooms, io) {
       outcome: CONTACT_OUTCOME.TRADE,
       interactionType: "PALM_VS_PALM",
       interruptionReason: "SIMULTANEOUS_CONTACT",
-      interactionId,
+      interactionId: tradeId,
       stopVelocity: true,
     });
     consumeLosingAttackInstance(player2, {
@@ -1591,13 +1626,19 @@ function resolvePalmTrade(player1, player2, rooms, io) {
       outcome: CONTACT_OUTCOME.TRADE,
       interactionType: "PALM_VS_PALM",
       interruptionReason: "SIMULTANEOUS_CONTACT",
-      interactionId,
+      interactionId: tradeId,
       stopVelocity: true,
     });
   }
 
-  applyPalmTradeHit(player1, player2, room, io);
-  applyPalmTradeHit(player2, player1, room, io);
+  applyPalmTradeHit(player1, player2, room, io, {
+    tradeId,
+    tradeFx: "mirror",
+  });
+  applyPalmTradeHit(player2, player1, room, io, {
+    tradeId,
+    tradeFx: "mirror",
+  });
   triggerHitstopAndEmit(io, room, HITSTOP_BURST_MS, "palm");
 }
 
@@ -1692,8 +1733,8 @@ function resolvePalmSlapTrade(palm, slap, rooms, io) {
   const room = rooms.find((r) => r.players.some((p) => p.id === palm.id));
   if (!room) return;
 
+  const tradeId = mintInteractionId("pvs");
   if (isCombatContactFidelityV2Enabled()) {
-    const interactionId = mintInteractionId("pvs");
     consumeLosingAttackInstance(palm, {
       winner: slap,
       winnerMove: "slap",
@@ -1701,7 +1742,7 @@ function resolvePalmSlapTrade(palm, slap, rooms, io) {
       outcome: CONTACT_OUTCOME.TRADE,
       interactionType: "PALM_VS_SLAP",
       interruptionReason: "SIMULTANEOUS_CONTACT",
-      interactionId,
+      interactionId: tradeId,
       stopVelocity: true,
     });
     consumeLosingAttackInstance(slap, {
@@ -1711,18 +1752,25 @@ function resolvePalmSlapTrade(palm, slap, rooms, io) {
       outcome: CONTACT_OUTCOME.TRADE,
       interactionType: "PALM_VS_SLAP",
       interruptionReason: "SIMULTANEOUS_CONTACT",
-      interactionId,
+      interactionId: tradeId,
       stopVelocity: true,
     });
   }
 
   // Asymmetric: slapper eats the heavier palm-flavored shove; palm gets a
   // lighter slap-flavored space-reset (not the full slap-vs-slap trade KB).
+  // Mixed FX: two sparks, each facing its own attacker. Consume clears live
+  // attack flags first, so presentation must stamp isPalmThrust / isSlapAttack
+  // explicitly or both sparks inherit the slap facing.
   applyTradeHit(palm, slap, room, io, {
     knockback: PALM_VS_SLAP_TRADE_KB_ON_PALM,
+    tradeId,
+    tradeFx: "mixed",
   });
   applyPalmTradeHit(slap, palm, room, io, {
     knockback: PALM_VS_SLAP_TRADE_KB_ON_SLAPPER,
+    tradeId,
+    tradeFx: "mixed",
   });
   triggerHitstopAndEmit(
     io,
@@ -1887,21 +1935,88 @@ function applyTradeHit(victim, attacker, room, io, opts = {}) {
         // tier. Never read by the sim.
         isTrade: true,
         tradeId: opts.tradeId || null,
+        tradeFx: opts.tradeFx || (opts.tradeId ? "mirror" : null),
       },
       tradePresentation
     )
   );
 }
 
+// After a clean slap hit, the previous hitter owns same-tick mash-backs
+// for one follow-up window. Neutral dual-commit (or an expired stamp) still trades.
+function getSlapFollowupPressurer(a, b, now) {
+  const windowMs = SLAP_FOLLOWUP_PRIORITY_WINDOW_MS;
+  const aLanded = a.lastSlapHitLandedTime || 0;
+  const bLanded = b.lastSlapHitLandedTime || 0;
+  const aFresh = aLanded > 0 && now - aLanded <= windowMs;
+  const bFresh = bLanded > 0 && now - bLanded <= windowMs;
+  if (aFresh && bFresh) {
+    if (aLanded === bLanded) return null;
+    return aLanded > bLanded ? a : b;
+  }
+  if (aFresh) return a;
+  if (bFresh) return b;
+  return null;
+}
+
+function resolveSlapFollowupPriority({
+  winner,
+  loser,
+  current,
+  reciprocal,
+  rooms,
+  io,
+  now,
+}) {
+  if (current === loser) {
+    consumeStrikeContactOverride(loser);
+    if (reciprocal && reciprocal.winner) {
+      stampStrikeContactOverride(winner, reciprocal.winner);
+    }
+  }
+  if (isAuthoredSlapHurtboxV1Enabled()) {
+    noteSlapHurtQuery({
+      simTime: now,
+      accepted: true,
+      attackType: "slap",
+      attackerPhase: "active",
+      attackerId: current.id,
+      victimId: current === winner ? loser.id : winner.id,
+      slapVsSlapDecision: "followup_priority",
+      reciprocalContact: true,
+      winnerId: winner.id,
+    });
+  }
+  processHit(winner, loser, rooms, io, {
+    skipSlapOpenHitGrace: true,
+    forceCounterHit: true,
+  });
+  if (isCombatContactFidelityV2Enabled() && loser.isAttacking) {
+    consumeLosingAttackInstance(loser, {
+      winner,
+      winnerMove: "slap",
+      loserMove: "slap",
+      outcome: CONTACT_OUTCOME.PRIORITY_LOSS,
+      interactionType: "SLAP_VS_SLAP",
+      interruptionReason: "FOLLOWUP_PRIORITY",
+      strikeKind: "slap",
+    });
+  }
+  winner.lastCheckedAttackTime = winner.attackStartTime;
+}
+
 // Genuine same-tick slap tie → both take a hit. Clears both attacks (so the
 // reciprocal checkCollision self-skips this tick), applies a symmetric slap hit
-// to each, and freezes once.
+// to each, and freezes once. A trade resets follow-up priority — next dual
+// commit is neutral again.
 function resolveSlapTrade(player1, player2, rooms, io) {
   const room = rooms.find((r) => r.players.some((p) => p.id === player1.id));
   if (!room) return;
+  player1.lastSlapHitLandedTime = 0;
+  player2.lastSlapHitLandedTime = 0;
   const tradeId = `trade_${Math.random().toString(36).substr(2, 9)}`;
-  applyTradeHit(player1, player2, room, io, { tradeId }); // player1 struck by player2's slap
-  applyTradeHit(player2, player1, room, io, { tradeId }); // player2 struck by player1's slap
+  applyTradeHit(player1, player2, room, io, { tradeId, tradeFx: "mirror" });
+  applyTradeHit(player2, player1, room, io, { tradeId, tradeFx: "mirror" });
   // One symmetric freeze (the sim clock pauses for both).
   triggerHitstopAndEmit(io, room, HITSTOP_SLAP_MS, "slap");
 }
@@ -1945,7 +2060,10 @@ function resolveSlapChargedTrade(slapper, charged, rooms, io, meta = {}) {
   });
 
   // Slap values → charged
-  applyTradeHit(charged, slapper, room, io, { tradeId: interactionId });
+  applyTradeHit(charged, slapper, room, io, {
+    tradeId: interactionId,
+    tradeFx: "mixed",
+  });
 
   // Charged drains → slapper (existing charged balance/stamina constants) +
   // slap-trade shove magnitude for mutual spacing (existing trade feel).
@@ -2044,6 +2162,9 @@ function resolveSlapChargedTrade(slapper, charged, rooms, io, meta = {}) {
     defender: slapper,
     contactX,
     isSlapAttack: false,
+    isPalmThrust: false,
+    attackType: "charged",
+    chargePercentage,
     hitId: tradeHitId,
     salt: "hit",
   });
@@ -2080,6 +2201,7 @@ function resolveSlapChargedTrade(slapper, charged, rooms, io, meta = {}) {
         attackerY: charged.y,
         isTrade: true,
         tradeId: interactionId,
+        tradeFx: "mixed",
       },
       tradePresentation
     )
@@ -2125,6 +2247,8 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
   [player1, player2].forEach((p) => {
     p.isAttacking = false;
     p.isChargingAttack = false;
+    cancelChargeHop(p);
+    p.chargeReleaseBuffered = false;
     p.chargeStartTime = 0;
     p.chargeAttackPower = 0;
     p.attackType = null;
@@ -2132,6 +2256,7 @@ function resolveChargeClash(player1, player2, p1Charge, p2Charge, room, io) {
     p.attackStartTime = 0;
     p.attackEndTime = 0;
     p.chargedAttackHit = false;
+    p.chargedConnectPoseHold = false;
     p.isSlapAttack = false;
     p.isPalmThrust = false;
     p.palmThrustVisualUntil = 0;
@@ -2313,7 +2438,10 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
   const { isGored, isPunish, isCounterHit } = evaluateHitCallouts(
     otherPlayer,
     currentTime,
-    { allowGrabCounter: !isChargedArmorBreak }
+    {
+      allowGrabCounter: !isChargedArmorBreak,
+      forceCounterHit: !!opts.forceCounterHit,
+    }
   );
 
   // Store the charge power before resetting states
@@ -2341,6 +2469,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       player.attackStartTime = 0;
       player.attackEndTime = 0;
       player.isChargingAttack = false;
+      cancelChargeHop(player);
+      player.chargeReleaseBuffered = false;
       player.chargeStartTime = 0;
       player.chargeAttackPower = 0;
       releaseStrikeFacingLock(player, { reason: ACTION_FACING_RELEASE.INTERRUPT });
@@ -2427,28 +2557,48 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         currentTime + activeRemain + PALM_THRUST_HIT_RECOVERY_MS
       );
     } else {
-      // Plant on connect (no bounce-back). Drop the strike pose immediately —
-      // holding attack.png through hitstop + recovery reads as a stuck freeze
-      // with single-frame art, especially once the victim starts sliding.
-      // (Flip/impact frames can restore a short pose hold later.)
+      // Freeze forehead-on-body through hitstop, then leave the headbutt
+      // pose and pop backward on the ice. 0-delay fires after the freeze.
       player.chargedActiveEndTime = currentTime;
-      player.isAttacking = false;
-      player.attackStartTime = 0;
-      player.attackEndTime = 0;
-      player.chargingFacingDirection = null;
+      player.isAttacking = true;
+      player.attackType = "charged";
+      player.attackEndTime = currentTime;
+      player.chargingFacingDirection = player.facing;
       player.isChargingAttack = false;
+      cancelChargeHop(player);
+      player.chargeReleaseBuffered = false;
       player.chargeStartTime = 0;
-      player.chargeAttackPower = 0;
       player.isInStartupFrames = false;
-      player.isRecovering = true;
-      player.recoveryStartTime = currentTime;
-      player.recoveryDuration = CHARGED_HIT_RECOVERY_MS;
-      player.recoveryDirection = player.facing;
+      player.isRecovering = false;
+      player.chargedConnectPoseHold = true;
       player.movementVelocity = 0;
       player.knockbackVelocity = { x: 0, y: 0 };
       player.isChargedHitRecoil = false;
-      // Grounded plant recovery — flying→recover art bridge needs real frames;
-      // temp Y-lift/arc read worse than just settling on the ice.
+      timeoutManager.clearPlayerSpecific(player.id, "chargedConnectPoseEnd");
+      setPlayerTimeout(
+        player.id,
+        () => {
+          if (!player.chargedConnectPoseHold) return;
+          const recoilVel = chargedHitRecoilVelocity(player);
+          player.chargedConnectPoseHold = false;
+          player.isAttacking = false;
+          player.attackType = null;
+          player.attackStartTime = 0;
+          player.attackEndTime = 0;
+          player.chargingFacingDirection = null;
+          player.chargeAttackPower = 0;
+          player.isRecovering = true;
+          player.recoveryStartTime = simNowForPlayer(player);
+          player.recoveryDuration = CHARGED_HIT_RECOVERY_MS;
+          player.recoveryDirection = player.facing;
+          player.movementVelocity = recoilVel;
+          player.knockbackVelocity = { x: 0, y: 0 };
+          player.isChargedHitRecoil = true;
+          player.y = GROUND_LEVEL;
+        },
+        0,
+        "chargedConnectPoseEnd"
+      );
     }
   }
   // For slap attacks: no special handling - executeSlapAttack timeout handles everything
@@ -2534,6 +2684,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       parrier.apChainCount = 0;    // a block breaks the parry chain
       parrier.apFlurryUntil = 0;   // block breaks tap-every-slap flurry cover
       consumeGuardedAttack(attacker, parrier, currentTime);
+      attacker.lastSlapHitLandedTime = 0;
 
       // GUARD CRUSH — bled dry while blocking: drop the guard into a brief stun
       // AND enter gassed immediately. Do not wait for the end-of-tick gassed
@@ -2616,6 +2767,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       !currentRoom.gameOver;
 
     attacker.cadenceChain = 0;
+    attacker.lastSlapHitLandedTime = 0;
     if (!attacker.isAtTheRopes && !attacker.atTheRopesFacingDirection) {
       attacker.facing = attacker.x < parrier.x ? -1 : 1; // face the parrier
     }
@@ -2742,6 +2894,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       attacker.chargedActiveEndTime = 0;
       attacker.attackEndTime = 0;        // cancel the normal recovery handoff (loop reads this)
       attacker.isChargingAttack = false;
+      cancelChargeHop(attacker);
+      attacker.chargeReleaseBuffered = false;
       attacker.isSlapSliding = false;
       attacker.slideSlapArmed = false;
       attacker.isHit = false;            // NEVER hit.png on a parry
@@ -3100,6 +3254,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     otherPlayer.lastHitType = isSlapAttack ? "slap" : isLowKick ? "lowKick" : "charged";
     // MASTERY Phase 3: taking a hit breaks the victim's tsuppari rhythm.
     otherPlayer.cadenceChain = 0;
+    // Taking a hit ends any slap-follow-up priority they were holding.
+    otherPlayer.lastSlapHitLandedTime = 0;
 
     // Block multiple hits from this same attack
     otherPlayer.isAlreadyHit = true;
@@ -3559,6 +3715,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           player.chargedActiveEndTime = currentTime;
           player.movementVelocity = 0;
           player.isChargedHitRecoil = false;
+          player.chargedConnectPoseHold = false;
+          timeoutManager.clearPlayerSpecific(player.id, "chargedConnectPoseEnd");
           timeoutManager.clearPlayerSpecific(player.id, "cinematicAttackerRecovery");
           setPlayerTimeout(player.id, () => {
             player.isAttacking = false;
@@ -3622,8 +3780,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         otherPlayer.movementVelocity = 0;
         lastTransfer = chargedTransfer;
 
-        // Plant through impact (Honda headbutt) — no attacker bounce-back.
-        // Palm / cinematic already held ground; normal charged hits do too.
+        // Freeze through hitstop. Recoil velocity is applied after the freeze.
         player.movementVelocity = 0;
         player.knockbackVelocity = { x: 0, y: 0 };
         player.isChargedHitRecoil = false;
@@ -4894,6 +5051,20 @@ function resolveSlapChargedFromLunge(charged, opponent, rooms, io, opts = {}) {
   });
 }
 
+/**
+ * Same-tick flying-headbutt connect vs a non-slap body (idle / walk / recover).
+ * Slap-vs-charged stays on resolveSlapChargedFromLunge.
+ */
+function resolveChargedBodyFromLunge(charged, opponent, rooms, io, opts = {}) {
+  const {
+    tryResolveChargedLungeAgainstBody,
+  } = require("./chargedHeadbuttContact");
+  return tryResolveChargedLungeAgainstBody(charged, opponent, rooms, io, {
+    ...opts,
+    processHit,
+  });
+}
+
 module.exports = {
   checkCollision,
   processHit,
@@ -4901,11 +5072,13 @@ module.exports = {
   resolveSlapTrade,
   resolveSlapChargedTrade,
   resolveSlapChargedFromLunge,
+  resolveChargedBodyFromLunge,
   resolvePalmTrade,
   resolvePalmVersusSlap,
   resolveChargeClash,
   // Callout partition helper — tests only; not a gameplay entry point.
   evaluateHitCallouts,
+  getSlapFollowupPressurer,
   applyCinematicKillSpeed,
   // Geometry constants — exported for characterization / audit tests only.
   FLAP_BODYSLAM_CONTACT_HEIGHT,

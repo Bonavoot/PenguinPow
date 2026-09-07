@@ -26,7 +26,7 @@ const {
   getSidestepInitData,
   canPlayerCharge,
   canPlayerUseAction,
-  startCharging,
+  beginChargeHold,
   gameNow,
   simNowForPlayer,
   logVerbInitiation,
@@ -50,19 +50,9 @@ const {
   executeSlapAttack,
   executePalmThrust,
   executeLowKick,
-  executeChargedAttack,
+  requestChargedAttackRelease,
 } = require("./gameFunctions");
 
-const {
-  isActionFacingOwnershipV2Enabled,
-  acquireActionFacingLock,
-  releaseActionFacingLock,
-  mintActionFacingInstanceId,
-  ACTION_FACING_OWNER,
-  ACTION_FACING_REASON,
-  ACTION_FACING_RELEASE,
-} = require("./actionFacingOwnership");
-const { facingTowardOpponent } = require("./facingSystem");
 const {
   isInputCommandReliabilityV2Enabled,
   isInputCommandTraceEnabled,
@@ -746,41 +736,7 @@ function processInputPacket(room, player, data, io, rooms) {
         relativeDir: RELATIVE_DIR.FORWARD,
         facingSnap,
       });
-      player.chargeAttackPower = 0;
-      player.chargeStartTime = 0;
-      startCharging(player);
-      // Commit hold facing from live relative X (not stale post-sidestep facing).
-      {
-        const holdOpp = room.players.find((p) => p.id !== player.id);
-        if (holdOpp && !player.atTheRopesFacingDirection) {
-          player.facing = facingTowardOpponent(player, holdOpp);
-        }
-      }
-      player.chargingFacingDirection = player.facing;
-      if (isActionFacingOwnershipV2Enabled()) {
-        const holdId = mintActionFacingInstanceId(
-          player,
-          ACTION_FACING_OWNER.CHARGE_HOLD
-        );
-        player.chargeFacingInstanceId = holdId;
-        acquireActionFacingLock(player, {
-          ownerType: ACTION_FACING_OWNER.CHARGE_HOLD,
-          ownerInstanceId: holdId,
-          direction: player.chargingFacingDirection,
-          reason: ACTION_FACING_REASON.CHARGE,
-          allowDirectionUpdate: false,
-          supersede: true,
-          syncLegacy: false,
-        });
-      }
-      player.movementVelocity = 0;
-      player.isStrafing = false;
-      player.isPowerSliding = false;
-      player.isBraking = false;
-      player.isRawParrySuccess = false;
-      player.isPerfectRawParrySuccess = false;
-      player.isCrouchStance = false;
-      player.isCrouchStrafing = false;
+      beginChargeHold(player, rooms);
     } else if (wantsChargedAttack && player.isAttacking && player.attackType === "slap") {
       player.inputBuffer = { type: "chargedAttack", timestamp: simNowForPlayer(player) };
     } else if (wantsLowKick && canPlayerSlap(player)) {
@@ -901,11 +857,7 @@ function processInputPacket(room, player, data, io, rooms) {
       player.ropeJumpBufferedAttackRelease = simNowForPlayer(player) - player.mouse1PressTime;
     }
     if (player.isChargingAttack) {
-      const chargePercentage = player.chargeAttackPower || 1;
-      player.isChargingAttack = false;
-      player.chargeStartTime = 0;
-      player.chargingFacingDirection = null;
-      executeChargedAttack(player, chargePercentage, rooms);
+      requestChargedAttackRelease(player, rooms);
     } else {
       if (!(player.isAttacking && player.attackType === "charged")) {
         player.chargeAttackPower = 0;
@@ -1333,62 +1285,23 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.mouse1ConsumedUntilRelease &&
     !player.isChargingAttack &&
     !player.isAttacking &&
+    !player.mouse2JustPressed &&
     !shouldBlockAction()
   ) {
     const forwardKey = player.facing === -1 ? 'd' : 'a';
     if (player.keys[forwardKey] && canPlayerSlap(player, { ignoreCooldown: true })) {
-      player.chargeAttackPower = 0;
-      player.chargeStartTime = 0;
-      startCharging(player);
-      {
-        const holdOpp = room.players.find((p) => p.id !== player.id);
-        if (holdOpp && !player.atTheRopesFacingDirection) {
-          player.facing = facingTowardOpponent(player, holdOpp);
-        }
-      }
-      player.chargingFacingDirection = player.facing;
-      if (isActionFacingOwnershipV2Enabled()) {
-        const holdId = mintActionFacingInstanceId(
-          player,
-          ACTION_FACING_OWNER.CHARGE_HOLD
-        );
-        player.chargeFacingInstanceId = holdId;
-        acquireActionFacingLock(player, {
-          ownerType: ACTION_FACING_OWNER.CHARGE_HOLD,
-          ownerInstanceId: holdId,
-          direction: player.chargingFacingDirection,
-          reason: ACTION_FACING_REASON.CHARGE,
-          allowDirectionUpdate: false,
-          supersede: true,
-          syncLegacy: false,
-        });
-      }
-      player.movementVelocity = 0;
-      player.isStrafing = false;
-      player.isPowerSliding = false;
-      player.isBraking = false;
-      player.isRawParrySuccess = false;
-      player.isPerfectRawParrySuccess = false;
-      player.isCrouchStance = false;
-      player.isCrouchStrafing = false;
+      beginChargeHold(player, rooms);
     }
   }
 
   // Clear any lingering charge state when not attacking
-  if (player.isChargingAttack && !player.keys.mouse1 && !player.isAttacking) {
-    player.isChargingAttack = false;
-    player.chargeStartTime = 0;
-    player.chargeAttackPower = 0;
-    if (isActionFacingOwnershipV2Enabled()) {
-      releaseActionFacingLock(player, {
-        expectedInstanceId: player.chargeFacingInstanceId,
-        expectedOwnerType: ACTION_FACING_OWNER.CHARGE_HOLD,
-        reason: ACTION_FACING_RELEASE.ACTION_END,
-        clearLegacy: false,
-      });
-      player.chargeFacingInstanceId = null;
-    }
-    player.chargingFacingDirection = null;
+  if (
+    player.isChargingAttack &&
+    !player.keys.mouse1 &&
+    !player.isAttacking &&
+    !player.chargeReleaseBuffered
+  ) {
+    clearChargeState(player, true);
     player.attackType = null;
   }
   // Safety: clear stale preserved charge when mouse1 is not held

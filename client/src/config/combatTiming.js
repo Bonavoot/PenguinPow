@@ -131,6 +131,11 @@ export const GRAB_SEPARATE_PALM_ANIM = {
   ACTIVE_END: 190,
 };
 
+/** Charge-hold hop / land plant / min hold — MUST match server-io/constants.js. */
+export const CHARGE_HOP_MS = 200;
+export const CHARGE_LAND_HOLD_MS = 150;
+export const CHARGE_MIN_HOLD_MS = CHARGE_HOP_MS + CHARGE_LAND_HOLD_MS;
+
 /** Sidestep active — MUST match server-io/constants.js SIDESTEP_ACTIVE_MS. */
 export const SIDESTEP_ACTIVE_MS = 400;
 export const SIDESTEP_STARTUP_MS = 50;

@@ -17,6 +17,7 @@ export const createSlapConnectHold = () => ({
   until: 0,
   pendingUntil: 0,
   hitId: null,
+  kind: null,
 });
 
 export const slapConnectEventId = (data) => {
@@ -33,6 +34,15 @@ export const isSlapConnectHoldEligible = (data, playerId) =>
   !data.isPalmThrust &&
   !data.cinematicKill;
 
+/** Flying headbutt — freeze forehead-on-body through hitstop. */
+export const isChargedConnectHoldEligible = (data, playerId) =>
+  !!data &&
+  !!playerId &&
+  data.attackerId === playerId &&
+  data.attackType === "charged" &&
+  !data.isPalmThrust &&
+  !data.cinematicKill;
+
 /** Same hold for a landed palm — freeze must show palm-thrust.png, never smear. */
 export const isPalmConnectHoldEligible = (data, playerId) =>
   !!data &&
@@ -45,13 +55,19 @@ export const armSlapConnectHold = (hold, data, playerId, now, hitstopUntil) => {
   if (!hold) return false;
   if (
     !isSlapConnectHoldEligible(data, playerId) &&
-    !isPalmConnectHoldEligible(data, playerId)
+    !isPalmConnectHoldEligible(data, playerId) &&
+    !isChargedConnectHoldEligible(data, playerId)
   )
     return false;
   const eventId = slapConnectEventId(data);
   if (!eventId || hold.hitId === eventId) return false;
 
   hold.hitId = eventId;
+  hold.kind = data.isPalmThrust
+    ? "palm"
+    : data.attackType === "charged"
+      ? "charged"
+      : "slap";
   if (hitstopUntil > now) {
     hold.until = hitstopUntil;
     hold.pendingUntil = 0;
@@ -84,6 +100,7 @@ export const clearSlapConnectHold = (hold) => {
   hold.until = 0;
   hold.pendingUntil = 0;
   hold.hitId = null;
+  hold.kind = null;
 };
 
 export const slapConnectHoldNeedsTick = (hold, now, showing) =>

@@ -717,6 +717,7 @@ export const StyledImage = styled("img")
         "throwCooldown",
         "grabCooldown",
         "isChargingAttack",
+        "isChargeHopping",
         "chargeStartTime",
         "chargeMaxDuration",
         "chargeAttackPower",
@@ -855,7 +856,8 @@ export const StyledImage = styled("img")
         undefined, // offensiveAerialPresentation
         undefined, // isGrabPushDefeat
         props.$slideSlapArmed || false,
-        props.$isRingOutLoser || false
+        props.$isRingOutLoser || false,
+        props.$isChargeHopping || false
       ),
     style: {
       position: "absolute",
@@ -866,7 +868,8 @@ export const StyledImage = styled("img")
       bottom: `${(props.$y / 720) * 100}%`,
       translate: "-50%",
       "--facing": props.$facing === 1 ? "1" : "-1",
-      "--charge-shake": props.$isChargingAttack
+      "--charge-shake":
+        props.$isChargingAttack && !props.$isChargeHopping
         ? `${Math.min(1 + (props.$chargeAttackPower || 0) / 100 * 5, 6)}px`
         : "0px",
       // PROCEDURAL ANIMATION: per-hit reaction amplitude (set from the
@@ -1038,7 +1041,7 @@ export const StyledImage = styled("img")
         ? "attackerContactRecoil 0.12s cubic-bezier(0.25, 0.9, 0.4, 1)"
         : props.$isSlideJumping
         ? "slideJumpPop 0.22s cubic-bezier(0.15, 0.85, 0.25, 1) forwards"
-        : props.$isDodging
+        : props.$isDodging || props.$isChargeHopping
         ? "dashJump 0.085s linear forwards"
         : props.$justLandedFromDodge &&
           props.$isIceSliding &&
@@ -1052,7 +1055,7 @@ export const StyledImage = styled("img")
           !props.$isGrabbing &&
           !props.$isDead
         ? "powerSlide 0.15s ease-in-out infinite"
-        : props.$isChargingAttack && !props.$isReady
+        : props.$isChargingAttack && !props.$isChargeHopping && !props.$isReady
         ? "chargeShake 0.08s linear infinite"
         : props.$isAttacking && !props.$isSlapAttack
         ? "attackPunch 0.2s ease-out"

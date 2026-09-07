@@ -23,6 +23,7 @@ const {
   armMatador,
   enterGuard,
   beginPlayerDodge,
+  cancelChargeHop,
 } = require("../../gameUtils");
 
 function hopY() {
@@ -120,6 +121,19 @@ describe("grounded hop Y — leftover dodge / reverse-hop elevation", () => {
     const p = makePlayer();
     armMatador(p, 1000);
     assert.equal(p.isMatadorParrying, true);
+    assert.equal(p.y, GROUND_LEVEL);
+  });
+
+  it("cancelChargeHop clears hop flags and snaps Y", () => {
+    const p = makePlayer({
+      isChargeHopping: true,
+      chargeHopDirection: -1,
+      chargeHopStartTime: 1000,
+      chargeHopEndTime: 1200,
+    });
+    cancelChargeHop(p);
+    assert.equal(p.isChargeHopping, false);
+    assert.equal(p.chargeHopDirection, 0);
     assert.equal(p.y, GROUND_LEVEL);
   });
 

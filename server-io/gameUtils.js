@@ -8,6 +8,10 @@ const {
   KNOCKBACK_IMMUNITY_DURATION,
   HITSTOP_CHARGED_MIN_MS, HITSTOP_CHARGED_MAX_MS,
   CHARGE_FULL_POWER_MS,
+  CHARGE_HOP_DISTANCE,
+  CHARGE_HOP_MS,
+  CHARGE_MIN_HOLD_MS,
+  CHARGE_HOP_HEIGHT,
   DODGE_RECOVERY_MS,
   DODGE_STARTUP_MS,
   DODGE_DURATION,
@@ -121,6 +125,7 @@ const {
   ACTION_FACING_REASON,
   ACTION_FACING_RELEASE,
 } = require("./actionFacingOwnership");
+const { facingTowardOpponent } = require("./facingSystem");
 const {
   clearCombatContactState,
 } = require("./combatContactResolution");
@@ -1218,6 +1223,70 @@ function cancelDodgeHop(player) {
   groundPlayerIfNotAirborne(player);
 }
 
+function cancelChargeHop(player) {
+  if (!player) return;
+  player.isChargeHopping = false;
+  player.chargeHopStartTime = 0;
+  player.chargeHopEndTime = 0;
+  player.chargeHopDirection = 0;
+  groundPlayerIfNotAirborne(player);
+}
+
+function beginChargeHop(player) {
+  if (!player) return false;
+  const nowSim = simNowForPlayer(player);
+  groundPlayerIfNotAirborne(player);
+  const facing = player.facing === 1 || player.facing === -1 ? player.facing : -1;
+  // facing -1 looks +X; facing 1 looks −X. Hop BACK is the facing value itself.
+  const direction = facing;
+  const startX = player.x;
+  const targetX = Math.max(
+    MAP_LEFT_BOUNDARY,
+    Math.min(MAP_RIGHT_BOUNDARY, startX + direction * CHARGE_HOP_DISTANCE)
+  );
+  player.isChargeHopping = true;
+  player.chargeHopStartTime = nowSim;
+  player.chargeHopEndTime = nowSim + CHARGE_HOP_MS;
+  player.chargeHopStartX = startX;
+  player.chargeHopTargetX = targetX;
+  player.chargeHopDirection = direction;
+  player.actionLockUntil = nowSim + CHARGE_HOP_MS;
+  return true;
+}
+
+function chargeHoldElapsedMs(player, nowSim) {
+  if (!player?.isChargingAttack) return 0;
+  const start = player.chargeStartTime || 0;
+  if (!start) return 0;
+  const now = typeof nowSim === "number" ? nowSim : simNowForPlayer(player);
+  return Math.max(0, now - start);
+}
+
+function canReleaseChargedAttack(player, nowSim) {
+  return chargeHoldElapsedMs(player, nowSim) >= CHARGE_MIN_HOLD_MS;
+}
+
+/** Advance the charge-hold hop. Returns true when the hop lands this step. */
+function stepChargeHop(player, nowSim) {
+  if (!player?.isChargeHopping) return false;
+  const start = player.chargeHopStartTime || nowSim;
+  const end = player.chargeHopEndTime || start + CHARGE_HOP_MS;
+  const duration = Math.max(1, end - start);
+  const hopT = Math.min(1, Math.max(0, (nowSim - start) / duration));
+  const startX = typeof player.chargeHopStartX === "number" ? player.chargeHopStartX : player.x;
+  const targetX =
+    typeof player.chargeHopTargetX === "number" ? player.chargeHopTargetX : startX;
+  player.x = startX + (targetX - startX) * hopT;
+  player.y = GROUND_LEVEL + CHARGE_HOP_HEIGHT * 4 * hopT * (1 - hopT);
+  if (hopT >= 1) {
+    player.x = targetX;
+    player.y = GROUND_LEVEL;
+    player.isChargeHopping = false;
+    return true;
+  }
+  return false;
+}
+
 /**
  * Start a grounded dodge (full hop + ice-slide kit).
  * Locked while gassed — same as sidestep / rope jump / flap.
@@ -1358,6 +1427,8 @@ function canPlayerSidestep(player) {
 }
 
 function resetPlayerAttackStates(player) {
+  cancelChargeHop(player);
+  player.chargeReleaseBuffered = false;
   player.isAttacking = false;
   player.isChargingAttack = false;
   player.chargeStartTime = 0;
@@ -1433,6 +1504,8 @@ function clearAllActionStates(player) {
   player.isChargedHitRecoil = false;
   
   // Clear attack states
+  cancelChargeHop(player);
+  player.chargeReleaseBuffered = false;
   player.isAttacking = false;
   player.isChargingAttack = false;
   player.chargeStartTime = 0;
@@ -1489,6 +1562,7 @@ function clearAllActionStates(player) {
   player.mouse1BufferedBeforeStart = false;
   player.movementKeysBufferedBeforeStart = null;
   player.chargedAttackHit = false;
+  player.chargedConnectPoseHold = false;
   
   // Clear counter hit timing — prevents stale timestamps from causing
   // duplicate counter hits on subsequent hits in a slap string
@@ -2644,6 +2718,53 @@ function startCharging(player) {
   player.attackType = "charged";
 }
 
+/**
+ * Canonical charge-hold start: face opponent, lock facing, root, hop back.
+ * All S+forward+Mouse1 start sites must go through this.
+ */
+function beginChargeHold(player, rooms) {
+  if (!player) return false;
+  player.chargeAttackPower = 0;
+  player.chargeStartTime = 0;
+  player.chargeReleaseBuffered = false;
+  startCharging(player);
+  const holdRoom =
+    Array.isArray(rooms) &&
+    rooms.find((r) => r.players && r.players.some((p) => p.id === player.id));
+  const holdOpp =
+    holdRoom && holdRoom.players.find((p) => p.id !== player.id);
+  if (holdOpp && !player.atTheRopesFacingDirection) {
+    player.facing = facingTowardOpponent(player, holdOpp);
+  }
+  player.chargingFacingDirection = player.facing;
+  if (isActionFacingOwnershipV2Enabled()) {
+    const holdId = mintActionFacingInstanceId(
+      player,
+      ACTION_FACING_OWNER.CHARGE_HOLD
+    );
+    player.chargeFacingInstanceId = holdId;
+    acquireActionFacingLock(player, {
+      ownerType: ACTION_FACING_OWNER.CHARGE_HOLD,
+      ownerInstanceId: holdId,
+      direction: player.chargingFacingDirection,
+      reason: ACTION_FACING_REASON.CHARGE,
+      allowDirectionUpdate: false,
+      supersede: true,
+      syncLegacy: false,
+    });
+  }
+  player.movementVelocity = 0;
+  player.isStrafing = false;
+  player.isPowerSliding = false;
+  player.isBraking = false;
+  player.isRawParrySuccess = false;
+  player.isPerfectRawParrySuccess = false;
+  player.isCrouchStance = false;
+  player.isCrouchStrafing = false;
+  beginChargeHop(player);
+  return true;
+}
+
 function canPlayerSlap(player, { ignoreCooldown = false } = {}) {
   // Both deadlines live on the sim clock (pause during hitstop).
   const isOnCooldown = !ignoreCooldown && player.attackCooldownUntil && simNowForPlayer(player) < player.attackCooldownUntil;
@@ -2665,6 +2786,8 @@ function canPlayerSlap(player, { ignoreCooldown = false } = {}) {
 // Clear charging state. When cancelled by another action (isCancelled=true),
 // always zero charge power. Otherwise preserve power if mouse1 is still held.
 function clearChargeState(player, isCancelled = false) {
+  cancelChargeHop(player);
+  player.chargeReleaseBuffered = false;
   player.isChargingAttack = false;
   player.chargeStartTime = 0;
   if (isCancelled || !(player.keys && player.keys.mouse1)) {
@@ -3068,6 +3191,12 @@ module.exports = {
   canPlayerUseAction,
   canPlayerDash,
   beginPlayerDodge,
+  beginChargeHold,
+  beginChargeHop,
+  cancelChargeHop,
+  stepChargeHop,
+  chargeHoldElapsedMs,
+  canReleaseChargedAttack,
   playerOwnsPersistentAirY,
   groundPlayerIfNotAirborne,
   cancelDodgeHop,

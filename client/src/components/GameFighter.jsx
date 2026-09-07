@@ -114,7 +114,9 @@ import {
   AP_WHIFF_RECOVERY_MS,
   AP_FLURRY_COVER_REGULAR_MS,
   SLIDE_SLAP_ARM_SPEED,
+  CHARGE_HOP_MS,
 } from "../config/combatTiming";
+import { shouldPredictChargeRelease } from "../prediction/chargeHoldPrediction";
 import {
   SIDESTEP_ACTIVE_MS,
   isSidestepActivePhase,
@@ -298,6 +300,7 @@ import {
   bellyLayingEyesOpen as bellyLayingEyesOpenSprite,
   cinematicThrowKillLanding as cinematicThrowKillLandingSprite,
   pushDefeatPose as pushDefeatPoseSprite,
+  attack as chargedAttackSprite,
   grabbing as grabbingSprite,
   clinchPlanting as clinchPlantingSprite,
   beltGrabArm as beltGrabArmSprite,
@@ -320,7 +323,6 @@ import {
   clearPoseBeats,
   resolvePoseBeat,
   poseBeatNeedsTick,
-  shouldArmPostHitSettle,
   shouldArmSlideSlapPlant,
 } from "../combatPresentation/poseBeats";
 import {
@@ -832,12 +834,11 @@ const GameFighter = ({
   // ============================================
   const lastNonIdleSpriteRef = useRef(null);
   const lastNonHitSpriteRef = useRef(null);
-  // Authored in-between pose beats (combatPresentation/poseBeats): post-hit
-  // settle, belly-bump plant. Edge bookkeeping lives in the render body next
-  // to the other pose directors; the beat itself only ever replaces idle.
+  // Authored in-between pose beats (combatPresentation/poseBeats): belly-bump
+  // plant. Edge bookkeeping lives in the render body next to the other pose
+  // directors; the beat itself only ever replaces idle.
   const poseBeatsRef = useRef(createPoseBeats());
   const poseBeatEdgeRef = useRef({
-    wasHit: false,
     wasSlapAttack: false,
     wasSlideSlapArmed: false,
   });
@@ -847,7 +848,7 @@ const GameFighter = ({
   // Plant dust is world VFX — the render body only flags it; the post-commit
   // effect below emits it (one puff per plant, never from render).
   const pendingPlantDustRef = useRef(false);
-  // Trade ids whose world-side beats (spark / crack / shake) already fired.
+  // Trade ids whose shared world beats (shake / crack) already fired.
   const tradeSeenRef = useRef(new Set());
   // Time-based (was render-frame-based): movement no longer re-renders the
   // component, so visual windows are deadlines checked by the rAF loop.
@@ -1119,6 +1120,8 @@ const GameFighter = ({
     isSlapAttack: false,
     slapAnimation: 1,
     isAttacking: false,
+    attackType: null,
+    isInStartupFrames: false,
     // Rooted open-palm thrust (back + mouse1). Predicted separately from a slap
     // so its animation and its "no movement" rooting show on the press frame,
     // and so it reconciles against the server's isPalmThrust — NOT isSlapAttack
@@ -1130,6 +1133,7 @@ const GameFighter = ({
     isDodging: false,
     dodgeDirection: null,
     isChargingAttack: false,
+    isChargeHopping: false,
     isRawParrying: false,
     isMatadorParrying: false,
     isGrabbing: false,
@@ -1183,6 +1187,7 @@ const GameFighter = ({
   }
   const chargedReleaseActionIdRef = useRef(null);
   const prevChargingAttackRef = useRef(false);
+  const predictedChargeHoldStartedAtRef = useRef(0);
 
   // Pending scheduled swing sounds (timer ids). Cancelled wholesale when this
   // fighter's attack is interrupted during startup (hit / grabbed / thrown /
@@ -1696,9 +1701,11 @@ const GameFighter = ({
             now,
           });
           if (predictChargePose) {
+            predictedChargeHoldStartedAtRef.current = now;
             predictedState.current = {
               ...predictedState.current,
               isChargingAttack: true,
+              isChargeHopping: true,
               isSlapAttack: false,
               isPalmThrust: false,
               isLowKick: false,
@@ -1714,10 +1721,16 @@ const GameFighter = ({
           break;
         }
         case "charge_release":
-          // Only predict release if we were charging
+          // Only predict release if we were charging AND min hold has elapsed.
+          // A tap before CHARGE_MIN_HOLD_MS stays on the hold pose — the server
+          // buffers the fire until hop-land.
           if (
-            penguin.isChargingAttack ||
-            predictedState.current.isChargingAttack
+            (penguin.isChargingAttack ||
+              predictedState.current.isChargingAttack) &&
+            shouldPredictChargeRelease({
+              chargeStartAt: predictedChargeHoldStartedAtRef.current,
+              now,
+            })
           ) {
             // CRITICAL: If dodging, don't predict isAttacking - server stores it as pending
             // and executes AFTER dodge ends. Setting isAttacking during dodge causes
@@ -1727,8 +1740,12 @@ const GameFighter = ({
             predictedState.current = {
               ...predictedState.current,
               isChargingAttack: false,
+              isChargeHopping: false,
               // Only predict attack if NOT dodging - during dodge, server stores as pending
               isAttacking: !isDodging,
+              // Live on release — flying-headbutt pose, no coil pause.
+              isInStartupFrames: false,
+              attackType: "charged",
               // CRITICAL: Clear other action predictions to prevent visual flicker
               isSlapAttack: false,
               isPalmThrust: false,
@@ -1741,20 +1758,7 @@ const GameFighter = ({
               timestamp: now,
             };
             predictionChanged = true;
-            // CHARGED_LUNGE_BEGIN — immediate when local prediction starts the
-            // forward lunge. NOT release+150ms (hitbox startup is unrelated).
-            // Deferred/dodging: wait for authoritative charged isAttacking edge.
-            if (!isDodging) {
-              if (combatAudioV1 && combatAudioRef.current?.predictor) {
-                const rel = combatAudioRef.current.predictor.onChargedLungeBegin({
-                  pan: xToPan(penguin.x),
-                });
-                chargedReleaseActionIdRef.current = rel?.actionId || null;
-              } else {
-                playSound(attackSound, 0.05);
-              }
-              predictedSwingSoundAtRef.current.attack = now;
-            }
+            // Whoosh waits for ACTIVE (the explode). Coil is silent here.
           }
           break;
         case "dash":
@@ -1766,6 +1770,7 @@ const GameFighter = ({
               dodgeDirection: action.direction || penguin.facing,
               // CRITICAL: Dash cancels charging - clear it to prevent visual flicker
               isChargingAttack: false,
+              isChargeHopping: false,
               isAttacking: false,
               isSlapAttack: false,
               isPalmThrust: false,
@@ -2117,6 +2122,8 @@ const GameFighter = ({
         predictedState.current.isAttacking = false;
         predictedState.current.isDodging = false;
         predictedState.current.isChargingAttack = false;
+        predictedState.current.isChargeHopping = false;
+        predictedState.current.isInStartupFrames = false;
         predictedState.current.isRawParrying = false;
         predictedState.current.isGrabbing = false;
         return penguin;
@@ -2157,6 +2164,7 @@ const GameFighter = ({
         isDodging: false,
         dodgeDirection: null,
         isChargingAttack: false,
+        isChargeHopping: false,
         isRawParrying: false,
         isGrabbing: false,
         isPowerSliding: keepPowerSlide ? true : false,
@@ -2317,9 +2325,21 @@ const GameFighter = ({
       isPalmThrust: p.isPalmThrust || penguin.isPalmThrust,
       isLowKick: p.isLowKick || penguin.isLowKick,
       isAttacking: p.isAttacking || penguin.isAttacking,
+      // Once the server owns the attack, its coil/active bit wins.
+      isInStartupFrames: penguin.isAttacking
+        ? !!penguin.isInStartupFrames
+        : !!(p.isAttacking && p.isInStartupFrames),
+      attackType: penguin.attackType || (p.isAttacking && p.attackType) || penguin.attackType,
       isDodging: p.isDodging || penguin.isDodging,
       dodgeDirection: p.isDodging ? p.dodgeDirection : penguin.dodgeDirection,
       isChargingAttack: p.isChargingAttack || penguin.isChargingAttack,
+      isChargeHopping:
+        !!penguin.isChargeHopping ||
+        !!(
+          p.isChargeHopping &&
+          predictedChargeHoldStartedAtRef.current &&
+          now - predictedChargeHoldStartedAtRef.current < CHARGE_HOP_MS
+        ),
       isRawParrying: p.isRawParrying || penguin.isRawParrying,
       isMatadorParrying: p.isMatadorParrying || penguin.isMatadorParrying,
       // Guard floor is server-authored (window expired while holding). Don't
@@ -2504,6 +2524,9 @@ const GameFighter = ({
   const guardBlockSuccessTimeoutRef = useRef(null);
   const [chargeClashEffectPosition, setChargeClashEffectPosition] = useState(null);
   const [hitEffectPosition, setHitEffectPosition] = useState(null);
+  // Current-hit spark batch (not a history). Mixed trades append the second
+  // half onto the same tradeId so both bursts survive React 18 batching.
+  const [hitSparkList, setHitSparkList] = useState([]);
   const [rawParryEffectPosition, setRawParryEffectPosition] = useState(null);
   const [p1ParryRefund, setP1ParryRefund] = useState(0);
   const [p2ParryRefund, setP2ParryRefund] = useState(0);
@@ -3402,7 +3425,7 @@ const GameFighter = ({
         rendered.rawParrySuccessAnim ||
         // Local AP whiff predict still holding success-f1 — force clear at until.
         rendered.apWhiffPredict ||
-        // Authored pose beat (post-hit settle / bump plant) reached its deadline.
+        // Authored pose beat (bump plant) reached its deadline.
         poseBeatNeedsTick(poseBeatsRef.current, nowMs, rendered.poseBeat) ||
         // Dash is mid-sequence: force frames so the windup→jump→landing pose
         // and arc advance on their own clock even while briefly stationary
@@ -4202,10 +4225,10 @@ const GameFighter = ({
         lastPlayerHitTime.current = Date.now();
 
         // TRADE = one contact, two victims. The server emits one player_hit
-        // per struck body (each needs its own pose/flash/callout), but the
-        // world-side beats — spark, crack, shake — must fire ONCE for the
-        // pair or a trade reads as two hits. The second half of a trade is
-        // recognised by its shared tradeId and skips those three.
+        // per struck body (each needs its own pose/flash/callout). Same-move
+        // trades (`tradeFx: "mirror"`) share one spark / crack / shake.
+        // Mixed trades (palm↔slap, slap↔charged) draw BOTH sparks so each
+        // attack faces its own attacker — not two copies of the first hit.
         let tradeSecondHalf = false;
         if (data.isTrade && data.tradeId && index === 0) {
           const seen = tradeSeenRef.current;
@@ -4218,6 +4241,8 @@ const GameFighter = ({
             }
           }
         }
+        const skipTradeSpark =
+          tradeSecondHalf && data.tradeFx !== "mixed";
 
         // Attacker-side hit-confirm flash. Fires only on the GameFighter
         // instance whose player.id matches the server-provided attackerId, so each
@@ -4382,7 +4407,9 @@ const GameFighter = ({
             predictedState.current = {
               ...predictedState.current,
               isAttacking: false,
+              attackType: null,
               isChargingAttack: false,
+              isInStartupFrames: false,
               isSlapAttack: false,
               isPalmThrust: false,
               timestamp: Date.now(),
@@ -4492,6 +4519,17 @@ const GameFighter = ({
               scale: momentumScale(0.8, 0.5, 0.3),
               dirX: shakeDir,
             });
+            if (!data.isPalmThrust) {
+              emitParticles("chargedHeadbuttImpact", {
+                x:
+                  typeof data.contactX === "number"
+                    ? data.contactX
+                    : data.x,
+                y: data.y ?? 290,
+                direction: shakeDir,
+                power: Math.max(0, Math.min(data.chargePercentage || 50, 100)) / 100,
+              });
+            }
           } else if (data.attackType === "flap") {
             // Belly-slam (flap / slide-jump dive) — heavier plant than a slap poke.
             addShake("throw_landing", {
@@ -4619,8 +4657,8 @@ const GameFighter = ({
         // index-1 fighter for nothing. Gating to one instance halves the
         // per-hit DOM/animation cost — same single effect on screen. (Shake,
         // sounds, and the counter/punish banner above are already index-0 only.)
-        // A trade's second half draws no spark of its own (one clash per pair).
-        if (index === 0 && !tradeSecondHalf) {
+        // Mirror trades skip the second spark. Mixed trades keep it.
+        if (index === 0 && !skipTradeSpark) {
           const isLowKickHit =
             data.isLowKick || data.attackType === "lowKick";
           const isFlapSlamHit = data.attackType === "flap";
@@ -4677,7 +4715,7 @@ const GameFighter = ({
                 deduped: false,
               });
             }
-            setHitEffectPosition({
+            const sparkPayload = {
               x: seamX,
               y: seamY,
               facing: hitPlace?.facingHint || data.facing || 1,
@@ -4698,6 +4736,18 @@ const GameFighter = ({
               cinematicKill: data.cinematicKill || false,
               cinematicHitstopMs: data.cinematicKill ? 550 : 0,
               presentationEventId: hitPres?.eventId || null,
+              tradeId: data.tradeId || null,
+            };
+            setHitEffectPosition(sparkPayload);
+            // Replace the list on a new hit. Same-tick mixed trades (two
+            // player_hits, React 18 batched) append onto the matching tradeId
+            // so both sparks spawn — never a rolling history of old contacts.
+            setHitSparkList((prev) => {
+              if (data.isTrade && data.tradeFx === "mixed" && data.tradeId) {
+                const sameTrade = prev.filter((p) => p.tradeId === data.tradeId);
+                return [...sameTrade, sparkPayload];
+              }
+              return [sparkPayload];
             });
           }
         }
@@ -5880,6 +5930,7 @@ const GameFighter = ({
       setGyojiCall(null); // Clear gyoji call
       setRawParryEffectPosition(null); // Clear any active parry effects
       setHitEffectPosition(null);
+      setHitSparkList([]);
       setParryEffectPosition(null);
       setSnowballImpactPosition(null);
       retireAllAnnouncements();
@@ -5975,6 +6026,7 @@ const GameFighter = ({
       setGyojiState("idle");
       setRawParryEffectPosition(null);
       setHitEffectPosition(null);
+      setHitSparkList([]);
       setParryEffectPosition(null);
       setSnowballImpactPosition(null);
       setBlockingEffectPosition(null);
@@ -6418,18 +6470,7 @@ const GameFighter = ({
         const actorId = p.id || player.id;
         const attackStart = p.attackStartTime || 0;
         if (combatAudioV1 && combatAudioRef.current?.orch && !isPalm && !isLow) {
-          // Charged lunge begin — immediate on first observation.
-          const actionId =
-            chargedReleaseActionIdRef.current ||
-            `${actorId}:charged_lunge:${attackStart || performance.now()}`;
-          combatAudioRef.current.orch.confirmCombatCue(CUE.CHARGED_LUNGE_BEGIN, {
-            actorId,
-            actionId,
-            eventId: `${actorId}:charged_lunge:${attackStart}`,
-            authoritative: true,
-            local: isLocalPlayer,
-            pan: xToPan(panX),
-          });
+          // Whoosh is armed on the explode (startup→active), not coil.
         } else if (isPalm || isLow) {
           // V1 local palm with owned provisional → confirm (exactly once).
           // Otherwise cancellable startup-aligned timer (remote / missed predict).
@@ -6471,8 +6512,7 @@ const GameFighter = ({
               }
             });
           }
-        } else {
-          // Legacy non-V1 charged — also immediate at lunge begin.
+        } else if (p?.attackType !== "charged") {
           playSound(attackSound, 0.05);
         }
       }
@@ -6935,11 +6975,13 @@ const GameFighter = ({
       penguin.isAttacking &&
       penguin.attackType === "charged" &&
       !penguin.isPalmThrust &&
+      !penguin.isInStartupFrames &&
       !penguin.chargedAttackHit;
   }, [
     penguin.isAttacking,
     penguin.attackType,
     penguin.isPalmThrust,
+    penguin.isInStartupFrames,
     penguin.chargedAttackHit,
   ]);
 
@@ -6952,6 +6994,7 @@ const GameFighter = ({
       penguin.isAttacking &&
       penguin.attackType === "charged" &&
       !penguin.isPalmThrust &&
+      !penguin.isInStartupFrames &&
       !penguin.chargedAttackHit;
     if (isLunging && !lastChargedLungeState.current) {
       emitParticles("chargedLungeSmoke", {
@@ -6959,17 +7002,40 @@ const GameFighter = ({
         y: penguin.y,
         direction: penguin.facing ?? 1,
       });
+      const p = penguinRef.current || penguin;
+      const actorId = p.id || player.id;
+      const attackStart = p.attackStartTime || 0;
+      if (combatAudioV1 && combatAudioRef.current?.orch) {
+        const actionId =
+          chargedReleaseActionIdRef.current ||
+          `${actorId}:charged_lunge:${attackStart || performance.now()}`;
+        combatAudioRef.current.orch.confirmCombatCue(CUE.CHARGED_LUNGE_BEGIN, {
+          actorId,
+          actionId,
+          eventId: `${actorId}:charged_lunge:${attackStart}`,
+          authoritative: true,
+          local: isLocalPlayer,
+          pan: xToPan(p.x),
+        });
+        chargedReleaseActionIdRef.current = actionId;
+      } else {
+        playSound(attackSound, 0.05);
+      }
     }
     lastChargedLungeState.current = isLunging;
   }, [
     penguin.isAttacking,
     penguin.attackType,
     penguin.isPalmThrust,
+    penguin.isInStartupFrames,
     penguin.chargedAttackHit,
     penguin.facing,
     penguin.x,
     penguin.y,
     emitParticles,
+    combatAudioV1,
+    isLocalPlayer,
+    player.id,
   ]);
 
   useEffect(() => {
@@ -6977,6 +7043,7 @@ const GameFighter = ({
       penguin.isAttacking &&
       penguin.attackType === "charged" &&
       !penguin.isPalmThrust &&
+      !penguin.isInStartupFrames &&
       !penguin.chargedAttackHit;
     if (isLunging) {
       chargedTrailLastX.current = interpolatedPositionRef.current.x || penguin.x;
@@ -7019,6 +7086,7 @@ const GameFighter = ({
     penguin.isAttacking,
     penguin.attackType,
     penguin.isPalmThrust,
+    penguin.isInStartupFrames,
     penguin.chargedAttackHit,
     penguin.facing,
     penguin.x,
@@ -9158,7 +9226,7 @@ const GameFighter = ({
     displayPenguin.isDodging &&
     performance.now() - dodgeVisualRef.current.startedAt < DASH_WINDUP_MS;
 
-  const rawSpriteSrc = getImageSrc(
+  let rawSpriteSrc = getImageSrc(
     penguin.fighter,
     penguin.isDiving,
     penguin.isJumping,
@@ -9268,8 +9336,15 @@ const GameFighter = ({
     // Ring-out loser: hold the struck body through the topple + downed hold
     // (the reaction rig tips it over) instead of snapping back to idle when
     // the hitstun timer clears mid-fall.
-    !!penguin.isRingOutLoser
+    !!penguin.isRingOutLoser,
+    !!displayPenguin.isChargeHopping
   );
+  if (
+    holdSlapHitPose &&
+    slapConnectHoldRef.current.kind === "charged"
+  ) {
+    rawSpriteSrc = chargedAttackSprite;
+  }
   if (!penguin.isHit && !penguin.isHitFalling) {
     lastNonHitSpriteRef.current = rawSpriteSrc;
   }
@@ -9291,33 +9366,6 @@ const GameFighter = ({
     const beats = poseBeatsRef.current;
     const edge = poseBeatEdgeRef.current;
     const nowBeat = performance.now();
-    const grounded = !(displayPosition.y > SHADOW_GROUND_LEVEL + 4);
-    // Victim: hitstun cleared on the ground → ~6f brace before idle. The body is
-    // usually still skating back on the ice here; the brace is what makes the
-    // slide read as "driven back and caught it" rather than idle-on-wheels.
-    if (
-      shouldArmPostHitSettle({
-        wasHit: edge.wasHit,
-        isHit: !!penguin.isHit,
-        isHitFalling: !!penguin.isHitFalling,
-        grounded,
-        isRingOutLoser: !!penguin.isRingOutLoser,
-        isRawParryStun: !!penguin.isRawParryStun,
-        isBeingGrabbed: !!penguin.isBeingGrabbed,
-        isBeingThrown: !!penguin.isBeingThrown,
-        isAtTheRopes: !!penguin.isAtTheRopes,
-        isDead: !!penguin.isDead,
-        isReady: !!penguin.isReady,
-      })
-    ) {
-      armPoseBeat(
-        beats,
-        POSE_BEAT.POST_HIT_SETTLE,
-        recovering,
-        nowBeat,
-        POSE_BEAT_TIMING.POST_HIT_SETTLE_MS
-      );
-    }
     // Attacker: connected belly bump's cycle ended → the server zeroes the
     // follow-through crawl this tick. Hold the planted stance across the stop.
     const slapNow = !!displayPenguin.isSlapAttack;
@@ -9339,7 +9387,6 @@ const GameFighter = ({
       pendingPlantDustRef.current = true;
     }
     if (edge.wasSlapAttack && !slapNow) bellyBumpConnectedRef.current = false;
-    edge.wasHit = !!penguin.isHit || !!penguin.isHitFalling;
     edge.wasSlapAttack = slapNow;
     edge.wasSlideSlapArmed = slapNow ? !!displayPenguin.slideSlapArmed : false;
   }
@@ -9404,10 +9451,14 @@ const GameFighter = ({
   }
 
   // Phase 11 — pose registration (presentation-only; default OFF).
-  // Charged headbutt flight is intentionally airborne — never sole-corrected.
+  // Flying headbutt is airborne from RELEASE (same pose as the connect freeze).
   const isChargedFlight =
-    !!displayPenguin.isAttacking && !displayPenguin.isSlapAttack;
-  const posePresentationState = displayPenguin.isChargingAttack
+    !!displayPenguin.isAttacking &&
+    !displayPenguin.isSlapAttack &&
+    !displayPenguin.isPalmThrust;
+  const posePresentationState = displayPenguin.isChargeHopping
+    ? null
+    : displayPenguin.isChargingAttack
     ? "charging"
     : isChargedFlight
       ? "charged_flight"
@@ -9421,6 +9472,7 @@ const GameFighter = ({
     !!penguin.isRopeJumping ||
     !!penguin.isBeingThrown ||
     isChargedFlight ||
+    !!displayPenguin.isChargeHopping ||
     (!!displayPenguin.isDodging && !penguin.justLandedFromDodge);
   const poseResolved = resolvePoseRender({
     src: effectiveSpriteSrc,
@@ -9880,6 +9932,7 @@ const GameFighter = ({
     $throwCooldown: penguin.throwCooldown,
     $grabCooldown: penguin.grabCooldown,
     $isChargingAttack: displayPenguin.isChargingAttack,
+    $isChargeHopping: !!displayPenguin.isChargeHopping,
     $chargeAttackPower: penguin.chargeAttackPower || 0,
     $chargingFacingDirection: penguin.chargingFacingDirection,
     $saltCooldown: penguin.saltCooldown,
@@ -10546,7 +10599,7 @@ const GameFighter = ({
       )}
       <ChargeClashEffect position={chargeClashEffectPosition} />
       <HitEffect position={hitEffectPosition} />
-      <SlapHitSpriteEffect position={hitEffectPosition} />
+      <SlapHitSpriteEffect position={hitSparkList} />
       {index === 0 && (
         <RawParryEffect position={rawParryEffectPosition} />
       )}

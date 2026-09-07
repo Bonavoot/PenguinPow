@@ -655,6 +655,13 @@ function resetRoomAndPlayers(room, io) {
     player.chargeStartTime = 0;
     player.chargeAttackPower = 0;
     player.chargingFacingDirection = null;
+    player.isChargeHopping = false;
+    player.chargeHopStartTime = 0;
+    player.chargeHopEndTime = 0;
+    player.chargeHopStartX = 0;
+    player.chargeHopTargetX = 0;
+    player.chargeHopDirection = 0;
+    player.chargeReleaseBuffered = false;
     player.attackType = null;
     player.spacebarReleasedDuringDodge = false;
     player.mouse1ConsumedUntilRelease = false;
@@ -669,6 +676,7 @@ function resetRoomAndPlayers(room, io) {
     player.attackAttemptTime = 0;
     player.chargeCancelled = false;
     player.chargedAttackHit = false;
+    player.chargedConnectPoseHold = false;
     player.slapFacingDirection = null;
     player.attackStartTime = 0;
     player.attackEndTime = 0;

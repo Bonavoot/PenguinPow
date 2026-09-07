@@ -11,6 +11,7 @@ import {
   slapConnectHoldNeedsTick,
   isSlapConnectHoldEligible,
   isPalmConnectHoldEligible,
+  isChargedConnectHoldEligible,
   clearSlapConnectHold,
   SLAP_CONNECT_HOLD_BRIDGE_MS,
 } from "./slapConnectHold.js";
@@ -45,6 +46,37 @@ describe("slapConnectHold", () => {
       isSlapConnectHoldEligible(slapHit({ attackType: "charged" }), ATTACKER),
       false
     );
+    assert.equal(
+      isChargedConnectHoldEligible(slapHit({ attackType: "charged" }), ATTACKER),
+      true
+    );
+  });
+
+  it("arms a landed flying headbutt so hitstop freezes forehead-on-body", () => {
+    const chargedHit = {
+      hitId: "c1",
+      attackerId: ATTACKER,
+      victimId: VICTIM,
+      attackType: "charged",
+      isPalmThrust: false,
+      timestamp: 1000,
+    };
+    assert.equal(isChargedConnectHoldEligible(chargedHit, ATTACKER), true);
+    assert.equal(isChargedConnectHoldEligible(chargedHit, VICTIM), false);
+    assert.equal(
+      isChargedConnectHoldEligible({ ...chargedHit, cinematicKill: true }, ATTACKER),
+      false
+    );
+    assert.equal(
+      isChargedConnectHoldEligible({ ...chargedHit, isPalmThrust: true }, ATTACKER),
+      false
+    );
+
+    const hold = createSlapConnectHold();
+    assert.equal(armSlapConnectHold(hold, chargedHit, ATTACKER, 1000, 1180), true);
+    assert.equal(hold.kind, "charged");
+    assert.equal(resolveSlapConnectHold(hold, 1000, 1180), true);
+    assert.equal(resolveSlapConnectHold(hold, 1180, 1180), false);
   });
 
   it("arms a landed palm so hitstop cannot freeze the smear", () => {

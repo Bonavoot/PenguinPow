@@ -20,7 +20,9 @@ const {
   beginPlayerDodge,
   canPlayerSidestep,
   getSidestepInitData,
-  startCharging,
+  beginChargeHold,
+  cancelChargeHop,
+  canReleaseChargedAttack,
   lagCompensatedParryStart,
   canArmAttackParry,
   armAttackParry,
@@ -140,7 +142,6 @@ const {
   K_SLAP_INHERIT,
   SLAP_SLIDE_MIN,
   SLAP_SLIDE_MAX,
-  CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MIN_MS,
   CHARGED_ACTIVE_MAX_MS,
   PALM_THRUST_STARTUP_MS,
@@ -1447,7 +1448,8 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
       // actionLockUntil), so without the queue the press is silently dropped.
       // Same contract as the buffered slap: the input always registers, but the
       // follow-up is fully contestable — slap is +0, so the grab's startup opens
-      // on the same instant the victim becomes actionable. When a slap is queued
+      // on the same instant the victim becomes actionable (their slap can still
+      // stuff it). Same-tick mash-back after a clean hit does not trade. When a slap is queued
       // too the later press wins, and the loser is discarded rather than
       // deferred so a queued action can never surface a cycle late.
       if (player.pendingGrab && isPlayerValid()) {
@@ -1480,8 +1482,9 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
 
       // Buffered press → next slap fires immediately. Pure responsiveness:
       // on hit the exchange was +0, so this follow-up is fully contestable
-      // (the victim is actionable at this exact instant too — mash mirrors
-      // clash); on whiff the extra recovery has already been served.
+      // (the victim is actionable at this exact instant — a late press still
+      // loses, a grab can still be stuffed; same-tick mash does not trade);
+      // on whiff the extra recovery has already been served.
       if (player.pendingSlapCount > 0 && isPlayerValid()) {
         player.pendingSlapCount--;
         // MASTERY Phase 3: grade the cadence of THIS follow-up. gap = how long
@@ -1646,6 +1649,7 @@ function executePalmThrust(player, rooms) {
   player.chargeStartTime = 0;
   player.chargeAttackPower = PALM_THRUST_POWER;
   player.chargedAttackHit = false;
+  player.chargedConnectPoseHold = false;
 
   player.isAttacking = true;
   player.attackStartTime = now;
@@ -1767,6 +1771,7 @@ function executeLowKick(player, rooms) {
   player.chargeStartTime = 0;
   player.chargeAttackPower = 0;
   player.chargedAttackHit = false;
+  player.chargedConnectPoseHold = false;
 
   player.isAttacking = true;
   player.attackStartTime = now;
@@ -1824,6 +1829,26 @@ function cleanupRoom(room) {
 }
 
 // Add this new function near the other helper functions
+function requestChargedAttackRelease(player, rooms) {
+  if (!player?.isChargingAttack) return false;
+  if (!canReleaseChargedAttack(player)) {
+    player.chargeReleaseBuffered = true;
+    return false;
+  }
+  const chargePercentage = player.chargeAttackPower || 1;
+  player.isChargingAttack = false;
+  player.chargeStartTime = 0;
+  player.chargingFacingDirection = null;
+  player.chargeReleaseBuffered = false;
+  executeChargedAttack(player, chargePercentage, rooms);
+  return true;
+}
+
+function flushBufferedChargeRelease(player, rooms) {
+  if (!player?.isChargingAttack || !player.chargeReleaseBuffered) return false;
+  return requestChargedAttackRelease(player, rooms);
+}
+
 function executeChargedAttack(player, chargePercentage, rooms) {
   // Cancel power slide when attacking
   if (player.isPowerSliding) {
@@ -1850,6 +1875,7 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   // Charging is allowed during dodge; the release is a grounded headbutt.
   // Cancel the hop so lunge Y cannot sit on the dodge parabola.
   cancelDodgeHop(player);
+  cancelChargeHop(player);
   groundPlayerIfNotAirborne(player);
 
   // MASTERY Phase 0 telemetry — entry velocity at charge release (typically ~0
@@ -1876,14 +1902,15 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   player.isPalmThrust = false;
   player.isLowKick = false;
 
-  // Honda-style headbutt window: startup → charge-scaled active → whiff recovery.
-  // Lunge travel = startup + active (no multi-second skating hitbox). Range still
-  // grows with charge via lunge SPEED (and a longer active at higher charge).
+  // Flying headbutt: live on release, charge-scaled active, then whiff recovery
+  // or on-hit ice coast. Range grows with charge via lunge SPEED (and a longer
+  // active at higher charge). Travel speed is compensated so distance still
+  // matches the old startup+active window.
   const charge01 = Math.max(0, Math.min(chargePercentage, 100)) / 100;
   const activeMs =
     CHARGED_ACTIVE_MIN_MS +
     (CHARGED_ACTIVE_MAX_MS - CHARGED_ACTIVE_MIN_MS) * charge01;
-  const attackDuration = CHARGED_STARTUP_MS + activeMs;
+  const attackDuration = activeMs;
 
   // Attack-cycle timestamps live on the pausable sim clock (freeze with hitstop)
   const nowSim = simNowForPlayer(player);
@@ -1905,28 +1932,17 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   // Track when attack was attempted for counter hit detection
   player.attackAttemptTime = nowSim;
   
-  // === STARTUP FRAMES - Telegraph before attack becomes active ===
-  player.isInStartupFrames = true;
-  player.startupEndTime = nowSim + CHARGED_STARTUP_MS;
-  // Hitbox live only during the active window (not a long coast after).
-  player.chargedActiveEndTime = nowSim + CHARGED_STARTUP_MS + activeMs;
-  
-  // Set timeout to end startup frames
-  setPlayerTimeout(
-    player.id,
-    () => {
-      player.isInStartupFrames = false;
-    },
-    CHARGED_STARTUP_MS,
-    "chargedStartupEnd"
-  );
-  
-  // Action lock through startup for visual clarity
+  // Live on release — no rooted coil. Hitbox and lunge start together.
+  player.isInStartupFrames = false;
+  player.startupEndTime = nowSim;
+  player.chargedActiveEndTime = nowSim + activeMs;
+
   player.currentAction = "charged";
-  player.actionLockUntil = simNowForPlayer(player) + CHARGED_STARTUP_MS;
+  player.actionLockUntil = nowSim + activeMs;
 
   // Add hit tracking
   player.chargedAttackHit = false;
+  player.chargedConnectPoseHold = false;
 
   // Thick Blubber is GRABS ONLY now — it no longer recharges (or applies) on a
   // charged attack. The absorb is refreshed when a grab starts (socketHandlers /
@@ -2226,19 +2242,11 @@ function adjustPlayerPositions(player1, player2, delta) {
     return;
   }
 
-  // Charged attacks need to reach the opponent to connect — pushbox yields to hit detection.
-  // Without this, the pushbox (148px) prevents the lunge from closing distance.
-  //
-  // IMPORTANT: this must cover the ENTIRE charged LUNGE, STARTUP included. The
-  // forward lunge (index.js) runs during startup too, and because it sets x
-  // directly (no movementVelocity), the pushbox would read neither player as
-  // "moving toward" and split the overlap 0.5/0.5 — shoving the VICTIM toward the
-  // edge every startup tick BEFORE the hit lands. That drift let a high-charge
-  // lunge push the victim into the panic zone and cinematic-kill from range,
-  // defeating the Phase 2 read-gate. Yielding through startup keeps the victim at
-  // their true standing position until the strike connects (the anti-passthrough
-  // clamp in index.js still stops the attacker ~30px short, so they never fully
-  // overlap; the post-hit min-separation push handles spacing after the hit).
+  // Flying-headbutt ACTIVE lunge: pushbox yields so the forehead can close.
+  // Coil (startup) is rooted and keeps a pushbox — the charger is anchored so
+  // they cannot be shoved backward, and the opponent cannot walk through them
+  // before the hitbox is live (that was the "bodies meet, then the hit arrives
+  // late" feel).
   //
   // Palm thrust is rooted (no lunge) but rides attackType "charged" — it must
   // NOT inherit this yield. Yielding at point-blank lets the arm bury into the
@@ -2246,14 +2254,27 @@ function adjustPlayerPositions(player1, player2, delta) {
   const p1ChargedLunge =
     player1.isAttacking &&
     player1.attackType === "charged" &&
-    !player1.isPalmThrust;
+    !player1.isPalmThrust &&
+    !player1.isInStartupFrames;
   const p2ChargedLunge =
     player2.isAttacking &&
     player2.attackType === "charged" &&
-    !player2.isPalmThrust;
+    !player2.isPalmThrust &&
+    !player2.isInStartupFrames;
   if (p1ChargedLunge || p2ChargedLunge) {
     return;
   }
+
+  const p1ChargedCoil =
+    player1.isAttacking &&
+    player1.attackType === "charged" &&
+    !player1.isPalmThrust &&
+    player1.isInStartupFrames;
+  const p2ChargedCoil =
+    player2.isAttacking &&
+    player2.attackType === "charged" &&
+    !player2.isPalmThrust &&
+    player2.isInStartupFrames;
 
   // Grab system tweens (pull reversal, belly flop, etc.) control position directly.
   // The pushbox must yield so side-swap mechanics work correctly.
@@ -2318,8 +2339,16 @@ function adjustPlayerPositions(player1, player2, delta) {
     p1IsLeft = player1.x <= player2.x;
   }
 
-  const p1Anchored = player1.isHit || player1.isRawParryStun || player1.isRawParrying;
-  const p2Anchored = player2.isHit || player2.isRawParryStun || player2.isRawParrying;
+  const p1Anchored =
+    player1.isHit ||
+    player1.isRawParryStun ||
+    player1.isRawParrying ||
+    p1ChargedCoil;
+  const p2Anchored =
+    player2.isHit ||
+    player2.isRawParryStun ||
+    player2.isRawParrying ||
+    p2ChargedCoil;
 
   let p1Share, p2Share;
 
@@ -2596,6 +2625,7 @@ function safelyEndChargedAttack(player, rooms) {
     player.attackType = null;
     player.chargeAttackPower = 0;
     player.chargedAttackHit = false;
+    player.chargedConnectPoseHold = false;
     player.chargedActiveEndTime = 0;
     player.currentAction = null;
     player.actionLockUntil = 0;
@@ -2611,8 +2641,7 @@ function safelyEndChargedAttack(player, rooms) {
     );
     palmHoldScheduled = true;
   } else if (!isPalm && attackConnected) {
-    // Connected charged hits end in processHit (recovering + plant). This is
-    // a safety cleanup if attackEndTime still fires with the hit flag set.
+    // Connected charged hits end in processHit (recovery + recoil).
     player.isAttacking = false;
     player.isSlapAttack = false;
     player.isPalmThrust = false;
@@ -2622,12 +2651,10 @@ function safelyEndChargedAttack(player, rooms) {
     player.attackType = null;
     player.chargeAttackPower = 0;
     player.chargedAttackHit = false;
+    player.chargedConnectPoseHold = false;
     player.chargedActiveEndTime = 0;
     player.currentAction = null;
     player.actionLockUntil = 0;
-    player.movementVelocity = 0;
-    player.knockbackVelocity = { x: 0, y: 0 };
-    player.isChargedHitRecoil = false;
   } else {
     player.isAttacking = false;
     player.isSlapAttack = false;
@@ -2637,6 +2664,7 @@ function safelyEndChargedAttack(player, rooms) {
     player.attackType = null;
     player.chargeAttackPower = 0;
     player.chargedAttackHit = false;
+    player.chargedConnectPoseHold = false;
     player.chargedActiveEndTime = 0;
     if (palmHoldScheduled || player.isRecovering) {
       player.currentAction = null;
@@ -2879,41 +2907,7 @@ function activateBufferedInputAfterGrab(player, rooms) {
     const fwdKey = player.facing === -1 ? 'd' : 'a';
     const backKey = player.facing === -1 ? 'a' : 'd';
     if (player.keys.s && player.keys[fwdKey] && canPlayerSlap(player, { ignoreCooldown: true })) {
-      player.chargeAttackPower = 0;
-      player.chargeStartTime = 0;
-      startCharging(player);
-      {
-        const holdRoom = rooms.find((r) => r.players.some((p) => p.id === player.id));
-        const holdOpp = holdRoom && holdRoom.players.find((p) => p.id !== player.id);
-        if (holdOpp && !player.atTheRopesFacingDirection) {
-          player.facing = facingTowardOpponent(player, holdOpp);
-        }
-      }
-      player.chargingFacingDirection = player.facing;
-      if (isActionFacingOwnershipV2Enabled()) {
-        const holdId = mintActionFacingInstanceId(
-          player,
-          ACTION_FACING_OWNER.CHARGE_HOLD
-        );
-        player.chargeFacingInstanceId = holdId;
-        acquireActionFacingLock(player, {
-          ownerType: ACTION_FACING_OWNER.CHARGE_HOLD,
-          ownerInstanceId: holdId,
-          direction: player.chargingFacingDirection,
-          reason: ACTION_FACING_REASON.CHARGE,
-          allowDirectionUpdate: false,
-          supersede: true,
-          syncLegacy: false,
-        });
-      }
-      player.movementVelocity = 0;
-      player.isStrafing = false;
-      player.isPowerSliding = false;
-      player.isBraking = false;
-      player.isRawParrySuccess = false;
-      player.isPerfectRawParrySuccess = false;
-      player.isCrouchStance = false;
-      player.isCrouchStrafing = false;
+      beginChargeHold(player, rooms);
     } else if (
       LOW_KICK_ENABLED &&
       player.keys.s &&
@@ -3076,56 +3070,14 @@ function executeInputBuffer(player, rooms) {
     }
     case "chargedAttack": {
       if (canPlayerSlap(player, { ignoreCooldown: true })) {
-        player.chargeAttackPower = 0;
-        player.chargeStartTime = 0;
-        startCharging(player);
-        {
-          const holdRoom = rooms.find((r) => r.players.some((p) => p.id === player.id));
-          const holdOpp = holdRoom && holdRoom.players.find((p) => p.id !== player.id);
-          if (holdOpp && !player.atTheRopesFacingDirection) {
-            player.facing = facingTowardOpponent(player, holdOpp);
-          }
-        }
-        player.chargingFacingDirection = player.facing;
-        if (isActionFacingOwnershipV2Enabled()) {
-          const holdId = mintActionFacingInstanceId(
-            player,
-            ACTION_FACING_OWNER.CHARGE_HOLD
-          );
-          player.chargeFacingInstanceId = holdId;
-          acquireActionFacingLock(player, {
-            ownerType: ACTION_FACING_OWNER.CHARGE_HOLD,
-            ownerInstanceId: holdId,
-            direction: player.chargingFacingDirection,
-            reason: ACTION_FACING_REASON.CHARGE,
-            allowDirectionUpdate: false,
-            supersede: true,
-            syncLegacy: false,
-          });
-        }
-        player.movementVelocity = 0;
-        player.isStrafing = false;
-        player.isPowerSliding = false;
-        player.isBraking = false;
-        player.isRawParrySuccess = false;
-        player.isPerfectRawParrySuccess = false;
-        player.isCrouchStance = false;
-        player.isCrouchStrafing = false;
+        beginChargeHold(player, rooms);
 
         // TAP CASE: mouse1 was pressed AND released while this buffer was
         // waiting (e.g. a quick S+forward+M1 tap during a slap). The release
         // handler already ran — it saw isChargingAttack false and did nothing —
-        // so no release edge remains to ever execute or end this charge.
-        // Without this, the player stands stranded in the charging stance,
-        // rooted in place, until some unrelated input packet clears it.
-        // Resolve it the way the release handler would have: fire the charged
-        // attack immediately at tap (minimum) power.
+        // so no release edge remains. Buffer the fire until min hold / hop land.
         if (!player.keys.mouse1) {
-          const tapCharge = player.chargeAttackPower || 1;
-          player.isChargingAttack = false;
-          player.chargeStartTime = 0;
-          player.chargingFacingDirection = null;
-          executeChargedAttack(player, tapCharge, rooms);
+          player.chargeReleaseBuffered = true;
         }
 
         player.inputBuffer = null;
@@ -3372,6 +3324,8 @@ module.exports = {
   executeLowKick,
   cleanupRoom,
   executeChargedAttack,
+  requestChargedAttackRelease,
+  flushBufferedChargeRelease,
   calculateEffectiveHitboxSize,
   handleReadyPositions,
   arePlayersColliding,

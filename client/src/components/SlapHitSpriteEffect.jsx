@@ -275,69 +275,86 @@ HitBurst.propTypes = {
   onDone: PropTypes.func.isRequired,
 };
 
+function asHitPositions(position) {
+  if (!position) return [];
+  return Array.isArray(position) ? position.filter(Boolean) : [position];
+}
+
+function hitKey(pos) {
+  if (!pos) return null;
+  return pos.hitId || pos.timestamp || null;
+}
+
+function resolveAttackType(position) {
+  const rawType = position.attackType || "slap";
+  // Palm thrust uses the bigger slapBurst variant of the slap spark sheet
+  // (it's attackType "charged" on the wire, so it must be routed explicitly).
+  // Belly bump stays attackType "slap" on the wire — route on the flag.
+  if (position.isPalmThrust) return "slapBurst";
+  if (position.slideSlap) return "slideSlap";
+  if (position.hitFromAir && rawType === "slap") return "slapBurst";
+  return rawType;
+}
+
+const slapHitPositionShape = PropTypes.shape({
+  x: PropTypes.number,
+  y: PropTypes.number,
+  facing: PropTypes.number,
+  seamAnchored: PropTypes.bool,
+  attackType: PropTypes.string,
+  hitId: PropTypes.string,
+  timestamp: PropTypes.number,
+  isPalmThrust: PropTypes.bool,
+  slideSlap: PropTypes.bool,
+  hitFromAir: PropTypes.bool,
+  isCounterHit: PropTypes.bool,
+  isPunish: PropTypes.bool,
+  isArmorBreak: PropTypes.bool,
+  isPowered: PropTypes.bool,
+  isRopeEdgeSlap: PropTypes.bool,
+  tradeId: PropTypes.string,
+});
+
 const SlapHitSpriteEffect = ({ position }) => {
   const [activeEffects, setActiveEffects] = useState([]);
   const processedHitsRef = useRef(new Set());
   const effectIdCounter = useRef(0);
 
-  const hitIdentifier = useMemo(() => {
-    if (!position) return null;
-    return position.hitId || position.timestamp;
-  }, [position?.hitId, position?.timestamp]);
+  const incoming = useMemo(() => asHitPositions(position), [position]);
+  const batchKey = incoming.map(hitKey).join("|");
 
   useEffect(() => {
-    if (!position || !hitIdentifier) return;
-    const rawType = position.attackType || "slap";
-    // Palm thrust uses the bigger slapBurst variant of the slap spark sheet
-    // (it's attackType "charged" on the wire, so it must be routed explicitly).
-    // Belly bump stays attackType "slap" on the wire — route on the flag.
-    const attackType = position.isPalmThrust
-      ? "slapBurst"
-      : position.slideSlap
-        ? "slideSlap"
-        : position.hitFromAir && rawType === "slap"
-          ? "slapBurst"
-          : rawType;
-    // Only render for moves that have a configured sheet.
-    if (!HIT_FX[attackType]) return;
-    if (processedHitsRef.current.has(hitIdentifier)) return;
-
-    processedHitsRef.current.add(hitIdentifier);
-    const id = ++effectIdCounter.current;
-    const effect = {
-      id,
-      hitId: hitIdentifier,
-      attackType,
-      x: position.x,
-      y: position.y,
-      facing: position.facing || 1,
-      seamAnchored: !!position.seamAnchored,
-      statusKey: resolveStatusKey(position),
-    };
-    setActiveEffects((prev) => [...prev, effect]);
-  }, [
-    hitIdentifier,
-    position?.x,
-    position?.y,
-    position?.facing,
-    position?.seamAnchored,
-    position?.attackType,
-    position?.isPalmThrust,
-    position?.slideSlap,
-    position?.hitFromAir,
-    position?.isCounterHit,
-    position?.isPunish,
-    position?.isArmorBreak,
-    position?.isPowered,
-    position?.isRopeEdgeSlap,
-  ]);
+    const fresh = [];
+    for (let i = 0; i < incoming.length; i++) {
+      const pos = incoming[i];
+      const hitIdentifier = hitKey(pos);
+      if (!hitIdentifier || processedHitsRef.current.has(hitIdentifier)) continue;
+      const attackType = resolveAttackType(pos);
+      if (!HIT_FX[attackType]) continue;
+      processedHitsRef.current.add(hitIdentifier);
+      if (processedHitsRef.current.size > 64) {
+        processedHitsRef.current.delete(
+          processedHitsRef.current.values().next().value
+        );
+      }
+      fresh.push({
+        id: ++effectIdCounter.current,
+        hitId: hitIdentifier,
+        attackType,
+        x: pos.x,
+        y: pos.y,
+        facing: pos.facing || 1,
+        seamAnchored: !!pos.seamAnchored,
+        statusKey: resolveStatusKey(pos),
+      });
+    }
+      if (fresh.length) setActiveEffects((prev) => [...prev, ...fresh]);
+  }, [batchKey, incoming]);
 
   const handleDone = (effectId) => {
-    setActiveEffects((prev) => {
-      const finished = prev.find((e) => e.id === effectId);
-      if (finished) processedHitsRef.current.delete(finished.hitId);
-      return prev.filter((e) => e.id !== effectId);
-    });
+    // Keep hitId in processedHitsRef. The parent may still pass old sparks
+    // in a queued list; deleting here re-spawns ghosts on the next hit.
+    setActiveEffects((prev) => prev.filter((e) => e.id !== effectId));
   };
 
   return (
@@ -350,30 +367,20 @@ const SlapHitSpriteEffect = ({ position }) => {
 };
 
 SlapHitSpriteEffect.propTypes = {
-  position: PropTypes.shape({
-    x: PropTypes.number,
-    y: PropTypes.number,
-    facing: PropTypes.number,
-    seamAnchored: PropTypes.bool,
-    attackType: PropTypes.string,
-    hitId: PropTypes.string,
-    timestamp: PropTypes.number,
-    isPalmThrust: PropTypes.bool,
-    slideSlap: PropTypes.bool,
-    hitFromAir: PropTypes.bool,
-    isCounterHit: PropTypes.bool,
-    isPunish: PropTypes.bool,
-    isArmorBreak: PropTypes.bool,
-    isPowered: PropTypes.bool,
-    isRopeEdgeSlap: PropTypes.bool,
-  }),
+  // Single spark, or a queued batch (mixed trades emit two player_hits in one
+  // tick — React 18 will collapse two setStates into the last object).
+  position: PropTypes.oneOfType([
+    slapHitPositionShape,
+    PropTypes.arrayOf(slapHitPositionShape),
+  ]),
 };
 
 export default memo(SlapHitSpriteEffect, (prevProps, nextProps) => {
-  if (!prevProps.position && !nextProps.position) return true;
-  if (!prevProps.position || !nextProps.position) return false;
-  return (
-    prevProps.position.hitId === nextProps.position.hitId &&
-    prevProps.position.timestamp === nextProps.position.timestamp
-  );
+  const prev = asHitPositions(prevProps.position);
+  const next = asHitPositions(nextProps.position);
+  if (prev.length !== next.length) return false;
+  for (let i = 0; i < prev.length; i++) {
+    if (hitKey(prev[i]) !== hitKey(next[i])) return false;
+  }
+  return true;
 });

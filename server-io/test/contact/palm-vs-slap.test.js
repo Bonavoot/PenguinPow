@@ -19,6 +19,18 @@ const {
   SLAP_ACTIVE_TEST_OFFSET,
 } = require("./helpers/contactSim");
 const {
+  createFoundationScenario,
+  advanceSim,
+  stepCollisionBothOrders,
+  placeAtGap,
+} = require("../foundation/helpers/scenarioHarness");
+const {
+  executeSlapAttack,
+  executePalmThrust,
+} = require("../../gameFunctions");
+const { getConnectDistance } = require("../../strikeContact");
+const { timeoutManager } = require("../../gameUtils");
+const {
   PALM_THRUST_STARTUP_MS,
   PALM_THRUST_ACTIVE_MS,
   PALM_VS_SLAP_TRADE_WINDOW_MS,
@@ -27,12 +39,16 @@ const {
   PALM_THRUST_POWER,
   CHARGE_PRIORITY_THRESHOLD,
   PALM_THRUST_KB_VELOCITY,
+  TICK_RATE,
 } = require("../../constants");
+
+const TICK_MS = 1000 / TICK_RATE;
 
 const scenarios = [];
 afterEach(() => {
   setCombatContactFidelityV2ForTests(null);
   while (scenarios.length) scenarios.pop().dispose();
+  timeoutManager.clearAll();
 });
 
 function sc(opts) {
@@ -156,6 +172,26 @@ describe("palm vs slap — timing priority / trade", () => {
       ) < 0.001,
       "slap attacker takes the heavier trade shove"
     );
+
+    const hits = hitPayloads(s.io).map((e) => e.payload);
+    const slapHit = hits.find((h) => h.attackType === "slap");
+    const palmHit = hits.find((h) => h.isPalmThrust === true);
+    assert.ok(slapHit && palmHit, "trade must emit both a slap hit and a palm hit");
+    assert.equal(slapHit.isTrade, true);
+    assert.equal(palmHit.isTrade, true);
+    assert.equal(slapHit.tradeFx, "mixed");
+    assert.equal(palmHit.tradeFx, "mixed");
+    assert.ok(slapHit.tradeId, "mixed trade must share a tradeId");
+    assert.equal(slapHit.tradeId, palmHit.tradeId);
+    assert.equal(slapHit.combatPresentation.profileId, "GS_SLAP_HIT");
+    assert.equal(palmHit.combatPresentation.profileId, "GS_PALM_HIT");
+    assert.notEqual(
+      slapHit.combatPresentation.facingHint,
+      palmHit.combatPresentation.facingHint,
+      "each spark must face its own attacker, not both the slap"
+    );
+    assert.equal(slapHit.attackerId, s.right.id);
+    assert.equal(palmHit.attackerId, s.left.id);
   });
 
   it("unilateral palm into tip-dead slap still lands (no fake priority needed)", () => {
@@ -180,5 +216,74 @@ describe("palm vs slap — timing priority / trade", () => {
     assert.equal(s.left.isHit, false);
     assert.equal(hitPayloads(s.io).length, 1);
     assert.equal(hitPayloads(s.io)[0].payload.isPalmThrust, true);
+  });
+});
+
+function scFoundation(opts) {
+  const s = createFoundationScenario(opts);
+  scenarios.push(s);
+  const dist = getConnectDistance("palm", s.left, s.right);
+  placeAtGap(s, Math.max(40, dist - 20));
+  return s;
+}
+
+function stepUntilHit(s, maxTicks = 16) {
+  for (let i = 0; i < maxTicks; i++) {
+    advanceSim(s, TICK_MS);
+    stepCollisionBothOrders(s);
+    if (hitPayloads(s.io).length) return i;
+  }
+  return -1;
+}
+
+describe("palm vs slap — live clocks (mash into a slap)", () => {
+  it("same-time press trades once palm goes active (grace + tick skip the startup CH slice)", () => {
+    setCombatContactFidelityV2ForTests(true);
+    const s = scFoundation({ gap: 110 });
+    executeSlapAttack(s.right, s.rooms);
+    executePalmThrust(s.left, s.rooms);
+
+    const tick = stepUntilHit(s);
+    assert.ok(tick >= 0, "pair must resolve");
+    const hits = hitPayloads(s.io).map((e) => e.payload);
+    assert.equal(hits.length, 2, "same-press is a mixed trade, not a clean CH");
+    assert.ok(hits.every((h) => h.isTrade));
+    assert.equal(s.left.isHit, true);
+    assert.equal(s.right.isHit, true);
+  });
+
+  it("palm one tick late is a slap counter-hit on palm startup — palm never connects", () => {
+    setCombatContactFidelityV2ForTests(true);
+    const s = scFoundation({ gap: 110 });
+    executeSlapAttack(s.right, s.rooms);
+    advanceSim(s, TICK_MS);
+    executePalmThrust(s.left, s.rooms);
+
+    stepUntilHit(s);
+    const hits = hitPayloads(s.io).map((e) => e.payload);
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].attackType, "slap");
+    assert.equal(hits[0].isCounterHit, true);
+    assert.ok(!hits[0].isTrade);
+    assert.equal(s.left.isHit, true);
+    assert.equal(s.right.isHit, false);
+    assert.equal(s.left.isPalmThrust, false);
+  });
+
+  it("slap two ticks late is a clean palm counter-hit — slap never connects", () => {
+    setCombatContactFidelityV2ForTests(true);
+    const s = scFoundation({ gap: 110 });
+    executePalmThrust(s.left, s.rooms);
+    advanceSim(s, TICK_MS);
+    advanceSim(s, TICK_MS);
+    executeSlapAttack(s.right, s.rooms);
+
+    stepUntilHit(s);
+    const hits = hitPayloads(s.io).map((e) => e.payload);
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].isPalmThrust, true);
+    assert.equal(hits[0].isCounterHit, true);
+    assert.equal(s.left.isHit, false);
+    assert.equal(s.right.isHit, true);
   });
 });

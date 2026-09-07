@@ -14,8 +14,13 @@ const {
   STRIKE_SKIN_EMBED_PX,
   SLAP_STARTUP_MS,
   CHARGED_STARTUP_MS,
+  CHARGED_LUNGE_BASE_SPEED,
+  CHARGED_LUNGE_POWER_SCALE,
+  CHARGED_HIT_RECOIL_MIN,
+  CHARGED_HIT_RECOIL_MAX,
   SLAP_TRADE_WINDOW_MS,
 } = require("./constants");
+const { isAirborneForGroundCollision } = require("./groundCollision");
 const {
   isCombatContactFidelityV2Enabled,
 } = require("./combatContactFidelityFlags");
@@ -23,6 +28,7 @@ const {
   getStrikeTipWorld,
   getVictimBodyHalf,
   getAttackDir,
+  getConnectDistance,
   CONTACT_SNAP_EPSILON,
 } = require("./strikeContact");
 const {
@@ -608,26 +614,175 @@ function resolveSlapVersusChargedPhysical(
   return true;
 }
 
+function isChargedCoil(player) {
+  return !!(
+    player &&
+    player.isAttacking &&
+    player.attackType === "charged" &&
+    !player.isPalmThrust &&
+    player.isInStartupFrames
+  );
+}
+
+function isChargedLungeTraveling(player) {
+  return !!(
+    player &&
+    player.isAttacking &&
+    player.attackType === "charged" &&
+    !player.isPalmThrust &&
+    !player.isInStartupFrames &&
+    !player.chargedAttackHit
+  );
+}
+
+function getChargedActiveMs(charged) {
+  if (!charged) return 1;
+  const start =
+    charged.startupEndTime ||
+    (charged.attackStartTime || 0) + CHARGED_STARTUP_MS;
+  const end = charged.chargedActiveEndTime || start + 1;
+  return Math.max(1, end - start);
+}
+
+/** Backward ice pop after connect. Opposite the lunge. Charge scales it. */
+function chargedHitRecoilVelocity(player) {
+  const pct = Number.isFinite(player && player.chargedReleasePower)
+    ? player.chargedReleasePower
+    : Number(player && player.chargeAttackPower) || 0;
+  const t = Math.max(0, Math.min(pct / 100, 1));
+  const speed =
+    CHARGED_HIT_RECOIL_MIN +
+    (CHARGED_HIT_RECOIL_MAX - CHARGED_HIT_RECOIL_MIN) * t;
+  return -getAttackDir(player) * speed;
+}
+
+function chargedLungeBaseSpeed(chargePower) {
+  return (
+    CHARGED_LUNGE_BASE_SPEED +
+    (Math.max(0, Math.min(chargePower || 0, 100)) / 100) *
+      CHARGED_LUNGE_POWER_SCALE
+  );
+}
+
+/**
+ * Active-only travel speed. Scaled so total distance ≈ old startup+active travel.
+ */
+function chargedLungeTravelSpeed(chargePower, activeMs) {
+  const base = chargedLungeBaseSpeed(chargePower);
+  const active = Math.max(1, activeMs || 1);
+  return base * ((CHARGED_STARTUP_MS + active) / active);
+}
+
+function chargedBodyConnectReach(charged, victim) {
+  return getConnectDistance("charged", charged, victim);
+}
+
 /**
  * Proposed charged lunge Δx for this tick (mirrors index.js formula, no side effects).
+ * Coil (startup) does not travel.
  */
 function proposedChargedLungeDelta(charged, delta, speedFactor) {
-  if (!isChargedHeadbuttActive(charged) && !(
-    charged &&
-    charged.isAttacking &&
-    charged.attackType === "charged" &&
-    !charged.isPalmThrust &&
-    !charged.chargedAttackHit
-  )) {
-    return 0;
-  }
-  if (charged.chargedAttackHit || charged.isPalmThrust || charged.isAtTheRopes) {
-    return 0;
-  }
+  if (!isChargedLungeTraveling(charged)) return 0;
+  if (charged.isAtTheRopes) return 0;
   const attackDirection = getAttackDir(charged);
-  const chargePower = charged.chargeAttackPower || 0;
-  const lungeSpeed = 1.5 + (chargePower / 100) * 5.5;
+  const lungeSpeed = chargedLungeTravelSpeed(
+    charged.chargeAttackPower || charged.chargedReleasePower || 0,
+    getChargedActiveMs(charged)
+  );
   return attackDirection * delta * speedFactor * lungeSpeed;
+}
+
+function lungePassThroughExempt(opponent) {
+  return !!(
+    !opponent ||
+    opponent.isDodging ||
+    opponent.isSidestepping ||
+    opponent.isBeingThrown ||
+    opponent.isThrowing ||
+    isAirborneForGroundCollision(opponent)
+  );
+}
+
+/**
+ * Plan one charged-lunge step. Never writes player.x.
+ * Never moves the attacker backward. Stops at first forehead-meets-body.
+ */
+function planChargedLungeTravel(charged, opponent, proposedX) {
+  const startX = charged.x;
+  const dir = getAttackDir(charged);
+  let x = proposedX;
+  if ((x - startX) * dir < -1e-9) x = startX;
+
+  const empty = {
+    x,
+    wouldConnect: false,
+    alreadyInside: false,
+    t: null,
+    contactX: null,
+  };
+
+  if (lungePassThroughExempt(opponent)) {
+    return empty;
+  }
+  if (!isFrontalToCharged(charged, opponent)) {
+    return empty;
+  }
+
+  const reach = chargedBodyConnectReach(charged, opponent);
+  const victimPrevX =
+    opponent._combatPrevX != null ? opponent._combatPrevX : opponent.x;
+  const victimCurrX = opponent.x;
+  const dist0 = Math.abs(startX - victimPrevX);
+  const dist1 = Math.abs(x - victimCurrX);
+  const t = earliestContactFraction(dist0, dist1, reach);
+  if (t == null) {
+    return empty;
+  }
+
+  const alreadyInside = t === 0;
+  const chargedAtT = startX + (x - startX) * t;
+  // Already overlapping: stay put (processHit parks the victim). Never pull back.
+  const outX = alreadyInside ? startX : chargedAtT;
+  const victimAtT = victimPrevX + (victimCurrX - victimPrevX) * t;
+  const contactX = surfaceX(outX, charged.facing, getChargedHeadDepth(charged));
+  return {
+    x: outX,
+    wouldConnect: true,
+    alreadyInside,
+    t,
+    contactX,
+    victimXAtContact: victimAtT,
+  };
+}
+
+/**
+ * During charged lunge integration: if the forehead meets a non-slap body
+ * this step, resolve the hit immediately. Slap-vs-charged stays on the
+ * Phase 13A path (caller tries that first).
+ */
+function tryResolveChargedLungeAgainstBody(
+  charged,
+  opponent,
+  rooms,
+  io,
+  {
+    proposedX,
+    processHit,
+    simTime,
+  }
+) {
+  if (!charged || charged.isPalmThrust || charged.chargedAttackHit) return false;
+  if (!isChargedLungeTraveling(charged)) return false;
+  if (!opponent || opponent.isDead) return false;
+  if (isSlapStrikeActive(opponent)) return false;
+
+  const plan = planChargedLungeTravel(charged, opponent, proposedX);
+  charged._combatPrevX = charged.x;
+  charged.x = plan.x;
+  if (!plan.wouldConnect) return false;
+  if (typeof processHit !== "function") return true;
+  processHit(charged, opponent, rooms, io);
+  return true;
 }
 
 /**
@@ -706,8 +861,17 @@ module.exports = {
   getSlapTipDepth,
   getActiveStartTime,
   isChargedHeadbuttActive,
+  isChargedCoil,
+  isChargedLungeTraveling,
+  chargedHitRecoilVelocity,
   isSlapStrikeActive,
   isFrontalToCharged,
+  chargedLungeBaseSpeed,
+  chargedLungeTravelSpeed,
+  getChargedActiveMs,
+  chargedBodyConnectReach,
+  planChargedLungeTravel,
+  tryResolveChargedLungeAgainstBody,
   frontalReachSlapToChargedBody,
   frontalReachChargedHeadToSlapBody,
   rearReachSlapToChargedBody,
