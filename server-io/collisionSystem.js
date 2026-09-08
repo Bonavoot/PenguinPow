@@ -196,6 +196,7 @@ const {
   resolveSlapVersusChargedPhysical,
   isChargedHeadbuttActive,
   chargedHitRecoilVelocity,
+  combatPrevX,
 } = require("./chargedHeadbuttContact");
 const {
   isActionLifecycleOwnershipV2Enabled,
@@ -1004,13 +1005,9 @@ function checkCollision(player, otherPlayer, rooms, io) {
             rooms,
             io,
             {
-              slapPrevX:
-                player._combatPrevX != null ? player._combatPrevX : player.x,
+              slapPrevX: combatPrevX(player),
               slapCurrX: player.x,
-              chargedPrevX:
-                otherPlayer._combatPrevX != null
-                  ? otherPlayer._combatPrevX
-                  : otherPlayer.x,
+              chargedPrevX: combatPrevX(otherPlayer),
               chargedCurrX: otherPlayer.x,
               processHit,
               resolveSlapChargedTrade,
@@ -1243,13 +1240,9 @@ function checkCollision(player, otherPlayer, rooms, io) {
             rooms,
             io,
             {
-              slapPrevX:
-                otherPlayer._combatPrevX != null
-                  ? otherPlayer._combatPrevX
-                  : otherPlayer.x,
+              slapPrevX: combatPrevX(otherPlayer),
               slapCurrX: otherPlayer.x,
-              chargedPrevX:
-                player._combatPrevX != null ? player._combatPrevX : player.x,
+              chargedPrevX: combatPrevX(player),
               chargedCurrX: player.x,
               processHit,
               resolveSlapChargedTrade,
@@ -3706,29 +3699,11 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         if (isCinematicKill) {
           otherPlayer.isCinematicKillVictim = true;
           otherPlayer.lastHitType = "cinematicKill";
-          // Cinematic KO: hold strike pose through the long freeze only, then
-          // settle. (0-delay fires first tick after hitstop — sim is frozen.)
-          player.isRecovering = false;
-          player.isAttacking = true;
-          player.attackType = "charged";
-          player.attackEndTime = 0;
-          player.chargedActiveEndTime = currentTime;
-          player.movementVelocity = 0;
-          player.isChargedHitRecoil = false;
-          player.chargedConnectPoseHold = false;
-          timeoutManager.clearPlayerSpecific(player.id, "chargedConnectPoseEnd");
-          timeoutManager.clearPlayerSpecific(player.id, "cinematicAttackerRecovery");
-          setPlayerTimeout(player.id, () => {
-            player.isAttacking = false;
-            player.attackType = null;
-            player.isRecovering = true;
-            player.recoveryStartTime = simNowForPlayer(player);
-            player.recoveryDuration = 400;
-            player.recoveryDirection = player.facing;
-            player.chargedAttackHit = false;
-            player.movementVelocity = 0;
-            player.y = GROUND_LEVEL;
-          }, 0, "cinematicAttackerRecovery");
+          // Attacker presentation stays on the charged connect-hold path:
+          // freeze forehead-on-body through the long cinematic hitstop, then
+          // the same ice recoil / CHARGED_HIT_RECOVERY_MS as a live connect.
+          // A second 0-delay recovery here raced safelyEndChargedAttack
+          // (attackEndTime = 0 + pose hold cleared) and dropped the HIT pose.
         }
 
         // MASTERY Phase 1 (1.3): a victim charging INTO a charged hit carries

@@ -4403,11 +4403,13 @@ const GameFighter = ({
           // Headbutt drops strike pose on connect — clear local attack predict.
           // Palm HOLDS the strike through hitstop/recovery; slap keeps its
           // anim cycle. Clearing isPalmThrust here flickered pocket palm poses.
+          // Cinematic KO keeps the flying-headbutt predict through the long
+          // freeze; the connect-hold + server recovery take over after.
           if (data.attackType === "charged" && !data.isPalmThrust) {
             predictedState.current = {
               ...predictedState.current,
-              isAttacking: false,
-              attackType: null,
+              isAttacking: !!data.cinematicKill,
+              attackType: data.cinematicKill ? "charged" : null,
               isChargingAttack: false,
               isInStartupFrames: false,
               isSlapAttack: false,

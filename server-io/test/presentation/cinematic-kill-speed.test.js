@@ -15,10 +15,12 @@ const assert = require("node:assert/strict");
 const {
   CINEMATIC_KILL_KNOCKBACK_BOOST,
   CINEMATIC_KILL_SPEED_CAP,
+  CHARGED_HIT_RECOVERY_MS,
   DELTA_TRACKED_PROPS,
   ALL_TRACKED_PROPS,
 } = require("../../constants");
-const { MAP_RIGHT_BOUNDARY } = require("../../gameUtils");
+const { MAP_RIGHT_BOUNDARY, timeoutManager } = require("../../gameUtils");
+const { chargedHitRecoilVelocity } = require("../../chargedHeadbuttContact");
 const MomentumTransfer = require("../../momentumTransfer");
 const {
   applyCinematicKillSpeed,
@@ -33,6 +35,7 @@ const {
 const scenarios = [];
 afterEach(() => {
   while (scenarios.length) scenarios.pop().dispose();
+  timeoutManager.clearAll();
 });
 
 function sc(opts) {
@@ -142,5 +145,30 @@ describe("charged cinematic kill flight speed", () => {
   it("ships isCinematicKillVictim on the fighter wire so the client can glide", () => {
     assert.ok(DELTA_TRACKED_PROPS.includes("isCinematicKillVictim"));
     assert.ok(ALL_TRACKED_PROPS.includes("isCinematicKillVictim"));
+  });
+
+  it("attacker freezes on the strike pose, then recoils like a live charged connect", () => {
+    const edge = landCharged(sc(), { power: 100, attackerX: MAP_RIGHT_BOUNDARY - 140 });
+    assert.equal(edge.right.isCinematicKillVictim, true);
+    assert.equal(edge.left.chargedConnectPoseHold, true);
+    assert.equal(edge.left.isAttacking, true);
+    assert.equal(edge.left.attackType, "charged");
+    assert.equal(edge.left.isRecovering, false);
+    assert.equal(edge.left.isChargedHitRecoil, false);
+
+    // First tick after the cinematic freeze — same connect-hold release as a live hit.
+    edge.room.hitstopUntil = 0;
+    timeoutManager.processRoom(edge.room);
+
+    assert.equal(edge.left.chargedConnectPoseHold, false);
+    assert.equal(edge.left.isAttacking, false);
+    assert.equal(edge.left.isRecovering, true);
+    assert.equal(edge.left.recoveryDuration, CHARGED_HIT_RECOVERY_MS);
+    assert.equal(edge.left.isChargedHitRecoil, true);
+    const expectedRecoil = chargedHitRecoilVelocity(edge.left);
+    assert.ok(
+      Math.abs(edge.left.movementVelocity - expectedRecoil) < 1e-6,
+      `recoil ${edge.left.movementVelocity} vs ${expectedRecoil}`
+    );
   });
 });

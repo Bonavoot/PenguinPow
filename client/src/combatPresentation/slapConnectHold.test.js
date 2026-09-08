@@ -65,7 +65,8 @@ describe("slapConnectHold", () => {
     assert.equal(isChargedConnectHoldEligible(chargedHit, VICTIM), false);
     assert.equal(
       isChargedConnectHoldEligible({ ...chargedHit, cinematicKill: true }, ATTACKER),
-      false
+      true,
+      "cinematic KO still freezes the flying-headbutt through slow-mo"
     );
     assert.equal(
       isChargedConnectHoldEligible({ ...chargedHit, isPalmThrust: true }, ATTACKER),
@@ -77,6 +78,21 @@ describe("slapConnectHold", () => {
     assert.equal(hold.kind, "charged");
     assert.equal(resolveSlapConnectHold(hold, 1000, 1180), true);
     assert.equal(resolveSlapConnectHold(hold, 1180, 1180), false);
+
+    const cineHold = createSlapConnectHold();
+    assert.equal(
+      armSlapConnectHold(
+        cineHold,
+        { ...chargedHit, hitId: "c2", cinematicKill: true },
+        ATTACKER,
+        2000,
+        2550
+      ),
+      true
+    );
+    assert.equal(cineHold.kind, "charged");
+    assert.equal(resolveSlapConnectHold(cineHold, 2300, 2550), true);
+    assert.equal(resolveSlapConnectHold(cineHold, 2550, 2550), false);
   });
 
   it("arms a landed palm so hitstop cannot freeze the smear", () => {

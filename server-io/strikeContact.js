@@ -215,10 +215,17 @@ function clampToRopeRest(x) {
  * outside→snap-back bug on rope barrages. Never write past rope rest; if the
  * rope ate the park, pull the attacker in to keep tip spacing instead.
  */
+/** Max air-gap a hit may pull the victim in. Tip parks are a few px;
+ *  a stale swept-contact must never vacuum them across the dohyo. */
+const MAX_HIT_PARK_PULL_PX = 48;
+
 function applyContactCorrection(attacker, victim, parkDist) {
   if (!attacker || !victim || !(parkDist > 0)) return false;
   const dx = victim.x - attacker.x;
   const current = Math.abs(dx);
+  if (current - parkDist > MAX_HIT_PARK_PULL_PX) {
+    return false;
+  }
   if (Math.abs(current - parkDist) <= CONTACT_SNAP_EPSILON) {
     // Still clamp — a prior unclamped write / coast can leave them past rest
     // inside the epsilon band.
@@ -382,6 +389,7 @@ module.exports = {
   getContactSeamX,
   clampToRopeRest,
   applyContactCorrection,
+  MAX_HIT_PARK_PULL_PX,
   applyAirHitContactCorrection,
   enforceStrikeExtensionSeparation,
   attackKindFromPlayer,

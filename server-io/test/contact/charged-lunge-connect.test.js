@@ -20,7 +20,11 @@ const {
   isChargedCoil,
   isChargedLungeTraveling,
 } = require("../../chargedHeadbuttContact");
-const { getConnectDistance } = require("../../strikeContact");
+const {
+  getConnectDistance,
+  applyContactCorrection,
+  MAX_HIT_PARK_PULL_PX,
+} = require("../../strikeContact");
 const {
   CHARGED_STARTUP_MS,
   CHARGED_ACTIVE_MIN_MS,
@@ -127,6 +131,46 @@ describe("planChargedLungeTravel — never backward, hit on first contact", () =
     const plan = planChargedLungeTravel(s.left, s.right, startX + 20);
     assert.equal(plan.wouldConnect, false);
     assert.equal(plan.x, startX + 20);
+  });
+
+  it("ignores a leftover _combatPrevX from an old lunge (no mid-map vacuum)", () => {
+    const s = sc({ gap: 80 });
+    const now = s.room.simTime;
+    armCharged(s.left, { power: 80, now });
+    const reach = getConnectDistance("charged", s.left, s.right);
+    // Charger stands near mid-map. Victim is actually far to the right.
+    s.left.x = 640;
+    s.right.x = 640 + reach + 220;
+    // Stale prev from a previous lunge — unstamped, so it must be ignored.
+    s.right._combatPrevX = 640;
+    s.right._combatPrevTick = null;
+    const startX = s.left.x;
+    const plan = planChargedLungeTravel(s.left, s.right, startX + 24);
+    assert.equal(plan.wouldConnect, false);
+    assert.equal(plan.x, startX + 24);
+  });
+
+  it("a stamped same-tick prev still allows a real close this step", () => {
+    const s = sc({ gap: 220 });
+    const now = s.room.simTime;
+    armCharged(s.left, { power: 80, now });
+    const reach = getConnectDistance("charged", s.left, s.right);
+    s.left.x = s.right.x - (reach + 20);
+    s.right._combatPrevX = s.right.x;
+    s.right._combatPrevTick = now;
+    const plan = planChargedLungeTravel(s.left, s.right, s.right.x - 10);
+    assert.equal(plan.wouldConnect, true);
+  });
+});
+
+describe("applyContactCorrection must not vacuum", () => {
+  it("refuses to pull a victim from across the dohyo", () => {
+    const attacker = { x: 640, facing: -1 };
+    const victim = { x: 640 + 280, facing: 1 };
+    const moved = applyContactCorrection(attacker, victim, 130);
+    assert.equal(moved, false);
+    assert.equal(victim.x, 640 + 280);
+    assert.ok(280 - 130 > MAX_HIT_PARK_PULL_PX);
   });
 });
 

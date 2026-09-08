@@ -34,14 +34,13 @@ export const isSlapConnectHoldEligible = (data, playerId) =>
   !data.isPalmThrust &&
   !data.cinematicKill;
 
-/** Flying headbutt — freeze forehead-on-body through hitstop. */
+/** Flying headbutt — freeze forehead-on-body through hitstop (incl. cinematic). */
 export const isChargedConnectHoldEligible = (data, playerId) =>
   !!data &&
   !!playerId &&
   data.attackerId === playerId &&
   data.attackType === "charged" &&
-  !data.isPalmThrust &&
-  !data.cinematicKill;
+  !data.isPalmThrust;
 
 /** Same hold for a landed palm — freeze must show palm-thrust.png, never smear. */
 export const isPalmConnectHoldEligible = (data, playerId) =>

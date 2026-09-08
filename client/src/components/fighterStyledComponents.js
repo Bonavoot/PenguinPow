@@ -1057,6 +1057,11 @@ export const StyledImage = styled("img")
         ? "powerSlide 0.15s ease-in-out infinite"
         : props.$isChargingAttack && !props.$isChargeHopping && !props.$isReady
         ? "chargeShake 0.08s linear infinite"
+        // DEMOLISHED: hold the HIT sprite still through the cinematic freeze.
+        // attackPunch has no forwards fill — after 0.2s it snaps back, which
+        // reads as a twitch during the 550ms slow-mo.
+        : props.$isCinematicKillAttacker
+        ? "none"
         : props.$isAttacking && !props.$isSlapAttack
         ? "attackPunch 0.2s ease-out"
         : props.$bellyBumpSwing

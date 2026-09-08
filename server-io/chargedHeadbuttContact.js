@@ -707,6 +707,29 @@ function lungePassThroughExempt(opponent) {
  * Plan one charged-lunge step. Never writes player.x.
  * Never moves the attacker backward. Stops at first forehead-meets-body.
  */
+/**
+ * Same-tick root snapshot. `_combatPrevX` without `_combatPrevTick` is a
+ * leftover from an older lunge and must not be swept as this step's path
+ * (that vacuums the victim to a phantom mid-map contact).
+ */
+function stampCombatPrevRoots(players, simTime) {
+  if (!players) return;
+  for (let i = 0; i < players.length; i++) {
+    const p = players[i];
+    if (!p) continue;
+    p._combatPrevX = p.x;
+    p._combatPrevTick = simTime;
+  }
+}
+
+function combatPrevX(player) {
+  if (!player) return 0;
+  if (player._combatPrevX == null || player._combatPrevTick == null) {
+    return player.x;
+  }
+  return player._combatPrevX;
+}
+
 function planChargedLungeTravel(charged, opponent, proposedX) {
   const startX = charged.x;
   const dir = getAttackDir(charged);
@@ -729,9 +752,15 @@ function planChargedLungeTravel(charged, opponent, proposedX) {
   }
 
   const reach = chargedBodyConnectReach(charged, opponent);
-  const victimPrevX =
-    opponent._combatPrevX != null ? opponent._combatPrevX : opponent.x;
   const victimCurrX = opponent.x;
+  const liveDist = Math.abs(startX - victimCurrX);
+  const step = Math.abs(x - startX);
+  // Stale prev can claim "already inside" at a ghost X. If we cannot reach
+  // their LIVE root this step, there is no connect.
+  if (liveDist > reach + step + CONTACT_SNAP_EPSILON) {
+    return empty;
+  }
+  const victimPrevX = combatPrevX(opponent);
   const dist0 = Math.abs(startX - victimPrevX);
   const dist1 = Math.abs(x - victimCurrX);
   const t = earliestContactFraction(dist0, dist1, reach);
@@ -818,8 +847,7 @@ function tryResolveChargedLungeAgainstSlap(
 
   const chargedPrevX = charged.x;
   const chargedCurrX = proposedX;
-  const slapPrevX =
-    opponent._combatPrevX != null ? opponent._combatPrevX : opponent.x;
+  const slapPrevX = combatPrevX(opponent);
   const slapCurrX = opponent.x;
 
   return resolveSlapVersusChargedPhysical(opponent, charged, rooms, io, {
@@ -870,6 +898,8 @@ module.exports = {
   chargedLungeTravelSpeed,
   getChargedActiveMs,
   chargedBodyConnectReach,
+  stampCombatPrevRoots,
+  combatPrevX,
   planChargedLungeTravel,
   tryResolveChargedLungeAgainstBody,
   frontalReachSlapToChargedBody,

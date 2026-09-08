@@ -308,6 +308,7 @@ const {
   chargedLungeTravelSpeed,
   getChargedActiveMs,
   planChargedLungeTravel,
+  stampCombatPrevRoots,
 } = require("./chargedHeadbuttContact");
 const { refreshPalmLimbExtended } = require("./authoredSlapHurtTarget");
 const {
@@ -827,6 +828,8 @@ function tick(delta) {
         !player2.isGrabbing &&
         !player1.isBeingGrabbed &&
         !player2.isBeingGrabbed;
+      stampCombatPrevRoots(room.players, room.simTime);
+
       if ((!room.gameOver || forceOutIdlePushbox) && arePlayersColliding(player1, player2)) {
         adjustPlayerPositions(player1, player2, delta);
       }
