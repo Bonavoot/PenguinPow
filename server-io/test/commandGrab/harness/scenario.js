@@ -14,7 +14,8 @@
 const {
   TICK_RATE,
   CLINCH_ATTACHED_DISTANCE,
-  CLINCH_THROW_KILL_THRESHOLD,
+  CMD_GRAB_LATCH_MS,
+  CMD_GRAB_LATCH_MIN_COMMIT_MS,
 } = require("../../../constants");
 const {
   createInitialPlayerState,
@@ -30,7 +31,6 @@ const {
 const {
   beginCommandGrab,
   updateCommandGrab,
-  connectStartupMsFor,
 } = require("../../../commandGrabSystem");
 const { createMockIo } = require("../../helpers/mockIo");
 
@@ -44,7 +44,7 @@ function blankKeys(overrides = {}) {
 
 /**
  * Build a grab that has just connected: P1 grabber (left), P2 victim (right).
- * `variant` is the locked selection, exactly as index.js would hand it over.
+ * `variant` is the intended aim (held during the latch), not a pre-lock.
  * `midX` positions the PAIR, so edge tests can place the victim near a rope.
  */
 function createCommandGrabScenario(options = {}) {
@@ -100,8 +100,8 @@ function createCommandGrabScenario(options = {}) {
   victim.inClinch = true;
   victim.gripAcquiredTime = startSim;
 
-  grabber.grabVariant = options.variant || "drive";
-  grabber.grabVariantLocked = true;
+  grabber.grabVariant = null;
+  grabber.grabVariantLocked = false;
 
   const io = createMockIo();
   const room = {
@@ -134,8 +134,17 @@ function createCommandGrabScenario(options = {}) {
     tickMs: options.tickMs != null ? options.tickMs : DEFAULT_TICK_MS,
 
     /** Fire the connect beat (what index.js does on a successful grab). */
+    aim(variant) {
+      const pick = variant || options.variant || "drive";
+      grabber.keys = blankKeys();
+      if (pick === "throw") grabber.keys.w = true;
+      if (pick === "pull") grabber.keys.a = true; // grabber is on the left
+      return scenario;
+    },
+
     connect() {
       beginCommandGrab(grabber, victim, room, io);
+      scenario.aim(options.variant);
       room.hitstopUntil = 0;
       return scenario;
     },
@@ -196,13 +205,12 @@ function createCommandGrabScenario(options = {}) {
 
     settledAttach,
 
-    // The read beat is per-variant (Drive has none) and longer on a kill
-    // connect, so tests ask the scenario rather than hard-coding a number.
-    startupMs: connectStartupMsFor(
-      options.variant || "drive",
-      (options.variant || "drive") !== "drive" &&
-        (options.p2Balance ?? 100) < CLINCH_THROW_KILL_THRESHOLD
-    ),
+    latchMs: CMD_GRAB_LATCH_MS,
+    // Pull/Throw commit at the min; Drive waits the full handshake.
+    startupMs:
+      options.variant === "throw" || options.variant === "pull"
+        ? CMD_GRAB_LATCH_MIN_COMMIT_MS
+        : CMD_GRAB_LATCH_MS,
 
     /**
      * Advance just far enough for the variant to resolve. Always at least one tick:

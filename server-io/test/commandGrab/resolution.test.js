@@ -1,17 +1,15 @@
 "use strict";
 
 /**
- * Command grab — connect beat, variant resolution, and lethality.
+ * Command grab — connect latch, variant resolution, and lethality.
  *
- * Shape under test:
- *   connect → STARTUP (per-variant read beat; Drive has none) → resolve
+ *   connect → LATCH (aim) → resolve
  *
- * The STARTUP beat is uninterruptible: there is no post-connect Grab Break and no
- * Brace, so nothing may cancel it and nothing may change the outcome after connect.
- *
- * Lethality is one rule for all three variants — posture below the threshold AT
- * CONNECT ends the round — and it is a property of the victim's posture, never of
- * the attacker's strength, so a gassed attacker keeps every kill.
+ * Drive waits the full latch. Pull/Throw may commit after the min.
+ * Throw kills when posture is already below the line AND the toss would
+ * land past the tawara. Pull predicts a trip when posture is below the
+ * line AND the yank hits the clamp behind you; the belly-slide waits until
+ * they actually reach the map line.
  */
 
 const test = require("node:test");
@@ -19,24 +17,34 @@ const assert = require("node:assert/strict");
 
 const { createCommandGrabScenario } = require("./harness/scenario");
 const { profileFor } = require("../../momentumTransfer");
-const { grabTellAnimMs } = require("../../commandGrabSystem");
 const {
-  CMD_DRIVE_CINCH_FRACTION,
+  grabTellAnimMs,
+  throwTravelPx,
+  pullTravelPx,
+  getPullBoundaryRead,
+  shouldKillPull,
+  maybeArmPullTrip,
+} = require("../../commandGrabSystem");
+const { correctFacingAfterGrabOrThrow } = require("../../grabMechanics");
+const { facingTowardOpponent } = require("../../facingSystem");
+const {
   CMD_GRAB_CINCH_MS,
   CMD_GRAB_STAMINA_COST,
   CMD_DRIVE_POSTURE_CHIP,
   CMD_PULL_POSTURE_CHIP,
   CMD_THROW_POSTURE_CHIP,
+  CMD_GRAB_LATCH_MS,
+  CMD_GRAB_LATCH_MIN_COMMIT_MS,
   CLINCH_THROW_KILL_THRESHOLD,
-  CLINCH_THROW_DISTANCE_MIN,
-  CLINCH_THROW_DISTANCE_MAX,
+  CMD_PULL_KILL_CLAMP_ROOM_PX,
   GRAB_RANGE,
 } = require("../../constants");
+const { MAP_LEFT_BOUNDARY, MAP_RIGHT_BOUNDARY } = require("../../gameUtils");
 
 test("command grab connect beat", async (t) => {
-  await t.test("connect opens the belt-grip read on both fighters", () => {
+  await t.test("connect opens the belt latch on both fighters", () => {
     const s = createCommandGrabScenario({ variant: "drive" }).connect();
-    assert.equal(s.grabber.cmdGrabPhase, "startup");
+    assert.equal(s.grabber.cmdGrabPhase, "latch");
     assert.equal(s.grabber.isClinchBeltHolding, true);
     assert.equal(s.victim.isClinchBeltHolding, true);
     assert.equal(s.grabber.hasGrip, true);
@@ -55,7 +63,7 @@ test("command grab connect beat", async (t) => {
     );
   });
 
-  await t.test("each variant chips posture by its own amount", () => {
+  await t.test("each variant chips posture on resolve, not connect", () => {
     const cases = [
       ["drive", CMD_DRIVE_POSTURE_CHIP],
       ["pull", CMD_PULL_POSTURE_CHIP],
@@ -63,27 +71,29 @@ test("command grab connect beat", async (t) => {
     ];
     for (const [variant, chip] of cases) {
       const s = createCommandGrabScenario({ variant, p2Balance: 100 }).connect();
+      assert.equal(s.victim.balance, 100, `${variant} must not chip on connect`);
+      s.resolveNow();
       assert.equal(s.victim.balance, 100 - chip, `${variant} chip`);
     }
   });
 
-  await t.test("startup poses match the locked variant", () => {
+  await t.test("latch poses follow the aimed variant", () => {
     const drive = createCommandGrabScenario({ variant: "drive" }).connect();
+    drive.advance(drive.tickMs);
     assert.equal(drive.grabber.isClinchPushing, true);
     assert.equal(drive.grabber.isAttemptingGrabThrow, false);
     assert.equal(drive.grabber.isAttemptingPull, false);
 
     const throwS = createCommandGrabScenario({ variant: "throw" }).connect();
+    throwS.advance(throwS.tickMs);
     assert.equal(throwS.grabber.isAttemptingGrabThrow, true);
 
     const pull = createCommandGrabScenario({ variant: "pull" }).connect();
+    pull.advance(pull.tickMs);
     assert.equal(pull.grabber.isAttemptingPull, true);
   });
 
   await t.test("the held victim shows the belt grip, never the generic hit pose", () => {
-    // isResistingThrow / isResistingPull resolve to `hit` on the client, which was
-    // right when there was something to resist. Nothing is resisted now — the victim
-    // is simply held — so those must stay clear and let the grip body win.
     for (const variant of ["drive", "throw", "pull"]) {
       const s = createCommandGrabScenario({ variant }).connect();
       assert.equal(s.victim.isResistingThrow, false, `${variant}: no resist-throw`);
@@ -93,8 +103,6 @@ test("command grab connect beat", async (t) => {
   });
 
   await t.test("the carry tells pusher from pushed by posture", () => {
-    // The core readability fix: both fighters used to resolve to the same hunched
-    // grabbing body, so a drive looked like two identical sprites gliding sideways.
     const s = createCommandGrabScenario({ variant: "drive", p2Balance: 100 });
     s.connect().resolveNow();
     assert.equal(s.grabber.cmdGrabPhase, "carry");
@@ -106,12 +114,12 @@ test("command grab connect beat", async (t) => {
     assert.equal(s.victim.isBeingGrabPushed, true);
   });
 
-  await t.test("the grabber holds position through the read beat", () => {
-    const s = createCommandGrabScenario({ variant: "throw" }).connect();
+  await t.test("the grabber holds position through the latch", () => {
+    const s = createCommandGrabScenario({ variant: "drive" }).connect();
     const gx = s.grabber.x;
     const gap = s.gap();
     s.advance(s.startupMs - 20);
-    assert.equal(s.grabber.cmdGrabPhase, "startup");
+    assert.equal(s.grabber.cmdGrabPhase, "latch");
     assert.ok(Math.abs(s.grabber.x - gx) < 0.001, "grabber must not drift");
     assert.ok(
       Math.abs(s.gap() - gap) < 0.001,
@@ -120,11 +128,8 @@ test("command grab connect beat", async (t) => {
   });
 
   await t.test("a far connect cinches fast, then holds — never snaps, never drifts", () => {
-    // A grab can connect anywhere inside GRAB_RANGE while grip spacing is ~61px.
-    // Closing that instantly would teleport. Stretching it across the whole tell
-    // made the pair glide together like magnets. Cinch has its own short beat.
     const farGap = GRAB_RANGE - 1;
-    const s = createCommandGrabScenario({ variant: "throw", connectGap: farGap });
+    const s = createCommandGrabScenario({ variant: "drive", connectGap: farGap });
     s.connect();
     assert.ok(
       Math.abs(s.gap() - farGap) < 0.001,
@@ -147,134 +152,39 @@ test("command grab connect beat", async (t) => {
       Math.abs(s.gap() - s.settledAttach) < 6,
       `grip should be closed by the cinch beat, got ${s.gap()} vs ${s.settledAttach}`
     );
-    assert.equal(s.grabber.cmdGrabPhase, "startup", "tell continues after the grip is closed");
+    assert.equal(s.grabber.cmdGrabPhase, "latch", "latch continues after the grip is closed");
 
     const heldGap = s.gap();
     s.advance(s.startupMs - CMD_GRAB_CINCH_MS - s.tickMs - 16);
-    if (s.grabber.cmdGrabPhase === "startup") {
+    if (s.grabber.cmdGrabPhase === "latch") {
       assert.ok(
         Math.abs(s.gap() - heldGap) < 1,
-        `once cinched, spacing must hold through the rest of the tell, got ${s.gap()} vs ${heldGap}`
+        `once cinched, spacing must hold through the rest of the latch, got ${s.gap()} vs ${heldGap}`
       );
     }
   });
 
-  await t.test("resolution waits for the full startup, then fires", () => {
-    const s = createCommandGrabScenario({ variant: "throw" }).connect();
-    s.advance(s.startupMs - 16);
-    assert.equal(s.grabber.isThrowing, false, "must not resolve early");
-    s.advance(32);
-    assert.equal(s.grabber.isThrowing, true);
-  });
-
-  await t.test("Drive has NO read beat — the shove starts immediately", () => {
-    // A pause before a shove reads as the game hitching, and it would flatten any
-    // future scaling of the carry off approach speed.
-    const s = createCommandGrabScenario({ variant: "drive" }).connect();
-    assert.equal(s.startupMs, 0, "drive must have no startup beat");
-    s.advance(s.tickMs);
-    assert.equal(
-      s.grabber.cmdGrabPhase,
-      "carry",
-      "the very first tick after connect should already be carrying"
-    );
-  });
-
-  await t.test("Drive closes its grip on the move, not in a pause", () => {
-    // With no startup beat there is nowhere to cinch, so it happens during the carry.
-    // A far connect must still never snap the victim inward.
-    const s = createCommandGrabScenario({ variant: "drive", connectGap: 140 });
-    s.connect();
-    s.advance(s.tickMs);
-    const firstTickGap = s.gap();
-    assert.ok(
-      firstTickGap > s.settledAttach + 20,
-      `grip must still be open on the first carry tick, got ${firstTickGap}`
-    );
-    s.advance(s.grabber.cmdGrabCarryDuration * CMD_DRIVE_CINCH_FRACTION);
-    assert.ok(
-      Math.abs(s.gap() - s.settledAttach) < 6,
-      `grip should be closed by the end of the cinch slice, got ${s.gap()}`
-    );
-  });
-
-  await t.test("Pull keeps a short beat; Throw keeps a longer one", () => {
-    const pull = createCommandGrabScenario({ variant: "pull" });
-    const throwS = createCommandGrabScenario({ variant: "throw" });
-    assert.ok(pull.startupMs > 0, "the yank windup needs to register");
-    assert.ok(
-      throwS.startupMs > pull.startupMs,
-      "the throw is the finisher and earns the longer look"
-    );
-  });
-
-  await t.test("the client tell duration is stamped on connect", () => {
+  await t.test("Drive waits the full latch; Pull/Throw may commit at the min", () => {
     const drive = createCommandGrabScenario({ variant: "drive" }).connect();
-    assert.equal(
-      drive.grabber.clinchThrowAnimMs,
-      0,
-      "a shove has no windup to pace"
-    );
-
-    const pull = createCommandGrabScenario({ variant: "pull" }).connect();
-    assert.equal(pull.grabber.clinchThrowAnimMs, grabTellAnimMs("pull", false));
-    assert.ok(
-      pull.grabber.clinchThrowAnimMs > pull.startupMs,
-      "CSS runs during hitstop, so the tell must cover freeze + startup"
-    );
+    drive.advance(CMD_GRAB_LATCH_MIN_COMMIT_MS);
+    assert.equal(drive.grabber.cmdGrabPhase, "latch", "drive must not early-commit");
+    drive.advance(CMD_GRAB_LATCH_MS - CMD_GRAB_LATCH_MIN_COMMIT_MS + drive.tickMs);
+    assert.equal(drive.grabber.cmdGrabPhase, "carry");
 
     const throwS = createCommandGrabScenario({ variant: "throw" }).connect();
-    assert.equal(throwS.grabber.clinchThrowAnimMs, grabTellAnimMs("throw", false));
+    throwS.advance(CMD_GRAB_LATCH_MIN_COMMIT_MS - 16);
+    assert.equal(throwS.grabber.isThrowing, false, "must not resolve before the min");
+    throwS.advance(32);
+    assert.equal(throwS.grabber.isThrowing, true);
   });
 
-  await t.test("kill grabs hold the tell longer than non-kills", () => {
-    const healthy = createCommandGrabScenario({
-      variant: "throw",
-      p2Balance: 100,
-    });
-    const lethal = createCommandGrabScenario({
-      variant: "throw",
-      p2Balance: CLINCH_THROW_KILL_THRESHOLD - 1,
-    });
-    assert.ok(
-      lethal.startupMs > healthy.startupMs,
-      `kill throw tell ${lethal.startupMs} must outlast non-kill ${healthy.startupMs}`
-    );
+  await t.test("the client tell duration covers freeze + latch", () => {
+    const drive = createCommandGrabScenario({ variant: "drive" }).connect();
+    assert.equal(drive.grabber.clinchThrowAnimMs, grabTellAnimMs("drive", false));
 
-    const healthyPull = createCommandGrabScenario({
-      variant: "pull",
-      p2Balance: 100,
-    });
-    const lethalPull = createCommandGrabScenario({
-      variant: "pull",
-      p2Balance: CLINCH_THROW_KILL_THRESHOLD - 1,
-    });
-    assert.ok(lethalPull.startupMs > healthyPull.startupMs);
-
-    lethal.connect();
-    assert.equal(lethal.grabber.clinchThrowAnimMs, grabTellAnimMs("throw", true));
-    assert.equal(lethal.grabber.cmdGrabIsKill, true);
-  });
-
-  await t.test("pull keeps the tell duration through the yank; throw drops it", () => {
-    const pull = createCommandGrabScenario({ variant: "pull", p2Balance: 100 });
-    pull.connect().resolveNow();
-    assert.equal(
-      pull.grabber.clinchThrowAnimMs,
-      grabTellAnimMs("pull", false),
-      "restarting the 600ms fallback mid-yank would replay the windup"
-    );
-
-    const throwS = createCommandGrabScenario({
-      variant: "throw",
-      p2Balance: 100,
-    });
-    throwS.connect().resolveNow();
-    assert.equal(
-      throwS.grabber.clinchThrowAnimMs,
-      0,
-      "the thrower leaves the windup pose for the arc"
-    );
+    const pull = createCommandGrabScenario({ variant: "pull" }).connect();
+    pull.advance(pull.tickMs);
+    assert.equal(pull.grabber.clinchThrowAnimMs, grabTellAnimMs("pull", false));
   });
 });
 
@@ -294,59 +204,78 @@ test("command grab throw resolution", async (t) => {
     assert.equal(s.grabber.cmdGrabPhase, null, "phase machine must release");
   });
 
-  await t.test("throw travel scales with the victim's posture", () => {
+  await t.test("throw dumps to a fixed setup spot, posture only juices", () => {
     const healthy = createCommandGrabScenario({ variant: "throw", p2Balance: 100 });
     healthy.connect().resolveNow();
-    const battered = createCommandGrabScenario({ variant: "throw", p2Balance: 30 });
+    const battered = createCommandGrabScenario({ variant: "throw", p2Balance: 20 });
     battered.connect().resolveNow();
-    assert.ok(
-      battered.grabber.clinchThrowArcDistance >
-        healthy.grabber.clinchThrowArcDistance,
-      "a battered opponent must travel further from the same input"
+    assert.equal(
+      healthy.grabber.clinchThrowArcDistance,
+      battered.grabber.clinchThrowArcDistance,
+      "setup throw land is authored — posture must not move X"
     );
-    assert.ok(
-      healthy.grabber.clinchThrowArcDistance >= profileFor("throw").floor - 1,
-      "throw arc uses the momentum profile floor"
+    assert.equal(
+      healthy.grabber.clinchThrowArcDistance,
+      profileFor("throw").floor
     );
-    assert.ok(battered.grabber.clinchThrowArcDistance <= CLINCH_THROW_DISTANCE_MAX);
+    assert.equal(healthy.grabber.throwSetupChase, true);
+    assert.equal(healthy.grabber.throwRicochet, false);
+    assert.ok(healthy.victim.throwTossPower < battered.victim.throwTossPower);
   });
 
-  await t.test("throw is lethal below the threshold at connect", () => {
+  await t.test("a mid-ring throw is not lethal even at 0 posture", () => {
     const s = createCommandGrabScenario({
       variant: "throw",
       p2Balance: CLINCH_THROW_KILL_THRESHOLD - 1,
+    });
+    s.connect().resolveNow();
+    assert.equal(
+      s.grabber.isClinchKillThrow,
+      false,
+      "centre-to-rope is longer than a max toss"
+    );
+    assert.equal(s.grabber.isThrowing, true);
+  });
+
+  await t.test("throw is lethal when posture is broken AND the land is out", () => {
+    const s = createCommandGrabScenario({
+      variant: "throw",
+      p2Balance: CLINCH_THROW_KILL_THRESHOLD - 1,
+      midX: MAP_RIGHT_BOUNDARY - 40,
     });
     s.connect().resolveNow();
     assert.equal(s.grabber.isClinchKillThrow, true);
     assert.equal(s.victim.isClinchKillThrowVictim, true);
   });
 
+  await t.test("high posture near the rope does not convert a toss into a kill", () => {
+    const s = createCommandGrabScenario({
+      variant: "throw",
+      p2Balance: 100,
+      midX: MAP_RIGHT_BOUNDARY - 40,
+    });
+    s.connect().resolveNow();
+    assert.equal(s.grabber.isClinchKillThrow, false);
+    assert.equal(s.grabber.throwRicochet, true, "healthy rope throw must bounce, not clamp");
+    assert.ok(
+      s.grabber.throwLandX < MAP_RIGHT_BOUNDARY,
+      "ricochet land stays in play"
+    );
+  });
+
   await t.test("lethality reads posture at connect, not after the chip", () => {
-    // Posture sits just above the line; the variant's own chip pushes it under.
-    // The kill must NOT trigger — otherwise the advertised danger line would move
-    // under the player between committing and connecting.
     const above = CLINCH_THROW_KILL_THRESHOLD + 1;
     assert.ok(
       above - CMD_THROW_POSTURE_CHIP < CLINCH_THROW_KILL_THRESHOLD,
       "fixture must actually straddle the line"
     );
-    const s = createCommandGrabScenario({ variant: "throw", p2Balance: above });
-    s.connect().resolveNow();
-    assert.equal(s.grabber.isClinchKillThrow, false);
-  });
-
-  await t.test("a gassed attacker still kills", () => {
     const s = createCommandGrabScenario({
       variant: "throw",
-      p1Gassed: true,
-      p2Balance: CLINCH_THROW_KILL_THRESHOLD - 1,
+      p2Balance: above,
+      midX: MAP_RIGHT_BOUNDARY - 40,
     });
     s.connect().resolveNow();
-    assert.equal(
-      s.grabber.isClinchKillThrow,
-      true,
-      "lethality belongs to the victim's posture, not the attacker's tank"
-    );
+    assert.equal(s.grabber.isClinchKillThrow, false);
   });
 });
 
@@ -358,6 +287,7 @@ test("command grab pull resolution", async (t) => {
     assert.equal(s.victim.pullReversalPullerId, s.grabber.id);
     assert.equal(s.victim.isGrabBreakSeparating, true);
     assert.ok(s.victim.grabBreakSepDuration > 0);
+    assert.equal(s.victim.grabBreakSepCurve, "yank");
     assert.equal(s.grabber.isAttemptingPull, true, "yank pose must be re-armed");
     assert.equal(s.grabber.cmdGrabPhase, null);
   });
@@ -367,17 +297,9 @@ test("command grab pull resolution", async (t) => {
     s.connect().resolveNow();
     const yank = s.victim.grabBreakSepDuration;
     assert.ok(yank > 0, "the yank must still exist");
-    assert.equal(
-      s.grabber.actionLockUntil,
-      s.victim.actionLockUntil,
-      "the puller must not be jailed after the victim is free"
-    );
+    assert.equal(s.grabber.actionLockUntil, s.victim.actionLockUntil);
     assert.equal(s.grabber.inputLockUntil, s.victim.inputLockUntil);
-    assert.equal(
-      s.grabber.actionLockUntil,
-      s.room.simTime + yank,
-      "the lock must die with the yank"
-    );
+    assert.equal(s.grabber.actionLockUntil, s.room.simTime + yank);
   });
 
   await t.test("pull sends the victim past the puller (side switch)", () => {
@@ -390,19 +312,49 @@ test("command grab pull resolution", async (t) => {
       victimStartX > grabberX ? target < grabberX : target > grabberX,
       "the victim must end up on the far side of the puller"
     );
-    const sent = Math.abs(target - grabberX);
-    const p = profileFor("pull");
-    assert.ok(
-      sent >= p.floor - 1 && sent <= p.ceil + 1,
-      `belt tug must stay in the side-switch band, got ${sent}`
-    );
   });
 
-  await t.test("pull does not stretch with the victim's run-in", () => {
-    const standing = createCommandGrabScenario({ variant: "pull", p2Balance: 100 });
-    standing.connect().resolveNow();
-    const standingDist = Math.abs(
-      standing.victim.grabBreakTargetX - standing.grabber.x
+  await t.test("pull locks the victim only — puller stays live, victim unlocks on settle", () => {
+    const s = createCommandGrabScenario({ variant: "pull", p2Balance: 100 });
+    s.connect();
+    s.resolveNow();
+    assert.equal(s.victim.pullFacingDirection, s.victim.facing);
+    assert.equal(
+      s.grabber.pullFacingDirection,
+      null,
+      "the player doing the pull must not be facing-locked"
+    );
+    const destVictim = s.victim.grabBreakTargetX < s.grabber.x ? -1 : 1;
+    assert.notEqual(
+      s.victim.facing,
+      destVictim,
+      "being dragged past you must not turn them toward the landing side yet"
+    );
+
+    s.victim.x = s.victim.grabBreakTargetX;
+    s.victim.isBeingPullReversaled = false;
+    correctFacingAfterGrabOrThrow(s.victim, s.grabber);
+    assert.equal(s.victim.pullFacingDirection, null);
+    assert.equal(s.victim.facing, facingTowardOpponent(s.victim, s.grabber));
+    assert.equal(s.grabber.facing, facingTowardOpponent(s.grabber, s.victim));
+  });
+
+  await t.test("pull travel scales hard with posture, not their run-in", () => {
+    const healthy = createCommandGrabScenario({ variant: "pull", p2Balance: 100 });
+    healthy.connect().resolveNow();
+    const healthyDist = Math.abs(
+      healthy.victim.grabBreakTargetX - healthy.grabber.x
+    );
+
+    const battered = createCommandGrabScenario({ variant: "pull", p2Balance: 20 });
+    battered.connect().resolveNow();
+    const batteredDist = Math.abs(
+      battered.victim.grabBreakTargetX - battered.grabber.x
+    );
+
+    assert.ok(
+      batteredDist > healthyDist * 1.5,
+      `pull must feel like Smash percent, got ${healthyDist} vs ${batteredDist}`
     );
 
     const rushing = createCommandGrabScenario({ variant: "pull", p2Balance: 100 });
@@ -412,24 +364,180 @@ test("command grab pull resolution", async (t) => {
     const rushingDist = Math.abs(
       rushing.victim.grabBreakTargetX - rushing.grabber.x
     );
-
     assert.ok(
-      Math.abs(standingDist - rushingDist) < 1,
-      `their charge is Matador's dump, not Pull's: standing ${standingDist} vs rushing ${rushingDist}`
+      Math.abs(healthyDist - rushingDist) < 1,
+      `their charge is Matador's dump, not Pull's: ${healthyDist} vs ${rushingDist}`
     );
   });
 
-  await t.test("pull is lethal below the threshold", () => {
+  await t.test("a mid-ring pull is not lethal even at 0 posture", () => {
     const s = createCommandGrabScenario({
       variant: "pull",
       p2Balance: CLINCH_THROW_KILL_THRESHOLD - 1,
     });
     s.connect().resolveNow();
+    assert.equal(s.victim.isClinchKillPullVictim, false);
+    assert.equal(s.victim.pendingPullTrip, false);
+    assert.equal(s.room.gameOver, false);
+    assert.equal(s.victim.isBoundaryPullSwap, false);
+  });
+
+  await t.test("low posture alone, still off the rope, is not a kill", () => {
+    // Old pull-kill was "broken = belly-slam from anywhere." A 230px yank
+    // from here would have cleared the map line under that rule.
+    const s = createCommandGrabScenario({
+      variant: "pull",
+      p2Balance: CLINCH_THROW_KILL_THRESHOLD - 1,
+      midX: MAP_LEFT_BOUNDARY + 200,
+    });
+    s.connect().resolveNow();
+    assert.equal(s.victim.isClinchKillPullVictim, false);
+    assert.equal(s.victim.pendingPullTrip, false);
+    assert.equal(s.room.gameOver, false);
+  });
+
+  await t.test("pull is lethal when posture is broken AND the yank hits the clamp", () => {
+    const s = createCommandGrabScenario({
+      variant: "pull",
+      p2Balance: CLINCH_THROW_KILL_THRESHOLD - 1,
+      midX: MAP_LEFT_BOUNDARY + 70,
+    });
+    s.connect().resolveNow();
     assert.equal(
-      s.victim.isClinchKillPullVictim,
+      s.victim.pendingPullTrip,
       true,
-      "every grab kills below the line — the variant only picks the kimarite"
+      "resolve predicts the trip — it does not belly-slam yet"
     );
+    assert.equal(s.victim.isClinchKillPullVictim, false);
+    assert.equal(s.room.gameOver, false);
+    assert.equal(
+      s.victim.isBoundaryPullSwap,
+      false,
+      "the clarity swap must not eat the rope trip"
+    );
+    assert.ok(
+      s.victim.grabBreakTargetX < MAP_LEFT_BOUNDARY,
+      "kill pull must be allowed past the clamp"
+    );
+    assert.equal(
+      maybeArmPullTrip(s.victim, s.room, s.io),
+      false,
+      "still in-bounds — still standing"
+    );
+    s.victim.x = MAP_LEFT_BOUNDARY;
+    assert.equal(maybeArmPullTrip(s.victim, s.room, s.io), true);
+    assert.equal(s.victim.isClinchKillPullVictim, true);
     assert.equal(s.room.gameOver, true);
+    assert.equal(s.victim.pendingPullTrip, false);
+  });
+
+  await t.test("healthy pull with your back to the wall is the clarity swap, not a kill", () => {
+    const s = createCommandGrabScenario({
+      variant: "pull",
+      p2Balance: 100,
+      midX: MAP_LEFT_BOUNDARY + 70,
+    });
+    s.connect().resolveNow();
+    assert.equal(s.victim.isClinchKillPullVictim, false);
+    assert.equal(s.room.gameOver, false);
+    assert.equal(s.victim.isBoundaryPullSwap, true);
+  });
+
+  await t.test("a far connect at the rope still kills — cinch cannot flip it to a swap", () => {
+    // Grabber plants on the straw (~400) and cinches ~82px inward during the
+    // latch. Live X is then past the kill-clamp room; the connect plant must
+    // still count as a trip, not the visual swap.
+    const s = createCommandGrabScenario({
+      variant: "pull",
+      p2Balance: CLINCH_THROW_KILL_THRESHOLD - 1,
+      midX: 487.5,
+      connectGap: GRAB_RANGE,
+    });
+    s.connect();
+    const plantedX = s.grabber.cmdGrabCinchFromX;
+    s.resolveNow();
+    assert.ok(
+      plantedX < MAP_LEFT_BOUNDARY + 80,
+      `fixture must plant on the straw, got ${plantedX}`
+    );
+    assert.ok(
+      s.grabber.x > plantedX + 60,
+      `cinch must walk the grabber off the straw, planted ${plantedX} live ${s.grabber.x}`
+    );
+    assert.equal(s.victim.pendingPullTrip, true);
+    assert.equal(s.victim.isClinchKillPullVictim, false);
+    assert.equal(s.room.gameOver, false);
+    assert.equal(s.victim.isBoundaryPullSwap, false);
+    s.victim.x = MAP_LEFT_BOUNDARY - 1;
+    assert.equal(maybeArmPullTrip(s.victim, s.room, s.io), true);
+    assert.equal(s.victim.isClinchKillPullVictim, true);
+    assert.equal(s.room.gameOver, true);
+  });
+});
+
+test("pull clamp read is shared by kill and swap", async (t) => {
+  const leftRope = (grabberX, victimX, pullDist) =>
+    getPullBoundaryRead({ x: grabberX }, { x: victimX }, pullDist);
+
+  await t.test("mid-ring yank does not reach the kill clamp", () => {
+    const centre = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
+    const read = leftRope(centre, centre + 60, pullTravelPx(0));
+    assert.equal(read.dir, -1);
+    assert.equal(read.hitsClamp, false);
+    assert.equal(read.reachesKillClamp, false);
+    assert.equal(shouldKillPull({ x: centre }, { x: centre + 60 }, pullTravelPx(0), 0), false);
+  });
+
+  await t.test("back to the wall: yank hits the clamp and has no side-switch room", () => {
+    const read = leftRope(MAP_LEFT_BOUNDARY + 40, MAP_LEFT_BOUNDARY + 100, 230);
+    assert.equal(read.hitsClamp, true);
+    assert.equal(read.noRoomForSideSwitch, true);
+    assert.equal(read.reachesKillClamp, true);
+    assert.equal(
+      shouldKillPull(
+        { x: MAP_LEFT_BOUNDARY + 40 },
+        { x: MAP_LEFT_BOUNDARY + 100 },
+        230,
+        0
+      ),
+      true
+    );
+    assert.equal(
+      shouldKillPull(
+        { x: MAP_LEFT_BOUNDARY + 40 },
+        { x: MAP_LEFT_BOUNDARY + 100 },
+        230,
+        100
+      ),
+      false,
+      "healthy posture at the same spot is the swap, not a kill"
+    );
+  });
+
+  await t.test("a long yank that merely clips the clamp from deep in is not a trip", () => {
+    // Old fly-off rule: 230px from here clears the map line. New rule: the
+    // grabber is still more than CMD_PULL_KILL_CLAMP_ROOM_PX from the clamp.
+    const grabberX = MAP_LEFT_BOUNDARY + 200;
+    const read = leftRope(grabberX, grabberX + 60, 230);
+    assert.equal(read.hitsClamp, true);
+    assert.ok(read.distPastActor >= CMD_PULL_KILL_CLAMP_ROOM_PX);
+    assert.equal(read.reachesKillClamp, false);
+    assert.equal(shouldKillPull({ x: grabberX }, { x: grabberX + 60 }, 230, 0), false);
+  });
+});
+
+test("grab travel helpers stay in-bounds from centre", async (t) => {
+  await t.test("max throw / pull from centre cannot clear a rope", () => {
+    const centre = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
+    const throwDist = throwTravelPx(0, 2);
+    const pullDist = pullTravelPx(0);
+    assert.ok(
+      centre + throwDist <= MAP_RIGHT_BOUNDARY,
+      `max throw ${throwDist} from centre ${centre} must land in`
+    );
+    assert.ok(
+      centre - pullDist >= MAP_LEFT_BOUNDARY,
+      `max pull ${pullDist} from centre ${centre} must stay in`
+    );
   });
 });

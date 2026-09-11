@@ -9,7 +9,6 @@ const { ROPE_JUMP_BOUNDARY_ZONE,
         RAW_PARRY_STAMINA_COST, POWER_UP_TYPES, SLAP_KILL_RANGE,
         PALM_THRUST_STAMINA_COST,
         CLINCH_THROW_KILL_THRESHOLD,
-        CMD_DRIVE_DISTANCE_MIN, CMD_DRIVE_DISTANCE_MAX,
         FLAP_CHARGE_COOLDOWN_MS, FLAP_STAMINA_COST,
         SLAP_TOTAL_MS, CADENCE_WINDOW_MS,
         CPU_CADENCE_EASY, CPU_CADENCE_NORMAL, CPU_CADENCE_HARD, CPU_CADENCE_IMPOSSIBLE,
@@ -28,7 +27,13 @@ const { isAirborneForGroundCollision } = require("./groundCollision");
 const { getConnectDistance, attackKindFromPlayer } = require("./strikeContact");
 const { startRopeJump } = require("./ropeJumpStart");
 const { CMD_GRAB_VARIANT } = require("./commandGrabInput");
-const { postureScaled } = require("./commandGrabSystem");
+const {
+  driveTravelPx,
+  throwTravelPx,
+  pullTravelPx,
+  shouldKillThrow,
+  shouldKillPull,
+} = require("./commandGrabSystem");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum, Phase 2: posture, Phase 3: cadence).
 const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P3_CADENCE } = require("./masteryFlags");
@@ -1631,11 +1636,24 @@ function updateCPUAI(cpu, human, room, currentTime) {
     aiState.grabApproachIntent = false;
   }
 
-  // HIGHEST PRIORITY: a grab is in progress. There is nothing to decide once a
-  // command grab connects — the variant was chosen before the grab and the server
-  // resolves it. Release everything so the CPU isn't holding directions that do
-  // nothing.
+  // Latch aim: hold the chosen direction until the server resolves. Victim
+  // still drops keys — they have no plant in this pass.
+  if (cpu.inClinch && cpu.isGrabbing && cpu.cmdGrabPhase === "latch" && !cpu.isBeingGrabbed) {
+    if (!aiState.cmdGrabLatchChoice && human) {
+      aiState.cmdGrabLatchChoice = chooseCommandGrabVariant(cpu, human);
+    }
+    resetAllKeys(cpu);
+    const pick = aiState.cmdGrabLatchChoice || CMD_GRAB_VARIANT.DRIVE;
+    if (pick === CMD_GRAB_VARIANT.THROW) {
+      cpu.keys.w = true;
+    } else if (pick === CMD_GRAB_VARIANT.PULL && human) {
+      if (cpu.x < human.x) cpu.keys.a = true;
+      else cpu.keys.d = true;
+    }
+    return;
+  }
   if (cpu.inClinch && (cpu.isGrabbing || cpu.isBeingGrabbed)) {
+    aiState.cmdGrabLatchChoice = null;
     resetAllKeys(cpu);
     return;
   }
@@ -1827,18 +1845,13 @@ function updateCPUAI(cpu, human, room, currentTime) {
 // ============================================================================
 // COMMAND GRAB — variant choice
 // ============================================================================
-// Under the command grab there is nothing to decide after a grab connects, so the
-// whole clinch brain collapses into one question asked BEFORE the grab: which of
-// the three grabs converts best from here?
+// Asked at latch start: which of the three converts best from here?
 //
-//   DRIVE  carries toward the rope; only lethal if the carry actually reaches it
-//   THROW  kills anywhere below the posture line; otherwise repositions
-//   PULL   side switch — the escape when the CPU's own back is to the rope
-//
-// Difficulty is expressed as READ ACCURACY, not as a smaller toolkit: every tier
-// owns all three grabs (curriculum verb gating is deliberately not applied here),
-// but a low tier often picks the wrong one. That reuses the existing clinch
-// conversion dials rather than adding a new difficulty surface.
+//   DRIVE  carry toward their rope (force-out only if the carry reaches it)
+//   THROW  kills only if posture is broken AND the toss would land out
+//   PULL   kills only if posture is broken AND the yank hits the clamp
+//          behind you (same read as the clarity swap); otherwise the
+//          escape when your own back is to the tawara
 function chooseCommandGrabVariant(cpu, opponent) {
   const V = CMD_GRAB_VARIANT;
   if (!opponent) return V.DRIVE;
@@ -1847,50 +1860,39 @@ function chooseCommandGrabVariant(cpu, opponent) {
   const balance = typeof opponent.balance === "number" ? opponent.balance : 100;
   const lethal = balance < CLINCH_THROW_KILL_THRESHOLD;
 
-  // A Drive pushes the victim AWAY from the CPU, so the rope that matters is the
-  // one on the victim's far side — not simply their nearest edge.
   const driveDir = opponent.x >= cpu.x ? 1 : -1;
   const ropeGap =
     driveDir > 0 ? distanceToRightEdge(opponent) : distanceToLeftEdge(opponent);
-  const reach = postureScaled(
-    balance,
-    CMD_DRIVE_DISTANCE_MIN,
-    CMD_DRIVE_DISTANCE_MAX
-  );
-  // The carry must reach the rope with real carry still owed, or it releases them
-  // pinned instead of forcing them out. The ease-out curve spends most of its
-  // distance early, so require contact inside ~90% of the travel.
+  const reach = driveTravelPx(balance, cpu.grabApproachSpeed || 0, 0, !!cpu.isGassed);
   const driveForcesOut = ropeGap <= reach * 0.9;
 
-  // The CPU's own back is to the rope opposite the victim.
+  const throwDist = throwTravelPx(balance, cpu.grabApproachSpeed || 0);
+  const pullDist = pullTravelPx(balance);
+  const throwKills = shouldKillThrow(cpu, opponent, throwDist, balance);
+  const pullKills = shouldKillPull(cpu, opponent, pullDist, balance);
+
   const ownBackGap =
     driveDir > 0 ? distanceToLeftEdge(cpu) : distanceToRightEdge(cpu);
   const cornered = ownBackGap < AI_CONFIG.CORNER_CRITICAL_ZONE;
 
-  // Read accuracy borrows the tuned conversion dials: EASY 0.45/0.70 → IMPOSSIBLE 1.
   const accuracy = clampChance(
     lethal ? diffMult("clinchKillMult") : diffMult("clinchLandMult")
   );
   if (!chance(accuracy)) {
-    // Misread: commit to something plausible but not the best answer here.
     const roll = Math.random();
     if (roll < 0.5) return V.DRIVE;
     return roll < 0.78 ? V.THROW : V.PULL;
   }
 
-  if (lethal) {
-    // Force-out is the surest finish when it is available; otherwise a throw kills
-    // from anywhere. pullBias lets a grappler pick the belly-slam instead.
-    if (driveForcesOut) return V.DRIVE;
-    return chance(clampChance(0.72 - CS.pullBias)) ? V.THROW : V.PULL;
-  }
-
-  // Cornered with no force-out available: reverse the geometry instead of feeding
-  // the opponent more ring.
-  if (cornered && !driveForcesOut) return V.PULL;
   if (driveForcesOut) return V.DRIVE;
+  if (throwKills && !pullKills) return V.THROW;
+  if (pullKills && !throwKills) return V.PULL;
+  if (throwKills && pullKills) {
+    return chance(clampChance(0.62 - CS.pullBias)) ? V.THROW : V.PULL;
+  }
+  if (cornered) return V.PULL;
+  if (lethal) return V.THROW;
 
-  // Neutral: Drive is the default pressure tool. pushBias leans it further.
   if (chance(clampChance(0.62 + CS.pushBias))) return V.DRIVE;
   return chance(clampChance(0.6 - CS.pullBias)) ? V.THROW : V.PULL;
 }
@@ -4177,7 +4179,7 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
   const shouldBlockAction = (allowThrowFromGrab = false) => {
     if (cpu.isAttacking) return true;
     if (cpu.isInStartupFrames) return true;
-    if (cpu.isThrowing) return true;
+    if (cpu.isThrowing && !cpu.throwSetupChase) return true;
     if (cpu.isBeingThrown) return true;
     if (cpu.isDodging) return true;
     if (cpu.isSidestepping || cpu.isSidestepRecovery) return true;
@@ -4235,6 +4237,20 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
     } else if (!(cpu.isAttacking && cpu.attackType === "charged")) {
       cpu.chargeAttackPower = 0;
     }
+    if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
+    else Object.assign(cpu._prevKeys, cpu.keys);
+    return;
+  }
+
+  // Setup throw chase — slide toward the dump. Victim is unhittable until land.
+  if (cpu.throwSetupChase && cpu.isThrowing && !cpu.isClinchKillThrow) {
+    resetAllKeys(cpu);
+    const dir =
+      cpu.throwingFacingDirection ||
+      (opponent && opponent.x >= cpu.x ? 1 : -1);
+    cpu.keys.shift = true;
+    if (dir > 0) cpu.keys.d = true;
+    else cpu.keys.a = true;
     if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
     else Object.assign(cpu._prevKeys, cpu.keys);
     return;
@@ -4331,14 +4347,6 @@ function processCPUInputs(cpu, opponent, room, gameHelpers) {
       canPlayerUseAction(cpu)) {
     
     beginGrabStartup(cpu, room);
-
-    // COMMAND GRAB: the CPU has no input packet, so beginGrabStartup's key-based
-    // selection always resolves to DRIVE. Overwrite it with a deliberate read.
-    // Set AFTER beginGrabStartup (which stamps its own default) and before the
-    // startup-end lock in index.js, so it behaves exactly like a human's choice.
-    if (opponent) {
-      cpu.grabVariant = chooseCommandGrabVariant(cpu, opponent);
-    }
 
     if (!cpu._prevKeys) cpu._prevKeys = { ...cpu.keys };
     else Object.assign(cpu._prevKeys, cpu.keys);

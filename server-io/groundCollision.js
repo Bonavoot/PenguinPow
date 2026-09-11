@@ -18,6 +18,10 @@ const AIRBORNE_GROUND_COLLISION_EPS_PX = 8;
  */
 function isAirborneForGroundCollision(player, opts = {}) {
   if (!player) return false;
+  // Setup dump owns Y. Near the start/end of the hop they sit inside the
+  // grounded epsilon — grab must still treat them as airborne so a mid-air
+  // M2 cannot latch a "grounded but ungrabbable" return.
+  if (player.isBeingThrown) return true;
   if (player.isSlideJumping && player.slideJumpPhase === "flight") return true;
   if (player.isFlapping && player.flapPhase === "flight") return true;
   if (player.isRopeJumping && player.ropeJumpPhase === "active") return true;

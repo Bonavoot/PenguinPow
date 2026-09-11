@@ -149,10 +149,13 @@ function isGrabInActiveWindow(grabber, now) {
 //   hit    cubic ease-out    3.00x, all of it on the first frame
 //   swap   cubic ease-in-out 3.00x, all of it at the midpoint
 //   shove  sine ease-in-out  1.57x, spread across the whole slide
+//   yank   Healthy: TAKE → SNAP → SLIDE. Broken: Smash decay. See pullYankMotion.
 //
 // The two cubics are interchangeable on peak speed and differ only in WHEN the
 // spike lands — worth knowing, because moving a drive release from ease-out to
 // ease-in-out changes when it looks fast without making it any slower.
+const { yankEase } = require("./pullYankMotion");
+
 const SEPARATION_EASE = {
   // A hit: every bit of speed exists at contact, then it bleeds into the ice.
   hit: (t) => 1 - Math.pow(1 - t, 3),
@@ -163,10 +166,13 @@ const SEPARATION_EASE = {
   // cover a separation the anti-loop rule fixes at ~130px without any single
   // frame of it moving faster than the game's own top locomotion by much.
   shove: (t) => 0.5 - 0.5 * Math.cos(Math.PI * t),
+  // Belt yank: healthy TAKE→SNAP→SLIDE, or the heavier take/snap/decay at power.
+  yank: yankEase,
 };
 
-function grabSeparationEase(t, curve) {
+function grabSeparationEase(t, curve, power) {
   const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
+  if (curve === "yank") return yankEase(clamped, power);
   return (SEPARATION_EASE[curve] || SEPARATION_EASE.hit)(clamped);
 }
 

@@ -26,6 +26,8 @@ const {
   getSidestepInitData,
   canPlayerCharge,
   canPlayerUseAction,
+  isThrowerLocked,
+  tryBeginSetupThrowChaseSlide,
   beginChargeHold,
   gameNow,
   simNowForPlayer,
@@ -582,20 +584,20 @@ function processInputPacket(room, player, data, io, rooms) {
     // Phase 16 — stamp A/D taps for short palm chord window (V2 + diagnostics).
     stampDirectionTaps(player, simNowForPlayer(player));
 
-    // COMMAND GRAB: record the direction stamps the variant selector reads. Held W
-    // refreshes every packet (so an ongoing hold always outranks a stale tap);
-    // A/D only stamp on the rising edge, which is what makes Back tap-only.
+    // Latch aim: record W / A / D so the post-connect hold can pick pull/throw.
+    // Pre-press stamps are wiped at connect; holds that stay down refresh.
     noteGrabVariantEdges(player, simNowForPlayer(player), {
       wJustPressed: !!rising.w,
       aJustPressed: !!rising.a,
       dJustPressed: !!rising.d,
     });
-    // Still in startup → the variant may still change (last press wins).
-    if (player.isGrabStartup) {
+    if (player.cmdGrabPhase === "latch") {
       updateGrabVariant(
         player,
-        room.players.find((p) => p.id !== player.id)
+        room.players.find((p) => p.id !== player.id),
+        player.cmdGrabPhaseStart
       );
+      player.cmdGrabVariant = player.grabVariant || player.cmdGrabVariant;
     }
     if (isInputCommandTraceEnabled() && (rising.a || rising.d || rising.mouse1 || rising.mouse2 || rising.shift || rising.w)) {
       pushInputCommandTrace(player.id, INPUT_COMMAND_STAGE.PHYSICAL_EDGE, {
@@ -623,9 +625,19 @@ function processInputPacket(room, player, data, io, rooms) {
           type: wantsMatadorChord(player) ? "matador" : "rawParry",
           timestamp: simNowForPlayer(player),
         };
-      } else if (player.shiftJustPressed && data.keys.s && !data.keys.mouse2) {
+      } else if (
+        player.shiftJustPressed &&
+        data.keys.s &&
+        !data.keys.mouse2 &&
+        !player.throwSetupChase
+      ) {
         player.inputBuffer = { type: "sidestep", timestamp: simNowForPlayer(player) };
-      } else if (player.shiftJustPressed && !data.keys.mouse2) {
+      } else if (
+        player.shiftJustPressed &&
+        !data.keys.mouse2 &&
+        !player.throwSetupChase
+      ) {
+        // Setup-throw SHIFT is the chase slide, not a buffered dodge.
         player.inputBuffer = { type: "dodge", timestamp: simNowForPlayer(player) };
       } else if (player.mouse1JustPressed) {
         const fwdKey = player.facing === -1 ? 'd' : 'a';
@@ -676,7 +688,7 @@ function processInputPacket(room, player, data, io, rooms) {
     !player.isGrabbingMovement &&
     !player.isWhiffingGrab &&
     !player.isGrabClashing &&
-    !player.isThrowing &&
+    !isThrowerLocked(player) &&
     !player.isBeingThrown &&
     !player.isAttacking &&
     !player.isHit &&
@@ -1151,8 +1163,14 @@ function processInputPacket(room, player, data, io, rooms) {
     canPlayerDash(player) &&
     !player.isGassed
   ) {
-    beginPlayerDodge(player, { nowSim: simNowForPlayer(player) });
-    noteCommandAccept(player, "dodge", {});
+    const nowSim = simNowForPlayer(player);
+    const chaseOpp = room.players.find((p) => p.id !== player.id);
+    if (tryBeginSetupThrowChaseSlide(player, nowSim, chaseOpp)) {
+      noteCommandAccept(player, "iceSlide", {});
+    } else {
+      beginPlayerDodge(player, { nowSim });
+      noteCommandAccept(player, "dodge", {});
+    }
 
     // Dodge lifecycle (landing, recovery, cooldown) is handled entirely by the tick
     // loop in index.js. Pending charge attacks are executed when recovery ends.
@@ -1176,10 +1194,11 @@ function processInputPacket(room, player, data, io, rooms) {
       // during the plant queues the hop (endSlapCycle fires it).
       (!player.slideSlapArmed && player.keys.shift)) &&
     (player.isAttacking ||
-      player.isThrowing ||
+      isThrowerLocked(player) ||
       player.isBeingThrown ||
       player.isGrabbing ||
       player.isBeingGrabbed) && // Allow buffering while being grabbed/thrown so spamming shift comes out frame 1 when freed
+    !player.throwSetupChase && // toss-pose SHIFT is the chase slide, not a dodge buffer
     !player.isDodging &&
     !player.isSidestepping &&
     !player.isThrowingSnowball &&
@@ -1312,10 +1331,9 @@ function processInputPacket(room, player, data, io, rooms) {
     player.mouse1ConsumedUntilRelease = false;
   }
 
-  // Clinch inputs (Jolt / Break / Perfect Brace / the M2+direction throw-pull
-  // chord) lived here. All four fed the mutual clinch subgame, which the command
-  // grab replaced: which grab you get is now decided at the M2 edge by
-  // commandGrabInput, and nothing is interruptible after it connects.
+  // Clinch inputs (Jolt / Break / Perfect Brace) are gone. M2 starts a grab;
+  // Back / W during the latch pick pull / throw. Nothing is interruptible
+  // after connect except that aim.
 
   // Handle grab attacks — instant grab with no forward movement
   // Use mouse2JustPressed to prevent grab from triggering when key is held through other actions

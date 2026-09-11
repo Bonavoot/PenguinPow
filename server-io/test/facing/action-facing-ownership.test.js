@@ -453,7 +453,7 @@ describe("Phase 12 — lifecycle handoffs", () => {
   });
 
   it("pull side-switch owner blocks ordinary overwrite", () => {
-    const p = makePlayer({ x: 600, facing: 1 });
+    const p = makePlayer({ x: 600, facing: 1, isBeingPullReversaled: true });
     acquireActionFacingLock(p, {
       ownerType: ACTION_FACING_OWNER.PULL,
       direction: 1,

@@ -80,6 +80,8 @@ const {
   CLINCH_THROW_ARC_HEIGHT,
   CLINCH_THROW_BOUNDARY_MARGIN,
   CLINCH_THROW_MIN_SEPARATION,
+  SETUP_THROW_PLANT_MS,
+  SETUP_THROW_RICOCHET_HIT_AT,
   CLINCH_PULL_SWAP_ARC_HEIGHT,
 } = require("./constants");
 
@@ -140,6 +142,10 @@ const {
   tryIceSlideReverse,
   isInSlideRedirectIFrames,
   beginIceSlide,
+  isThrowerLocked,
+  tryBeginSetupThrowChaseSlide,
+  clampSetupThrowChaseStandoffX,
+  clearSetupThrowFlags,
   stampIceSlideCarrySpeed,
   slideJumpTakeoffHorizontalSpeed,
   slideJumpHorizontalToMovementVelocity,
@@ -252,6 +258,22 @@ const {
   grabSeparationEase,
   getGrabAttemptSpeed,
 } = require("./combatHelpers");
+const { pullYankHopProfile, yankHandoffVelocity } = require("./pullYankMotion");
+const {
+  tossArcY,
+  tossTravelX,
+  sampleSetupThrowX,
+  sampleSetupThrowY,
+  throwTossLandHitstopMs,
+  throwTossLandShakeScale,
+} = require("./throwTossMotion");
+const {
+  isSetupThrowFlightLive,
+  stepSetupThrowFlight,
+  clearSetupThrowFlight,
+  abortLiveSetupThrowOnInterrupt,
+} = require("./setupThrowFlight");
+const { launchIceCoastVelocity } = require("./smashLaunchMotion");
 
 // Import CPU AI
 const { updateCPUAI, processCPUInputs } = require("./cpuAI");
@@ -323,11 +345,11 @@ const {
 const { updateProjectiles } = require("./projectileUpdates");
 
 // Command grab — owns everything after a grab connects.
-const { lockGrabVariant } = require("./commandGrabInput");
 const {
   beginCommandGrab,
   updateCommandGrab,
   executeCommandGrabClash,
+  maybeArmPullTrip,
 } = require("./commandGrabSystem");
 
 // Import per-match input audit log
@@ -602,6 +624,297 @@ function stopGameLoop() {
 
 
 
+function emitSetupThrowRicochet(thrower, opponent, room, io, now) {
+  thrower.throwRicochetHitEmitted = true;
+  opponent.throwRicochetHitEmitted = true;
+  const ricochetId = `throw-ricochet-${now}-${thrower.id}`;
+  const clinchId = ensureClinchInstanceId(thrower, opponent, now);
+  emitThrottledScreenShake(
+    room,
+    io,
+    attachCombatPresentation(
+      {
+        type: "throw_ricochet",
+        victimId: opponent.id,
+        x: opponent.x,
+        y: opponent.y,
+        scale: 0.92,
+      },
+      buildClinchPresentation({
+        interactionType: CLINCH_INTERACTION.THROW_LAND,
+        clinchInstanceId: clinchId,
+        actionInstanceId: ricochetId,
+        initiator: thrower,
+        responder: opponent,
+        outcome: "LAND",
+        throwType: "throw",
+        contactX: opponent.x,
+        contactY: opponent.y,
+        salt: "throw_ricochet",
+      })
+    )
+  );
+  io.in(room.id).emit("throw_ricochet", {
+    victimId: opponent.id,
+    throwerId: thrower.id,
+    x: opponent.x,
+    y: opponent.y,
+    dir: thrower.throwingFacingDirection || 1,
+  });
+}
+
+function completeThrowLand(thrower, opponent, room, io, now) {
+  const wasKillThrow = thrower.isClinchKillThrow;
+  const tossPowerAtLand = thrower.throwTossPower || 0;
+  const tossDirAtLand = thrower.throwingFacingDirection || 1;
+  let armsReachDistance = thrower.isRingOutThrowCutscene ? -100 : 50;
+  if (thrower.isRingOutThrowCutscene) {
+    const throwingDir = thrower.throwingFacingDirection || 1;
+    armsReachDistance = (opponent.x - thrower.x) * throwingDir;
+  }
+  let throwDistance;
+  if (thrower.isRingOutThrowCutscene) {
+    throwDistance = armsReachDistance + Math.max(thrower.ringOutThrowDistance || 4, 0);
+  } else if (thrower.isClinchKillThrow) {
+    throwDistance = CLINCH_KILL_THROW_DISTANCE;
+  } else {
+    throwDistance =
+      thrower.clinchThrowArcDistance > 0
+        ? thrower.clinchThrowArcDistance
+        : CLINCH_THROW_DISTANCE;
+  }
+  const tossTravelAtLand = Math.max(
+    0,
+    throwDistance - Math.abs(armsReachDistance || 0)
+  );
+  const tossDurAtLand =
+    thrower.throwTossDurationMs ||
+    Math.max(1, (thrower.throwEndTime || 0) - (thrower.throwStartTime || 0));
+
+  if (wasKillThrow) {
+    handleWinCondition(room, opponent, thrower, io, "clinchKillThrow");
+    opponent.isClinchKillThrowVictim = true;
+    {
+      const landId = `kill-land-${now}-${opponent.id}`;
+      const clinchId = ensureClinchInstanceId(thrower, opponent, now);
+      emitThrottledScreenShake(
+        room,
+        io,
+        attachCombatPresentation(
+          { type: "kill_throw_land", victimId: opponent.id, x: opponent.x, y: opponent.y },
+          buildClinchPresentation({
+            interactionType: CLINCH_INTERACTION.KILL_THROW_LAND,
+            clinchInstanceId: clinchId,
+            actionInstanceId: landId,
+            initiator: thrower,
+            responder: opponent,
+            outcome: "KILL_LAND",
+            throwType: "throw",
+            contactX: opponent.x,
+            contactY: opponent.y,
+            salt: "kill_land",
+          })
+        )
+      );
+    }
+    room.forceBroadcast = true;
+  }
+
+  if (!thrower.isRingOutThrowCutscene && !wasKillThrow) {
+    if (
+      (opponent.x >= MAP_RIGHT_BOUNDARY &&
+        thrower.throwingFacingDirection === 1) ||
+      (opponent.x <= MAP_LEFT_BOUNDARY &&
+        thrower.throwingFacingDirection === -1)
+    ) {
+      handleWinCondition(room, opponent, thrower, io, "grabThrow");
+    } else {
+      {
+        const landId = `throw-land-${now}-${opponent.id}`;
+        const clinchId = ensureClinchInstanceId(thrower, opponent, now);
+        const tossPower = thrower.throwTossPower || 0;
+        emitThrottledScreenShake(
+          room,
+          io,
+          attachCombatPresentation(
+            {
+              type: "throw_landing",
+              victimId: opponent.id,
+              x: opponent.x,
+              y: opponent.y,
+              scale: throwTossLandShakeScale(tossPower),
+              throwTossPower: tossPower,
+            },
+            buildClinchPresentation({
+              interactionType: CLINCH_INTERACTION.THROW_LAND,
+              clinchInstanceId: clinchId,
+              actionInstanceId: landId,
+              initiator: thrower,
+              responder: opponent,
+              outcome: "LAND",
+              throwType: "throw",
+              contactX: opponent.x,
+              contactY: opponent.y,
+              salt: "throw_land",
+            })
+          )
+        );
+      }
+      triggerHitstopAndEmit(
+        io,
+        room,
+        throwTossLandHitstopMs(thrower.throwTossPower || 0),
+        "throw"
+      );
+    }
+  }
+
+  thrower.isThrowing = false;
+  thrower.throwOpponent = null;
+  if (isActionFacingOwnershipV2Enabled()) {
+    releaseActionFacingLock(thrower, {
+      expectedInstanceId: thrower.throwFacingInstanceId,
+      expectedOwnerType: ACTION_FACING_OWNER.THROWER,
+      reason: ACTION_FACING_RELEASE.ACTION_END,
+      clearLegacy: false,
+    });
+    thrower.throwFacingInstanceId = null;
+    releaseActionFacingLock(opponent, {
+      expectedInstanceId: opponent.throwVictimFacingInstanceId,
+      expectedOwnerType: ACTION_FACING_OWNER.THROW_VICTIM,
+      reason: ACTION_FACING_RELEASE.ACTION_END,
+      clearLegacy: false,
+    });
+    opponent.throwVictimFacingInstanceId = null;
+  }
+  thrower.throwingFacingDirection = null;
+  thrower.throwStartTime = 0;
+  thrower.throwEndTime = 0;
+  thrower.isRingOutThrowCutscene = false;
+  thrower.ringOutThrowDistance = 0;
+  thrower.isClinchKillThrow = false;
+
+  const landedOutsideBoundaries =
+    opponent.x <= MAP_LEFT_BOUNDARY || opponent.x >= MAP_RIGHT_BOUNDARY;
+  const setupLandX = Number.isFinite(opponent.throwLandX)
+    ? opponent.throwLandX
+    : thrower.throwLandX;
+  const isSetupDumpLand =
+    Number.isFinite(setupLandX) && !wasKillThrow && !landedOutsideBoundaries;
+  if (isSetupDumpLand) {
+    opponent.x = setupLandX;
+    opponent.y = GROUND_LEVEL;
+  }
+  clearSetupThrowFlags(thrower);
+
+  opponent.isBeingThrown = false;
+  opponent.beingThrownFacingDirection = null;
+  opponent.isHit = false;
+  opponent.isAlreadyHit = false;
+  opponent.isSlapKnockback = false;
+  opponent.isBurstKnockback = false;
+  opponent.isChargedKnockback = false;
+  opponent.burstKnockbackStartTime = 0;
+
+  const landedOutsideDohyo =
+    opponent.x <= DOHYO_LEFT_BOUNDARY || opponent.x >= DOHYO_RIGHT_BOUNDARY;
+  if (wasKillThrow) {
+    if (landedOutsideDohyo) {
+      opponent.y = GROUND_LEVEL - DOHYO_FALL_DEPTH;
+      opponent.isFallingOffDohyo = true;
+    } else {
+      opponent.y = GROUND_LEVEL;
+    }
+  } else if (landedOutsideDohyo) {
+    opponent.y = GROUND_LEVEL - DOHYO_FALL_DEPTH;
+    opponent.isFallingOffDohyo = true;
+  } else {
+    opponent.y = GROUND_LEVEL;
+  }
+
+  if (!wasKillThrow && !landedOutsideBoundaries) {
+    const dir = opponent.x - thrower.x;
+    const dist = Math.abs(dir);
+    if (dist < CLINCH_THROW_MIN_SEPARATION) {
+      const sign = dir >= 0 ? 1 : -1;
+      const desired = thrower.x + sign * CLINCH_THROW_MIN_SEPARATION;
+      const leftBound = MAP_LEFT_BOUNDARY + CLINCH_THROW_BOUNDARY_MARGIN;
+      const rightBound = MAP_RIGHT_BOUNDARY - CLINCH_THROW_BOUNDARY_MARGIN;
+      opponent.x = Math.max(leftBound, Math.min(desired, rightBound));
+    }
+  }
+
+  opponent.knockbackVelocity.y = 0;
+  opponent.knockbackVelocity.x = 0;
+  const isSetupDump = isSetupDumpLand;
+  if (
+    wasKillThrow ||
+    landedOutsideBoundaries ||
+    landedOutsideDohyo ||
+    isSetupDump
+  ) {
+    opponent.movementVelocity = 0;
+    if (isSetupDump) {
+      opponent.inputLockUntil = 0;
+      opponent.throwSetupPlant = true;
+      setPlayerTimeout(
+        opponent,
+        () => {
+          opponent.throwSetupPlant = false;
+        },
+        SETUP_THROW_PLANT_MS,
+        "throwSetupPlant"
+      );
+    }
+  } else {
+    opponent.movementVelocity = launchIceCoastVelocity({
+      distancePx: tossTravelAtLand,
+      durationMs: tossDurAtLand,
+      power: tossPowerAtLand,
+      dir: tossDirAtLand,
+      kind: "throw",
+    });
+    opponent.inputLockUntil = 0;
+  }
+
+  if (landedOutsideBoundaries) {
+    opponent.isThrowLanded = true;
+  } else if (opponent.atTheRopesFacingDirection !== null) {
+    opponent.atTheRopesFacingDirection = null;
+  }
+
+  correctFacingAfterGrabOrThrow(thrower, opponent);
+  activateBufferedInputAfterGrab(thrower, rooms);
+  activateBufferedInputAfterGrab(opponent, rooms);
+  clearSetupThrowFlight(opponent);
+}
+
+function stepLiveSetupThrowFlights(room, io, now) {
+  for (let i = 0; i < room.players.length; i++) {
+    const victim = room.players[i];
+    const step = stepSetupThrowFlight(victim, now);
+    if (!step.progressed) continue;
+    const thrower =
+      room.players.find((p) => p.throwOpponent === victim.id) ||
+      room.players.find((p) => p.id !== victim.id);
+    if (step.ricochetHit) {
+      if (thrower) emitSetupThrowRicochet(thrower, victim, room, io, now);
+      else victim.throwRicochetHitEmitted = true;
+    }
+    if (step.landed) {
+      if (thrower) {
+        completeThrowLand(thrower, victim, room, io, now);
+      } else {
+        victim.y = GROUND_LEVEL;
+        victim.isBeingThrown = false;
+        victim.beingThrownFacingDirection = null;
+        victim.isHit = false;
+        clearSetupThrowFlight(victim);
+      }
+    }
+  }
+}
+
 function tick(delta) {
   // PERFORMANCE: Use for-loop instead of forEach to avoid closure overhead at 64Hz.
   // Also skip rooms with < 2 players via continue (no function call overhead).
@@ -677,12 +990,17 @@ function tick(delta) {
         // This can happen if a pumo army clone or other attack hits the thrower mid-throw
         if (player.isBeingThrown) {
           const otherPlayer = player === player1 ? player2 : player1;
-          // Check if the other player is actually throwing this player
-          if (!otherPlayer.isThrowing || otherPlayer.throwOpponent !== player.id) {
+          // Stamped setup dump is victim-owned. The thrower can slap / grab /
+          // get hit without aborting the airborne penguin.
+          if (
+            abortLiveSetupThrowOnInterrupt(player) &&
+            (!otherPlayer.isThrowing || otherPlayer.throwOpponent !== player.id)
+          ) {
             player.isBeingThrown = false;
             player.beingThrownFacingDirection = null;
             player.y = GROUND_LEVEL; // Reset to ground level
             player.knockbackVelocity = { x: 0, y: 0 };
+            clearSetupThrowFlight(player);
           }
         }
         // Also fix orphaned isThrowing states
@@ -1075,6 +1393,12 @@ function tick(delta) {
 
     }
 
+    // Setup dump is victim-owned. Step it before any thrower tick can
+    // return early (grab startup / in-range-but-ungrabbable).
+    if (!isRoomInHitstop(room)) {
+      stepLiveSetupThrowFlights(room, io, now);
+    }
+
     // Players Loop
     room.players.forEach((player) => {
       // Skip most simulation while hitstop is active to create brief, readable freezes
@@ -1160,7 +1484,8 @@ function tick(delta) {
         // crossing at t=0.5 to line up with the arc peak.
         const eased = grabSeparationEase(
           t,
-          player.grabBreakSepCurve || (isBoundarySwap ? "swap" : "hit")
+          player.grabBreakSepCurve || (isBoundarySwap ? "swap" : "hit"),
+          player.pullYankPower || 0
         );
         let newX = startX + (targetX - startX) * eased;
 
@@ -1169,6 +1494,8 @@ function tick(delta) {
         // ice overshoot so the belly-slide doesn't keep full ice carry off-ring.
         const isPullTween = player.isBeingPullReversaled;
         const isKillPullVictim = player.isClinchKillPullVictim;
+        const pendingPullTrip = !!player.pendingPullTrip && !isKillPullVictim;
+        const mayCrossRope = isKillPullVictim || pendingPullTrip;
         if (isKillPullVictim) {
           const slidingRight = targetX >= startX;
           const mapEdge = slidingRight ? MAP_RIGHT_BOUNDARY : MAP_LEFT_BOUNDARY;
@@ -1186,19 +1513,22 @@ function tick(delta) {
             newX = slidingRight ? mapEdge + dirtOvershoot : mapEdge - dirtOvershoot;
           }
         }
-        const leftBound = isKillPullVictim
+        const leftBound = mayCrossRope
           ? -Infinity
           : isPullTween ? MAP_LEFT_BOUNDARY + PULL_BOUNDARY_MARGIN : MAP_LEFT_BOUNDARY;
-        const rightBound = isKillPullVictim
+        const rightBound = mayCrossRope
           ? Infinity
           : isPullTween ? MAP_RIGHT_BOUNDARY - PULL_BOUNDARY_MARGIN : MAP_RIGHT_BOUNDARY;
         const clampedX = Math.max(leftBound, Math.min(newX, rightBound));
         player.x = clampedX;
+        if (pendingPullTrip) {
+          maybeArmPullTrip(player, room, io);
+        }
         if (isPullTween && t < 1) {
           if (isBoundarySwap) {
             // Single sine arc — peaks at midpoint so pulled player hops over the puller
             player.y = GROUND_LEVEL + CLINCH_PULL_SWAP_ARC_HEIGHT * Math.sin(t * Math.PI);
-          } else if (isKillPullVictim) {
+          } else if (player.isClinchKillPullVictim) {
             // Belly-slide: the sprite is already flat on the ground, so emphasize the
             // SLIDE — just a tiny contact jolt as they hit, then hug the ice the whole
             // way. No big hops (those would lift the flat penguin into the air).
@@ -1210,11 +1540,20 @@ function tick(delta) {
               player.y = GROUND_LEVEL;
             }
           } else {
-            // Normal pull: decaying hops after a delay so the player slides then bounces
-            const HOP_DELAY = 0.18;
+            // Weighted yank: hops only after the SNAP so the take/snap stay
+            // planted. Unstamped pulls (Matador) keep the legacy 4-hop skip.
+            const weighted = player.grabBreakSepCurve === "yank";
+            const hops = weighted
+              ? pullYankHopProfile(player.pullYankPower || 0)
+              : {
+                  hopDelay: 0.18,
+                  hopCount: 4,
+                  hopHeights: [26, 17, 10, 4],
+                };
+            const HOP_DELAY = hops.hopDelay;
             if (t > HOP_DELAY) {
-              const HOP_COUNT = 4;
-              const HOP_HEIGHTS = [26, 17, 10, 4];
+              const HOP_COUNT = hops.hopCount;
+              const HOP_HEIGHTS = hops.hopHeights;
               const hopT = (t - HOP_DELAY) / (1 - HOP_DELAY);
               const hopProgress = hopT * HOP_COUNT;
               const hopIndex = Math.min(Math.floor(hopProgress), HOP_COUNT - 1);
@@ -1236,14 +1575,24 @@ function tick(delta) {
 
         // If pulled player hits boundary margin during pull, end tween early.
         // Kill-pull victims are exempt — they fly the full distance through the boundary.
-        const hitBoundary = isPullTween && !isKillPullVictim && t > 0.05 &&
+        const hitBoundary = isPullTween && !mayCrossRope && t > 0.05 &&
           Math.abs(newX - clampedX) > 1;
+
+        if (t >= 1 && player.pendingPullTrip) {
+          maybeArmPullTrip(player, room, io, { force: true });
+        }
 
         if (t >= 1 || hitBoundary) {
           // End tween — ensure player is back on the ground.
           // Kill-pull victims that landed past the dohyo edge should fall off
           // instead of snapping back to ground level.
-          const killPullLandedOffDohyo = isKillPullVictim &&
+          const tripped = player.isClinchKillPullVictim;
+          const yankPowerAtEnd = player.pullYankPower || 0;
+          const yankCurveAtEnd = player.grabBreakSepCurve;
+          const yankDistAtEnd = Math.abs((targetX ?? 0) - (startX ?? 0));
+          const yankDirAtEnd = (targetX ?? 0) >= (startX ?? 0) ? 1 : -1;
+          const yankDurAtEnd = duration;
+          const killPullLandedOffDohyo = tripped &&
             (player.x <= DOHYO_LEFT_BOUNDARY || player.x >= DOHYO_RIGHT_BOUNDARY);
           if (killPullLandedOffDohyo) {
             player.y = GROUND_LEVEL - DOHYO_FALL_DEPTH;
@@ -1265,6 +1614,21 @@ function tick(delta) {
           if (player.grabTechResidualVel) {
             player.movementVelocity = player.grabTechResidualVel;
             player.grabTechResidualVel = 0;
+          } else if (
+            isPullTween &&
+            yankCurveAtEnd === "yank" &&
+            !tripped &&
+            !isBoundarySwap &&
+            !hitBoundary
+          ) {
+            // Low-posture yank leftover → ice. Healthy plants (k=0). DI-able.
+            // 1:1 leftover — same speed they had on the last locked frame.
+            player.movementVelocity = yankHandoffVelocity(
+              yankDistAtEnd,
+              yankDurAtEnd,
+              yankPowerAtEnd,
+              yankDirAtEnd
+            );
           }
 
           // Auto-clear associated visual states when tween ends
@@ -1274,8 +1638,11 @@ function tick(delta) {
           if (player.isBeingPullReversaled) {
             const wasBoundarySwap = isBoundarySwap;
             player.isBeingPullReversaled = false;
+            player.pullYankPower = 0;
             player.isBoundaryPullSwap = false;
-            player.pullFacingDirection = null;
+            // Kill trip keeps the pre-yank facing through the result. A live
+            // pull drops the lock so settle can turn them the right way.
+            if (!tripped) player.pullFacingDirection = null;
             // Release both players' input locks when pull tween ends
             player.inputLockUntil = 0;
             // Find and release the puller too
@@ -1286,6 +1653,7 @@ function tick(delta) {
               if (pullerRef) {
                 pullerRef.inputLockUntil = 0;
                 pullerRef.isAttemptingPull = false;
+                pullerRef.pullYankPower = 0;
                 pullerRef.isBoundaryPullSwap = false;
                 pullerRef.pullFacingDirection = null;
                 // Boundary swap: also terminate the puller's slide tween for neutral frame advantage
@@ -1304,7 +1672,8 @@ function tick(delta) {
             }
             // Kill-pull finishers: do NOT fall into normal movement (MAP clamps /
             // slapParryKnockback) or re-arm buffered actions after the slide.
-            if (isKillPullVictim) {
+            player.pendingPullTrip = false;
+            if (tripped) {
               player.slapParryKnockbackVelocity = 0;
               player.movementVelocity = 0;
               return;
@@ -1606,14 +1975,6 @@ function tick(delta) {
         const elapsed = room.simTime - player.grabStartupStartTime;
         const startupMs = player.grabStartupDuration || GRAB_STARTUP_DURATION_MS;
 
-        if (elapsed >= startupMs) {
-          // Startup over — the grab is active, so the variant stops being revisable.
-          // Locking here rather than at connect is what stops a grab being held out
-          // and having its variant chosen on the frame contact is seen. When already
-          // in range (connect on the first active tick) these are the same instant.
-          lockGrabVariant(player);
-        }
-
         // CONNECT WINDOW: startup end through active end. Tip pokes stuff
         // the run. A late slap at grip range was skipped this tick so the
         // latch can fire.
@@ -1854,10 +2215,7 @@ function tick(delta) {
                 player.grabFacingDirection = player.facing;
               }
 
-              // Open the belt-grip read beat and commit the variant locked at the
-              // end of startup. Runs last so it sees the fully-established grip
-              // state (including a counter-grab).
-              lockGrabVariant(player);
+              // Open the belt latch. Variant is aimed during the hold, not here.
               beginCommandGrab(player, opponent, room, io);
             } else if (withinConnectWindow) {
               // In range but ungrabbable — retest next tick.
@@ -1887,7 +2245,7 @@ function tick(delta) {
         !room.gameOver &&
         !player.isRingOutFreezeActive &&
         !player.isBeingGrabbed &&
-        !player.isThrowing &&
+        !isThrowerLocked(player) &&
         !player.isBeingThrown &&
         !player.isThrowTeching &&
         !player.isGrabbing &&
@@ -2149,7 +2507,14 @@ function tick(delta) {
         const opponent = room.players.find(
           (p) => p.id === player.throwOpponent
         );
-        if (opponent) {
+        const victimOwnsSetup =
+          opponent &&
+          !player.isRingOutThrowCutscene &&
+          !player.isClinchKillThrow &&
+          isSetupThrowFlightLive(opponent);
+        if (victimOwnsSetup) {
+          // Pose + land already ran in stepLiveSetupThrowFlights.
+        } else if (opponent) {
           const throwArcHeight = player.isRingOutThrowCutscene ? 75
             : player.isClinchKillThrow ? CLINCH_KILL_THROW_ARC_HEIGHT
             : (player.clinchThrowArcHeight > 0
@@ -2161,7 +2526,10 @@ function tick(delta) {
           if (!player.throwingFacingDirection) {
             player.throwingFacingDirection = player.facing;
             opponent.beingThrownFacingDirection = opponent.facing;
-            if (!player.isRingOutThrowCutscene) {
+            if (
+              !player.isRingOutThrowCutscene &&
+              !Number.isFinite(player.throwLandX)
+            ) {
               opponent.x =
                 player.x + player.throwingFacingDirection * armsReachDistance;
             }
@@ -2193,26 +2561,92 @@ function tick(delta) {
                 : CLINCH_THROW_DISTANCE;
           }
 
-          let newX =
-            player.x +
-            player.throwingFacingDirection *
-              (armsReachDistance +
-                (throwDistance - armsReachDistance) * throwProgress);
-
-          // Normal throws stop short of map edge; kill throws travel freely (no clamping)
-          if (isNormalForwardThrow) {
-            const leftBound = MAP_LEFT_BOUNDARY + CLINCH_THROW_BOUNDARY_MARGIN;
-            const rightBound = MAP_RIGHT_BOUNDARY - CLINCH_THROW_BOUNDARY_MARGIN;
-            newX = Math.max(leftBound, Math.min(newX, rightBound));
+          const tossPower = player.throwTossPower || 0;
+          const hasSetupPath =
+            isNormalForwardThrow && Number.isFinite(player.throwLandX);
+          const travelT = isNormalForwardThrow
+            ? tossTravelX(throwProgress, tossPower)
+            : throwProgress;
+          let newX;
+          if (hasSetupPath) {
+            newX = sampleSetupThrowX(throwProgress, {
+              startX: player.throwStartX,
+              landX: player.throwLandX,
+              hitX: player.throwHitX,
+              ricochet: !!player.throwRicochet,
+              hitAt: player.throwRicochetHitAt || SETUP_THROW_RICOCHET_HIT_AT,
+            });
+          } else {
+            newX =
+              player.x +
+              player.throwingFacingDirection *
+                (armsReachDistance +
+                  (throwDistance - armsReachDistance) * travelT);
           }
 
           opponent.x = newX;
+
+          if (
+            hasSetupPath &&
+            player.throwRicochet &&
+            !player.throwRicochetHitEmitted &&
+            throwProgress >= (player.throwRicochetHitAt || SETUP_THROW_RICOCHET_HIT_AT)
+          ) {
+            player.throwRicochetHitEmitted = true;
+            const ricochetId = `throw-ricochet-${currentTime}-${player.id}`;
+            const clinchId = ensureClinchInstanceId(
+              player,
+              opponent,
+              currentTime
+            );
+            emitThrottledScreenShake(
+              room,
+              io,
+              attachCombatPresentation(
+                {
+                  type: "throw_ricochet",
+                  victimId: opponent.id,
+                  x: opponent.x,
+                  y: opponent.y,
+                  scale: 0.92,
+                },
+                buildClinchPresentation({
+                  interactionType: CLINCH_INTERACTION.THROW_LAND,
+                  clinchInstanceId: clinchId,
+                  actionInstanceId: ricochetId,
+                  initiator: player,
+                  responder: opponent,
+                  outcome: "LAND",
+                  throwType: "throw",
+                  contactX: opponent.x,
+                  contactY: opponent.y,
+                  salt: "throw_ricochet",
+                })
+              )
+            );
+            io.in(room.id).emit("throw_ricochet", {
+              victimId: opponent.id,
+              throwerId: player.id,
+              x: opponent.x,
+              y: opponent.y,
+              dir: player.throwingFacingDirection || 1,
+            });
+          }
 
           // Y arc
           if (player.isRingOutThrowCutscene) {
             const arcProgress = 4 * throwProgress * (1 - throwProgress);
             const hopHeight = arcProgress * 60;
             opponent.y = GROUND_LEVEL + hopHeight;
+          } else if (hasSetupPath) {
+            opponent.y =
+              GROUND_LEVEL +
+              sampleSetupThrowY(throwProgress, {
+                height: throwArcHeight,
+                bounceHeight: player.throwBounceHeight,
+                ricochet: !!player.throwRicochet,
+                hitAt: player.throwRicochetHitAt || SETUP_THROW_RICOCHET_HIT_AT,
+              });
           } else if (player.isClinchKillThrow) {
             // Ballistic-style arc (constant-g feel):
             //   • Near-symmetric peak — rise and fall take similar time
@@ -2234,185 +2668,16 @@ function tick(delta) {
           } else {
             opponent.y =
               GROUND_LEVEL +
-              3.2 * throwArcHeight * throwProgress * (1 - throwProgress);
+              tossArcY(
+                throwProgress,
+                throwArcHeight,
+                player.throwTossPower || 0
+              );
           }
 
           // Check if throw is complete
           if (currentTime >= player.throwEndTime) {
-            const wasKillThrow = player.isClinchKillThrow;
-
-            if (wasKillThrow) {
-              handleWinCondition(room, opponent, player, io, "clinchKillThrow");
-              opponent.isClinchKillThrowVictim = true;
-              {
-                const landId = `kill-land-${currentTime}-${opponent.id}`;
-                const clinchId = ensureClinchInstanceId(
-                  player,
-                  opponent,
-                  currentTime
-                );
-                emitThrottledScreenShake(
-                  room,
-                  io,
-                  attachCombatPresentation(
-                    { type: "kill_throw_land", victimId: opponent.id, x: opponent.x, y: opponent.y },
-                    buildClinchPresentation({
-                      interactionType: CLINCH_INTERACTION.KILL_THROW_LAND,
-                      clinchInstanceId: clinchId,
-                      actionInstanceId: landId,
-                      initiator: player,
-                      responder: opponent,
-                      outcome: "KILL_LAND",
-                      throwType: "throw",
-                      contactX: opponent.x,
-                      contactY: opponent.y,
-                      salt: "kill_land",
-                    })
-                  )
-                );
-              }
-              // No landing hitstop for kill throw: room + client hitstop freeze the
-              // sim and pin interpolated Y for ~100ms, which reads as a hitch right
-              // as the victim touches down. Screen shake + particles sell the impact.
-              room.forceBroadcast = true;
-            }
-
-            if (!player.isRingOutThrowCutscene && !wasKillThrow) {
-              if (
-                (opponent.x >= MAP_RIGHT_BOUNDARY &&
-                  player.throwingFacingDirection === 1) ||
-                (opponent.x <= MAP_LEFT_BOUNDARY &&
-                  player.throwingFacingDirection === -1)
-              ) {
-                handleWinCondition(room, opponent, player, io, "grabThrow");
-              } else {
-                {
-                  const landId = `throw-land-${currentTime}-${opponent.id}`;
-                  const clinchId = ensureClinchInstanceId(
-                    player,
-                    opponent,
-                    currentTime
-                  );
-                  emitThrottledScreenShake(
-                    room,
-                    io,
-                    attachCombatPresentation(
-                      { type: "throw_landing", victimId: opponent.id, x: opponent.x, y: opponent.y },
-                      buildClinchPresentation({
-                        interactionType: CLINCH_INTERACTION.THROW_LAND,
-                        clinchInstanceId: clinchId,
-                        actionInstanceId: landId,
-                        initiator: player,
-                        responder: opponent,
-                        outcome: "LAND",
-                        throwType: "throw",
-                        contactX: opponent.x,
-                        contactY: opponent.y,
-                        salt: "throw_land",
-                      })
-                    )
-                  );
-                }
-                triggerHitstopAndEmit(io, room, HITSTOP_THROW_MS, "throw");
-              }
-            }
-
-            player.isThrowing = false;
-            player.throwOpponent = null;
-            if (isActionFacingOwnershipV2Enabled()) {
-              releaseActionFacingLock(player, {
-                expectedInstanceId: player.throwFacingInstanceId,
-                expectedOwnerType: ACTION_FACING_OWNER.THROWER,
-                reason: ACTION_FACING_RELEASE.ACTION_END,
-                clearLegacy: false,
-              });
-              player.throwFacingInstanceId = null;
-              releaseActionFacingLock(opponent, {
-                expectedInstanceId: opponent.throwVictimFacingInstanceId,
-                expectedOwnerType: ACTION_FACING_OWNER.THROW_VICTIM,
-                reason: ACTION_FACING_RELEASE.ACTION_END,
-                clearLegacy: false,
-              });
-              opponent.throwVictimFacingInstanceId = null;
-            }
-            player.throwingFacingDirection = null;
-            player.throwStartTime = 0;
-            player.throwEndTime = 0;
-            player.isRingOutThrowCutscene = false;
-            player.ringOutThrowDistance = 0;
-            player.isClinchKillThrow = false;
-
-            const landedOutsideBoundaries =
-              opponent.x <= MAP_LEFT_BOUNDARY ||
-              opponent.x >= MAP_RIGHT_BOUNDARY;
-
-            opponent.isBeingThrown = false;
-            opponent.beingThrownFacingDirection = null;
-            opponent.isHit = false;
-            opponent.isAlreadyHit = false;
-            opponent.isSlapKnockback = false;
-            opponent.isBurstKnockback = false;
-            opponent.isChargedKnockback = false;
-            opponent.burstKnockbackStartTime = 0;
-
-            // Set Y to correct ground level based on landing context
-            const landedOutsideDohyo = opponent.x <= DOHYO_LEFT_BOUNDARY || opponent.x >= DOHYO_RIGHT_BOUNDARY;
-            if (wasKillThrow) {
-              // Flat landing art sits on the ground — no -30 offset (that was for
-              // the old 90°-rotated hit placeholder).
-              if (landedOutsideDohyo) {
-                opponent.y = GROUND_LEVEL - DOHYO_FALL_DEPTH;
-                opponent.isFallingOffDohyo = true;
-              } else {
-                opponent.y = GROUND_LEVEL;
-              }
-            } else {
-              if (landedOutsideDohyo) {
-                opponent.y = GROUND_LEVEL - DOHYO_FALL_DEPTH;
-                opponent.isFallingOffDohyo = true;
-              } else {
-                opponent.y = GROUND_LEVEL;
-              }
-            }
-
-            // Enforce minimum separation on landing so players don't overlap at boundary
-            if (!wasKillThrow && !landedOutsideBoundaries) {
-              const dir = opponent.x - player.x;
-              const dist = Math.abs(dir);
-              if (dist < CLINCH_THROW_MIN_SEPARATION) {
-                const sign = dir >= 0 ? 1 : -1;
-                const desired = player.x + sign * CLINCH_THROW_MIN_SEPARATION;
-                const leftBound = MAP_LEFT_BOUNDARY + CLINCH_THROW_BOUNDARY_MARGIN;
-                const rightBound = MAP_RIGHT_BOUNDARY - CLINCH_THROW_BOUNDARY_MARGIN;
-                opponent.x = Math.max(leftBound, Math.min(desired, rightBound));
-              }
-            }
-
-            opponent.knockbackVelocity.y = 0;
-            opponent.knockbackVelocity.x = 0;
-            opponent.movementVelocity = 0;
-
-            // Only set isThrowLanded if player landed outside ring-out boundaries
-            if (landedOutsideBoundaries) {
-              opponent.isThrowLanded = true; // Permanent until round reset
-              // Keep atTheRopesFacingDirection - player is out of ring and keeps facing locked until round reset
-            } else {
-              // Landed inside boundaries - clear the locked facing direction
-              if (opponent.atTheRopesFacingDirection !== null) {
-                opponent.atTheRopesFacingDirection = null;
-              }
-            }
-
-            // Correct facing so both players reflect their new positions (thrown player switched sides).
-            // Prevents immediate dodge/actions from using stale "thrown" facing and opponent logic from breaking.
-            correctFacingAfterGrabOrThrow(player, opponent);
-
-            // BUFFERED INPUT ACTIVATION: Activate held inputs immediately for both players
-            // on frame 1 after throw lands (like invincible reversals in fighting games).
-            // The function checks isThrowLanded/isAtTheRopes internally, so it safely
-            // skips activation for players that landed out of bounds.
-            activateBufferedInputAfterGrab(player, rooms);
-            activateBufferedInputAfterGrab(opponent, rooms);
+            completeThrowLand(player, opponent, room, io, currentTime);
           }
         }
       } else if (player.isThrowing && !player.throwOpponent) {
@@ -2870,6 +3135,12 @@ function tick(delta) {
         }
       }
 
+      // Setup throw chase: SHIFT from stance starts the slide without a dodge.
+      if (player.throwSetupChase && !player.isIceSliding) {
+        const chaseOpp = room.players.find((p) => p.id !== player.id);
+        tryBeginSetupThrowChaseSlide(player, now, chaseOpp);
+      }
+
       // ── ICE SLIDE (SHIFT-held post-dodge) + SLIDE JUMP (W) ──
       if (player.isIceSliding && !player.isDodging && !player.isSlideJumping) {
         // Interrupt: hit / grab / attack / etc. already clear via clearAllActionStates.
@@ -2996,6 +3267,8 @@ function tick(delta) {
           if (slideX === MAP_LEFT_BOUNDARY || slideX === MAP_RIGHT_BOUNDARY) {
             player.movementVelocity *= 0.5;
           }
+          const chaseOpp = room.players.find((p) => p.id !== player.id);
+          slideX = clampSetupThrowChaseStandoffX(player, chaseOpp, slideX);
           player.x = slideX;
 
           // W jump: live after min flash; buffer early presses.
@@ -3535,7 +3808,7 @@ function tick(delta) {
           !player.isFlapping &&
           !player.isIceSliding &&
           !player.isSlideJumping &&
-          !player.isThrowing &&
+          !isThrowerLocked(player) &&
           !player.isGrabbing &&
           !player.isGrabbingMovement &&
           !player.isWhiffingGrab &&
@@ -3620,7 +3893,7 @@ function tick(delta) {
           !player.isFlapping &&
           !player.isIceSliding &&
           !player.isSlideJumping &&
-          !player.isThrowing &&
+          !isThrowerLocked(player) &&
           !player.isGrabbing &&
           !player.isGrabbingMovement &&
           !player.isWhiffingGrab &&
@@ -3992,7 +4265,7 @@ function tick(delta) {
         !player.isGrabbingMovement && // Block during grab movement
         !player.isWhiffingGrab && // Block during grab whiff recovery
         !player.isGrabClashing && // Block during grab clashing
-        !player.isThrowing &&
+        !isThrowerLocked(player) &&
         !player.isBeingThrown &&
         !player.isRecovering &&
         !player.isAttacking && // Block during any attack (slap or charged)

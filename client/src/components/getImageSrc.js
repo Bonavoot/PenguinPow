@@ -136,8 +136,8 @@ const getImageSrc = (
   palmThrustFrame = 2,
   // Low kick / trip (S + mouse1) — single-frame art for now.
   isLowKick = false,
-  // Kill-throw flight vs grounded: spin uses `hit` high in the air; flat
-  // landing art takes over near the ground (and stays after isBeingThrown clears).
+  // Throw flight uses `hit` until plant. Kill-throw swaps to flat landing
+  // art near the ground (GameFighter clears this flag in that window).
   isBeingThrown = false,
   // Slap string (hits 1 & 2) — a client-driven animation spanning the whole slap
   // cycle, mirroring the palm-thrust frame model. isSlapAttack stays true for the
@@ -178,7 +178,8 @@ const getImageSrc = (
   // dedicated kill-victim poses, which have their own art.
   isRingOutLoser = false,
   // Charge-hold hop-back uses dodge squat art; land / hold uses charging.
-  isChargeHopping = false
+  isChargeHopping = false,
+  throwSetupChase = false
 ) => {
   if (ritualAnimationSrc) {
     return ritualAnimationSrc;
@@ -246,6 +247,9 @@ const getImageSrc = (
     return isPerfectParried;
   }
   if (isHit) return hit;
+  // Setup dump: isHit stun ends mid-arc on purpose. Hold hit.png until they
+  // plant — visual only; isBeingThrown is the flight flag, not hit state.
+  if (isBeingThrown) return hit;
   // Stun can end mid-air while the arc is still live. Never fall through to
   // flap / landing-recovery — that is the "recovering instead of hit" bug.
   if (offensiveAerialPresentation === "INTERRUPTED_AIRBORNE") return hit;
@@ -399,9 +403,20 @@ const getImageSrc = (
   if (isReady) {
     return readyIntroComplete ? pumoTachiaiPosition : pumoSideProfile;
   }
-  if (isStrafing && !isThrowing) return pumoWaddle;
+  if (isStrafing && (!isThrowing || throwSetupChase)) return pumoWaddle;
   if (isDead) return pumo;
-  if (isThrowing) return throwing;
+  if (isThrowing && !throwSetupChase) return throwing;
+  if (
+    isThrowing &&
+    throwSetupChase &&
+    !isIceSliding &&
+    !isStrafing &&
+    !isDodging &&
+    !isAttacking &&
+    !isSlapAttack
+  ) {
+    return throwing;
+  }
   if (isThrowingSalt) return salt;
   return pumo;
 };

@@ -56,6 +56,8 @@ const {
   ICE_SLIDE_REVERSE_HOP_MS,
   ICE_SLIDE_REVERSE_COOLDOWN_MS,
   ICE_SLIDE_MAX_SPEED,
+  SETUP_THROW_CHASE_SPEED,
+  SETUP_THROW_CHASE_ARRIVE_GAP_PX,
   GRAB_STATES,
   GRAB_STARTUP_DURATION_MS,
   GRAB_ACTIVE_MS,
@@ -84,7 +86,7 @@ const { MASTERY_P1_MOMENTUM } = require("./masteryFlags");
 const { handoffVelocity, pxToKbVelocity } = require("./momentumTransfer");
 const { clearAirHitOverlapEject } = require("./airHitOverlapEject");
 // Constants-only module — safe to require here without a cycle.
-const { stampGrabVariant } = require("./commandGrabInput");
+const { clearGrabVariant } = require("./commandGrabInput");
 const { getGrabAttemptSpeed } = require("./combatHelpers");
 const {
   OFFENSIVE_AERIAL_OUTCOME,
@@ -120,6 +122,7 @@ const {
   releaseActionFacingLock,
   forceClearActionFacingLock,
   getActionFacingLock,
+  updateActionFacingLockDirection,
   mintActionFacingInstanceId,
   ACTION_FACING_OWNER,
   ACTION_FACING_REASON,
@@ -1059,6 +1062,107 @@ function endPerfectParryStun(player) {
   timeoutManager.clearPlayerSpecific(player.id, PERFECT_PARRY_STUN_TIMEOUT);
 }
 
+function clearSetupThrowFlags(player) {
+  if (!player) return;
+  player.throwSetupChase = false;
+  player.throwChaseUnlockAt = 0;
+  player.throwRicochet = false;
+  player.throwRicochetHitEmitted = false;
+  player.throwOriginX = 0;
+  player.throwStartX = 0;
+  player.throwLandX = 0;
+  player.throwHitX = 0;
+  player.throwBounceHeight = 0;
+  player.throwRicochetHitAt = 0;
+  player.throwSetupPlant = false;
+}
+
+function isThrowerLocked(player) {
+  if (!player || !player.isThrowing) return false;
+  if (player.isClinchKillThrow || player.isRingOutThrowCutscene) return true;
+  if (player.throwSetupChase) {
+    const unlockAt = player.throwChaseUnlockAt || 0;
+    return unlockAt > 0 && simNowForPlayer(player) < unlockAt;
+  }
+  return true;
+}
+
+/** Sprite facing → world travel. facing -1 looks +X, so travel is +1. */
+function travelDirFromFacing(facing) {
+  return facing === -1 ? 1 : -1;
+}
+
+function tryBeginSetupThrowChaseSlide(player, nowSim, opponent) {
+  if (!player || !player.throwSetupChase || player.isClinchKillThrow) {
+    return false;
+  }
+  if (isThrowerLocked(player)) return false;
+  if (player.isIceSliding || player.isDodging || player.isSlideJumping) {
+    return false;
+  }
+  if (player.isAttacking || player.isGrabStartup || player.isGrabbing) {
+    return false;
+  }
+  if (!(player.keys && player.keys.shift)) return false;
+
+  // Face the live airborne body before picking a no-dir slide. The toss lock
+  // freezes presentation facing at resolve; if that disagrees with where they
+  // actually are, SHIFT-only used to skate the wrong way, then snap forward.
+  if (opponent && Number.isFinite(opponent.x) && opponent.x !== player.x) {
+    const look = facingTowardOpponent(player, opponent);
+    player.facing = look;
+    if (isActionFacingOwnershipV2Enabled()) {
+      const lock = getActionFacingLock(player);
+      if (lock && lock.ownerType === ACTION_FACING_OWNER.THROWER) {
+        updateActionFacingLockDirection(player, look, {
+          force: true,
+          syncLegacy: false,
+        });
+      }
+    }
+  }
+
+  const holdRight = player.keys.d && !player.keys.a;
+  const holdLeft = player.keys.a && !player.keys.d;
+  const dir = holdRight
+    ? 1
+    : holdLeft
+    ? -1
+    : travelDirFromFacing(player.facing);
+  beginIceSlide(player, dir, dir * SETUP_THROW_CHASE_SPEED, nowSim);
+  return true;
+}
+
+/**
+ * Soft wall while the dump is still airborne: the thrower may press up to
+ * the authored arrive gap, but must not close through the falling body.
+ * Does not yank backward if they are already inside, and never zeros speed.
+ */
+function clampSetupThrowChaseStandoffX(player, opponent, proposedX) {
+  if (!player || !opponent) return proposedX;
+  if (!player.throwSetupChase || player.isClinchKillThrow) return proposedX;
+  if (!opponent.isBeingThrown) return proposedX;
+  if (!Number.isFinite(opponent.x) || !Number.isFinite(proposedX)) {
+    return proposedX;
+  }
+  if (!Number.isFinite(player.x)) return proposedX;
+
+  const minGap = SETUP_THROW_CHASE_ARRIVE_GAP_PX;
+  const currentGap = Math.abs(opponent.x - player.x);
+  const proposedGap = Math.abs(opponent.x - proposedX);
+  const closing =
+    (opponent.x > player.x && proposedX > player.x) ||
+    (opponent.x < player.x && proposedX < player.x);
+
+  if (currentGap >= minGap) {
+    if (proposedGap >= minGap) return proposedX;
+    const dir = opponent.x >= player.x ? 1 : -1;
+    return opponent.x - dir * minGap;
+  }
+  if (!closing) return proposedX;
+  return player.x;
+}
+
 // Helper functions to reduce code duplication
 // CRITICAL: This is the SINGLE SOURCE OF TRUTH for blocking new actions
 // Any state where the player is "doing something" must be included here
@@ -1071,7 +1175,7 @@ function isPlayerInActiveState(player) {
     !player.isDodgeRecovery &&
     !player.isSidestepping &&
     !player.isSidestepRecovery &&
-    !player.isThrowing &&
+    !isThrowerLocked(player) &&
     !player.isBeingThrown &&
     !player.isGrabbing &&
     !player.isBeingGrabbed &&
@@ -1113,7 +1217,7 @@ function isPlayerInBasicActiveState(player) {
     !player.isDodgeRecovery &&
     !player.isSidestepping &&
     !player.isSidestepRecovery &&
-    !player.isThrowing &&
+    !isThrowerLocked(player) &&
     !player.isBeingThrown &&
     !player.isGrabbing &&
     !player.isBeingGrabbed &&
@@ -1381,7 +1485,7 @@ function canPlayerDash(player) {
     !player.isDodgeRecovery &&
     !player.isSidestepping &&
     !player.isSidestepRecovery &&
-    !player.isThrowing &&
+    !isThrowerLocked(player) &&
     !player.isBeingThrown &&
     !player.isGrabbing &&
     !player.isBeingGrabbed &&
@@ -1638,6 +1742,9 @@ function clearAllActionStates(player) {
   player.isBeingEdgePushed = false;
   player.isAttemptingPull = false;
   player.isBeingPullReversaled = false;
+  player.pullYankPower = 0;
+  player.throwTossPower = 0;
+  player.throwTossDurationMs = 0;
   player.pullReversalPullerId = null;
   player.pullFacingDirection = null;
   player.isGrabSeparating = false;
@@ -1661,6 +1768,7 @@ function clearAllActionStates(player) {
   player.throwEndTime = 0;
   player.throwOpponent = null;
   player.throwingFacingDirection = null;
+  clearSetupThrowFlags(player);
   
   // Clear parry states (as parrier)
   player.isRawParrying = false;
@@ -2017,9 +2125,7 @@ function beginGrabStartup(player, room) {
 
   // Slap clears ice slide the instant isAttacking latches; grab must do the
   // same explicitly — isGrabStartup was never on the ice-slide interrupt list.
-  // Captured first: while sliding, W belongs to slide-jump, so a slide-grab is
-  // never a Throw (see resolveGrabVariant's forbidThrow).
-  const wasIceSliding = !!player.isIceSliding;
+  // W during the lunge is no longer a throw chord (aim happens after connect).
   clearIceSlideState(player);
   // Grab startup returns early from the player tick (skipping gravity-snap).
   // Any leftover dodge / reverse-hop Y would freeze the lunge in the air.
@@ -2074,9 +2180,8 @@ function beginGrabStartup(player, room) {
   player.grabApproachSpeed = attemptSpeed;
   player.grabMovementVelocity = player.grabMovementDirection * attemptSpeed;
 
-  // COMMAND GRAB: which grab this is gets decided here from the direction around
-  // the M2 edge, and stays revisable until the grab goes active. Harmless with
-  stampGrabVariant(player, grabOpponent, now, wasIceSliding);
+  // Latch-then-aim: M2 is always a grab. Variant is chosen after connect.
+  clearGrabVariant(player);
   if (isActionFacingOwnershipV2Enabled()) {
     const grabId = mintActionFacingInstanceId(
       player,
@@ -2203,7 +2308,7 @@ function beginIceSlide(player, dir, velocity, nowSim, opts = {}) {
   player.isBraking = false;
   player.isStrafing = false;
   if (typeof velocity === "number") {
-    player.movementVelocity = velocity;
+    player.movementVelocity = slideDir * Math.abs(velocity);
   }
   const ropeKickoff = applyRopeKickoff(
     player,
@@ -3185,6 +3290,11 @@ module.exports = {
 
   // Functions
   setPlayerTimeout,
+  isThrowerLocked,
+  tryBeginSetupThrowChaseSlide,
+  clampSetupThrowChaseStandoffX,
+  travelDirFromFacing,
+  clearSetupThrowFlags,
   isPlayerInActiveState,
   isPlayerInBasicActiveState,
   canPlayerCharge,

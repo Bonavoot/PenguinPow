@@ -619,6 +619,8 @@ function resetRoomAndPlayers(room, io) {
       player.wins = [];
     } else {
       player.x = player.fighter === "player 1" ? 440 : 840;
+      // facing 1 = left, -1 = right — face each other on the ready marks.
+      player.facing = player.fighter === "player 1" ? -1 : 1;
     }
     player.y = GROUND_LEVEL;
     player.knockbackVelocity = { x: 0, y: 0 };
@@ -779,6 +781,9 @@ function resetRoomAndPlayers(room, io) {
     player.isBeingEdgePushed = false;
     player.isAttemptingPull = false;
     player.isBeingPullReversaled = false;
+    player.pullYankPower = 0;
+    player.throwTossPower = 0;
+    player.throwTossDurationMs = 0;
     player.pullReversalPullerId = null;
     player.pullFacingDirection = null;
     player.isGrabSeparating = false;
@@ -828,6 +833,7 @@ function resetRoomAndPlayers(room, io) {
     player.isCinematicKillVictim = false;
     player.isClinchKillThrowVictim = false;
     player.isClinchKillPullVictim = false;
+    player.pendingPullTrip = false;
     player.isClinchKillThrow = false;
     // Round resolution presentation flags (ring-out topple / winner hold).
     player.isRingOutLoser = false;

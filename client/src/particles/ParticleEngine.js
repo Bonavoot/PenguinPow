@@ -1264,21 +1264,8 @@ function createGlassShard(size, seed, frost = false) {
   return c;
 }
 
-// Punchy 8-point cross flare — 4 long primary rays + 4 short diagonal
-// rays + a hot white-pink core. Designed for the IMPACT moment of the
-// grab-armor absorb so the spark of contact reads as a clean, bright
-// "snap" rather than a blob. Anime-fighter idiom: bright cross flare
-// over a hot pinpoint, additive-blended for bloom. Color is applied
-// via (r,g,b); rays fade to transparent at their tips so the flare
-// reads as light, not as a stamp.
-// Tight white-center → saturated-pink halo with a SHARP falloff.
-// Mirrors the perfect-parry inner-burst gradient (white ≤12% → hot
-// color 30% → faint 68% → transparent by 80%) but in pink instead
-// of cyan. Hard cutoff before the canvas edge is what stops it from
-// reading as a smokey blob — the previous version extended color
-// out to 100% which left a long soft tail. This version snaps to
-// transparent so the bloom looks like a CONTAINED flash, not a
-// foggy puff.
+// Contained additive flash — white core, color halo, hard cutoff. Used by
+// hit-ring / parry cores.
 function createFlashBloom(size, r, g, b) {
   const c = document.createElement("canvas");
   c.width = size;
@@ -1872,6 +1859,61 @@ function pickPuff(textures) {
 function pickSmallPuff(textures) {
   return pick([textures.puffSm1, textures.puffSm2, textures.puffSm3]);
 }
+
+// Placeholder belt smoke: one belt-heavy wash on the fuzzy puff. Color is
+// the same through the cloud — only alpha fades — so it cannot grow a rim.
+function clampByte(n) {
+  return Math.max(0, Math.min(255, Math.round(n)));
+}
+
+function mixRgb(a, b, t) {
+  return [
+    clampByte(a[0] + (b[0] - a[0]) * t),
+    clampByte(a[1] + (b[1] - a[1]) * t),
+    clampByte(a[2] + (b[2] - a[2]) * t),
+  ];
+}
+
+function tintCelPuff(source, rgb) {
+  if (!source || !rgb) return null;
+  const W = source.width;
+  const H = source.height;
+  if (!W || !H) return null;
+  const col = mixRgb(rgb, [255, 255, 255], 0.22);
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  const cx = c.getContext("2d");
+  cx.drawImage(source, 0, 0);
+  cx.globalCompositeOperation = "source-atop";
+  cx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+  cx.fillRect(0, 0, W, H);
+  return c;
+}
+
+function bakeTintedPuffSet(textures, keys, rgb) {
+  if (!textures) return [];
+  const out = [];
+  for (let i = 0; i < keys.length; i++) {
+    const tinted = tintCelPuff(textures[keys[i]], rgb);
+    if (tinted) out.push(tinted);
+  }
+  return out;
+}
+
+function pickBeltPuff(engine, playerNumber) {
+  const accent = engine.accentTextures?.[`player${playerNumber}`];
+  const set = accent?.puffTints;
+  if (set && set.length) return pick(set);
+  return pickPuff(engine.textures);
+}
+
+function pickBeltPuffSm(engine, playerNumber) {
+  const accent = engine.accentTextures?.[`player${playerNumber}`];
+  const set = accent?.puffTintsSm;
+  if (set && set.length) return pick(set);
+  return pickSmallPuff(engine.textures);
+}
 function pickBluePuff(textures) {
   return pick([textures.bluePuff1, textures.bluePuff2, textures.bluePuff3, textures.bluePuff4]);
 }
@@ -1910,6 +1952,60 @@ function slideArtFeet(x, facing) {
     artLeftX: x + face * SLIDE_FOOT_LEFT,
     artRightX: x + face * SLIDE_FOOT_RIGHT,
   };
+}
+
+// Pull yank — ice chips + a thin scratch on the sole line. Never the
+// landing-smoke sheet (too big, floats off the feet).
+function spawnPullIceSkid(
+  engine,
+  { x, y, intensity, direction, kick = 1, chips = 5, streaks = 1 }
+) {
+  const dir = (direction >= 0 ? 1 : -1) * (kick >= 0 ? 1 : -1);
+  const footX = x;
+  const footY = GAME_H - y - SLIDE_FOOT_Y_LIFT;
+  const s = Math.min(Math.max(intensity == null ? 0.45 : intensity, 0), 1);
+  const n = Math.max(2, Math.round(chips * (0.65 + s * 0.5)));
+  for (let i = 0; i < n; i++) {
+    engine.spawn({
+      x: footX + dir * rand(-4, 10) + rand(-5, 5),
+      y: footY - rand(0, 3),
+      vx: dir * rand(28, 90) * (0.5 + s) + rand(-12, 12),
+      vy: rand(-36, -8) * (0.45 + s * 0.4),
+      gravity: 420,
+      drag: 0.93,
+      size: rand(2, 4) * (0.75 + s * 0.25),
+      sizeEnd: 1,
+      alpha: rand(0.5, 0.82),
+      alphaEnd: 0,
+      ease: "linear",
+      easeAlpha: "outQuad",
+      rotationSpeed: rand(-6, 6),
+      maxLife: rand(0.16, 0.28),
+      texture: pick([engine.textures.chunkIce, engine.textures.circleIce, engine.textures.chunk]),
+    });
+  }
+  const streakN = Math.max(0, Math.round(streaks));
+  for (let i = 0; i < streakN; i++) {
+    engine.spawn({
+      x: footX + dir * rand(-2, 8),
+      y: footY - rand(0, 2),
+      vx: dir * rand(4, 14),
+      vy: 0,
+      gravity: 0,
+      drag: 0.97,
+      size: rand(2, 4),
+      sizeEnd: rand(1, 2),
+      alpha: 0.28 + s * 0.22,
+      alphaEnd: 0,
+      rotation: 0,
+      rotationSpeed: 0,
+      ease: "linear",
+      easeAlpha: "inQuad",
+      maxLife: rand(0.18, 0.3),
+      texture: pick([engine.textures.groundStreakThin, engine.textures.groundStreak]),
+      stretchX: rand(2.2, 3.6),
+    });
+  }
 }
 
 // ─── HIT VFX OVERHAUL (Phase A) — cel-burst impact emitter ───────────
@@ -2253,6 +2349,113 @@ function emitHitRingCore(engine, cx, cy, { tier = "slap", dir = 1, palette = "wh
   }
 
   emitHitImpactSmoke(engine, cx, cy, { tier, dir, palette });
+}
+
+function spawnCinematicKillSmoke(engine, { x, y, direction, playerNumber }) {
+  const dir = direction || 1;
+  const baseY = GAME_H - y - 60;
+
+  for (let i = 0; i < 3; i++) {
+    const size = rand(35, 65);
+    engine.spawn({
+      x: x + -dir * rand(5, 25),
+      y: baseY + rand(-18, 18),
+      vx: -dir * rand(100, 240),
+      vy: rand(-35, 25),
+      gravity: rand(-15, 10),
+      drag: 0.91,
+      size,
+      sizeEnd: size * rand(1.4, 2.2),
+      alpha: rand(0.6, 0.85),
+      alphaEnd: 0,
+      ease: "outCubic",
+      easeAlpha: "inQuad",
+      rotationSpeed: rand(-2, 2),
+      maxLife: rand(0.5, 0.8),
+      texture: pickBeltPuff(engine, playerNumber),
+      delay: i * 0.015,
+    });
+  }
+
+  for (let i = 0; i < 4; i++) {
+    const size = rand(14, 28);
+    engine.spawn({
+      x: x + -dir * rand(0, 20) + rand(-10, 10),
+      y: baseY + rand(-25, 25),
+      vx: -dir * rand(60, 200) + rand(-30, 30),
+      vy: rand(-50, 30),
+      gravity: rand(10, 40),
+      drag: 0.89,
+      size,
+      sizeEnd: size * rand(0.6, 1.2),
+      alpha: rand(0.5, 0.75),
+      alphaEnd: 0,
+      ease: "outCubic",
+      easeAlpha: "outQuad",
+      rotationSpeed: rand(-3, 3),
+      maxLife: rand(0.3, 0.55),
+      texture: pickBeltPuffSm(engine, playerNumber),
+    });
+  }
+}
+
+function spawnPowerSendSmoke(engine, { x, y, direction, playerNumber }) {
+  const dir = direction || 1;
+  const baseY = GAME_H - y - 52;
+  const front = { aboveFighters: true };
+
+  for (let i = 0; i < 2; i++) {
+    const size = rand(22, 40);
+    engine.spawn({
+      ...front,
+      x: x + -dir * rand(4, 18),
+      y: baseY + rand(-14, 14),
+      vx: -dir * rand(50, 130),
+      vy: rand(-22, 16),
+      gravity: rand(-8, 12),
+      drag: 0.91,
+      size,
+      sizeEnd: size * rand(1.3, 1.9),
+      alpha: rand(0.26, 0.42),
+      alphaEnd: 0,
+      ease: "outCubic",
+      easeAlpha: "inQuad",
+      rotationSpeed: rand(-1.4, 1.4),
+      maxLife: rand(0.38, 0.58),
+      texture: pickBeltPuff(engine, playerNumber),
+      delay: i * 0.014,
+    });
+  }
+
+  for (let i = 0; i < 2; i++) {
+    const size = rand(10, 20);
+    engine.spawn({
+      ...front,
+      x: x + -dir * rand(0, 14) + rand(-8, 8),
+      y: baseY + rand(-18, 18),
+      vx: -dir * rand(36, 110) + rand(-18, 18),
+      vy: rand(-28, 18),
+      gravity: rand(8, 28),
+      drag: 0.89,
+      size,
+      sizeEnd: size * rand(0.7, 1.2),
+      alpha: rand(0.2, 0.34),
+      alphaEnd: 0,
+      ease: "outCubic",
+      easeAlpha: "outQuad",
+      rotationSpeed: rand(-2, 2),
+      maxLife: rand(0.24, 0.42),
+      texture: pickBeltPuffSm(engine, playerNumber),
+    });
+  }
+}
+
+function spawnPowerSendLaunch(engine, opts) {
+  spawnPowerSendSmoke(engine, opts);
+}
+
+function spawnPowerSendTrail(engine, opts) {
+  spawnPowerSendSmoke(engine, opts);
 }
 
 const PRESETS = {
@@ -3126,16 +3329,162 @@ const PRESETS = {
     }
   },
 
-  // Pull reversal hop landing — lighter than a throw touchdown. Same smoke-puff
-  // sprite, scaled/faded down by hop intensity.
-  pullReversalLand(engine, { x, y, intensity }) {
+  // Belt-yank ice at the soles. No landing-smoke sheet — that puff is a
+  // 110px cloud and sits on the torso. These are skate chips + a thin
+  // scratch on the ice line (same foot lift as the ice-slide FX).
+  pullYankCrack(engine, { x, y, intensity, direction }) {
+    spawnPullIceSkid(engine, {
+      x,
+      y,
+      intensity,
+      direction,
+      kick: -1,
+      chips: 5,
+    });
+  },
+
+  // Snap: same ice language, kicked WITH travel. A couple of short speed
+  // ticks at high power — never a smoke bloom.
+  pullYankSnap(engine, { x, y, intensity, direction }) {
+    const s = Math.min(Math.max(intensity == null ? 0.5 : intensity, 0), 1);
+    spawnPullIceSkid(engine, {
+      x,
+      y,
+      intensity,
+      direction,
+      kick: 1,
+      chips: 7,
+    });
+    if (s > 0.55) {
+      const dir = direction >= 0 ? 1 : -1;
+      const footX = x;
+      const midY = GAME_H - y - 22;
+      for (let i = 0; i < 2; i++) {
+        engine.spawn({
+          x: footX - dir * rand(4, 16),
+          y: midY + rand(-6, 8),
+          vx: dir * rand(140, 240) * s,
+          vy: rand(-6, 6),
+          gravity: 0,
+          drag: 0.9,
+          size: rand(10, 18),
+          sizeEnd: rand(3, 6),
+          alpha: 0.18 + s * 0.16,
+          alphaEnd: 0,
+          ease: "outCubic",
+          easeAlpha: "outCubic",
+          maxLife: 0.1,
+          texture: engine.textures.speedLineThin || engine.textures.speedLine,
+          stretchX: 1.4,
+          blendMode: "lighter",
+        });
+      }
+    }
+  },
+
+  // W-throw launch — ice leaving the soles. Never kill-throw smoke.
+  throwTossLaunch(engine, { x, y, intensity, direction }) {
+    spawnPullIceSkid(engine, {
+      x,
+      y,
+      intensity,
+      direction,
+      kick: -1,
+      chips: 6,
+      streaks: 1,
+    });
+  },
+
+  // W-throw land — the same landing-smoke sheet as a hop plant, plus ice
+  // chips on the sole line. Kill throw keeps the cinematic splash.
+  throwTossLand(engine, { x, y, intensity, direction }) {
+    const s = Math.min(Math.max(intensity == null ? 0.45 : intensity, 0), 1);
     const footX = x;
     const footY = GAME_H - y - 12;
-    const s = Math.min(Math.max(intensity || 0.5, 0), 1);
     spawnLandingSmoke(engine, footX, footY, {
-      scale: 0.62 + s * 0.4,
-      alpha: Math.min(1, 0.95 * s),
-      maxLife: 0.44,
+      scale: 1.15,
+      alpha: 1,
+      maxLife: 0.52,
+    });
+    spawnPullIceSkid(engine, {
+      x,
+      y,
+      intensity,
+      direction,
+      kick: 1,
+      chips: 6 + Math.round(s * 5),
+      streaks: s > 0.45 ? 2 : 1,
+    });
+    if (s > 0.55) {
+      const dir = direction >= 0 ? 1 : -1;
+      const footX = x;
+      const midY = GAME_H - y - 8;
+      for (let i = 0; i < 3; i++) {
+        engine.spawn({
+          x: footX + dir * rand(-8, 14),
+          y: midY + rand(-4, 6),
+          vx: dir * rand(80, 180) * s + rand(-20, 20),
+          vy: rand(-70, -18) * s,
+          gravity: 460,
+          drag: 0.91,
+          size: rand(3, 6),
+          sizeEnd: 1,
+          alpha: 0.55 + s * 0.25,
+          alphaEnd: 0,
+          ease: "linear",
+          easeAlpha: "outQuad",
+          maxLife: rand(0.16, 0.28),
+          texture: pick([engine.textures.chunkIce, engine.textures.circleIce]),
+        });
+      }
+    }
+  },
+
+  // Tawara bounce — they hit the straw, ice kicks BACK toward center.
+  throwRicochet(engine, { x, y, intensity, direction }) {
+    const s = Math.min(Math.max(intensity == null ? 0.9 : intensity, 0), 1);
+    const dir = direction >= 0 ? 1 : -1;
+    spawnPullIceSkid(engine, {
+      x,
+      y,
+      intensity: s,
+      direction: -dir,
+      kick: 1,
+      chips: 10,
+      streaks: 3,
+    });
+    const footX = x;
+    const midY = GAME_H - y - 6;
+    for (let i = 0; i < 7; i++) {
+      engine.spawn({
+        x: footX + dir * rand(-4, 10),
+        y: midY + rand(-10, 8),
+        vx: -dir * rand(140, 280) * s + rand(-30, 30),
+        vy: rand(-120, -20) * s,
+        gravity: 520,
+        drag: 0.9,
+        size: rand(4, 8),
+        sizeEnd: 1,
+        alpha: 0.7 + s * 0.25,
+        alphaEnd: 0,
+        ease: "linear",
+        easeAlpha: "outQuad",
+        maxLife: rand(0.2, 0.36),
+        texture: pick([engine.textures.chunkIce, engine.textures.circleIce]),
+      });
+    }
+  },
+
+  // Hop / scrape tick — tiny ice kick on the ICE LINE, not a smoke puff.
+  pullReversalLand(engine, { x, y, intensity, direction }) {
+    spawnPullIceSkid(engine, {
+      x,
+      y,
+      intensity: Math.min(0.55, intensity == null ? 0.35 : intensity),
+      direction,
+      kick: 1,
+      chips: 3,
+      streaks: 1,
     });
   },
 
@@ -3446,17 +3795,13 @@ const PRESETS = {
   // so it doesn't read as a straight vertical chimney.
   // Drawn aboveFighters so the trail wraps over the body instead of sitting
   // on the mid canvas under the sprite (z50 vs fighter z99).
-  clinchKillThrowTrail(engine, { x, y, direction, ascending = false }) {
+  clinchKillThrowTrail(engine, { x, y, direction, ascending = false, playerNumber }) {
     const dir = direction || 1;
     const baseY = GAME_H - y - 50;
-    // Forward lean (~25–35°) in throw direction; screen Y is down, so a
-    // forward-up trail leans with rotation matching dir.
     const forwardTilt = dir * (ascending ? 0.55 : 0.28);
     const front = { aboveFighters: true };
 
     if (ascending) {
-      // Way up: bias a little FORWARD of the body (throw direction) so the
-      // liftoff cloud sits in front of the thrower rather than trailing behind.
       for (let i = 0; i < 2; i++) {
         const size = rand(28, 52);
         engine.spawn({
@@ -3476,7 +3821,7 @@ const PRESETS = {
           rotation: forwardTilt + rand(-0.12, 0.12),
           rotationSpeed: rand(-1.2, 1.2),
           maxLife: rand(0.4, 0.7),
-          texture: pickPuff(engine.textures),
+          texture: pickBeltPuff(engine, playerNumber),
           delay: i * 0.012,
         });
       }
@@ -3500,13 +3845,12 @@ const PRESETS = {
           rotation: forwardTilt + rand(-0.2, 0.2),
           rotationSpeed: rand(-2.5, 2.5),
           maxLife: rand(0.28, 0.5),
-          texture: pickSmallPuff(engine.textures),
+          texture: pickBeltPuffSm(engine, playerNumber),
         });
       }
       return;
     }
 
-    // Way down: denser crash trail, still slightly forward-tilted, over the body.
     for (let i = 0; i < 2; i++) {
       const size = rand(28, 52);
       engine.spawn({
@@ -3526,7 +3870,7 @@ const PRESETS = {
         rotation: forwardTilt + rand(-0.1, 0.1),
         rotationSpeed: rand(-2, 2),
         maxLife: rand(0.4, 0.7),
-        texture: pickPuff(engine.textures),
+        texture: pickBeltPuff(engine, playerNumber),
         delay: i * 0.012,
       });
     }
@@ -3550,7 +3894,7 @@ const PRESETS = {
         rotation: forwardTilt + rand(-0.15, 0.15),
         rotationSpeed: rand(-3, 3),
         maxLife: rand(0.28, 0.5),
-        texture: pickSmallPuff(engine.textures),
+        texture: pickBeltPuffSm(engine, playerNumber),
       });
     }
   },
@@ -3975,54 +4319,21 @@ const PRESETS = {
     }
   },
 
-  cinematicKillTrail(engine, { x, y, direction }) {
+  // Strong (non-kill) throw / pull plant. Nerfed ghost of the kill smoke.
+  // Kill throw / kill pull never call this.
+  powerSendLaunch(engine, { x, y, direction, playerNumber, variant }) {
+    spawnPowerSendLaunch(engine, { x, y, direction, playerNumber, variant });
+  },
+
+  // Strong (non-kill) throw / pull travel. Nerfed ghost, same height both ways.
+  powerSendTrail(engine, { x, y, direction, playerNumber, variant }) {
+    spawnPowerSendTrail(engine, { x, y, direction, playerNumber, variant });
+  },
+
+  cinematicKillTrail(engine, { x, y, direction, playerNumber }) {
     const dir = direction || 1;
     const baseY = GAME_H - y - 60;
-
-    // Big billowing smoke — fewer, varied sizes for shape
-    for (let i = 0; i < 3; i++) {
-      const size = rand(35, 65);
-      engine.spawn({
-        x: x + -dir * rand(5, 25),
-        y: baseY + rand(-18, 18),
-        vx: -dir * rand(100, 240),
-        vy: rand(-35, 25),
-        gravity: rand(-15, 10),
-        drag: 0.91,
-        size,
-        sizeEnd: size * rand(1.4, 2.2),
-        alpha: rand(0.6, 0.85),
-        alphaEnd: 0,
-        ease: "outCubic",
-        easeAlpha: "inQuad",
-        rotationSpeed: rand(-2, 2),
-        maxLife: rand(0.5, 0.8),
-        texture: pickPuff(engine.textures),
-        delay: i * 0.015,
-      });
-    }
-
-    // Smaller turbulent puffs — more of them, scattered wider
-    for (let i = 0; i < 4; i++) {
-      const size = rand(14, 28);
-      engine.spawn({
-        x: x + -dir * rand(0, 20) + rand(-10, 10),
-        y: baseY + rand(-25, 25),
-        vx: -dir * rand(60, 200) + rand(-30, 30),
-        vy: rand(-50, 30),
-        gravity: rand(10, 40),
-        drag: 0.89,
-        size,
-        sizeEnd: size * rand(0.6, 1.2),
-        alpha: rand(0.5, 0.75),
-        alphaEnd: 0,
-        ease: "outCubic",
-        easeAlpha: "outQuad",
-        rotationSpeed: rand(-3, 3),
-        maxLife: rand(0.3, 0.55),
-        texture: pickSmallPuff(engine.textures),
-      });
-    }
+    spawnCinematicKillSmoke(engine, { x, y, direction, playerNumber });
 
     // Speed lines streaking behind
     for (let i = 0; i < 3; i++) {
@@ -4172,7 +4483,7 @@ const PRESETS = {
     }
   },
 
-  cinematicKillImpact(engine, { x, y }) {
+  cinematicKillImpact(engine, { x, y, playerNumber }) {
     const footY = GAME_H - y;
 
     // Massive expanding ring at impact point
@@ -4228,7 +4539,7 @@ const PRESETS = {
         easeAlpha: "inQuad",
         rotationSpeed: rand(-1.5, 1.5),
         maxLife: rand(0.35, 0.55),
-        texture: pickPuff(engine.textures),
+        texture: pickBeltPuff(engine, playerNumber),
       });
     }
 
@@ -5775,10 +6086,10 @@ export class ParticleEngine {
     this.particles = [];
     this.textures = null;
     // Per-player accent textures keyed by playerNumber (1 or 2). Each entry is
-    // { haloRing, trailPuff } baked at color-pick time from the player's
-    // mawashi color via setAccentTextures(). Presets that need player-color
-    // particles read from this map (e.g. localPlayerHalo, sidestepTrail,
-    // iceSlideStart, iceSlideTrail).
+    // { haloRing, trailPuff, puffTints, puffTintsSm } baked at color-pick time
+    // from the player's mawashi via setAccentTextures(). Presets that need
+    // player-color particles read from this map (halo, slide mist, throw/pull
+    // smoke, charged-kill smoke).
     this.accentTextures = {};
     this._rafId = null;
     this._lastTime = 0;
@@ -5905,12 +6216,23 @@ export class ParticleEngine {
 
     Object.entries(accents).forEach(([playerKey, data]) => {
       if (!data || !data.rgb) return;
+      const rgb = data.rgb;
       this.accentTextures[playerKey] = {
         // Built at ~3.7:1 aspect to match how localPlayerHalo renders
         // it (size 34 with stretchX 3.7) — symmetric per-axis scaling,
         // no stroke distortion.
-        haloRing: createHaloRing(r(260), r(70), data.rgb),
-        trailPuff: createColoredPuff(r(72), data.rgb, 4242),
+        haloRing: createHaloRing(r(260), r(70), rgb),
+        trailPuff: createColoredPuff(r(72), rgb, 4242),
+        puffTints: bakeTintedPuffSet(
+          this.textures,
+          ["puff1", "puff2", "puff3", "puff4", "puff5"],
+          rgb
+        ),
+        puffTintsSm: bakeTintedPuffSet(
+          this.textures,
+          ["puffSm1", "puffSm2", "puffSm3"],
+          rgb
+        ),
       };
     });
   }

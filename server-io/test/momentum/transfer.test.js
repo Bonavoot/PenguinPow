@@ -169,8 +169,8 @@ test("grab profiles hit their designed anchors", () => {
   near(M.transfer(0, drive.floor, drive.ceil), drive.floor, 0.5, "standing drive is a real shove");
   near(M.transfer(M.V_REF, drive.floor, drive.ceil), drive.ceil, 0.5, "full-slide drive");
   assert.ok(
-    M.transfer(M.V_REF, drive.floor, drive.ceil) > HALF_RING,
-    "max drive must clear the half-ring"
+    M.transfer(M.V_REF, drive.floor, drive.ceil) < HALF_RING,
+    "max drive must not solo-kill from centre"
   );
 
   near(M.transfer(0, pull.floor, pull.ceil), pull.floor, 0.5, "belt tug on a healthy opponent");
@@ -180,7 +180,7 @@ test("grab profiles hit their designed anchors", () => {
     0.5,
     "pull's ceiling is still a side-switch, not a dump"
   );
-  assert.ok(pull.ceil < HALF_RING * 0.6, "pull must not threaten a half-ring send");
+  assert.ok(pull.ceil < HALF_RING, "max pull must not solo-kill from centre");
 
   near(M.transfer(0, matador.floor, matador.ceil), matador.floor, 0.5, "standing-grab matador still dumps");
   near(M.transfer(M.V_REF, matador.floor, matador.ceil), matador.ceil, 0.5, "slide-in grab buys the ceiling");
@@ -721,14 +721,14 @@ test("GRAB TRIANGLE: each variant answers a different opponent", () => {
   // Against a STANDING opponent: the pocket drive is already a shove. Zooming
   // in is a dramatic bonus (centre-to-rope), not the thing that makes the
   // button worth pressing — this game is close combat most of the time.
-  assert.ok(drive(0) >= 150, "a pocket drive must be a real shove, not a nudge");
+  assert.ok(drive(0) >= 130, "a pocket drive must be a real shove, not a nudge");
   assert.ok(
     drive(M.V_REF) > drive(0) * 1.5,
     "momentum is a dramatic bonus on top of a carry that was already worth doing"
   );
 
   // Pull is the geometry tool, not the anti-charge dump.
-  assert.ok(p.ceil - p.floor <= 50, "pull's band is a tug, not a launch curve");
+  assert.ok(p.ceil - p.floor >= 120, "pull's posture band must be Smash-visible");
   assert.ok(pull() < thr(0), "with no momentum, throw still out-sends a belt tug");
 
   // Head-on: charging into a Drive still eats the shove.

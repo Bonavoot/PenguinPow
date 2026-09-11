@@ -58,6 +58,8 @@ import {
 } from "../net/fighterSnapshotBus";
 import { selectLiveLocalFighter } from "../prediction/liveLocalFighter";
 import { facingKeys } from "../combatAudio/strikeAudioPrediction";
+import { pullYankCrowdIntensity } from "../combatPresentation/pullYankFeel";
+import { throwTossCrowdIntensity } from "../combatPresentation/throwTossFeel";
 import { selectMouse1StrikeCommand } from "../combatAudio/mouse1CommandSelection";
 import {
   pushClientInputCommandTrace,
@@ -785,9 +787,9 @@ const Game = ({
       // Block inputs when current player is throwing snowball
       if (cp?.isThrowingSnowball) return;
 
-      // Being grabbed / in clinch: Mouse1 is clinch jolt (server-gated) — never
-      // an open-game strike. Still accept the key so the jolt request goes out.
-      // Mouse2 is always allowed (throw/pull chords in clinch).
+      // Being grabbed / in clinch: Mouse1 is not an open-game strike. Mouse2
+      // does not re-grab; Back / W during the latch pick pull / throw on the
+      // server. Still accept keys so the aim packet goes out.
       if (e.button === 0) {
         e.preventDefault();
         const wasPressed = keyState.mouse1;
@@ -808,8 +810,7 @@ const Game = ({
         if (!wasPressed) pushEvent("mouse2", "down");
 
         // Don't predict an open-game grab while already clinching / grabbing —
-        // M2 is throw/pull chord there. canPredictAction also rejects this,
-        // but skip the call so we don't even attempt a grab pose flash.
+        // the latch owns the handshake. Skip so we don't flash grab-attempt.
         if (
           !wasPressed &&
           !cp?.isBeingGrabbed &&
@@ -1339,6 +1340,33 @@ const Game = ({
     socket.on("cinematic_kill", handleCinematicKill);
     socket.on("ring_out", handleRingOut);
 
+    const handlePullYankCrowd = (data) => {
+      if (data?.isKill) return;
+      const intensity = pullYankCrowdIntensity(
+        typeof data?.power === "number" ? data.power : 0
+      );
+      if (!intensity) return;
+      setCrowdEvent({
+        type: "cheer",
+        intensity,
+        timestamp: Date.now(),
+      });
+    };
+    socket.on("pull_yank", handlePullYankCrowd);
+
+    const handleThrowTossCrowd = (data) => {
+      const intensity = throwTossCrowdIntensity(
+        typeof data?.power === "number" ? data.power : 0
+      );
+      if (!intensity) return;
+      setCrowdEvent({
+        type: "cheer",
+        intensity,
+        timestamp: Date.now(),
+      });
+    };
+    socket.on("throw_toss", handleThrowTossCrowd);
+
     return () => {
       socket.off("game_reset", handleGameReset);
       socket.off("training_reset", handleTrainingReset);
@@ -1351,6 +1379,8 @@ const Game = ({
       socket.off("raw_parry_success", handleRawParrySuccessFlash);
       socket.off("cinematic_kill", handleCinematicKill);
       socket.off("ring_out", handleRingOut);
+      socket.off("pull_yank", handlePullYankCrowd);
+      socket.off("throw_toss", handleThrowTossCrowd);
       clearTimeout(koPunchTimeoutRef.current);
       clearTimeout(koPunchLiteTimeoutRef.current);
       clearTimeout(perfectParryFlashTimeoutRef.current);

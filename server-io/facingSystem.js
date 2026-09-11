@@ -105,10 +105,9 @@ function getLockedFacing(player) {
     return player.facing;
   }
 
-  // Active pull yank: explicit destination lock set at resolve, cleared when the
-  // tween settles. Do NOT key this off isAttemptingPull alone — that flag also
-  // covers pull startup and can outlive the knockback, which feels like a
-  // "timer" blocking correct facing after the yank is done.
+  // Victim being yanked: lock the facing they already had. The puller is
+  // NOT locked — they track live X. Cleared on settle (then we re-face).
+  // Kill victims keep isClinchKillPullVictim above so the cinematic does not turn.
   if (player.pullFacingDirection != null) {
     return player.pullFacingDirection;
   }
@@ -170,6 +169,22 @@ function getLockedFacing(player) {
   return null;
 }
 
+/** Drop a pull facing lock. Kill-trip victims stay frozen until round reset. */
+function releasePullFacingLock(player) {
+  if (!player) return;
+  if (player.isClinchKillPullVictim) return;
+  if (isActionFacingOwnershipV2Enabled()) {
+    releaseActionFacingLock(player, {
+      expectedInstanceId: player.pullFacingInstanceId,
+      expectedOwnerType: ACTION_FACING_OWNER.PULL,
+      reason: ACTION_FACING_RELEASE.ACTION_END,
+      clearLegacy: false,
+    });
+    player.pullFacingInstanceId = null;
+  }
+  player.pullFacingDirection = null;
+}
+
 /** Drop pull facing locks once neither fighter is still in the yank tween. */
 function clearOrphanPullFacingLocks(player1, player2) {
   const pullActive =
@@ -178,19 +193,8 @@ function clearOrphanPullFacingLocks(player1, player2) {
     !!(player2 &&
       (player2.isBeingPullReversaled || player2.isBoundaryPullSwap));
   if (pullActive) return;
-  for (const p of [player1, player2]) {
-    if (!p || p.pullFacingDirection == null) continue;
-    if (isActionFacingOwnershipV2Enabled()) {
-      releaseActionFacingLock(p, {
-        expectedInstanceId: p.pullFacingInstanceId,
-        expectedOwnerType: ACTION_FACING_OWNER.PULL,
-        reason: ACTION_FACING_RELEASE.ACTION_END,
-        clearLegacy: false,
-      });
-      p.pullFacingInstanceId = null;
-    }
-    p.pullFacingDirection = null;
-  }
+  releasePullFacingLock(player1);
+  releasePullFacingLock(player2);
 }
 
 /**
@@ -349,6 +353,7 @@ module.exports = {
   facingTowardOpponent,
   commitFacingTowardOpponent,
   getLockedFacing,
+  releasePullFacingLock,
   clearOrphanPullFacingLocks,
   retargetPostSidestepActionFacing,
   retargetChargeHoldFacing,

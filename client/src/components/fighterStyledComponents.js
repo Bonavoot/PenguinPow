@@ -363,6 +363,12 @@ export const resolveGrabArmAnimation = (props) => {
     return "grabFrontalForceOutVictimArm 0.3s ease-out forwards";
   }
   if (props.$isGrabSeparating) return "grabSeparatePushArm 0.3s ease-out";
+  if (props.$isBeingPullReversaled && !props.$isClinchKillPullVictim) {
+    return `pullYankVictimArm var(--pull-yank-ms, 400ms) cubic-bezier(0.22, 0.7, 0.28, 1) forwards`;
+  }
+  if (props.$isBeingThrown && !props.$isClinchKillThrowVictim) {
+    return "none";
+  }
   if (props.$isAttemptingPull || props.$isMatadorSuccess) {
     return `attemptingPullTugArm ${techniqueTellDuration(
       props,
@@ -756,6 +762,10 @@ export const StyledImage = styled("img")
         "isClinchKillThrowVictim",
         "isClinchKillPullVictim",
         "attackerConfirmTier",
+        "$pullYankPower",
+        "$pullYankDurationMs",
+        "$throwTossPower",
+        "$throwTossDurationMs",
       ].includes(prop),
   })
   .attrs((props) => ({
@@ -879,6 +889,18 @@ export const StyledImage = styled("img")
       // the victim far more than a poke. IMPACT_SQUASH_INTENSITY dials the
       // whole family quieter without changing relative grading.
       "--impact-amp": (props.$impactAmp ?? 1) * IMPACT_SQUASH_INTENSITY,
+      "--pull-yank-amp":
+        0.38 + Math.max(0, Math.min(1, props.$pullYankPower || 0)) * 0.72,
+      "--pull-yank-ms": `${Math.max(
+        280,
+        Math.round(props.$pullYankDurationMs || 400)
+      )}ms`,
+      "--throw-toss-amp":
+        0.36 + Math.max(0, Math.min(1, props.$throwTossPower || 0)) * 0.78,
+      "--throw-toss-ms": `${Math.max(
+        320,
+        Math.round(props.$throwTossDurationMs || 400)
+      )}ms`,
       transform:
         props.$isAtTheRopes && props.$fighter === "player 1"
           ? props.$facing === 1
@@ -972,7 +994,11 @@ export const StyledImage = styled("img")
         ? "grabFrontalForceOut 0.3s ease-out forwards"
         : props.$isBeingGrabFrontalForceOut
         ? "grabFrontalForceOutVictim 0.3s ease-out forwards"
+        : props.$isBeingPullReversaled && !props.$isClinchKillPullVictim
+        ? "pullYankVictim var(--pull-yank-ms, 400ms) cubic-bezier(0.22, 0.7, 0.28, 1) forwards"
         : props.$isBeingPullReversaled
+        ? "none"
+        : props.$isBeingThrown && !props.$isClinchKillThrowVictim
         ? "none"
         : props.$isGrabSeparating
         ? "grabSeparatePush 0.3s ease-out"
@@ -1028,6 +1054,8 @@ export const StyledImage = styled("img")
         // Hit reaction: amp-scaled contact squash only (no post-squash stagger).
         : props.$isHitFalling
         ? "airHitCarry 0.22s cubic-bezier(0.22, 0.6, 0.35, 1) forwards"
+        : props.$throwSetupPlant
+        ? "setupThrowLandSquash 0.42s cubic-bezier(0.22, 0.55, 0.3, 1)"
         : props.$isHit
         ? "hitSquash 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
         // Belly-bump plant: mass compresses FORWARD into the hit (not the
@@ -1167,6 +1195,13 @@ export const StyledImage = styled("img")
     0% { transform: scaleX(var(--facing, 1)) scaleY(1) skewX(0deg) translateX(0); }
     14% { transform: scaleX(var(--facing, 1)) scaleY(0.98) skewX(calc(var(--facing, 1) * -7deg)) translateX(calc(var(--facing, 1) * -2%)); }
     100% { transform: scaleX(var(--facing, 1)) scaleY(1) skewX(calc(var(--facing, 1) * -5deg)) translateX(calc(var(--facing, 1) * -1.2%)); }
+  }
+  @keyframes setupThrowLandSquash {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); }
+    8% { transform: scaleX(calc(var(--facing, 1) * 1.28)) scaleY(0.62) translateX(0) skewX(0deg); }
+    22% { transform: scaleX(calc(var(--facing, 1) * 0.92)) scaleY(1.08) translateX(0) skewX(calc(var(--facing, 1) * -2deg)); }
+    48% { transform: scaleX(calc(var(--facing, 1) * 1.06)) scaleY(0.94) translateX(0) skewX(0deg); }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); }
   }
   @keyframes hitSquash {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); }
@@ -1400,6 +1435,12 @@ export const StyledImage = styled("img")
     30% { transform: scaleX(calc(var(--facing, 1) * 0.97)) translateX(calc(var(--facing, 1) * 1px)) scaleY(1.02)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
     70% { transform: scaleX(calc(var(--facing, 1) * 0.98)) translateX(calc(var(--facing, 1) * 2px)) scaleY(1.01)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
+  @keyframes pullYankVictimArm {
+    0% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.1 * var(--pull-yank-amp, 1)))) scaleY(calc(1 - 0.1 * var(--pull-yank-amp, 1)))${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    16% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.14 * var(--pull-yank-amp, 1)))) scaleY(calc(1 - 0.12 * var(--pull-yank-amp, 1)))${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    42% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.1 * var(--pull-yank-amp, 1)))) scaleY(calc(1 + 0.12 * var(--pull-yank-amp, 1)))${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
   @keyframes attemptingPullTugArm {
     0% { transform: scaleX(var(--facing, 1)) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
     12% { transform: scaleX(var(--facing, 1)) scaleY(0.95)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
@@ -1513,9 +1554,18 @@ export const StyledImage = styled("img")
     30% { transform: scaleX(calc(var(--facing, 1) * 0.97)) translateX(calc(var(--facing, 1) * 1px)) scaleY(1.02); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
     70% { transform: scaleX(calc(var(--facing, 1) * 0.98)) translateX(calc(var(--facing, 1) * 2px)) scaleY(1.01); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
+  /* Belt yank victim — sole-pivoted. TAKE compresses (mass resists), SNAP
+     stretches (ripped off the plant), SLIDE settles. Amp is posture power. */
+  @keyframes pullYankVictim {
+    0% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.1 * var(--pull-yank-amp, 1)))) scaleY(calc(1 - 0.1 * var(--pull-yank-amp, 1))) translateX(0) skewX(0deg); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    16% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.16 * var(--pull-yank-amp, 1)))) scaleY(calc(1 - 0.14 * var(--pull-yank-amp, 1))) translateX(calc(var(--facing, 1) * 1.2% * var(--pull-yank-amp, 1))) skewX(calc(var(--facing, 1) * 3deg * var(--pull-yank-amp, 1))); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    42% { transform: scaleX(calc(var(--facing, 1) * (1 - 0.12 * var(--pull-yank-amp, 1)))) scaleY(calc(1 + 0.14 * var(--pull-yank-amp, 1))) translateX(calc(var(--facing, 1) * -2.4% * var(--pull-yank-amp, 1))) skewX(calc(var(--facing, 1) * -5deg * var(--pull-yank-amp, 1))); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    62% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.07 * var(--pull-yank-amp, 1)))) scaleY(calc(1 - 0.07 * var(--pull-yank-amp, 1))) translateX(calc(var(--facing, 1) * -0.6% * var(--pull-yank-amp, 1))) skewX(calc(var(--facing, 1) * 1.5deg * var(--pull-yank-amp, 1))); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
   @keyframes attemptingPullTug {
-    0% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
-    12% { transform: scaleX(var(--facing, 1)) scaleY(0.95); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    0% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.04 * var(--pull-yank-amp, 0.4)))) scaleY(calc(1 - 0.04 * var(--pull-yank-amp, 0.4))); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    12% { transform: scaleX(calc(var(--facing, 1) * (1 + 0.08 * var(--pull-yank-amp, 0.4)))) scaleY(calc(1 - 0.08 * var(--pull-yank-amp, 0.4))); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
     28% { transform: scaleX(var(--facing, 1)) scaleY(0.94); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
     45% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
     62% { transform: scaleX(var(--facing, 1)) scaleY(0.94); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
@@ -1733,6 +1783,8 @@ export const AnimatedFighterContainer = styled.div
           ? "burstHitSquash 0.35s cubic-bezier(0.22, 0.6, 0.35, 1)"
           : props.$isHitFalling
           ? "airHitCarryContainer 0.22s cubic-bezier(0.22, 0.6, 0.35, 1) forwards"
+          : props.$throwSetupPlant
+          ? "setupThrowLandSquash 0.42s cubic-bezier(0.22, 0.55, 0.3, 1)"
           : props.$isHit
           ? "hitSquashContainer 0.28s cubic-bezier(0.22, 0.6, 0.35, 1)"
           // MASTERY Phase 2 (2.1): feet-pinned openable teeter on spritesheet

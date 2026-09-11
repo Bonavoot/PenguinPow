@@ -29,6 +29,11 @@ const {
   CMD_PULL_RECOVERY_TAIL_MS,
   CMD_PULL_INPUT_LOCK_MS,
   CMD_PULL_TWEEN_MS,
+  CMD_PULL_TWEEN_MIN_MS,
+  CMD_PULL_TWEEN_BROKEN_MS,
+  CMD_PULL_TWEEN_MAX_MS,
+  CMD_PULL_DISTANCE_MIN,
+  CMD_PULL_DISTANCE_MAX,
   CMD_DRIVE_POSTURE_CHIP,
   CMD_GRAB_CONNECT_HITSTOP_MS,
   CMD_THROW_LAUNCH_HITSTOP_MS,
@@ -36,6 +41,11 @@ const {
   CMD_GRAB_CINCH_GRABBER_SHARE,
   CMD_GRAB_CINCH_MS,
   CLINCH_THROW_DURATION_MIN_MS,
+  SETUP_THROW_DURATION_MS,
+  SETUP_THROW_CHASE_LOCK_MS,
+  SETUP_THROW_SLAP_TIP_GAP_PX,
+  SETUP_THROW_PUSHBOX_GAP_PX,
+  SETUP_THROW_CHASE_ARRIVE_GAP_PX,
   HITSTOP_GRAB_MS,
   HITSTOP_THROW_MS,
   GRAB_RANGE,
@@ -148,18 +158,47 @@ test("command grab defaults", async (t) => {
     );
   });
 
-  await t.test("conversions commit far harder than the Drive", () => {
-    // Drive recovery is a post-release window. Throw still pays a tail on top
-    // of the arc. Pull's commitment IS the yank — it settles +0, like a slap.
+  await t.test("Throw is a setup — victim dump clock, thrower chases after the toss pose", () => {
     const driveTotal = CMD_DRIVE_ATTACKER_RECOVERY_MS;
-    const throwTotal = CLINCH_THROW_DURATION_MIN_MS + CMD_THROW_RECOVERY_TAIL_MS;
+    assert.equal(
+      CMD_THROW_RECOVERY_TAIL_MS,
+      0,
+      "the thrower chases; a leftover tail would eat the slide"
+    );
     assert.ok(
       CMD_PULL_TWEEN_MS > driveTotal,
       `the yank itself must still be a real commitment, got ${CMD_PULL_TWEEN_MS} vs ${driveTotal}`
     );
     assert.ok(
-      throwTotal > driveTotal * 2,
-      `Throw should cost far more than a Drive, got ${throwTotal} vs ${driveTotal}`
+      CLINCH_THROW_DURATION_MIN_MS > driveTotal,
+      `the victim dump must outlast Drive recovery so throw → slide can arrive, got ${CLINCH_THROW_DURATION_MIN_MS} vs ${driveTotal}`
+    );
+    assert.ok(
+      SETUP_THROW_CHASE_LOCK_MS > 0 &&
+        SETUP_THROW_CHASE_LOCK_MS < SETUP_THROW_DURATION_MS,
+      "toss pose holds, then a chase window remains before they land"
+    );
+    assert.ok(
+      SETUP_THROW_CHASE_ARRIVE_GAP_PX > SETUP_THROW_PUSHBOX_GAP_PX &&
+        SETUP_THROW_CHASE_ARRIVE_GAP_PX < SETUP_THROW_SLAP_TIP_GAP_PX,
+      "authored arrive gap is the meaty pocket between pushbox and slap tip"
+    );
+  });
+
+  await t.test("far pulls buy a heavier readable yank, not a faster fling", () => {
+    assert.equal(CMD_PULL_TWEEN_MS, CMD_PULL_TWEEN_MIN_MS);
+    assert.ok(
+      CMD_PULL_TWEEN_BROKEN_MS > CMD_PULL_TWEEN_MIN_MS,
+      "broken posture must take longer to read — it's a heavy penguin"
+    );
+    assert.ok(
+      CMD_PULL_TWEEN_BROKEN_MS <= 520,
+      "but not so long it becomes a crawl"
+    );
+    const distRatio = CMD_PULL_DISTANCE_MAX / CMD_PULL_DISTANCE_MIN;
+    assert.ok(
+      distRatio > 2,
+      `extra travel is still Smash-visible: dist ${distRatio.toFixed(2)}`
     );
   });
 
@@ -185,17 +224,12 @@ test("command grab defaults", async (t) => {
     );
   });
 
-  await t.test("connect freeze is extra weight on top of the shared grab latch", () => {
-    // Every grab already gets HITSTOP_GRAB_MS from the shared connect path, so these
-    // are additive. Drive adds nothing — it must start moving — while the two
-    // committed conversions get a heavier landing than a plain grab.
+  await t.test("connect freeze is shared — no per-variant extra on the latch", () => {
     const { drive, pull, throw: thr } = CMD_GRAB_CONNECT_HITSTOP_MS;
-    assert.equal(drive, 0, "a shove cannot afford a freeze before it starts");
-    assert.ok(
-      HITSTOP_GRAB_MS + pull > HITSTOP_GRAB_MS,
-      "pull should land heavier than a plain latch"
-    );
-    assert.ok(thr > pull, "the throw should be the heaviest connect of the three");
+    assert.equal(drive, 0);
+    assert.equal(pull, 0);
+    assert.equal(thr, 0);
+    assert.ok(HITSTOP_GRAB_MS > 0, "the handshake still thunks");
   });
 
   await t.test("only the throw gets a launch freeze", () => {
@@ -236,47 +270,62 @@ test("command grab defaults", async (t) => {
     );
   });
 
-  await t.test("variant window is more generous than the old chord window", () => {
-    const total = CMD_GRAB_VARIANT_PREBUFFER_MS + GRAB_STARTUP_MS;
+  await t.test("latch is a shared handshake, with an earlier conversion commit", () => {
+    const {
+      CMD_GRAB_LATCH_MS,
+      CMD_GRAB_LATCH_MIN_COMMIT_MS,
+    } = require("../../constants");
     assert.ok(
-      total > 220,
-      `total selection tolerance ${total}ms should beat the 220ms chord window it replaces`
+      CMD_GRAB_LATCH_MS >= 320 && CMD_GRAB_LATCH_MS <= 560,
+      `latch ${CMD_GRAB_LATCH_MS}ms must read as a belt grip, not a pause or a cutscene`
     );
-  });
-
-  await t.test("read beats are per-variant, and the Drive has none", () => {
+    assert.ok(
+      CMD_GRAB_LATCH_MIN_COMMIT_MS >= 160 &&
+        CMD_GRAB_LATCH_MIN_COMMIT_MS < CMD_GRAB_LATCH_MS,
+      "pull/throw may commit before the drive timeout, but not instantly"
+    );
+    assert.ok(
+      CMD_GRAB_CINCH_MS < CMD_GRAB_LATCH_MIN_COMMIT_MS,
+      `cinch ${CMD_GRAB_CINCH_MS}ms must finish before the earliest commit`
+    );
     const { drive, pull, throw: thr } = CMD_GRAB_CONNECT_STARTUP_MS;
-    const kill = CMD_GRAB_KILL_CONNECT_STARTUP_MS;
-    assert.equal(
-      drive,
-      0,
-      "a pause before a shove reads as a hitch, and would flatten approach-speed scaling later"
-    );
-    assert.ok(pull > 0 && pull < thr, "pull gets a short look, throw the longest");
-    assert.ok(
-      pull >= 160 && pull <= 280,
-      `pull tell ${pull}ms must be a tug, not a pose hold`
-    );
-    assert.ok(
-      thr >= 220 && thr < 400,
-      `throw tell ${thr}ms must be a readable windup, not a cutscene`
-    );
-    assert.ok(kill.drive === 0, "a lethal drive still starts moving immediately");
-    assert.ok(
-      kill.pull > pull && kill.throw > thr,
-      "kill grabs hold longer so the finisher reads before travel"
-    );
-    assert.ok(kill.pull < kill.throw, "kill throw remains the longest look");
-    assert.ok(
-      CMD_GRAB_CINCH_MS < pull,
-      `cinch ${CMD_GRAB_CINCH_MS}ms must finish before the shortest tell, or the pair drifts together through the windup`
-    );
+    assert.equal(drive, pull);
+    assert.equal(pull, thr);
+    assert.equal(drive, CMD_GRAB_LATCH_MS);
   });
 
   await t.test("tell duration rides the delta wire", () => {
     assert.ok(
       DELTA_TRACKED_PROPS.includes("clinchThrowAnimMs"),
       "stamping clinchThrowAnimMs does nothing if the client never receives it"
+    );
+    assert.ok(
+      DELTA_TRACKED_PROPS.includes("pullYankPower"),
+      "client hop dust / squash need pullYankPower on the wire"
+    );
+    assert.ok(
+      DELTA_TRACKED_PROPS.includes("throwTossPower"),
+      "client throw squash / smear need throwTossPower on the wire"
+    );
+    assert.ok(
+      DELTA_TRACKED_PROPS.includes("throwTossDurationMs"),
+      "throw squash must use the live toss duration"
+    );
+    assert.ok(
+      DELTA_TRACKED_PROPS.includes("throwSetupChase"),
+      "chase pose / slide unlock must ride the wire"
+    );
+    assert.ok(
+      DELTA_TRACKED_PROPS.includes("throwRicochet"),
+      "tawara bounce must be visible to the client"
+    );
+    assert.ok(
+      DELTA_TRACKED_PROPS.includes("grabBreakSepDuration"),
+      "hop dust must use the live yank duration, not a hardcoded 650"
+    );
+    assert.ok(
+      DELTA_TRACKED_PROPS.includes("grabBreakSepCurve"),
+      "healthy yanks are power 0 — the curve flag is how the client knows it's weighted"
     );
   });
 
@@ -297,20 +346,21 @@ test("command grab defaults", async (t) => {
     assert.ok(CMD_DRIVE_DISTANCE_MIN < CMD_DRIVE_DISTANCE_MAX);
   });
 
-  await t.test("Pull stays a pocket side-switch; Matador is the dump", () => {
+  await t.test("Pull posture band is Smash-visible; Matador is still the dump", () => {
     const pull = profileFor("pull");
     const matador = profileFor("matador");
+    const ringWidth = MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY;
     assert.ok(
-      pull.ceil < GRAB_RANGE,
-      `belt tug ceil ${pull.ceil} must stay inside grab range ${GRAB_RANGE} — swap the pocket, don't reset`
+      pull.ceil - pull.floor >= 120,
+      `pull's posture swing must be obvious, got ${pull.ceil - pull.floor}`
     );
     assert.ok(
-      pull.ceil - pull.floor <= 50,
-      "pull's posture band is a tug, not a launch curve"
+      pull.ceil < ringWidth / 2,
+      `max pull ${pull.ceil} must not solo-kill from centre`
     );
     assert.ok(
-      matador.floor > pull.ceil,
-      "even a standing-grab matador must out-send the biggest belt tug"
+      matador.floor > pull.floor,
+      "a standing matador still out-sends a full-posture belt tug"
     );
   });
 

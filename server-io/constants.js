@@ -71,6 +71,11 @@ const DELTA_TRACKED_PROPS = [
   'isAttemptingGrabThrow', 'isInRitualPhase',
   'isGrabPushing', 'isBeingGrabPushed', 'isEdgePushing', 'isBeingEdgePushed',
   'isAttemptingPull', 'isBeingPullReversaled',
+  // Weighted pull yank: client hop dust / squash / smear read these.
+  'pullYankPower', 'grabBreakSepDuration', 'grabBreakSepCurve',
+  // Weighted W-throw: client squash / smear / land juice read these.
+  'throwTossPower', 'throwTossDurationMs',
+  'throwSetupChase', 'throwRicochet', 'throwSetupPlant',
   'isGrabSeparating',
   // Drive release presentation: the shoved fighter plays the palm-thrust
   // animation while they slide. Pose only — never an attack (see releaseDrive).
@@ -106,6 +111,9 @@ const DELTA_TRACKED_PROPS = [
   'isHitFalling', 'isSidestepHitReturn',
   'inClinch', 'hasGrip', // Always true while in clinch (belt grip is the only clinch pose).
   'isClinchBeltHolding',
+  // Latch-then-aim: remote clients need the live phase + aimed variant so
+  // belt / pull / throw poses update during the hold, not only at resolve.
+  'cmdGrabPhase', 'cmdGrabVariant',
   // Legacy wire field — always false.
   'isClinchThrowing', 'isClinchPushing', 'isClinchPlanting',
   'isClinchKillThrowVictim', 'isClinchKillPullVictim',
@@ -1176,17 +1184,67 @@ const COUNTER_GRAB_BALANCE_DEBUFF = 10;          // Balance hit on counter-grab 
 
 // Mutual technique collision (no Deep Grip winner) → tumble apart, end clinch
 const CLINCH_THROW_KILL_THRESHOLD = 15;          // Balance below which = KILL THROW (round over)
-// Balance-scaled non-kill throw (full composure → short toss; near-kill → far).
-// Distance, arc height, and duration all scale together so a high-Balance toss
-// keeps a forward throw ratio instead of reading as a tall Y-hop with little travel.
-const CLINCH_THROW_DISTANCE_MIN = 185;           // Clean throw at full Balance (was 140 — too hoppy)
-const CLINCH_THROW_DISTANCE_MAX = 260;           // Clean throw near lethal Balance
-const CLINCH_THROW_DISTANCE = 260;               // Legacy alias (= max); prefer scaled helper
-const CLINCH_THROW_ARC_HEIGHT_MIN = 55;          // Weak toss peak ~44px (3.2×h×0.25)
-const CLINCH_THROW_ARC_HEIGHT_MAX = 100;         // Strong toss peak ~80px
-const CLINCH_THROW_ARC_HEIGHT = 100;             // Legacy alias (= max)
-const CLINCH_THROW_DURATION_MIN_MS = 400;        // Snappy short toss — matches short travel
-const CLINCH_THROW_DURATION_MAX_MS = 550;        // Longer air time for the far throw
+// SETUP THROW (W) — authored dump, not a Smash-percent yeet.
+// Penguin display body is ~136 map-px tall; 86 is a proud toss (~0.63 body)
+// that still sits well under the 240 cinematic kill. 190px land is outside
+// slap connect (~133) and just outside grab attempt (175), so throw → slide
+// is the follow-up. Posture chips and juices the plant; it does not move X.
+const SETUP_THROW_TRAVEL_PX = 190;
+const SETUP_THROW_ARC_HEIGHT = 86;
+const SETUP_THROW_DURATION_MS = 448;
+const SETUP_THROW_RICOCHET_DURATION_MS = 580;
+const SETUP_THROW_RICOCHET_REBOUND_PX = 72;
+const SETUP_THROW_RICOCHET_BOUNCE_HEIGHT = 54;
+const SETUP_THROW_RICOCHET_HIT_AT = 0.5;
+const SETUP_THROW_CHASE_SPEED = ICE_SLIDE_MAX_SPEED;
+const SETUP_THROW_PLANT_MS = 420;
+// First-legal-frame slide arrives in the OUTER meaty: still inside slap tip,
+// with enough pushbox slack that a plant-frame slide tick does not bury them.
+// The inner 25% band (~117) kissed the box on land — eject zeroed ice speed
+// and ate the belly bump. Tip-range (320ms hold) felt parked. Outer meaty
+// is a slightly longer toss pose, then a short slide that is still close.
+//   pushbox @ 0.85   = 65*0.85*2 ≈ 110.5
+//   slap tip @ 0.85  = 478*(1280*0.123/960) + 65*0.85 - 1 ≈ 133
+//   arrive (75% up the band from pushbox) ≈ 128
+//   chase travel     = 190 - 128 = 62
+//   slide @ 1.0 move = 444 px/s → ~140ms
+//   lock             = 448 - 140 ≈ 308ms
+const SETUP_THROW_SLAP_TIP_GAP_PX = Math.round(
+  STRIKE_TIP_SLAP1_SPRITE_PX * ((1280 * 0.123) / 960) +
+    HITBOX_DISTANCE_VALUE * 0.85 -
+    STRIKE_SKIN_EMBED_PX
+);
+const SETUP_THROW_PUSHBOX_GAP_PX = Math.round(
+  HITBOX_DISTANCE_VALUE * 0.85 * 2
+);
+const SETUP_THROW_CHASE_ARRIVE_T = 0.75;
+const SETUP_THROW_CHASE_ARRIVE_GAP_PX = Math.round(
+  SETUP_THROW_PUSHBOX_GAP_PX +
+    (SETUP_THROW_SLAP_TIP_GAP_PX - SETUP_THROW_PUSHBOX_GAP_PX) *
+      SETUP_THROW_CHASE_ARRIVE_T
+);
+const SETUP_THROW_CHASE_SLIDE_PX = Math.max(
+  0,
+  SETUP_THROW_TRAVEL_PX - SETUP_THROW_CHASE_ARRIVE_GAP_PX
+);
+const SETUP_THROW_CHASE_LOCK_MS = Math.max(
+  0,
+  Math.round(
+    SETUP_THROW_DURATION_MS -
+      (SETUP_THROW_CHASE_SLIDE_PX /
+        (1000 * speedFactor * ICE_SLIDE_MAX_SPEED)) *
+        1000
+  )
+);
+const CLINCH_THROW_DISTANCE_MIN = SETUP_THROW_TRAVEL_PX;
+const CLINCH_THROW_DISTANCE_MAX = SETUP_THROW_TRAVEL_PX;
+const CLINCH_THROW_DISTANCE = SETUP_THROW_TRAVEL_PX;
+const CLINCH_THROW_ARC_HEIGHT_MIN = SETUP_THROW_ARC_HEIGHT;
+const CLINCH_THROW_ARC_HEIGHT_MAX = SETUP_THROW_ARC_HEIGHT;
+const CLINCH_THROW_ARC_HEIGHT = SETUP_THROW_ARC_HEIGHT;
+const CLINCH_THROW_DURATION_MIN_MS = SETUP_THROW_DURATION_MS;
+const CLINCH_THROW_DURATION_BROKEN_MS = SETUP_THROW_DURATION_MS;
+const CLINCH_THROW_DURATION_MAX_MS = SETUP_THROW_DURATION_MS;
 
 // Clinch pull system (Mouse2 + away TAP during clinch)
 const CLINCH_PULL_DISTANCE_MIN = 160;            // Side-switch yank at full Balance
@@ -1231,40 +1289,47 @@ const CLINCH_PULL_SWAP_ARC_HEIGHT = 55;          // Hop arc height so pulled pla
 // ============================================
 // COMMAND GRAB
 // ============================================
-// M2 / M2+Back / M2+W pick Drive / Pull / Throw at press time; a connect resolves
-// straight into that action. Entry frame data (GRAB_STARTUP_MS / GRAB_RANGE 175 /
-// GRAB_WHIFF_RECOVERY_MS 450) is owned up there — everything here governs what
-// happens AFTER connect.
+// M2 is always a grab. After connect a latch opens and the grabber aims:
+// Back = pull, W = throw, toward/neutral/timeout = drive.
+// Throw is a fixed-distance setup dump. It only finishes the round when
+// posture is below the kill line AND the authored land is past the tawara.
+// Healthy rope throws ricochet off the straw. Drive still finishes on
+// gas at the rope. Entry frame data (GRAB_STARTUP_MS / GRAB_RANGE 175 /
+// GRAB_WHIFF_RECOVERY_MS 450) is owned up there.
 const CMD_GRAB_VARIANT = { DRIVE: "drive", PULL: "pull", THROW: "throw" };
 
-// Variant selection window. A direction press this long BEFORE the M2 edge still
-// selects, and the variant stays revisable until the grab goes active — total
-// ~295ms of tolerance vs the 220ms chord window it replaces. W counts held or
-// tapped (no other grounded use); Back must be TAPPED, because players hold Back
-// constantly while retreating and a panic-grab must not silently become a Pull.
-const CMD_GRAB_VARIANT_PREBUFFER_MS = 150;
+// Belt-grip aim window. Tunable — long enough to read the handshake, short
+// enough that matches still flow. Pull/Throw may commit after the min.
+const CMD_GRAB_LATCH_MS = 400;
+const CMD_GRAB_LATCH_MIN_COMMIT_MS = 200;
 
-// Post-connect tell, PER VARIANT. Uninterruptible (no Brace, no post-connect Break).
-// SIM-clock beats (start after connect freeze). Client tell = freeze + this, on
-// clinchThrowAnimMs. Grip close is a separate beat (CMD_GRAB_CINCH_MS).
-//   DRIVE  0     continuous shove
-//   PULL   200   wall-clock with freeze ≈ 325ms
-//   THROW  280   wall-clock with freeze ≈ 425ms
-const CMD_GRAB_CONNECT_STARTUP_MS = { drive: 0, pull: 200, throw: 280 };
-// Extra hold when already lethal at connect (balance < 15). Extra time is pose, not travel.
-const CMD_GRAB_KILL_CONNECT_STARTUP_MS = { drive: 0, pull: 400, throw: 520 };
+// Retired pre-press chord window. Kept exported so old imports don't throw.
+const CMD_GRAB_VARIANT_PREBUFFER_MS = 0;
 
-// Connect-gap close into settled grip. Independent of the tell.
+// Latch is the unified read beat for every variant (including Drive).
+const CMD_GRAB_CONNECT_STARTUP_MS = {
+  drive: CMD_GRAB_LATCH_MS,
+  pull: CMD_GRAB_LATCH_MS,
+  throw: CMD_GRAB_LATCH_MS,
+};
+const CMD_GRAB_KILL_CONNECT_STARTUP_MS = {
+  drive: CMD_GRAB_LATCH_MS,
+  pull: CMD_GRAB_LATCH_MS,
+  throw: CMD_GRAB_LATCH_MS,
+};
+
+// Connect-gap close into settled grip. Independent of the latch.
 // ~80ms at max range ≈ 1.4px/ms peak.
 const CMD_GRAB_CINCH_MS = 80;
 
-// Extra freeze on top of HITSTOP_GRAB_MS (55). Drive 0 still latches.
-const CMD_GRAB_CONNECT_HITSTOP_MS = { drive: 0, pull: 70, throw: 90 };
-// Launch freeze — throw only.
+// Extra freeze on top of HITSTOP_GRAB_MS. Latch is shared, so no per-variant
+// connect freeze — weight lives on the throw launch.
+const CMD_GRAB_CONNECT_HITSTOP_MS = { drive: 0, pull: 0, throw: 0 };
 const CMD_THROW_LAUNCH_HITSTOP_MS = 150;
 const CMD_PULL_LAUNCH_HITSTOP_MS = 0;
 
-// Fraction of the carry over which the grip closes. Drive has no startup beat, so it happens on the move.
+// Fraction of the carry over which the grip closes if the latch did not
+// already cinch (far connect that somehow skipped the hold).
 const CMD_DRIVE_CINCH_FRACTION = 0.35;
 
 // GRAB_RANGE (175) vs settled grip (~61px). Gap closes over CMD_GRAB_CINCH_MS (~80ms):
@@ -1277,14 +1342,26 @@ const CMD_GRAB_STAMINA_COST = 8;
 // ── DRIVE — carry toward the rope ───────────────────────────────────────────
 // Fallback only — live carry duration is D·p/v0 (accel from attempt speed).
 const CMD_DRIVE_CARRY_MS = 520;
-const CMD_DRIVE_DISTANCE_MIN = 160;  // Standing / pocket floor
-const CMD_DRIVE_DISTANCE_MAX = 250;  // Victim at the lethal line (~40% of the 595px ring)
+// Posture is the distance function (Smash-percent curve). Floors stay useful;
+// ceilings stay short of a centre-to-rope (297.5) solo kill.
+const CMD_DRIVE_DISTANCE_MIN = 140;
+const CMD_DRIVE_DISTANCE_MAX = 275;
+const CMD_DRIVE_TRAVEL_CAP = 290;
+const CMD_PULL_DISTANCE_MIN = 80;
+const CMD_PULL_DISTANCE_MAX = 230;
+// Pull kill / swap share one clamp read. If the yank cannot fit a side-switch
+// past the puller (the old "back to the wall" visual), a broken victim dies
+// instead of swapping. Slightly deeper than CLINCH_THROW_MIN_SEPARATION so the
+// latch cinch cannot walk you out of the finish.
+const CMD_PULL_KILL_CLAMP_ROOM_PX = 110;
+const CMD_THROW_TRAVEL_MIN = SETUP_THROW_TRAVEL_PX;
+const CMD_THROW_TRAVEL_MAX = SETUP_THROW_TRAVEL_PX;
+const CMD_THROW_TRAVEL_CAP = SETUP_THROW_TRAVEL_PX;
 const CMD_DRIVE_POSTURE_CHIP = 20;
 const CMD_DRIVE_GASSED_DISTANCE_MULT = 0.35; // Gassed scales carry, not lethality
 // Approach momentum (grabApproachSpeed, captured at grab startup) adds carry.
 // REF ≈ ICE_SLIDE_MAX_SPEED 2.4; walk tops out near ICE_MAX_SPEED 1.3.
 const CMD_DRIVE_APPROACH_REF_SPEED = 2.0;
-// 250 + 45 = 295, under half the 595px ring.
 const CMD_DRIVE_APPROACH_BONUS_MAX = 45;
 // RETIRED as a ring-out gate. Drive KO at the rope is stamina-gated now
 // (gassed / empty tank), matching slap/palm's clamp-unless-threshold pattern.
@@ -1318,11 +1395,16 @@ const CMD_THROW_POSTURE_CHIP = 24;
 // CMD_DRIVE_RELEASE_IMPACT_MS. 240/180 against a 270ms tween → attacker ~60ms negative.
 const CMD_DRIVE_ATTACKER_RECOVERY_MS = 240;
 const CMD_DRIVE_DEFENDER_RECOVERY_MS = 180;
-// Throw tail after travel (not stacked on the full arc).
-const CMD_THROW_RECOVERY_TAIL_MS = 120;
-// Command-grab Pull yank. CLINCH_PULL_TWEEN_DURATION (600) is shared with Matador.
-// Kill still uses CLINCH_KILL_PULL_TWEEN_DURATION.
-const CMD_PULL_TWEEN_MS = 320;
+// Setup throw: the dump clock is the victim's lock. Thrower chases after launch.
+const CMD_THROW_RECOVERY_TAIL_MS = 0;
+// Command-grab Pull yank. Distance already scales with posture; DURATION
+// grows with power so a heavy victim is readable (take → snap → decay),
+// not a faster fling. The lock dies with the yank; leftover speed continues
+// on ice after inputs unlock. Kill / Matador keep their own clocks.
+const CMD_PULL_TWEEN_MIN_MS = 380;
+const CMD_PULL_TWEEN_BROKEN_MS = 460;             // Low posture: heavier, digestible yank
+const CMD_PULL_TWEEN_MAX_MS = CMD_PULL_TWEEN_BROKEN_MS;
+const CMD_PULL_TWEEN_MS = CMD_PULL_TWEEN_MIN_MS;
 const CMD_PULL_INPUT_LOCK_MS = CMD_PULL_TWEEN_MS;
 // Retired as a live deficit. Kept at 0.
 const CMD_PULL_RECOVERY_TAIL_MS = 0;
@@ -2074,6 +2156,8 @@ module.exports = {
   // Command grab
   CMD_GRAB_VARIANT,
   CMD_GRAB_VARIANT_PREBUFFER_MS,
+  CMD_GRAB_LATCH_MS,
+  CMD_GRAB_LATCH_MIN_COMMIT_MS,
   CMD_GRAB_CONNECT_STARTUP_MS,
   CMD_GRAB_KILL_CONNECT_STARTUP_MS,
   CMD_GRAB_CONNECT_HITSTOP_MS,
@@ -2085,6 +2169,27 @@ module.exports = {
   CMD_DRIVE_CARRY_MS,
   CMD_DRIVE_DISTANCE_MIN,
   CMD_DRIVE_DISTANCE_MAX,
+  CMD_DRIVE_TRAVEL_CAP,
+  CMD_PULL_DISTANCE_MIN,
+  CMD_PULL_DISTANCE_MAX,
+  CMD_PULL_KILL_CLAMP_ROOM_PX,
+  CMD_THROW_TRAVEL_MIN,
+  CMD_THROW_TRAVEL_MAX,
+  CMD_THROW_TRAVEL_CAP,
+  SETUP_THROW_TRAVEL_PX,
+  SETUP_THROW_ARC_HEIGHT,
+  SETUP_THROW_DURATION_MS,
+  SETUP_THROW_RICOCHET_DURATION_MS,
+  SETUP_THROW_RICOCHET_REBOUND_PX,
+  SETUP_THROW_RICOCHET_BOUNCE_HEIGHT,
+  SETUP_THROW_RICOCHET_HIT_AT,
+  SETUP_THROW_CHASE_SPEED,
+  SETUP_THROW_CHASE_LOCK_MS,
+  SETUP_THROW_SLAP_TIP_GAP_PX,
+  SETUP_THROW_PUSHBOX_GAP_PX,
+  SETUP_THROW_CHASE_ARRIVE_GAP_PX,
+  SETUP_THROW_CHASE_SLIDE_PX,
+  SETUP_THROW_PLANT_MS,
   CMD_DRIVE_POSTURE_CHIP,
   CMD_DRIVE_GASSED_DISTANCE_MULT,
   CMD_DRIVE_APPROACH_REF_SPEED,
@@ -2103,6 +2208,9 @@ module.exports = {
   CMD_DRIVE_DEFENDER_RECOVERY_MS,
   CMD_THROW_RECOVERY_TAIL_MS,
   CMD_PULL_RECOVERY_TAIL_MS,
+  CMD_PULL_TWEEN_MIN_MS,
+  CMD_PULL_TWEEN_BROKEN_MS,
+  CMD_PULL_TWEEN_MAX_MS,
   CMD_PULL_TWEEN_MS,
   CMD_PULL_INPUT_LOCK_MS,
   CMD_GRAB_CLASH_HITSTOP_MS,
@@ -2137,6 +2245,7 @@ module.exports = {
   CLINCH_THROW_ARC_HEIGHT_MIN,
   CLINCH_THROW_ARC_HEIGHT_MAX,
   CLINCH_THROW_DURATION_MIN_MS,
+  CLINCH_THROW_DURATION_BROKEN_MS,
   CLINCH_THROW_DURATION_MAX_MS,
   CLINCH_PULL_DISTANCE_MIN,
   CLINCH_PULL_DISTANCE_MAX,

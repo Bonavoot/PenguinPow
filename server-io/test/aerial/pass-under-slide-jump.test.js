@@ -99,6 +99,13 @@ describe("pass under slide-jump flight", () => {
       ),
       false
     );
+    assert.equal(
+      isAirborneForGroundCollision(
+        { isBeingThrown: true, y: GROUND_LEVEL + 2 },
+        { forGrab: true }
+      ),
+      true
+    );
   });
 
   it("pushbox does not separate a walker from a flyer above them", () => {

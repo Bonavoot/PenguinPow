@@ -1,48 +1,35 @@
 // ============================================
 // COMMAND GRAB — POST-CONNECT AUTHORITY
 // ============================================
-// Owns everything from grab connect onward. Replaced
-// the mutual clinch subgame (Drive/Plant/Jolt/Throw/Pull/Brace/Open/Deep Grip)
-// with three discrete outcomes chosen at input time:
+// M2 latches the belt. During the latch the grabber aims; on resolve the aimed
+// verb plays. Drive / Pull / Throw stay the three sumo sentences.
 //
-//   DRIVE  carry the victim toward the rope, then release
-//   PULL   yank them past you (side switch / corner escape)
-//   THROW  arc them away
+//   connect ──(HITSTOP_GRAB_MS)──▶ LATCH (aim) ──▶ resolve
+//                                    Back → PULL
+//                                    W    → THROW
+//                                    else → DRIVE (timeout default)
 //
-// Shape after connect:
+// Pull/Throw may commit after CMD_GRAB_LATCH_MIN_COMMIT_MS. Drive always waits
+// out the full latch so the handshake reads.
 //
-//   connect ──(HITSTOP_GRAB_MS, sim clock frozen)──▶ STARTUP ──▶ resolve
-//                                                   per-variant     │
-//                                    DRIVE 0ms ───────────────────▶ CARRY ──▶ release
-//                                    PULL  200 / kill 400
-//                                    THROW 280 / kill 520
+// Lethality is permission + geography, snapshotted from posture at connect:
+//   THROW  low posture AND the toss would land past the tawara
+//   PULL   low posture AND the yank hits the clamp behind you (the tawara
+//          trip). Same clamp read as the back-to-the-wall clarity swap —
+//          lethal yanks are allowed past the rope; healthy swaps. The
+//          belly-slide does NOT start at resolve — they yank standing,
+//          then trip once they actually cross the map line.
+//   DRIVE  gassed / empty tank at the rope (unchanged)
 //
-// The STARTUP beat is the belt-grip read: both fighters hold the grip pose while
-// the variant's tell plays. It is uninterruptible — there is no post-connect Grab
-// Break and no Brace — so its only job is legibility. Drive has none (a shove
-// must start moving). Pull/Throw hold long enough for the placeholder windup to
-// finish; kill versions hold longer so the finisher reads before travel.
+// Mid-ring at 0 posture is a huge in-bounds send, not a funeral.
 //
-// Throw / pull end the round below the lethal posture line
-// (CLINCH_THROW_KILL_THRESHOLD, measured at connect). Drive does NOT — its rope
-// KO is stamina-gated (gassed / empty tank), so slap/palm own the posture finish
-// and drive owns the tank finish. A gassed attacker still gets a shorter carry.
-//
-// The Drive carry is a SERVER-STAMPED TWEEN (start time, duration, start X, target
-// X) rather than per-tick input-driven displacement. Distance is still authored
-// (momentum + posture). The curve opens at latch speed and speeds up into
-// the shove-off (grabee pushing the grabber off). Known at connect so the
-// client can interpolate.
-//
-// NOTE ON CONSTANT NAMES: throw/pull geometry still reads from CLINCH_*
-// constants. Those values are tuned and shared with the surviving throw-arc and
-// pull-tween simulators in index.js; renaming them belongs in the deletion pass,
-// not here, so it happens once instead of twice.
+// Throw is a fixed setup dump. Posture juices the plant and still gates the
+// cinematic kill. Drive/Pull keep posture as their distance function.
 
 const {
   CMD_GRAB_VARIANT,
-  CMD_GRAB_CONNECT_STARTUP_MS,
-  CMD_GRAB_KILL_CONNECT_STARTUP_MS,
+  CMD_GRAB_LATCH_MS,
+  CMD_GRAB_LATCH_MIN_COMMIT_MS,
   CMD_GRAB_CONNECT_HITSTOP_MS,
   CMD_GRAB_CINCH_MS,
   HITSTOP_GRAB_MS,
@@ -53,6 +40,17 @@ const {
   CMD_DRIVE_CARRY_MS,
   CMD_DRIVE_DISTANCE_MIN,
   CMD_DRIVE_DISTANCE_MAX,
+  CMD_DRIVE_TRAVEL_CAP,
+  CMD_PULL_DISTANCE_MIN,
+  CMD_PULL_DISTANCE_MAX,
+  CMD_PULL_KILL_CLAMP_ROOM_PX,
+  SETUP_THROW_TRAVEL_PX,
+  SETUP_THROW_DURATION_MS,
+  SETUP_THROW_RICOCHET_DURATION_MS,
+  SETUP_THROW_RICOCHET_REBOUND_PX,
+  SETUP_THROW_RICOCHET_BOUNCE_HEIGHT,
+  SETUP_THROW_RICOCHET_HIT_AT,
+  SETUP_THROW_CHASE_LOCK_MS,
   CMD_DRIVE_POSTURE_CHIP,
   CMD_DRIVE_GASSED_DISTANCE_MULT,
   CMD_DRIVE_APPROACH_REF_SPEED,
@@ -68,26 +66,16 @@ const {
   CMD_THROW_POSTURE_CHIP,
   CMD_DRIVE_ATTACKER_RECOVERY_MS,
   CMD_DRIVE_DEFENDER_RECOVERY_MS,
-  CMD_THROW_RECOVERY_TAIL_MS,
   CMD_GRAB_CLASH_HITSTOP_MS,
   CMD_GRAB_CLASH_POSE_MS,
   CMD_GRAB_CLASH_PUSHBACK,
   CMD_GRAB_CLASH_SEPARATE_MS,
   CLINCH_ATTACHED_DISTANCE,
   CLINCH_THROW_KILL_THRESHOLD,
-  CLINCH_THROW_DISTANCE_MIN,
-  CLINCH_THROW_DISTANCE_MAX,
-  CLINCH_THROW_ARC_HEIGHT_MIN,
-  CLINCH_THROW_ARC_HEIGHT_MAX,
-  CLINCH_THROW_DURATION_MIN_MS,
-  CLINCH_THROW_DURATION_MAX_MS,
   CLINCH_THROW_BOUNDARY_MARGIN,
   CLINCH_THROW_MIN_SEPARATION,
   CLINCH_PULL_SWAP_TWEEN_DURATION,
-  CMD_PULL_TWEEN_MS,
-  CMD_PULL_INPUT_LOCK_MS,
   CLINCH_KILL_THROW_DURATION_MS,
-  CLINCH_KILL_PULL_DISTANCE,
   CLINCH_KILL_PULL_TWEEN_DURATION,
   CLINCH_KILL_PULL_INPUT_LOCK_MS,
   PULL_BOUNDARY_MARGIN,
@@ -109,15 +97,23 @@ const {
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
   endPerfectParryStun,
+  clearSetupThrowFlags,
 } = require("./gameUtils");
 
 const {
   correctFacingAfterGrabOrThrow,
   endGrabWhiffRecovery,
+  releaseGrabStartupFacingLock,
 } = require("./grabMechanics");
 const { cleanupGrabStates, handleWinCondition } = require("./gameFunctions");
 const { triggerRingOut } = require("./ringOutPush");
-const { clearGrabVariant } = require("./commandGrabInput");
+const {
+  clearGrabVariant,
+  beginLatchAim,
+  noteGrabVariantEdges,
+  updateLatchVariant,
+  lockGrabVariant,
+} = require("./commandGrabInput");
 const {
   isActionFacingOwnershipV2Enabled,
   acquireActionFacingLock,
@@ -139,71 +135,262 @@ const {
   getDriveCarryDurationMs,
   driveCarryTravelT,
 } = require("./combatHelpers");
-
-// Posture is no longer the distance FUNCTION for grabs — momentum is. It is a
-// multiplier on top, so a battered opponent travels further from the same
-// input but the input still has to be earned with speed.
-const GRAB_POSTURE_MULT_MAX = 1.35;
+const {
+  describePullYank,
+} = require("./pullYankMotion");
+const { describeThrowToss } = require("./throwTossMotion");
+const { stampSetupThrowFlight } = require("./setupThrowFlight");
 
 // How much of the victim's counter-charge is subtracted from a DRIVE. Driving
 // into someone charging back at you is driving into their force; it should
 // barely move them, which is what makes PULL the correct answer there.
 const DRIVE_COUNTER_CHARGE = 0.6;
 
-// Absolute cap on a drive carry, after momentum AND posture have both applied.
-// Sits just above the centre-to-rope distance (297.5px) so a perfect
-// max-momentum drive from dead centre is exactly lethal — a clean threshold —
-// without the combined multipliers running away past it.
-const DRIVE_MAX_CARRY_PX = 310;
-
 // Safety rails only. Live duration is D·p/v0 (accel from attempt speed).
 const DRIVE_CARRY_MIN_MS = 180;
 const DRIVE_CARRY_MAX_MS = 1100;
 
 const CMD_PHASE = {
-  STARTUP: "startup",
+  LATCH: "latch",
+  STARTUP: "latch", // alias — older tests/docs said "startup"
   CARRY: "carry",
 };
 
-// Posture → travel lerp. 0 at full posture, 1 at the lethal line, so a battered
-// opponent travels further from the same input. Shared by Drive / Throw / Pull.
-function postureScaled(balance, minValue, maxValue) {
+// 0 at full posture, 1 at the lethal line. Squared so the bottom of the bar
+// hits like Smash high-percent — mid-health is only a nudge up from the floor.
+function grabPostureT(balance) {
   const bal = Math.max(
     CLINCH_THROW_KILL_THRESHOLD,
     Math.min(BALANCE_MAX, typeof balance === "number" ? balance : BALANCE_MAX)
   );
   const span = Math.max(1, BALANCE_MAX - CLINCH_THROW_KILL_THRESHOLD);
   const t = 1 - (bal - CLINCH_THROW_KILL_THRESHOLD) / span;
-  return Math.round(minValue + (maxValue - minValue) * Math.max(0, Math.min(1, t)));
+  return Math.max(0, Math.min(1, t));
 }
 
-/**
- * Unrounded form of `postureScaled`, for MULTIPLIERS rather than pixels.
- * `postureScaled` rounds because it was built to return distances — feeding it
- * a 1.0→1.35 range silently rounded every result back to exactly 1, which
- * disabled posture scaling on grabs entirely.
- */
+function grabPostureEase(balance) {
+  const t = grabPostureT(balance);
+  return t * t;
+}
+
+function grabPostureLerp(balance, minValue, maxValue) {
+  return minValue + (maxValue - minValue) * grabPostureEase(balance);
+}
+
+function postureScaled(balance, minValue, maxValue) {
+  return Math.round(grabPostureLerp(balance, minValue, maxValue));
+}
+
 function postureLerp(balance, minValue, maxValue) {
-  const bal = Math.max(
-    CLINCH_THROW_KILL_THRESHOLD,
-    Math.min(BALANCE_MAX, typeof balance === "number" ? balance : BALANCE_MAX)
+  return grabPostureLerp(balance, minValue, maxValue);
+}
+
+function isPostureLethal(balance) {
+  return (
+    (typeof balance === "number" ? balance : BALANCE_MAX) <
+    CLINCH_THROW_KILL_THRESHOLD
   );
-  const span = Math.max(1, BALANCE_MAX - CLINCH_THROW_KILL_THRESHOLD);
-  const t = 1 - (bal - CLINCH_THROW_KILL_THRESHOLD) / span;
-  return minValue + (maxValue - minValue) * Math.max(0, Math.min(1, t));
+}
+
+function approachBonus(approachSpeed, bonusMax) {
+  const ref = CMD_DRIVE_APPROACH_REF_SPEED || 1;
+  const ratio = Math.max(0, Math.min(1, (approachSpeed || 0) / ref));
+  return (bonusMax || 0) * ratio;
+}
+
+function driveTravelPx(balance, approachSpeed, counterCharge, gassed) {
+  const base = grabPostureLerp(balance, CMD_DRIVE_DISTANCE_MIN, CMD_DRIVE_DISTANCE_MAX);
+  const bonus = approachBonus(approachSpeed, CMD_DRIVE_APPROACH_BONUS_MAX);
+  const countered = Math.max(0, bonus - DRIVE_COUNTER_CHARGE * (counterCharge || 0));
+  let distance = base + countered;
+  if (gassed) distance *= CMD_DRIVE_GASSED_DISTANCE_MULT;
+  return Math.round(Math.min(distance, CMD_DRIVE_TRAVEL_CAP));
+}
+
+function throwTravelPx(_balance, _approachSpeed) {
+  return SETUP_THROW_TRAVEL_PX;
+}
+
+function throwMarginBounds() {
+  return {
+    left: MAP_LEFT_BOUNDARY + CLINCH_THROW_BOUNDARY_MARGIN,
+    right: MAP_RIGHT_BOUNDARY - CLINCH_THROW_BOUNDARY_MARGIN,
+  };
+}
+
+function planSetupThrow(grabber, victim, travelPx) {
+  const dir = throwDirFor(grabber, victim);
+  const originX = grabber.x;
+  const startX = victim.x;
+  const travel = Number.isFinite(travelPx) ? travelPx : SETUP_THROW_TRAVEL_PX;
+  const intendedLand = originX + dir * travel;
+  const { left, right } = throwMarginBounds();
+  const wouldClamp = dir > 0 ? intendedLand > right : intendedLand < left;
+  if (!wouldClamp) {
+    return {
+      ricochet: false,
+      originX,
+      startX,
+      landX: intendedLand,
+      hitX: intendedLand,
+      hitAt: SETUP_THROW_RICOCHET_HIT_AT,
+      bounceHeight: 0,
+      durationMs: SETUP_THROW_DURATION_MS,
+    };
+  }
+  const hitX = dir > 0 ? right : left;
+  const inward = dir > 0 ? -1 : 1;
+  let landX = hitX + inward * SETUP_THROW_RICOCHET_REBOUND_PX;
+  if (Math.abs(landX - originX) < CLINCH_THROW_MIN_SEPARATION) {
+    const side = landX >= originX ? 1 : -1;
+    landX = originX + side * CLINCH_THROW_MIN_SEPARATION;
+  }
+  landX = Math.max(left, Math.min(landX, right));
+  return {
+    ricochet: true,
+    originX,
+    startX,
+    landX,
+    hitX,
+    hitAt: SETUP_THROW_RICOCHET_HIT_AT,
+    bounceHeight: SETUP_THROW_RICOCHET_BOUNCE_HEIGHT,
+    durationMs: SETUP_THROW_RICOCHET_DURATION_MS,
+  };
+}
+
+function pullTravelPx(balance) {
+  return Math.round(
+    grabPostureLerp(balance, CMD_PULL_DISTANCE_MIN, CMD_PULL_DISTANCE_MAX)
+  );
+}
+
+function throwDirFor(grabber, victim) {
+  return grabber.x < victim.x ? 1 : -1;
+}
+
+function pullDirFor(grabber, victim) {
+  return victim.x < grabber.x ? 1 : -1;
+}
+
+function predictedThrowLandX(grabber, victim, distance) {
+  return grabber.x + throwDirFor(grabber, victim) * distance;
+}
+
+function predictedPullTargetX(grabber, victim, pullDist) {
+  return grabber.x + pullDirFor(grabber, victim) * pullDist;
+}
+
+function throwWouldExit(grabber, victim, distance) {
+  const dir = throwDirFor(grabber, victim);
+  const landX = predictedThrowLandX(grabber, victim, distance);
+  return dir > 0 ? landX > MAP_RIGHT_BOUNDARY : landX < MAP_LEFT_BOUNDARY;
+}
+
+// One clamp read for kill AND the back-to-the-wall swap. The yank always
+// sends the victim toward the grabber's back. If that destination hits the
+// pull margin (or there isn't room for a side-switch), they have "reached
+// the clamp." `atX` lets the kill check use the connect plant so the latch
+// cinch cannot walk the grabber off the rope and steal the finish.
+function getPullBoundaryRead(grabber, victim, pullDist, atX) {
+  const dir = pullDirFor(grabber, victim);
+  const grabberX = Number.isFinite(atX) ? atX : grabber.x;
+  const rawTargetX = grabberX + dir * pullDist;
+  const leftBound = MAP_LEFT_BOUNDARY + PULL_BOUNDARY_MARGIN;
+  const rightBound = MAP_RIGHT_BOUNDARY - PULL_BOUNDARY_MARGIN;
+  const clampedTargetX = Math.max(leftBound, Math.min(rawTargetX, rightBound));
+  const distPastActor =
+    dir === -1 ? grabberX - clampedTargetX : clampedTargetX - grabberX;
+  const hitsClamp = dir > 0 ? rawTargetX >= rightBound : rawTargetX <= leftBound;
+  const noRoomForSideSwitch = distPastActor < CLINCH_THROW_MIN_SEPARATION;
+  const reachesKillClamp = distPastActor < CMD_PULL_KILL_CLAMP_ROOM_PX;
+  return {
+    dir,
+    grabberX,
+    rawTargetX,
+    clampedTargetX,
+    distPastActor,
+    hitsClamp,
+    noRoomForSideSwitch,
+    reachesKillClamp,
+  };
+}
+
+function pullWouldExit(grabber, victim, pullDist) {
+  return getPullBoundaryRead(grabber, victim, pullDist).hitsClamp;
+}
+
+function shouldKillThrow(grabber, victim, distance, balance) {
+  return isPostureLethal(balance) && throwWouldExit(grabber, victim, distance);
+}
+
+function pullReadIsRopeTrip(read) {
+  return read.hitsClamp && read.reachesKillClamp;
+}
+
+function pullTripTargetX(grabber, victim, pullDist) {
+  const dir = pullDirFor(grabber, victim);
+  const raw = grabber.x + dir * pullDist;
+  const edge = dir < 0 ? MAP_LEFT_BOUNDARY : MAP_RIGHT_BOUNDARY;
+  // Must actually clear the straw — hitting the pull margin is not enough.
+  const minPast = edge + dir * 48;
+  return dir < 0 ? Math.min(raw, minPast) : Math.max(raw, minPast);
+}
+
+function pullHasCrossedMap(player) {
+  if (!player) return false;
+  const start = player.grabBreakStartX ?? player.x;
+  const target = player.grabBreakTargetX ?? player.x;
+  const dir = target >= start ? 1 : -1;
+  return dir > 0 ? player.x >= MAP_RIGHT_BOUNDARY : player.x <= MAP_LEFT_BOUNDARY;
+}
+
+function armPullTrip(victim, grabber, room, io) {
+  if (!victim || !grabber || !room) return;
+  victim.pendingPullTrip = false;
+  victim.isClinchKillPullVictim = true;
+  handleWinCondition(room, victim, grabber, io, "clinchKillPull");
+  // Win cleanup drops puller pose / tell length. The tween must keep running
+  // so the belly-slide finishes past the rope.
+  victim.isClinchKillPullVictim = true;
+  victim.pendingPullTrip = false;
+  victim.isBeingPullReversaled = true;
+  victim.pullReversalPullerId = grabber.id;
+  victim.isGrabBreakSeparating = true;
+  grabber.isAttemptingPull = true;
+  stampGrabTellDuration(grabber, CMD_GRAB_VARIANT.PULL, true);
+}
+
+function maybeArmPullTrip(victim, room, io, { force = false } = {}) {
+  if (!victim || !victim.pendingPullTrip || victim.isClinchKillPullVictim) {
+    return false;
+  }
+  if (!force && !pullHasCrossedMap(victim)) return false;
+  const grabber = (room && room.players || []).find(
+    (p) => p.id === victim.pullReversalPullerId
+  );
+  if (!grabber) return false;
+  armPullTrip(victim, grabber, room, io);
+  return true;
+}
+
+function shouldKillPull(grabber, victim, pullDist, balance) {
+  if (!isPostureLethal(balance)) return false;
+  const live = getPullBoundaryRead(grabber, victim, pullDist);
+  const planted = Number.isFinite(grabber.cmdGrabCinchFromX)
+    ? getPullBoundaryRead(grabber, victim, pullDist, grabber.cmdGrabCinchFromX)
+    : live;
+  // Lethal + the yank actually slams the clamp while your back is on that
+  // rope. Connect OR live: the latch cinch walks you toward the victim
+  // (off your own tawara) and used to flip a trip into the clarity swap.
+  return pullReadIsRopeTrip(live) || pullReadIsRopeTrip(planted);
 }
 
 function attachDistanceFor(victim) {
   return CLINCH_ATTACHED_DISTANCE * (victim.sizeMultiplier || 1);
 }
 
-function connectStartupMsFor(variant, isKill = false) {
-  if (variant === CMD_GRAB_VARIANT.DRIVE) return 0;
-  const table = isKill
-    ? CMD_GRAB_KILL_CONNECT_STARTUP_MS
-    : CMD_GRAB_CONNECT_STARTUP_MS;
-  const ms = table[variant];
-  return Number.isFinite(ms) ? ms : CMD_GRAB_CONNECT_STARTUP_MS.throw;
+function connectStartupMsFor(_variant, _isKill = false) {
+  return CMD_GRAB_LATCH_MS;
 }
 
 function connectHitstopMsFor(variant) {
@@ -211,23 +398,16 @@ function connectHitstopMsFor(variant) {
   return Number.isFinite(ms) ? ms : 0;
 }
 
-// Wall-clock length of the tell, including the connect freeze. CSS animations
-// run on wall time even while simTime is frozen, so this is what the client
-// must play to finish the windup on the resolve frame.
-function grabTellAnimMs(variant, isKill = false) {
-  const startup = connectStartupMsFor(variant, isKill);
-  if (startup <= 0) return 0;
-  return HITSTOP_GRAB_MS + connectHitstopMsFor(variant) + startup;
+// Wall-clock length of the latch, including the connect freeze. CSS animations
+// run on wall time even while simTime is frozen.
+function grabTellAnimMs(variant, _isKill = false) {
+  if (variant === CMD_GRAB_VARIANT.DRIVE) return HITSTOP_GRAB_MS + CMD_GRAB_LATCH_MS;
+  return HITSTOP_GRAB_MS + connectHitstopMsFor(variant) + CMD_GRAB_LATCH_MS;
 }
 
 function stampGrabTellDuration(grabber, variant, isKill) {
   if (!grabber) return;
   grabber.clinchThrowAnimMs = grabTellAnimMs(variant, isKill);
-}
-
-function cinchMsFor(variant) {
-  if (variant === CMD_GRAB_VARIANT.DRIVE) return 0;
-  return CMD_GRAB_CINCH_MS;
 }
 
 // A grab can connect anywhere inside GRAB_RANGE (175) while settled grip spacing is
@@ -321,8 +501,9 @@ function clearCommandGrabState(player) {
 }
 
 // Called at grab connect (from the index.js tick loop). The victim's posture is
-// snapshotted here, BEFORE the variant's chip, so the lethal decision matches the
-// danger line the HUD was advertising when the player committed.
+// snapshotted here, BEFORE any chip, so the lethal decision matches the danger
+// line the HUD was advertising when the player committed. The variant is NOT
+// chosen yet — the latch is the aim window.
 function beginCommandGrab(grabber, victim, room, io) {
   if (!grabber || !victim) return;
   // Latch speed is this frame's slide. Index zeros the live impulse on
@@ -332,31 +513,21 @@ function beginCommandGrab(grabber, victim, room, io) {
     grabber.grabAttemptSpeed = getDriveCarrySpeed(grabber);
   }
   const now = simNow(room);
-  const variant = grabber.grabVariant || CMD_GRAB_VARIANT.DRIVE;
 
-  grabber.cmdGrabPhase = CMD_PHASE.STARTUP;
+  beginLatchAim(grabber);
+  grabber.cmdGrabPhase = CMD_PHASE.LATCH;
   grabber.cmdGrabPhaseStart = now;
-  grabber.cmdGrabVariant = variant;
+  grabber.cmdGrabVariant = CMD_GRAB_VARIANT.DRIVE;
   grabber.cmdGrabKillBalance =
     typeof victim.balance === "number" ? victim.balance : BALANCE_MAX;
-  grabber.cmdGrabIsKill =
-    variant !== CMD_GRAB_VARIANT.DRIVE &&
-    grabber.cmdGrabKillBalance < CLINCH_THROW_KILL_THRESHOLD;
+  grabber.cmdGrabIsKill = false;
   grabber.cmdGrabAtRope = false;
 
-  stampGrabTellDuration(grabber, variant, grabber.cmdGrabIsKill);
+  stampGrabTellDuration(grabber, CMD_GRAB_VARIANT.DRIVE, false);
 
   grabber.stamina = Math.max(0, (grabber.stamina || 0) - CMD_GRAB_STAMINA_COST);
 
-  const chip =
-    variant === CMD_GRAB_VARIANT.THROW
-      ? CMD_THROW_POSTURE_CHIP
-      : variant === CMD_GRAB_VARIANT.PULL
-        ? CMD_PULL_POSTURE_CHIP
-        : CMD_DRIVE_POSTURE_CHIP;
-  applyBalanceDamage(victim, chip, now);
-  grabber.cmdGrabVictimBalance =
-    typeof victim.balance === "number" ? victim.balance : BALANCE_MAX;
+  grabber.cmdGrabVictimBalance = grabber.cmdGrabKillBalance;
   // Drive counter-charge needs the VICTIM's speed at the grip — by resolve
   // they are locked and their velocity has been zeroed. Pull does not spend
   // this; it is a belt tug. Mirrors `grabApproachSpeed` on the grabber.
@@ -368,9 +539,6 @@ function beginCommandGrab(grabber, victim, room, io) {
     );
   }
 
-  // Belt grip on both, then a real THUNK so the grip registers before the variant's
-  // animation plays. Sim time is frozen for the freeze, so the read beat below
-  // starts after it rather than being eaten by it.
   grabber.isClinchBeltHolding = true;
   victim.isClinchBeltHolding = true;
   stampCinch(grabber, victim);
@@ -379,15 +547,7 @@ function beginCommandGrab(grabber, victim, room, io) {
   victim.clinchAttachDistance = gap;
 
   applyStartupPoses(grabber, victim);
-  // Starstun is a standing confirm. Belt-grip is a new state — drop dizzy so
-  // clinch poses and victim control aren't fighting the stun lock.
   endPerfectParryStun(victim);
-  // Every grab already gets HITSTOP_GRAB_MS from the shared connect path; this is the
-  // extra weight on top, and Drive deliberately adds none — a shove must start moving.
-  const extraFreeze = connectHitstopMsFor(variant);
-  if (extraFreeze > 0) {
-    triggerHitstopAndEmit(io, room, extraFreeze, "grab");
-  }
 }
 
 // Pose flags for the STARTUP beat, driving existing wire fields so the client pose
@@ -408,7 +568,27 @@ function applyStartupPoses(grabber, victim) {
     variant === CMD_GRAB_VARIANT.THROW || variant === CMD_GRAB_VARIANT.PULL;
   victim.isResistingThrow = false;
   victim.isResistingPull = false;
-  stampGrabTellDuration(grabber, variant, !!grabber.cmdGrabIsKill);
+  stampGrabTellDuration(grabber, variant, false);
+}
+
+function sampleLatchAim(grabber, victim, now) {
+  if (!grabber || grabber.grabVariantLocked) return;
+  noteGrabVariantEdges(grabber, now, {});
+  updateLatchVariant(grabber, victim, grabber.cmdGrabPhaseStart);
+  grabber.cmdGrabVariant = grabber.grabVariant || CMD_GRAB_VARIANT.DRIVE;
+}
+
+function applyVariantChip(grabber, victim, now) {
+  const variant = grabber.cmdGrabVariant || CMD_GRAB_VARIANT.DRIVE;
+  const chip =
+    variant === CMD_GRAB_VARIANT.THROW
+      ? CMD_THROW_POSTURE_CHIP
+      : variant === CMD_GRAB_VARIANT.PULL
+        ? CMD_PULL_POSTURE_CHIP
+        : CMD_DRIVE_POSTURE_CHIP;
+  applyBalanceDamage(victim, chip, now);
+  grabber.cmdGrabVictimBalance =
+    typeof victim.balance === "number" ? victim.balance : BALANCE_MAX;
 }
 
 // Recovery as a real `isRecovering` window, which is the house pattern (palm
@@ -466,19 +646,16 @@ function updateCommandGrab(grabber, room, io, delta, rooms) {
   const now = simNow(room);
   const elapsed = now - (grabber.cmdGrabPhaseStart || now);
 
-  if (grabber.cmdGrabPhase === CMD_PHASE.STARTUP) {
-    const startupMs = connectStartupMsFor(
-      grabber.cmdGrabVariant,
-      !!grabber.cmdGrabIsKill
-    );
-    // A zero-length startup must not run the cinch — with t forced to 1 it would
-    // snap the grip closed on the first tick, which is the teleport this whole
-    // mechanism exists to avoid. Drive closes its grip during the carry instead.
-    if (startupMs > 0) {
-      applyStartupPoses(grabber, victim);
-      applyCinch(grabber, victim, elapsed, cinchMsFor(grabber.cmdGrabVariant));
-    }
-    if (elapsed >= startupMs) {
+  if (grabber.cmdGrabPhase === CMD_PHASE.LATCH) {
+    sampleLatchAim(grabber, victim, now);
+    applyStartupPoses(grabber, victim);
+    applyCinch(grabber, victim, elapsed, CMD_GRAB_CINCH_MS);
+
+    const aimed = grabber.cmdGrabVariant || CMD_GRAB_VARIANT.DRIVE;
+    const conversionReady =
+      elapsed >= CMD_GRAB_LATCH_MIN_COMMIT_MS &&
+      (aimed === CMD_GRAB_VARIANT.THROW || aimed === CMD_GRAB_VARIANT.PULL);
+    if (elapsed >= CMD_GRAB_LATCH_MS || conversionReady) {
       resolveVariant(grabber, victim, room, io, rooms);
     }
     return;
@@ -491,19 +668,29 @@ function updateCommandGrab(grabber, room, io, delta, rooms) {
 }
 
 function resolveVariant(grabber, victim, room, io, rooms) {
-  const variant = grabber.cmdGrabVariant || CMD_GRAB_VARIANT.DRIVE;
-  const isKill =
-    (grabber.cmdGrabKillBalance ?? BALANCE_MAX) < CLINCH_THROW_KILL_THRESHOLD &&
-    !room.gameOver;
+  sampleLatchAim(grabber, victim, simNow(room));
+  lockGrabVariant(grabber);
+  grabber.cmdGrabVariant = grabber.grabVariant || CMD_GRAB_VARIANT.DRIVE;
+  applyVariantChip(grabber, victim, simNow(room));
+
+  const variant = grabber.cmdGrabVariant;
+  const balance = grabber.cmdGrabKillBalance ?? BALANCE_MAX;
 
   if (variant === CMD_GRAB_VARIANT.THROW) {
-    resolveThrow(grabber, victim, room, io, isKill);
+    const travel = throwTravelPx(balance, Math.max(0, grabber.grabApproachSpeed || 0));
+    const isKill = !room.gameOver && shouldKillThrow(grabber, victim, travel, balance);
+    grabber.cmdGrabIsKill = isKill;
+    resolveThrow(grabber, victim, room, io, isKill, travel);
     return;
   }
   if (variant === CMD_GRAB_VARIANT.PULL) {
-    resolvePull(grabber, victim, room, io, isKill);
+    const travel = pullTravelPx(balance);
+    const isKill = !room.gameOver && shouldKillPull(grabber, victim, travel, balance);
+    grabber.cmdGrabIsKill = isKill;
+    resolvePull(grabber, victim, room, io, isKill, travel);
     return;
   }
+  grabber.cmdGrabIsKill = false;
   beginDriveCarry(grabber, victim, room);
 }
 
@@ -524,25 +711,13 @@ function beginDriveCarry(grabber, victim, room) {
   // committed GRAB is Matador.
   const approach = Math.max(0, grabber.grabApproachSpeed || 0);
   const counterCharge = Math.max(0, grabber.cmdGrabVictimApproach || 0);
-  const effectiveApproach = Math.max(
-    0,
-    approach - DRIVE_COUNTER_CHARGE * counterCharge
+  const balance = grabber.cmdGrabKillBalance ?? grabber.cmdGrabVictimBalance;
+  const distance = driveTravelPx(
+    balance,
+    approach,
+    counterCharge,
+    !!grabber.isGassed
   );
-
-  let distance = MomentumTransfer.transfer(
-    effectiveApproach,
-    MomentumTransfer.profileFor("drive").floor,
-    MomentumTransfer.profileFor("drive").ceil,
-    postureLerp(grabber.cmdGrabVictimBalance, 1, GRAB_POSTURE_MULT_MAX)
-  );
-
-  if (grabber.isGassed) {
-    distance = distance * CMD_DRIVE_GASSED_DISTANCE_MULT;
-  }
-  // Hard ceiling on the whole product. The posture multiplier stacks on top of
-  // a maxed momentum drive, and the combined result was past what the game can
-  // present convincingly.
-  distance = Math.round(Math.min(distance, DRIVE_MAX_CARRY_PX));
 
   grabber.cmdGrabPhase = CMD_PHASE.CARRY;
   grabber.cmdGrabPhaseStart = now;
@@ -816,50 +991,60 @@ function releaseDrive(grabber, victim, room, io, dir) {
 }
 
 // ── THROW ───────────────────────────────────────────────────────────────────
-// Sets the same fields the surviving throw-arc simulator in index.js already
-// reads (isThrowing / throwStartTime / clinchThrowArc*), so the arc, the landing,
-// the boundary ring-out and the kill cinematic all come along unchanged.
-function resolveThrow(grabber, victim, room, io, isKill) {
+// Setup dump: stamped path (origin / land / ricochet) + chase unlock.
+// Kill throw still uses the cinematic arc in index.js.
+function resolveThrow(grabber, victim, room, io, isKill, travelPx) {
   const now = simNow(room);
-  const balance = grabber.cmdGrabVictimBalance;
+  const balance = grabber.cmdGrabKillBalance ?? grabber.cmdGrabVictimBalance;
   const throwDir = grabber.x < victim.x ? 1 : -1;
+  const toss = isKill ? null : describeThrowToss(balance);
+  const approach = Math.max(0, grabber.grabApproachSpeed || 0);
+  const travel =
+    Number.isFinite(travelPx) ? travelPx : throwTravelPx(balance, approach);
+  const plan = isKill ? null : planSetupThrow(grabber, victim, travel);
   const duration = isKill
     ? CLINCH_KILL_THROW_DURATION_MS
-    : postureScaled(balance, CLINCH_THROW_DURATION_MIN_MS, CLINCH_THROW_DURATION_MAX_MS);
+    : plan.durationMs;
   const presentationFacing =
     grabber.facing === 1 || grabber.facing === -1 ? grabber.facing : -1;
 
   clearActionPoses(grabber, victim);
   clearCommandGrabState(grabber);
   cleanupGrabStates(grabber, victim);
+  clearSetupThrowFlags(grabber);
+  clearSetupThrowFlags(victim);
 
   grabber.isThrowing = true;
   grabber.isClinchKillThrow = isKill;
-  grabber.clinchThrowArcDistance = isKill
-    ? 0
-    : // THROW is the neutral option: highest floor, lowest ceiling, least
-      // speed-dependent. What you take when you have NOT earned a momentum
-      // edge and want a guaranteed reset plus posture chip.
-      Math.round(
-        MomentumTransfer.transfer(
-          Math.max(0, grabber.grabApproachSpeed || 0),
-          MomentumTransfer.profileFor("throw").floor,
-          MomentumTransfer.profileFor("throw").ceil,
-          postureLerp(balance, 1, GRAB_POSTURE_MULT_MAX)
-        )
-      );
-  grabber.clinchThrowArcHeight = isKill
-    ? 0
-    : postureScaled(balance, CLINCH_THROW_ARC_HEIGHT_MIN, CLINCH_THROW_ARC_HEIGHT_MAX);
+  grabber.clinchThrowArcDistance = isKill ? 0 : travel;
+  grabber.clinchThrowArcHeight = isKill ? 0 : toss.arcHeight;
+  grabber.throwTossPower = isKill ? 0 : toss.power;
+  grabber.throwTossDurationMs = isKill ? 0 : duration;
+  victim.throwTossPower = isKill ? 0 : toss.power;
+  victim.throwTossDurationMs = isKill ? 0 : duration;
   grabber.throwStartTime = now;
   grabber.throwEndTime = now + duration;
   grabber.throwOpponent = victim.id;
   grabber.throwingFacingDirection = throwDir;
-  // The arc itself is the commitment; the tail only stops it ending on a dime.
-  grabber.actionLockUntil = Math.max(
-    grabber.actionLockUntil || 0,
-    now + duration + CMD_THROW_RECOVERY_TAIL_MS
-  );
+  grabber.movementVelocity = 0;
+  grabber.grabMovementVelocity = 0;
+  // Launch hitstop is the toss beat. After it the thrower holds the toss
+  // pose, then a buffered slide/strike comes out — first-frame slide is
+  // timed to slap-tip spacing at land, not a bury.
+  grabber.actionLockUntil = now;
+  if (!isKill && plan) {
+    grabber.throwSetupChase = true;
+    grabber.throwChaseUnlockAt = now + SETUP_THROW_CHASE_LOCK_MS;
+    grabber.actionLockUntil = now + SETUP_THROW_CHASE_LOCK_MS;
+    grabber.throwRicochet = plan.ricochet;
+    grabber.throwOriginX = plan.originX;
+    grabber.throwStartX = plan.startX;
+    grabber.throwLandX = plan.landX;
+    grabber.throwHitX = plan.hitX;
+    grabber.throwBounceHeight = plan.bounceHeight;
+    grabber.throwRicochetHitAt = plan.hitAt;
+    grabber.throwRicochetHitEmitted = false;
+  }
 
   if (isActionFacingOwnershipV2Enabled()) {
     const throwerId = mintActionFacingInstanceId(grabber, ACTION_FACING_OWNER.THROWER);
@@ -875,16 +1060,16 @@ function resolveThrow(grabber, victim, room, io, isKill) {
     });
   }
 
-  // Non-kill throws reposition — keep the victim inside the margin so the
-  // tick-order win check can't ring them out while still pinned at the edge.
-  if (!isKill) {
-    const leftBound = MAP_LEFT_BOUNDARY + CLINCH_THROW_BOUNDARY_MARGIN;
-    const rightBound = MAP_RIGHT_BOUNDARY - CLINCH_THROW_BOUNDARY_MARGIN;
-    victim.x = Math.max(leftBound, Math.min(victim.x, rightBound));
-  }
+  // Setup path is stamped. Do not park the victim on the margin — that was
+  // the invisible wall. Ricochet owns the tawara case.
 
   clearAllActionStates(victim);
   endPerfectParryStun(victim);
+  // clearAllActionStates wipes presentation fields — restamp after.
+  grabber.throwTossPower = isKill ? 0 : toss.power;
+  grabber.throwTossDurationMs = isKill ? 0 : toss.durationMs;
+  victim.throwTossPower = isKill ? 0 : toss.power;
+  victim.throwTossDurationMs = isKill ? 0 : toss.durationMs;
   victim.isBeingThrown = true;
   victim.isHit = true;
   victim.beingThrownFacingDirection = victim.facing;
@@ -905,10 +1090,9 @@ function resolveThrow(grabber, victim, room, io, isKill) {
 
   // Launch freeze BEFORE the arc starts: sim time is frozen during it, so the
   // windup pose holds on screen and the arc begins cleanly after the beat.
-  triggerHitstopAndEmit(io, room, CMD_THROW_LAUNCH_HITSTOP_MS, "clinch_throw");
-  emitThrottledScreenShake(room, io, { type: "grab_clash", scale: 1.05, force: true });
-
   if (isKill) {
+    triggerHitstopAndEmit(io, room, CMD_THROW_LAUNCH_HITSTOP_MS, "clinch_throw");
+    emitThrottledScreenShake(room, io, { type: "grab_clash", scale: 1.05, force: true });
     victim.isClinchKillThrowVictim = true;
     const launchId = `kill-throw-${now}-${grabber.id}`;
     const clinchId = ensureClinchInstanceId(grabber, victim, now);
@@ -939,43 +1123,84 @@ function resolveThrow(grabber, victim, room, io, isKill) {
         })
       )
     );
+    return;
   }
+
+  stampSetupThrowFlight(
+    victim,
+    plan,
+    {
+      durationMs: duration,
+      arcHeight: toss.arcHeight,
+      power: toss.power,
+    },
+    now
+  );
+
+  triggerHitstopAndEmit(io, room, toss.launchHitstopMs, "clinch_throw");
+  const tossId = `throw-toss-${now}-${grabber.id}`;
+  const clinchId = ensureClinchInstanceId(grabber, victim, now);
+  io.in(room.id).emit(
+    "throw_toss",
+    attachCombatPresentation(
+      {
+        victimId: victim.id,
+        throwerId: grabber.id,
+        x: victim.x,
+        y: victim.y,
+        dir: throwDir,
+        power: toss.power,
+        durationMs: duration,
+        travelPx: travel,
+        arcHeight: toss.arcHeight,
+        hitstopMs: toss.launchHitstopMs,
+        ricochet: !!plan.ricochet,
+        landX: plan.landX,
+      },
+      buildClinchPresentation({
+        interactionType: CLINCH_INTERACTION.THROW_TOSS,
+        clinchInstanceId: clinchId,
+        actionInstanceId: tossId,
+        initiator: grabber,
+        responder: victim,
+        outcome: "LAUNCH",
+        throwType: "throw",
+        contactX: victim.x,
+        contactY: victim.y,
+        movementX: throwDir,
+        salt: "throw_toss",
+      })
+    )
+  );
+  // Shake lives on the landing (`throw_landing`) — a launch rattle stole
+  // the plant and made the hop feel like two impacts.
 }
 
 // ── PULL ────────────────────────────────────────────────────────────────────
 // Reuses the surviving pull tween in index.js (isGrabBreakSeparating +
 // isBeingPullReversaled), including the boundary swap for a puller with their own
 // back to the wall and the kill-pull belly-slide.
-function resolvePull(grabber, victim, room, io, isKill) {
+function resolvePull(grabber, victim, room, io, isKill, travelPx) {
   const now = simNow(room);
-  const balance = grabber.cmdGrabVictimBalance;
-  const targetFacingBeforeKill = victim.facing;
+  const balance = grabber.cmdGrabKillBalance ?? grabber.cmdGrabVictimBalance;
   const pullDirection = victim.x < grabber.x ? 1 : -1;
-  // ── BELT TUG: authored side-switch, not their run-in ─────────────────────
-  // Pull used to spend cmdGrabVictimApproach and launch a charger the width of
-  // a half-ring. That dump is Matador's — you are parrying a moving grab
-  // attempt. This is a belt pull: yank them past you and steal the line.
-  // Posture walks a tight band so a broken opponent tugs a little further
-  // without the move becoming a second dump.
-  const pullDist = isKill
-    ? CLINCH_KILL_PULL_DISTANCE
-    : Math.round(
-        postureLerp(
-          balance,
-          MomentumTransfer.profileFor("pull").floor,
-          MomentumTransfer.profileFor("pull").ceil
-        )
-      );
-  let tweenDuration = isKill ? CLINCH_KILL_PULL_TWEEN_DURATION : CMD_PULL_TWEEN_MS;
-  let lockMs = isKill ? CLINCH_KILL_PULL_INPUT_LOCK_MS : CMD_PULL_INPUT_LOCK_MS;
-  let targetX = grabber.x + pullDirection * pullDist;
+  // Belt tug: posture is the distance function. Their run-in is Matador's dump.
+  // A trip still uses that yank — not a canned belly-slide from wherever they
+  // stand. The funeral pose waits until they actually cross the straw.
+  const pullDist = Number.isFinite(travelPx) ? travelPx : pullTravelPx(balance);
+  const yank = describePullYank(balance);
+  let tweenDuration = isKill ? CLINCH_KILL_PULL_TWEEN_DURATION : yank.durationMs;
+  let lockMs = isKill ? CLINCH_KILL_PULL_INPUT_LOCK_MS : yank.durationMs;
+  const clampRead = getPullBoundaryRead(grabber, victim, pullDist);
+  let targetX = isKill
+    ? pullTripTargetX(grabber, victim, pullDist)
+    : grabber.x + pullDirection * pullDist;
 
   const leftBound = MAP_LEFT_BOUNDARY + PULL_BOUNDARY_MARGIN;
   const rightBound = MAP_RIGHT_BOUNDARY - PULL_BOUNDARY_MARGIN;
-  const clampedTargetX = Math.max(leftBound, Math.min(targetX, rightBound));
-  const distPastActor =
-    pullDirection === -1 ? grabber.x - clampedTargetX : clampedTargetX - grabber.x;
-  const isBoundaryPull = !isKill && distPastActor < CLINCH_THROW_MIN_SEPARATION;
+  // Same detector as the kill check. A lethal clamp-reach must NEVER fall
+  // through to the clarity swap — that was eating the rope trip.
+  const isBoundaryPull = !isKill && clampRead.noRoomForSideSwitch;
 
   let actorTweenTargetX = null;
   if (isBoundaryPull) {
@@ -998,6 +1223,14 @@ function resolvePull(grabber, victim, room, io, isKill) {
   victim.grabBreakSepDuration = tweenDuration;
   victim.grabBreakStartX = victim.x;
   victim.grabBreakTargetX = targetX;
+  if (!isKill && !isBoundaryPull) {
+    victim.grabBreakSepCurve = yank.curve;
+    victim.pullYankPower = yank.power;
+    grabber.pullYankPower = yank.power;
+  } else {
+    victim.pullYankPower = 0;
+    grabber.pullYankPower = 0;
+  }
 
   if (isBoundaryPull) {
     victim.isBoundaryPullSwap = true;
@@ -1024,27 +1257,21 @@ function resolvePull(grabber, victim, room, io, isKill) {
   victim.actionLockUntil = Math.max(victim.actionLockUntil || 0, lockUntil);
   grabber.actionLockUntil = Math.max(grabber.actionLockUntil || 0, lockUntil);
 
-  // Face using post-pull destinations — the victim switches sides during the
-  // tween, so correcting from current X leaves both facing away after the yank.
-  const pullFacingAnchorX = isBoundaryPull ? actorTweenTargetX : grabber.x;
-  if (!grabber.atTheRopesFacingDirection) {
-    grabber.facing = pullFacingAnchorX < targetX ? -1 : 1;
-    grabber.pullFacingDirection = grabber.facing;
-  }
+  // Only the body being dragged keeps facing. The puller tracks live X so
+  // they turn as the victim crosses, and their next move is not stale.
+  releaseGrabStartupFacingLock(grabber);
+  grabber.grabFacingDirection = null;
+  grabber.pullFacingDirection = null;
   if (!victim.atTheRopesFacingDirection) {
-    victim.facing = targetX < pullFacingAnchorX ? -1 : 1;
     victim.pullFacingDirection = victim.facing;
-  }
-  if (isActionFacingOwnershipV2Enabled()) {
-    for (const p of [grabber, victim]) {
-      if (p.atTheRopesFacingDirection) continue;
-      const id = mintActionFacingInstanceId(p, ACTION_FACING_OWNER.PULL);
-      p.pullFacingInstanceId = id;
-      acquireActionFacingLock(p, {
+    if (isActionFacingOwnershipV2Enabled()) {
+      const id = mintActionFacingInstanceId(victim, ACTION_FACING_OWNER.PULL);
+      victim.pullFacingInstanceId = id;
+      acquireActionFacingLock(victim, {
         ownerType: ACTION_FACING_OWNER.PULL,
         ownerInstanceId: id,
-        direction: p.facing,
-        reason: ACTION_FACING_REASON.SIDE_SWITCH,
+        direction: victim.facing,
+        reason: ACTION_FACING_REASON.COMMIT,
         allowDirectionUpdate: false,
         supersede: true,
         syncLegacy: false,
@@ -1056,28 +1283,64 @@ function resolvePull(grabber, victim, room, io, isKill) {
   // Keep the tell duration so the client does not fall back to the 600ms
   // authored cycle and restart the windup mid-yank. `forwards` holds the last
   // tug frame through the travel.
-  stampGrabTellDuration(grabber, CMD_GRAB_VARIANT.PULL, isKill);
+  stampGrabTellDuration(grabber, CMD_GRAB_VARIANT.PULL, false);
 
   if (isKill) {
-    victim.isClinchKillPullVictim = true;
-    handleWinCondition(room, victim, grabber, io, "clinchKillPull");
-    // Re-assert after win cleanup so the MAP boundary exemption stays armed.
-    victim.isClinchKillPullVictim = true;
-    victim.isBeingPullReversaled = true;
-    victim.pullReversalPullerId = grabber.id;
-    victim.isGrabBreakSeparating = true;
-    victim.grabBreakSepStartTime = now;
-    victim.grabBreakSepDuration = tweenDuration;
-    victim.grabBreakStartX = victim.x;
-    victim.grabBreakTargetX = targetX;
-    // Belly-laying finisher: the victim is slammed flat where they stand, so keep
-    // whatever direction they were already facing (no flip toward the pull).
-    victim.facing = targetFacingBeforeKill;
+    // Prediction only: unclamp and skip the swap. They stay standing until
+    // index.js sees them cross the map line, then armPullTrip plays the fall.
+    victim.pendingPullTrip = true;
+    victim.isClinchKillPullVictim = false;
   }
 
   // Launch freeze so the yank animation reads before the victim travels.
+  // Weight is the TAKE/SLIDE curve — a mid-yank freeze still reads as a hitch.
   triggerHitstopAndEmit(io, room, CMD_PULL_LAUNCH_HITSTOP_MS, "clinch_throw");
-  emitThrottledScreenShake(room, io, { type: "grab_clash", force: true });
+  if (!isBoundaryPull) {
+    const yankId = `pull-yank-${now}-${grabber.id}`;
+    const clinchId = ensureClinchInstanceId(grabber, victim, now);
+    const hops = yank.hops;
+    io.in(room.id).emit(
+      "pull_yank",
+      attachCombatPresentation(
+        {
+          victimId: victim.id,
+          pullerId: grabber.id,
+          x: victim.x,
+          y: victim.y,
+          dir: pullDirection,
+          power: yank.power,
+          durationMs: tweenDuration,
+          travelPx: pullDist,
+          hopDelay: hops.hopDelay,
+          hopCount: hops.hopCount,
+          hopHeights: hops.hopHeights,
+          isKill: !!isKill,
+          isBoundarySwap: false,
+        },
+        buildClinchPresentation({
+          interactionType: CLINCH_INTERACTION.PULL_YANK,
+          clinchInstanceId: clinchId,
+          actionInstanceId: yankId,
+          initiator: grabber,
+          responder: victim,
+          outcome: isKill ? "LAUNCH" : "RESOLVED",
+          throwType: "pull",
+          contactX: victim.x,
+          contactY: victim.y,
+          movementX: pullDirection,
+          salt: "pull_yank",
+        })
+      )
+    );
+    emitThrottledScreenShake(room, io, {
+      type: "pull_yank",
+      scale: yank.shakeScale,
+      dirX: pullDirection,
+      force: true,
+    });
+  } else {
+    emitThrottledScreenShake(room, io, { type: "grab_clash", force: true });
+  }
 }
 
 // ── SIMULTANEOUS GRAB ───────────────────────────────────────────────────────
@@ -1215,6 +1478,22 @@ module.exports = {
   executeCommandGrabClash,
   clearCommandGrabState,
   postureScaled,
+  postureLerp,
+  grabPostureEase,
   connectStartupMsFor,
   grabTellAnimMs,
+  driveTravelPx,
+  throwTravelPx,
+  planSetupThrow,
+  pullTravelPx,
+  throwWouldExit,
+  pullWouldExit,
+  getPullBoundaryRead,
+  pullTripTargetX,
+  maybeArmPullTrip,
+  shouldKillThrow,
+  shouldKillPull,
+  isPostureLethal,
+  predictedThrowLandX,
+  predictedPullTargetX,
 };

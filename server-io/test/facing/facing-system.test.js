@@ -163,8 +163,7 @@ describe("facingSystem hard rule", () => {
     assert.equal(p2.facing, -1);
   });
 
-  it("pull yank locks both sides so mid-cross auto-face cannot thrash destination facing", () => {
-    // Destination facing already set for post-pull sides (victim will land at x=50).
+  it("pull yank locks the victim only; puller tracks live X and both re-face on settle", () => {
     const victim = makePlayer({
       id: "victim",
       x: 200, // still crossing through puller
@@ -175,17 +174,15 @@ describe("facingSystem hard rule", () => {
     const puller = makePlayer({
       id: "puller",
       x: 150,
-      facing: 1,
-      pullFacingDirection: 1,
+      facing: 1, // stale — should turn toward the victim (still on the right)
       isAttemptingPull: true,
     });
 
     enforcePairFacing(victim, puller);
     assert.equal(victim.facing, -1);
-    assert.equal(puller.facing, 1);
-    assert.equal(victim.pullFacingDirection, -1); // lock held while yank active
+    assert.equal(victim.pullFacingDirection, -1);
+    assert.equal(puller.facing, -1, "puller must turn to track the body they are yanking");
 
-    // After settle: yank flags clear → orphan cleanup drops locks → re-face.
     victim.isBeingPullReversaled = false;
     puller.isAttemptingPull = false;
     victim.x = 50;

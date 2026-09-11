@@ -514,15 +514,14 @@ function createInitialPlayerState(overrides = {}) {
     slideSlapArmed: false,
 
     // === Command grab ===
-    // Variant selection: stamped at the M2 edge, revisable until the grab goes
-    // active. grabW/A/DTapTime feed the selector; held W refreshes its own stamp.
+    // Variant is aimed during the post-connect latch, not at the M2 press.
     grabVariant: null,
     grabVariantLocked: false,
     grabVariantThrowForbidden: false,
     grabWTapTime: 0,
     grabATapTime: 0,
     grabDTapTime: 0,
-    // Post-connect phase machine: belt-grip read → variant → (Drive only) carry.
+    // Post-connect phase machine: latch (aim) → resolve → (Drive only) carry.
     cmdGrabPhase: null,
     cmdGrabPhaseStart: 0,
     cmdGrabVariant: null,
@@ -549,9 +548,11 @@ function createInitialPlayerState(overrides = {}) {
     isBeingEdgePushed: false,
     isAttemptingPull: false,
     isBeingPullReversaled: false,
+    pullYankPower: 0,
     pullReversalPullerId: null,
-    pullFacingDirection: null, // destination facing lock for active pull yank
+    pullFacingDirection: null, // yank lock: facing they already had, cleared on settle
     isBoundaryPullSwap: false,
+    pendingPullTrip: false,
     isGrabSeparating: false,
     isGrabBellyFlopping: false,
     isBeingGrabBellyFlopped: false,
@@ -605,6 +606,19 @@ function createInitialPlayerState(overrides = {}) {
     clinchBracePressGameTime: 0,
     clinchThrowArcDistance: 0,
     clinchThrowArcHeight: 0,
+    throwTossPower: 0,
+    throwTossDurationMs: 0,
+    throwSetupChase: false,
+    throwChaseUnlockAt: 0,
+    throwRicochet: false,
+    throwRicochetHitEmitted: false,
+    throwOriginX: 0,
+    throwStartX: 0,
+    throwLandX: 0,
+    throwHitX: 0,
+    throwBounceHeight: 0,
+    throwRicochetHitAt: 0,
+    throwSetupPlant: false,
     // MASTERY Phase 2 (posture coupling): broken-posture "openable" tell,
     // derived from `balance` each tick behind MASTERY_P2_POSTURE (false when
     // the flag is off).

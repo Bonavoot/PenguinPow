@@ -102,9 +102,9 @@ test("cpu command grab variant read", async (t) => {
     assertDominant(distribution(cpu, opp), "drive", "lethal at the rope");
   });
 
-  await t.test("lethal posture mid-ring → avoids DRIVE (it cannot kill there)", () => {
-    // Dead centre: even the maximum carry cannot reach a rope, so a Drive would
-    // waste a kill. Throw and Pull both finish from anywhere.
+  await t.test("lethal posture mid-ring → THROW (send them toward the line)", () => {
+    // Dead centre: throw/pull cannot finish from here anymore. The right read
+    // is the toss that walks them toward their rope, not a wasted pull.
     const centre = (MAP_LEFT_BOUNDARY + MAP_RIGHT_BOUNDARY) / 2;
     const [cpu, opp] = pair({
       cpuX: centre - 36,
@@ -112,12 +112,8 @@ test("cpu command grab variant read", async (t) => {
       oppBalance: CLINCH_THROW_KILL_THRESHOLD - 1,
     });
     const counts = distribution(cpu, opp);
-    assertAvoided(counts, "drive", "lethal mid-ring");
-    assert.ok(counts.throw > 0 && counts.pull > 0, "both finishers should appear");
-    assert.ok(
-      counts.throw > counts.pull,
-      "throw is the default finisher; pull is the archetype lean"
-    );
+    assertDominant(counts, "throw", "lethal mid-ring send");
+    assertAvoided(counts, "pull", "lethal mid-ring");
   });
 
   await t.test("cornered with no force-out → PULL to reverse the geometry", () => {

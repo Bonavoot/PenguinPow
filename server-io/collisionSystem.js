@@ -172,6 +172,7 @@ const {
   endPerfectParryStun,
   cancelChargeHop,
 } = require("./gameUtils");
+const { abortLiveSetupThrowOnInterrupt } = require("./setupThrowFlight");
 
 const {
   isActionFacingOwnershipV2Enabled,
@@ -699,7 +700,8 @@ function checkCollision(player, otherPlayer, rooms, io) {
     otherInSidestepIFrames ||
     playerInSidestepIFrames ||
     player.isBeingThrown ||
-    otherPlayer.isBeingThrown
+    otherPlayer.isBeingThrown ||
+    otherPlayer.isThrowing
   ) {
     return;
   }
@@ -3194,7 +3196,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     // This prevents isBeingThrown from getting stuck when thrower is interrupted
     if (otherPlayer.isThrowing && otherPlayer.throwOpponent) {
       const thrownPlayer = currentRoom.players.find(p => p.id === otherPlayer.throwOpponent);
-      if (thrownPlayer) {
+      if (thrownPlayer && abortLiveSetupThrowOnInterrupt(thrownPlayer)) {
         thrownPlayer.isBeingThrown = false;
         thrownPlayer.beingThrownFacingDirection = null;
         // Set Y based on whether they're outside the dohyo

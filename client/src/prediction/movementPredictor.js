@@ -348,7 +348,17 @@ export function isPredictionEligible(self, opponent, keys, gameActive) {
   }
 
   for (let i = 0; i < BLOCKING_FLAGS.length; i++) {
-    if (self[BLOCKING_FLAGS[i]]) return false;
+    const flag = BLOCKING_FLAGS[i];
+    // Setup-throw chase is actionable locomotion. isThrowing stays true so
+    // the toss pose can hold, but after unlock the thrower walks/slides.
+    if (
+      flag === "isThrowing" &&
+      self.throwSetupChase &&
+      !(self.actionLockRemainingMs > 0)
+    ) {
+      continue;
+    }
+    if (self[flag]) return false;
   }
 
   // Knockback runs on a separate velocity channel server-side.

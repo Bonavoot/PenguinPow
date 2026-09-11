@@ -31,6 +31,7 @@ const {
   CMD_DRIVE_DISTANCE_MIN,
   GRAB_LUNGE_SPEED,
   CMD_DRIVE_DISTANCE_MAX,
+  CMD_DRIVE_TRAVEL_CAP,
   CMD_DRIVE_GASSED_DISTANCE_MULT,
   CMD_DRIVE_APPROACH_REF_SPEED,
   CMD_DRIVE_APPROACH_BONUS_MAX,
@@ -55,8 +56,6 @@ const {
 } = require("../../combatHelpers");
 const { MAP_RIGHT_BOUNDARY } = require("../../gameUtils");
 const { profileFor } = require("../../momentumTransfer");
-// Mirrors GRAB_POSTURE_MULT_MAX in commandGrabSystem.js.
-const GRAB_POSTURE_MULT_MAX = 1.35;
 
 // Park the pair far from the rope so the carry can never reach it.
 const CENTER = 640;
@@ -237,11 +236,8 @@ test("drive carry", async (t) => {
     const dist = Math.abs(
       capped.grabber.cmdGrabCarryTargetX - capped.grabber.cmdGrabCarryStartX
     );
-    // Ceiling is now the drive profile in momentumTransfer (momentum buys the
-    // whole curve), with posture as a multiplier on top.
     assert.ok(
-      dist <=
-        profileFor("drive").ceil * GRAB_POSTURE_MULT_MAX + 1,
+      dist <= CMD_DRIVE_TRAVEL_CAP + 1,
       `carry should cap out, got ${dist}`
     );
   });

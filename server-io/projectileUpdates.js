@@ -33,6 +33,7 @@ const {
   timeoutManager,
   isAttackParryJust,
 } = require("./gameUtils");
+const { abortLiveSetupThrowOnInterrupt } = require("./setupThrowFlight");
 const MomentumTransfer = require("./momentumTransfer");
 const {
   DEFENSE_TYPE,
@@ -239,7 +240,7 @@ function updateProjectiles(room, io, delta) {
           // This prevents isBeingThrown from getting stuck when thrower is interrupted
           if (targetPlayer.isThrowing && targetPlayer.throwOpponent) {
             const thrownPlayer = room.players.find(p => p.id === targetPlayer.throwOpponent);
-            if (thrownPlayer) {
+            if (thrownPlayer && abortLiveSetupThrowOnInterrupt(thrownPlayer)) {
               thrownPlayer.isBeingThrown = false;
               thrownPlayer.beingThrownFacingDirection = null;
               // Set Y based on whether they're outside the dohyo
@@ -669,7 +670,7 @@ function updateProjectiles(room, io, delta) {
           // This prevents isBeingThrown from getting stuck when thrower is interrupted
           if (opponent.isThrowing && opponent.throwOpponent) {
             const thrownPlayer = room.players.find(p => p.id === opponent.throwOpponent);
-            if (thrownPlayer) {
+            if (thrownPlayer && abortLiveSetupThrowOnInterrupt(thrownPlayer)) {
               thrownPlayer.isBeingThrown = false;
               thrownPlayer.beingThrownFacingDirection = null;
               // Set Y based on whether they're outside the dohyo

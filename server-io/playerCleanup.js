@@ -27,6 +27,17 @@ function cleanupPlayerStates(player) {
   player.clinchShoveLead = null;
   player.isThrowing = false;
   player.isBeingThrown = false;
+  player.throwSetupChase = false;
+  player.throwChaseUnlockAt = 0;
+  player.throwRicochet = false;
+  player.throwRicochetHitEmitted = false;
+  player.throwOriginX = 0;
+  player.throwStartX = 0;
+  player.throwLandX = 0;
+  player.throwHitX = 0;
+  player.throwBounceHeight = 0;
+  player.throwRicochetHitAt = 0;
+  player.throwSetupPlant = false;
   player.isAttacking = false;
   player.isHit = false;
   player.lastHitType = null;

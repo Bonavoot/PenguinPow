@@ -10,7 +10,7 @@ const {
   timeoutManager,
 } = require("./gameUtils");
 
-const { facingTowardOpponent } = require("./facingSystem");
+const { facingTowardOpponent, releasePullFacingLock } = require("./facingSystem");
 const {
   isActionFacingOwnershipV2Enabled,
   releaseActionFacingLock,
@@ -20,6 +20,10 @@ const {
 
 function correctFacingAfterGrabOrThrow(player, opponent) {
   if (!player || !opponent) return;
+  // Drop the yank lock first so settle facing actually sticks (V2 PULL
+  // ownership would otherwise snap them back to the pre-pull direction).
+  releasePullFacingLock(player);
+  releasePullFacingLock(opponent);
   if (player.atTheRopesFacingDirection == null) {
     player.facing = facingTowardOpponent(player, opponent);
   }

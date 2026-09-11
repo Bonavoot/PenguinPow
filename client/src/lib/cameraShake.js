@@ -48,6 +48,17 @@ export const SHAKE_PROFILES = {
   // a normal land so the speed burst is impossible to miss.
   rope_kickoff:    { trauma: 0.68, punch: 0.0, rot: 0.28, replace: true, dirBias: 0.8 },
   throw_landing:   { trauma: 0.55, punch: 0.0, rot: 0.20 },
+  // Setup throw hits the tawara and bounces — a real straw impact, not a wall.
+  throw_ricochet:  {
+    trauma: 0.8,
+    punch: 0.0,
+    rot: 0.0,
+    replace: true,
+    dirBias: 0.88,
+  },
+  // W-throw launch — directional crack. Caller scales with posture so a
+  // healthy hop stays a nudge and a broken send has weight, not zoom.
+  throw_toss:      { trauma: 0.68, punch: 0.0, rot: 0.30, replace: true, dirBias: 0.84 },
   // Legacy / non-hit edge events (danger tell). Combat clamp hits use
   // rope_clamp_hit — stacking edge_pin on barrages read as a continuous wobble.
   edge_pin:        { trauma: 0.58, punch: 0.0, rot: 0.20 },
@@ -65,6 +76,9 @@ export const SHAKE_PROFILES = {
   clinch_tumble:   { trauma: 0.64, punch: 0.0, rot: 0.32 },
   // MATADOR success yank — snappy lateral read, under slap_parry / perfect.
   matador:         { trauma: 0.56, punch: 0.0, rot: 0.22 },
+  // Belt pull yank — directional crack. Caller scales with posture power so
+  // a healthy scrape stays a nudge and a broken send has weight, not zoom.
+  pull_yank:       { trauma: 0.64, punch: 0.0, rot: 0.28, replace: true, dirBias: 0.82 },
   grab_clash:      { trauma: 0.62, punch: 0.0, rot: 0.30 },
 
   // ── Heavy "this mattered" moments ──

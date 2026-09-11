@@ -209,6 +209,16 @@ import {
   claimDodgeStartAudio,
 } from "../combatPresentation";
 import {
+  pullYankHopSchedule,
+  yankSnapEnd,
+} from "../combatPresentation/pullYankFeel";
+import {
+  throwTossLandIntensity,
+  isStrongSend,
+  opponentPlayerNumber,
+  playerNumberFromIds,
+} from "../combatPresentation/throwTossFeel";
+import {
   resolvePoseRender,
   soleTransformOriginCss,
   notePoseGeometryDebug,
@@ -3216,15 +3226,20 @@ const GameFighter = ({
         const kbSpeed = Math.abs(
           currentState.current?.knockbackVelocity?.x || 0
         );
+        const pullSmear =
+          p.isBeingPullReversaled &&
+          !p.isClinchKillPullVictim &&
+          (p.pullYankPower || 0) >= 0.55;
         if (
-          (p.isHit || p.isBurstKnockback) &&
-          kbSpeed >= 1.8 &&
-          !p.isBeingThrown &&
-          !p.inClinch &&
-          !p.isBeingGrabbed &&
+          (pullSmear ||
+            ((p.isHit || p.isBurstKnockback) &&
+              kbSpeed >= 1.8 &&
+              !p.isBeingThrown &&
+              !p.inClinch &&
+              !p.isBeingGrabbed)) &&
           !p.isCinematicKillVictim &&
           p.lastHitType !== "cinematicKill" &&
-          timestamp - lastGhostAtRef.current >= 55
+          timestamp - lastGhostAtRef.current >= (pullSmear ? 70 : 55)
         ) {
           lastGhostAtRef.current = timestamp;
           const srcEl = animContainerDomRef.current || fighterImgDomRef.current;
@@ -4009,6 +4024,11 @@ const GameFighter = ({
           prev.isBeingGrabPushed !== newState.isBeingGrabPushed ||
           prev.isAttemptingPull !== newState.isAttemptingPull ||
           prev.isBeingPullReversaled !== newState.isBeingPullReversaled ||
+          prev.pullYankPower !== newState.pullYankPower ||
+          prev.throwTossPower !== newState.throwTossPower ||
+          prev.throwTossDurationMs !== newState.throwTossDurationMs ||
+          prev.grabBreakSepDuration !== newState.grabBreakSepDuration ||
+          prev.grabBreakSepCurve !== newState.grabBreakSepCurve ||
           prev.isGrabSeparating !== newState.isGrabSeparating ||
           prev.isGrabSeparatePalm !== newState.isGrabSeparatePalm ||
           prev.isGrabBellyFlopping !== newState.isGrabBellyFlopping ||
@@ -5439,7 +5459,7 @@ const GameFighter = ({
 
     let unsubClinchTech = null;
     let handleGrabBreak, handleClinchTech, handleCounterGrab,
-    handleMatadorSuccess, handleRopeClamp, handleStaminaBlocked, handleClinchCallout,
+    handleMatadorSuccess, handlePullYank, handleThrowToss, handleThrowRicochet, handleRopeClamp, handleStaminaBlocked, handleClinchCallout,
     handleClinchThrowFail, handleDeepGrip, handlePostureBreak;
     if (index === 0) {
       handleGrabBreak = (data) => {
@@ -5670,7 +5690,64 @@ const GameFighter = ({
       };
       socket.on("matador_success", handleMatadorSuccess);
 
-      // Drive → tawara clamp: server emits on the exact pin tick (not React
+      handlePullYank = (data) => {
+        if (!data || data.isBoundarySwap || data.isKill) return;
+        const pres = readCombatPresentation(data);
+        if (pres && !claimPresentationEvent(pres.eventId)) return;
+        const power = typeof data.power === "number" ? data.power : 0;
+        const dir = data.dir === -1 ? -1 : 1;
+        const duration = Math.max(280, data.durationMs || 400);
+        const px = typeof data.x === "number" ? data.x : 640;
+        if (isStrongSend(power)) {
+          playSound(
+            chargeAttackLaunchSound,
+            0.05 + power * 0.03,
+            null,
+            1.18 + power * 0.1,
+            xToPan(px)
+          );
+          const snapTid = setTimeout(() => {
+            addShake("pull_yank", { dirX: dir, scale: 0.55 + power * 0.35 });
+          }, Math.round(duration * yankSnapEnd(power)));
+          pendingSocketTimeouts.current.push(snapTid);
+        }
+      };
+      socket.on("pull_yank", handlePullYank);
+
+      handleThrowToss = (data) => {
+        if (!data) return;
+        const pres = readCombatPresentation(data);
+        if (pres && !claimPresentationEvent(pres.eventId)) return;
+        const power = typeof data.power === "number" ? data.power : 0;
+        if (!isStrongSend(power)) return;
+        const px = typeof data.x === "number" ? data.x : 640;
+        // Same instant as the pull whoosh — the toss event is the send.
+        // Waiting out launch hitstop parked this after they were already airborne.
+        playSound(
+          chargeAttackLaunchSound,
+          0.05 + power * 0.03,
+          null,
+          1.18 + power * 0.1,
+          xToPan(px)
+        );
+      };
+      socket.on("throw_toss", handleThrowToss);
+
+      handleThrowRicochet = (data) => {
+        if (!data) return;
+        const px = typeof data.x === "number" ? data.x : 640;
+        const dir = data.dir === -1 ? -1 : 1;
+        emitParticles("throwRicochet", {
+          x: px,
+          y: SHADOW_GROUND_LEVEL,
+          intensity: 0.92,
+          direction: dir,
+        });
+        addShake("throw_ricochet", { dirX: -dir, scale: 0.95 });
+      };
+      socket.on("throw_ricochet", handleThrowRicochet);
+
+      // Drive → tawara clamp: server emits on the exact pin tick (not React)
       // isBeingEdgePushed, which was a beat late and read as random noise).
       handleRopeClamp = (data) => {
         if (!data || data.source !== "drive") return;
@@ -6382,6 +6459,9 @@ const GameFighter = ({
         if (typeof unsubClinchTech === "function") unsubClinchTech();
         socket.off("counter_grab", handleCounterGrab);
         socket.off("matador_success", handleMatadorSuccess);
+        socket.off("pull_yank", handlePullYank);
+        socket.off("throw_toss", handleThrowToss);
+        socket.off("throw_ricochet", handleThrowRicochet);
         socket.off("rope_clamp", handleRopeClamp);
         socket.off("stamina_blocked", handleStaminaBlocked);
         socket.off("clinch_callout", handleClinchCallout);
@@ -7096,43 +7176,63 @@ const GameFighter = ({
     emitParticles,
   ]);
 
-  // Pull reversal hop landings — schedule a dust burst at each hop landing time.
-  // The server hop tween is deterministic (650ms, 4 decaying hops after 18% delay),
-  // but the 32Hz broadcast rate is too coarse to capture the brief ground touches
-  // between hops, so we schedule bursts based on known tween timing instead.
+  // Pull hop landings — schedule dust from the LIVE tween + posture power.
+  // Broadcast is too coarse to catch the brief ground touches between hops.
   const pullReversalTimeouts = useRef([]);
   useEffect(() => {
     // Kill pulls have their own heavy slam burst (below) — skip the light
     // hop dust here so the two don't stack.
     if (penguin.isBeingPullReversaled && !penguin.isClinchKillPullVictim) {
-      const TWEEN_DURATION = 650;
-      const HOP_DELAY = 0.18;
-      const HOP_COUNT = 4;
-      const hopWindowStart = TWEEN_DURATION * HOP_DELAY;
-      const hopDuration = (TWEEN_DURATION * (1 - HOP_DELAY)) / HOP_COUNT;
+      const power =
+        typeof penguin.pullYankPower === "number" ? penguin.pullYankPower : 0;
+      const weighted = penguin.grabBreakSepCurve === "yank" || power > 0;
+      const duration = weighted
+        ? penguin.grabBreakSepDuration || 400
+        : penguin.grabBreakSepDuration || 600;
+      const sched = weighted
+        ? pullYankHopSchedule(duration, power)
+        : {
+            hopWindowStart: duration * 0.18,
+            hopDuration: (duration * 0.82) / 4,
+            hopCount: 4,
+          };
       const LATENCY_OFFSET = 35;
+      const yankDir = penguin.facing === -1 ? -1 : 1;
+      // Pin chips to the ice line. Live hop Y put the puff on the belly.
+      const iceY = SHADOW_GROUND_LEVEL;
 
-      const baseY = interpolatedPositionRef.current.y || penguin.y;
+      if (weighted) {
+        emitParticles("pullYankCrack", {
+          x: interpolatedPositionRef.current.x,
+          y: iceY,
+          intensity: 0.4 + power * 0.6,
+          direction: yankDir,
+        });
+        const snapTid = setTimeout(() => {
+          emitParticles("pullYankSnap", {
+            x: interpolatedPositionRef.current.x,
+            y: iceY,
+            intensity: 0.4 + power * 0.6,
+            direction: yankDir,
+          });
+        }, Math.round(duration * yankSnapEnd(power)));
+        pullReversalTimeouts.current.push(snapTid);
+      }
 
-      // Immediate burst at the start of the pull (the initial yank).
-      // Direction = facing, so dust kicks up in front of the player (opposite pull travel).
-      emitParticles("pullReversalLand", {
-        x: interpolatedPositionRef.current.x,
-        y: baseY,
-        intensity: 1.0,
-        direction: penguin.facing ?? 1,
-      });
-
-      for (let i = 0; i < HOP_COUNT; i++) {
+      for (let i = 0; i < sched.hopCount; i++) {
         const landingTime =
-          hopWindowStart + (i + 1) * hopDuration - LATENCY_OFFSET;
-        const intensity = Math.max(0.15, 1.0 - (i + 1) * 0.2);
+          sched.hopWindowStart + (i + 1) * sched.hopDuration - LATENCY_OFFSET;
+        const intensity = Math.max(
+          0.16,
+          (0.32 + power * 0.28) * (1 - (i + 1) * 0.28)
+        );
 
         const tid = setTimeout(() => {
           emitParticles("pullReversalLand", {
             x: interpolatedPositionRef.current.x,
-            y: baseY,
+            y: iceY,
             intensity,
+            direction: yankDir,
           });
         }, Math.max(0, landingTime));
         pullReversalTimeouts.current.push(tid);
@@ -7145,7 +7245,115 @@ const GameFighter = ({
       pullReversalTimeouts.current.forEach(clearTimeout);
       pullReversalTimeouts.current = [];
     };
-  }, [penguin.isBeingPullReversaled, penguin.isClinchKillPullVictim, emitParticles]);
+  }, [
+    penguin.isBeingPullReversaled,
+    penguin.isClinchKillPullVictim,
+    penguin.grabBreakSepDuration,
+    penguin.pullYankPower,
+    penguin.grabBreakSepCurve,
+    emitParticles,
+  ]);
+
+  // Strong non-kill throw / pull — quieter ghost of the cinematic kill smoke,
+  // tinted to the thrower / puller's belt. Kill pull / kill throw skip this.
+  const powerSendTrailRafRef = useRef(null);
+  useEffect(() => {
+    const stopTrail = () => {
+      if (powerSendTrailRafRef.current) {
+        cancelAnimationFrame(powerSendTrailRafRef.current);
+        powerSendTrailRafRef.current = null;
+      }
+    };
+
+    const strongPull =
+      penguin.isBeingPullReversaled &&
+      !penguin.isClinchKillPullVictim &&
+      penguin.grabBreakSepCurve === "yank" &&
+      isStrongSend(penguin.pullYankPower);
+    const strongThrow =
+      penguin.isBeingThrown &&
+      !penguin.isClinchKillThrowVictim &&
+      isStrongSend(penguin.throwTossPower);
+
+    if (!strongPull && !strongThrow) {
+      stopTrail();
+      return stopTrail;
+    }
+
+    const durationMs = strongThrow
+      ? Math.max(280, penguin.throwTossDurationMs || 400)
+      : Math.max(280, penguin.grabBreakSepDuration || 400);
+    const fallbackDir = penguin.facing === -1 ? -1 : 1;
+    const trailVariant = strongThrow ? "throw" : "pull";
+
+    const startTrail = () => {
+      const startedAt = performance.now();
+      let last = null;
+      const SPACING = 36;
+      const MAX_FILL = 4;
+      const step = (now) => {
+        if (now - startedAt > durationMs) {
+          powerSendTrailRafRef.current = null;
+          return;
+        }
+        const pos = interpolatedPositionRef.current;
+        if (pos && typeof pos.x === "number") {
+          const py = pos.y ?? penguin.y;
+          if (!last) {
+            last = { x: pos.x, y: py };
+            emitParticles("powerSendTrail", {
+              x: last.x,
+              y: last.y,
+              direction: fallbackDir,
+              playerNumber: opponentPlayerNumber(playerNumber),
+              variant: trailVariant,
+            });
+          } else {
+            let dx = pos.x - last.x;
+            let dy = py - last.y;
+            let dist = Math.hypot(dx, dy);
+            const travelDir = dx !== 0 ? Math.sign(dx) : fallbackDir;
+            let fills = 0;
+            while (dist >= SPACING && fills < MAX_FILL) {
+              const t = SPACING / dist;
+              last = { x: last.x + dx * t, y: last.y + dy * t };
+              emitParticles("powerSendTrail", {
+                x: last.x,
+                y: last.y,
+                direction: travelDir,
+                playerNumber: opponentPlayerNumber(playerNumber),
+                variant: trailVariant,
+              });
+              dx = pos.x - last.x;
+              dy = py - last.y;
+              dist = Math.hypot(dx, dy);
+              fills += 1;
+            }
+            if (fills >= MAX_FILL) last = { x: pos.x, y: py };
+          }
+        }
+        powerSendTrailRafRef.current = requestAnimationFrame(step);
+      };
+      powerSendTrailRafRef.current = requestAnimationFrame(step);
+    };
+
+    stopTrail();
+    startTrail();
+    return stopTrail;
+  }, [
+    penguin.isBeingPullReversaled,
+    penguin.isClinchKillPullVictim,
+    penguin.grabBreakSepCurve,
+    penguin.pullYankPower,
+    penguin.grabBreakSepDuration,
+    penguin.isBeingThrown,
+    penguin.isClinchKillThrowVictim,
+    penguin.throwTossPower,
+    penguin.throwTossDurationMs,
+    penguin.facing,
+    playerNumber,
+    emitParticles,
+  ]);
 
   // Clinch kill PULL — heavy belly-slam onto the ice. One big slam burst on the
   // first ground contact, then diminishing bursts on each bounce-hop landing.
@@ -7203,6 +7411,7 @@ const GameFighter = ({
   // Phase 8: screen_shake may carry combatPresentation for land identity/dedupe.
   const wasBeingThrown = useRef(false);
   const pendingThrowLandPresRef = useRef(null);
+  const throwTossPowerRef = useRef(0);
   useEffect(() => {
     if (!socket) return undefined;
     const onThrowLandShake = (data) => {
@@ -7214,12 +7423,31 @@ const GameFighter = ({
       }
       const pres = readCombatPresentation(data);
       if (pres) pendingThrowLandPresRef.current = pres;
+      if (typeof data.throwTossPower === "number") {
+        throwTossPowerRef.current = data.throwTossPower;
+      }
     };
     socket.on("screen_shake", onThrowLandShake);
     return () => socket.off("screen_shake", onThrowLandShake);
   }, [socket]);
   useEffect(() => {
     let echoId = null;
+    if (
+      !wasBeingThrown.current &&
+      penguin.isBeingThrown &&
+      !penguin.isClinchKillThrowVictim
+    ) {
+      const power =
+        typeof penguin.throwTossPower === "number" ? penguin.throwTossPower : 0;
+      throwTossPowerRef.current = power;
+      const launchX = interpolatedPositionRef.current.x || penguin.x;
+      emitParticles("throwTossLaunch", {
+        x: launchX,
+        y: SHADOW_GROUND_LEVEL,
+        intensity: throwTossLandIntensity(power),
+        direction: penguin.facing === -1 ? -1 : 1,
+      });
+    }
     if (wasBeingThrown.current && !penguin.isBeingThrown) {
       const landX = interpolatedPositionRef.current.x || penguin.x;
       const landPres = pendingThrowLandPresRef.current;
@@ -7268,7 +7496,16 @@ const GameFighter = ({
             }
           }
         } else {
-          emitParticles("throwLand", { x: px, y: py });
+          const power =
+            typeof penguin.throwTossPower === "number" && penguin.throwTossPower > 0
+              ? penguin.throwTossPower
+              : throwTossPowerRef.current;
+          emitParticles("throwTossLand", {
+            x: px,
+            y: SHADOW_GROUND_LEVEL,
+            intensity: throwTossLandIntensity(power),
+            direction: penguin.facing === -1 ? -1 : 1,
+          });
         }
       }
     }
@@ -7276,7 +7513,16 @@ const GameFighter = ({
     return () => {
       if (echoId) clearTimeout(echoId);
     };
-  }, [penguin.isBeingThrown, penguin.isClinchKillThrowVictim, penguin.id, penguin.x, penguin.y, emitParticles]);
+  }, [
+    penguin.isBeingThrown,
+    penguin.isClinchKillThrowVictim,
+    penguin.throwTossPower,
+    penguin.facing,
+    penguin.id,
+    penguin.x,
+    penguin.y,
+    emitParticles,
+  ]);
 
   // KILL-THROW LANDING BUNDLE — one moment for dust, thud, and camera crack,
   // fired from the rAF the frame the flat KO art takes over (see the
@@ -8465,11 +8711,17 @@ const GameFighter = ({
         reason: cinematicVariant,
         eventId: data?.attackerId,
       });
+      const attackerPlayerNumber = playerNumberFromIds(
+        player.id,
+        data.attackerId,
+        playerNumber
+      );
       if (index === 0) {
         if (playLaunchPackage) {
           emitParticles("cinematicKillImpact", {
             x: data.impactX,
             y: data.victimY,
+            playerNumber: attackerPlayerNumber,
           });
 
           playSound(pickRandomSound(chargedHitSounds), 0.07, null, 0.55, xToPan(data.impactX));
@@ -8561,6 +8813,7 @@ const GameFighter = ({
                   x: last.x,
                   y: last.y,
                   direction: trailDir,
+                  playerNumber: attackerPlayerNumber,
                 });
               } else {
                 let dx = pos.x - last.x;
@@ -8574,6 +8827,7 @@ const GameFighter = ({
                     x: last.x,
                     y: last.y,
                     direction: trailDir,
+                    playerNumber: attackerPlayerNumber,
                   });
                   dx = pos.x - last.x;
                   dy = py - last.y;
@@ -8690,6 +8944,11 @@ const GameFighter = ({
         cancelAnimationFrame(killThrowTrailRafRef.current);
         killThrowTrailRafRef.current = null;
       }
+      const throwerPlayerNumber = playerNumberFromIds(
+        player.id,
+        data.throwerId,
+        playerNumber
+      );
       const throwDir = data.throwDir || penguin.facing || 1;
       const trailDuration = Math.max(900, (data.durationMs || 1700) + 80);
       const SPACING = 28;
@@ -8712,6 +8971,7 @@ const GameFighter = ({
                 y: last.y,
                 direction: throwDir,
                 ascending: true,
+                playerNumber: throwerPlayerNumber,
               });
             } else {
               let dx = pos.x - last.x;
@@ -8728,6 +8988,7 @@ const GameFighter = ({
                   y: last.y,
                   direction: throwDir,
                   ascending: segAscending,
+                  playerNumber: throwerPlayerNumber,
                 });
                 dx = pos.x - last.x;
                 dy = py - last.y;
@@ -8893,7 +9154,11 @@ const GameFighter = ({
         cancelAnimationFrame(killThrowTrailRafRef.current);
         killThrowTrailRafRef.current = null;
       }
-      // Safety net: if this effect tears down mid-cinematic (unmount / round
+      if (powerSendTrailRafRef.current) {
+        cancelAnimationFrame(powerSendTrailRafRef.current);
+        powerSendTrailRafRef.current = null;
+      }
+      // Safety net: if this effect tears down mid-cinematic (unmount / round)
       // change) the scheduled unfreeze timeout above is cleared, so make sure
       // the engine never gets stranded in its frozen state.
       if (index === 0) setFrozen(false);
@@ -9339,7 +9604,8 @@ const GameFighter = ({
     // (the reaction rig tips it over) instead of snapping back to idle when
     // the hitstun timer clears mid-fall.
     !!penguin.isRingOutLoser,
-    !!displayPenguin.isChargeHopping
+    !!displayPenguin.isChargeHopping,
+    !!penguin.throwSetupChase
   );
   if (
     holdSlapHitPose &&
@@ -9518,20 +9784,24 @@ const GameFighter = ({
   // Windows are time deadlines (was render-frame counters); the rAF loop
   // forces the "off" re-render when an active window expires.
   if (penguin.isHit && !lastHitState.current) {
-    if (renderNowMs - lastHitFlashTime.current > HIT_FLASH_COOLDOWN_MS) {
-      // Opening / isolated hit: white impact-snap only. Decisive contacts
-      // (counter / punish / armor break) hold the snap a beat longer — the
-      // one place the flash itself carries tier, everything else is body.
-      hitFlashUntilRef.current =
-        renderNowMs +
-        (nextHitFlashTierRef.current === "decisive"
-          ? HIT_FLASH_DECISIVE_MS
-          : HIT_FLASH_MS);
-      nextHitFlashTierRef.current = "ordinary";
-      lastHitFlashTime.current = renderNowMs;
-    } else {
-      // Cooldown-suppressed combo follow-up: red damage tint only.
-      hitTintUntilRef.current = renderNowMs + HIT_TINT_MS;
+    const skipThrowHitFlash =
+      penguin.isBeingThrown && !penguin.isClinchKillThrowVictim;
+    if (!skipThrowHitFlash) {
+      if (renderNowMs - lastHitFlashTime.current > HIT_FLASH_COOLDOWN_MS) {
+        // Opening / isolated hit: white impact-snap only. Decisive contacts
+        // (counter / punish / armor break) hold the snap a beat longer — the
+        // one place the flash itself carries tier, everything else is body.
+        hitFlashUntilRef.current =
+          renderNowMs +
+          (nextHitFlashTierRef.current === "decisive"
+            ? HIT_FLASH_DECISIVE_MS
+            : HIT_FLASH_MS);
+        nextHitFlashTierRef.current = "ordinary";
+        lastHitFlashTime.current = renderNowMs;
+      } else {
+        // Cooldown-suppressed combo follow-up: red damage tint only.
+        hitTintUntilRef.current = renderNowMs + HIT_TINT_MS;
+      }
     }
   }
   const inHitVisual = penguin.isHit || penguin.isHitFalling;
@@ -9971,6 +10241,19 @@ const GameFighter = ({
     $isBeingGrabPushed: penguin.isBeingGrabPushed,
     $isAttemptingPull: penguin.isAttemptingPull || !!penguin.isMatadorSuccess,
     $isBeingPullReversaled: penguin.isBeingPullReversaled,
+    $pullYankPower:
+      typeof penguin.pullYankPower === "number" ? penguin.pullYankPower : 0,
+    $pullYankDurationMs:
+      typeof penguin.grabBreakSepDuration === "number"
+        ? penguin.grabBreakSepDuration
+        : 400,
+    $throwTossPower:
+      typeof penguin.throwTossPower === "number" ? penguin.throwTossPower : 0,
+    $throwTossDurationMs:
+      typeof penguin.throwTossDurationMs === "number"
+        ? penguin.throwTossDurationMs
+        : 400,
+    $throwSetupPlant: !!penguin.throwSetupPlant,
     $isGrabSeparating: penguin.isGrabSeparating,
     $isGrabBellyFlopping: penguin.isGrabBellyFlopping,
     $isBeingGrabBellyFlopped: penguin.isBeingGrabBellyFlopped,
@@ -10469,6 +10752,7 @@ const GameFighter = ({
           $isCinematicKillAttacker={isCinematicKillAttacker}
           $attackerConfirmTier={attackerConfirmTier}
           $isPostureBroken={!!penguin.isPostureBroken && !gameOver}
+          $throwSetupPlant={!!penguin.throwSetupPlant}
           $displayScale={spriteConfig?.displayScale || 1}
         >
           <AnimatedFighterImage

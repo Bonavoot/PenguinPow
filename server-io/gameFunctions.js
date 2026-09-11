@@ -16,6 +16,9 @@ const {
   isOutsideDohyo,
   canPlayerSlap,
   canPlayerUseAction,
+  isThrowerLocked,
+  tryBeginSetupThrowChaseSlide,
+  clearSetupThrowFlags,
   canPlayerDash,
   beginPlayerDodge,
   canPlayerSidestep,
@@ -241,6 +244,7 @@ function cleanupGrabStates(player, opponent) {
   player.throwStartTime = 0;
   player.throwEndTime = 0;
   player.throwOpponent = null;
+  clearSetupThrowFlags(player);
   player.grabCooldown = false;
   player.isBeingGrabbed = false;
   player.isBeingPushed = false;
@@ -254,6 +258,9 @@ function cleanupGrabStates(player, opponent) {
   player.isBeingEdgePushed = false;
   player.isAttemptingPull = false;
   player.isBeingPullReversaled = false;
+  player.pullYankPower = 0;
+  player.throwTossPower = 0;
+  player.throwTossDurationMs = 0;
   player.pullReversalPullerId = null;
   player.pullFacingDirection = null;
   player.isBoundaryPullSwap = false;
@@ -344,6 +351,9 @@ function cleanupGrabStates(player, opponent) {
   opponent.isBeingEdgePushed = false;
   opponent.isAttemptingPull = false;
   opponent.isBeingPullReversaled = false;
+  opponent.pullYankPower = 0;
+  opponent.throwTossPower = 0;
+  opponent.throwTossDurationMs = 0;
   opponent.pullReversalPullerId = null;
   opponent.pullFacingDirection = null;
   opponent.isBoundaryPullSwap = false;
@@ -961,6 +971,19 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
     p.clinchBracePressGameTime = 0;
     p.clinchThrowArcDistance = 0;
     p.clinchThrowArcHeight = 0;
+    p.throwTossPower = 0;
+    p.throwTossDurationMs = 0;
+    p.throwSetupChase = false;
+    p.throwChaseUnlockAt = 0;
+    p.throwRicochet = false;
+    p.throwRicochetHitEmitted = false;
+    p.throwOriginX = 0;
+    p.throwStartX = 0;
+    p.throwLandX = 0;
+    p.throwHitX = 0;
+    p.throwBounceHeight = 0;
+    p.throwRicochetHitAt = 0;
+    p.throwSetupPlant = false;
     p.isResistingThrow = false;
     p.isResistingPull = false;
     p.isClinchJolting = false;
@@ -1394,7 +1417,7 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
       }
 
       const isPlayerValid = () => (
-        !player.isDodging && !player.isThrowing && !player.isBeingThrown &&
+        !player.isDodging && !isThrowerLocked(player) && !player.isBeingThrown &&
         !player.isGrabbing && !player.isBeingGrabbed && !player.isRawParryStun &&
         !player.isRawParrying && !player.isHit && !player.canMoveToReady &&
         !player.isGrabStartup && !player.isGrabbingMovement &&
@@ -1867,8 +1890,9 @@ function executeChargedAttack(player, chargePercentage, rooms) {
   // Charged attacks drain a little more stamina than a slap
   player.stamina = Math.max(0, player.stamina - CHARGED_ATTACK_STAMINA_COST);
 
-  // Don't execute charged attack if player is in a throw state
-  if (player.isThrowing || player.isBeingThrown) {
+  // Don't execute charged attack if the thrower is still locked (kill cinematic)
+  // or the victim is in the air. Setup chase may strike.
+  if (isThrowerLocked(player) || player.isBeingThrown) {
     return;
   }
 
@@ -2498,8 +2522,16 @@ function adjustPlayerPositions(player1, player2, delta) {
 
   // Kill velocity for any non-anchored player moving toward the other.
   // Slide-jump land settle keeps the jumper's ice — that speed is the collision.
-  const skipP1VelKill = slideSettleBoth || slideSettleJumper === player1;
-  const skipP2VelKill = slideSettleBoth || slideSettleJumper === player2;
+  // Setup-throw plant: eject still separates (they stay solid) but the chase
+  // slide must keep speed so a buffered belly bump can still arm.
+  const skipP1VelKill =
+    slideSettleBoth ||
+    slideSettleJumper === player1 ||
+    (!!player1.isIceSliding && !!player2.throwSetupPlant);
+  const skipP2VelKill =
+    slideSettleBoth ||
+    slideSettleJumper === player2 ||
+    (!!player2.isIceSliding && !!player1.throwSetupPlant);
   if (!p1Anchored && !skipP1VelKill) {
     const isToward = (player1.x < player2.x && player1.movementVelocity > 0) ||
                      (player1.x > player2.x && player1.movementVelocity < 0);
@@ -2833,9 +2865,18 @@ function activateBufferedInputAfterGrab(player, rooms) {
       emitStaminaBlocked(player, "dodge");
       return;
     }
+    const nowSim = simNowForPlayer(player);
+    const currentRoom = rooms.find((r) =>
+      r.players.some((p) => p.id === player.id)
+    );
+    const chaseOpp =
+      currentRoom && currentRoom.players.find((p) => p.id !== player.id);
+    if (tryBeginSetupThrowChaseSlide(player, nowSim, chaseOpp)) {
+      return;
+    }
     beginPlayerDodge(player, {
       direction,
-      nowSim: simNowForPlayer(player),
+      nowSim,
     });
     return;
   }
@@ -2933,14 +2974,22 @@ function activateBufferedInputAfterGrab(player, rooms) {
 function executeInputBuffer(player, rooms) {
   if (!player.inputBuffer) return false;
 
-  const age = simNowForPlayer(player) - player.inputBuffer.timestamp;
-  if (age >= INPUT_BUFFER_WINDOW_MS) {
+  const nowBuf = simNowForPlayer(player);
+  // Keep the press while still locked — the 200ms window is for AFTER you're
+  // free. Expiring during the toss hold ate buffered slaps/parries.
+  if (player.inputLockUntil && nowBuf < player.inputLockUntil) return false;
+  if (player.actionLockUntil && nowBuf < player.actionLockUntil) return false;
+  if (isThrowerLocked(player)) return false;
+
+  const stampedDuringThrowHold =
+    player.throwChaseUnlockAt &&
+    player.inputBuffer.timestamp <= player.throwChaseUnlockAt &&
+    nowBuf < player.throwChaseUnlockAt + INPUT_BUFFER_WINDOW_MS;
+  const age = nowBuf - player.inputBuffer.timestamp;
+  if (!stampedDuringThrowHold && age >= INPUT_BUFFER_WINDOW_MS) {
     player.inputBuffer = null;
     return false;
   }
-
-  if (player.inputLockUntil && simNowForPlayer(player) < player.inputLockUntil) return false;
-  if (player.actionLockUntil && simNowForPlayer(player) < player.actionLockUntil) return false;
   if (player.isGrabSeparating || player.isGrabBreakSeparating) return false;
   if (player.isBeingPullReversaled) return false;
   if (player.isGrabBreaking || player.isGrabBreakCountered) return false;
@@ -2962,7 +3011,7 @@ function executeInputBuffer(player, rooms) {
           !player.isRecovering && !player.isGrabbing &&
           !player.isGrabStartup &&
           !player.isGrabbingMovement && !player.isWhiffingGrab &&
-          !player.isThrowing && !player.grabBreakSpaceConsumed &&
+          !isThrowerLocked(player) && !player.grabBreakSpaceConsumed &&
           canArmMatador(player, nowSim)) {
         armMatador(player, nowSim, lagCompensatedParryStart(player, nowSim));
         clearChargeState(player, true);
@@ -2978,7 +3027,7 @@ function executeInputBuffer(player, rooms) {
           !player.isRecovering && !player.isGrabbing &&
           !player.isGrabStartup && // Block buffered AP during grab startup — no parry/grab coexistence
           !player.isGrabbingMovement && !player.isWhiffingGrab &&
-          !player.isThrowing && !player.grabBreakSpaceConsumed &&
+          !isThrowerLocked(player) && !player.grabBreakSpaceConsumed &&
           canArmAttackParry(player, nowSim)) {
         // Buffered ATTACK PARRY: arm the tap deflect window, lag-compensated to
         // the true press moment (consistent with the primary socket path).
@@ -2990,13 +3039,23 @@ function executeInputBuffer(player, rooms) {
       break;
     }
     case "dodge": {
+      const nowSim = simNowForPlayer(player);
+      const currentRoom = rooms.find((r) =>
+        r.players.some((p) => p.id === player.id)
+      );
+      const chaseOpp =
+        currentRoom && currentRoom.players.find((p) => p.id !== player.id);
+      if (tryBeginSetupThrowChaseSlide(player, nowSim, chaseOpp)) {
+        player.inputBuffer = null;
+        return true;
+      }
       if (canPlayerDash(player)) {
         if (player.isGassed) {
           emitStaminaBlocked(player, "dodge");
           player.inputBuffer = null;
           return true;
         }
-        beginPlayerDodge(player, { nowSim: simNowForPlayer(player) });
+        beginPlayerDodge(player, { nowSim });
         player.inputBuffer = null;
         return true;
       }
@@ -3208,20 +3267,17 @@ function resolveMatadorPull(matador, grabber, room, io) {
   matador.matadorSuccessUntil = nowSim + effectiveTweenDur;
   matador.isMatadorParrying = false;
 
-  // Destination facing for the yank (same as clinch pull). pullFacingDirection
-  // locks it until tween settle; then correctFacingAfterGrabOrThrow re-corrects.
-  const matadorPullAnchorX = isBoundaryPull ? actorTweenTargetX : matador.x;
+  // Only the dumped grabber is facing-locked. The matador tracks live X.
+  if (!matador.atTheRopesFacingDirection) {
+    matador.pullFacingDirection = null;
+  }
   if (!isKill) {
-    if (!matador.atTheRopesFacingDirection) {
-      matador.facing = matadorPullAnchorX < targetX ? -1 : 1;
-      matador.pullFacingDirection = matador.facing;
-    }
     if (!grabber.atTheRopesFacingDirection) {
-      grabber.facing = targetX < matadorPullAnchorX ? -1 : 1;
       grabber.pullFacingDirection = grabber.facing;
     }
   } else {
     grabber.facing = grabberFacingBeforeKill;
+    grabber.pullFacingDirection = grabberFacingBeforeKill;
   }
 
   const matadorPlayerNumber = room.players.indexOf(matador) === 0 ? 1 : 2;

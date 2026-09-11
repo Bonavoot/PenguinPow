@@ -437,12 +437,12 @@ const buildCrowd = (bashoRank = null) => {
   );
 };
 
-const CHEER_DURATION_MS = 3500;
-const CHEER_VOLUME = { light: 0.003, medium: 0.006, heavy: 0.01 };
-const CHEER_PITCH = { light: 1.0, medium: 1.0, heavy: 1.12 };
+const CHEER_DURATION_MS = { light: 2200, medium: 3500, heavy: 3500, gasp: 3500 };
+const CHEER_VOLUME = { light: 0.003, medium: 0.006, heavy: 0.01, gasp: 0.01 };
+const CHEER_PITCH = { light: 1.0, medium: 1.0, heavy: 1.12, gasp: 1.12 };
 const CHEER_COOLDOWN_MS = 2000;
-const CHEER_STAGGER_MS = { light: 500, medium: 400, heavy: 250 };
-const CHEER_WINDDOWN_MS = 1000;
+const CHEER_STAGGER_MS = { light: 500, medium: 400, heavy: 250, gasp: 250 };
+const CHEER_WINDDOWN_MS = { light: 800, medium: 1000, heavy: 1000, gasp: 1000 };
 const CHEER_TICK_MS = 100;
 const CHEER_TOGGLE_MIN = 200;
 const CHEER_TOGGLE_MAX = 600;
@@ -585,16 +585,25 @@ const CrowdLayer = ({ crowdEvent = null, bashoRank = null }) => {
 
     if (crowdEvent.type === "cheer") {
       const now = Date.now();
-      if (crowdEvent.intensity !== "heavy" && now - lastCheerTimeRef.current < CHEER_COOLDOWN_MS) return;
+      const intensity = crowdEvent.intensity;
+      if (
+        intensity !== "heavy" &&
+        intensity !== "gasp" &&
+        now - lastCheerTimeRef.current < CHEER_COOLDOWN_MS
+      ) {
+        return;
+      }
       lastCheerTimeRef.current = now;
 
-      const volume = CHEER_VOLUME[crowdEvent.intensity] || 0.003;
+      const volume = CHEER_VOLUME[intensity] || 0.003;
+      const durationMs = CHEER_DURATION_MS[intensity] || 3500;
+      const windDownMs = CHEER_WINDDOWN_MS[intensity] || 1000;
 
       clearInterval(cheerTickIntervalRef.current);
       clearTimeout(cheerTimeoutRef.current);
 
-      const stagger = CHEER_STAGGER_MS[crowdEvent.intensity] || 500;
-      const windDownStart = CHEER_DURATION_MS - CHEER_WINDDOWN_MS;
+      const stagger = CHEER_STAGGER_MS[intensity] || 500;
+      const windDownStart = durationMs - windDownMs;
 
       const params = new Map();
       crowdPositionsRef.current.forEach((member) => {
@@ -603,7 +612,7 @@ const CrowdLayer = ({ crowdEvent = null, bashoRank = null }) => {
         params.set(member.id, {
           startDelay: Math.random() * stagger,
           togglePeriod: CHEER_TOGGLE_MIN + Math.random() * (CHEER_TOGGLE_MAX - CHEER_TOGGLE_MIN),
-          windDownAt: windDownStart + Math.random() * CHEER_WINDDOWN_MS,
+          windDownAt: windDownStart + Math.random() * windDownMs,
           showingCheering: false,
         });
       });
@@ -634,11 +643,15 @@ const CrowdLayer = ({ crowdEvent = null, bashoRank = null }) => {
         clearInterval(cheerTickIntervalRef.current);
         resetAllSpritesToIdle();
         isCheeringRef.current = false;
-      }, CHEER_DURATION_MS);
+      }, durationMs);
 
-      const pitch = CHEER_PITCH[crowdEvent.intensity] || 1.0;
+      const pitch = CHEER_PITCH[intensity] || 1.0;
       if (!crowdEvent.skipCheerSfx) {
-        playBuffer(winnerSound, volume, CHEER_DURATION_MS, pitch);
+        // Heavy / gasp: let the crowd bed play out. Passing durationMs
+        // hard-stops the buffer (the old 980ms gasp chopped it mid-yell).
+        const sfxMs =
+          intensity === "heavy" || intensity === "gasp" ? null : durationMs;
+        playBuffer(winnerSound, volume, sfxMs, pitch);
       }
     }
   }, [crowdEvent, schedulePaint]);
