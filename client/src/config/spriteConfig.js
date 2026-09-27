@@ -142,8 +142,8 @@ const BLUE_ANIMATED_SPRITES = {
   grabAttempt: {
     src: grabAttemptSheet,
     frameCount: 20,
-    frameWidth: 560,
-    frameHeight: 560,
+    frameWidth: 480,
+    frameHeight: 480,
     fps: 40,
     loop: true,
   },

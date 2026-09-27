@@ -270,7 +270,7 @@ test("command grab defaults", async (t) => {
     );
   });
 
-  await t.test("latch is a shared handshake, with an earlier conversion commit", () => {
+  await t.test("latch is a shared grip for every verb", () => {
     const {
       CMD_GRAB_LATCH_MS,
       CMD_GRAB_LATCH_MIN_COMMIT_MS,
@@ -279,14 +279,14 @@ test("command grab defaults", async (t) => {
       CMD_GRAB_LATCH_MS >= 320 && CMD_GRAB_LATCH_MS <= 560,
       `latch ${CMD_GRAB_LATCH_MS}ms must read as a belt grip, not a pause or a cutscene`
     );
-    assert.ok(
-      CMD_GRAB_LATCH_MIN_COMMIT_MS >= 160 &&
-        CMD_GRAB_LATCH_MIN_COMMIT_MS < CMD_GRAB_LATCH_MS,
-      "pull/throw may commit before the drive timeout, but not instantly"
+    assert.equal(
+      CMD_GRAB_LATCH_MIN_COMMIT_MS,
+      CMD_GRAB_LATCH_MS,
+      "pull and throw wait out the same grip as drive"
     );
     assert.ok(
-      CMD_GRAB_CINCH_MS < CMD_GRAB_LATCH_MIN_COMMIT_MS,
-      `cinch ${CMD_GRAB_CINCH_MS}ms must finish before the earliest commit`
+      CMD_GRAB_CINCH_MS < CMD_GRAB_LATCH_MS,
+      `cinch ${CMD_GRAB_CINCH_MS}ms must finish inside the grip`
     );
     const { drive, pull, throw: thr } = CMD_GRAB_CONNECT_STARTUP_MS;
     assert.equal(drive, pull);

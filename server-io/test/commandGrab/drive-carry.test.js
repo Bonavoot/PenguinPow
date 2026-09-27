@@ -36,6 +36,7 @@ const {
   CMD_DRIVE_APPROACH_REF_SPEED,
   CMD_DRIVE_APPROACH_BONUS_MAX,
   CMD_DRIVE_EDGE_STAMINA_DRAIN_PER_SEC,
+  GRAB_BREAK_STAMINA_COST,
   CMD_DRIVE_RELEASE_SEPARATION,
   CMD_DRIVE_ATTACKER_RECOVERY_MS,
   CMD_DRIVE_DEFENDER_RECOVERY_MS,
@@ -324,7 +325,7 @@ test("drive release", async (t) => {
     // magnetic repulsion, then an 86/14 slap-parry split that glued the pusher
     // down while the victim launched. The winner gives a real step back; the
     // victim still travels farther.
-    const s = driveToStartOfCarry({ p2Balance: 100 });
+    const s = driveToStartOfCarry({ p2Balance: 100, midX: 560 });
     s.advance(s.grabber.cmdGrabCarryDuration);
     const grabberAtEnd = s.grabber.x;
     const victimAtEnd = s.victim.x;
@@ -345,30 +346,24 @@ test("drive release", async (t) => {
     );
   });
 
-  await t.test("a rope-pinned victim keeps the pin; the grabber absorbs the rest", () => {
-    // The whole point of the boundary-aware split: the bad position the victim was
-    // driven into must not be given back by the separation itself.
+  await t.test("a tawara pin ends with the shove when the tank survives", () => {
+    // The pin must not run until zero. A healthy tank lives, still on the
+    // straw, so breaking that pin would have been the bad spend.
     const s = createCommandGrabScenario({
       variant: "drive",
       p2Balance: 100,
+      p2Stamina: 100,
       midX: MAP_RIGHT_BOUNDARY - 61.2 / 2 - 8,
     });
     s.connect();
     s.resolveNow();
-    // Close enough that the rope is reached; a healthy victim gets pinned, not out.
     s.advance(s.grabber.cmdGrabCarryDuration + 32);
-    if (s.room.gameOver) return; // force-out fired instead; covered elsewhere
+    assert.equal(s.room.gameOver, false, "a full tank must outlast one pin");
+    assert.equal(s.grabber.cmdGrabPhase, null, "the shove ending releases the grip");
+    assert.ok(s.victim.stamina > GRAB_BREAK_STAMINA_COST);
     assert.ok(
       Math.abs((s.victim.grabBreakTargetX ?? s.victim.x) - MAP_RIGHT_BOUNDARY) < 1,
-      "a pinned victim must stay pinned through the release"
-    );
-    const finalGap = Math.abs(
-      (s.grabber.grabBreakTargetX ?? s.grabber.x) -
-        (s.victim.grabBreakTargetX ?? s.victim.x)
-    );
-    assert.ok(
-      Math.abs(finalGap - CMD_DRIVE_RELEASE_SEPARATION) < 1,
-      `the grabber must absorb the victim's shortfall, got gap ${finalGap}`
+      "they stay on the tawara"
     );
   });
 
@@ -677,6 +672,81 @@ test("drive at the tawara", async (t) => {
       s.victim.x < MAP_RIGHT_BOUNDARY - 10,
       "the victim should still be well inside the ring"
     );
+  });
+
+  await t.test("a gassed victim cannot grab break", () => {
+    const s = createCommandGrabScenario({
+      variant: "drive",
+      p2Stamina: 0,
+    }).connect();
+    s.victim.isGassed = true;
+    s.victim.grabBreakQueued = true;
+    s.advance(s.tickMs);
+    assert.equal(s.grabber.cmdGrabPhase, "latch");
+    assert.equal(s.victim.grabBreakQueued, false);
+    assert.equal(s.victim.isGrabBreakGather, false);
+    assert.equal(s.io.last("grab_break"), null);
+    assert.equal(s.io.last("stamina_blocked")?.payload?.action, "grab_break");
+  });
+
+  await t.test("space during the latch breaks the grab before it resolves", () => {
+    const s = createCommandGrabScenario({
+      variant: "throw",
+      p2Stamina: 100,
+    }).connect();
+    s.victim.grabBreakQueued = true;
+    s.advance(s.tickMs);
+    assert.equal(s.grabber.isThrowing, false);
+    assert.equal(s.grabber.cmdGrabPhase, null);
+    assert.equal(s.victim.stamina, 70);
+    const startGap = Math.abs(
+      s.grabber.grabBreakStartX - s.victim.grabBreakStartX
+    );
+    const endGap = Math.abs(
+      s.grabber.grabBreakTargetX - s.victim.grabBreakTargetX
+    );
+    assert.ok(
+      endGap > startGap + 100,
+      `the hold must open, got ${startGap} → ${endGap}`
+    );
+    assert.equal(s.victim.isGrabBreakGather, true, "they shake together first");
+    assert.equal(s.victim.isGrabSeparatePalm, false);
+    assert.ok(s.victim.grabBreakSepStartTime > s.room.simTime);
+    s.advanceTime(160);
+    assert.equal(s.victim.isGrabBreakGather, false);
+    assert.equal(s.victim.isGrabSeparatePalm, true, "then the push palms take over");
+  });
+
+  await t.test("space during the pin is a grab break, not a win", () => {
+    const s = driveIntoRope({ ropeGap: 8, p2Balance: 100, p2Stamina: 100 });
+    s.victim.grabBreakQueued = true;
+    s.advance(s.grabber.cmdGrabCarryDuration);
+    assert.equal(s.room.gameOver, false);
+    assert.equal(s.grabber.cmdGrabPhase, null);
+    assert.equal(s.victim.stamina, 70);
+    assert.ok(!s.victim.isGassed);
+    assert.ok(
+      Math.abs(s.victim.grabBreakTargetX - MAP_RIGHT_BOUNDARY) < 2,
+      "the breaker stays on the straw"
+    );
+    assert.ok(
+      Math.abs(s.grabber.grabBreakTargetX - s.victim.grabBreakTargetX) >= 140,
+      "the grabber is knocked off the grip"
+    );
+    const ev = s.io.last("grab_break");
+    assert.ok(ev);
+    assert.ok(ev.payload.effectDelayMs > 0, "the green burst waits for the shove");
+    assert.equal(s.victim.isGrabSeparatePalm, true);
+  });
+
+  await t.test("an under-budget break gases the breaker and does not ring them out", () => {
+    const s = driveIntoRope({ ropeGap: 8, p2Balance: 100, p2Stamina: 10 });
+    s.victim.grabBreakQueued = true;
+    s.advance(s.tickMs * 3);
+    assert.equal(s.room.gameOver, false);
+    assert.equal(s.victim.stamina, 0);
+    assert.equal(s.victim.isGassed, true);
+    assert.equal(s.grabber.cmdGrabPhase, null);
   });
 
   await t.test("the pair never ends up parked past the rope", () => {

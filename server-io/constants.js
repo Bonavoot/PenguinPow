@@ -68,6 +68,7 @@ const DELTA_TRACKED_PROPS = [
   'isRingOutLoser', 'ringOutDirection', 'isRoundWinner',
   'isThrowingSnowball', 'isSpawningPumoArmy',
   'isGrabBreaking', 'isGrabBreakCountered', 'isGrabBreakSeparating',
+  'isGrabBreakGather',
   'isAttemptingGrabThrow', 'isInRitualPhase',
   'isGrabPushing', 'isBeingGrabPushed', 'isEdgePushing', 'isBeingEdgePushed',
   'isAttemptingPull', 'isBeingPullReversaled',
@@ -624,6 +625,8 @@ const GRAB_PULL_ATTEMPT_DISTANCE_MULTIPLIER = 1.4; // Larger gap during pull att
 // Stamina cost only (no posture hit). Doesn't reposition meaningfully (boundary-clamped),
 // so edge stress is preserved. Brief grab immunity prevents instant re-clinch.
 const GRAB_BREAK_STAMINA_COST = 30; // Heavy commitment — break is a real escape, not a free reset
+// Still gripped, a small shared shake, then the push's palm shove-off.
+const GRAB_BREAK_TOGETHER_MS = 160;
 const GRAB_BREAK_FORCED_DISTANCE = 140; // Total separation distance (split between breaker + opponent — each moves half this)
 const GRAB_BREAK_TWEEN_DURATION = 350; // Knockback slide duration
 const GRAB_BREAK_RESIDUAL_VEL = 0; // No residual sliding — players stop cleanly when knockback ends
@@ -1185,15 +1188,17 @@ const COUNTER_GRAB_BALANCE_DEBUFF = 10;          // Balance hit on counter-grab 
 // Mutual technique collision (no Deep Grip winner) → tumble apart, end clinch
 const CLINCH_THROW_KILL_THRESHOLD = 15;          // Balance below which = KILL THROW (round over)
 // SETUP THROW (W) — authored dump, not a Smash-percent yeet.
-// Penguin display body is ~136 map-px tall; 86 is a proud toss (~0.63 body)
-// that still sits well under the 240 cinematic kill. 190px land is outside
-// slap connect (~133) and just outside grab attempt (175), so throw → slide
-// is the follow-up. Posture chips and juices the plant; it does not move X.
+// Penguin display body is ~136 map-px tall. Full posture is a low hoist (86).
+// Broken posture climbs to 118 — still under half the 240 cinematic kill —
+// onto the SAME landing X. 190px land is outside slap connect (~133) and
+// just outside grab attempt (175), so throw → slide is the follow-up.
 const SETUP_THROW_TRAVEL_PX = 190;
 const SETUP_THROW_ARC_HEIGHT = 86;
+const SETUP_THROW_ARC_HEIGHT_BROKEN = 118;
 const SETUP_THROW_DURATION_MS = 448;
 const SETUP_THROW_RICOCHET_DURATION_MS = 580;
 const SETUP_THROW_RICOCHET_REBOUND_PX = 72;
+const SETUP_THROW_RICOCHET_REBOUND_MIN_PX = 28;
 const SETUP_THROW_RICOCHET_BOUNCE_HEIGHT = 54;
 const SETUP_THROW_RICOCHET_HIT_AT = 0.5;
 const SETUP_THROW_CHASE_SPEED = ICE_SLIDE_MAX_SPEED;
@@ -1240,7 +1245,7 @@ const CLINCH_THROW_DISTANCE_MIN = SETUP_THROW_TRAVEL_PX;
 const CLINCH_THROW_DISTANCE_MAX = SETUP_THROW_TRAVEL_PX;
 const CLINCH_THROW_DISTANCE = SETUP_THROW_TRAVEL_PX;
 const CLINCH_THROW_ARC_HEIGHT_MIN = SETUP_THROW_ARC_HEIGHT;
-const CLINCH_THROW_ARC_HEIGHT_MAX = SETUP_THROW_ARC_HEIGHT;
+const CLINCH_THROW_ARC_HEIGHT_MAX = SETUP_THROW_ARC_HEIGHT_BROKEN;
 const CLINCH_THROW_ARC_HEIGHT = SETUP_THROW_ARC_HEIGHT;
 const CLINCH_THROW_DURATION_MIN_MS = SETUP_THROW_DURATION_MS;
 const CLINCH_THROW_DURATION_BROKEN_MS = SETUP_THROW_DURATION_MS;
@@ -1298,10 +1303,10 @@ const CLINCH_PULL_SWAP_ARC_HEIGHT = 55;          // Hop arc height so pulled pla
 // GRAB_WHIFF_RECOVERY_MS 450) is owned up there.
 const CMD_GRAB_VARIANT = { DRIVE: "drive", PULL: "pull", THROW: "throw" };
 
-// Belt-grip aim window. Tunable — long enough to read the handshake, short
-// enough that matches still flow. Pull/Throw may commit after the min.
-const CMD_GRAB_LATCH_MS = 400;
-const CMD_GRAB_LATCH_MIN_COMMIT_MS = 200;
+// Belt-grip aim window. Every verb waits this out, including Pull and Throw.
+// Leaving early made those two skip the hold and look like they had no startup.
+const CMD_GRAB_LATCH_MS = 460;
+const CMD_GRAB_LATCH_MIN_COMMIT_MS = CMD_GRAB_LATCH_MS;
 
 // Retired pre-press chord window. Kept exported so old imports don't throw.
 const CMD_GRAB_VARIANT_PREBUFFER_MS = 0;
@@ -1344,10 +1349,10 @@ const CMD_GRAB_STAMINA_COST = 8;
 const CMD_DRIVE_CARRY_MS = 520;
 // Posture is the distance function (Smash-percent curve). Floors stay useful;
 // ceilings stay short of a centre-to-rope (297.5) solo kill.
-const CMD_DRIVE_DISTANCE_MIN = 140;
-const CMD_DRIVE_DISTANCE_MAX = 275;
+const CMD_DRIVE_DISTANCE_MIN = 175;
+const CMD_DRIVE_DISTANCE_MAX = 290;
 const CMD_DRIVE_TRAVEL_CAP = 290;
-const CMD_PULL_DISTANCE_MIN = 80;
+const CMD_PULL_DISTANCE_MIN = 110;
 const CMD_PULL_DISTANCE_MAX = 230;
 // Pull kill / swap share one clamp read. If the yank cannot fit a side-switch
 // past the puller (the old "back to the wall" visual), a broken victim dies
@@ -1952,6 +1957,7 @@ module.exports = {
   GRAB_WHIFF_RECOVERY_MS,
   GRAB_PULL_ATTEMPT_DISTANCE_MULTIPLIER,
   GRAB_BREAK_STAMINA_COST,
+  GRAB_BREAK_TOGETHER_MS,
   GRAB_BREAK_FORCED_DISTANCE,
   GRAB_BREAK_TWEEN_DURATION,
   GRAB_BREAK_RESIDUAL_VEL,
@@ -2178,9 +2184,11 @@ module.exports = {
   CMD_THROW_TRAVEL_CAP,
   SETUP_THROW_TRAVEL_PX,
   SETUP_THROW_ARC_HEIGHT,
+  SETUP_THROW_ARC_HEIGHT_BROKEN,
   SETUP_THROW_DURATION_MS,
   SETUP_THROW_RICOCHET_DURATION_MS,
   SETUP_THROW_RICOCHET_REBOUND_PX,
+  SETUP_THROW_RICOCHET_REBOUND_MIN_PX,
   SETUP_THROW_RICOCHET_BOUNCE_HEIGHT,
   SETUP_THROW_RICOCHET_HIT_AT,
   SETUP_THROW_CHASE_SPEED,

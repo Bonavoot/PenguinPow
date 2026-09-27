@@ -192,10 +192,10 @@ const MOVE_TRANSFER = {
   snowball: { floor: 90, ceil: 180, guaranteed: false },
   pumoClone: { floor: 90, ceil: 180, guaranteed: false },
 
-  drive: { floor: 140, ceil: 275, guaranteed: true },
+  drive: { floor: 175, ceil: 290, guaranteed: true },
 
   // Belt tug / side-switch. Posture walks this band (not run-in).
-  pull: { floor: 80, ceil: 230, guaranteed: true },
+  pull: { floor: 110, ceil: 230, guaranteed: true },
 
   // Uses grabber grabApproachSpeed. Floor = standing; ceiling = slide-in.
   matador: {

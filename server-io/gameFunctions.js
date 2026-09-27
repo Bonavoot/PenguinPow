@@ -922,6 +922,7 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
     p.throwingFacingDirection = null;
     p.beingThrownFacingDirection = null;
     p.isGrabBreaking = false;
+    p.isGrabBreakGather = false;
     p.isGrabBreakCountered = false;
     p.isGrabTeching = false;
     p.grabTechRole = null;

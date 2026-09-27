@@ -28,15 +28,13 @@ function clamp01(v) {
 }
 
 /**
- * 0 below 0.32, 1 at 0.52+. Smoke-trail sends (power ≥ 0.55) are full Smash,
- * not a 50/50 blend with the old weighted tween.
+ * How much of the heavy yank/toss curve to use. This is the posture
+ * parameter itself — no dead zone. A gate here is what made 52 posture
+ * feel identical to full and 44 posture chuck them: power 0.32 snapped
+ * from "gentle" to "heavy" across about thirteen points of bar.
  */
 function smashLaunchAmount(power) {
-  const p = clamp01(power);
-  if (p <= 0.32) return 0;
-  if (p >= 0.52) return 1;
-  const u = (p - 0.32) / 0.2;
-  return u * u * (3 - 2 * u);
+  return clamp01(power);
 }
 
 /**

@@ -753,11 +753,13 @@ function resetRoomAndPlayers(room, io) {
     player.lastThrowAttemptTime = 0;
     player.lastGrabAttemptTime = 0;
     player.isGrabBreaking = false;
+    player.isGrabBreakGather = false;
     player.isGrabBreakCountered = false;
     player.grabBreakSpaceConsumed = false;
     player.postGrabInputBuffer = false;
     player.inputBuffer = null;
     player.isGrabBreaking = false;
+    player.isGrabBreakGather = false;
     player.isGrabWalking = false;
     player.isGrabbingMovement = false;
     player.isGrabStartup = false;

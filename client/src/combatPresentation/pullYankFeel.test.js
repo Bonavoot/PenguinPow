@@ -23,7 +23,8 @@ describe("pullYankFeel", () => {
     assert.ok(hops.hopHeights[0] >= 9 && hops.hopHeights[0] <= 12);
     assert.ok(hops.hopDelay > YANK_SNAP_END);
     assert.ok(yankSnapEnd(1) <= hops.hopDelay);
-    assert.equal(smashLaunchAmount(0.55), 1);
+    assert.equal(smashLaunchAmount(1), 1);
+    assert.ok(smashLaunchAmount(0.55) > 0.5 && smashLaunchAmount(0.55) < 1);
   });
 
   it("schedules landings from the live duration and snap", () => {

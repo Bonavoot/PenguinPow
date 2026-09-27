@@ -199,6 +199,9 @@ const getImageSrc = (
   // FORCE OUT loser — distinct defeat pose after the continued push ends.
   if (isGrabPushDefeat) return pushDefeatPose;
   if (isAttemptingPull) return attemptingPull;
+  // Throw windup has to beat isGrabbing. Otherwise the latch (still
+  // isGrabbing) shows the generic grip and the toss looks like it had no startup.
+  if (isAttemptingGrabThrow) return attemptingGrabThrow;
   // Clinch throw-clash / separation placeholder — success-f1 for the whole
   // beat. Not Attack Parry (that still owns f1→f2 via isRawParrySuccess).
   if (isClinchClashing) return rawParrySuccessFrame1;
@@ -246,10 +249,12 @@ const getImageSrc = (
   ) {
     return isPerfectParried;
   }
+  // Setup dump. isHit is also set for the stun, and hit.png is the slap
+  // reaction — a levitating jab. beingGrabbed plus the toss squash is the
+  // placeholder hoist until a real tumble sheet exists. Kill throws return
+  // above this, on their own art.
+  if (isBeingThrown) return beingGrabbed;
   if (isHit) return hit;
-  // Setup dump: isHit stun ends mid-arc on purpose. Hold hit.png until they
-  // plant — visual only; isBeingThrown is the flight flag, not hit state.
-  if (isBeingThrown) return hit;
   // Stun can end mid-air while the arc is still live. Never fall through to
   // flap / landing-recovery — that is the "recovering instead of hit" bug.
   if (offensiveAerialPresentation === "INTERRUPTED_AIRBORNE") return hit;
@@ -346,7 +351,6 @@ const getImageSrc = (
   if (isRecovering && !isSlapAttack) return recovering;
   if (isThrowingSnowball) return snowballThrow;
   if (isSpawningPumoArmy) return pumoArmy;
-  if (isAttemptingGrabThrow) return attemptingGrabThrow;
   // Clinch Flow: bracing Plant during technique startup shows plant, not hit-react.
   if (isClinchPlanting && (isResistingThrow || isResistingPull)) return clinchPlanting;
   if (isResistingThrow) return hit;

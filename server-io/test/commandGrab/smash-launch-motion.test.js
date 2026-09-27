@@ -19,12 +19,16 @@ const {
 } = require("../../smashLaunchMotion");
 const { ICE_MAX_SPEED } = require("../../constants");
 
-test("smoke-trail power is a full Smash launch, not a blend", () => {
+test("posture weight is continuous — no 52-to-44 mode switch", () => {
   assert.equal(smashLaunchAmount(0), 0);
-  assert.equal(smashLaunchAmount(0.2), 0);
-  assert.equal(smashLaunchAmount(0.55), 1);
+  assert.equal(smashLaunchAmount(0.2), 0.2);
+  assert.equal(smashLaunchAmount(0.44), 0.44);
+  assert.equal(smashLaunchAmount(0.52), 0.52);
   assert.equal(smashLaunchAmount(1), 1);
-  assert.ok(smashLaunchAmount(0.4) > 0 && smashLaunchAmount(0.4) < 1);
+  assert.ok(
+    smashLaunchAmount(0.52) - smashLaunchAmount(0.44) < 0.15,
+    "eight points of bar must not flip the movie"
+  );
 });
 
 test("ballistic Y is a constant-g parabola — peak at mid-flight, symmetric", () => {

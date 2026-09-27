@@ -41,6 +41,49 @@ const SHARP_FILTER =
 const SOFT_FILTER =
   "brightness(0.72) contrast(1.14) saturate(1.14) blur(1.85px)";
 
+/** Sole oval. Shift/width come from the fighter rAF (spriteFeet), so the
+ *  mark sits on the painted feet and not the box center. */
+const FOOT_LEFT = "calc(50% + var(--ice-foot-shift, 0%))";
+
+function IceContactMarks() {
+  return (
+    <>
+      <div
+        style={{
+          position: "absolute",
+          left: FOOT_LEFT,
+          bottom: "1.8%",
+          width: "var(--ice-foot-pool, 44%)",
+          height: "8%",
+          translate: "-50%",
+          borderRadius: "50%",
+          zIndex: 1,
+          pointerEvents: "none",
+          opacity: "calc(var(--ice-foot-o, 1) * 0.28)",
+          background:
+            "radial-gradient(ellipse at 50% 55%, rgba(186, 226, 255, 0.5) 0%, rgba(140, 198, 240, 0.14) 40%, transparent 68%)",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          left: FOOT_LEFT,
+          bottom: "1.6%",
+          width: "var(--ice-foot-w, 26%)",
+          height: "3.6%",
+          translate: "-50%",
+          borderRadius: "50%",
+          zIndex: 1,
+          pointerEvents: "none",
+          opacity: "var(--ice-foot-o, 1)",
+          background:
+            "radial-gradient(ellipse at 50% 50%, rgba(8, 24, 46, 0.5) 0%, rgba(12, 42, 72, 0.18) 40%, transparent 62%)",
+        }}
+      />
+    </>
+  );
+}
+
 /**
  * Hide when fallen off the platform, or RoundResult force-hides the loser.
  * Overflow onto tawara / dirt / snow is handled by `.ice-reflection-clip`'s
@@ -192,19 +235,19 @@ const IceReflection = memo(
         zIndex = 2,
         /** Foot AO / wet meniscus / sparkles — off for supporting-cast actors. */
         contactFx = true,
-        /** Display-only size (grab-attempt placeholder restore). Latch unchanged. */
+        /** Display-only size. Does not change grab latch. */
         displayScale = 1,
       },
       ref
     ) => {
-      // Blur + mask + 3D + multiply under camera motion is a top M1 cost.
-      // Keep a hidden host so GameFighter's reflectionDomRef stays valid.
+      // Blur + mask + 3D under camera motion is a top M1 cost. Low spec
+      // keeps only the sole oval (no second sprite, no filter). The host
+      // stays mounted either way so GameFighter's reflectionDomRef is valid.
       const lowSpec = useLowSpec();
-      const show =
-        !lowSpec &&
-        (bottomPct != null || iceReflectionShouldShow(x, y, { forceHide })) &&
-        !!src;
-      if (!show) {
+      const onIce =
+        bottomPct != null || iceReflectionShouldShow(x, y, { forceHide });
+      const showMirror = !lowSpec && onIce && !!src;
+      if (!showMirror && !(lowSpec && onIce)) {
         return (
           <div
             ref={ref}
@@ -254,6 +297,40 @@ const IceReflection = memo(
         maskSize: "100% 100%",
       });
 
+      if (lowSpec && !contactFx) {
+        return (
+          <div
+            ref={ref}
+            style={{ display: "none", opacity: 0, visibility: "hidden" }}
+            aria-hidden="true"
+          />
+        );
+      }
+
+      if (lowSpec) {
+        return (
+          <div
+            ref={ref}
+            data-contact-only="1"
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left,
+              bottom,
+              width,
+              aspectRatio: "1",
+              ...(anchorLeftEdge ? {} : { translate: "-50%" }),
+              pointerEvents: "none",
+              opacity: 1,
+              visibility: "visible",
+              display: "block",
+            }}
+          >
+            <IceContactMarks />
+          </div>
+        );
+      }
+
       return (
         <div
           ref={ref}
@@ -277,43 +354,7 @@ const IceReflection = memo(
               : {}),
           }}
         >
-          {contactFx && (
-            <>
-              {/* Light wrapping through the ice — quiet pool under the body. */}
-              <div
-                style={{
-                  position: "absolute",
-                  left: "50%",
-                  bottom: "1.8%",
-                  width: "44%",
-                  height: "8%",
-                  translate: "-50%",
-                  borderRadius: "50%",
-                  zIndex: 1,
-                  pointerEvents: "none",
-                  opacity: 0.28,
-                  background:
-                    "radial-gradient(ellipse at 50% 55%, rgba(186, 226, 255, 0.5) 0%, rgba(140, 198, 240, 0.14) 40%, transparent 68%)",
-                }}
-              />
-              {/* Contact occlusion — tight sole stain, not a blurry oval. */}
-              <div
-                style={{
-                  position: "absolute",
-                  left: "50%",
-                  bottom: "1.6%",
-                  width: "26%",
-                  height: "3.6%",
-                  translate: "-50%",
-                  borderRadius: "50%",
-                  zIndex: 1,
-                  pointerEvents: "none",
-                  background:
-                    "radial-gradient(ellipse at 50% 50%, rgba(8, 24, 46, 0.42) 0%, rgba(12, 42, 72, 0.16) 40%, transparent 62%)",
-                }}
-              />
-            </>
-          )}
+          {contactFx && <IceContactMarks />}
 
           <div
             style={{
@@ -357,14 +398,15 @@ const IceReflection = memo(
               <div
                 style={{
                   position: "absolute",
-                  left: "50%",
+                  left: FOOT_LEFT,
                   bottom: "2.2%",
-                  width: "38%",
+                  width: "var(--ice-foot-lip, 38%)",
                   height: "3.2%",
                   translate: "-50%",
                   borderRadius: "50%",
                   zIndex: 6,
                   pointerEvents: "none",
+                  opacity: "var(--ice-foot-o, 1)",
                   background:
                     "radial-gradient(ellipse at 50% 50%, rgba(245, 252, 255, 0.85) 0%, rgba(190, 230, 255, 0.35) 45%, transparent 72%)",
                 }}

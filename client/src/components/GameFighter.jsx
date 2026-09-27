@@ -17,11 +17,23 @@ import {
 } from "../config/animatedSpriteConfig";
 import PlayerShadow from "./PlayerShadow";
 import IceReflection, {
+  ICE_REFLECTION_BASE_OPACITY,
   ICE_REFLECTION_FOOT_NUDGE_PCT,
   iceReflectionBottomY,
   iceReflectionOpacity,
   iceReflectionShouldShow,
 } from "./IceReflection";
+import {
+  contactPoseFromFighter,
+  iceContactStyle,
+} from "../combatPresentation/spriteFeet";
+import { trailAnchors, trailDistances } from "../combatPresentation/motionTrail";
+import {
+  burstIceSkid,
+  stampIceSkid,
+  tickIceSkids,
+} from "../combatPresentation/iceSkid";
+import { isLowSpec } from "../utils/lowSpecMode";
 import ThrowTechEffect from "./ThrowTechEffect";
 import SlapParryEffect from "./SlapParryEffect";
 import BlockingEffect, { BLOCK_SUCCESS_POSE_MS } from "./BlockingEffect";
@@ -1087,6 +1099,20 @@ const GameFighter = ({
   const poseRenderOffsetRef = useRef({ ox: 0, oy: 0, v2: false });
   const shadowDomRef = useRef(null); // PlayerShadow root div
   const reflectionDomRef = useRef(null); // IceReflection root div
+  const trailARef = useRef(null);
+  const trailBRef = useRef(null);
+  const trailSamplesRef = useRef([]);
+  const trailWasActiveRef = useRef(false);
+  const contactSpeedRef = useRef({ x: 0, t: 0, speed: 0 });
+  // Pose / belt for the rAF and the slide interval. Render writes it;
+  // neither loop may close over a stale color.
+  const motionPoseRef = useRef({
+    trail: false,
+    facing: -1,
+    color: "#2f6fe0",
+    fighterId: "",
+    slot: 0,
+  });
   // Round-result loser: hide ice reflection / show oval even if x is still
   // mid-slide between MAP (win line) and DOHYO (fall edge).
   const isRoundLoserRef = useRef(false);
@@ -3311,15 +3337,130 @@ const GameFighter = ({
           if (reflectionEl) {
             reflectionEl.style.left = plainLeftPct;
             reflectionEl.style.bottom = reflectBottom;
-            reflectionEl.style.opacity = String(
-              iceReflectionOpacity(newPos.x, newPos.y, {
-                isSidestepping: p.isSidestepping,
-                forceHide: roundLoser,
-              })
+            const speedState = contactSpeedRef.current;
+            const prevX = speedState.x;
+            const dt = timestamp - speedState.t;
+            if (speedState.t > 0 && dt > 0 && dt < 80) {
+              const pxPerSec = Math.abs(newPos.x - prevX) / (dt / 1000);
+              const target = Math.min(1, pxPerSec / 520);
+              speedState.speed += (target - speedState.speed) * 0.35;
+            }
+            speedState.x = newPos.x;
+            speedState.t = timestamp;
+            const footPose = contactPoseFromFighter(
+              p,
+              newPos.y,
+              SHADOW_GROUND_LEVEL
             );
+            const foot = iceContactStyle(
+              footPose,
+              p.facing ?? -1,
+              speedState.speed
+            );
+            reflectionEl.style.setProperty("--ice-foot-shift", foot.shift);
+            reflectionEl.style.setProperty("--ice-foot-w", foot.width);
+            reflectionEl.style.setProperty("--ice-foot-pool", foot.pool);
+            reflectionEl.style.setProperty("--ice-foot-lip", foot.lip);
+            const mirrorOpacity = iceReflectionOpacity(newPos.x, newPos.y, {
+              isSidestepping: p.isSidestepping,
+              forceHide: roundLoser,
+            });
+            if (reflectionEl.dataset.contactOnly === "1") {
+              reflectionEl.style.opacity = showReflect ? "1" : "0";
+              const fade =
+                ICE_REFLECTION_BASE_OPACITY > 0
+                  ? mirrorOpacity / ICE_REFLECTION_BASE_OPACITY
+                  : 0;
+              reflectionEl.style.setProperty(
+                "--ice-foot-o",
+                footPose === "air" || !showReflect
+                  ? "0"
+                  : String(Math.max(0, Math.min(1, fade)))
+              );
+            } else {
+              reflectionEl.style.opacity = String(mirrorOpacity);
+              reflectionEl.style.setProperty(
+                "--ice-foot-o",
+                footPose === "air" ? "0" : "1"
+              );
+            }
             reflectionEl.style.visibility = showReflect ? "visible" : "hidden";
             reflectionEl.style.display = showReflect ? "block" : "none";
+            if (
+              footPose === "standing" &&
+              p.isHit &&
+              speedState.speed > 0.35 &&
+              !p.isBeingThrown
+            ) {
+              const travel = newPos.x - prevX >= 0 ? 1 : -1;
+              stampIceSkid({
+                id: `${motionPoseRef.current.fighterId}-kb`,
+                x: newPos.x,
+                y: SHADOW_GROUND_LEVEL,
+                facing: p.facing ?? -1,
+                dir: travel,
+                color: motionPoseRef.current.color,
+                speed: speedState.speed,
+                pose: "standing",
+                lowSpec: isLowSpec(),
+                now: timestamp,
+              });
+            }
           }
+        }
+        tickIceSkids(timestamp);
+        const motion = motionPoseRef.current;
+        const trailNodes = [trailARef.current, trailBRef.current];
+        const samples = trailSamplesRef.current;
+        const img = fighterImgDomRef.current;
+        const wantTrail =
+          motion.trail &&
+          img &&
+          img.style.display !== "none" &&
+          !p.isCinematicKillVictim;
+        if (wantTrail && !trailWasActiveRef.current) samples.length = 0;
+        trailWasActiveRef.current = !!wantTrail;
+        if (wantTrail) {
+          const faceScale = (p.facing ?? -1) === 1 ? 1 : -1;
+          const sampleX = renderX + atRopesNudge;
+          const sampleY = renderY;
+          const prevSample = samples[samples.length - 1];
+          const moved = prevSample
+            ? Math.hypot(sampleX - prevSample.x, sampleY - prevSample.y) > 0.5
+            : true;
+          if (moved) {
+            samples.push({
+              x: sampleX,
+              y: sampleY,
+              src: img.currentSrc || img.src,
+              transform: img.style.transform || `scaleX(${faceScale})`,
+            });
+            if (samples.length > 14) samples.shift();
+          }
+          const anchors = trailAnchors(samples, trailDistances(isLowSpec()));
+          const opacities = ["0.22", "0.1"];
+          for (let i = 0; i < trailNodes.length; i++) {
+            const node = trailNodes[i];
+            const anchor = anchors[i];
+            if (!node) continue;
+            if (!anchor) {
+              node.style.display = "none";
+              continue;
+            }
+            node.style.display = "block";
+            node.style.left = `${(anchor.x / 1280) * 100}%`;
+            node.style.bottom = `${(anchor.y / 720) * 100}%`;
+            node.style.transform = anchor.transform || "";
+            node.style.opacity = opacities[i] || "0.1";
+            if (anchor.src && node.getAttribute("src") !== anchor.src) {
+              node.src = anchor.src;
+            }
+          }
+        } else if (trailNodes[0] || trailNodes[1]) {
+          for (const node of trailNodes) {
+            if (node) node.style.display = "none";
+          }
+          samples.length = 0;
         }
         const youEl = youLabelDomRef.current;
         if (youEl) {
@@ -4953,6 +5094,34 @@ const GameFighter = ({
             decisiveContact ? RIG_TIER.DECISIVE : RIG_TIER.ORDINARY
           );
           nextHitFlashTierRef.current = decisiveContact ? "decisive" : "ordinary";
+          const heavyFeet =
+            decisiveContact ||
+            data.attackType === "charged" ||
+            !!data.slideSlap ||
+            data.attackType === "flap";
+          const feetOnIce =
+            !penguin.isFlapping &&
+            !penguin.isSlideJumping &&
+            !penguin.isRopeJumping &&
+            !penguin.isBeingThrown &&
+            !(
+              typeof penguin.y === "number" &&
+              penguin.y > SHADOW_GROUND_LEVEL + 24
+            );
+          if (heavyFeet && feetOnIce) {
+            burstIceSkid({
+              x: typeof data.x === "number" ? data.x : penguin.x,
+              y: SHADOW_GROUND_LEVEL,
+              facing: penguin.facing ?? -1,
+              dir:
+                data.knockbackDirection ||
+                (penguin.facing === 1 ? -1 : 1),
+              color: motionPoseRef.current.color,
+              pose: "standing",
+              lowSpec: isLowSpec(),
+              now: performance.now(),
+            });
+          }
           let amp = 1;
           if (data.attackType === "charged") {
             amp = 1.2 + Math.min((data.chargePercentage || 0) / 100, 1) * 0.25;
@@ -6911,6 +7080,21 @@ const GameFighter = ({
         braking: !!p.isBraking || !!predictedState.current?.isBraking,
         playerNumber,
       });
+      if (speed >= 0.25) {
+        const motion = motionPoseRef.current;
+        stampIceSkid({
+          id: motion.fighterId || player.id,
+          x: curX,
+          y: MOVEMENT_SMOKE_GROUND_Y,
+          facing: p.facing ?? motion.facing ?? -1,
+          dir: iceSlideDirRef.current || 1,
+          color: motion.color,
+          speed,
+          pose: "sliding",
+          lowSpec: isLowSpec(),
+          now: performance.now(),
+        });
+      }
     };
 
     fireTrail();
@@ -9934,6 +10118,20 @@ const GameFighter = ({
     ? getSpriteRenderInfo(killVictimSprite, renderHitTint, showHitFlashThisFrame, useBlubberTint, true, useArmorTint)
     : spriteRenderInfo;
 
+  motionPoseRef.current = {
+    // Coasting slide stays a single body. An echo at a fixed offset reads
+    // as a second penguin glued on. Ghosts are for the whip: dodge, and
+    // the slap / palm smear frames.
+    trail:
+      !isAnimatedSprite &&
+      (!!displayPenguin.isDodging ||
+        (inSlapPhaseAnim && slapFrame === 1) ||
+        (palmPoseActive && palmThrustFrame === 1)),
+    facing: penguin.facing ?? -1,
+    color: targetColor,
+    fighterId: player.id,
+  };
+
   // GHOST-FRAME / INTERACTION-HITCH FIX:
   // Key the fighter <img> on a tint-independent identity, NOT the recolored
   // blob URL (tint toggles used to remount every flash). For ANIMATED sheets,
@@ -10725,6 +10923,19 @@ const GameFighter = ({
           platform; otherwise it renders inline in the actors layer. */}
       {(() => {
       const fighterSpriteNodes = (
+      <>
+      <img
+        ref={trailARef}
+        className="fighter-motion-trail"
+        alt=""
+        draggable={false}
+      />
+      <img
+        ref={trailBRef}
+        className="fighter-motion-trail"
+        alt=""
+        draggable={false}
+      />
       <FighterRigLayer ref={rigLayerDomRef} data-fighter-rig={penguin.fighter}>
       {/* Animated Sprite Sheet (when sprite is a spritesheet animation) */}
       {isAnimatedSprite && !showRitualSprite && (
@@ -10843,6 +11054,7 @@ const GameFighter = ({
           </DeepGripArmGlow>
         )}
       </FighterRigLayer>
+      </>
       );
       return isOutsideRingNow && fallenSpriteHost
         ? createPortal(fighterSpriteNodes, fallenSpriteHost)

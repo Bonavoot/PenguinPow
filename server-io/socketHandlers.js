@@ -584,8 +584,8 @@ function processInputPacket(room, player, data, io, rooms) {
     // Phase 16 — stamp A/D taps for short palm chord window (V2 + diagnostics).
     stampDirectionTaps(player, simNowForPlayer(player));
 
-    // Latch aim: record W / A / D so the post-connect hold can pick pull/throw.
-    // Pre-press stamps are wiped at connect; holds that stay down refresh.
+    // Latch aim: record W / A / D from the lunge onward. Connect keeps those
+    // stamps. Holds that stay down refresh.
     noteGrabVariantEdges(player, simNowForPlayer(player), {
       wJustPressed: !!rising.w,
       aJustPressed: !!rising.a,
@@ -595,7 +595,7 @@ function processInputPacket(room, player, data, io, rooms) {
       updateGrabVariant(
         player,
         room.players.find((p) => p.id !== player.id),
-        player.cmdGrabPhaseStart
+        player.grabAimOpenAt || player.cmdGrabPhaseStart
       );
       player.cmdGrabVariant = player.grabVariant || player.cmdGrabVariant;
     }
@@ -669,6 +669,18 @@ function processInputPacket(room, player, data, io, rooms) {
     // - Forward push: cannot be broken, only slowed
     // Counter-input checks are handled in the grab action sections below.
     // ============================================
+  }
+
+  // Space from the moment the grab connects is the grab break (30 stamina).
+  // It has to land before the parry gate, which rejects anyone being grabbed.
+  if (player.spaceJustPressed && player.isBeingGrabbed && !player.isGrabbing) {
+    const holder = room.players.find(
+      (p) => p.isGrabbing && p.grabbedOpponent === player.id && p.cmdGrabPhase
+    );
+    if (holder) {
+      if (player.isGassed) emitStaminaBlocked(player, "grab_break", io);
+      else player.grabBreakQueued = true;
+    }
   }
 
   // SPACE PRESS (rising edge):

@@ -5,7 +5,7 @@
  *
  *   connect → LATCH (aim) → resolve
  *
- * Drive waits the full latch. Pull/Throw may commit after the min.
+ * Drive, Pull, and Throw all wait out the grip before they move.
  * Throw kills when posture is already below the line AND the toss would
  * land past the tawara. Pull predicts a trip when posture is below the
  * line AND the yank hits the clamp behind you; the belly-slide waits until
@@ -34,7 +34,6 @@ const {
   CMD_PULL_POSTURE_CHIP,
   CMD_THROW_POSTURE_CHIP,
   CMD_GRAB_LATCH_MS,
-  CMD_GRAB_LATCH_MIN_COMMIT_MS,
   CLINCH_THROW_KILL_THRESHOLD,
   CMD_PULL_KILL_CLAMP_ROOM_PX,
   GRAB_RANGE,
@@ -164,18 +163,17 @@ test("command grab connect beat", async (t) => {
     }
   });
 
-  await t.test("Drive waits the full latch; Pull/Throw may commit at the min", () => {
-    const drive = createCommandGrabScenario({ variant: "drive" }).connect();
-    drive.advance(CMD_GRAB_LATCH_MIN_COMMIT_MS);
-    assert.equal(drive.grabber.cmdGrabPhase, "latch", "drive must not early-commit");
-    drive.advance(CMD_GRAB_LATCH_MS - CMD_GRAB_LATCH_MIN_COMMIT_MS + drive.tickMs);
-    assert.equal(drive.grabber.cmdGrabPhase, "carry");
-
-    const throwS = createCommandGrabScenario({ variant: "throw" }).connect();
-    throwS.advance(CMD_GRAB_LATCH_MIN_COMMIT_MS - 16);
-    assert.equal(throwS.grabber.isThrowing, false, "must not resolve before the min");
-    throwS.advance(32);
-    assert.equal(throwS.grabber.isThrowing, true);
+  await t.test("Drive, Pull, and Throw all wait out the grip", () => {
+    for (const variant of ["drive", "throw", "pull"]) {
+      const s = createCommandGrabScenario({ variant }).connect();
+      s.advance(CMD_GRAB_LATCH_MS - 16);
+      assert.equal(s.grabber.cmdGrabPhase, "latch", `${variant} must show the hold`);
+      if (variant === "throw") assert.equal(s.grabber.isThrowing, false);
+      if (variant === "pull") assert.equal(s.victim.isBeingPullReversaled, false);
+    }
+    const done = createCommandGrabScenario({ variant: "throw" }).connect();
+    done.advance(CMD_GRAB_LATCH_MS + done.tickMs);
+    assert.equal(done.grabber.isThrowing, true);
   });
 
   await t.test("the client tell duration covers freeze + latch", () => {

@@ -1733,8 +1733,6 @@ export const AnimatedFighterContainer = styled.div
   .attrs((props) => {
     const sidestepping = props.$isSidestepping;
     const sidestepScale = sidestepping ? 1.07 : 1;
-    // grabAttempt.displayScale is a placeholder visual restore (padded 560
-    // cells). Sole-pivoted, display-only — does not change grab latch.
     const displayScale = Number(props.$displayScale) > 0 ? Number(props.$displayScale) : 1;
     const stunIdle =
       props.$isRawParryStun &&

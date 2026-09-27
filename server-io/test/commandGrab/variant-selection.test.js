@@ -6,7 +6,7 @@
  * M2 is always a grab. After connect:
  *   • DRIVE is the default (toward / nothing / timeout).
  *   • W selects THROW, Back selects PULL, held or tapped.
- *   • Stamps from before the latch do not count.
+ *   • Stamps from before the lunge do not count. Taps during the lunge do.
  *   • The most recent qualifying press wins. Ties go to W.
  *   • A tap latches; there is no path back to DRIVE after W or Back.
  */
@@ -159,6 +159,19 @@ test("command grab latch aim", async (t) => {
     assert.equal(
       resolveLatchVariant(player, opponent, LATCH),
       CMD_GRAB_VARIANT.DRIVE
+    );
+  });
+
+  await t.test("a tap during the lunge survives connect", () => {
+    const { player, opponent } = makePair();
+    const lungeStart = LATCH - 80;
+    noteGrabVariantEdges(player, lungeStart + 20, { wJustPressed: true });
+    player.keys.w = false;
+    beginLatchAim(player, lungeStart);
+    assert.equal(player.grabWTapTime, lungeStart + 20);
+    assert.equal(
+      resolveLatchVariant(player, opponent, player.grabAimOpenAt),
+      CMD_GRAB_VARIANT.THROW
     );
   });
 

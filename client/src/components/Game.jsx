@@ -40,6 +40,7 @@ import {
 } from "../utils/GyojiRecolorizer";
 import { ParticleProvider } from "../particles/ParticleContext";
 import { useLowSpec } from "../utils/lowSpecMode";
+import { bindIceSkidCanvas } from "../combatPresentation/iceSkid";
 import {
   registerLocalKeyState,
   unregisterLocalKeyState,
@@ -1450,6 +1451,11 @@ const Game = ({
             aria-hidden="true"
           >
             {!lowSpec && <div className="ice-disc-grain" />}
+            <canvas
+              ref={bindIceSkidCanvas}
+              className="ice-skid-layer"
+              aria-hidden="true"
+            />
           </div>
           {/* Sumo roof fusas hanging over the four dohyo corners.
               Dev: press ~ (Shift+`) to place / resize. */}

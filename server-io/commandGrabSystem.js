@@ -9,8 +9,8 @@
 //                                    W    → THROW
 //                                    else → DRIVE (timeout default)
 //
-// Pull/Throw may commit after CMD_GRAB_LATCH_MIN_COMMIT_MS. Drive always waits
-// out the full latch so the handshake reads.
+// Every verb waits out the full latch. Pull and Throw used to leave early,
+// which skipped the grip and read as having no startup.
 //
 // Lethality is permission + geography, snapshotted from posture at connect:
 //   THROW  low posture AND the toss would land past the tawara
@@ -29,10 +29,12 @@
 const {
   CMD_GRAB_VARIANT,
   CMD_GRAB_LATCH_MS,
-  CMD_GRAB_LATCH_MIN_COMMIT_MS,
   CMD_GRAB_CONNECT_HITSTOP_MS,
   CMD_GRAB_CINCH_MS,
   HITSTOP_GRAB_MS,
+  GRAB_BREAK_STAMINA_COST,
+  GRAB_BREAK_TOGETHER_MS,
+  GRAB_BREAK_FORCED_DISTANCE,
   CMD_THROW_LAUNCH_HITSTOP_MS,
   CMD_PULL_LAUNCH_HITSTOP_MS,
   CMD_GRAB_CINCH_GRABBER_SHARE,
@@ -48,9 +50,12 @@ const {
   SETUP_THROW_DURATION_MS,
   SETUP_THROW_RICOCHET_DURATION_MS,
   SETUP_THROW_RICOCHET_REBOUND_PX,
+  SETUP_THROW_RICOCHET_REBOUND_MIN_PX,
   SETUP_THROW_RICOCHET_BOUNCE_HEIGHT,
+  SETUP_THROW_CHASE_SLIDE_PX,
+  ICE_SLIDE_MAX_SPEED,
+  speedFactor,
   SETUP_THROW_RICOCHET_HIT_AT,
-  SETUP_THROW_CHASE_LOCK_MS,
   CMD_DRIVE_POSTURE_CHIP,
   CMD_DRIVE_GASSED_DISTANCE_MULT,
   CMD_DRIVE_APPROACH_REF_SPEED,
@@ -98,6 +103,8 @@ const {
   MAP_RIGHT_BOUNDARY,
   endPerfectParryStun,
   clearSetupThrowFlags,
+  getEffectiveMoveSpeedMult,
+  emitStaminaBlocked,
 } = require("./gameUtils");
 
 const {
@@ -156,8 +163,9 @@ const CMD_PHASE = {
   CARRY: "carry",
 };
 
-// 0 at full posture, 1 at the lethal line. Squared so the bottom of the bar
-// hits like Smash high-percent — mid-health is only a nudge up from the floor.
+// 0 at full posture, 1 at the lethal line. Linear on purpose: a squared ease
+// plus a second motion gate made the middle of the bar feel like full health
+// and the next few points feel like a different move.
 function grabPostureT(balance) {
   const bal = Math.max(
     CLINCH_THROW_KILL_THRESHOLD,
@@ -169,8 +177,7 @@ function grabPostureT(balance) {
 }
 
 function grabPostureEase(balance) {
-  const t = grabPostureT(balance);
-  return t * t;
+  return grabPostureT(balance);
 }
 
 function grabPostureLerp(balance, minValue, maxValue) {
@@ -218,7 +225,28 @@ function throwMarginBounds() {
   };
 }
 
-function planSetupThrow(grabber, victim, travelPx) {
+function throwReboundPx(balance) {
+  return Math.round(
+    grabPostureLerp(
+      balance,
+      SETUP_THROW_RICOCHET_REBOUND_PX,
+      SETUP_THROW_RICOCHET_REBOUND_MIN_PX
+    )
+  );
+}
+
+// Slide starts late enough that THIS fighter's speed arrives on the plant.
+// The constant SETUP_THROW_CHASE_LOCK_MS is the 1.0x case. Happy Feet stacks
+// used to cover the pocket early and belly-bump the landing.
+function chaseLockMsFor(moveMult, flightMs) {
+  const mult = Math.max(1, moveMult || 1);
+  const pxPerSec = 1000 * speedFactor * ICE_SLIDE_MAX_SPEED * mult;
+  const slideMs = (SETUP_THROW_CHASE_SLIDE_PX / Math.max(1, pxPerSec)) * 1000;
+  const flight = Number.isFinite(flightMs) ? flightMs : 0;
+  return Math.max(0, Math.round(flight - slideMs));
+}
+
+function planSetupThrow(grabber, victim, travelPx, balance = BALANCE_MAX) {
   const dir = throwDirFor(grabber, victim);
   const originX = grabber.x;
   const startX = victim.x;
@@ -240,7 +268,8 @@ function planSetupThrow(grabber, victim, travelPx) {
   }
   const hitX = dir > 0 ? right : left;
   const inward = dir > 0 ? -1 : 1;
-  let landX = hitX + inward * SETUP_THROW_RICOCHET_REBOUND_PX;
+  const reboundPx = throwReboundPx(balance);
+  let landX = hitX + inward * reboundPx;
   if (Math.abs(landX - originX) < CLINCH_THROW_MIN_SEPARATION) {
     const side = landX >= originX ? 1 : -1;
     landX = originX + side * CLINCH_THROW_MIN_SEPARATION;
@@ -253,7 +282,10 @@ function planSetupThrow(grabber, victim, travelPx) {
     landX,
     hitX,
     hitAt: SETUP_THROW_RICOCHET_HIT_AT,
-    bounceHeight: SETUP_THROW_RICOCHET_BOUNCE_HEIGHT,
+    bounceHeight: Math.round(
+      SETUP_THROW_RICOCHET_BOUNCE_HEIGHT *
+        (reboundPx / SETUP_THROW_RICOCHET_REBOUND_PX)
+    ),
     durationMs: SETUP_THROW_RICOCHET_DURATION_MS,
   };
 }
@@ -492,6 +524,7 @@ function clearCommandGrabState(player) {
   player.cmdGrabCarryAttachFrom = null;
   player.cmdGrabCarryAttachTo = null;
   player.cmdGrabAtRope = false;
+  player.cmdGrabRopeSince = 0;
   player.cmdGrabConnectGap = 0;
   player.cmdGrabEdgeWaiver = false;
   player.cmdGrabCinchFromX = null;
@@ -514,7 +547,9 @@ function beginCommandGrab(grabber, victim, room, io) {
   }
   const now = simNow(room);
 
-  beginLatchAim(grabber);
+  const aimOpen =
+    grabber.grabStartupStartTime || grabber.grabStartTime || now;
+  beginLatchAim(grabber, aimOpen);
   grabber.cmdGrabPhase = CMD_PHASE.LATCH;
   grabber.cmdGrabPhaseStart = now;
   grabber.cmdGrabVariant = CMD_GRAB_VARIANT.DRIVE;
@@ -568,13 +603,19 @@ function applyStartupPoses(grabber, victim) {
     variant === CMD_GRAB_VARIANT.THROW || variant === CMD_GRAB_VARIANT.PULL;
   victim.isResistingThrow = false;
   victim.isResistingPull = false;
+  // Heels dug for the whole grip, so the hold is two bodies and not a clone.
+  victim.isClinchPlanting = true;
   stampGrabTellDuration(grabber, variant, false);
 }
 
 function sampleLatchAim(grabber, victim, now) {
   if (!grabber || grabber.grabVariantLocked) return;
   noteGrabVariantEdges(grabber, now, {});
-  updateLatchVariant(grabber, victim, grabber.cmdGrabPhaseStart);
+  updateLatchVariant(
+    grabber,
+    victim,
+    grabber.grabAimOpenAt || grabber.cmdGrabPhaseStart
+  );
   grabber.cmdGrabVariant = grabber.grabVariant || CMD_GRAB_VARIANT.DRIVE;
 }
 
@@ -646,16 +687,23 @@ function updateCommandGrab(grabber, room, io, delta, rooms) {
   const now = simNow(room);
   const elapsed = now - (grabber.cmdGrabPhaseStart || now);
 
+  // Space breaks the hold from the connect onward — latch, shove, or pin.
+  if (victim.grabBreakQueued) {
+    victim.grabBreakQueued = false;
+    if (victim.isGassed) {
+      emitStaminaBlocked(victim, "grab_break", io);
+    } else {
+      resolveCommandGrabBreak(grabber, victim, room, io);
+      return;
+    }
+  }
+
   if (grabber.cmdGrabPhase === CMD_PHASE.LATCH) {
     sampleLatchAim(grabber, victim, now);
     applyStartupPoses(grabber, victim);
     applyCinch(grabber, victim, elapsed, CMD_GRAB_CINCH_MS);
 
-    const aimed = grabber.cmdGrabVariant || CMD_GRAB_VARIANT.DRIVE;
-    const conversionReady =
-      elapsed >= CMD_GRAB_LATCH_MIN_COMMIT_MS &&
-      (aimed === CMD_GRAB_VARIANT.THROW || aimed === CMD_GRAB_VARIANT.PULL);
-    if (elapsed >= CMD_GRAB_LATCH_MS || conversionReady) {
+    if (elapsed >= CMD_GRAB_LATCH_MS) {
       resolveVariant(grabber, victim, room, io, rooms);
     }
     return;
@@ -816,6 +864,7 @@ function advanceDriveCarry(grabber, victim, room, io, rooms, now, delta) {
     victim.x = ropeX;
     grabber.x = ropeX - dir * attach;
     const firstRopeContact = !grabber.cmdGrabAtRope;
+    if (firstRopeContact) grabber.cmdGrabRopeSince = now;
     grabber.cmdGrabAtRope = true;
     grabber.isEdgePushing = true;
     victim.isBeingEdgePushed = true;
@@ -865,7 +914,12 @@ function advanceDriveCarry(grabber, victim, room, io, rooms, now, delta) {
   if (!victim.atTheRopesFacingDirection) victim.facing = dir > 0 ? 1 : -1;
   if (!grabber.atTheRopesFacingDirection) grabber.facing = dir > 0 ? -1 : 1;
 
-  if (t >= 1) releaseDrive(grabber, victim, room, io, dir);
+  if (t >= 1) {
+    // The pin lasts as long as the shove. A full tank survives it, so a grab
+    // break during that window can be a wasted 30 stamina. The walk-out only
+    // fires if the edge drain actually empties them before this release.
+    releaseDrive(grabber, victim, room, io, dir);
+  }
 }
 
 // Release opens a gap wider than GRAB_RANGE so there is no free re-grab and no free
@@ -874,8 +928,95 @@ function advanceDriveCarry(grabber, victim, room, io, rooms, now, delta) {
 //
 // The split is boundary-aware, not fixed at half each: whatever the victim cannot
 // travel (because they are pinned against the tawara) is handed to the grabber. So a
-// rope pin is fully preserved — the victim keeps the bad position they were driven
-// into — while a mid-ring release looks symmetric.
+// Victim pays GRAB_BREAK_STAMINA_COST and the pair splits that separation.
+// Whoever is against the tawara cannot travel, so the other body takes that
+// distance. Under-budget still breaks, and gases the breaker — it does not
+// walk them out.
+function resolveCommandGrabBreak(grabber, victim, room, io) {
+  const now = simNow(room);
+  const had = victim.stamina || 0;
+  victim.stamina = Math.max(0, had - GRAB_BREAK_STAMINA_COST);
+  if (had < GRAB_BREAK_STAMINA_COST) tryEnterGassed(victim, now);
+  victim.grabBreakQueued = false;
+
+  // Same shove as the end of a push: palms wind up in place, then the slide.
+  // The together beat is before that, so the pair shakes while still gripped.
+  const impactAt =
+    now + GRAB_BREAK_TOGETHER_MS + CMD_DRIVE_RELEASE_IMPACT_MS;
+  const dir = grabber.x <= victim.x ? 1 : -1;
+  const half = GRAB_BREAK_FORCED_DISTANCE / 2;
+  const clamp = (x) =>
+    Math.max(MAP_LEFT_BOUNDARY, Math.min(MAP_RIGHT_BOUNDARY, x));
+  const victimWant = victim.x + dir * half;
+  const grabberWant = grabber.x - dir * half;
+  let victimTarget = clamp(victimWant);
+  let grabberTarget = clamp(grabberWant);
+  const victimShort = Math.abs(victimWant - victimTarget);
+  const grabberShort = Math.abs(grabberWant - grabberTarget);
+  grabberTarget = clamp(grabberTarget - dir * victimShort);
+  victimTarget = clamp(victimTarget + dir * grabberShort);
+
+  clearCommandGrabState(grabber);
+
+  const lockUntil = impactAt + CMD_DRIVE_RELEASE_TWEEN_MS;
+  for (const [p, targetX] of [
+    [grabber, grabberTarget],
+    [victim, victimTarget],
+  ]) {
+    p.isGrabBreakGather = true;
+    p.isGrabBreakSeparating = true;
+    p.grabBreakSepStartTime = impactAt;
+    p.grabBreakSepDuration = CMD_DRIVE_RELEASE_TWEEN_MS;
+    p.grabBreakStartX = p.x;
+    p.grabBreakTargetX = targetX;
+    p.grabBreakSepCurve = "shove";
+    p.movementVelocity = 0;
+    if (!p.knockbackVelocity) p.knockbackVelocity = { x: 0, y: 0 };
+    p.knockbackVelocity.x = 0;
+    p.knockbackVelocity.y = 0;
+    p.isStrafing = false;
+    p.y = GROUND_LEVEL;
+    p.inputLockUntil = Math.max(p.inputLockUntil || 0, lockUntil);
+    p.actionLockUntil = Math.max(p.actionLockUntil || 0, lockUntil);
+  }
+
+  grabber.grabCooldown = true;
+  setPlayerTimeout(
+    grabber.id,
+    () => {
+      grabber.grabCooldown = false;
+    },
+    lockUntil - now,
+    "grabBreakCooldown"
+  );
+
+  // Grip pose holds through the shake. Palms take over when the shove starts,
+  // the same beat as the end of a push. The green burst lands on that hit.
+  setPlayerTimeout(
+    victim.id,
+    () => {
+      grabber.isGrabBreakGather = false;
+      victim.isGrabBreakGather = false;
+      cleanupGrabStates(grabber, victim);
+      victim.isGrabSeparatePalm = true;
+      victim.isGrabBreakSeparating = true;
+      grabber.isGrabBreakSeparating = true;
+    },
+    GRAB_BREAK_TOGETHER_MS,
+    "grabBreakGather"
+  );
+
+  io.in(room.id).emit("grab_break", {
+    breakerId: victim.id,
+    grabberId: grabber.id,
+    breakerX: victim.x,
+    grabberX: grabber.x,
+    breakId: `grab-break-${now}-${victim.id}`,
+    breakerPlayerNumber: victim.playerNumber || 1,
+    effectDelayMs: GRAB_BREAK_TOGETHER_MS + CMD_DRIVE_RELEASE_IMPACT_MS,
+  });
+}
+
 function releaseDrive(grabber, victim, room, io, dir) {
   const now = simNow(room);
   const attach = grabber.clinchAttachDistance || attachDistanceFor(victim);
@@ -1001,7 +1142,7 @@ function resolveThrow(grabber, victim, room, io, isKill, travelPx) {
   const approach = Math.max(0, grabber.grabApproachSpeed || 0);
   const travel =
     Number.isFinite(travelPx) ? travelPx : throwTravelPx(balance, approach);
-  const plan = isKill ? null : planSetupThrow(grabber, victim, travel);
+  const plan = isKill ? null : planSetupThrow(grabber, victim, travel, balance);
   const duration = isKill
     ? CLINCH_KILL_THROW_DURATION_MS
     : plan.durationMs;
@@ -1034,8 +1175,12 @@ function resolveThrow(grabber, victim, room, io, isKill, travelPx) {
   grabber.actionLockUntil = now;
   if (!isKill && plan) {
     grabber.throwSetupChase = true;
-    grabber.throwChaseUnlockAt = now + SETUP_THROW_CHASE_LOCK_MS;
-    grabber.actionLockUntil = now + SETUP_THROW_CHASE_LOCK_MS;
+    const chaseLock = chaseLockMsFor(
+      getEffectiveMoveSpeedMult(grabber),
+      plan.durationMs
+    );
+    grabber.throwChaseUnlockAt = now + chaseLock;
+    grabber.actionLockUntil = now + chaseLock;
     grabber.throwRicochet = plan.ricochet;
     grabber.throwOriginX = plan.originX;
     grabber.throwStartX = plan.startX;
@@ -1227,6 +1372,15 @@ function resolvePull(grabber, victim, room, io, isKill, travelPx) {
     victim.grabBreakSepCurve = yank.curve;
     victim.pullYankPower = yank.power;
     grabber.pullYankPower = yank.power;
+    // You take their spot while they go past yours. Same movie at the rope
+    // and mid-ring; the rope case is just the one that runs out of ice.
+    const pocketX = victim.x;
+    grabber.isGrabBreakSeparating = true;
+    grabber.grabBreakSepStartTime = now;
+    grabber.grabBreakSepDuration = tweenDuration;
+    grabber.grabBreakStartX = grabber.x;
+    grabber.grabBreakTargetX = pocketX;
+    grabber.grabBreakSepCurve = yank.curve;
   } else {
     victim.pullYankPower = 0;
     grabber.pullYankPower = 0;

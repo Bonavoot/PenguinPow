@@ -52,7 +52,7 @@ function pullYankPowerFromBalance(balance) {
   );
   const span = Math.max(1, BALANCE_MAX - CLINCH_THROW_KILL_THRESHOLD);
   const t = 1 - (bal - CLINCH_THROW_KILL_THRESHOLD) / span;
-  return clamp01(t) * clamp01(t);
+  return clamp01(t);
 }
 
 function pullYankDurationMs(balance) {

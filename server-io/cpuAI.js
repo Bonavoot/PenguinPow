@@ -13,6 +13,7 @@ const { ROPE_JUMP_BOUNDARY_ZONE,
         SLAP_TOTAL_MS, CADENCE_WINDOW_MS,
         CPU_CADENCE_EASY, CPU_CADENCE_NORMAL, CPU_CADENCE_HARD, CPU_CADENCE_IMPOSSIBLE,
         BALANCE_MAX,
+        GRAB_BREAK_REACTION_LOCK_MS,
         ICE_SLIDE_BRAKE_ARM_MS, ICE_SLIDE_REVERSE_SPEED_MAX,
         ICE_SLIDE_REVERSE_BUFFER_MS, SLIDE_JUMP_MIN_MS,
         DODGE_TRAVEL_DISTANCE, CHARGE_FULL_POWER_MS,
@@ -1655,6 +1656,20 @@ function updateCPUAI(cpu, human, room, currentTime) {
   if (cpu.inClinch && (cpu.isGrabbing || cpu.isBeingGrabbed)) {
     aiState.cmdGrabLatchChoice = null;
     resetAllKeys(cpu);
+    // Once the grabber has committed to the shove, spend the break. The aim
+    // window is left alone so a grab can still become a throw or a pull.
+    if (
+      cpu.isBeingGrabbed &&
+      human &&
+      human.cmdGrabPhase === "carry" &&
+      human.grabbedOpponent === cpu.id &&
+      (cpu.stamina || 0) > 0 &&
+      !cpu.isGassed &&
+      currentTime - (human.cmdGrabPhaseStart || currentTime) >=
+        GRAB_BREAK_REACTION_LOCK_MS
+    ) {
+      cpu.grabBreakQueued = true;
+    }
     return;
   }
 

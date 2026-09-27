@@ -4,8 +4,9 @@
  * Command-grab THROW (W) — setup dump, not a Smash-percent yeet.
  *
  * Mid-ring: fixed-distance parabola to an authored land. You can read the
- * landing spot. Posture only grades juice (shake / dust / smear).
+ * landing spot. Posture raises the arc and the plant. It does not move X.
  * Near the tawara: outbound hop into the straw, then a bounce hop inward.
+ * The rebound shrinks as posture drops. Under the kill line there is no bounce.
  * Kill throw keeps its own cinematic in index.js.
  */
 
@@ -13,6 +14,7 @@ const {
   BALANCE_MAX,
   CLINCH_THROW_KILL_THRESHOLD,
   SETUP_THROW_ARC_HEIGHT,
+  SETUP_THROW_ARC_HEIGHT_BROKEN,
   SETUP_THROW_DURATION_MS,
   SETUP_THROW_RICOCHET_DURATION_MS,
   SETUP_THROW_RICOCHET_BOUNCE_HEIGHT,
@@ -33,15 +35,18 @@ function throwTossPowerFromBalance(balance) {
   );
   const span = Math.max(1, BALANCE_MAX - CLINCH_THROW_KILL_THRESHOLD);
   const t = 1 - (bal - CLINCH_THROW_KILL_THRESHOLD) / span;
-  return clamp01(t) * clamp01(t);
+  return clamp01(t);
 }
 
 function throwTossDurationMs(_balance) {
   return SETUP_THROW_DURATION_MS;
 }
 
-function throwTossArcHeight(_balance) {
-  return SETUP_THROW_ARC_HEIGHT;
+function throwTossArcHeight(balance) {
+  const p = throwTossPowerFromBalance(balance);
+  const floor = SETUP_THROW_ARC_HEIGHT;
+  const ceil = SETUP_THROW_ARC_HEIGHT_BROKEN || floor;
+  return Math.round(floor + (ceil - floor) * p);
 }
 
 function throwTossPeakAt(_power) {

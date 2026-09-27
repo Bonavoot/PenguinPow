@@ -8,9 +8,10 @@
 //   W held or tapped      → THROW
 //   Toward / nothing      → DRIVE (also the timeout default)
 //
-// Pre-press chords do not count. Stamps from before the latch are wiped at
-// connect. A hold that is STILL down during the latch refreshes and counts —
-// so keeping back held through the handshake still pulls.
+// Stamps from before the lunge do not count. A tap during the lunge does —
+// it used to be wiped at connect, so the follow-up people pressed while
+// grabbing never happened. A hold that is still down refreshes and counts.
+// Keeping back held through the handshake still pulls.
 //
 // Recency decides changes of mind. W wins exact ties. A tap latches; there is
 // no path back to DRIVE after W or Back has been pressed in this latch.
@@ -58,14 +59,18 @@ function resolveLatchVariant(player, opponent, latchStartTime) {
 }
 
 // Open a clean aim window. Called at grab connect.
-function beginLatchAim(player) {
+// `keepAfter` is the lunge start. Stamps from the run-in survive; anything
+// older (a W tap before you even grabbed) is wiped. Omit it to wipe all.
+function beginLatchAim(player, keepAfter = null) {
   if (!player) return;
   player.grabVariantLocked = false;
   player.grabVariantThrowForbidden = false;
   player.grabVariant = CMD_GRAB_VARIANT.DRIVE;
-  player.grabWTapTime = 0;
-  player.grabATapTime = 0;
-  player.grabDTapTime = 0;
+  const keep = Number.isFinite(keepAfter) ? keepAfter : null;
+  player.grabAimOpenAt = keep == null ? 0 : keep;
+  for (const key of ["grabWTapTime", "grabATapTime", "grabDTapTime"]) {
+    if (keep == null || !(player[key] >= keep)) player[key] = 0;
+  }
 }
 
 function updateLatchVariant(player, opponent, latchStartTime) {
@@ -88,6 +93,7 @@ function clearGrabVariant(player) {
   player.grabWTapTime = 0;
   player.grabATapTime = 0;
   player.grabDTapTime = 0;
+  player.grabAimOpenAt = 0;
 }
 
 // Legacy names — startup no longer selects a variant. Kept so older callers

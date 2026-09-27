@@ -15,7 +15,6 @@ const {
   TICK_RATE,
   CLINCH_ATTACHED_DISTANCE,
   CMD_GRAB_LATCH_MS,
-  CMD_GRAB_LATCH_MIN_COMMIT_MS,
 } = require("../../../constants");
 const {
   createInitialPlayerState,
@@ -206,11 +205,8 @@ function createCommandGrabScenario(options = {}) {
     settledAttach,
 
     latchMs: CMD_GRAB_LATCH_MS,
-    // Pull/Throw commit at the min; Drive waits the full handshake.
-    startupMs:
-      options.variant === "throw" || options.variant === "pull"
-        ? CMD_GRAB_LATCH_MIN_COMMIT_MS
-        : CMD_GRAB_LATCH_MS,
+    // Every verb waits out the grip. Pull and Throw no longer skip it.
+    startupMs: CMD_GRAB_LATCH_MS,
 
     /**
      * Advance just far enough for the variant to resolve. Always at least one tick:

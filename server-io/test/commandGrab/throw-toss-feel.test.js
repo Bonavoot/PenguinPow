@@ -7,6 +7,7 @@ const {
   BALANCE_MAX,
   CLINCH_THROW_KILL_THRESHOLD,
   SETUP_THROW_ARC_HEIGHT,
+  SETUP_THROW_ARC_HEIGHT_BROKEN,
   SETUP_THROW_DURATION_MS,
   SETUP_THROW_TRAVEL_PX,
   SETUP_THROW_RICOCHET_DURATION_MS,
@@ -70,13 +71,14 @@ test("setup dump is an ease-out to a readable spot, not a Smash yeet", () => {
   const healthy = describeThrowToss(BALANCE_MAX);
   const broken = describeThrowToss(CLINCH_THROW_KILL_THRESHOLD);
   assert.equal(healthy.durationMs, broken.durationMs);
-  assert.equal(healthy.arcHeight, broken.arcHeight);
-  assert.equal(healthy.durationMs, SETUP_THROW_DURATION_MS);
   assert.equal(healthy.arcHeight, SETUP_THROW_ARC_HEIGHT);
+  assert.equal(broken.arcHeight, SETUP_THROW_ARC_HEIGHT_BROKEN);
+  assert.ok(broken.arcHeight > healthy.arcHeight, "broken posture hoists higher");
+  assert.equal(healthy.durationMs, SETUP_THROW_DURATION_MS);
   assert.ok(healthy.power < 0.05);
   assert.ok(broken.power > 0.95);
   assert.ok(
-    broken.arcHeight < CLINCH_KILL_THROW_ARC_HEIGHT * 0.45,
+    broken.arcHeight < CLINCH_KILL_THROW_ARC_HEIGHT * 0.55,
     "setup hop must stay a dump next to the cinematic kill"
   );
   assert.ok(broken.launchHitstopMs >= CMD_THROW_LAUNCH_HITSTOP_MS);
@@ -113,6 +115,20 @@ test("command grab throw stamps the setup dump", async (t) => {
     assert.equal(healthy.victim.throwLandX, healthy.grabber.throwLandX);
     assert.equal(healthy.victim.throwEndTime, healthy.grabber.throwEndTime);
     assert.equal(healthy.victim.throwStartX, healthy.grabber.throwStartX);
+    assert.ok(
+      battered.grabber.clinchThrowArcHeight > healthy.grabber.clinchThrowArcHeight,
+      "the hoist gets taller as posture drops; the land does not move"
+    );
+  });
+
+  await t.test("a speed stack waits longer so the slide still meets the plant", () => {
+    const s = createCommandGrabScenario({ variant: "throw", p2Balance: 100 });
+    s.grabber.bashoDraft = { speedMult: 2 };
+    s.connect().resolveNow();
+    assert.ok(
+      s.grabber.throwChaseUnlockAt > s.room.simTime + SETUP_THROW_CHASE_LOCK_MS,
+      "faster penguins start the chase later, they do not arrive early"
+    );
   });
 
   await t.test("emits throw_toss juice with the live duration and power", () => {

@@ -574,6 +574,7 @@ function createInitialPlayerState(overrides = {}) {
 
     // === Grab break / counter ===
     isGrabBreaking: false,
+    isGrabBreakGather: false,
     isGrabBreakCountered: false,
     grabBreakSpaceConsumed: false,
     isGrabBreakSeparating: false,

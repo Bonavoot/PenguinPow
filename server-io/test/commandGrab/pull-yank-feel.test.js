@@ -72,12 +72,13 @@ test("healthy yank still has inertia, then a snap, then a long slide", () => {
 });
 
 test("low-posture yank is a heavy take, then a strong decaying pull", () => {
-  assert.equal(smashLaunchAmount(0.55), 1);
+  assert.equal(smashLaunchAmount(1), 1);
+  assert.ok(smashLaunchAmount(0.55) > 0.5 && smashLaunchAmount(0.55) < 1);
   assert.equal(yankEase(0, 1), 0);
   assert.equal(yankEase(1, 1), 1);
   assert.ok(
-    Math.abs(yankEase(0.3, 0.55) - yankEase(0.3, 1)) < 1e-9,
-    "smoke-trail power must already be the full heavy yank"
+    Math.abs(yankEase(0.3, 0.44) - yankEase(0.3, 0.52)) < 0.08,
+    "a few points of posture must not change the yank's movie"
   );
   assert.ok(
     yankEase(0.08, 1) < 0.04,

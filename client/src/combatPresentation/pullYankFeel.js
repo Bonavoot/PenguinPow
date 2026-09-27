@@ -13,13 +13,9 @@ export function clamp01(v) {
   return Math.max(0, Math.min(1, n));
 }
 
-/** Same gate as server-io/smashLaunchMotion — smoke-trail sends are full Smash. */
+/** Same curve as server-io/smashLaunchMotion — posture weight, no dead zone. */
 export function smashLaunchAmount(power) {
-  const p = clamp01(power);
-  if (p <= 0.32) return 0;
-  if (p >= 0.52) return 1;
-  const u = (p - 0.32) / 0.2;
-  return u * u * (3 - 2 * u);
+  return clamp01(power);
 }
 
 export function yankSnapEnd(power) {

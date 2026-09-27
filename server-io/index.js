@@ -3268,7 +3268,13 @@ function tick(delta) {
             player.movementVelocity *= 0.5;
           }
           const chaseOpp = room.players.find((p) => p.id !== player.id);
+          const beforeStandoff = slideX;
           slideX = clampSetupThrowChaseStandoffX(player, chaseOpp, slideX);
+          // Fast slides used to sit on the pocket at full speed, then bury
+          // the body the frame the flight ended and the clamp let go.
+          if (player.throwSetupChase && slideX !== beforeStandoff) {
+            player.movementVelocity *= 0.2;
+          }
           player.x = slideX;
 
           // W jump: live after min flash; buffer early presses.
