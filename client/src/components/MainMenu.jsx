@@ -73,7 +73,7 @@ import mainMenuPumo from "../assets/main-menu-pumo.png";
  * older zoomed-out look-test.
  */
 import titleSky from "../assets/map-antarctica-sky.webp";
-import titleWorld from "../assets/game-map-floor.png";
+import titleWorld from "../assets/game-map-antarctica2-floor.png";
 import {
   playButtonHoverSound,
   playButtonPressSound2,
@@ -158,19 +158,28 @@ const SkyImage = styled.img`
   height: 100%;
   object-fit: cover;
   object-position: 50% 22%;
-  filter: saturate(0.98) brightness(0.82) contrast(1.08);
+  filter: saturate(1.14) brightness(1) contrast(0.97);
+`;
+
+/* Same plate as the match: sky shows through the top, the lake is the
+ * animated water under the alpha hole, ice is the ground under the hero. */
+const WorldPlate = styled.div`
+  position: absolute;
+  left: -6%;
+  top: -11%;
+  width: 112%;
+  height: 116%;
+  z-index: 1;
+  filter: saturate(0.96) brightness(0.9) contrast(1.05);
 `;
 
 const WorldImage = styled.img`
   position: absolute;
-  /* Ice is the ground the wrestler stands on. Sky still has room above
-   * the mountains — not the old snow-field crop, not a sliver at the lip. */
-  left: -14%;
-  top: -2%;
-  width: 128%;
-  height: 128%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   object-fit: fill;
-  filter: saturate(0.96) brightness(0.9) contrast(1.05);
+  z-index: 1;
 `;
 
 /*
@@ -1298,7 +1307,10 @@ const MainMenu = ({
       <MainMenuContainer>
         <BackgroundPlate aria-hidden $lowSpec={lowSpec}>
           <SkyImage src={titleSky} alt="" />
-          <WorldImage src={titleWorld} alt="" />
+          <WorldPlate>
+            <div className="antarctica-water"></div>
+            <WorldImage src={titleWorld} alt="" />
+          </WorldPlate>
         </BackgroundPlate>
         <CinematicOverlay />
         {!lowSpec && <Snowfall intensity={10} showFrost={false} zIndex={3} />}

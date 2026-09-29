@@ -18,8 +18,19 @@ const {
   TRAINING_RING_OUT_HOLD_MS,
   DELTA_TRACKED_PROPS,
   ALL_TRACKED_PROPS,
+  GROUND_LEVEL,
+  ICE_COAST_FRICTION,
+  PAST_MAP_DIRT_MOVE_FRICTION,
+  TICK_RATE,
+  speedFactor,
+  SLAP_RING_OUT_APRON_BUFFER,
 } = require("../../constants");
-const { MAP_LEFT_BOUNDARY, MAP_RIGHT_BOUNDARY } = require("../../gameUtils");
+const {
+  MAP_LEFT_BOUNDARY,
+  MAP_RIGHT_BOUNDARY,
+  DOHYO_LEFT_BOUNDARY,
+  slapRingOutApronSpeedCap,
+} = require("../../gameUtils");
 const { computePlayerDelta } = require("../../deltaState");
 
 describe("ring-out resolution (handleWinCondition)", () => {
@@ -29,31 +40,76 @@ describe("ring-out resolution (handleWinCondition)", () => {
     scenario = null;
   });
 
-  it("marks the loser for the topple in the fall direction and floors the exit shove", () => {
+  it("a slap ring-out stays in the hit reaction and keeps the slap's own shove", () => {
     scenario = createFoundationScenario({ leftX: MAP_LEFT_BOUNDARY - 2, rightX: 600 });
     const { room, io, left: loser, right: winner } = scenario;
     loser.isHit = true;
     loser.lastHitType = "slap";
+    loser.isAtTheRopes = true;
+    loser.lastHitTime = 12345;
     loser.knockbackVelocity = { x: -1.2, y: 0 }; // a slap's leftover shove
 
     handleWinCondition(room, loser, winner, io, "slap");
 
     assert.equal(room.gameOver, true);
-    assert.equal(loser.isRingOutLoser, true);
+    assert.equal(loser.isRingOutLoser, false, "slap does not arm the ring-out topple");
     assert.equal(loser.ringOutDirection, -1);
-    assert.ok(loser.ringOutStartTime > 0);
-    assert.equal(loser.isHit, true, "struck body stays struck for the resolution");
-    assert.ok(
-      Math.abs(loser.knockbackVelocity.x) >= RING_OUT_EXIT_VELOCITY - 1e-9,
-      `exit shove floored (${loser.knockbackVelocity.x})`
-    );
-    assert.equal(Math.sign(loser.knockbackVelocity.x), -1, "shove points out of the ring");
+    assert.equal(loser.ringOutApronStop, true);
+    assert.equal(loser.isAtTheRopes, false, "ropes pose must not hold them after the hit");
+    assert.equal(loser.lastHitTime, 12345, "existing hitstun is left to end on its own");
+    assert.equal(loser.isHit, true, "the hit already in progress is not cleared");
+    assert.equal(loser.knockbackVelocity.x, -1.2, "slap shove is not floored into a fall");
+    assert.equal(loser.isFallingOffDohyo, false);
+    assert.equal(loser.y, GROUND_LEVEL);
     assert.equal(winner.isRoundWinner, true);
     assert.equal(winner.knockbackVelocity.x, 0);
 
     const over = io.last("game_over");
     assert.ok(over, "game_over still emitted on the win tick");
     assert.equal(over.payload.winType, "slap");
+  });
+
+  it("caps a hard slap so dirt coast stops short of the dohyo fall edge", () => {
+    const startX = MAP_LEFT_BOUNDARY - 8;
+    scenario = createFoundationScenario({ leftX: startX, rightX: 600 });
+    const { room, io, left: loser, right: winner } = scenario;
+    loser.isHit = true;
+    loser.knockbackVelocity = { x: -12, y: 0 };
+
+    handleWinCondition(room, loser, winner, io, "slap");
+
+    const cap = slapRingOutApronSpeedCap(startX, -1);
+    assert.ok(Math.abs(loser.knockbackVelocity.x) <= cap + 1e-9);
+    assert.ok(Math.abs(loser.knockbackVelocity.x) < RING_OUT_EXIT_VELOCITY);
+    assert.equal(Math.sign(loser.knockbackVelocity.x), -1);
+
+    // Slipperiest apron channel: friction, then the step. The cap is this series.
+    let x = loser.x;
+    let v = loser.knockbackVelocity.x;
+    const friction = ICE_COAST_FRICTION * PAST_MAP_DIRT_MOVE_FRICTION;
+    const k = (1000 / TICK_RATE) * speedFactor;
+    const stopX = DOHYO_LEFT_BOUNDARY + SLAP_RING_OUT_APRON_BUFFER;
+    for (let i = 0; i < 400 && Math.abs(v) > 1e-4; i++) {
+      x += v * k;
+      v *= friction;
+    }
+    assert.ok(x >= stopX - 1e-6, `slide ended at ${x}, stop line is ${stopX}`);
+    assert.ok(x > DOHYO_LEFT_BOUNDARY, "never reaches the fall edge");
+  });
+
+  it("still floors a weak non-slap ring-out so the loser drops off the platform", () => {
+    scenario = createFoundationScenario({ leftX: MAP_LEFT_BOUNDARY - 2, rightX: 600 });
+    const { room, io, left: loser, right: winner } = scenario;
+    loser.isHit = true;
+    loser.lastHitType = "charged";
+    loser.knockbackVelocity = { x: -1.2, y: 0 };
+
+    handleWinCondition(room, loser, winner, io, "charged");
+
+    assert.equal(loser.ringOutApronStop, false);
+    assert.equal(loser.isRingOutLoser, true);
+    assert.ok(Math.abs(loser.knockbackVelocity.x) >= RING_OUT_EXIT_VELOCITY - 1e-9);
+    assert.equal(Math.sign(loser.knockbackVelocity.x), -1);
   });
 
   it("keeps a stronger existing shove instead of clamping it down", () => {
@@ -99,9 +155,10 @@ describe("ring-out resolution (handleWinCondition)", () => {
     handleWinCondition(room, loser, winner, io, "slap");
 
     assert.equal(room.gameOver, false, "training never enters the match game-over state");
-    assert.equal(loser.isRingOutLoser, true);
+    assert.equal(loser.isRingOutLoser, false, "training slap does not topple either");
     assert.equal(loser.ringOutDirection, -1);
-    assert.ok(Math.abs(loser.knockbackVelocity.x) >= RING_OUT_EXIT_VELOCITY - 1e-9);
+    assert.equal(loser.ringOutApronStop, true);
+    assert.equal(loser.knockbackVelocity.x, -0.8, "training slap uses the same apron stop");
     assert.ok(room.trainingResolution, "a resolution hold is armed instead of an instant reset");
     assert.equal(room.trainingResolution.holdMs, TRAINING_RING_OUT_HOLD_MS);
     assert.equal(room.trainingResetPending, undefined, "no same-tick reset");

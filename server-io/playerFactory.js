@@ -69,6 +69,7 @@ function createInitialPlayerState(overrides = {}) {
     isRingOutLoser: false,
     ringOutDirection: 0,
     ringOutStartTime: 0,
+    ringOutApronStop: false,
     isRoundWinner: false,
     isInRitualPhase: false,
     canMoveToReady: false,
@@ -108,6 +109,7 @@ function createInitialPlayerState(overrides = {}) {
     iceSlideDir: 0, // +1 right / -1 left — primary slide direction from dodge land
     iceSlideCarrySpeed: 0, // last real |slide vel| — pocket pushbox must not starve W
     iceSlideStartTime: 0,
+    iceSlideMovingMs: 0, // ms actually moving this slide — belly-bump power
     isIceSlideReverseHopping: false, // recovering pose during bunny-hop reverse
     iceSlideReverseHopStartTime: 0,
     iceSlideReverseHopUntil: 0,
@@ -297,6 +299,28 @@ function createInitialPlayerState(overrides = {}) {
     // Held A/D across HAKKIYOI — mirrored from mouse1BufferedBeforeStart so a
     // forward hold into the bout isn't dropped (client only emits on edges).
     movementKeysBufferedBeforeStart: null,
+    tachiaiHeld: null,
+    tachiaiBufferedCall: null,
+    tachiaiActionPending: false,
+    tachiaiActionConsumed: false,
+    tachiaiLaunched: false,
+    tachiaiInputGraceUntil: 0,
+    slapApproachArmed: false,
+    slapApproachUntil: 0,
+    tachiaiIntent: null,
+    tachiaiCall: null,
+    tachiaiSealed: false,
+    tachiaiUntil: 0,
+    tachiaiMemory: null,
+    tachiaiImmediatePush: false,
+    tachiaiRopeAfterDrive: false,
+    tachiaiChargePunish: false,
+    tachiaiChargePunishDir: 0,
+    slapStepFixed: false,
+    slapStepBudgetPx: 0,
+    slapStepDir: 0,
+    tachiaiDodgeHopHeight: 0,
+    tachiaiDodgeHopMs: 0,
     mouse1PressTime: 0,
     // Palm (and other press-to-fire M1 moves) consume the current mouse1 hold so
     // the continuous S+forward charge check can't auto-start mid-hold and leave
@@ -509,9 +533,13 @@ function createInitialPlayerState(overrides = {}) {
     // MASTERY Phase 1: max(0, aligned entry velocity) at slap press — drives the
     // on-hit ground-transfer inheritance in processHit (gated by MASTERY_P1_MOMENTUM).
     slapEntryAligned: 0,
-    // Ice-slide Mouse1 convert. Armed at press (isIceSliding + earned speed);
-    // on hit the attacker crawls forward and the victim takes the send (no chase).
+    // Ice-slide Mouse1 belly bump. Armed on any live slide (or a press queued
+    // through the dodge hop). slideSlapCharge is 0..1 from time spent moving.
     slideSlapArmed: false,
+    slideSlapCharge: 0,
+    slideSlapFollowVel: 0,
+    pendingSlideSlap: false,
+    pendingSlideSlapAt: 0,
 
     // === Command grab ===
     // Variant is aimed during the post-connect latch, not at the M2 press.
@@ -587,6 +615,7 @@ function createInitialPlayerState(overrides = {}) {
     // Presentation only: the fighter being shoved off plays the palm-thrust
     // animation as the shove. No hitbox, no move — see releaseDrive.
     isGrabSeparatePalm: false,
+    grabSeparatePalmStartSim: 0,
     grabCounterAttempted: false,
     grabCounterInput: null,
     isCounterGrabbed: false,
@@ -670,6 +699,7 @@ function createInitialPlayerState(overrides = {}) {
     clinchInstanceId: null,
     isClinchKillThrowVictim: false,
     isClinchKillPullVictim: false,
+    clinchKillThrowOffDohyo: false,
 
     // === Clinch jolt ===
     isClinchJolting: false,

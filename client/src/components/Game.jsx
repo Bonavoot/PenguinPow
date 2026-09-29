@@ -180,6 +180,31 @@ const Game = ({
   // Mid-match reconnect hold (netSession contract): { kind, deadlineMs } or null.
   const [netHold, setNetHold] = useState(null);
   const [crowdEvent, setCrowdEvent] = useState(null);
+  const [tachiaiCaption, setTachiaiCaption] = useState(null);
+  useEffect(() => {
+    if (!socket) return undefined;
+    let clearTimer = 0;
+    const onResolve = (payload) => {
+      const caption = payload && payload.caption ? payload.caption : null;
+      if (!caption) return;
+      setTachiaiCaption(caption);
+      window.clearTimeout(clearTimer);
+      clearTimer = window.setTimeout(() => setTachiaiCaption(null), 520);
+    };
+    const onClear = () => {
+      window.clearTimeout(clearTimer);
+      setTachiaiCaption(null);
+    };
+    socket.on("tachiai_resolve", onResolve);
+    socket.on("game_reset", onClear);
+    socket.on("game_over", onClear);
+    return () => {
+      window.clearTimeout(clearTimer);
+      socket.off("tachiai_resolve", onResolve);
+      socket.off("game_reset", onClear);
+      socket.off("game_over", onClear);
+    };
+  }, [socket]);
 
   // Pre-match screen state
   const [showPreMatchScreen, setShowPreMatchScreen] = useState(
@@ -1412,14 +1437,21 @@ const Game = ({
   return (
     <div className="game-wrapper">
       <FontWarmup />
-      <div ref={containerRef} className="game-container">
-        {/* Far field — sky lags; floor plate (ice + water + mountains) uses
-            the fight cam. Sibling of .game-scene, not inside it. */}
+      <div
+        ref={containerRef}
+        className="game-container"
+        data-tachiai={tachiaiCaption || undefined}
+      >
+        {/* Far field — sky lags; floor plate (ice + mountains, transparent
+            lake) uses the fight cam. Water sits behind the plate so it only
+            shows through the alpha channel. Sibling of .game-scene. */}
         <div className="game-parallax" aria-hidden="true">
           <div className="game-parallax-sky"></div>
           <div className="game-parallax-floor">
-            <div className="game-parallax-floor-art">
-              <div className="game-parallax-water" aria-hidden="true"></div>
+            <div className="game-parallax-ice-fill"></div>
+            <div className="game-parallax-floor-plate">
+              <div className="antarctica-water"></div>
+              <div className="game-parallax-floor-art"></div>
             </div>
           </div>
         </div>

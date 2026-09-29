@@ -102,6 +102,8 @@ const PUNCH_STOP = 0.001; // cut to zero below this
 
 // ── Round-start "GO!" punch ──────────────────────────────────────
 const ROUND_START_PUNCH_AMOUNT = 0.035;
+// Opening collision. Heavier than the ceremonial tap, lighter than a kill.
+const TACHIAI_PUNCH_AMOUNT = 0.09;
 
 // ── Perfect-parry micro-hitstop ──────────────────────────────────
 // Tiny camera freeze on a perfect parry: tracking + trauma decay pause so the
@@ -355,6 +357,11 @@ export default function useCamera(
       addTrauma(0, { punch: ROUND_START_PUNCH_AMOUNT });
     };
 
+    const onTachiaiResolve = () => {
+      if (cinematicRef.current.active) return;
+      addTrauma(0, { punch: TACHIAI_PUNCH_AMOUNT });
+    };
+
     // Legacy "perfect_parry" socket (server no longer emits) — keep as a
     // no-op-safe fallback that still arms the micro-freeze + shake.
     const onPerfectParry = (data) => {
@@ -399,6 +406,7 @@ export default function useCamera(
     socket.on("game_over", onGameOver);
     socket.on("training_reset", onTrainingReset);
     socket.on("game_start", onGameStart);
+    socket.on("tachiai_resolve", onTachiaiResolve);
     socket.on("perfect_parry", onPerfectParry);
     socket.on("screen_shake", onScreenShake);
 
@@ -731,6 +739,7 @@ export default function useCamera(
       socket.off("game_over", onGameOver);
       socket.off("training_reset", onTrainingReset);
       socket.off("game_start", onGameStart);
+      socket.off("tachiai_resolve", onTachiaiResolve);
       socket.off("perfect_parry", onPerfectParry);
       socket.off("screen_shake", onScreenShake);
       if (rafId.current) cancelAnimationFrame(rafId.current);

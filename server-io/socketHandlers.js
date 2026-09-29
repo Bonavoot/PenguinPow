@@ -4,8 +4,6 @@ const {
   HITBOX_DISTANCE_VALUE, DOHYO_FALL_DEPTH,
   ICE_SLIDE_REVERSE_BUFFER_MS,
   ROPE_JUMP_BOUNDARY_ZONE,
-  SIDESTEP_STARTUP_MS, SIDESTEP_ACTIVE_MS,
-  SIDESTEP_TOTAL_MS, SIDESTEP_STAMINA_COST,
   SLAP_ATTACK_STAMINA_COST, CHARGED_ATTACK_STAMINA_COST, RAW_PARRY_STAMINA_COST,
   RAW_PARRY_REARM_STAMINA_COST, RAW_PARRY_REARM_INTERVAL_MS,
   CHARGE_FULL_POWER_MS,
@@ -23,7 +21,7 @@ const {
   canPlayerSlap,
   canPlayerDash,
   canPlayerSidestep,
-  getSidestepInitData,
+  beginSidestep,
   canPlayerCharge,
   canPlayerUseAction,
   isThrowerLocked,
@@ -50,6 +48,7 @@ const {
 
 const {
   executeSlapAttack,
+  queueDodgeHopSlideSlap,
   executePalmThrust,
   executeLowKick,
   requestChargedAttackRelease,
@@ -339,6 +338,28 @@ function processInputPacket(room, player, data, io, rooms) {
     }
 
     player.mouse1BufferedBeforeStart = data.keys.mouse1 || false;
+    if (!player.tachiaiSealed) {
+      player.tachiaiHeld = {
+        mouse1: !!data.keys.mouse1,
+        mouse2: !!data.keys.mouse2,
+        shift: !!data.keys.shift,
+        s: !!data.keys.s,
+        a: !!data.keys.a,
+        d: !!data.keys.d,
+        " ": !!data.keys[" "],
+        w: !!data.keys.w,
+      };
+      if (!room.tachiaiCommitted) {
+        const { classifyTachiaiCall, TACHIAI_CALL } = require("./tachiai");
+        const opp = room.players.find((p) => p.id !== player.id);
+        const call = classifyTachiaiCall(
+          player.tachiaiHeld,
+          player.x,
+          opp ? opp.x : player.x + 1
+        );
+        if (call !== TACHIAI_CALL.STAND) player.tachiaiBufferedCall = call;
+      }
+    }
     // MOVEMENT HOLD BUFFER: client only emits on key edges, so a forward hold
     // that spans HAKKIYOI never arrives as a post-start packet. Snapshot A/D
     // here (without writing live keys — that would let pre-bout strafing
@@ -449,6 +470,8 @@ function processInputPacket(room, player, data, io, rooms) {
             player.inputBuffer = { type: "lowKick", timestamp: simNowForPlayer(player) };
           } else if (data.keys[backKey] && !data.keys[fwdKey]) {
             player.inputBuffer = { type: "palmThrust", timestamp: simNowForPlayer(player) };
+          } else if (player.isDodging) {
+            queueDodgeHopSlideSlap(player, simNowForPlayer(player));
           } else {
             player.inputBuffer = { type: "slap", timestamp: simNowForPlayer(player) };
           }
@@ -648,6 +671,8 @@ function processInputPacket(room, player, data, io, rooms) {
           player.inputBuffer = { type: "lowKick", timestamp: simNowForPlayer(player) };
         } else if (data.keys[backKey] && !data.keys[fwdKey]) {
           player.inputBuffer = { type: "palmThrust", timestamp: simNowForPlayer(player) };
+        } else if (player.isDodging) {
+          queueDodgeHopSlideSlap(player, simNowForPlayer(player));
         } else {
           player.inputBuffer = { type: "slap", timestamp: simNowForPlayer(player) };
         }
@@ -1104,31 +1129,7 @@ function processInputPacket(room, player, data, io, rooms) {
     const sidestepOpponent = room.players.find(p => p.id !== player.id && !p.isDead);
     if (sidestepOpponent) {
       // canPlayerSidestep already rejects isRecovering — recovery is uncancellable.
-      const initData = getSidestepInitData(player.x, sidestepOpponent.x);
-      player.isRawParrySuccess = false;
-      player.isPerfectRawParrySuccess = false;
-      clearChargeState(player, true);
-
-      player.movementVelocity = 0;
-      player.isStrafing = false;
-      player.isPowerSliding = false;
-      player.isBraking = false;
-      player.isCrouchStance = false;
-      player.isCrouchStrafing = false;
-
-      player.isSidestepping = true;
-      player.isSidestepStartup = true;
-      player.isSidestepRecovery = false;
-      player.sidestepStartTime = simNowForPlayer(player);
-      player.sidestepStartupEndTime = simNowForPlayer(player) + SIDESTEP_STARTUP_MS;
-      player.sidestepActiveEndTime = simNowForPlayer(player) + SIDESTEP_STARTUP_MS + SIDESTEP_ACTIVE_MS;
-      player.sidestepEndTime = simNowForPlayer(player) + SIDESTEP_TOTAL_MS;
-      player.sidestepStartX = player.x;
-      player.sidestepDirection = initData.direction;
-
-      player.currentAction = "sidestep";
-      player.actionLockUntil = simNowForPlayer(player) + SIDESTEP_TOTAL_MS;
-      player.stamina = Math.max(0, player.stamina - SIDESTEP_STAMINA_COST);
+      beginSidestep(player, sidestepOpponent, simNowForPlayer(player));
     }
   }
   // "Not enough stamina" feedback when gassed sidestep is denied

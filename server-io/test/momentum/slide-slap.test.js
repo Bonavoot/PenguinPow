@@ -9,7 +9,12 @@ const { describe, it, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 
 const M = require("../../momentumTransfer");
-const { executeSlapAttack } = require("../../gameFunctions");
+const {
+  executeSlapAttack,
+  queueDodgeHopSlideSlap,
+  releaseQueuedSlideSlap,
+} = require("../../gameFunctions");
+const { beginPlayerDodge } = require("../../gameUtils");
 const {
   createFoundationScenario,
   advanceSim,
@@ -27,12 +32,13 @@ const {
 const {
   SLAP_TOTAL_MS,
   SLAP_TOTAL_MS_SLIDE,
-  SLIDE_SLAP_ARM_SPEED,
+  SLIDE_SLAP_CHARGE_FULL_MS,
   SLIDE_SLAP_EXTRA_RECOVERY_MS,
   SLIDE_SLAP_ADVANTAGE_MS,
   SLIDE_SLAP_HITSTOP_FLOOR_MS,
   SLIDE_SLAP_HITSTOP_CAP_MS,
   SLIDE_SLAP_FOLLOW_VEL,
+  SLIDE_SLAP_FOLLOW_VEL_MAX,
   SLIDE_SLAP_FOLLOW_FRICTION,
   DELTA_TRACKED_PROPS,
   TICK_RATE,
@@ -83,7 +89,7 @@ describe("slide-slap convert — profiles", () => {
 
   it("extra recovery is only a tail — startup+active stay slap-identical", () => {
     assert.equal(SLAP_TOTAL_MS_SLIDE, SLAP_TOTAL_MS + SLIDE_SLAP_EXTRA_RECOVERY_MS);
-    assert.ok(SLIDE_SLAP_ARM_SPEED > 1.3, "walk cap must not arm the convert");
+    assert.ok(SLIDE_SLAP_CHARGE_FULL_MS > 200 && SLIDE_SLAP_CHARGE_FULL_MS < 700);
     assert.ok(
       SLIDE_SLAP_EXTRA_RECOVERY_MS < SLAP_TOTAL_MS,
       "plant tail must stay shorter than a full pocket cycle"
@@ -96,6 +102,8 @@ describe("slide-slap convert — profiles", () => {
 
   it("follow-through is a fixed crawl, not a dump-skid", () => {
     assert.ok(SLIDE_SLAP_FOLLOW_VEL < 1.3, "must stay under a walk so it reads as a drift");
+    assert.ok(SLIDE_SLAP_FOLLOW_VEL_MAX < 1.3, "full-charge drive must stay under a walk");
+    assert.ok(SLIDE_SLAP_FOLLOW_VEL_MAX > SLIDE_SLAP_FOLLOW_VEL);
     assert.equal(SLIDE_SLAP_FOLLOW_FRICTION, 1, "no decay — decay was the chop");
   });
 
@@ -164,16 +172,87 @@ describe("slide-slap convert — arming", () => {
     );
   });
 
-  it("does not arm a planted ice slide (Shift held, no speed)", () => {
+  it("arms a planted ice slide instead of falling through to a slap", () => {
     const s = foundation();
     s.left.isIceSliding = true;
     s.left.movementVelocity = 0.25;
+    s.left.iceSlideMovingMs = 0;
     executeSlapAttack(s.left, s.rooms);
-    assert.equal(s.left.slideSlapArmed, false);
+    assert.equal(s.left.slideSlapArmed, true);
     assert.equal(
       s.left.attackCooldownUntil - s.room.simTime,
-      SLAP_TOTAL_MS
+      SLAP_TOTAL_MS_SLIDE
     );
+    assert.equal(s.left.slideSlapCharge, 0);
+  });
+
+  it("a mouse1 during the dodge hop does not cancel the hop", () => {
+    const s = foundation();
+    const now = s.room.simTime;
+    beginPlayerDodge(s.left, { nowSim: now, direction: 1 });
+    s.left.y += 14;
+    const hopY = s.left.y;
+    executeSlapAttack(s.left, s.rooms);
+    assert.equal(s.left.isDodging, true);
+    assert.equal(s.left.y, hopY);
+    assert.equal(s.left.isSlapAttack, false);
+    assert.equal(s.left.pendingSlideSlap, true);
+  });
+
+  it("a hop-queued press releases as a belly bump after the hop lands", () => {
+    const s = foundation();
+    const now = s.room.simTime;
+    beginPlayerDodge(s.left, { nowSim: now, direction: 1 });
+    s.left.y += 14;
+    queueDodgeHopSlideSlap(s.left, now + 20);
+    s.left.isDodging = false;
+    s.left.isDodgeStartup = false;
+    s.left.isIceSliding = true;
+    s.left.iceSlideMovingMs = 0;
+    s.left.actionLockUntil = now + 100;
+    const released = releaseQueuedSlideSlap(s.left, s.rooms, now + 110);
+    assert.equal(released, true);
+    assert.equal(s.left.isDodging, false);
+    assert.equal(s.left.slideSlapArmed, true);
+    assert.equal(s.left.isSlapAttack, true);
+    assert.equal(s.left.slideSlapCharge, 0);
+  });
+
+  it("slide time raises send and follow without dropping the short bump", () => {
+    const shortCharge = M.slideSlapChargeFromMovingMs(0);
+    const longCharge = M.slideSlapChargeFromMovingMs(SLIDE_SLAP_CHARGE_FULL_MS);
+    const shortV = M.slideSlapVSelfForCharge(shortCharge);
+    const longV = M.slideSlapVSelfForCharge(longCharge);
+    assert.equal(shortCharge, 0);
+    assert.equal(longCharge, 1);
+    assert.ok(shortV > 1.6, "shortest bump must already be a real shove");
+    assert.ok(longV > shortV);
+    const victim = { x: 400, movementVelocity: 0, keys: {} };
+    const attacker = { movementVelocity: 0, facing: 1, slapEntryAligned: 0 };
+    const short = M.resolveTransfer({
+      attacker,
+      victim,
+      moveKey: "slideSlap",
+      dirToVictim: 1,
+      nowSim: 1000,
+      selfOverride: shortV,
+      slideSlapCharge: shortCharge,
+    });
+    const long = M.resolveTransfer({
+      attacker,
+      victim,
+      moveKey: "slideSlap",
+      dirToVictim: 1,
+      nowSim: 1000,
+      selfOverride: longV,
+      slideSlapCharge: longCharge,
+    });
+    assert.ok(long.sendPx > short.sendPx);
+    assert.ok(short.sendPx > M.profileFor("slap").floor + 80);
+    assert.ok(long.hitstopMs >= short.hitstopMs);
+    assert.ok(long.hitstopMs <= SLIDE_SLAP_HITSTOP_CAP_MS);
+    assert.ok(M.slideSlapFollowVelForCharge(1) > M.slideSlapFollowVelForCharge(0));
+    assert.ok(M.slideSlapFollowVelForCharge(1) < 1.3);
   });
 
   it("a follow-up swing after the convert is a normal slap", () => {

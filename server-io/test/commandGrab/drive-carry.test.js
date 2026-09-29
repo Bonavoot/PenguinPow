@@ -37,6 +37,8 @@ const {
   CMD_DRIVE_APPROACH_BONUS_MAX,
   CMD_DRIVE_EDGE_STAMINA_DRAIN_PER_SEC,
   GRAB_BREAK_STAMINA_COST,
+  GRAB_BREAK_TWEEN_DURATION,
+  GRAB_BREAK_TOGETHER_MS,
   CMD_DRIVE_RELEASE_SEPARATION,
   CMD_DRIVE_ATTACKER_RECOVERY_MS,
   CMD_DRIVE_DEFENDER_RECOVERY_MS,
@@ -711,10 +713,48 @@ test("drive at the tawara", async (t) => {
     );
     assert.equal(s.victim.isGrabBreakGather, true, "they shake together first");
     assert.equal(s.victim.isGrabSeparatePalm, false);
+    assert.equal(s.victim.grabBreakSepCurve, "break");
+    assert.equal(s.victim.grabBreakSepDuration, GRAB_BREAK_TWEEN_DURATION);
+    assert.equal(s.grabber.grabBreakSepCurve, "break");
     assert.ok(s.victim.grabBreakSepStartTime > s.room.simTime);
+    const ev = s.io.last("grab_break");
+    assert.equal(ev.payload.impactSimTime, s.victim.grabBreakSepStartTime);
+    assert.equal(
+      ev.payload.effectDelayMs,
+      GRAB_BREAK_TOGETHER_MS + CMD_DRIVE_RELEASE_IMPACT_MS
+    );
+    assert.equal(ev.payload.combatPresentation?.y, 376, "burst sits on the body center");
+    const dist = Math.abs(s.victim.grabBreakTargetX - s.victim.grabBreakStartX);
+    const step = 1000 / TICK_RATE;
+    const t0 = step / s.victim.grabBreakSepDuration;
+    assert.ok(
+      grabSeparationEase(t0, "break") > grabSeparationEase(t0, "shove") * 3,
+      "the palm's hit frame has to move, not ease in from a standstill"
+    );
+    let peak = 0;
+    let prev = 0;
+    for (
+      let elapsed = step;
+      elapsed <= s.victim.grabBreakSepDuration + step;
+      elapsed += step
+    ) {
+      const x =
+        grabSeparationEase(
+          Math.min(1, elapsed / s.victim.grabBreakSepDuration),
+          "break"
+        ) * dist;
+      peak = Math.max(peak, Math.abs(x - prev) / step);
+      prev = x;
+    }
+    const powerSlide = ICE_SLIDE_MAX_SPEED * speedFactor;
+    assert.ok(
+      peak < powerSlide * 2,
+      `break peaks at ${peak.toFixed(2)}px/ms, over 2× a power slide (${powerSlide.toFixed(2)})`
+    );
     s.advanceTime(160);
     assert.equal(s.victim.isGrabBreakGather, false);
     assert.equal(s.victim.isGrabSeparatePalm, true, "then the push palms take over");
+    assert.equal(s.victim.grabSeparatePalmStartSim, s.room.simTime);
   });
 
   await t.test("space during the pin is a grab break, not a win", () => {
@@ -753,5 +793,40 @@ test("drive at the tawara", async (t) => {
     const s = driveIntoRope({ ropeGap: 5, p2Balance: 100 });
     s.advance(s.grabber.cmdGrabCarryDuration);
     assert.ok(s.victim.x <= MAP_RIGHT_BOUNDARY + 0.001);
+  });
+
+  await t.test("grab-break juice waits for the rendered palm, not the packet", async () => {
+    const { grabBreakJuiceDelayMs } = await import(
+      "../../../client/src/config/combatTiming.js"
+    );
+    // Emitted at sim 9760, impact at 10000. Packet arrives one-way (40) later.
+    // Playback lags another 16, so the star waits out the windup plus that lag.
+    const wait = grabBreakJuiceDelayMs({
+      impactSimTime: 10_000,
+      effectDelayMs: 240,
+      now: 9_800,
+      serverOffset: 0,
+      clockSynced: true,
+      oneWayMs: 40,
+      visualLagMs: 16,
+    });
+    assert.ok(Math.abs(wait - 256) < 0.001, `got ${wait}`);
+    // Late packet: the bodies are already sliding, so juice fires now.
+    const late = grabBreakJuiceDelayMs({
+      impactSimTime: 10_000,
+      now: 10_200,
+      serverOffset: 0,
+      clockSynced: true,
+      oneWayMs: 40,
+      visualLagMs: 16,
+    });
+    assert.ok(late < 0, "a late packet must not add another full windup");
+    const unsynced = grabBreakJuiceDelayMs({
+      effectDelayMs: 240,
+      now: 0,
+      clockSynced: false,
+      visualLagMs: 16,
+    });
+    assert.equal(unsynced, 256);
   });
 });

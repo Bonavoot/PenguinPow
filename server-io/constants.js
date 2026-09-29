@@ -81,6 +81,9 @@ const DELTA_TRACKED_PROPS = [
   // Drive release presentation: the shoved fighter plays the palm-thrust
   // animation while they slide. Pose only — never an attack (see releaseDrive).
   'isGrabSeparatePalm',
+  // Sim-time the shove-off palms began, so the client plays that pose on the
+  // same playback clock as the separation slide.
+  'grabSeparatePalmStartSim',
   'isGrabBellyFlopping', 'isBeingGrabBellyFlopped',
   'isGrabFrontalForceOut', 'isBeingGrabFrontalForceOut',
   'knockbackVelocity',
@@ -118,6 +121,10 @@ const DELTA_TRACKED_PROPS = [
   // Legacy wire field — always false.
   'isClinchThrowing', 'isClinchPushing', 'isClinchPlanting',
   'isClinchKillThrowVictim', 'isClinchKillPullVictim',
+  // Kill throw plants on the lower apron when the arc clears the dohyo edge.
+  // Client tumble + early-landing pose read this so the body goes flat on
+  // that ground instead of on ring height.
+  'clinchKillThrowOffDohyo',
   // Charged DEMOLISHED victim — client blocks the reaction rig / afterimages
   // and runs the display-rate fly-out integrator.
   'isCinematicKillVictim',
@@ -236,10 +243,20 @@ const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS;
 // Extra recovery on a whiffed slap only (applied at cycle end, not on hit).
 const SLAP_WHIFF_EXTRA_RECOVERY_MS = 45;
 
-// Ice-slide slap (SHIFT sprint → Mouse1). Pocket mash is unchanged.
-// Arm only while actually ice-sliding with earned speed above a walk.
-// A planted Shift-hold (~ICE_SLIDE_EXIT_SPEED 0.28) must not arm.
-const SLIDE_SLAP_ARM_SPEED = 1.45;
+// Ice-slide belly bump (SHIFT slide → Mouse1). Pocket mash is unchanged.
+// Any live ice slide arms it. Speed is not the gate — a short runway used
+// to fall through into a slap. Power is time spent actually sliding
+// (see SLIDE_SLAP_CHARGE_FULL_MS), with a high floor so the shortest
+// convert, including a press during the dodge hop, is already a body check.
+// A walk-up (not ice-sliding) stays a slap.
+const SLIDE_SLAP_CHARGE_FULL_MS = 360;
+// Below this |velocity| the slide is a plant, not a runway. Charge stops
+// climbing; it does not turn the button into a slap.
+const SLIDE_SLAP_MOVING_SPEED = 0.45;
+// Shortest slide's share of top ice speed on the send curve. ~0.72 lands
+// the minimum bump near the old "you finally had enough speed" hit, so
+// holding the slide still has a ceiling to earn.
+const SLIDE_SLAP_POWER_FLOOR = 0.72;
 // Same startup+active as a slap; a short tail so a mashed follow-up
 // comes out after the plant has opened daylight. Keep this lean — the
 // paused hit sells the convert, not a long recovery pose.
@@ -252,10 +269,12 @@ const SLIDE_SLAP_ADVANTAGE_MS = 50;
 // fast slide stays a punch, not a cinematic. MUST match momentumTransfer.
 const SLIDE_SLAP_HITSTOP_FLOOR_MS = 88;
 const SLIDE_SLAP_HITSTOP_CAP_MS = 140;
-// After the freeze: a slow, fixed forward drift while they take the send.
-// No dump, no decay — the chop was a lurch then a dig-in. Ends with the
-// convert (endSlapCycle zeros it). Granted, not chase.
-const SLIDE_SLAP_FOLLOW_VEL = 0.9;
+// After the freeze: a forward drift while they take the send. Scales with
+// slide charge from MIN to MAX. Both stay under a walk (1.3) so it reads
+// as a drive-through, not a second dash. No decay — decay was the chop.
+// Ends with the convert (endSlapCycle zeros it). Granted, not chase.
+const SLIDE_SLAP_FOLLOW_VEL = 1.05;
+const SLIDE_SLAP_FOLLOW_VEL_MAX = 1.2;
 const SLIDE_SLAP_FOLLOW_FRICTION = 1;
 
 // Burst knockback (palm / flap body-slam). Travel ≈ k·v0/(1−friction);
@@ -405,6 +424,7 @@ const DOHYO_FALL_DEPTH = 37; // Scaled for camera zoom (was 50)
 // (PAST_MAP_DIRT_KB_FRICTION 0.88) a unit covers ~24 px, so 4.8 carries the
 // loser ~105 px: off the rope, past the 90 px fall edge, and down onto the
 // lower apron within ~350 ms — the same beat as the client's topple.
+// Slap ring-outs do not take this floor. Their own shove dies on the dirt.
 const RING_OUT_EXIT_VELOCITY = 4.8;
 // Round-end hold before the next round auto-resets (non-BASHO). Sized for the
 // resolution beat: exit slide + topple (~0.45 s) → banner reaches full opacity
@@ -426,6 +446,10 @@ const PAST_MAP_DIRT_KB_FRICTION = 0.88;       // Knockback on dirt apron (MAP �
 const OUTSIDE_DOHYO_DIRT_KB_FRICTION = 0.84;  // Knockback past the fall edge
 const PAST_MAP_DIRT_MOVE_FRICTION = 0.90;     // Loser coast on dirt apron
 const OUTSIDE_DOHYO_DIRT_MOVE_FRICTION = 0.85; // Coast/slide past fall edge
+// Slap ring-out stop line, inset from the dohyo fall edge. The slide spends
+// itself on the dirt apron and never takes the drop. Palm, charged, and every
+// other ring-out still use RING_OUT_EXIT_VELOCITY and fall.
+const SLAP_RING_OUT_APRON_BUFFER = 18;
 // Kill-pull / AP-parry-kill belly-slides are position tweens (not velocity), so
 // dirt is applied by compressing ice overshoot past the rope. ~0.35 keeps a
 // readable dirt slide without the full ice carry; past the fall edge compresses more.
@@ -625,10 +649,14 @@ const GRAB_PULL_ATTEMPT_DISTANCE_MULTIPLIER = 1.4; // Larger gap during pull att
 // Stamina cost only (no posture hit). Doesn't reposition meaningfully (boundary-clamped),
 // so edge stress is preserved. Brief grab immunity prevents instant re-clinch.
 const GRAB_BREAK_STAMINA_COST = 30; // Heavy commitment — break is a real escape, not a free reset
-// Still gripped, a small shared shake, then the push's palm shove-off.
+// Still gripped, a shared strain, then the push's palm shove-off.
+// Client gather keyframes (GRAB_BREAK_GATHER_MS) must match this length.
 const GRAB_BREAK_TOGETHER_MS = 160;
 const GRAB_BREAK_FORCED_DISTANCE = 140; // Total separation distance (split between breaker + opponent — each moves half this)
-const GRAB_BREAK_TWEEN_DURATION = 350; // Knockback slide duration
+// Slide after the palm's active frame. Paired with the "break" curve
+// (quadratic ease-out): fast on the hit, then settle. 350ms keeps a full-gap
+// rope break under 2× a power slide.
+const GRAB_BREAK_TWEEN_DURATION = 350;
 const GRAB_BREAK_RESIDUAL_VEL = 0; // No residual sliding — players stop cleanly when knockback ends
 const GRAB_BREAK_INPUT_LOCK_MS = 350; // Breaker is locked during knockback tween — vulnerable window
 const GRAB_BREAK_ACTION_LOCK_MS = 350; // Action lock matches input lock
@@ -1769,6 +1797,7 @@ module.exports = {
   OUTSIDE_DOHYO_DIRT_KB_FRICTION,
   PAST_MAP_DIRT_MOVE_FRICTION,
   OUTSIDE_DOHYO_DIRT_MOVE_FRICTION,
+  SLAP_RING_OUT_APRON_BUFFER,
   KILL_PULL_DIRT_OVERSHOOT_SCALE,
   KILL_PULL_DIRT_FALL_OVERSHOOT_SCALE,
 
@@ -1855,13 +1884,16 @@ module.exports = {
   SLAP_RECOVERY_MS,
   SLAP_TOTAL_MS,
   SLAP_WHIFF_EXTRA_RECOVERY_MS,
-  SLIDE_SLAP_ARM_SPEED,
+  SLIDE_SLAP_CHARGE_FULL_MS,
+  SLIDE_SLAP_MOVING_SPEED,
+  SLIDE_SLAP_POWER_FLOOR,
   SLIDE_SLAP_EXTRA_RECOVERY_MS,
   SLAP_TOTAL_MS_SLIDE,
   SLIDE_SLAP_ADVANTAGE_MS,
   SLIDE_SLAP_HITSTOP_FLOOR_MS,
   SLIDE_SLAP_HITSTOP_CAP_MS,
   SLIDE_SLAP_FOLLOW_VEL,
+  SLIDE_SLAP_FOLLOW_VEL_MAX,
   SLIDE_SLAP_FOLLOW_FRICTION,
   BURST_KB_VELOCITY,
   BURST_STUN_MS,

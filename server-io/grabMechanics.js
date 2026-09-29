@@ -82,6 +82,8 @@ function executeGrabWhiff(player) {
   player.isStrafing = false;
 
   player.actionLockUntil = simNowForPlayer(player) + GRAB_WHIFF_RECOVERY_MS;
+  const { endTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+  endTachiaiAction(player, TACHIAI_CALL.GRAB);
 
   player.grabCooldown = true;
 

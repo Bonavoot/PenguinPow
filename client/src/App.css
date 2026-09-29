@@ -770,6 +770,28 @@ body.cursor-hidden *,
   transition: opacity 0.2s ease-out;
   will-change: opacity;
 }
+.game-container[data-tachiai]::after {
+  content: attr(data-tachiai);
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 11%;
+  z-index: 181;
+  pointer-events: none;
+  text-align: center;
+  color: #f4efe4;
+  font-family: "Bungee", "Impact", sans-serif;
+  font-size: 22px;
+  letter-spacing: 0.14em;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.72);
+  animation: tachiai-caption-life 520ms ease-out forwards;
+}
+@keyframes tachiai-caption-life {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  72% { opacity: 1; }
+  100% { opacity: 0; }
+}
 .game-container.ko-grade-punch .cinematic-dim {
   opacity: 1;
 }
@@ -938,9 +960,10 @@ body.cursor-hidden *,
 }
 
 /* Fighting-game parallax (html[data-antarctica-map="1"]).
-   Sky lags. Floor is one plate (ice + water + mountains); transparent
-   top is the sky hole. Floor shares the fight-cam box / origin with
-   the dohyo — do not change this layer's inset. */
+   Sky lags. Floor is one plate (ice + mountains); the sky hole and the
+   lake are both real alpha. Water is a sibling behind the plate, clipped
+   to the lake. Floor shares the fight-cam box / origin with the dohyo —
+   do not change this layer's inset. */
 .game-parallax {
   display: none;
   position: absolute;
@@ -997,91 +1020,117 @@ html[data-antarctica-map="1"] .game-map {
     scale(var(--cam-scale, 1));
 }
 
-/* 6684×3764 plate (near 16:9). Magenta sky hole is keyed to alpha.
-   Water ~53–60%. Ice shelf ~60–100%. Dohyo bake sits at y 45.4–87.6%.
-   138% scale puts the 60% shoreline just behind the platform. */
+/* 3840×2160 plate. The shoreline (image y ≈ 72.6%, top of the ice
+   shelf under the lake) stays at scene y ≈ 44.2%, so the dohyo rests
+   on the ice exactly where it did before. The plate is 101% of the
+   scene — just enough side bleed that a pan to the map edge still has
+   art under it — instead of the old 125% / top -46.5% crop, which
+   pushed the peaks above the scene and cut them out of the fight
+   frame. Width and height stay equal so the 16:9 art is not stretched.
+   Image: transparent sky 0–29%, mountains ~30–61%, lake 61–73%, ice 73–100%. */
+.game-parallax-ice-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 68%;
+  bottom: 0;
+  background: #eaf4fb;
+  pointer-events: none;
+}
+
+.game-parallax-floor-plate {
+  position: absolute;
+  left: -0.5%;
+  top: -29.1%;
+  width: 101%;
+  height: 101%;
+  z-index: 1;
+  pointer-events: none;
+}
+
 .game-parallax-floor-art {
   position: absolute;
-  left: -19%;
-  top: -38%;
-  width: 138%;
-  height: 138%;
-  background-image: url(./assets/game-map-floor.png);
+  inset: 0;
+  z-index: 1;
+  background-image: url(./assets/game-map-antarctica2-floor.png);
   background-repeat: no-repeat;
   background-size: 100% 100%;
   pointer-events: none;
 }
 
-/* Water-only. Tight lake mask (flood-filled, ice/cliffs excluded).
-   Two slow opposing sheens via transform — not marching bars. */
-.game-parallax-water {
+/* Lake, behind the floor art so it only shows in the alpha hole.
+   The gradient is the water. ::before is the mountain reflection
+   (client/scripts/bake-lake-reflection.mjs): the skyline, peaks under
+   the peaks, rippled and cooled the way the painted berg reflections
+   are. ::after is a slow gleam so the surface isn't a still sticker.
+   Rebuild the reflection with: node scripts/bake-lake-reflection.mjs */
+.antarctica-water {
   position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
+  left: 0;
+  right: 0;
+  top: 60.2%;
+  height: 12.8%;
+  z-index: 0;
   overflow: hidden;
-  -webkit-mask-image: url(./assets/game-map-water-mask.png);
-  mask-image: url(./assets/game-map-water-mask.png);
-  -webkit-mask-size: 100% 100%;
-  mask-size: 100% 100%;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
+  pointer-events: none;
+  /* Deeper at the far shore, where the mountains reflect. It only
+     pales in the last stretch, where it has to meet the ice shelf. */
+  background: linear-gradient(
+    180deg,
+    #146ca8 0%,
+    #1a80bc 38%,
+    #2292cc 68%,
+    #5cb2d8 86%,
+    #cee8f4 100%
+  );
 }
 
-.game-parallax-water::before,
-.game-parallax-water::after {
+.antarctica-water::before {
   content: "";
   position: absolute;
-  inset: -25% -45%;
-  will-change: transform;
+  inset: 0;
+  background-image: url(./assets/map-antarctica-lake.webp);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  pointer-events: none;
 }
 
-.game-parallax-water::before {
-  background: repeating-linear-gradient(
-    1.4deg,
-    rgba(255, 255, 255, 0) 0 52px,
-    rgba(255, 255, 255, 0.2) 60px,
-    rgba(255, 255, 255, 0) 74px,
-    rgba(255, 255, 255, 0.07) 86px,
-    rgba(255, 255, 255, 0) 120px
-  );
-  animation: antarcticaWaterA 26s linear infinite;
-}
-
-.game-parallax-water::after {
+.antarctica-water::after {
+  content: "";
+  position: absolute;
+  inset: 0 -8%;
+  pointer-events: none;
   background:
     radial-gradient(
-      ellipse 30% 42% at 16% 48%,
-      rgba(255, 255, 255, 0.18),
-      transparent 70%
+      ellipse 36% 95% at 30% 46%,
+      rgba(255, 255, 255, 0.13),
+      transparent 68%
     ),
     radial-gradient(
-      ellipse 24% 36% at 58% 58%,
-      rgba(255, 255, 255, 0.12),
-      transparent 72%
-    ),
-    radial-gradient(
-      ellipse 28% 40% at 86% 44%,
-      rgba(255, 255, 255, 0.15),
+      ellipse 26% 80% at 76% 62%,
+      rgba(186, 236, 255, 0.1),
       transparent 70%
-    ),
-    repeating-linear-gradient(
-      -1.6deg,
-      rgba(255, 255, 255, 0) 0 78px,
-      rgba(210, 240, 255, 0.14) 92px,
-      rgba(255, 255, 255, 0) 112px
     );
-  animation: antarcticaWaterB 38s linear infinite;
+  animation: antarctica-lake-light 18s ease-in-out infinite alternate;
 }
 
-@keyframes antarcticaWaterA {
-  from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(-170px, 6px, 0); }
+@keyframes antarctica-lake-light {
+  from {
+    transform: translate3d(-2.2%, 0, 0);
+  }
+  to {
+    transform: translate3d(2.6%, 0, 0);
+  }
 }
 
-@keyframes antarcticaWaterB {
-  from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(150px, -5px, 0); }
+html[data-low-spec="1"] .antarctica-water::after {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .antarctica-water::after {
+    animation: none;
+  }
 }
 
 html[data-antarctica-map="1"] .crowd-stand-host,
@@ -1095,9 +1144,9 @@ html[data-antarctica-map="1"] .arena-lighting {
   background:
     linear-gradient(
       180deg,
-      rgba(18, 22, 40, 0.1) 0%,
-      rgba(18, 22, 40, 0.04) 18%,
-      transparent 32%
+      rgba(18, 22, 40, 0.04) 0%,
+      rgba(18, 22, 40, 0.02) 16%,
+      transparent 30%
     ),
     radial-gradient(
       ellipse 118% 108% at 50% 44%,
@@ -1863,8 +1912,7 @@ html[data-antarctica-map="1"] .antarctica-map-hint::after {
    extras, snow is unmounted in Game.jsx). Map/crowd are already filter-free. */
 html[data-low-spec="1"] .god-rays,
 html[data-low-spec="1"] .film-grain,
-html[data-low-spec="1"] .ice-disc-grain,
-html[data-low-spec="1"] .game-parallax-water {
+html[data-low-spec="1"] .ice-disc-grain {
   display: none !important;
 }
 

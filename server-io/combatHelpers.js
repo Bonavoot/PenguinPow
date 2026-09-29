@@ -166,6 +166,11 @@ const SEPARATION_EASE = {
   // cover a separation the anti-loop rule fixes at ~130px without any single
   // frame of it moving faster than the game's own top locomotion by much.
   shove: (t) => 0.5 - 0.5 * Math.cos(Math.PI * t),
+  // Grab break: the victim's palms ARE the hit. Quadratic ease-out is
+  // quickest on the first frames (the palm's active pose) and settles, at
+  // 2× average instead of the cubic hit curve's 3× — a rope-side break, where
+  // one body travels the whole gap, stays a shove instead of a cut.
+  break: (t) => 1 - (1 - t) * (1 - t),
   // Belt yank: healthy TAKE→SNAP→SLIDE, or the heavier take/snap/decay at power.
   yank: yankEase,
 };

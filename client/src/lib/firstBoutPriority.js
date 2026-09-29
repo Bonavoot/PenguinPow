@@ -52,6 +52,7 @@ export const FIRST_BOUT_ARENA_IDS = Object.freeze([
   "dohyo-display",
   "game-map-444",
   "map-antarctica-sky",
+  "game-map-antarctica2-floor",
 ]);
 
 export const FIRST_BOUT_HUD_IDS = Object.freeze(["gyoji", "gyoji-ready"]);

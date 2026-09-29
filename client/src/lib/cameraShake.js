@@ -80,6 +80,8 @@ export const SHAKE_PROFILES = {
   // a healthy scrape stays a nudge and a broken send has weight, not zoom.
   pull_yank:       { trauma: 0.64, punch: 0.0, rot: 0.28, replace: true, dirBias: 0.82 },
   grab_clash:      { trauma: 0.62, punch: 0.0, rot: 0.30 },
+  // Grab break impact — the palm connect, not the button. Directional, no zoom.
+  grab_break:      { trauma: 0.5, punch: 0.0, rot: 0.24, replace: true, dirBias: 0.72 },
 
   // ── Heavy "this mattered" moments ──
   // Slap clash — now RARE + DECISIVE, so it reads as a real event: heavy thump

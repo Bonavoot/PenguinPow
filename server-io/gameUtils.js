@@ -20,8 +20,10 @@ const {
   DODGE_TRAVEL_DISTANCE,
   GROUND_LEVEL,
   SIDESTEP_STARTUP_MS,
+  SIDESTEP_ACTIVE_MS,
   SIDESTEP_RECOVERY_MS,
   SIDESTEP_STAMINA_COST,
+  AT_THE_ROPES_DURATION,
   HITBOX_DISTANCE_VALUE,
   MAX_PARRY_BACKDATE_MS,
   INPUT_BACKDATE_MIN_MS,
@@ -76,6 +78,8 @@ const {
   SLIDE_JUMP_H_STACK_START,
   SLIDE_JUMP_H_STACK_FULL_MULT,
   SLIDE_JUMP_H_STACK_HEADROOM,
+  PAST_MAP_DIRT_MOVE_FRICTION,
+  SLAP_RING_OUT_APRON_BUFFER,
 } = require("./constants");
 
 // Velocity-at-press telemetry sink (MASTERY Phase 0). appendVerbInit is a
@@ -88,6 +92,7 @@ const { clearAirHitOverlapEject } = require("./airHitOverlapEject");
 // Constants-only module — safe to require here without a cycle.
 const { clearGrabVariant } = require("./commandGrabInput");
 const { getGrabAttemptSpeed } = require("./combatHelpers");
+const { clearSlapStep } = require("./slapStepIn");
 const {
   OFFENSIVE_AERIAL_OUTCOME,
   OFFENSIVE_AERIAL_CLEANUP_STAGE,
@@ -136,7 +141,14 @@ const {
   isActionLifecycleOwnershipV2Enabled,
 } = require("./actionLifecycleFlags");
 const {
+  LIFECYCLE_DOMAIN,
+  LIFECYCLE_PHASE,
+  LIFECYCLE_OWNER,
   LIFECYCLE_TIMEOUT_NAMES,
+  beginLifecycleOwner,
+  assertLifecycleCallback,
+  completeLifecycleOwner,
+  markLifecycleControlRestore,
   forceClearLifecycleOwners,
 } = require("./actionLifecycleOwnership");
 
@@ -515,6 +527,8 @@ function cancelMatadorWindow(player, simTime) {
   player.matadorSuccessUntil = 0;
   player.isMatadorWhiffRecovering = true;
   player.matadorRecoveryUntil = simTime + MATADOR_WHIFF_RECOVERY_MS;
+  const { endTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+  endTachiaiAction(player, TACHIAI_CALL.MATADOR);
   // Share Space latch with AP — one physical press, one commitment.
   player.apSpaceConsumed = false;
   player.spaceJustPressed = false;
@@ -547,6 +561,8 @@ function armMatador(player, simTime, startTime) {
 
   player.isMatadorParrying = true;
   player.isMatadorSuccess = false;
+  const { markTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+  markTachiaiAction(player, TACHIAI_CALL.MATADOR, simTime);
   player.matadorStartTime = startTime != null ? startTime : simTime;
   player.matadorActiveUntil = simTime + MATADOR_ACTIVE_MS;
   player.matadorSuccessUntil = 0;
@@ -598,6 +614,10 @@ function updateMatadorState(player, simTime, spaceHeld) {
 
   // Timed window closed, or already on the hold floor (activeUntil === 0).
   if (spaceHeld) {
+    if ((player.matadorActiveUntil || 0) > 0) {
+      const { endTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+      endTachiaiAction(player, TACHIAI_CALL.MATADOR);
+    }
     player.matadorActiveUntil = 0;
     return;
   }
@@ -626,6 +646,8 @@ function cancelAttackParryWindow(player, simTime) {
   player.apSpaceConsumed = false;
   player.isApWhiffRecovering = true;
   player.apRecoveryUntil = simTime + AP_WHIFF_RECOVERY_MS;
+  const { endTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+  endTachiaiAction(player, TACHIAI_CALL.PARRY);
   player.movementVelocity = 0;
   player.isStrafing = false;
 }
@@ -665,6 +687,8 @@ function armAttackParry(player, simTime, startTime) {
   player.rawParryMinDurationMet = false;
   player.movementVelocity = 0;
   player.isStrafing = false;
+  const { markTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+  markTachiaiAction(player, TACHIAI_CALL.PARRY, simTime);
   player.isPowerSliding = false;
   player.isCrouchStance = false;
   player.isCrouchStrafing = false;
@@ -771,6 +795,8 @@ function updateAttackParryState(player, simTime, spaceHeld) {
   // Landed-parry impact pose is cosmetic; success sprites win over blocking.png.
   // Continued hold after a land is GUARD — same press already spent its timed read.
   if (player.isRawParrySuccess || player.isPerfectRawParrySuccess) {
+    const { endTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+    endTachiaiAction(player, TACHIAI_CALL.PARRY);
     if (spaceHeld) {
       player.isRawParrying = true;
       player.isGuarding = true;
@@ -816,6 +842,8 @@ function updateAttackParryState(player, simTime, spaceHeld) {
   }
 
   // ── Window just closed with no deflect ──
+  const { endTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+  endTachiaiAction(player, TACHIAI_CALL.PARRY);
   if (spaceHeld) {
     // Still holding → mistimed tap safely becomes GUARD (grab-vulnerable floor).
     // Not a whiff — holding into block is the safe floor, not punish recovery.
@@ -1324,6 +1352,9 @@ function cancelDodgeHop(player) {
   player.isDodgeStartup = false;
   player.isDodgeRecovery = false;
   player.dodgeDirection = null;
+  // A grab (or any other cancel) eats the queued belly bump with the hop.
+  player.pendingSlideSlap = false;
+  player.pendingSlideSlapAt = 0;
   groundPlayerIfNotAirborne(player);
 }
 
@@ -1420,6 +1451,8 @@ function beginPlayerDodge(player, options = {}) {
   player.isPowerSliding = false;
   player.isBraking = false;
   clearIceSlideState(player);
+  player.pendingSlideSlap = false;
+  player.pendingSlideSlapAt = 0;
   // Hop Y is written from GROUND_LEVEL; leftover elevation from a prior hop
   // would stack into this one.
   groundPlayerIfNotAirborne(player);
@@ -1431,6 +1464,10 @@ function beginPlayerDodge(player, options = {}) {
   player.dodgeEndTime = nowSim + DODGE_DURATION;
   player.dodgeStartX = player.x;
   player.dodgeDirection = direction;
+  // Opening dodge passes a taller, shorter hop. Every other dodge clears it
+  // so a tachiai hop cannot leak into the next dash.
+  player.tachiaiDodgeHopHeight = options.hopHeight > 0 ? options.hopHeight : 0;
+  player.tachiaiDodgeHopMs = options.hopMs > 0 ? options.hopMs : 0;
   // Fixed travel — speed buffs only finish this sooner, never extend it.
   player.dodgeTargetX = Math.max(
     MAP_LEFT_BOUNDARY,
@@ -1459,6 +1496,11 @@ function beginPlayerDodge(player, options = {}) {
   }
 
   player.stamina = Math.max(0, player.stamina - DODGE_STAMINA_COST);
+  const { markTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+  const dodgeCall = player.tachiaiCall === TACHIAI_CALL.DODGE_BACK
+    ? TACHIAI_CALL.DODGE_BACK
+    : TACHIAI_CALL.DODGE_IN;
+  markTachiaiAction(player, dodgeCall, nowSim);
   return true;
 }
 
@@ -1567,6 +1609,10 @@ function resetPlayerAttackStates(player) {
   player.currentSlapHitConnected = false;
   player.slapOpenHitPending = false;
   player.slideSlapArmed = false;
+  player.slideSlapCharge = 0;
+  player.slideSlapFollowVel = 0;
+  player.pendingSlideSlap = false;
+  player.pendingSlideSlapAt = 0;
   player.isBurstKnockback = false;
   player.burstKnockbackStartTime = 0;
 }
@@ -1658,7 +1704,12 @@ function clearAllActionStates(player) {
   player.isEnhancedSlap = false;
   player.cadenceChain = 0;
   player.isSlapSliding = false;
+  clearSlapStep(player, { zeroVelocity: true });
   player.slideSlapArmed = false;
+  player.slideSlapCharge = 0;
+  player.slideSlapFollowVel = 0;
+  player.pendingSlideSlap = false;
+  player.pendingSlideSlapAt = 0;
   player.currentSlapHitConnected = false;
   player.slapOpenHitPending = false;
   player.isBurstKnockback = false;
@@ -2081,6 +2132,7 @@ function clearIceSlideState(player) {
   player.isIceSliding = false;
   player.iceSlideDir = 0;
   player.iceSlideStartTime = 0;
+  player.iceSlideMovingMs = 0;
   player.iceSlideCarrySpeed = 0;
   player.slideJumpBufferUntil = 0;
   player.slideJumpLandSlideQueued = false;
@@ -2179,6 +2231,8 @@ function beginGrabStartup(player, room) {
   player.grabAttemptSpeed = attemptSpeed;
   player.grabApproachSpeed = attemptSpeed;
   player.grabMovementVelocity = player.grabMovementDirection * attemptSpeed;
+  const { markTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+  markTachiaiAction(player, TACHIAI_CALL.GRAB, now);
 
   // Latch-then-aim: M2 is always a grab. Variant is chosen after connect.
   clearGrabVariant(player);
@@ -2304,6 +2358,7 @@ function beginIceSlide(player, dir, velocity, nowSim, opts = {}) {
   player.isIceSliding = true;
   player.iceSlideDir = slideDir;
   player.iceSlideStartTime = nowSim;
+  player.iceSlideMovingMs = 0;
   player.slideJumpBufferUntil = 0;
   player.isBraking = false;
   player.isStrafing = false;
@@ -2829,6 +2884,17 @@ function startCharging(player) {
  */
 function beginChargeHold(player, rooms) {
   if (!player) return false;
+  const nowSim = simNowForPlayer(player);
+  if (player.tachiaiInputGraceUntil && nowSim < player.tachiaiInputGraceUntil) {
+    // A charge buffered across HAKKIYOI is the opening lunge, not the hop-back.
+    if (player.tachiaiLaunched) return false;
+    const { executeChargedAttack } = require("./gameFunctions");
+    const { TACHIAI_CHARGE_POWER, TACHIAI_CALL } = require("./tachiai");
+    player.tachiaiCall = TACHIAI_CALL.CHARGE;
+    player.tachiaiUntil = Math.max(player.tachiaiUntil || 0, nowSim + 800);
+    executeChargedAttack(player, TACHIAI_CHARGE_POWER, rooms);
+    return true;
+  }
   player.chargeAttackPower = 0;
   player.chargeStartTime = 0;
   player.chargeReleaseBuffered = false;
@@ -2948,7 +3014,12 @@ function cancelPendingSlapWork(player) {
   player.slapOpenHitPending = false;
   player.currentLowKickHitConnected = false;
   player.isSlapSliding = false;
+  clearSlapStep(player, { zeroVelocity: true });
   player.slideSlapArmed = false;
+  player.slideSlapCharge = 0;
+  player.slideSlapFollowVel = 0;
+  player.pendingSlideSlap = false;
+  player.pendingSlideSlapAt = 0;
   player.slapFacingDirection = null;
   player.isInStartupFrames = false;
   player.startupEndTime = 0;
@@ -3012,6 +3083,47 @@ function beginAction(player, actionName, lockDurationMs) {
   } else {
     player.actionLockUntil = 0;
   }
+}
+
+// Slap ring-out stop line. Inset from the dohyo fall edge so the loser parks
+// on the dirt apron instead of dropping off the platform.
+function slapRingOutStopX(fallDir) {
+  return fallDir < 0
+    ? DOHYO_LEFT_BOUNDARY + SLAP_RING_OUT_APRON_BUFFER
+    : DOHYO_RIGHT_BOUNDARY - SLAP_RING_OUT_APRON_BUFFER;
+}
+
+// Fastest shove that dirt coast (ice coast × apron friction) can still spend
+// before the stop line. Knockback on the apron is stickier than this, so a
+// shove under the cap dies on the dirt even after hitstun hands it to coast.
+function slapRingOutApronSpeedCap(x, fallDir) {
+  const dir = fallDir < 0 ? -1 : 1;
+  const roomPx = dir < 0 ? x - slapRingOutStopX(dir) : slapRingOutStopX(dir) - x;
+  if (!(roomPx > 0)) return 0;
+  const friction = ICE_COAST_FRICTION * PAST_MAP_DIRT_MOVE_FRICTION;
+  const pxPerSpeed = ((1000 / TICK_RATE) * speedFactor) / (1 - friction);
+  return roomPx / pxPerSpeed;
+}
+
+// Pin a slap ring-out loser to the apron. Clears a fall that already started
+// so the victory topple plays on the dirt, not in the pit.
+function holdSlapRingOutOnApron(player) {
+  if (!player || !player.ringOutApronStop) return;
+  const dir = player.ringOutDirection < 0 ? -1 : 1;
+  const stopX = slapRingOutStopX(dir);
+  const pastStop = dir < 0 ? player.x < stopX : player.x > stopX;
+  if (pastStop) {
+    player.x = stopX;
+    if (player.knockbackVelocity) {
+      player.knockbackVelocity.x = 0;
+      player.knockbackVelocity.y = 0;
+    }
+    player.movementVelocity = 0;
+  }
+  player.isFallingOffDohyo = false;
+  const onApron =
+    pastStop || player.x < MAP_LEFT_BOUNDARY || player.x > MAP_RIGHT_BOUNDARY;
+  if (onApron && player.y < GROUND_LEVEL) player.y = GROUND_LEVEL;
 }
 
 // Check if player is outside the dohyo boundaries (horizontal only)
@@ -3231,6 +3343,105 @@ function getSidestepInitData(playerX, opponentX) {
   return { direction };
 }
 
+function beginSidestep(player, opponent, nowSim = simNowForPlayer(player), options = {}) {
+  if (!player || !opponent) return false;
+  const initData = getSidestepInitData(player.x, opponent.x);
+  player.isRawParrySuccess = false;
+  player.isPerfectRawParrySuccess = false;
+  clearChargeState(player, true);
+  player.movementVelocity = 0;
+  player.isStrafing = false;
+  player.isPowerSliding = false;
+  player.isBraking = false;
+  player.isCrouchStance = false;
+  player.isCrouchStrafing = false;
+  player.isSidestepping = true;
+  player.isSidestepStartup = true;
+  player.isSidestepRecovery = false;
+  player.sidestepStartTime = nowSim;
+  const startupMs = options.immediate ? 0 : SIDESTEP_STARTUP_MS;
+  player.sidestepStartupEndTime = nowSim + startupMs;
+  player.sidestepActiveEndTime = nowSim + startupMs + SIDESTEP_ACTIVE_MS;
+  player.sidestepEndTime = nowSim + startupMs + SIDESTEP_ACTIVE_MS + SIDESTEP_RECOVERY_MS;
+  player.sidestepStartX = player.x;
+  player.sidestepDirection = initData.direction;
+  player.currentAction = "sidestep";
+  player.actionLockUntil = player.sidestepEndTime;
+  player.stamina = Math.max(0, (player.stamina || 0) - SIDESTEP_STAMINA_COST);
+  const { markTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+  markTachiaiAction(player, TACHIAI_CALL.HENKA, nowSim);
+  return true;
+}
+
+function beginAtTheRopes(player, x, facing) {
+  if (!player || player.isAtTheRopes) return false;
+  const savedFacing = facing === 1 || facing === -1 ? facing : player.facing;
+  clearAllActionStates(player);
+  player.y = GROUND_LEVEL;
+  player.isAtTheRopes = true;
+  player.atTheRopesStartTime = simNowForPlayer(player);
+  player.atTheRopesFacingDirection = savedFacing;
+  player.facing = savedFacing;
+  if (isActionFacingOwnershipV2Enabled()) {
+    const ropesId = mintActionFacingInstanceId(player, ACTION_FACING_OWNER.ROPES);
+    player.ropesFacingInstanceId = ropesId;
+    acquireActionFacingLock(player, {
+      ownerType: ACTION_FACING_OWNER.ROPES,
+      ownerInstanceId: ropesId,
+      direction: savedFacing,
+      reason: ACTION_FACING_REASON.BOUNDARY,
+      allowDirectionUpdate: false,
+      supersede: true,
+      syncLegacy: false,
+    });
+  }
+  player.knockbackVelocity = { x: 0, y: 0 };
+  if (x <= MAP_LEFT_BOUNDARY) player.x = MAP_LEFT_BOUNDARY;
+  else if (x >= MAP_RIGHT_BOUNDARY) player.x = MAP_RIGHT_BOUNDARY;
+  else player.x = x;
+
+  let ropesLifecycleId = null;
+  if (isActionLifecycleOwnershipV2Enabled()) {
+    const ropesRec = beginLifecycleOwner(player, LIFECYCLE_DOMAIN.REACTION, LIFECYCLE_OWNER.ROPES, {
+      phase: LIFECYCLE_PHASE.ACTIVE,
+      reason: "ROPES_BEGIN",
+    });
+    ropesLifecycleId = ropesRec?.ownerInstanceId || null;
+  }
+  setPlayerTimeout(
+    player.id,
+    () => {
+      if (
+        isActionLifecycleOwnershipV2Enabled() &&
+        !assertLifecycleCallback(player, LIFECYCLE_DOMAIN.REACTION, ropesLifecycleId, "at_the_ropes_timeout")
+      ) {
+        return;
+      }
+      player.isAtTheRopes = false;
+      player.atTheRopesStartTime = 0;
+      if (isActionFacingOwnershipV2Enabled()) {
+        releaseActionFacingLock(player, {
+          expectedInstanceId: player.ropesFacingInstanceId,
+          expectedOwnerType: ACTION_FACING_OWNER.ROPES,
+          reason: ACTION_FACING_RELEASE.ACTION_END,
+          clearLegacy: false,
+        });
+        player.ropesFacingInstanceId = null;
+      }
+      player.atTheRopesFacingDirection = null;
+      if (isActionLifecycleOwnershipV2Enabled()) {
+        completeLifecycleOwner(player, LIFECYCLE_DOMAIN.REACTION, ropesLifecycleId, {
+          reason: "ROPES_COMPLETE",
+        });
+        markLifecycleControlRestore(player, LIFECYCLE_DOMAIN.REACTION, ropesLifecycleId);
+      }
+    },
+    AT_THE_ROPES_DURATION,
+    "atTheRopesTimeout"
+  );
+  return true;
+}
+
 module.exports = {
   // Constants
   MAP_LEFT_BOUNDARY,
@@ -3337,6 +3548,8 @@ module.exports = {
   canPlayerSlap,
   clearChargeState,
   isOutsideDohyo,
+  slapRingOutApronSpeedCap,
+  holdSlapRingOutOnApron,
   clampStaminaValue,
   tryEnterGassed,
   applyBalanceDamage,
@@ -3355,6 +3568,8 @@ module.exports = {
   isRoomInHitstop,
   emitThrottledScreenShake,
   getSidestepInitData,
+  beginSidestep,
+  beginAtTheRopes,
   clearHitFall,
   clearSidestepHitReturn,
   isSlideJumpPastPeak,

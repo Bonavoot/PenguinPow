@@ -183,10 +183,27 @@ function cleanupPlayerStates(player) {
   player.flapHitRecoverDuration = 0;
   player.lastFlapChargeTime = 0;
   player.isReady = false;
+  player.tachiaiCall = null;
+  player.tachiaiIntent = null;
+  player.tachiaiSealed = false;
+  player.tachiaiUntil = 0;
+  player.tachiaiHeld = null;
+  player.tachiaiBufferedCall = null;
+  player.tachiaiLaunched = false;
+  player.tachiaiInputGraceUntil = 0;
+  player.slapApproachArmed = false;
+  player.slapApproachUntil = 0;
+  player.tachiaiRopeAfterDrive = false;
+  player.tachiaiChargePunish = false;
+  player.slapStepFixed = false;
+  player.slapStepBudgetPx = 0;
+  player.tachiaiDodgeHopHeight = 0;
+  player.tachiaiDodgeHopMs = 0;
   player.isBowing = false;
   player.isRingOutLoser = false;
   player.ringOutDirection = 0;
   player.ringOutStartTime = 0;
+  player.ringOutApronStop = false;
   player.isRoundWinner = false;
   player.knockbackVelocity = { x: 0, y: 0 };
 

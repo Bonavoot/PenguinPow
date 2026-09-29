@@ -650,6 +650,11 @@ function resetRoomAndPlayers(room, io) {
     player.slapAnimationToggle = 0;
     player.currentSlapHitConnected = false;
     player.slideSlapArmed = false;
+    player.slideSlapCharge = 0;
+    player.slideSlapFollowVel = 0;
+    player.pendingSlideSlap = false;
+    player.pendingSlideSlapAt = 0;
+    player.iceSlideMovingMs = 0;
     player.slapOpenHitPending = false;
     player.isBurstKnockback = false;
     player.burstKnockbackStartTime = 0;
@@ -796,6 +801,7 @@ function resetRoomAndPlayers(room, io) {
     player.grabBreakTargetX = undefined;
     player.grabBreakSepCurve = null;
     player.isGrabSeparatePalm = false;
+    player.grabSeparatePalmStartSim = 0;
     player.isGrabBellyFlopping = false;
     player.isBeingGrabBellyFlopped = false;
     player.isGrabFrontalForceOut = false;
@@ -835,12 +841,14 @@ function resetRoomAndPlayers(room, io) {
     player.isCinematicKillVictim = false;
     player.isClinchKillThrowVictim = false;
     player.isClinchKillPullVictim = false;
+    player.clinchKillThrowOffDohyo = false;
     player.pendingPullTrip = false;
     player.isClinchKillThrow = false;
     // Round resolution presentation flags (ring-out topple / winner hold).
     player.isRingOutLoser = false;
     player.ringOutDirection = 0;
     player.ringOutStartTime = 0;
+    player.ringOutApronStop = false;
     player.isRoundWinner = false;
   });
 

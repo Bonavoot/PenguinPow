@@ -244,6 +244,11 @@ test("command grab throw resolution", async (t) => {
     s.connect().resolveNow();
     assert.equal(s.grabber.isClinchKillThrow, true);
     assert.equal(s.victim.isClinchKillThrowVictim, true);
+    assert.equal(
+      s.victim.clinchKillThrowOffDohyo,
+      true,
+      "a kill from the rope clears the dohyo edge"
+    );
   });
 
   await t.test("high posture near the rope does not convert a toss into a kill", () => {

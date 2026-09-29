@@ -1366,8 +1366,23 @@ function updateCPUAI(cpu, human, room, currentTime) {
     aiState.prevHakkiyoiCount = room.hakkiyoiCount;
   }
 
-  // Don't process AI during game over or before game starts
+  // Don't process AI during game over or before game starts.
+  // The opening call is chosen once hands are down, before the shout seals it.
   if (room.gameOver || room.matchOver || !room.gameStart || room.hakkiyoiCount === 0) {
+    if (
+      room.teWoTsuiteSent &&
+      !room.tachiaiSealed &&
+      !cpu.tachiaiIntent &&
+      !room.gameOver &&
+      !room.matchOver
+    ) {
+      const { pickCpuTachiaiCall } = require("./tachiai");
+      cpu.tachiaiIntent = pickCpuTachiaiCall(
+        aiState.aggressionMode,
+        cpu.tachiaiMemory,
+        Math.random
+      );
+    }
     if (aiState.slideChain) endSlideChain(cpu, aiState, currentTime);
     if (aiState.isChargingIntentional) clearChargeIntent(cpu, aiState, { cancel: true });
     else resetAllKeys(cpu);

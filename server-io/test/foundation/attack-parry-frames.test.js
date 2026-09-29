@@ -21,11 +21,10 @@ const {
   SLAP_STARTUP_MS,
   SLAP_ACTIVE_MS,
   SLAP_PARRY_KB_FRICTION,
-  ICE_COAST_FRICTION,
   speedFactor,
   AP_LATE_PARRY_MS,
 } = require("../../constants");
-const { SLAP_STEP_IN_VELOCITY } = require("../../momentumTransfer");
+const { SLAP_STEP_IN_DISTANCE } = require("../../slapStepIn");
 
 describe("Attack parry frame contract", () => {
   it("regular slap parry is +0 after freeze (begin delay + stagger = plant)", () => {
@@ -44,20 +43,10 @@ describe("Attack parry frame contract", () => {
     // Discrete worst case: floor ticks in startup+active (the arm tick may
     // not move). Coast friction matches committed slap slide. Tip-range
     // mash must still reconnect; a net-positive shove is what dropped slap 3.
-    const approachTicks = Math.floor(
-      (SLAP_STARTUP_MS + SLAP_ACTIVE_MS) / msPerTick
-    );
-    const f = ICE_COAST_FRICTION;
-    const stepInTravel =
-      SLAP_STEP_IN_VELOCITY *
-      pxPerTick *
-      (1 - Math.pow(f, approachTicks)) /
-      (1 - f);
-
     assert.ok(shoveTravel > 0, "regular parry still rejects");
     assert.ok(
-      shoveTravel <= stepInTravel,
-      `regular reject ${shoveTravel.toFixed(1)}px must be ≤ standing slap approach ${stepInTravel.toFixed(1)}px over ${approachTicks} ticks`
+      shoveTravel <= SLAP_STEP_IN_DISTANCE,
+      `regular reject ${shoveTravel.toFixed(1)}px must be ≤ standing slap step ${SLAP_STEP_IN_DISTANCE}px`
     );
   });
 

@@ -14,6 +14,8 @@ const {
   DOHYO_RIGHT_BOUNDARY,
   DOHYO_FALL_DEPTH,
   isOutsideDohyo,
+  slapRingOutApronSpeedCap,
+  holdSlapRingOutOnApron,
   canPlayerSlap,
   canPlayerUseAction,
   isThrowerLocked,
@@ -47,6 +49,8 @@ const {
 // MASTERY OVERHAUL feature flags (Phase 1: momentum inheritance, Phase 3: cadence,
 // Phase 4: analog resolutions).
 const { MASTERY_P1_MOMENTUM, MASTERY_P3_CADENCE } = require("./masteryFlags");
+const { armStandingSlapStep, clearSlapStep } = require("./slapStepIn");
+const { markTachiaiAction, endTachiaiAction, TACHIAI_CALL } = require("./tachiai");
 const {
   grantedVelocityNow,
   isRidingHitSlide,
@@ -123,6 +127,10 @@ const {
   completeLifecycleOwner,
   markLifecycleControlRestore,
 } = require("./actionLifecycleOwnership");
+const {
+  slideSlapChargeFromMovingMs,
+  slideSlapFollowVelForCharge,
+} = require("./momentumTransfer");
 
 const { BOUT_SECONDS } = require("./boutClock");
 const { isTrainingRoom } = require("./trainingMode");
@@ -139,7 +147,6 @@ const {
   SLAP_TOTAL_MS,
   SLAP_TOTAL_MS_ENHANCED,
   SLAP_TOTAL_MS_SLIDE,
-  SLIDE_SLAP_ARM_SPEED,
   CADENCE_WINDOW_MS,
   SLAP_WHIFF_EXTRA_RECOVERY_MS,
   K_SLAP_INHERIT,
@@ -503,11 +510,13 @@ function isRingOutToppleWinType(winType, loser) {
 }
 
 /**
- * Mark a ring-out loser for the client topple and floor their exit shove so
- * they visibly clear the rope and drop off the platform edge (shared by the
- * match path and the training lab — see handleWinCondition).
+ * Mark a ring-out loser for the client topple. Palm, charged, body-slam, and
+ * every other ring-out floor the exit shove so they clear the rope and drop
+ * off the platform. A slap does not topple: dirt friction spends its own
+ * shove on the apron, and the hit reaction already in progress ends to idle.
+ * Shared by the match path and the training lab — see handleWinCondition.
  */
-function applyRingOutResolution(room, loser) {
+function applyRingOutResolution(room, loser, winType) {
   const fallDir =
     loser.x <= MAP_LEFT_BOUNDARY
       ? -1
@@ -520,20 +529,38 @@ function applyRingOutResolution(room, loser) {
       : loser.x < 640
       ? -1
       : 1;
-  loser.isRingOutLoser = true;
-  loser.ringOutDirection = fallDir;
-  loser.ringOutStartTime = simNow(room);
-  // Struck body stays struck for the whole resolution: the hitstun timer
-  // may still clear isHit mid-topple, but the client keys the pose off
-  // isRingOutLoser, so nothing snaps back to idle.
-  const exitSpeed = Math.max(
-    Math.abs(loser.knockbackVelocity.x || 0),
-    RING_OUT_EXIT_VELOCITY
-  );
-  loser.knockbackVelocity.x = fallDir * exitSpeed;
-  loser.knockbackVelocity.y = 0;
-  loser.isHit = true;
-  loser.lastHitTime = simNow(room);
+  if (winType === "slap") {
+    // Dirt stop only. No ring-out topple: the existing isHit reaction plays
+    // out and returns to idle. ringOutDirection is the apron clamp, not a
+    // client fall cue (that keys off isRingOutLoser).
+    loser.isRingOutLoser = false;
+    loser.ringOutDirection = fallDir;
+    loser.ringOutApronStop = true;
+    loser.isAtTheRopes = false;
+    loser.atTheRopesFacingDirection = null;
+    loser.atTheRopesStartTime = 0;
+    const cap = slapRingOutApronSpeedCap(loser.x, fallDir);
+    const current = Math.abs(loser.knockbackVelocity.x || 0);
+    loser.knockbackVelocity.x = fallDir * Math.min(current, cap);
+    loser.knockbackVelocity.y = 0;
+    holdSlapRingOutOnApron(loser);
+  } else {
+    loser.isRingOutLoser = true;
+    loser.ringOutDirection = fallDir;
+    loser.ringOutStartTime = simNow(room);
+    // Struck body stays struck for the whole resolution: the hitstun timer
+    // may still clear isHit mid-topple, but the client keys the pose off
+    // isRingOutLoser, so nothing snaps back to idle.
+    loser.ringOutApronStop = false;
+    const exitSpeed = Math.max(
+      Math.abs(loser.knockbackVelocity.x || 0),
+      RING_OUT_EXIT_VELOCITY
+    );
+    loser.knockbackVelocity.x = fallDir * exitSpeed;
+    loser.knockbackVelocity.y = 0;
+    loser.isHit = true;
+    loser.lastHitTime = simNow(room);
+  }
   return fallDir;
 }
 
@@ -544,7 +571,7 @@ function applyRingOutResolution(room, loser) {
  */
 function handleWinCondition(room, loser, winner, io, winType, extra) {
   // Training lab: no banner / score / rematch, but the ring-out itself plays
-  // the same resolution as a match (topple, exit shove, landing beat) and
+  // the same resolution as a match (topple, and that win type's exit) and
   // only THEN snaps back to the ready marks. It used to reset on the very
   // tick the boundary was crossed, so none of the round-end presentation
   // was ever visible in training.
@@ -552,7 +579,7 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
     if (room.trainingResolution) return; // already resolving this fall
     const ringOut = isRingOutToppleWinType(winType, loser);
     if (ringOut) {
-      applyRingOutResolution(room, loser);
+      applyRingOutResolution(room, loser, winType);
       // Neither body acts during the beat (the winner may keep moving —
       // the lab is theirs — but the downed loser must not walk while flat).
       loser.inputLockUntil = Math.max(
@@ -582,7 +609,13 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
   
   // Determine correct Y position for the loser based on whether they fell off the dohyo
   // Cinematic/clinch kill victims — don't touch their position (pull-kill animates Y via tween)
-  if (!loser.isCinematicKillVictim && !loser.isClinchKillThrowVictim && !loser.isClinchKillPullVictim) {
+  // A slap ring-out stays on the apron; the dirt stop owns their Y.
+  if (
+    winType !== "slap" &&
+    !loser.isCinematicKillVictim &&
+    !loser.isClinchKillThrowVictim &&
+    !loser.isClinchKillPullVictim
+  ) {
     const fallenGroundLevel = GROUND_LEVEL - DOHYO_FALL_DEPTH;
     const loserShouldBeAtFallenLevel = 
       loser.isFallingOffDohyo || 
@@ -662,9 +695,10 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
         winner.y = GROUND_LEVEL;
         winner.isBowing = true;
         
-        const killVictimStaysDown = loser.isCinematicKillVictim || loser.isClinchKillThrowVictim || loser.isClinchKillPullVictim || loser.isRingOutLoser;
+        const killVictimStaysDown = loser.isCinematicKillVictim || loser.isClinchKillThrowVictim || loser.isClinchKillPullVictim || loser.isRingOutLoser || loser.ringOutApronStop;
         if (killVictimStaysDown) {
-          // Kill victims stay in their final pose — no bowing, no repositioning
+          // Kill victims stay in their final pose — no bowing, no repositioning.
+          // A slap apron stop is included so the hit reaction can return to idle.
         } else {
           const loserFellOffDohyo = 
             loser.isFallingOffDohyo || 
@@ -681,7 +715,7 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
       winner.y = GROUND_LEVEL;
       winner.isBowing = true;
       
-      const killVictimStaysDown = loser.isCinematicKillVictim || loser.isClinchKillThrowVictim || loser.isClinchKillPullVictim || loser.isRingOutLoser;
+      const killVictimStaysDown = loser.isCinematicKillVictim || loser.isClinchKillThrowVictim || loser.isClinchKillPullVictim || loser.isRingOutLoser || loser.ringOutApronStop;
       if (killVictimStaysDown) {
         // Kill victims stay in their final pose — no bowing, no repositioning
       } else {
@@ -923,6 +957,8 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
     p.beingThrownFacingDirection = null;
     p.isGrabBreaking = false;
     p.isGrabBreakGather = false;
+    p.isGrabSeparatePalm = false;
+    p.grabSeparatePalmStartSim = 0;
     p.isGrabBreakCountered = false;
     p.isGrabTeching = false;
     p.grabTechRole = null;
@@ -994,6 +1030,8 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
     p.clinchJoltRequest = false;
 
     p.pendingSlapCount = 0;
+    p.pendingSlideSlap = false;
+    p.pendingSlideSlapAt = 0;
     p.slapAnimationToggle = 0;
     p.currentSlapHitConnected = false;
     p.slapOpenHitPending = false;
@@ -1023,18 +1061,24 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
   //   • the loser is marked `isRingOutLoser` with the fall direction, so the
   //     client tips the struck body over past the rope and holds it down
   //     (see client reactionRig TOPPLING / DOWNED);
-  //   • their exit shove is floored so they visibly clear the rope and drop
-  //     off the platform edge instead of parking on the apron;
+  //   • palm / charged / body-slam floor the exit shove so they clear the
+  //     rope and drop off the platform. A slap does not topple: it keeps its
+  //     own shove, the dirt apron stops it, and isHit ends back to idle;
   //   • the winner is marked `isRoundWinner` for the hold/camera.
   // Dedicated kill / grab finishes keep their own authored presentations.
   if (isRingOutToppleWinType(winType, loser)) {
-    applyRingOutResolution(room, loser);
+    applyRingOutResolution(room, loser, winType);
   }
   winner.isRoundWinner = true;
   
   // CRITICAL: Force loser Y position AGAIN after all state changes
   // Skip for cinematic/clinch kill victims — they're mid-arc, flying off, or being pulled off
-  if (!loser.isCinematicKillVictim && !loser.isClinchKillThrowVictim && !loser.isClinchKillPullVictim) {
+  if (
+    !loser.ringOutApronStop &&
+    !loser.isCinematicKillVictim &&
+    !loser.isClinchKillThrowVictim &&
+    !loser.isClinchKillPullVictim
+  ) {
     const loserFellOff = loser.isFallingOffDohyo || isOutsideDohyo(loser.x, loser.y) || loser.y < GROUND_LEVEL;
     loser.y = loserFellOff ? (GROUND_LEVEL - DOHYO_FALL_DEPTH) : GROUND_LEVEL;
   }
@@ -1078,7 +1122,67 @@ function handleWinCondition(room, loser, winner, io, winType, extra) {
 // the cycle (gap ≤ CADENCE_WINDOW_MS). A direct/fresh press (or the flag off)
 // always starts a normal slap. Everything about the enhancement is ceiling-only
 // and gated on MASTERY_P3_CADENCE below.
+/**
+ * Mouse1 during the dodge hop. The hop keeps playing; the press becomes
+ * a belly bump on landing. Does not start a slap and does not ground the arc.
+ */
+function queueDodgeHopSlideSlap(player, nowSim) {
+  if (!player || !player.isDodging) return false;
+  player.pendingSlideSlap = true;
+  player.pendingSlideSlapAt =
+    typeof nowSim === "number" ? nowSim : simNowForPlayer(player);
+  if (
+    player.inputBuffer &&
+    (player.inputBuffer.type === "slap" || player.inputBuffer.type === "slideSlap")
+  ) {
+    player.inputBuffer = null;
+  }
+  return true;
+}
+
+function slideSlapReleaseAllowed(player) {
+  return (
+    !!player &&
+    !player.isDead &&
+    !player.isHit &&
+    !player.isBeingGrabbed &&
+    !player.isGrabbing &&
+    !player.isAttacking &&
+    !player.isDodging &&
+    !player.isSlideJumping &&
+    !player.isFlapping &&
+    !player.flapPhase &&
+    !player.isRopeJumping
+  );
+}
+
+/**
+ * Hop has finished. Fire the queued belly bump on this frame, even if the
+ * dodge's action lock has not expired and even if SHIFT was released on
+ * the way down — that press was the convert.
+ */
+function releaseQueuedSlideSlap(player, rooms, nowSim) {
+  if (!player?.pendingSlideSlap) return false;
+  const queuedAt = player.pendingSlideSlapAt || nowSim;
+  player.pendingSlideSlap = false;
+  player.pendingSlideSlapAt = 0;
+  const age = nowSim - queuedAt;
+  if (age > INPUT_BUFFER_WINDOW_MS) return false;
+  if (!slideSlapReleaseAllowed(player)) return false;
+  player.forceSlideSlap = true;
+  if ((player.actionLockUntil || 0) > nowSim) {
+    player.actionLockUntil = nowSim;
+  }
+  executeSlapAttack(player, rooms);
+  player.forceSlideSlap = false;
+  return !!player.isSlapAttack && !!player.slideSlapArmed;
+}
+
 function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
+  // Consumed immediately so a rejected swing cannot leak into the next slap.
+  const fromHop = !!player.forceSlideSlap;
+  player.forceSlideSlap = false;
+
   // Round is over — never fire a stray slap. This is the central guard covering
   // every slap entry point (buffered post-grab inputs, slap-string continuations
   // on timers, rope-jump attack releases, CPU, etc.) so none of them resolve into
@@ -1096,6 +1200,14 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
   // instant the flap ends. Guarding the single point where isSlapAttack is set
   // true stops the leak at the source (covers buffered/timer/CPU entry points).
   if (player.isFlapping || player.flapPhase) return;
+
+  // Mouse1 during the kick-off hop queues the belly bump. The hop itself
+  // keeps its arc — cancelDodgeHop is what used to turn this press into
+  // a grounded slap.
+  if (player.isDodging) {
+    queueDodgeHopSlideSlap(player);
+    return;
+  }
 
   // In-flight slap keeps its committed facing. Sidestep / air / rope-jump
   // cross-ups must not flip this swing; the NEXT executeSlapAttack snapshots
@@ -1198,13 +1310,21 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
         player.slapEntryAligned = 0;
       }
 
-      // Slide-armed slap: committed ice slide + real speed, not "Shift is down."
-      // A planted reverse-dig stance (near-zero slide) stays a normal slap.
-      const slideSlapEarned = MASTERY_P1_MOMENTUM
-        ? player.slapEntryAligned
-        : Math.max(0, alignedEntryVelocity(slapEntryVelocity, slideDirection));
-      player.slideSlapArmed =
-        !!player.isIceSliding && slideSlapEarned >= SLIDE_SLAP_ARM_SPEED;
+      // Belly bump: any live ice slide, or a press that was queued through
+      // the dodge hop. Speed is not the gate — a short runway is still the
+      // bump, just at the power floor. A walk-up stays a pocket slap.
+      player.slideSlapArmed = !!player.isIceSliding || fromHop;
+      if (player.slideSlapArmed) {
+        player.slideSlapCharge = slideSlapChargeFromMovingMs(
+          player.iceSlideMovingMs || 0
+        );
+        player.slideSlapFollowVel = slideSlapFollowVelForCharge(
+          player.slideSlapCharge
+        );
+      } else {
+        player.slideSlapCharge = 0;
+        player.slideSlapFollowVel = 0;
+      }
 
       if (player.activePowerUp === "power") {
         slapSlideVelocity *= player.powerUpMultiplier - 0.1;
@@ -1245,13 +1365,22 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
       //     standing step-in cannot power the next slap, while a real slide
       //     stays fully earned and still buys its momentum bonus.
       const carriedForward = Math.max(0, (player.movementVelocity || 0) * slideDirection);
-      const stepIn = Math.max(carriedForward, SLAP_STEP_IN_VELOCITY);
-      player.movementVelocity = slideDirection * stepIn;
-      creditGrantedVelocity(
+      const fixedStep = armStandingSlapStep(
         player,
-        slideDirection * Math.max(0, stepIn - carriedForward),
+        slideDirection,
+        carriedForward,
         simNowForPlayer(player)
       );
+      if (!fixedStep) {
+        // Already sliding. Keep that speed. The standing step is not added on top.
+        const stepIn = Math.max(carriedForward, SLAP_STEP_IN_VELOCITY);
+        player.movementVelocity = slideDirection * stepIn;
+        creditGrantedVelocity(
+          player,
+          slideDirection * Math.max(0, stepIn - carriedForward),
+          simNowForPlayer(player)
+        );
+      }
       player.isSlapSliding = true;
     }
   }
@@ -1309,6 +1438,7 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
       : SLAP_TOTAL_MS;
 
   player.isSlapAttack = true;
+  markTachiaiAction(player, TACHIAI_CALL.SLAP, now);
   player.isPalmThrust = false; // A slap is never a palm — clear any lingering hold flag
   player.isLowKick = false;
   player.attackEndTime = now + attackDuration;
@@ -1394,7 +1524,11 @@ function executeSlapAttack(player, rooms, cadenceEnhanced = false) {
       player.isSlapAttack = false;
       player.attackType = null;
       player.isSlapSliding = false;
+      clearSlapStep(player);
+      endTachiaiAction(player, TACHIAI_CALL.SLAP);
       player.slideSlapArmed = false;
+      player.slideSlapCharge = 0;
+      player.slideSlapFollowVel = 0;
       if (slideConvertHit) {
         player.movementVelocity = 0;
         clearGrantedVelocity(player);
@@ -1684,6 +1818,7 @@ function executePalmThrust(player, rooms) {
   // false→true edge), so a monotonically increasing id is what tells the
   // client "a NEW thrust fired" — one force-cone per execution, always.
   player.palmThrustFxId = (player.palmThrustFxId || 0) + 1;
+  markTachiaiAction(player, TACHIAI_CALL.PALM, now);
 
   const activeWindowEnd = now + PALM_THRUST_STARTUP_MS + PALM_THRUST_ACTIVE_MS;
   player.attackEndTime = activeWindowEnd;
@@ -1964,6 +2099,7 @@ function executeChargedAttack(player, chargePercentage, rooms) {
 
   player.currentAction = "charged";
   player.actionLockUntil = nowSim + activeMs;
+  markTachiaiAction(player, TACHIAI_CALL.CHARGE, nowSim);
 
   // Add hit tracking
   player.chargedAttackHit = false;
@@ -2164,11 +2300,17 @@ function handleReadyPositions(room, player1, player2, io) {
         player2.isReady = false;
         room.readyStartTime = null;
         room.teWoTsuiteSent = false;
+        const { sealTachiai } = require("./tachiai");
+        const { commitTachiai } = require("./tachiaiResolve");
+        sealTachiai(room);
+        commitTachiai(room, [room], io);
       }
     } else {
       // Reset if players leave ready state
       room.readyStartTime = null;
       room.teWoTsuiteSent = false;
+      const { unsealTachiai } = require("./tachiai");
+      unsealTachiai(room);
     }
   } else {
     // Clear ready states when game starts
@@ -2791,6 +2933,7 @@ function safelyEndChargedAttack(player, rooms) {
       );
     }
   }
+  endTachiaiAction(player, isPalm ? TACHIAI_CALL.PALM : TACHIAI_CALL.CHARGE);
 }
 
 // Enables frame-1 reversals: if a player holds an input during an unactionable grab/throw state,
@@ -3377,6 +3520,8 @@ module.exports = {
   handleBoutDraw,
   startBoutClock,
   executeSlapAttack,
+  queueDodgeHopSlideSlap,
+  releaseQueuedSlideSlap,
   executePalmThrust,
   executeLowKick,
   cleanupRoom,

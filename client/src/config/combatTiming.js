@@ -10,8 +10,6 @@ export const SLAP_TOTAL_MS = SLAP_STARTUP_MS + SLAP_ACTIVE_MS + SLAP_RECOVERY_MS
 /** Ice-slide convert — MUST match server-io/constants.js SLAP_TOTAL_MS_SLIDE. */
 export const SLIDE_SLAP_EXTRA_RECOVERY_MS = 70;
 export const SLAP_TOTAL_MS_SLIDE = SLAP_TOTAL_MS + SLIDE_SLAP_EXTRA_RECOVERY_MS;
-/** MUST match server-io/constants.js SLIDE_SLAP_ARM_SPEED. */
-export const SLIDE_SLAP_ARM_SPEED = 1.45;
 
 /** Early-active slap grace — open hits deferred so a clap tap can still land.
  *  MUST match server-io/constants.js (PERFECT_PARRY_WINDOW, 2 ticks @ 64Hz). */
@@ -122,6 +120,38 @@ export function shouldRestartPalmThrustClock(
  *
  * MUST stay under CMD_DRIVE_RELEASE_IMPACT_MS + CMD_DRIVE_RELEASE_TWEEN_MS.
  */
+/**
+ * Command-grab break: both bodies strain in the grip before the palms.
+ * MUST match server-io/constants.js GRAB_BREAK_TOGETHER_MS.
+ */
+export const GRAB_BREAK_GATHER_MS = 160;
+
+/**
+ * Wall-clock wait before grab-break juice (burst, callout, impact sound).
+ * The server stamps `impactSimTime` (room sim clock). Playback trails that
+ * clock by one-way latency plus the snapshot buffer, so scheduling from the
+ * packet's arrival alone pops the star while the bodies are still gripping.
+ *
+ * Returns milliseconds from `now` (negative means the impact is already on screen).
+ */
+export function grabBreakJuiceDelayMs({
+  impactSimTime = null,
+  effectDelayMs = 0,
+  now = 0,
+  serverOffset = 0,
+  clockSynced = false,
+  oneWayMs = 0,
+  visualLagMs = 0,
+} = {}) {
+  if (typeof impactSimTime === "number" && Number.isFinite(impactSimTime) && clockSynced) {
+    return impactSimTime - serverOffset + oneWayMs + visualLagMs - now;
+  }
+  if (typeof effectDelayMs === "number" && effectDelayMs > 0) {
+    return effectDelayMs + visualLagMs;
+  }
+  return 0;
+}
+
 export const GRAB_SEPARATE_PALM_ANIM = {
   STARTUP_END: 40,
   // MUST match server-io/constants.js CMD_DRIVE_RELEASE_IMPACT_MS.

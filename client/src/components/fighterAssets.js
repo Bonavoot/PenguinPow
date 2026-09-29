@@ -143,8 +143,7 @@ import gunLaunchSound from "../sounds/gun-launch.ogg";
 // ============================================
 import gameMapBackground from "../assets/game-map-444.webp";
 import antarcticaSky from "../assets/map-antarctica-sky.webp";
-import antarcticaFloor from "../assets/game-map-floor.png";
-import antarcticaWaterMask from "../assets/game-map-water-mask.png";
+import antarcticaFloor from "../assets/game-map-antarctica2-floor.png";
 // In-match dohyo is the flat display bake; style webp is editor-only (--live).
 import dohyoOverlay from "../assets/dohyo-display.webp";
 import gyojiImage from "../assets/gyoji.png";
@@ -333,7 +332,6 @@ const initializeImagePreloading = () => {
   preloadImage(gameMapBackground);
   preloadImage(antarcticaSky);
   preloadImage(antarcticaFloor);
-  preloadImage(antarcticaWaterMask);
   preloadImage(dohyoOverlay);
 
   preloadImage(powerWaterIcon);

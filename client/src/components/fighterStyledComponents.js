@@ -2,6 +2,7 @@ import styled, { keyframes } from "styled-components";
 import { isOutsideDohyo } from "../constants";
 import getImageSrc from "./getImageSrc";
 import { GROUND_LEVEL } from "./fighterAssets";
+import { GRAB_BREAK_GATHER_MS } from "../config/combatTiming";
 import { FONT_DISPLAY, FONT_UI, FONT_WEIGHT, TEXT_SHADOW_COMBAT, TEXT_SHADOW_COMBAT_HEAVY, TEXT_SHADOW_DISPLAY, TEXT_SHADOW_UI, TRACK } from "./menuTheme";
 
 // Painted soles sit ~2.1% above the sprite box bottom (transparent padding
@@ -216,6 +217,11 @@ export const getFighterPopFilter = (props) => {
   if (props.$isGrabBreaking) {
     return `${base} drop-shadow(0 0 8px rgba(0, 255, 128, 0.85))`;
   }
+  // Break accepted: the fighter who pressed gets the same green the burst
+  // uses, for the strain only. The holder stays unlit so the shove has a direction.
+  if (props.$isGrabBreakGather && props.$isGrabBreakBreaker) {
+    return `${base} drop-shadow(0 0 6px rgba(59, 255, 90, 0.85))`;
+  }
   // Perfect raw parry: tight ELECTRIC cyan rim — matches the hotter perfect
   // burst (regular hold stance keeps the deeper blue rim below).
   if (props.$isPerfectRawParrySuccess) {
@@ -348,8 +354,36 @@ const grabArmExtra = (props) => {
 // CSS animation string for the grab-arm overlay (and any motion twin that must
 // stay glued to it — e.g. Deep Grip tip glow). Kept as one resolver so the arm
 // img and the glow never drift onto different keyframes.
+const GRAB_BREAK_GATHER_EASE = "cubic-bezier(0.22, 0.9, 0.28, 1)";
+
+const grabBreakGatherAnimation = (props, arm) => {
+  const name = props.$isGrabBreakBreaker
+    ? arm
+      ? "grabBreakGatherBreakerArm"
+      : "grabBreakGatherBreaker"
+    : arm
+      ? "grabBreakGatherHolderArm"
+      : "grabBreakGatherHolder";
+  return `${name} ${GRAB_BREAK_GATHER_MS}ms ${GRAB_BREAK_GATHER_EASE} forwards`;
+};
+
+const grabBreakAbsorbAnimation = (props, arm) => {
+  const ms = Math.max(200, props.$grabBreakSepMs || 350);
+  const name = arm ? "grabBreakAbsorbArm" : "grabBreakAbsorb";
+  return `${name} ${ms}ms cubic-bezier(0.16, 0.84, 0.32, 1) forwards`;
+};
+
+const inGrabBreakAbsorb = (props) =>
+  props.$grabBreakSepCurve === "break" &&
+  props.$isGrabBreakSeparating &&
+  !props.$isGrabBreakGather &&
+  !props.$isGrabSeparatePalm;
+
 export const resolveGrabArmAnimation = (props) => {
   if (!props.$grabArmLayer) return null;
+  // The struggle replaces the drive loop the moment the break is accepted.
+  if (props.$isGrabBreakGather) return grabBreakGatherAnimation(props, true);
+  if (inGrabBreakAbsorb(props)) return grabBreakAbsorbAnimation(props, true);
   if (props.$isGrabBellyFlopping) {
     return "grabBellyFlopLungeArm 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards";
   }
@@ -916,6 +950,10 @@ export const StyledImage = styled("img")
           ? props.$facing === 1
             ? "scaleX(1) translateY(10%)"
             : "scaleX(-1) translateY(10%)"
+          // Pose-driven tumble (see clinchKillThrowSpin). Not a CSS animation:
+          // portaling behind the dohyo remounts this node and would restart one.
+          : props.$killThrowSpinTransform
+          ? props.$killThrowSpinTransform
           : props.$facing === 1
           ? `scaleX(1)${grabArmExtra(props)}`
           : `scaleX(-1)${grabArmExtra(props)}`,
@@ -966,10 +1004,9 @@ export const StyledImage = styled("img")
           // landing frame — see KILL_THROW_LANDING_EARLY_PX), not when the
           // server's isBeingThrown flag clears a broadcast later. One impact.
           ? "clinchKillThrowLandSquash 0.58s cubic-bezier(0.22, 0.55, 0.3, 1) forwards"
-          // Matches the server arc (CLINCH_KILL_THROW_DURATION_MS 900): the body
-          // is horizontal AND lowered onto the ground line exactly at touchdown,
-          // so the swap to the flat landing art is a splat, not a cut.
-          : "clinchKillThrowSpin 0.86s ease-in forwards"
+          // Tumble is an inline transform written from flight progress, so it
+          // survives the dohyo-edge portal and finishes flat on the real ground.
+          : "none"
         : props.$isClinchKillPullVictim
         // Pull kill uses the belly-laying pose (already a flat-on-ice image) and
         // the server drives the heavy bounce/slide via Y position — so no CSS
@@ -1000,6 +1037,10 @@ export const StyledImage = styled("img")
         ? "none"
         : props.$isBeingThrown && !props.$isClinchKillThrowVictim
         ? "none"
+        : props.$isGrabBreakGather
+        ? grabBreakGatherAnimation(props, false)
+        : inGrabBreakAbsorb(props)
+        ? grabBreakAbsorbAnimation(props, false)
         : props.$isGrabSeparating
         ? "grabSeparatePush 0.3s ease-out"
         : props.$isAttemptingPull || props.$isMatadorSuccess
@@ -1412,6 +1453,23 @@ export const StyledImage = styled("img")
     87% { transform: scaleX(var(--facing, 1)) translateX(-2px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
     100% { transform: scaleX(var(--facing, 1)) translateX(0px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
   }
+  @keyframes grabBreakGatherBreakerArm {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    16% { transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(0.9) translateX(calc(var(--facing, 1) * -6px))${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    58% { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(1.05) translateX(calc(var(--facing, 1) * 8px))${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
+  @keyframes grabBreakGatherHolderArm {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    16% { transform: scaleX(var(--facing, 1)) scaleY(0.96) translateX(calc(var(--facing, 1) * 3px)) skewX(0deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    58% { transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(0.93) translateX(calc(var(--facing, 1) * -8px)) skewX(calc(var(--facing, 1) * 4deg))${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(calc(var(--facing, 1) * -2px)) skewX(0deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
+  @keyframes grabBreakAbsorbArm {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    23% { transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(0.92) translateX(calc(var(--facing, 1) * -9px)) skewX(calc(var(--facing, 1) * 5deg))${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg)${GRAB_ARM_PIVOT_AFTER_MOTION}; transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
   @keyframes grabBreakShakeArm {
     0%   { transform: scaleX(var(--facing, 1)) translateX(0px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
     25%  { transform: scaleX(var(--facing, 1)) translateX(-5px)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
@@ -1516,6 +1574,28 @@ export const StyledImage = styled("img")
     20% { transform: scaleX(calc(var(--facing, 1) * 0.88)) translateX(calc(var(--facing, 1) * -10px)) scaleY(0.90)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
     50% { transform: scaleX(calc(var(--facing, 1) * 1.06)) translateX(calc(var(--facing, 1) * 3px)) scaleY(0.96)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
     100% { transform: scaleX(var(--facing, 1)) translateX(0) scaleY(1)${GRAB_ARM_PIVOT_AFTER_MOTION}; }
+  }
+  /* Breaker loads, drives into the grip, then hands off near identity so the
+     palm sprites don't pop off an offset. Sole-pivoted — feet stay planted.
+     160ms, one shot. Not an infinite jitter. */
+  @keyframes grabBreakGatherBreaker {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    16% { transform: scaleX(calc(var(--facing, 1) * 0.96)) scaleY(0.9) translateX(calc(var(--facing, 1) * -6px)); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    58% { transform: scaleX(calc(var(--facing, 1) * 1.05)) scaleY(1.05) translateX(calc(var(--facing, 1) * 8px)); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
+  @keyframes grabBreakGatherHolder {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    16% { transform: scaleX(var(--facing, 1)) scaleY(0.96) translateX(calc(var(--facing, 1) * 3px)) skewX(0deg); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    58% { transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(0.93) translateX(calc(var(--facing, 1) * -8px)) skewX(calc(var(--facing, 1) * 4deg)); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(calc(var(--facing, 1) * -2px)) skewX(0deg); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+  }
+  /* Holder, after the palms connect: rocked on the hit, then back to stance
+     as the slide settles. Front-loaded so it matches the break curve. */
+  @keyframes grabBreakAbsorb {
+    0% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    23% { transform: scaleX(calc(var(--facing, 1) * 0.94)) scaleY(0.92) translateX(calc(var(--facing, 1) * -9px)) skewX(calc(var(--facing, 1) * 5deg)); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
+    100% { transform: scaleX(var(--facing, 1)) scaleY(1) translateX(0) skewX(0deg); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
   @keyframes grabBreakShake {
     0%   { transform: scaleX(var(--facing, 1)) translateX(0px); }
@@ -1659,20 +1739,10 @@ export const StyledImage = styled("img")
     85% { transform: scaleX(calc(var(--facing, 1) * 1.01)) scaleY(0.99); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
     100% { transform: scaleX(var(--facing, 1)) scaleY(1); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
   }
-  /* Kill-throw flight. Rotates about the sprite centre (a tumbling body) and,
-     in the second half, also translates the box DOWN so the horizontal body's
-     UNDERSIDE meets the ground line exactly at touchdown: the rotated standing
-     body (≈75% of the box wide) has its lower edge ~12.5% up the box, the
-     landing art's flat body (+ its translateY(10%)) sits ~5% below the box, so
-     ≈18% closes the gap. Without the drop the swap jumped from a body floating
-     half a sprite up to one lying on the ice — the "fall to splat" cut. */
-  @keyframes clinchKillThrowSpin {
-    0%   { transform: translateY(0%)  scaleX(var(--facing, 1)) rotate(0deg);  transform-origin: center center; }
-    30%  { transform: translateY(1%)  scaleX(var(--facing, 1)) rotate(28deg); transform-origin: center center; }
-    62%  { transform: translateY(6%)  scaleX(var(--facing, 1)) rotate(58deg); transform-origin: center center; }
-    100% { transform: translateY(18%) scaleX(var(--facing, 1)) rotate(90deg); transform-origin: center center; }
-  }
-  /* Heavy body-slam plant: intentional flatten into ice (art padding + plant). */
+  /* Heavy body-slam plant: intentional flatten into ice (art padding + plant).
+     The airborne tumble that leads into this is pose-driven
+     (clinchKillThrowSpin.js), not a keyframe — a keyframe restarted whenever
+     the sprite was portaled behind the dohyo. */
   @keyframes clinchKillThrowLandSquash {
     0%   { transform: scaleX(calc(var(--facing, 1) * 1.42)) scaleY(0.42) translateY(22%); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
     16%  { transform: scaleX(calc(var(--facing, 1) * 1.18)) scaleY(0.72) translateY(14%); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }

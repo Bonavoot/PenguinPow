@@ -114,6 +114,7 @@ import "./theme.css";
 import {
   DOHYO_LEFT_BOUNDARY,
   DOHYO_RIGHT_BOUNDARY,
+  DOHYO_FALL_DEPTH,
   isOutsideDohyo,
   clampToRopeRest,
 } from "../constants";
@@ -121,11 +122,11 @@ import {
   SLAP_ANIM,
   PALM_THRUST_ANIM,
   GRAB_SEPARATE_PALM_ANIM,
+  grabBreakJuiceDelayMs,
   resolvePalmThrustFrame,
   shouldRestartPalmThrustClock,
   AP_WHIFF_RECOVERY_MS,
   AP_FLURRY_COVER_REGULAR_MS,
-  SLIDE_SLAP_ARM_SPEED,
   CHARGE_HOP_MS,
 } from "../config/combatTiming";
 import { shouldPredictChargeRelease } from "../prediction/chargeHoldPrediction";
@@ -151,11 +152,9 @@ function contactFxX(data) {
 function hasContactSeam(data) {
   return data && typeof data.contactX === "number";
 }
-// Kill-throw: swap to the flat landing art this many px above GROUND_LEVEL.
-// Was 80 (≈ 75 ms of fall) — the body flattened in mid-air and floated down.
-// The spin keyframe now arrives horizontal AND on the ground line, so the swap
-// happens on the touchdown frame itself (one frame of fall at terminal speed),
-// and the splat squash starts on that same frame.
+// Kill-throw: swap to the flat landing art this many px above the landing
+// plane (ring GROUND, or the lower apron when the arc clears the dohyo).
+// The tumble arrives horizontal on that plane, so the swap is the plant.
 const KILL_THROW_LANDING_EARLY_PX = 14;
 // Must clear this height before early-landing can arm — blocks the pre-rise
 // grounded frames at throw start from looking like "near impact". The kill
@@ -182,7 +181,12 @@ function roundResultBannerDelayMs(winType) {
   // on that impact (its own fade-in then finishes ~0.3 s later).
   return RIG_TUNING.TOPPLE_MS + 40;
 }
-import { getDisplayHitstopUntil, getEstimatedRtt } from "../lib/serverClock";
+import {
+  getDisplayHitstopUntil,
+  getEstimatedRtt,
+  getServerOffset,
+  isServerClockSynced,
+} from "../lib/serverClock";
 import {
   MovementPredictor,
   isMovementPredictionEnabled,
@@ -364,6 +368,13 @@ import {
   clearCinematicKillFlight,
   stepCinematicKillFlight,
 } from "../combatPresentation/cinematicKillFlight";
+import {
+  createKillThrowFlight,
+  poseKillThrowFlight,
+  resetKillThrowFlight,
+  killThrowSpinTransform,
+  KILL_THROW_ARC_HEIGHT,
+} from "../combatPresentation/clinchKillThrowSpin";
 import {
   createSlapConnectHold,
   armSlapConnectHold,
@@ -900,6 +911,9 @@ const GameFighter = ({
     freezeEnd: 0,
     lastHitstopUntil: 0,
   });
+  // Shove-off palms advance on the snapshot playhead, not wall clock, so the
+  // active pose and the slide start on the same frame. -1 = not in that pose.
+  const sepPalmFrameRef = useRef(-1);
 
   // SLAP animation: client-driven windup → smear → hit → recovery.
   // Boundaries from config/combatTiming.js (mirrors server SLAP_*_MS):
@@ -1136,6 +1150,9 @@ const GameFighter = ({
   const killThrowAirbornePeakRef = useRef(false);
   const killThrowShowLandingRef = useRef(false);
   const killThrowLandBundleFiredRef = useRef(false);
+  // Tumble lives here, not in a CSS animation: crossing the dohyo edge portals
+  // the sprite and would restart a keyframe from upright.
+  const killThrowFlightRef = useRef(createKillThrowFlight());
   const onKillThrowVisualLandRef = useRef(null);
   // Bumped by the rAF loop when a time-based visual (hit flash / hit tint /
   // idle sprite hold / dohyo-side flip) needs a re-render to update.
@@ -1574,6 +1591,11 @@ const GameFighter = ({
 
       switch (action.type) {
         case "slap":
+          // Mouse1 during the dodge hop is a queued belly bump. Predicting a
+          // slap here clears isDodging and visually cancels the kick-off.
+          if (penguin.isDodging || predictedState.current.isDodging) {
+            break;
+          }
           // Only predict if we can perform actions AND not already charging AND
           // not parrying (held, committed, or server-confirmed) — see isLocalParryActive.
           // Also respects the server's strike cooldown (attackCooldownUntil) so a
@@ -1590,10 +1612,7 @@ const GameFighter = ({
               isAttacking: true,
               isPalmThrust: false,
               isLowKick: false,
-              slideSlapArmed: !!(
-                penguin.isIceSliding &&
-                Math.abs(penguin.movementVelocity || 0) >= SLIDE_SLAP_ARM_SPEED
-              ),
+              slideSlapArmed: !!penguin.isIceSliding,
               slapAnimation: predictedState.current.slapAnimation === 1 ? 2 : 1,
               // CRITICAL: Clear other action predictions to prevent visual flicker
               isChargingAttack: false,
@@ -2593,6 +2612,70 @@ const GameFighter = ({
 
   // New enhanced effects state
   const [grabBreakEffectPosition, setGrabBreakEffectPosition] = useState(null);
+  // Local victim: the strain starts on the spacebar, before the server
+  // round trip. The confirm uses the same animation, so it does not restart.
+  const [localGrabBreakGather, setLocalGrabBreakGather] = useState(false);
+  const localGatherSawServerRef = useRef(false);
+
+  useEffect(() => {
+    if (!isLocalPlayer) return undefined;
+    const onDown = (e) => {
+      if (e.repeat) return;
+      if (e.code !== "Space" && e.key !== " ") return;
+      if (!isLocalGameActive()) return;
+      const p = penguinRef.current;
+      if (!p?.isBeingGrabbed || p.isGrabbing || p.isGassed) return;
+      if (p.isGrabBreakGather || p.isGrabSeparatePalm) return;
+      localGatherSawServerRef.current = false;
+      setLocalGrabBreakGather(true);
+    };
+    window.addEventListener("keydown", onDown);
+    return () => window.removeEventListener("keydown", onDown);
+  }, [isLocalPlayer]);
+
+  useEffect(() => {
+    if (!localGrabBreakGather) return;
+    if (penguin.isGrabSeparatePalm) {
+      setLocalGrabBreakGather(false);
+      return;
+    }
+    if (penguin.isGrabBreakGather) localGatherSawServerRef.current = true;
+    if (localGatherSawServerRef.current && !penguin.isGrabBreakGather) {
+      setLocalGrabBreakGather(false);
+      return;
+    }
+    if (
+      !penguin.isBeingGrabbed &&
+      !penguin.isGrabBreakGather &&
+      !penguin.isGrabBreakSeparating
+    ) {
+      setLocalGrabBreakGather(false);
+    }
+  }, [
+    localGrabBreakGather,
+    penguin.isGrabSeparatePalm,
+    penguin.isGrabBreakGather,
+    penguin.isBeingGrabbed,
+    penguin.isGrabBreakSeparating,
+  ]);
+
+  useEffect(() => {
+    if (!isLocalPlayer || !socket) return undefined;
+    const onBlocked = (data) => {
+      if (data?.playerId === localId && data?.action === "grab_break") {
+        localGatherSawServerRef.current = false;
+        setLocalGrabBreakGather(false);
+      }
+    };
+    socket.on("stamina_blocked", onBlocked);
+    return () => socket.off("stamina_blocked", onBlocked);
+  }, [isLocalPlayer, socket, localId]);
+
+  useEffect(() => {
+    if (!localGrabBreakGather) return undefined;
+    const tid = setTimeout(() => setLocalGrabBreakGather(false), 700);
+    return () => clearTimeout(tid);
+  }, [localGrabBreakGather]);
   const [grabTechEffectPosition, setGrabTechEffectPosition] = useState(null);
   const [counterGrabEffectPosition, setCounterGrabEffectPosition] =
     useState(null);
@@ -3004,6 +3087,28 @@ const GameFighter = ({
           newPos = { x: sampled.x, y: sampled.y };
         } else {
           newPos = { x: currentState.current.x, y: currentState.current.y };
+        }
+
+        // Shove-off palms share this playhead with the slide. Re-render only
+        // when the pose index changes (startup → smear → hit → settle).
+        const palmBody = penguinRef.current;
+        if (
+          palmBody?.isGrabSeparatePalm &&
+          palmBody.grabSeparatePalmStartSim > 0
+        ) {
+          const play = snapshotInterpRef.current.playbackT;
+          if (typeof play === "number") {
+            const frame = resolvePalmThrustFrame(
+              play - palmBody.grabSeparatePalmStartSim,
+              GRAB_SEPARATE_PALM_ANIM
+            );
+            if (frame !== sepPalmFrameRef.current) {
+              sepPalmFrameRef.current = frame;
+              forceVisualRender();
+            }
+          }
+        } else if (sepPalmFrameRef.current !== -1) {
+          sepPalmFrameRef.current = -1;
         }
 
         // Charged DEMOLISHED: integrate on the display clock so the rocket is
@@ -3491,16 +3596,32 @@ const GameFighter = ({
           forceVisualRender();
         }
 
-        // Kill-throw early landing pose: once the victim has peaked, crossing
-        // near-ground swaps hit+spin → flat landing art before impact.
+        // Kill-throw tumble + early landing. Rotation follows the arc (and
+        // finishes flat on the ring OR the lower apron). Written here so it
+        // keeps turning between React renders; the portal at the dohyo edge
+        // only remounts the node, it does not own the angle.
         if (p.isClinchKillThrowVictim) {
+          const spin = poseKillThrowFlight(killThrowFlightRef.current, {
+            y: newPos.y,
+            x: newPos.x,
+            offDohyo: !!p.clinchKillThrowOffDohyo,
+            ground: SHADOW_GROUND_LEVEL,
+            arcHeight: KILL_THROW_ARC_HEIGHT,
+            fallDepth: DOHYO_FALL_DEPTH,
+            dohyoLeft: DOHYO_LEFT_BOUNDARY,
+            dohyoRight: DOHYO_RIGHT_BOUNDARY,
+          });
           if (newPos.y > SHADOW_GROUND_LEVEL + KILL_THROW_PEAK_ARM_PX) {
             killThrowAirbornePeakRef.current = true;
           }
           const showLanding =
             !p.isBeingThrown ||
             (killThrowAirbornePeakRef.current &&
-              newPos.y <= SHADOW_GROUND_LEVEL + KILL_THROW_LANDING_EARLY_PX);
+              newPos.y <= spin.landY + KILL_THROW_LANDING_EARLY_PX);
+          if (!showLanding && fighterEl) {
+            fighterEl.style.transform = killThrowSpinTransform(p.facing, spin);
+            fighterEl.style.transformOrigin = "center center";
+          }
           if (showLanding !== killThrowShowLandingRef.current) {
             killThrowShowLandingRef.current = showLanding;
             forceVisualRender();
@@ -3519,11 +3640,13 @@ const GameFighter = ({
         } else if (
           killThrowAirbornePeakRef.current ||
           killThrowShowLandingRef.current ||
-          killThrowLandBundleFiredRef.current
+          killThrowLandBundleFiredRef.current ||
+          killThrowFlightRef.current.active
         ) {
           killThrowAirbornePeakRef.current = false;
           killThrowShowLandingRef.current = false;
           killThrowLandBundleFiredRef.current = false;
+          resetKillThrowFlight(killThrowFlightRef.current);
         }
       }
 
@@ -5675,13 +5798,36 @@ const GameFighter = ({
               deduped: false,
             });
           }
-          setGrabBreakEffectPosition({
-            x: centerX,
-            y: centerY,
-            breakId: data.breakId || pres?.eventId || `break-${Date.now()}`,
-            breakerPlayerNumber: data.breakerPlayerNumber || 1,
+          const fireGrabBreakJuice = () => {
+            setGrabBreakEffectPosition({
+              x: centerX,
+              y: centerY,
+              breakId: data.breakId || pres?.eventId || `break-${Date.now()}`,
+              breakerPlayerNumber: data.breakerPlayerNumber || 1,
+            });
+            playSound(grabBreakSound, 0.042, null, 1.0, xToPan(centerX));
+            const dirX =
+              Math.sign((data.breakerX ?? 0) - (data.grabberX ?? 0)) || 1;
+            addShake("grab_break", { dirX, scale: 0.9 });
+          };
+          // Burst, callout, and impact land when the palms connect and the
+          // slide starts — not when this packet arrives (that was mid-strain).
+          const juiceDelay = grabBreakJuiceDelayMs({
+            impactSimTime: data.impactSimTime,
+            effectDelayMs: data.effectDelayMs,
+            now: performance.now(),
+            serverOffset: getServerOffset(),
+            clockSynced: isServerClockSynced(),
+            oneWayMs: getEstimatedRtt() / 2,
+            visualLagMs: LOCAL_INTERP_DELAY_MS,
           });
-          playSound(grabBreakSound, 0.01);
+          if (juiceDelay > 12) {
+            pendingSocketTimeouts.current.push(
+              setTimeout(fireGrabBreakJuice, juiceDelay)
+            );
+          } else {
+            fireGrabBreakJuice();
+          }
         }
       };
       socket.on("grab_break", handleGrabBreak);
@@ -9406,19 +9552,39 @@ const GameFighter = ({
     displayPosition.y
   );
 
-  // Kill-throw landing pose: after peaking, swap early (near ground) so the
-  // flat KO art finishes the fall instead of hard-cutting on impact.
+  // Kill-throw landing pose: after peaking, swap early (near the real ground,
+  // ring or lower apron) so the flat KO art finishes the fall.
+  const killThrowPose = penguin.isClinchKillThrowVictim
+    ? poseKillThrowFlight(killThrowFlightRef.current, {
+        y: displayPosition.y,
+        x: displayPosition.x,
+        offDohyo: !!penguin.clinchKillThrowOffDohyo,
+        ground: SHADOW_GROUND_LEVEL,
+        arcHeight: KILL_THROW_ARC_HEIGHT,
+        fallDepth: DOHYO_FALL_DEPTH,
+        dohyoLeft: DOHYO_LEFT_BOUNDARY,
+        dohyoRight: DOHYO_RIGHT_BOUNDARY,
+      })
+    : null;
   if (!penguin.isClinchKillThrowVictim) {
     killThrowAirbornePeakRef.current = false;
+    if (killThrowFlightRef.current.active) {
+      resetKillThrowFlight(killThrowFlightRef.current);
+    }
   } else if (displayPosition.y > SHADOW_GROUND_LEVEL + KILL_THROW_PEAK_ARM_PX) {
     killThrowAirbornePeakRef.current = true;
   }
+  const killThrowLandY = killThrowPose ? killThrowPose.landY : SHADOW_GROUND_LEVEL;
   const showClinchKillThrowLanding =
     !!penguin.isClinchKillThrowVictim &&
     (!penguin.isBeingThrown ||
       (killThrowAirbornePeakRef.current &&
-        displayPosition.y <= SHADOW_GROUND_LEVEL + KILL_THROW_LANDING_EARLY_PX));
+        displayPosition.y <= killThrowLandY + KILL_THROW_LANDING_EARLY_PX));
   killThrowShowLandingRef.current = showClinchKillThrowLanding;
+  const killThrowSpinCss =
+    killThrowPose && !showClinchKillThrowLanding
+      ? killThrowSpinTransform(penguin.facing, killThrowPose)
+      : null;
 
   // ============================================
   // SPRITE RECOLORING
@@ -9484,8 +9650,15 @@ const GameFighter = ({
   // It rides this clock so both can never be live at once and the sequence
   // always restarts from the windup.
   const inSeparatePalm = !!penguin.isGrabSeparatePalm;
+  const separatePalmStartSim = penguin.grabSeparatePalmStartSim;
+  // Shove-off palms follow the snapshot playhead (same clock as the slide).
+  // A real palm thrust still uses the wall clock below.
+  const separatePalmSynced =
+    inSeparatePalm &&
+    typeof separatePalmStartSim === "number" &&
+    separatePalmStartSim > 0;
   const palmPoseActive = displayPenguin.isPalmThrust || inSeparatePalm;
-  if (palmPoseActive) {
+  if (palmPoseActive && !separatePalmSynced) {
     // Distinct id space from palmThrustFxId so a thrust immediately following a
     // shove-off (or vice versa) re-anchors instead of inheriting stale elapsed.
     const fxId = inSeparatePalm ? "sep" : penguin.palmThrustFxId || 0;
@@ -9514,7 +9687,24 @@ const GameFighter = ({
     palmThrustAnimRef.current.startedAt = 0;
   }
   let palmThrustFrame = 2;
-  if (palmPoseActive && palmThrustAnimRef.current.startedAt) {
+  if (separatePalmSynced) {
+    const play = snapshotInterpRef.current?.playbackT;
+    const elapsed =
+      typeof play === "number"
+        ? play - separatePalmStartSim
+        : sepPalmFrameRef.current >= 0
+          ? null
+          : 0;
+    if (elapsed == null && sepPalmFrameRef.current >= 0) {
+      palmThrustFrame = sepPalmFrameRef.current;
+    } else {
+      palmThrustFrame = resolvePalmThrustFrame(
+        elapsed ?? 0,
+        GRAB_SEPARATE_PALM_ANIM
+      );
+      sepPalmFrameRef.current = palmThrustFrame;
+    }
+  } else if (palmPoseActive && palmThrustAnimRef.current.startedAt) {
     const anim = inSeparatePalm ? GRAB_SEPARATE_PALM_ANIM : PALM_THRUST_ANIM;
     // Hitstop-aware: the strike frame holds through the on-hit freeze instead of
     // the clock silently advancing past ACTIVE_END while the game is frozen.
@@ -10363,6 +10553,21 @@ const GameFighter = ({
     $isGuarding: !!penguin.isGuarding,
     $isGuardBlockSuccess: guardBlockSuccess,
     $isGrabBreaking: penguin.isGrabBreaking,
+    // Strain wins over the drive loop. Palms cancel it the same snapshot
+    // they start, even if the local press-prediction flag is still set.
+    $isGrabBreakGather:
+      !penguin.isGrabSeparatePalm &&
+      (!!penguin.isGrabBreakGather ||
+        (isLocalPlayer && localGrabBreakGather)),
+    $isGrabBreakBreaker:
+      !!penguin.isBeingGrabbed || (isLocalPlayer && localGrabBreakGather),
+    $isGrabBreakSeparating: !!penguin.isGrabBreakSeparating,
+    $isGrabSeparatePalm: !!penguin.isGrabSeparatePalm,
+    $grabBreakSepCurve: penguin.grabBreakSepCurve || null,
+    $grabBreakSepMs:
+      typeof penguin.grabBreakSepDuration === "number"
+        ? penguin.grabBreakSepDuration
+        : 350,
     $isReady: penguin.isReady,
     $readyIntroComplete: readyIntroComplete,
     $isHit: penguin.isHit || penguin.isHitFalling,
@@ -10484,6 +10689,7 @@ const GameFighter = ({
     $isClinchKillThrowVictim: penguin.isClinchKillThrowVictim,
     $isClinchKillPullVictim: penguin.isClinchKillPullVictim,
     $showClinchKillThrowLanding: showClinchKillThrowLanding,
+    $killThrowSpinTransform: killThrowSpinCss,
     $isBeingThrown: penguin.isBeingThrown,
     $isLocalPlayer: penguin.id === localId,
     $onIce: !isOutsideDohyo(poseResolved.renderX, poseResolved.renderY),

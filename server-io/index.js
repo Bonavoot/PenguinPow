@@ -24,7 +24,7 @@ const {
   DODGE_SLIDE_MOMENTUM, DODGE_POWERSLIDE_BOOST,
   ICE_SLIDE_FRICTION, ICE_SLIDE_COAST_FRICTION, ICE_SLIDE_STEER_FRICTION, ICE_SLIDE_OPPOSE_FRICTION,
   ICE_SLIDE_EXIT_SPEED, ICE_SLIDE_MAX_SPEED, ICE_SLIDE_MAINTAIN,
-  SLIDE_SLAP_FOLLOW_FRICTION,
+  SLIDE_SLAP_FOLLOW_FRICTION, SLIDE_SLAP_MOVING_SPEED,
   ICE_SLIDE_REVERSE_HOP_MS, ICE_SLIDE_REVERSE_HOP_HEIGHT,
   SLIDE_JUMP_MIN_MS, SLIDE_JUMP_BUFFER_MS, SLIDE_JUMP_LIFTOFF_IMPULSE,
   SLIDE_JUMP_GRAVITY, SLIDE_JUMP_AIR_STEER, SLIDE_JUMP_AIR_STEER_BLEED,
@@ -84,6 +84,7 @@ const {
   SETUP_THROW_RICOCHET_HIT_AT,
   CLINCH_PULL_SWAP_ARC_HEIGHT,
 } = require("./constants");
+const { sampleKillThrowY } = require("./killThrowArc");
 
 // Import game utilities
 const {
@@ -100,6 +101,7 @@ const {
   canPlayerSidestep,
   resetPlayerAttackStates,
   clearAllActionStates,
+  beginAtTheRopes,
   groundPlayerIfNotAirborne,
   cancelDodgeHop,
   isWithinMapBoundaries,
@@ -160,6 +162,7 @@ const {
   stampMomentumWindow,
   applyBalanceDamage,
   endPerfectParryStun,
+  holdSlapRingOutOnApron,
 } = require("./gameUtils");
 const {
   beginSlideJumpLandSettle,
@@ -192,11 +195,22 @@ const {
   safelyEndChargedAttack,
   activateBufferedInputAfterGrab,
   executeInputBuffer,
+  releaseQueuedSlideSlap,
   resolveMatadorPull,
 } = require("./gameFunctions");
 
 // MASTERY OVERHAUL feature flags (Phase 1: momentum inheritance; Phase 2: posture).
 const { MASTERY_P1_MOMENTUM, MASTERY_P2_POSTURE, MASTERY_P5_ASSISTS } = require("./masteryFlags");
+const { settleSlapApproach } = require("./slapStepIn");
+const {
+  TACHIAI_HAKKIYOI_MS,
+  TACHIAI_SIDESTEP_TRAVEL,
+  unsealTachiai,
+  isTachiaiHenka,
+  isTachiaiLive,
+  noteTachiaiContact,
+} = require("./tachiai");
+const { commitTachiai } = require("./tachiaiResolve");
 const {
   KB_FRICTION,
   DI_FRICTION_FACTOR,
@@ -1275,7 +1289,7 @@ function tick(delta) {
           io.in(room.id).emit("gyoji_call", "TE WO TSUITE!");
         }
         
-        if (elapsedTime >= 2700) {
+        if (elapsedTime >= TACHIAI_HAKKIYOI_MS) {
           // Clear the power-up auto-selection timer if players ready up normally
           if (room.roundStartTimer) {
             clearTimeout(room.roundStartTimer);
@@ -1312,10 +1326,12 @@ function tick(delta) {
           room.hakkiyoiCount = 1;
           room.readyStartTime = null;
           room.teWoTsuiteSent = false;
+          commitTachiai(room, rooms, io);
         }
-      } else {
+      } else if (!room.gameStart) {
         room.readyStartTime = null;
         room.teWoTsuiteSent = false;
+        unsealTachiai(room);
       }
 
       // Handle recovery state for charged attacks
@@ -1406,6 +1422,16 @@ function tick(delta) {
         return;
       }
 
+      if (player.tachiaiChargePunish && !player.isAtTheRopes && !room.gameOver) {
+        const punishDir = player.tachiaiChargePunishDir === -1 ? -1 : 1;
+        player.tachiaiChargePunish = false;
+        beginAtTheRopes(
+          player,
+          punishDir > 0 ? MAP_RIGHT_BOUNDARY : MAP_LEFT_BOUNDARY,
+          player.facing
+        );
+      }
+
       // FORCE OUT: pair block owns X (incl. clinch-attach lock). Here only pin
       // Y/velocities and honor round reset — don't overwrite spacing.
       if (player.isRingOutPushCutscene) {
@@ -1468,6 +1494,7 @@ function tick(delta) {
       // a round reset mid-slide) would otherwise strand the palms extended.
       if (player.isGrabSeparatePalm && !player.isGrabBreakSeparating) {
         player.isGrabSeparatePalm = false;
+        player.grabSeparatePalmStartSim = 0;
       }
 
       // Smooth grab-break separation tween overrides other movement for its duration
@@ -1609,6 +1636,7 @@ function tick(delta) {
           // The shove-off pose lives exactly as long as the shove. Cleared here
           // rather than on a timer so it can never outlive an early-ended tween.
           player.isGrabSeparatePalm = false;
+          player.grabSeparatePalmStartSim = 0;
 
           // Grab tech: feed residual velocity into ice sliding after forced separation
           if (player.grabTechResidualVel) {
@@ -1762,16 +1790,23 @@ function tick(delta) {
             player.x =
               player.x + player.knockbackVelocity.x * delta * speedFactor;
 
+            if (player.ringOutApronStop) {
+              holdSlapRingOutOnApron(player);
+            }
+
             const isOutsideDohyo = player.x < DOHYO_LEFT_BOUNDARY || player.x > DOHYO_RIGHT_BOUNDARY;
             const isPastMapBoundaries = player.x < MAP_LEFT_BOUNDARY || player.x > MAP_RIGHT_BOUNDARY;
             
-            if (isOutsideDohyo && !player.isFallingOffDohyo) {
+            if (!player.ringOutApronStop && isOutsideDohyo && !player.isFallingOffDohyo) {
               player.isFallingOffDohyo = true;
             }
 
             const isLoserAfterGameOver = room.gameOver && player.id === room.loserId;
             
-            if (player.isFallingOffDohyo) {
+            // Kill-throw arc owns Y until it plants. The dohyo sink would
+            // otherwise start the moment they cross the edge and fight the
+            // parabola (and the tumble that's timed to that parabola).
+            if (player.isFallingOffDohyo && !(player.isClinchKillThrowVictim && player.isBeingThrown)) {
               const targetY = GROUND_LEVEL - DOHYO_FALL_DEPTH;
               if (isLoserAfterGameOver) {
                 if (player.y !== targetY) player.y = targetY;
@@ -1995,6 +2030,7 @@ function tick(delta) {
           const opponentPassedPlayer = opponentSidestepping &&
             (opponent.x - player.x) * (opponent.sidestepDirection || 0) > 0;
           const opponentInSidestepInvuln = opponentSidestepping &&
+            !isTachiaiHenka(opponent, now) &&
             !opponent.isSidestepStartup &&
             (!opponent.isSidestepRecovery || (sidestepPushboxOverlap && opponentPassedPlayer));
           const sidestepVulnerable = opponentSidestepping && !opponentInSidestepInvuln;
@@ -2217,6 +2253,7 @@ function tick(delta) {
 
               // Open the belt latch. Variant is aimed during the hold, not here.
               beginCommandGrab(player, opponent, room, io);
+              if (isTachiaiLive(player, now)) noteTachiaiContact(room, io, "OSHI");
             } else if (withinConnectWindow) {
               // In range but ungrabbable — retest next tick.
               return;
@@ -2654,17 +2691,16 @@ function tick(delta) {
             //   • No hang plateau / cubic whip (those read as a mid-air pause
             //     then a teleport slam)
             // Horizontal X stays linear with throwProgress = constant air speed.
-            const PEAK_AT = 0.48;
-            const clampedProgress = Math.min(throwProgress, 1);
-            if (clampedProgress < PEAK_AT) {
-              const riseT = clampedProgress / PEAK_AT;
-              const eased = 1 - (1 - riseT) * (1 - riseT); // ease-out quad
-              opponent.y = GROUND_LEVEL + eased * throwArcHeight;
-            } else {
-              const fallT = (clampedProgress - PEAK_AT) / (1 - PEAK_AT);
-              const eased = fallT * fallT; // ease-in quad (same |g| family as rise)
-              opponent.y = GROUND_LEVEL + throwArcHeight * (1 - eased);
-            }
+            // Off the dohyo the same fall finishes on the lower apron instead
+            // of snapping down from ring height at the last frame.
+            const landY = player.clinchKillThrowOffDohyo
+              ? GROUND_LEVEL - DOHYO_FALL_DEPTH
+              : GROUND_LEVEL;
+            opponent.y = sampleKillThrowY(Math.min(throwProgress, 1), {
+              ground: GROUND_LEVEL,
+              arcHeight: throwArcHeight,
+              landY,
+            });
           } else {
             opponent.y =
               GROUND_LEVEL +
@@ -2773,12 +2809,18 @@ function tick(delta) {
           }
 
           const hopStart = player.dodgeStartupEndTime || player.dodgeStartTime || now;
+          const hopMs = player.tachiaiDodgeHopMs > 0
+            ? player.tachiaiDodgeHopMs
+            : ICE_SLIDE_REVERSE_HOP_MS;
+          const hopHeight = player.tachiaiDodgeHopHeight > 0
+            ? player.tachiaiDodgeHopHeight
+            : ICE_SLIDE_REVERSE_HOP_HEIGHT;
           const hopT = Math.min(
             1,
-            Math.max(0, (now - hopStart) / ICE_SLIDE_REVERSE_HOP_MS)
+            Math.max(0, (now - hopStart) / hopMs)
           );
           player.y =
-            GROUND_LEVEL + ICE_SLIDE_REVERSE_HOP_HEIGHT * 4 * hopT * (1 - hopT);
+            GROUND_LEVEL + hopHeight * 4 * hopT * (1 - hopT);
           player.x = newX;
 
           // Arrived at fixed end, or the kick-off ate the pocket — land into slide.
@@ -2798,6 +2840,9 @@ function tick(delta) {
           player.isDodging = false;
           player.isDodgeStartup = false;
           player.dodgeDirection = null;
+          const { endTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+          endTachiaiAction(player, TACHIAI_CALL.DODGE_IN);
+          endTachiaiAction(player, TACHIAI_CALL.DODGE_BACK);
           if (isActionFacingOwnershipV2Enabled()) {
             releaseActionFacingLock(player, {
               expectedInstanceId: player.dodgeFacingInstanceId,
@@ -2872,6 +2917,11 @@ function tick(delta) {
           player.isDodgeRecovery = true;
           player.dodgeRecoveryEndTime = now + DODGE_RECOVERY_MS;
           player.actionLockUntil = Math.max(player.actionLockUntil || 0, now + DODGE_RECOVERY_MS);
+
+          // Mouse1 during the hop becomes the belly bump now that the arc
+          // has landed. Releasing here — not mid-hop — is what keeps the
+          // kick-off from being cancelled into a slap.
+          releaseQueuedSlideSlap(player, rooms, now);
         }
       }
 
@@ -2912,6 +2962,8 @@ function tick(delta) {
         player.isSidestepStartup = false;
         player.isSidestepRecovery = false;
         player.sidestepDirection = 0;
+        const { endTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+        endTachiaiAction(player, TACHIAI_CALL.HENKA);
         player.postSidestepFacingTrackUntil = 0;
         player.y = GROUND_LEVEL;
       }
@@ -2933,9 +2985,11 @@ function tick(delta) {
               player.sidestepStartX - MAP_LEFT_BOUNDARY,
               MAP_RIGHT_BOUNDARY - player.sidestepStartX
             );
-            const sidestepTravel = startDistToEdge < DOHYO_EDGE_PANIC_ZONE
-              ? SIDESTEP_TRAVEL_EDGE
-              : SIDESTEP_TRAVEL;
+            const sidestepTravel = isTachiaiHenka(player, now)
+              ? TACHIAI_SIDESTEP_TRAVEL
+              : startDistToEdge < DOHYO_EDGE_PANIC_ZONE
+                ? SIDESTEP_TRAVEL_EDGE
+                : SIDESTEP_TRAVEL;
             const targetX = player.sidestepStartX + player.sidestepDirection * sidestepTravel;
             player.sidestepTargetX = Math.max(MAP_LEFT_BOUNDARY, Math.min(targetX, MAP_RIGHT_BOUNDARY));
 
@@ -3054,6 +3108,8 @@ function tick(delta) {
           player.isSidestepStartup = false;
           player.isSidestepRecovery = false;
           player.sidestepDirection = 0;
+          const { endTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+          endTachiaiAction(player, TACHIAI_CALL.HENKA);
           player.y = GROUND_LEVEL;
           player.actionLockUntil = 0;
 
@@ -3258,6 +3314,9 @@ function tick(delta) {
             player.movementVelocity = -ICE_SLIDE_MAX_SPEED;
           }
           stampIceSlideCarrySpeed(player);
+          if (Math.abs(player.movementVelocity) >= SLIDE_SLAP_MOVING_SPEED) {
+            player.iceSlideMovingMs = (player.iceSlideMovingMs || 0) + delta;
+          }
 
           player.isStrafing = false;
 
@@ -4060,6 +4119,7 @@ function tick(delta) {
               player.slideSlapArmed && player.currentSlapHitConnected;
             const slapSlideCommitted =
               player.isSlapSliding || slideSlapFollowThrough;
+            if (player.isSlapSliding) settleSlapApproach(player, now);
 
             // Determine braking state
             const isMovingRight = player.movementVelocity > 0;
@@ -4136,14 +4196,18 @@ function tick(delta) {
 
         // Game-over loser: handle dohyo fall after isHit ends (momentum carries them off the ring)
         if (isGameOverLoser && !player.isHit) {
-          const isOutsideDohyo = player.x < DOHYO_LEFT_BOUNDARY || player.x > DOHYO_RIGHT_BOUNDARY;
-          if (isOutsideDohyo && !player.isFallingOffDohyo) {
-            player.isFallingOffDohyo = true;
-          }
-          if (player.isFallingOffDohyo) {
-            const targetY = GROUND_LEVEL - DOHYO_FALL_DEPTH;
-            if (player.y > targetY) {
-              player.y = Math.max(targetY, player.y - DOHYO_FALL_SPEED);
+          if (player.ringOutApronStop) {
+            holdSlapRingOutOnApron(player);
+          } else {
+            const isOutsideDohyo = player.x < DOHYO_LEFT_BOUNDARY || player.x > DOHYO_RIGHT_BOUNDARY;
+            if (isOutsideDohyo && !player.isFallingOffDohyo) {
+              player.isFallingOffDohyo = true;
+            }
+            if (player.isFallingOffDohyo) {
+              const targetY = GROUND_LEVEL - DOHYO_FALL_DEPTH;
+              if (player.y > targetY) {
+                player.y = Math.max(targetY, player.y - DOHYO_FALL_SPEED);
+              }
             }
           }
         }
@@ -4423,102 +4487,15 @@ function tick(delta) {
           (leftCheck || rightCheck) &&
           !room.gameOver
         ) {
-          // Save the facing direction from the charged attack BEFORE clearing states
-          const savedFacing = player.facing;
-
-          // CRITICAL: Clear ALL action states when hitting the ropes
-          clearAllActionStates(player);
-          player.y = GROUND_LEVEL;
-          
-          // Set at the ropes state
-          player.isAtTheRopes = true;
-          player.atTheRopesStartTime = now;
-          
-          // Store the facing direction from the charged attack
-          // This direction should persist through hits and ring-out until round reset
-          player.atTheRopesFacingDirection = savedFacing;
-          player.facing = savedFacing;
-          if (isActionFacingOwnershipV2Enabled()) {
-            const ropesId = mintActionFacingInstanceId(
-              player,
-              ACTION_FACING_OWNER.ROPES
-            );
-            player.ropesFacingInstanceId = ropesId;
-            acquireActionFacingLock(player, {
-              ownerType: ACTION_FACING_OWNER.ROPES,
-              ownerInstanceId: ropesId,
-              direction: savedFacing,
-              reason: ACTION_FACING_REASON.BOUNDARY,
-              allowDirectionUpdate: false,
-              supersede: true,
-              syncLegacy: false,
-            });
+          beginAtTheRopes(player, newX, player.facing);
+          const ropeOpp = room.players.find((p) => p.id !== player.id);
+          if (
+            ropeOpp &&
+            isTachiaiHenka(ropeOpp, now) &&
+            player.tachiaiCall === "charge"
+          ) {
+            noteTachiaiContact(room, io, "HENKA");
           }
-
-          // Clear knockback (clearAllActionStates doesn't clear this)
-          player.knockbackVelocity = { x: 0, y: 0 };
-
-          // Constrain player position to boundary
-          if (newX <= MAP_LEFT_BOUNDARY) {
-            player.x = MAP_LEFT_BOUNDARY;
-          } else if (newX >= MAP_RIGHT_BOUNDARY) {
-            player.x = MAP_RIGHT_BOUNDARY;
-          }
-
-          // Set timeout to end the at-the-ropes state
-          let ropesLifecycleId = null;
-          if (isActionLifecycleOwnershipV2Enabled()) {
-            const ropesRec = beginLifecycleOwner(
-              player,
-              LIFECYCLE_DOMAIN.REACTION,
-              LIFECYCLE_OWNER.ROPES,
-              { phase: LIFECYCLE_PHASE.ACTIVE, reason: "ROPES_BEGIN" }
-            );
-            ropesLifecycleId = ropesRec?.ownerInstanceId || null;
-          }
-          setPlayerTimeout(
-            player.id,
-            () => {
-              if (
-                isActionLifecycleOwnershipV2Enabled() &&
-                !assertLifecycleCallback(
-                  player,
-                  LIFECYCLE_DOMAIN.REACTION,
-                  ropesLifecycleId,
-                  "at_the_ropes_timeout"
-                )
-              ) {
-                return;
-              }
-              player.isAtTheRopes = false;
-              player.atTheRopesStartTime = 0;
-              if (isActionFacingOwnershipV2Enabled()) {
-                releaseActionFacingLock(player, {
-                  expectedInstanceId: player.ropesFacingInstanceId,
-                  expectedOwnerType: ACTION_FACING_OWNER.ROPES,
-                  reason: ACTION_FACING_RELEASE.ACTION_END,
-                  clearLegacy: false,
-                });
-                player.ropesFacingInstanceId = null;
-              }
-              player.atTheRopesFacingDirection = null;
-              if (isActionLifecycleOwnershipV2Enabled()) {
-                completeLifecycleOwner(
-                  player,
-                  LIFECYCLE_DOMAIN.REACTION,
-                  ropesLifecycleId,
-                  { reason: "ROPES_COMPLETE" }
-                );
-                markLifecycleControlRestore(
-                  player,
-                  LIFECYCLE_DOMAIN.REACTION,
-                  ropesLifecycleId
-                );
-              }
-            },
-            AT_THE_ROPES_DURATION,
-            "atTheRopesTimeout" // Named timeout for cleanup
-          );
         } else {
           // Forward-only: planChargedLungeTravel already refused a backward
           // write and stopped at first forehead contact.

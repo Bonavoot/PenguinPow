@@ -35,6 +35,7 @@ const {
   GRAB_BREAK_STAMINA_COST,
   GRAB_BREAK_TOGETHER_MS,
   GRAB_BREAK_FORCED_DISTANCE,
+  GRAB_BREAK_TWEEN_DURATION,
   CMD_THROW_LAUNCH_HITSTOP_MS,
   CMD_PULL_LAUNCH_HITSTOP_MS,
   CMD_GRAB_CINCH_GRABBER_SHARE,
@@ -81,6 +82,7 @@ const {
   CLINCH_THROW_MIN_SEPARATION,
   CLINCH_PULL_SWAP_TWEEN_DURATION,
   CLINCH_KILL_THROW_DURATION_MS,
+  CLINCH_KILL_THROW_DISTANCE,
   CLINCH_KILL_PULL_TWEEN_DURATION,
   CLINCH_KILL_PULL_INPUT_LOCK_MS,
   PULL_BOUNDARY_MARGIN,
@@ -101,10 +103,13 @@ const {
   timeoutManager,
   MAP_LEFT_BOUNDARY,
   MAP_RIGHT_BOUNDARY,
+  DOHYO_LEFT_BOUNDARY,
+  DOHYO_RIGHT_BOUNDARY,
   endPerfectParryStun,
   clearSetupThrowFlags,
   getEffectiveMoveSpeedMult,
   emitStaminaBlocked,
+  beginAtTheRopes,
 } = require("./gameUtils");
 
 const {
@@ -306,6 +311,11 @@ function pullDirFor(grabber, victim) {
 
 function predictedThrowLandX(grabber, victim, distance) {
   return grabber.x + throwDirFor(grabber, victim) * distance;
+}
+
+function killThrowLandsOffDohyo(grabber, victim) {
+  const landX = predictedThrowLandX(grabber, victim, CLINCH_KILL_THROW_DISTANCE);
+  return landX <= DOHYO_LEFT_BOUNDARY || landX >= DOHYO_RIGHT_BOUNDARY;
 }
 
 function predictedPullTargetX(grabber, victim, pullDist) {
@@ -699,12 +709,26 @@ function updateCommandGrab(grabber, room, io, delta, rooms) {
   }
 
   if (grabber.cmdGrabPhase === CMD_PHASE.LATCH) {
+    const { isTachiaiLive, TACHIAI_CALL } = require("./tachiai");
+    const openingPush =
+      isTachiaiLive(grabber, now) && grabber.tachiaiCall === TACHIAI_CALL.GRAB;
+    if (openingPush) {
+      grabber.grabVariant = CMD_GRAB_VARIANT.DRIVE;
+      grabber.grabVariantLocked = true;
+    }
     sampleLatchAim(grabber, victim, now);
     applyStartupPoses(grabber, victim);
     applyCinch(grabber, victim, elapsed, CMD_GRAB_CINCH_MS);
 
-    if (elapsed >= CMD_GRAB_LATCH_MS) {
+    if (openingPush || elapsed >= CMD_GRAB_LATCH_MS) {
       resolveVariant(grabber, victim, room, io, rooms);
+    if (openingPush) {
+      const { retargetHenkaDrive } = require("./tachiaiResolve");
+      retargetHenkaDrive(grabber, victim, now);
+      const { endTachiaiAction, TACHIAI_CALL } = require("./tachiai");
+      endTachiaiAction(grabber, TACHIAI_CALL.GRAB);
+      endTachiaiAction(victim, TACHIAI_CALL.HENKA);
+    }
     }
     return;
   }
@@ -958,7 +982,7 @@ function resolveCommandGrabBreak(grabber, victim, room, io) {
 
   clearCommandGrabState(grabber);
 
-  const lockUntil = impactAt + CMD_DRIVE_RELEASE_TWEEN_MS;
+  const lockUntil = impactAt + GRAB_BREAK_TWEEN_DURATION;
   for (const [p, targetX] of [
     [grabber, grabberTarget],
     [victim, victimTarget],
@@ -966,10 +990,13 @@ function resolveCommandGrabBreak(grabber, victim, room, io) {
     p.isGrabBreakGather = true;
     p.isGrabBreakSeparating = true;
     p.grabBreakSepStartTime = impactAt;
-    p.grabBreakSepDuration = CMD_DRIVE_RELEASE_TWEEN_MS;
+    p.grabBreakSepDuration = GRAB_BREAK_TWEEN_DURATION;
     p.grabBreakStartX = p.x;
     p.grabBreakTargetX = targetX;
-    p.grabBreakSepCurve = "shove";
+    // Quickest on the palm's active frame. Drive release keeps "shove"
+    // (speed in the middle of the slide); a break that eases in reads as
+    // the hands missing the bodies.
+    p.grabBreakSepCurve = "break";
     p.movementVelocity = 0;
     if (!p.knockbackVelocity) p.knockbackVelocity = { x: 0, y: 0 };
     p.knockbackVelocity.x = 0;
@@ -999,6 +1026,9 @@ function resolveCommandGrabBreak(grabber, victim, room, io) {
       victim.isGrabBreakGather = false;
       cleanupGrabStates(grabber, victim);
       victim.isGrabSeparatePalm = true;
+      // Playback clock for the palm poses. The slide starts
+      // CMD_DRIVE_RELEASE_IMPACT_MS later — the client's SMEAR_END.
+      victim.grabSeparatePalmStartSim = simNow(room);
       victim.isGrabBreakSeparating = true;
       grabber.isGrabBreakSeparating = true;
     },
@@ -1006,19 +1036,48 @@ function resolveCommandGrabBreak(grabber, victim, room, io) {
     "grabBreakGather"
   );
 
-  io.in(room.id).emit("grab_break", {
-    breakerId: victim.id,
-    grabberId: grabber.id,
-    breakerX: victim.x,
-    grabberX: grabber.x,
-    breakId: `grab-break-${now}-${victim.id}`,
-    breakerPlayerNumber: victim.playerNumber || 1,
-    effectDelayMs: GRAB_BREAK_TOGETHER_MS + CMD_DRIVE_RELEASE_IMPACT_MS,
-  });
+  const breakId = `grab-break-${now}-${victim.id}`;
+  const seamX = (victim.x + grabber.x) / 2;
+  io.in(room.id).emit(
+    "grab_break",
+    attachCombatPresentation(
+      {
+        breakerId: victim.id,
+        grabberId: grabber.id,
+        breakerX: victim.x,
+        grabberX: grabber.x,
+        breakId,
+        breakerPlayerNumber: victim.playerNumber || 1,
+        effectDelayMs: GRAB_BREAK_TOGETHER_MS + CMD_DRIVE_RELEASE_IMPACT_MS,
+        impactSimTime: impactAt,
+      },
+      buildClinchPresentation({
+        interactionType: CLINCH_INTERACTION.GRAB_BREAK,
+        clinchInstanceId: ensureClinchInstanceId(grabber, victim, now),
+        actionInstanceId: breakId,
+        initiator: victim,
+        responder: grabber,
+        outcome: "BREAK",
+        contactX: seamX,
+        contactY: CLINCH_EFFECT_MID_Y,
+        movementX: dir,
+        salt: "grab_break",
+      })
+    )
+  );
 }
 
 function releaseDrive(grabber, victim, room, io, dir) {
   const now = simNow(room);
+  if (victim && victim.tachiaiRopeAfterDrive) {
+    victim.tachiaiRopeAfterDrive = false;
+    const ropeX = dir > 0 ? MAP_RIGHT_BOUNDARY : MAP_LEFT_BOUNDARY;
+    clearActionPoses(grabber, victim);
+    clearCommandGrabState(grabber);
+    cleanupGrabStates(grabber, victim);
+    beginAtTheRopes(victim, ropeX, victim.facing);
+    return;
+  }
   const attach = grabber.clinchAttachDistance || attachDistanceFor(victim);
   const needed = Math.max(0, CMD_DRIVE_RELEASE_SEPARATION - attach);
 
@@ -1157,6 +1216,9 @@ function resolveThrow(grabber, victim, room, io, isKill, travelPx) {
 
   grabber.isThrowing = true;
   grabber.isClinchKillThrow = isKill;
+  const killLandsOffDohyo = isKill && killThrowLandsOffDohyo(grabber, victim);
+  grabber.clinchKillThrowOffDohyo = killLandsOffDohyo;
+  victim.clinchKillThrowOffDohyo = killLandsOffDohyo;
   grabber.clinchThrowArcDistance = isKill ? 0 : travel;
   grabber.clinchThrowArcHeight = isKill ? 0 : toss.arcHeight;
   grabber.throwTossPower = isKill ? 0 : toss.power;
@@ -1239,6 +1301,7 @@ function resolveThrow(grabber, victim, room, io, isKill, travelPx) {
     triggerHitstopAndEmit(io, room, CMD_THROW_LAUNCH_HITSTOP_MS, "clinch_throw");
     emitThrottledScreenShake(room, io, { type: "grab_clash", scale: 1.05, force: true });
     victim.isClinchKillThrowVictim = true;
+    victim.clinchKillThrowOffDohyo = !!grabber.clinchKillThrowOffDohyo;
     const launchId = `kill-throw-${now}-${grabber.id}`;
     const clinchId = ensureClinchInstanceId(grabber, victim, now);
     io.in(room.id).emit(

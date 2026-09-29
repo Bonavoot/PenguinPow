@@ -332,6 +332,7 @@ const {
   attackKindFromPlayer,
 } = require("./strikeContact");
 const { strikeLimbReachesVictimY } = require("./strikeLimbReach");
+const { tachiaiDodgeClearsSlap, isTachiaiLive, TACHIAI_CALL, noteTachiaiContact, TACHIAI_CHARGE_HITSTUN_MS, TACHIAI_CHARGE_HIT_RECOVERY_MS, TACHIAI_CHARGE_HITSTOP_MS } = require("./tachiai");
 
 const {
   resolveAuthoredSlapHurtContact,
@@ -571,6 +572,14 @@ function checkCollision(player, otherPlayer, rooms, io) {
 
   // Slide-jump: ascent is hittable, post-peak is immune.
   if (isSlideJumpFlightImmune(otherPlayer)) {
+    return;
+  }
+
+  // Opening dodge hops over a slap. The charge path does not use this check.
+  if (
+    player.attackType === "slap" &&
+    tachiaiDodgeClearsSlap(otherPlayer, simNowForPlayer(player))
+  ) {
     return;
   }
 
@@ -2566,6 +2575,11 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       player.isInStartupFrames = false;
       player.isRecovering = false;
       player.chargedConnectPoseHold = true;
+      player.tachiaiChargeRecoveryMs =
+        isTachiaiLive(player, currentTime) &&
+        player.tachiaiCall === TACHIAI_CALL.CHARGE
+          ? TACHIAI_CHARGE_HIT_RECOVERY_MS
+          : 0;
       player.movementVelocity = 0;
       player.knockbackVelocity = { x: 0, y: 0 };
       player.isChargedHitRecoil = false;
@@ -2584,7 +2598,9 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           player.chargeAttackPower = 0;
           player.isRecovering = true;
           player.recoveryStartTime = simNowForPlayer(player);
-          player.recoveryDuration = CHARGED_HIT_RECOVERY_MS;
+          player.recoveryDuration =
+            player.tachiaiChargeRecoveryMs || CHARGED_HIT_RECOVERY_MS;
+          player.tachiaiChargeRecoveryMs = 0;
           player.recoveryDirection = player.facing;
           player.movementVelocity = recoilVel;
           player.knockbackVelocity = { x: 0, y: 0 };
@@ -3247,6 +3263,18 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
 
     otherPlayer.isHit = true;
     otherPlayer.lastHitType = isSlapAttack ? "slap" : isLowKick ? "lowKick" : "charged";
+    if (
+      !isSlapAttack &&
+      !player.isPalmThrust &&
+      player.attackType === "charged" &&
+      isTachiaiLive(player, currentTime) &&
+      player.tachiaiCall === TACHIAI_CALL.CHARGE &&
+      isTachiaiLive(otherPlayer, currentTime) &&
+      otherPlayer.tachiaiCall === TACHIAI_CALL.DODGE_IN
+    ) {
+      otherPlayer.tachiaiChargePunish = true;
+      otherPlayer.tachiaiChargePunishDir = otherPlayer.x >= player.x ? 1 : -1;
+    }
     // MASTERY Phase 3: taking a hit breaks the victim's tsuppari rhythm.
     otherPlayer.cadenceChain = 0;
     // Taking a hit ends any slap-follow-up priority they were holding.
@@ -3254,6 +3282,16 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
 
     // Block multiple hits from this same attack
     otherPlayer.isAlreadyHit = true;
+    if (currentRoom && (isTachiaiLive(player, currentTime) || isTachiaiLive(otherPlayer, currentTime))) {
+      const tachiaiCaption = player.isPalmThrust
+        ? "TSUPPARI"
+        : !isSlapAttack && player.attackType === "charged"
+          ? "CHARGE"
+          : isSlapAttack
+            ? "HATAKIKOMI"
+            : null;
+      if (tachiaiCaption) noteTachiaiContact(currentRoom, io, tachiaiCaption);
+    }
 
     // Increment hit counter for reliable hit sound triggering
     otherPlayer.hitCounter = (otherPlayer.hitCounter || 0) + 1;
@@ -3535,11 +3573,10 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           // (slapMomentumMult, 1.2) AND the victim's into/brace momentum
           // (victimKbScale, 1.3), capped in total. Flag off ⇒ today's formula.
         // ── MOMENTUM TRANSFER ────────────────────────────────────────────
-        // Distance comes from the attacker's EARNED speed at press time, not
-        // from a fixed drift constant. `slapEntryAligned` is already the
-        // press-time snapshot (gameFunctions.js), which is also what makes
-        // this latency-fair: the send matches the speed the attacker saw on
-        // their own screen, not the decayed speed the packet arrived with.
+        // Pocket slap distance comes from earned speed at press time
+        // (`slapEntryAligned`). The belly bump uses slide time instead
+        // (`slideSlapCharge`) so a short runway is still a body check and a
+        // long one earns the ceiling. Both are press-time snapshots.
         //
         // finalKnockbackMultiplier still carries counter / GORED / POWER /
         // BASHO scaling; cadence rides along as before. The
@@ -3552,7 +3589,10 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           dirToVictim: pushDirection,
           nowSim: currentTime,
           mult: finalKnockbackMultiplier * cadenceStepMult,
-          selfOverride: Math.max(0, player.slapEntryAligned || 0),
+          selfOverride: isSlideSlap
+            ? MomentumTransfer.slideSlapVSelfForCharge(player.slideSlapCharge || 0)
+            : Math.max(0, player.slapEntryAligned || 0),
+          slideSlapCharge: isSlideSlap ? player.slideSlapCharge || 0 : 0,
         });
         otherPlayer.knockbackVelocity.x = slapTransfer.velocity;
         lastTransfer = slapTransfer;
@@ -3566,7 +3606,11 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           // Slow fixed drift, not chase and not a dump-skid. Leftover
           // sprint is discarded; this crawl lasts the convert and stops
           // with the move so the pair opens cleanly.
-          const signed = (pushDirection >= 0 ? 1 : -1) * SLIDE_SLAP_FOLLOW_VEL;
+          const followSpeed =
+            player.slideSlapFollowVel > 0
+              ? player.slideSlapFollowVel
+              : SLIDE_SLAP_FOLLOW_VEL;
+          const signed = (pushDirection >= 0 ? 1 : -1) * followSpeed;
           player.movementVelocity = signed;
           player.isSlapSliding = true;
           MomentumTransfer.creditGrantedVelocity(player, signed, currentTime);
@@ -4071,13 +4115,21 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         } else {
           // Charged: cinematic KO keeps its authored presentation freeze;
           // everything else rides the impact channel like the other strikes.
+          const tachiaiChargeHit =
+            !isCinematicKill &&
+            !player.isPalmThrust &&
+            isTachiaiLive(player, currentTime) &&
+            player.tachiaiCall === TACHIAI_CALL.CHARGE;
           const hitstopDuration = isCinematicKill
             ? CINEMATIC_KILL_HITSTOP_MS
-            : (lastTransfer
-                ? lastTransfer.hitstopMs
-                : getChargedHitstop(chargePercentage / 100)) +
-              (isGored ? GORED_HITSTOP_BONUS_MS : 0);
+            : tachiaiChargeHit
+              ? TACHIAI_CHARGE_HITSTOP_MS
+              : (lastTransfer
+                  ? lastTransfer.hitstopMs
+                  : getChargedHitstop(chargePercentage / 100)) +
+                (isGored ? GORED_HITSTOP_BONUS_MS : 0);
           triggerHitstopAndEmit(io, currentRoom, hitstopDuration, isCinematicKill ? "cinematic_kill" : "charged");
+          if (tachiaiChargeHit) noteTachiaiContact(currentRoom, io, "CHARGE");
 
           if (isCinematicKill) {
             io.in(currentRoom.id).emit("cinematic_kill", {
@@ -4180,7 +4232,11 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         (player.attackEndTime || currentTime) + PALM_THRUST_HIT_RECOVERY_MS;
       hitStateDuration = Math.max(attackerFreeAt - currentTime, BURST_STUN_MS);
     } else {
-      hitStateDuration = 380;
+      const tachiaiChargeHit =
+        !player.isPalmThrust &&
+        isTachiaiLive(player, currentTime) &&
+        player.tachiaiCall === TACHIAI_CALL.CHARGE;
+      hitStateDuration = tachiaiChargeHit ? TACHIAI_CHARGE_HITSTUN_MS : 380;
       if (isCinematicKill) {
         hitStateDuration = 3000;
       } else if (isGored) {

@@ -12,6 +12,10 @@ const {
   MATADOR_PULL_DISTANCE_MAX,
   SLIDE_SLAP_HITSTOP_FLOOR_MS,
   SLIDE_SLAP_HITSTOP_CAP_MS,
+  SLIDE_SLAP_CHARGE_FULL_MS,
+  SLIDE_SLAP_POWER_FLOOR,
+  SLIDE_SLAP_FOLLOW_VEL,
+  SLIDE_SLAP_FOLLOW_VEL_MAX,
 } = require("./constants");
 
 // ── Units ───────────────────────────────────────────────────────────────────
@@ -130,8 +134,8 @@ const SLAP_CHASE_RATIO = 1.15;
 // The slap's own forward step-in, applied on hit AND whiff so the move reads
 // the same either way. Flat on purpose: the old formula scaled it with carried
 // speed, which quietly turned the step-in into a second compounding channel.
-// Always credited as granted velocity, so it can never power the next slap.
-// ~31px of ground across a slap cycle — a step, not a dash.
+// Floor for a slap that is already moving but below slide-arm speed.
+// A motionless slap uses the fixed step in slapStepIn.js instead.
 const SLAP_STEP_IN_VELOCITY = 0.75;
 
 // Chase speed cap — raised from ICE_MAX_SPEED (1.3) to ICE_SLIDE_MAX_SPEED (2.4).
@@ -144,6 +148,32 @@ const SLAP_SLIDE_CONTACT_DAMP = 0.8;
 
 // Hardest collision available: max slide into max walk-in. Normalises impact.
 const V_IMPACT_REF = ICE_SLIDE_MAX_SPEED + ICE_MAX_SPEED; // 3.7
+
+function clamp01(n) {
+  return Math.max(0, Math.min(1, n || 0));
+}
+
+/**
+ * Belly-bump power from time spent actually sliding, 0..1.
+ * Ease-out: the first moments of a runway already climb, a long
+ * slide saturates instead of scaling forever.
+ */
+function slideSlapChargeFromMovingMs(movingMs) {
+  const t = clamp01((movingMs || 0) / SLIDE_SLAP_CHARGE_FULL_MS);
+  return 1 - (1 - t) * (1 - t);
+}
+
+/** vSelf fed to the slideSlap distance curve. Floor is already a body check. */
+function slideSlapVSelfForCharge(charge) {
+  const c = clamp01(charge);
+  return ICE_SLIDE_MAX_SPEED * (SLIDE_SLAP_POWER_FLOOR + (1 - SLIDE_SLAP_POWER_FLOOR) * c);
+}
+
+/** Attacker drive-through after the freeze. Under a walk at every charge. */
+function slideSlapFollowVelForCharge(charge) {
+  const c = clamp01(charge);
+  return SLIDE_SLAP_FOLLOW_VEL + (SLIDE_SLAP_FOLLOW_VEL_MAX - SLIDE_SLAP_FOLLOW_VEL) * c;
+}
 
 /** Fraction of a move's floor→ceiling range bought by `vSelf`. 0..1 */
 function momentumRatio(vSelf) {
@@ -520,6 +550,7 @@ function resolveTransfer(opts) {
     nowSim,
     mult = 1,
     selfOverride,
+    slideSlapCharge = 0,
   } = opts;
 
   const profile = profileFor(moveKey);
@@ -561,7 +592,14 @@ function resolveTransfer(opts) {
   // reads as a poke; cap so the pause stays a punch, not a cutscene.
   if (moveKey === "slideSlap") {
     hitstopMs = Math.max(hitstopMs, SLIDE_SLAP_HITSTOP_FLOOR_MS);
-    hitstopMs = Math.min(hitstopMs, SLIDE_SLAP_HITSTOP_CAP_MS);
+    // A long runway thickens the freeze. Still inside the punch cap so a
+    // full slide stays a body check, not a cutscene.
+    const chargeFreeze = Math.round(
+      (SLIDE_SLAP_HITSTOP_CAP_MS - SLIDE_SLAP_HITSTOP_FLOOR_MS) *
+        clamp01(slideSlapCharge) *
+        0.5
+    );
+    hitstopMs = Math.min(SLIDE_SLAP_HITSTOP_CAP_MS, hitstopMs + chargeFreeze);
   }
 
   return {
@@ -623,6 +661,9 @@ module.exports = {
   V_IMPACT_REF,
   momentumRatio,
   transfer,
+  slideSlapChargeFromMovingMs,
+  slideSlapVSelfForCharge,
+  slideSlapFollowVelForCharge,
 
   // profiles
   MOVE_TRANSFER,
