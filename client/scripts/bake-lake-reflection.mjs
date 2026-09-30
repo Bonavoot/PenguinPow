@@ -31,7 +31,9 @@ const REACH = 0.92;
 const WOBBLE = 30;
 const SHEAR = 22;
 const BLUR = 1.6;
-const SKY_MIX = 0.3;
+/* Sky color in the gaps is painted live (the water gradient + glint).
+   Mixing the old photo in here left a soft aurora under hard ice. */
+const SKY_MIX = 0;
 const STRENGTH = 0.94;
 
 const floor = await sharp(SRC).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -188,7 +190,7 @@ for (let y = 0; y < outH; y++) {
     const mtn = gradeMtn(rec[0], rec[1], rec[2], tc);
     let col = mtn;
     let alphaBase = cover;
-    if (cover < 0.98) {
+    if (cover < 0.98 && SKY_MIX > 0) {
       const above = (PEAK - srcFrac) / 0.22;
       const skyV = clamp(0.34 - above * 0.16 - tc * 0.04, 0.08, 0.48);
       const sk = sampleSky(clamp(sx / (FW - 1), 0, 1), skyV);

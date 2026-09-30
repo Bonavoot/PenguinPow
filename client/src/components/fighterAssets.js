@@ -142,7 +142,6 @@ import gunLaunchSound from "../sounds/gun-launch.ogg";
 // PRELOAD-ONLY IMPORTS (not exported — consumed internally by preloading)
 // ============================================
 import gameMapBackground from "../assets/game-map-444.webp";
-import antarcticaSky from "../assets/map-antarctica-sky.webp";
 import antarcticaFloor from "../assets/game-map-antarctica2-floor.png";
 // In-match dohyo is the flat display bake; style webp is editor-only (--live).
 import dohyoOverlay from "../assets/dohyo-display.webp";
@@ -330,7 +329,6 @@ const initializeImagePreloading = () => {
   ALL_BALD_BODY_SRCS.forEach((src) => preloadImage(src));
 
   preloadImage(gameMapBackground);
-  preloadImage(antarcticaSky);
   preloadImage(antarcticaFloor);
   preloadImage(dohyoOverlay);
 

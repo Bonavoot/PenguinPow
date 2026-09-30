@@ -51,7 +51,6 @@ export const FIRST_BOUT_SPRITE_IDS = Object.freeze([
 export const FIRST_BOUT_ARENA_IDS = Object.freeze([
   "dohyo-display",
   "game-map-444",
-  "map-antarctica-sky",
   "game-map-antarctica2-floor",
 ]);
 

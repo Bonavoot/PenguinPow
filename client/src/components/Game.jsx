@@ -62,6 +62,8 @@ import { facingKeys } from "../combatAudio/strikeAudioPrediction";
 import { pullYankCrowdIntensity } from "../combatPresentation/pullYankFeel";
 import { throwTossCrowdIntensity } from "../combatPresentation/throwTossFeel";
 import { selectMouse1StrikeCommand } from "../combatAudio/mouse1CommandSelection";
+import AntarcticaSky from "./AntarcticaSky";
+import { SKY_PHASES, skyPhaseName } from "../utils/skyPhase";
 import {
   pushClientInputCommandTrace,
   clearClientInputCommandTrace,
@@ -225,6 +227,62 @@ const Game = ({
   const bashoBeginningRef = useRef(false); // guards the one-shot "begin bout" emit
   const bashoArmedRef = useRef(false);
   bashoArmedRef.current = bashoArmed;
+
+  /* Best-of-3 sky. Round 1 is day. The next phase is applied on
+     game_start so the round-result card stays on the sky you just fought.
+     A 2–0 match never reaches night. */
+  const [vsRound, setVsRound] = useState(1);
+  const vsRoundRef = useRef(1);
+  const [skyPreview, setSkyPreview] = useState(null);
+
+  useEffect(() => {
+    vsRoundRef.current = 1;
+    setVsRound(1);
+  }, [roomName]);
+
+  useEffect(() => {
+    if (!socket || isBashoMatch || isTrainingMatch) return undefined;
+    const onOver = (data) => {
+      if (!data || data.isMatchEnd) return;
+      vsRoundRef.current = Math.min(3, vsRoundRef.current + 1);
+    };
+    const onStart = () => {
+      setVsRound(vsRoundRef.current);
+    };
+    const onRematch = () => {
+      vsRoundRef.current = 1;
+      setVsRound(1);
+    };
+    socket.on("game_over", onOver);
+    socket.on("game_start", onStart);
+    socket.on("rematch", onRematch);
+    return () => {
+      socket.off("game_over", onOver);
+      socket.off("game_start", onStart);
+      socket.off("rematch", onRematch);
+    };
+  }, [socket, isBashoMatch, isTrainingMatch]);
+
+  useEffect(() => {
+    if (!isTrainingMatch) return undefined;
+    const onKey = (e) => {
+      if (!e.ctrlKey || !e.shiftKey) return;
+      if (e.key !== "Y" && e.key !== "y") return;
+      e.preventDefault();
+      setSkyPreview((prev) => {
+        const cur = prev == null ? 1 : prev;
+        return (cur + 1) % SKY_PHASES.length;
+      });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isTrainingMatch]);
+
+  const skyPhase = isTrainingMatch
+    ? SKY_PHASES[skyPreview == null ? 1 : skyPreview]
+    : isBashoMatch
+      ? skyPhaseName(bashoBout?.day ?? 1, bashoBout?.totalBouts ?? 15)
+      : skyPhaseName(vsRound, 3);
   const gyojiOutfitRef = useRef(pickRandomGyojiOutfit());
   const [, setGyojiRevision] = useState(0);
 
@@ -1445,13 +1503,19 @@ const Game = ({
         {/* Far field — sky lags; floor plate (ice + mountains, transparent
             lake) uses the fight cam. Water sits behind the plate so it only
             shows through the alpha channel. Sibling of .game-scene. */}
-        <div className="game-parallax" aria-hidden="true">
-          <div className="game-parallax-sky"></div>
+        <div className="game-parallax" data-sky={skyPhase} aria-hidden="true">
+          <AntarcticaSky phase={skyPhase} />
           <div className="game-parallax-floor">
             <div className="game-parallax-ice-fill"></div>
             <div className="game-parallax-floor-plate">
-              <div className="antarctica-water"></div>
+              <div className="antarctica-water">
+                <div className="antarctica-water-glint"></div>
+                <div className="antarctica-water-ripples"></div>
+                <div className="antarctica-water-shore"></div>
+              </div>
               <div className="game-parallax-floor-art"></div>
+              <div className="antarctica-ice-lip"></div>
+              <div className="antarctica-grade"></div>
             </div>
           </div>
         </div>
@@ -1512,7 +1576,11 @@ const Game = ({
         <div className="film-grain" aria-hidden="true"></div>
         <div
           className="antarctica-map-hint"
-          data-on="Antarctica · Ctrl+Shift+A to stadium"
+          data-on={
+            isTrainingMatch
+              ? `Antarctica · ${skyPhase} · Ctrl+Shift+Y sky · Ctrl+Shift+A stadium`
+              : "Antarctica · Ctrl+Shift+A to stadium"
+          }
           data-off="Stadium · Ctrl+Shift+A to Antarctica"
         ></div>
         {/* Cinematic-kill dim — the "dark background" beat. Screen-fixed (not

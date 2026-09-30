@@ -960,10 +960,11 @@ body.cursor-hidden *,
 }
 
 /* Fighting-game parallax (html[data-antarctica-map="1"]).
-   Sky lags. Floor is one plate (ice + mountains); the sky hole and the
-   lake are both real alpha. Water is a sibling behind the plate, clipped
-   to the lake. Floor shares the fight-cam box / origin with the dohyo —
-   do not change this layer's inset. */
+   Sky is AntarcticaSky: several sheets, each with its own lag.
+   Floor is one plate (ice + mountains); the sky hole and the lake are
+   both real alpha. Water sits behind the plate. [data-sky] on this
+   layer picks day / afternoon / night. Floor shares the fight-cam box
+   with the dohyo — do not change this layer's inset. */
 .game-parallax {
   display: none;
   position: absolute;
@@ -983,7 +984,6 @@ html[data-antarctica-map="1"] .game-map {
   background-color: transparent;
 }
 
-.game-parallax-sky,
 .game-parallax-floor {
   position: absolute;
   inset: 0;
@@ -993,22 +993,6 @@ html[data-antarctica-map="1"] .game-map {
   transform-origin: center center;
   will-change: transform;
   backface-visibility: hidden;
-}
-
-.game-parallax-sky {
-  z-index: 0;
-  /* Extra bleed so a nearly locked sky never shows its own edge when the
-     fight camera pans and zooms. The mountains ride the camera; the aurora
-     barely follows, which is the parallax. */
-  inset: -22%;
-  background-image: url(./assets/map-antarctica-sky.webp);
-  transform: translate3d(
-      calc(var(--cam-track-x, 0px) * 0.05 + var(--cam-shake-x, 0px) * 0.4),
-      calc(var(--cam-track-y, 0px) * 0.04 + var(--cam-shake-y, 0px) * 0.4),
-      0
-    )
-    rotate(var(--cam-shake-rot, 0deg))
-    scale(calc(1 + (var(--cam-scale, 1) - 1) * 0.12));
 }
 
 .game-parallax-floor {
@@ -1034,7 +1018,7 @@ html[data-antarctica-map="1"] .game-map {
   right: 0;
   top: 68%;
   bottom: 0;
-  background: #eaf4fb;
+  background: var(--ice-fill, #eaf4fb);
   pointer-events: none;
 }
 
@@ -1073,15 +1057,16 @@ html[data-antarctica-map="1"] .game-map {
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  /* Deeper at the far shore, where the mountains reflect. It only
-     pales in the last stretch, where it has to meet the ice shelf. */
+  /* Deeper at the far shore. Stops follow [data-sky] so the lake
+     changes with the basho. The near stops hold a water color
+     instead of fading into the ice. */
   background: linear-gradient(
     180deg,
-    #146ca8 0%,
-    #1a80bc 38%,
-    #2292cc 68%,
-    #5cb2d8 86%,
-    #cee8f4 100%
+    var(--water-0, #146ca8) 0%,
+    var(--water-1, #1a80bc) var(--water-at-1, 38%),
+    var(--water-2, #2292cc) var(--water-at-2, 68%),
+    var(--water-3, #5cb2d8) var(--water-at-3, 86%),
+    var(--water-4, #cee8f4) 100%
   );
 }
 
@@ -1093,44 +1078,6 @@ html[data-antarctica-map="1"] .game-map {
   background-repeat: no-repeat;
   background-size: 100% 100%;
   pointer-events: none;
-}
-
-.antarctica-water::after {
-  content: "";
-  position: absolute;
-  inset: 0 -8%;
-  pointer-events: none;
-  background:
-    radial-gradient(
-      ellipse 36% 95% at 30% 46%,
-      rgba(255, 255, 255, 0.13),
-      transparent 68%
-    ),
-    radial-gradient(
-      ellipse 26% 80% at 76% 62%,
-      rgba(186, 236, 255, 0.1),
-      transparent 70%
-    );
-  animation: antarctica-lake-light 18s ease-in-out infinite alternate;
-}
-
-@keyframes antarctica-lake-light {
-  from {
-    transform: translate3d(-2.2%, 0, 0);
-  }
-  to {
-    transform: translate3d(2.6%, 0, 0);
-  }
-}
-
-html[data-low-spec="1"] .antarctica-water::after {
-  animation: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .antarctica-water::after {
-    animation: none;
-  }
 }
 
 html[data-antarctica-map="1"] .crowd-stand-host,

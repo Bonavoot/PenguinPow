@@ -72,8 +72,8 @@ import mainMenuPumo from "../assets/main-menu-pumo.png";
  * Title plate is the live match stage (sky + floor plate), not the
  * older zoomed-out look-test.
  */
-import titleSky from "../assets/map-antarctica-sky.webp";
 import titleWorld from "../assets/game-map-antarctica2-floor.png";
+import AntarcticaSky from "./AntarcticaSky";
 import {
   playButtonHoverSound,
   playButtonPressSound2,
@@ -149,16 +149,6 @@ const BackgroundPlate = styled.div`
           animation: ${kenBurns} 48s ease-in-out infinite alternate;
           will-change: transform;
         `}
-`;
-
-const SkyImage = styled.img`
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: 50% 22%;
-  filter: saturate(1.14) brightness(1) contrast(0.97);
 `;
 
 /* Same plate as the match: sky shows through the top, the lake is the
@@ -463,7 +453,7 @@ const PLAY_ITEMS = [
   { id: "back", label: "Back", quiet: true, action: "back" },
 ];
 
-const preGameImages = [titleSky, titleWorld, pumo];
+const preGameImages = [titleWorld, pumo];
 
 // ============================================
 // MAIN COMPONENT
@@ -1305,11 +1295,17 @@ const MainMenu = ({
   const renderMainMenu = () => {
     return (
       <MainMenuContainer>
-        <BackgroundPlate aria-hidden $lowSpec={lowSpec}>
-          <SkyImage src={titleSky} alt="" />
+        <BackgroundPlate className="title-sky" aria-hidden data-sky="night" $lowSpec={lowSpec}>
+          <AntarcticaSky phase="night" />
           <WorldPlate>
-            <div className="antarctica-water"></div>
+            <div className="antarctica-water">
+              <div className="antarctica-water-glint"></div>
+              <div className="antarctica-water-ripples"></div>
+              <div className="antarctica-water-shore"></div>
+            </div>
             <WorldImage src={titleWorld} alt="" />
+            <div className="antarctica-ice-lip"></div>
+            <div className="antarctica-grade"></div>
           </WorldPlate>
         </BackgroundPlate>
         <CinematicOverlay />

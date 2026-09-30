@@ -37,7 +37,6 @@ import {
 } from "../lib/firstBoutPriority";
 import dohyoDisplay from "../assets/dohyo-display.webp";
 import gameMapBackground from "../assets/game-map-444.webp";
-import antarcticaSky from "../assets/map-antarctica-sky.webp";
 import antarcticaFloor from "../assets/game-map-antarctica2-floor.png";
 import gyojiImage from "../assets/gyoji.png";
 import gyojiReady from "../assets/gyoji-ready.png";
@@ -139,7 +138,6 @@ const GAME_FIGHTER_APNG_SPRITES = [
 const FIRST_BOUT_ARENA_HUD = [
   dohyoDisplay,
   gameMapBackground,
-  antarcticaSky,
   antarcticaFloor,
   gyojiImage,
   gyojiReady,
@@ -153,7 +151,7 @@ const PRIORITY_ID_SET = new Set([
 function isFirstBoutFileUrl(url) {
   if (!url || typeof url !== "string") return false;
   if (FIRST_BOUT_ARENA_HUD.includes(url)) return true;
-  if (/dohyo-display|game-map-444|map-antarctica-sky|game-map-antarctica2-floor|gyoji-ready|\/gyoji\./.test(url)) {
+  if (/dohyo-display|game-map-444|game-map-antarctica2-floor|gyoji-ready|\/gyoji\./.test(url)) {
     return true;
   }
   return isFirstBoutSpriteId(spriteIdFromUrl(url));
