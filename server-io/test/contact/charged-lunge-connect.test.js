@@ -221,24 +221,18 @@ describe("same-tick body connect", () => {
   });
 });
 
-describe("charged hit ice recoil", () => {
-  it("pops backward, opposite the lunge, scaled by charge", () => {
-    const tap = chargedHitRecoilVelocity({
+describe("charged hit plant", () => {
+  it("a landed headbutt does not pop the attacker backward", () => {
+    assert.equal(chargedHitRecoilVelocity({
       facing: -1,
       chargedReleasePower: 0,
-    });
-    const full = chargedHitRecoilVelocity({
+    }), 0);
+    assert.equal(chargedHitRecoilVelocity({
       facing: -1,
       chargedReleasePower: 100,
-    });
-    // facing -1 attacks right, so recoil is left (negative)
-    assert.ok(Math.abs(tap - -CHARGED_HIT_RECOIL_MIN) < 1e-6);
-    assert.ok(Math.abs(full - -CHARGED_HIT_RECOIL_MAX) < 1e-6);
-    assert.ok(Math.abs(full) > Math.abs(tap));
-    assert.ok(
-      chargedHitRecoilVelocity({ facing: 1, chargedReleasePower: 50 }) > 0,
-      "facing 1 recoils right (away from a leftward lunge)"
-    );
+    }), 0);
+    assert.equal(CHARGED_HIT_RECOIL_MIN, 0);
+    assert.equal(CHARGED_HIT_RECOIL_MAX, 0);
   });
 });
 

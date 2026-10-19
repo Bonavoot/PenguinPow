@@ -16,6 +16,10 @@ const {
   SLIDE_SLAP_POWER_FLOOR,
   SLIDE_SLAP_FOLLOW_VEL,
   SLIDE_SLAP_FOLLOW_VEL_MAX,
+  CHARGED_KB_FRICTION,
+  CHARGED_SEND_FLOOR_PX,
+  CHARGED_SEND_CEIL_PX,
+  CHARGED_MAX_SEND_PX,
 } = require("./constants");
 
 // ── Units ───────────────────────────────────────────────────────────────────
@@ -46,8 +50,26 @@ const coastVelocityToPx = (v) => v * PX_PER_VELOCITY;
  * (assigning knockback velocity into a 4x slower channel), and every call site
  * should keep pointing at one auditable place if the channels ever diverge.
  */
-function handoffVelocity(kbVelocity) {
-  return (kbVelocity || 0) * ((1 - COAST_FRICTION) / (1 - KB_FRICTION));
+function handoffVelocity(kbVelocity, kbFriction = KB_FRICTION) {
+  const f =
+    typeof kbFriction === "number" && kbFriction > 0 && kbFriction < 1
+      ? kbFriction
+      : KB_FRICTION;
+  return (kbVelocity || 0) * ((1 - COAST_FRICTION) / (1 - f));
+}
+
+/** Px one velocity unit travels before a geometric decay at `friction` dies. */
+function pxPerVelocityAtFriction(friction) {
+  const f =
+    typeof friction === "number" && friction > 0 && friction < 1
+      ? friction
+      : COAST_FRICTION;
+  return PX_PER_VELOCITY_TICK / (1 - f);
+}
+
+/** Initial knockback speed that delivers `sendPx` under `friction`. */
+function velocityForSendPx(sendPx, friction) {
+  return (sendPx || 0) / pxPerVelocityAtFriction(friction);
 }
 
 // ── DI ──────────────────────────────────────────────────────────────────────
@@ -211,8 +233,18 @@ const MOVE_TRANSFER = {
 
   palm: { floor: 250, ceil: 400, guaranteed: false },
 
-  // vSelf is lunge speed (scales with charge).
-  charged: { floor: 110, ceil: 460, guaranteed: false },
+  // vSelf is charge fraction (0–1 mapped onto V_REF), not run-in speed.
+  // The startup is the price, so the shove is guaranteed: holding back does
+  // not shave it. kbFriction is snappier than ice so the distance arrives
+  // as a hit. maxSend sits above the ceiling so a neutral full charge is
+  // intact and stacked multipliers still have a ring-sized cap.
+  charged: {
+    floor: CHARGED_SEND_FLOOR_PX,
+    ceil: CHARGED_SEND_CEIL_PX,
+    guaranteed: true,
+    maxSend: CHARGED_MAX_SEND_PX,
+    kbFriction: CHARGED_KB_FRICTION,
+  },
 
   bodySlam: { floor: 170, ceil: 400, guaranteed: false },
 
@@ -343,9 +375,11 @@ function sampleClosingSpeed(attacker, victim, dirToVictim, nowSim) {
  * @param {number} sendPx  delivered distance (>= 0)
  * @param {number} awayDir +1 / -1, direction away from the attacker
  */
-function applyTransferImpulse(victim, sendPx, awayDir, nowSim) {
+function applyTransferImpulse(victim, sendPx, awayDir, nowSim, opts = {}) {
   const dir = awayDir >= 0 ? 1 : -1;
   const send = Math.max(0, sendPx || 0);
+  const maxSend = opts.maxSend > 0 ? opts.maxSend : MAX_SEND_PX;
+  const friction = opts.friction;
 
   // Owed distance is a ledger, not read back off velocity: slap hitstun ends
   // before the slide (`endHitKnockback` moves remainder into movementVelocity),
@@ -360,13 +394,17 @@ function applyTransferImpulse(victim, sendPx, awayDir, nowSim) {
   let totalPx = wasFleeing
     ? Math.max(owedPx * COMPOUND_RETAIN * (1 + COMPOUND_GAIN) + send, owedPx)
     : send;
-  const capped = totalPx > MAX_SEND_PX;
-  if (capped) totalPx = MAX_SEND_PX;
+  const capped = totalPx > maxSend;
+  if (capped) totalPx = maxSend;
 
-  creditOwedDistance(victim, totalPx * dir, nowSim);
+  creditOwedDistance(victim, totalPx * dir, nowSim, friction);
 
+  const speed =
+    typeof friction === "number" && friction > 0 && friction < 1
+      ? velocityForSendPx(totalPx, friction)
+      : pxToKbVelocity(totalPx);
   return {
-    velocity: pxToKbVelocity(totalPx) * dir,
+    velocity: speed * dir,
     sendPx: totalPx,
     compounded: wasFleeing,
     capped,
@@ -379,26 +417,37 @@ function applyTransferImpulse(victim, sendPx, awayDir, nowSim) {
 // slide would have done, but survives anything they press.
 const OWED_MAX_AGE_MS = 1600;
 
-/** Signed px still owed at `nowSim`, decayed on the coast curve. */
+/** Signed px still owed at `nowSim`, decayed on the friction that authored it. */
 function owedDistanceNow(victim, nowSim) {
   if (!victim) return 0;
   const px = victim.momentumOwedPx || 0;
   if (!px) return 0;
   const dt = (nowSim || 0) - (victim.momentumOwedAt || 0);
   if (!Number.isFinite(dt) || dt < 0 || dt > OWED_MAX_AGE_MS) return 0;
-  return px * Math.pow(COAST_FRICTION, dt / MS_PER_TICK);
+  const friction =
+    typeof victim.momentumOwedFriction === "number" &&
+    victim.momentumOwedFriction > 0 &&
+    victim.momentumOwedFriction < 1
+      ? victim.momentumOwedFriction
+      : COAST_FRICTION;
+  return px * Math.pow(friction, dt / MS_PER_TICK);
 }
 
-function creditOwedDistance(victim, signedPx, nowSim) {
+function creditOwedDistance(victim, signedPx, nowSim, friction) {
   if (!victim) return;
   victim.momentumOwedPx = signedPx || 0;
   victim.momentumOwedAt = nowSim || 0;
+  victim.momentumOwedFriction =
+    typeof friction === "number" && friction > 0 && friction < 1
+      ? friction
+      : COAST_FRICTION;
 }
 
 function clearOwedDistance(victim) {
   if (!victim) return;
   victim.momentumOwedPx = 0;
   victim.momentumOwedAt = 0;
+  victim.momentumOwedFriction = 0;
 }
 
 /**
@@ -479,15 +528,18 @@ const POSTURE_CHIP_FLOOR = 4;
 const POSTURE_CHIP_CEIL = 30;
 
 // `base` always chips; `scale` is added from closing speed.
+// Raised so a hit off the straw actually moves the bar. The rope multiplier
+// (SLAP_EDGE_POSTURE_MULT / PALM_EDGE_POSTURE_MULT) is the extra, not the
+// whole bout. Max must stay above 2× base — closing speed is the severity.
 const POSTURE_CHIP_PROFILE = {
-  slap: { base: 3, scale: 7 }, // was flat 7
-  slideSlap: { base: 6, scale: 10 },
-  palm: { base: 10, scale: 12 }, // was flat 20
-  charged: { base: 10, scale: 14 }, // was flat 18
-  bodySlam: { base: 10, scale: 12 },
-  lowKick: { base: 4, scale: 6 },
-  snowball: { base: 3, scale: 4 },
-  pumoClone: { base: 3, scale: 4 },
+  slap: { base: 6, scale: 8 }, // 6–14
+  slideSlap: { base: 8, scale: 11 }, // 8–19
+  palm: { base: 11, scale: 13 }, // 11–24
+  charged: { base: 11, scale: 14 }, // 11–25
+  bodySlam: { base: 11, scale: 13 }, // 11–24
+  lowKick: { base: 6, scale: 8 }, // 6–14
+  snowball: { base: 4, scale: 5 }, // 4–9
+  pumoClone: { base: 4, scale: 5 }, // 4–9
 };
 
 /** Posture damage for a move at a given closing speed. */
@@ -577,7 +629,10 @@ function resolveTransfer(opts) {
   const escalated = basePx * pressureMultiplierFor(step);
   const sendPx = Math.min(escalated, profile.ceil * (mult || 1));
 
-  const applied = applyTransferImpulse(victim, sendPx, dir, nowSim);
+  const applied = applyTransferImpulse(victim, sendPx, dir, nowSim, {
+    maxSend: profile.maxSend,
+    friction: profile.kbFriction,
+  });
   const weight = impactWeightFor(moveKey);
   creditPressure(victim, nowSim, step);
 
@@ -638,6 +693,8 @@ module.exports = {
   pxToKbVelocity,
   coastVelocityToPx,
   handoffVelocity,
+  pxPerVelocityAtFriction,
+  velocityForSendPx,
   DI_FRICTION_FACTOR,
   diReducedPx,
   isDirectionallyInfluencing,

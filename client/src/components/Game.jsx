@@ -62,8 +62,9 @@ import { facingKeys } from "../combatAudio/strikeAudioPrediction";
 import { pullYankCrowdIntensity } from "../combatPresentation/pullYankFeel";
 import { throwTossCrowdIntensity } from "../combatPresentation/throwTossFeel";
 import { selectMouse1StrikeCommand } from "../combatAudio/mouse1CommandSelection";
-import AntarcticaSky from "./AntarcticaSky";
+import AntarcticaSky, { AntarcticaFarRange } from "./AntarcticaSky";
 import { SKY_PHASES, skyPhaseName } from "../utils/skyPhase";
+import { isAntarcticaMap, subscribeAntarcticaMap } from "../utils/antarcticaMap";
 import {
   pushClientInputCommandTrace,
   clearClientInputCommandTrace,
@@ -234,6 +235,9 @@ const Game = ({
   const [vsRound, setVsRound] = useState(1);
   const vsRoundRef = useRef(1);
   const [skyPreview, setSkyPreview] = useState(null);
+  const [antarcticaOn, setAntarcticaOn] = useState(isAntarcticaMap);
+
+  useEffect(() => subscribeAntarcticaMap(setAntarcticaOn), []);
 
   useEffect(() => {
     vsRoundRef.current = 1;
@@ -1498,6 +1502,7 @@ const Game = ({
       <div
         ref={containerRef}
         className="game-container"
+        data-sky={skyPhase}
         data-tachiai={tachiaiCaption || undefined}
       >
         {/* Far field — sky lags; floor plate (ice + mountains, transparent
@@ -1509,12 +1514,12 @@ const Game = ({
             <div className="game-parallax-ice-fill"></div>
             <div className="game-parallax-floor-plate">
               <div className="antarctica-water">
-                <div className="antarctica-water-glint"></div>
-                <div className="antarctica-water-ripples"></div>
                 <div className="antarctica-water-shore"></div>
               </div>
+              <AntarcticaFarRange />
               <div className="game-parallax-floor-art"></div>
               <div className="antarctica-ice-lip"></div>
+              <div className="antarctica-horizon-mist"></div>
               <div className="antarctica-grade"></div>
             </div>
           </div>
@@ -1566,7 +1571,9 @@ const Game = ({
               the sprite's own z:0 competes directly with the dohyo's z:1. */}
           <div className="fallen-actors" aria-hidden="true"></div>
           {/* Ambient snowfall behind the wrestlers. Low Spec skips mount. */}
-          {!lowSpec && <SnowEffect mode="snow" />}
+          {!lowSpec && (
+            <SnowEffect mode="snow" phase={antarcticaOn ? skyPhase : null} />
+          )}
           <div className="arena-lighting" aria-hidden="true"></div>
           {/* Rafter shafts — world-space, pre-softened plate, opacity only. */}
           <div className="god-rays" aria-hidden="true"></div>

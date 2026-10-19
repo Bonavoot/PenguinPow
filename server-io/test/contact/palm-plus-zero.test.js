@@ -1,9 +1,8 @@
 "use strict";
 
 /**
- * Palm on-hit is +0: victim hitstun + both input locks equal the palmer's
- * remaining pose (attackEndTime after the full-active floor) +
- * PALM_THRUST_HIT_RECOVERY_MS. No 380ms charged leftover lock.
+ * Palm on-hit: the palmer is free at remaining pose + hit recovery. The
+ * victim holds STRIKE_HIT_ADVANTAGE_MS longer. No 380ms charged leftover lock.
  */
 
 const { describe, it, afterEach } = require("node:test");
@@ -19,6 +18,7 @@ const {
   PALM_THRUST_STARTUP_MS,
   PALM_THRUST_ACTIVE_MS,
   PALM_THRUST_HIT_RECOVERY_MS,
+  STRIKE_HIT_ADVANTAGE_MS,
 } = require("../../constants");
 
 const CHARGED_LEFTOVER_LOCK_MS = 380;
@@ -45,54 +45,55 @@ function connectPalm(startOffset) {
   return { s, now };
 }
 
-function assertPalmPlusZero(s, now, label) {
+function assertPalmStepAhead(s, now, label) {
   assert.equal(s.right.isHit, true, `${label}: victim must be in hitstun`);
   assert.equal(s.left.isHit, false, `${label}: palmer must not be hit`);
 
-  const expectedFree =
+  const attackerFree =
     (s.left.attackEndTime || now) + PALM_THRUST_HIT_RECOVERY_MS;
+  const victimFree = attackerFree + STRIKE_HIT_ADVANTAGE_MS;
   const victimLock = s.right.inputLockUntil - now;
   const attackerLock = s.left.inputLockUntil - now;
 
   assert.equal(
-    s.right.inputLockUntil,
-    expectedFree,
-    `${label}: victim lock must end when the palmer recovers`
+    s.left.inputLockUntil,
+    attackerFree,
+    `${label}: palmer is free at pose + hit recovery`
   );
   assert.equal(
-    s.left.inputLockUntil,
-    expectedFree,
-    `${label}: palmer lock must match the victim (+0)`
+    s.right.inputLockUntil,
+    victimFree,
+    `${label}: victim stays the step ahead`
   );
-  assert.ok(
-    Math.abs(victimLock - attackerLock) <= 1,
-    `${label}: locks must release together (victim ${victimLock} vs palmer ${attackerLock})`
+  assert.equal(
+    victimLock - attackerLock,
+    STRIKE_HIT_ADVANTAGE_MS,
+    `${label}: the gap is the step ahead`
   );
   assert.ok(
     victimLock !== CHARGED_LEFTOVER_LOCK_MS,
     `${label}: must not inherit the 380ms charged lock`
   );
   assert.ok(
-    victimLock !== OLD_BURST_ONLY_MS ||
-      expectedFree - now === OLD_BURST_ONLY_MS,
-    `${label}: must not use the old 200ms burst lock unless that is the real +0`
+    attackerLock !== OLD_BURST_ONLY_MS ||
+      attackerFree - now === OLD_BURST_ONLY_MS,
+    `${label}: must not use the old 200ms burst lock unless that is the real recovery`
   );
 
-  // isHit drops on the same beat as the lock (hitstop paused so the timer can fire).
   s.room.hitstopUntil = 0;
-  s.room.simTime = expectedFree - 1;
+  s.room.simTime = victimFree - 1;
   timeoutManager.processRoom(s.room);
   assert.equal(s.right.isHit, true, `${label}: still hit one ms before release`);
 
-  s.room.simTime = expectedFree;
+  s.room.simTime = victimFree;
   timeoutManager.processRoom(s.room);
-  assert.equal(s.right.isHit, false, `${label}: hitstun ends with the lock`);
+  assert.equal(s.right.isHit, false, `${label}: hitstun ends with the victim lock`);
 }
 
-describe("palm on-hit +0", () => {
-  it("early-active connect: both free at remaining pose + hit recovery", () => {
+describe("palm on-hit step ahead", () => {
+  it("early-active connect: victim holds past the palmer's recovery", () => {
     const { s, now } = connectPalm(PALM_THRUST_STARTUP_MS + 5);
-    assertPalmPlusZero(s, now, "early");
+    assertPalmStepAhead(s, now, "early");
     const remain = s.left.attackEndTime - now;
     assert.ok(
       remain >= PALM_THRUST_ACTIVE_MS,
@@ -100,10 +101,10 @@ describe("palm on-hit +0", () => {
     );
   });
 
-  it("late-active connect: still +0 (full-active floor, not a shorter ghost)", () => {
+  it("late-active connect: same step ahead (full-active floor, not a shorter ghost)", () => {
     const { s, now } = connectPalm(
       PALM_THRUST_STARTUP_MS + PALM_THRUST_ACTIVE_MS - 5
     );
-    assertPalmPlusZero(s, now, "late");
+    assertPalmStepAhead(s, now, "late");
   });
 });

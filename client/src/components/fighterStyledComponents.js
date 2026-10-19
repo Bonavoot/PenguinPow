@@ -2,7 +2,7 @@ import styled, { keyframes } from "styled-components";
 import { isOutsideDohyo } from "../constants";
 import getImageSrc from "./getImageSrc";
 import { GROUND_LEVEL } from "./fighterAssets";
-import { GRAB_BREAK_GATHER_MS } from "../config/combatTiming";
+import { GRAB_BREAK_GATHER_MS, DODGE_HOP_MS } from "../config/combatTiming";
 import { FONT_DISPLAY, FONT_UI, FONT_WEIGHT, TEXT_SHADOW_COMBAT, TEXT_SHADOW_COMBAT_HEAVY, TEXT_SHADOW_DISPLAY, TEXT_SHADOW_UI, TRACK } from "./menuTheme";
 
 // Painted soles sit ~2.1% above the sprite box bottom (transparent padding
@@ -1111,7 +1111,7 @@ export const StyledImage = styled("img")
         : props.$isSlideJumping
         ? "slideJumpPop 0.22s cubic-bezier(0.15, 0.85, 0.25, 1) forwards"
         : props.$isDodging || props.$isChargeHopping
-        ? "dashJump 0.085s linear forwards"
+        ? `dashJump ${DODGE_HOP_MS}ms linear forwards`
         : props.$justLandedFromDodge &&
           props.$isIceSliding &&
           !props.$isPowerSliding &&
@@ -1711,7 +1711,7 @@ export const StyledImage = styled("img")
   }
 
   @keyframes dashJump {
-    /* World Y is the hop (same 16px / 85ms parabola as a slide redirect).
+    /* World Y is the hop (DODGE_HOP_HEIGHT over DODGE_HOP_MS).
        This is squash only so CSS doesn't stack a second jump. */
     0%   { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(0.92); transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }
     40%  { transform: scaleX(var(--facing, 1)) translateY(0) scaleY(1);    transform-origin: ${FIGHTER_SOLE_TRANSFORM_ORIGIN}; }

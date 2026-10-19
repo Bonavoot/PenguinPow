@@ -20,6 +20,8 @@ const TACHIAI_SIDESTEP_TRAVEL = 240;
 const TACHIAI_DODGE_HOP_HEIGHT = 56;
 const TACHIAI_DODGE_HOP_MS = 40;
 const TACHIAI_DODGE_SLAP_CLEAR_PX = 24;
+// Opening hop stays the short pop. Mid-round dashes use DODGE_TRAVEL_DISTANCE.
+const TACHIAI_DODGE_TRAVEL = 34;
 
 const TACHIAI_CALL = Object.freeze({
   STAND: "stand",
@@ -273,6 +275,7 @@ module.exports = {
   TACHIAI_DODGE_HOP_HEIGHT,
   TACHIAI_DODGE_HOP_MS,
   TACHIAI_DODGE_SLAP_CLEAR_PX,
+  TACHIAI_DODGE_TRAVEL,
   TACHIAI_CALL,
   CAPTION,
   emptyHeld,

@@ -51,6 +51,7 @@ function cleanupPlayerStates(player) {
   player.dodgeCooldownUntil = 0;
   player.dodgeStartupEndTime = 0;
   player.dodgeRecoveryEndTime = 0;
+  player.shiftReleasedDuringDodge = false;
   player.isSidestepping = false;
   player.isSidestepStartup = false;
   player.isSidestepRecovery = false;

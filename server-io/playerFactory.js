@@ -182,6 +182,8 @@ function createInitialPlayerState(overrides = {}) {
     dodgeStartupEndTime: 0,
     dodgeRecoveryEndTime: 0,
     dodgeCooldownUntil: 0,
+    // Set when Shift comes up during this dash. Landing will not slide.
+    shiftReleasedDuringDodge: false,
 
     // === Sidestep ===
     isSidestepping: false,

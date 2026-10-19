@@ -59,6 +59,7 @@ const {
   SLAP_MIN_HITSTUN_MS,
   SLAP_RECOVERY_MS,
   SLIDE_SLAP_ADVANTAGE_MS,
+  STRIKE_HIT_ADVANTAGE_MS,
   SLIDE_SLAP_FOLLOW_VEL,
   CHARGED_KILL_REACH_MIN,
   CHARGED_KILL_REACH_MAX,
@@ -68,6 +69,10 @@ const {
   CHARGED_KILL_MIN_CHARGE,
   CHARGED_KILL_READ_MIN_CHARGE,
   CHARGED_HIT_RECOVERY_MS,
+  CHARGED_KB_FRICTION,
+  CHARGED_HITSTUN_MIN_MS,
+  CHARGED_HITSTUN_MAX_MS,
+  CHARGED_HITSTUN_COMBO_CAP_MS,
   CHARGE_FULL_POWER_MS,
   CINEMATIC_KILL_HITSTOP_MS,
   CINEMATIC_KILL_KNOCKBACK_BOOST,
@@ -108,6 +113,7 @@ const {
   AP_STAGGER_SLAP_MS,
   AP_STAGGER_PALM_MS,
   AP_STAGGER_FLAP_MS,
+  AP_STAGGER_CHARGED_MS,
   AP_SUCCESS_RECOVERY_MS,
   AP_COOLDOWN_MS,
   AP_STAMINA_COST,
@@ -115,10 +121,14 @@ const {
   AP_KILL_SLIDE_DURATION_MS,
   GUARD_SLAP_BALANCE_CHIP,
   GUARD_PALM_BALANCE_CHIP,
+  GUARD_CHARGED_BALANCE_CHIP,
   GUARD_SLAP_STAMINA_DRAIN,
   GUARD_PALM_STAMINA_DRAIN,
+  GUARD_CHARGED_STAMINA_DRAIN,
   GUARD_SLAP_PUSHBACK,
   GUARD_PALM_PUSHBACK,
+  GUARD_CHARGED_PUSHBACK,
+  GUARD_CHARGED_LOCK_MS,
   GUARD_HITSTOP_MS,
   GUARD_ATTACKER_RECOVERY_MS,
   GUARD_CRUSH_STUN_MS,
@@ -196,7 +206,6 @@ const {
 const {
   resolveSlapVersusChargedPhysical,
   isChargedHeadbuttActive,
-  chargedHitRecoilVelocity,
   combatPrevX,
 } = require("./chargedHeadbuttContact");
 const {
@@ -230,9 +239,13 @@ function guardedRecoverMs(attacker, currentTime) {
  * director can finish smear → strike → settle. Clearing those and setting
  * isRecovering snapped to recovering.png mid-swing.
  */
-function consumeGuardedAttack(attacker, defender, currentTime) {
+function consumeGuardedAttack(attacker, defender, currentTime, lockMs) {
   if (!attacker) return;
-  const recoverMs = guardedRecoverMs(attacker, currentTime);
+  const cycleMs = guardedRecoverMs(attacker, currentTime);
+  const recoverMs =
+    typeof lockMs === "number" && lockMs > 0
+      ? Math.max(lockMs, cycleMs)
+      : cycleMs;
 
   attacker.isAttacking = false;
   attacker.slapActiveEndTime = 0;
@@ -515,18 +528,14 @@ function applyCinematicKillSpeed(velocity) {
   return Math.sign(boosted) * CINEMATIC_KILL_SPEED_CAP;
 }
 
-// Slap/palm/body-slam rope clamp opens only when posture was ALREADY in the kill-throw
-// band BEFORE this hit's drain. The hit that cracks them under 15 still clamps —
-// the NEXT strike (while still under 15) can ring out. Fairer/readable: the
-// HUD threshold is honest. Entry speed / connect position do not gate it.
-// Pass pre-drain balance when the victim has already been chipped this hit.
-function slapKnockbackArmedForRingOut(victim, preHitBalance) {
+// Slap/palm/body-slam may cross the rope when posture is in the kill band
+// AFTER this hit's drain. The shove that breaks them on the straw is the
+// ring-out. Healthy posture still clamps. Knockback still has to reach the
+// rope — a mid-ring chip does not teleport them out. Charged, drive, and
+// throws do not use this gate.
+function slapKnockbackArmedForRingOut(victim) {
   const balance =
-    typeof preHitBalance === "number"
-      ? preHitBalance
-      : typeof victim.balance === "number"
-        ? victim.balance
-        : 100;
+    typeof victim.balance === "number" ? victim.balance : 100;
   return balance < CLINCH_THROW_KILL_THRESHOLD;
 }
 
@@ -2343,6 +2352,37 @@ function emitGrabArmorAbsorbVfx(io, room, attacker, defender, now) {
   );
 }
 
+function isFlyingHeadbutt(attacker) {
+  return !!(
+    attacker &&
+    attacker.attackType === "charged" &&
+    !attacker.isPalmThrust &&
+    !attacker.isLowKick &&
+    attacker.attackType !== "lowKick"
+  );
+}
+
+function spaceAnswersStrike(attacker) {
+  if (!attacker) return false;
+  if (attacker.attackType === "slap" || attacker.isSlapAttack) return true;
+  if (attacker.isPalmThrust) return true;
+  if (isFlyingHeadbutt(attacker)) return true;
+  return false;
+}
+
+// A tap whose window already expired, with Space up, is not a stance.
+// Holding Space (guard) is left alone. Runs before a headbutt commits its
+// on-hit pose, so a dead window still takes the real hit.
+function expireStaleParryWindow(defender) {
+  if (!defender || !defender.isRawParrying || defender.isGuarding) return;
+  const apNow = simNowForPlayer(defender);
+  const held = defender.isCPU ? !!defender.keys?.s : !!defender.keys?.[" "];
+  if (!held && apNow >= (defender.apActiveUntil || 0)) {
+    defender.isRawParrying = false;
+    defender.apActiveUntil = 0;
+  }
+}
+
 function processHit(player, otherPlayer, rooms, io, opts = {}) {
   // Find the current room
   const currentRoom = rooms.find((room) =>
@@ -2532,9 +2572,18 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     );
   }
 
+  // Drop an expired tap before the headbutt decides whether Space meets it.
+  // A live window or a held brace skips the on-hit lunge plant; the stance
+  // branch below owns the outcome. A dead window still takes the real hit.
+  expireStaleParryWindow(otherPlayer);
+  const headbuttMetBySpace =
+    !!otherPlayer.isRawParrying && isFlyingHeadbutt(player);
+
   // For charged attacks, end the attack immediately on hit — EXCEPT palm thrust,
   // which keeps isAttacking alive through the active window (like slap).
-  if (!isSlapAttack && !isLowKick) {
+  // A headbutt that Space will answer must not plant the connect pose or arm
+  // the recoil timeout — that timeout fights the parry stagger.
+  if (!isSlapAttack && !isLowKick && !headbuttMetBySpace) {
     // Set hit tracking flag for charged attacks
     player.chargedAttackHit = true;
 
@@ -2588,7 +2637,6 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         player.id,
         () => {
           if (!player.chargedConnectPoseHold) return;
-          const recoilVel = chargedHitRecoilVelocity(player);
           player.chargedConnectPoseHold = false;
           player.isAttacking = false;
           player.attackType = null;
@@ -2602,9 +2650,11 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
             player.tachiaiChargeRecoveryMs || CHARGED_HIT_RECOVERY_MS;
           player.tachiaiChargeRecoveryMs = 0;
           player.recoveryDirection = player.facing;
-          player.movementVelocity = recoilVel;
+          // Plant. The shove belongs to the victim; sliding backward would
+          // hand the ground back.
+          player.movementVelocity = 0;
           player.knockbackVelocity = { x: 0, y: 0 };
-          player.isChargedHitRecoil = true;
+          player.isChargedHitRecoil = false;
           player.y = GROUND_LEVEL;
         },
         0,
@@ -2642,29 +2692,18 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
   }
 
   // ── GUARD & PARRY ─────────────────────────────────────────────────────────
-  // The defender is in the Space stance (a live PARRY window OR holding GUARD)
-  // and the incoming move is a SLAP or PALM THRUST (a charged non-palm attack
-  // BLOWS THROUGH — it falls to the normal hit path below, the anti-defense hard
-  // read; grabs never reach here — a grab vs the stance is the counter-grab in
-  // index.js). A live parry window (a timed tap) deflects for a reward, graded
-  // regular vs PERFECT; otherwise the defender is GUARDING and eats chip.
-  //
-  // Pre-clear stale flurry linger: Space UP + window expired + not guarding.
-  // Without this, the block below would phantom-chip instead of a clean hit.
-  if (otherPlayer.isRawParrying && !otherPlayer.isGuarding) {
-    const _apNow = simNowForPlayer(otherPlayer);
-    const _apHeld = otherPlayer.isCPU ? !!otherPlayer.keys.s : !!otherPlayer.keys[" "];
-    if (!_apHeld && _apNow >= (otherPlayer.apActiveUntil || 0)) {
-      otherPlayer.isRawParrying = false;
-      otherPlayer.apActiveUntil = 0;
-    }
-  }
-  if (otherPlayer.isRawParrying && (isSlapAttack || player.isPalmThrust)) {
+  // Space answers slap, palm, and the flying headbutt. A live tap deflects.
+  // A hold braces: less ground, less posture, no turn. Grabs never reach
+  // here — a grab vs the stance is the counter-grab in index.js. Low kick
+  // (disabled) stays outside this gate.
+  // Stale tap expiry already ran above, before the headbutt pose commit.
+  if (otherPlayer.isRawParrying && spaceAnswersStrike(player)) {
     const attacker = player;
     const parrier = otherPlayer;
     const currentTime = simNowForPlayer(parrier);
     const knockbackDirection = attacker.x < parrier.x ? -1 : 1;
     const isPalm = !!player.isPalmThrust;
+    const isHeadbutt = isFlyingHeadbutt(player);
     const parryingPlayerNumber = currentRoom
       ? currentRoom.players.findIndex((p) => p.id === parrier.id) + 1
       : 1;
@@ -2680,9 +2719,21 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       // Drop-Space after the freeze is even / a hair plus. Hold stays grab food.
       // Dedup via isAlreadyHit so the same active window chips once.
       // Stamina to 0 while guarding = guard-crush.
-      const chip = isPalm ? GUARD_PALM_BALANCE_CHIP : GUARD_SLAP_BALANCE_CHIP;
-      const stamDrain = isPalm ? GUARD_PALM_STAMINA_DRAIN : GUARD_SLAP_STAMINA_DRAIN;
-      const pushback = isPalm ? GUARD_PALM_PUSHBACK : GUARD_SLAP_PUSHBACK;
+      const chip = isHeadbutt
+        ? GUARD_CHARGED_BALANCE_CHIP
+        : isPalm
+          ? GUARD_PALM_BALANCE_CHIP
+          : GUARD_SLAP_BALANCE_CHIP;
+      const stamDrain = isHeadbutt
+        ? GUARD_CHARGED_STAMINA_DRAIN
+        : isPalm
+          ? GUARD_PALM_STAMINA_DRAIN
+          : GUARD_SLAP_STAMINA_DRAIN;
+      const pushback = isHeadbutt
+        ? GUARD_CHARGED_PUSHBACK
+        : isPalm
+          ? GUARD_PALM_PUSHBACK
+          : GUARD_SLAP_PUSHBACK;
       const guardPushDir = parrier.x < attacker.x ? -1 : 1;
 
       applyBalanceDamage(parrier, chip, currentTime);
@@ -2694,7 +2745,41 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       parrier.isAlreadyHit = true;
       parrier.apChainCount = 0;    // a block breaks the parry chain
       parrier.apFlurryUntil = 0;   // block breaks tap-every-slap flurry cover
-      consumeGuardedAttack(attacker, parrier, currentTime);
+      consumeGuardedAttack(
+        attacker,
+        parrier,
+        currentTime,
+        isHeadbutt ? GUARD_CHARGED_LOCK_MS : undefined
+      );
+      if (isHeadbutt) {
+        // Kill the lunge. Shared lock already matches charge hit-recovery,
+        // so the brace is not a punish. Pose drops into that recovery.
+        attacker.movementVelocity = 0;
+        attacker.knockbackVelocity = { x: 0, y: 0 };
+        attacker.chargedAttackHit = true;
+        attacker.chargedConnectPoseHold = false;
+        attacker.chargeAttackPower = 0;
+        attacker.chargedReleasePower = 0;
+        attacker.isAttacking = false;
+        attacker.attackType = null;
+        attacker.isRecovering = true;
+        attacker.recoveryStartTime = currentTime;
+        attacker.recoveryDuration = GUARD_CHARGED_LOCK_MS;
+        attacker.recoveryDirection = attacker.facing;
+        timeoutManager.clearPlayerSpecific(attacker.id, "chargedConnectPoseEnd");
+        timeoutManager.clearPlayerSpecific(attacker.id, "guardChargeRecover");
+        const braceStarted = currentTime;
+        setPlayerTimeout(
+          attacker.id,
+          () => {
+            if (attacker.recoveryStartTime !== braceStarted) return;
+            attacker.isRecovering = false;
+            attacker.chargedAttackHit = false;
+          },
+          GUARD_CHARGED_LOCK_MS,
+          "guardChargeRecover"
+        );
+      }
       attacker.lastSlapHitLandedTime = 0;
 
       // GUARD CRUSH — bled dry while blocking: drop the guard into a brief stun
@@ -2732,7 +2817,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           defender: parrier,
           contactX,
           contactY: GROUND_STRIKE_HIT_SPARK_Y,
-          attackFamily: isPalm ? "palm" : "slap",
+          attackFamily: isHeadbutt ? "charged" : isPalm ? "palm" : "slap",
           salt: "block",
         });
         io.in(currentRoom.id).emit(
@@ -2745,7 +2830,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
               // ATTACKER facing — BlockingEffect front offsets calibrated for this.
               facing: attacker.facing,
               isPalm,
-              attackType: isPalm ? "palm" : "slap",
+              isHeadbutt,
+              attackType: isHeadbutt ? "charged" : isPalm ? "palm" : "slap",
               isPalmThrust: isPalm,
               guardCrushed,
               timestamp: Date.now(),
@@ -2900,13 +2986,23 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       // Hitbox dies; ATTACK pose stays through hitstop. After freeze they slide
       // back via slap-parry slide (not knockbackVelocity+isHit). Regular slap
       // is +0 (stagger + begin delay = plant). Perfect: starstun, max(move, PERFECT_PARRY_ATTACKER_STUN_DURATION).
-      attacker.isAttacking = false;      // kill the hitbox (pose stays via isSlapAttack/isPalmThrust)
+      attacker.isAttacking = false;      // kill the hitbox (pose stays via isSlapAttack/isPalmThrust; headbutt via attackType until stagger)
       attacker.slapActiveEndTime = 0;
       attacker.chargedActiveEndTime = 0;
       attacker.attackEndTime = 0;        // cancel the normal recovery handoff (loop reads this)
       attacker.isChargingAttack = false;
       cancelChargeHop(attacker);
       attacker.chargeReleaseBuffered = false;
+      if (isHeadbutt) {
+        // Not a whiff, and not a landed hit. Stops the lunge and a stray
+        // safelyEndChargedAttack from applying whiff recovery. Cleared when
+        // the stagger callback drops the headbutt pose.
+        attacker.chargedAttackHit = true;
+        attacker.chargedConnectPoseHold = false;
+        attacker.movementVelocity = 0;
+        attacker.chargeAttackPower = 0;
+        timeoutManager.clearPlayerSpecific(attacker.id, "chargedConnectPoseEnd");
+      }
       attacker.isSlapSliding = false;
       attacker.slideSlapArmed = false;
       attacker.isHit = false;            // NEVER hit.png on a parry
@@ -2927,7 +3023,11 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
 
       const shove = isPerfect ? AP_PERFECT_ATTACKER_KNOCKBACK : AP_ATTACKER_KNOCKBACK;
       // Regular: move-keyed stagger. Perfect: starstun, never shorter than that move's regular jail.
-      const moveStaggerMs = isSlapAttack ? AP_STAGGER_SLAP_MS : AP_STAGGER_PALM_MS;
+      const moveStaggerMs = isSlapAttack
+        ? AP_STAGGER_SLAP_MS
+        : isHeadbutt
+          ? AP_STAGGER_CHARGED_MS
+          : AP_STAGGER_PALM_MS;
       const staggerMs = isPerfect
         ? Math.max(moveStaggerMs, PERFECT_PARRY_ATTACKER_STUN_DURATION)
         : moveStaggerMs;
@@ -2981,6 +3081,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           attacker.isSlapAttack = false;
           attacker.isPalmThrust = false;
           attacker.attackType = null;
+          attacker.chargedAttackHit = false;
+          attacker.chargedConnectPoseHold = false;
           releaseStrikeFacingLock(attacker, {
             reason: ACTION_FACING_RELEASE.INTERRUPT,
           });
@@ -3301,8 +3403,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     // every connect parks at art-tip-meets-body; spacing skill is the hit itself.
     // Set in slap/palm posture blocks when the victim is already on the clamp.
     let isRopeEdgeHit = false;
-    // Slap/palm ring-out arm: sampled BEFORE drain so the hit that cracks
-    // under 15 still clamps; only a follow-up while already lethal can ring out.
+    // Slap/palm ring-out arm: sampled AFTER drain. The hit that breaks them
+    // under 15 can cross the rope. Healthy posture still clamps.
     let postureRingOutArmed = false;
 
     // Light stamina chip on hit; balance (POSTURE) is the primary hit tax.
@@ -3350,13 +3452,13 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           ? MAP_RIGHT_BOUNDARY - otherPlayer.x
           : otherPlayer.x - MAP_LEFT_BOUNDARY;
       isRopeEdgeHit = edgeDist <= SLAP_ROPE_EDGE_ZONE;
-      postureRingOutArmed = slapKnockbackArmedForRingOut(otherPlayer);
       const slapDrain =
         MomentumTransfer.postureChipForMove(isSlideSlap ? "slideSlap" : "slap", postureVClose) *
         (slapDrainBase / (MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN)) *
         postureCounterMult *
         (isRopeEdgeHit ? SLAP_EDGE_POSTURE_MULT : 1);
       applyBalanceDamage(otherPlayer, slapDrain, currentTime);
+      postureRingOutArmed = slapKnockbackArmedForRingOut(otherPlayer);
     } else if (player.isPalmThrust) {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - PALM_THRUST_HIT_VICTIM_STAMINA_DRAIN);
       const palmKbDir = player.facing === 1 ? -1 : 1;
@@ -3371,12 +3473,12 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           ? MAP_RIGHT_BOUNDARY - otherPlayer.x
           : otherPlayer.x - MAP_LEFT_BOUNDARY;
       isRopeEdgeHit = palmEdgeDist <= SLAP_ROPE_EDGE_ZONE;
-      postureRingOutArmed = slapKnockbackArmedForRingOut(otherPlayer);
       const palmDrain =
         MomentumTransfer.postureChipForMove("palm", palmVClose) *
         postureCounterMult *
         (isRopeEdgeHit ? PALM_EDGE_POSTURE_MULT : 1);
       applyBalanceDamage(otherPlayer, palmDrain, currentTime);
+      postureRingOutArmed = slapKnockbackArmedForRingOut(otherPlayer);
     } else {
       otherPlayer.stamina = Math.max(0, otherPlayer.stamina - CHARGED_HIT_VICTIM_STAMINA_DRAIN);
       const chargedVClose = MomentumTransfer.sampleClosingSpeed(
@@ -3385,8 +3487,15 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         player.facing === 1 ? -1 : 1,
         currentTime
       );
+      const chargedKbDir = player.facing === 1 ? -1 : 1;
+      const chargedEdgeDist =
+        chargedKbDir > 0
+          ? MAP_RIGHT_BOUNDARY - otherPlayer.x
+          : otherPlayer.x - MAP_LEFT_BOUNDARY;
       const chargedDrain =
-        MomentumTransfer.postureChipForMove("charged", chargedVClose) * postureCounterMult;
+        MomentumTransfer.postureChipForMove("charged", chargedVClose) *
+        postureCounterMult *
+        (chargedEdgeDist <= SLAP_ROPE_EDGE_ZONE ? SLAP_EDGE_POSTURE_MULT : 1);
       applyBalanceDamage(otherPlayer, chargedDrain, currentTime);
     }
 
@@ -3503,6 +3612,8 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
 
 
     if (knockbackAllowed || isSlapAttack || isLowKick) {
+      otherPlayer.knockbackFriction = 0;
+      otherPlayer.chargedKnockbackIgnoresDI = false;
       if (isSlapAttack) {
         const pushDirection = player.facing === 1 ? -1 : 1;
 
@@ -3557,12 +3668,10 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           // rope-clamp gate can't catch this slap knockback.
           otherPlayer.isChargedKnockback = false;
 
-          // ROPE RESISTANCE GATE (per-hit): slap KB always clamps at the rope
-          // unless posture was already < CLINCH_THROW_KILL_THRESHOLD BEFORE
-          // this hit's drain (postureRingOutArmed). The hit that cracks them
-          // under 15 still clamps — next hit while lethal can ring out.
-          // Position / entry speed do not arm the KO (charged keeps its own
-          // kill-reach gate). Otherwise the rope catches them in index.js.
+          // ROPE RESISTANCE GATE (per-hit): slap KB clamps at the rope unless
+          // posture is already under 15 AFTER this hit (postureRingOutArmed).
+          // The breaking shove can ring out. Healthy posture still sticks.
+          // Charged keeps its own kill-reach gate. The rope clamp is in index.js.
           otherPlayer.slapKnockbackCanRingOut = postureRingOutArmed;
 
           // GROUND TRANSFER: both slide toward the victim's rope; attacker push
@@ -3774,18 +3883,20 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
         const chargedLungeSpeed = MomentumTransfer.V_REF * chargeFraction;
         // DISTANCE MULT DELIBERATELY EXCLUDES the charge component.
         // `finalKnockbackMultiplier` runs 0.45 (0% charge) → 1.2 (100%), and is
-        // still needed as-is for `chargedKillReach()` below. But charge already
-        // scales distance through `vSelf`, so passing it here double-counted at
-        // the top and CRUSHED the bottom — a 0% charge came out at 49px, well
-        // under a slap. Divide the charge term back out and keep only the
-        // earned multipliers (counter / GORED / POWER / BASHO).
+        // still needed as-is for `chargedKillReach()`. Charge already scales
+        // distance through `vSelf` (floor ~260px, full charge ~540px). Passing
+        // the charge term here would double-count the top and crush the bottom.
+        // Divide it back out and keep only earned multipliers (counter / GORED /
+        // POWER / BASHO).
         const chargeDistanceTerm = 0.45 + Math.pow(chargeFraction, 1.3) * 0.75;
         const chargedEarnedMult =
           chargeDistanceTerm > 0 ? finalKnockbackMultiplier / chargeDistanceTerm : 1;
 
-        // Cinematic ×4 is flight SPEED, applied after the live send. Feeding
-        // it through `mult` made MAX_SEND_PX (450) flatten every KO to the
-        // same crawl as a midscreen charged confirm.
+        // Cinematic ×4 is flight SPEED on the ICE-channel send, then clamped
+        // at CINEMATIC_KILL_SPEED_CAP. The live shove uses a snappier friction
+        // (higher opening speed, same authored px) so a midscreen hit feels
+        // like a strike. Boosting THAT speed would pin every strong kill to
+        // the cap and erase charge scaling on the rocket.
         const chargedTransfer = MomentumTransfer.resolveTransfer({
           attacker: player,
           victim: otherPlayer,
@@ -3795,13 +3906,20 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
           mult: chargedEarnedMult,
           selfOverride: chargedLungeSpeed,
         });
+        const iceKillSpeed =
+          MomentumTransfer.pxToKbVelocity(chargedTransfer.sendPx) *
+          knockbackDirection;
         otherPlayer.knockbackVelocity.x = isCinematicKill
-          ? applyCinematicKillSpeed(chargedTransfer.velocity)
+          ? applyCinematicKillSpeed(iceKillSpeed)
           : chargedTransfer.velocity;
         otherPlayer.movementVelocity = 0;
+        if (!isCinematicKill) {
+          otherPlayer.knockbackFriction = CHARGED_KB_FRICTION;
+          otherPlayer.chargedKnockbackIgnoresDI = true;
+        }
         lastTransfer = chargedTransfer;
 
-        // Freeze through hitstop. Recoil velocity is applied after the freeze.
+        // Freeze through hitstop. The attacker plants when the pose releases.
         player.movementVelocity = 0;
         player.knockbackVelocity = { x: 0, y: 0 };
         player.isChargedHitRecoil = false;
@@ -4120,13 +4238,23 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
             !player.isPalmThrust &&
             isTachiaiLive(player, currentTime) &&
             player.tachiaiCall === TACHIAI_CALL.CHARGE;
+          const chargeHitstop01 = Math.max(
+            0,
+            Math.min((chargePercentage || 0) / 100, 1)
+          );
+          const authoredChargeHitstop =
+            HITSTOP_CHARGED_MIN_MS +
+            (HITSTOP_CHARGED_MAX_MS - HITSTOP_CHARGED_MIN_MS) * chargeHitstop01;
           const hitstopDuration = isCinematicKill
             ? CINEMATIC_KILL_HITSTOP_MS
             : tachiaiChargeHit
               ? TACHIAI_CHARGE_HITSTOP_MS
-              : (lastTransfer
-                  ? lastTransfer.hitstopMs
-                  : getChargedHitstop(chargePercentage / 100)) +
+              : Math.max(
+                  lastTransfer
+                    ? lastTransfer.hitstopMs
+                    : getChargedHitstop(chargePercentage / 100),
+                  authoredChargeHitstop
+                ) +
                 (isGored ? GORED_HITSTOP_BONUS_MS : 0);
           triggerHitstopAndEmit(io, currentRoom, hitstopDuration, isCinematicKill ? "cinematic_kill" : "charged");
           if (tachiaiChargeHit) noteTachiaiContact(currentRoom, io, "CHARGE");
@@ -4198,15 +4326,15 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     }
 
     // === HIT STUN DURATION ===
-    // SLAP: victim hitstun = attacker's remaining attack cycle at connect
-    //   (both actionable at the same sim-clock instant). Hitstop pauses both.
-    //   Counter is a callout + knockback bonus — extra stun on a 3f jab
-    //   made the follow-up meaty un-answerable except by parry.
-    // PALM: +0 like pocket slap. Victim hitstun + input lock = palmer's
-    //   remaining pose (attackEndTime, already floored to a full active
-    //   window) + PALM_THRUST_HIT_RECOVERY_MS. Counter / gored are labels —
-    //   no silent extra lock (that was the 380ms charged leftover).
-    // CHARGED: fixed 380ms stun (counter ×1.4). Punish adds nothing — label only.
+    // SLAP: attacker stays on the remaining cycle. Victim holds
+    //   STRIKE_HIT_ADVANTAGE_MS longer (slide convert uses its own advantage).
+    //   Hitstop pauses both. Counter is a callout + knockback bonus.
+    // PALM: palmer recovers on remaining pose + PALM_THRUST_HIT_RECOVERY_MS.
+    //   Victim holds STRIKE_HIT_ADVANTAGE_MS past that. Counter / gored are
+    //   labels — no silent extra lock (that was the 380ms charged leftover).
+    // CHARGED: stun scales with charge, then caps under the second-headbutt
+    // release time so it cannot combo (counter ×1.4, still capped). Punish
+    // adds nothing — label only.
     let hitStateDuration;
     if (isLowKick) {
       // Short burst stun — trip is a read/posture tool, not a combo starter.
@@ -4216,13 +4344,12 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       }
     } else if (isSlapAttack) {
       const attackerFreeAt = player.attackCooldownUntil || (currentTime + SLAP_RECOVERY_MS);
-      // Pocket slap is +0 (victim frees with the attacker). Slide convert is
-      // +X: they stay locked after you are free so they cannot sprint the
-      // hole closed during the plant. Air-land still rides the KB channel
-      // (finishAirHitFallLanding) so the extra lock does not freeze the ice.
-      const victimFreeAt = isSlideSlap
-        ? attackerFreeAt + SLIDE_SLAP_ADVANTAGE_MS
-        : attackerFreeAt;
+      // Standing slap is a short step ahead (STRIKE_HIT_ADVANTAGE_MS).
+      // Slide convert keeps its own smaller plant advantage. Air-land still
+      // rides the KB channel (finishAirHitFallLanding).
+      const victimFreeAt =
+        attackerFreeAt +
+        (isSlideSlap ? SLIDE_SLAP_ADVANTAGE_MS : STRIKE_HIT_ADVANTAGE_MS);
       hitStateDuration = Math.max(victimFreeAt - currentTime, SLAP_MIN_HITSTUN_MS);
       if (isGored) {
         hitStateDuration += GORED_HITSTUN_BONUS_MS;
@@ -4230,19 +4357,37 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     } else if (player.isPalmThrust) {
       const attackerFreeAt =
         (player.attackEndTime || currentTime) + PALM_THRUST_HIT_RECOVERY_MS;
-      hitStateDuration = Math.max(attackerFreeAt - currentTime, BURST_STUN_MS);
+      // Palmer recovers on their own clock. Victim stays the step ahead.
+      hitStateDuration =
+        Math.max(attackerFreeAt - currentTime, BURST_STUN_MS) +
+        STRIKE_HIT_ADVANTAGE_MS;
     } else {
       const tachiaiChargeHit =
         !player.isPalmThrust &&
         isTachiaiLive(player, currentTime) &&
         player.tachiaiCall === TACHIAI_CALL.CHARGE;
-      hitStateDuration = tachiaiChargeHit ? TACHIAI_CHARGE_HITSTUN_MS : 380;
+      const chargeStun01 = Math.max(
+        0,
+        Math.min(
+          (Number.isFinite(player.chargedReleasePower)
+            ? player.chargedReleasePower
+            : chargePercentage || 0) / 100,
+          1
+        )
+      );
+      hitStateDuration = tachiaiChargeHit
+        ? TACHIAI_CHARGE_HITSTUN_MS
+        : CHARGED_HITSTUN_MIN_MS +
+          (CHARGED_HITSTUN_MAX_MS - CHARGED_HITSTUN_MIN_MS) * chargeStun01;
       if (isCinematicKill) {
         hitStateDuration = 3000;
       } else if (isGored) {
         hitStateDuration = Math.round(hitStateDuration * 1.55);
       } else if (isCounterHit) {
         hitStateDuration = Math.round(hitStateDuration * 1.4);
+      }
+      if (!isCinematicKill && !tachiaiChargeHit) {
+        hitStateDuration = Math.min(hitStateDuration, CHARGED_HITSTUN_COMBO_CAP_MS);
       }
     }
 
@@ -4302,9 +4447,9 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
     );
 
     // Input lockout (sim clock — locks freeze through hitstop instead of being
-    // eaten by it). SLAP: both locks match the +0 hitstun — attacker used to
-    // walk/grab after 50ms while the victim was still stunned, which is plus,
-    // not +0. PALM: same clock as the palmer's remaining pose + on-hit recovery.
+    // eaten by it). SLAP: attacker stays on their cycle. Victim is a step
+    // ahead (STRIKE_HIT_ADVANTAGE_MS), already included in hitStateDuration.
+    // PALM: palmer recovers on pose + hit recovery. Victim holds the extra step.
     const victimLockMs = hitStateDuration;
     const attackerLockMs = isSlapAttack
       ? Math.max(
@@ -4314,7 +4459,7 @@ function processHit(player, otherPlayer, rooms, io, opts = {}) {
       : isLowKick
         ? 50
         : player.isPalmThrust
-          ? hitStateDuration
+          ? hitStateDuration - STRIKE_HIT_ADVANTAGE_MS
           : 200;
     otherPlayer.inputLockUntil = Math.max(
       otherPlayer.inputLockUntil || 0,
@@ -4936,15 +5081,11 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
     flapper.slideJumpVelocityX = 0;
   }
 
-  // ROPE RESISTANCE (same as slap/palm): slam knockback only leaves the ring
-  // if posture was already < CLINCH_THROW_KILL_THRESHOLD BEFORE this hit's
-  // drain. The hit that cracks them still clamps — the next lethal strike can
-  // ring out. Position / entry speed do not arm the KO. From mid-ring or
-  // above the lethal line the rope catches them (isSlapKnockback clamp in
-  // index.js). isBurstKnockback already governs the friction curve, so this
-  // flag only enables the rope clamp — no other behavior change.
+  // ROPE RESISTANCE (same as slap/palm): the slam may leave the ring when
+  // posture is under 15 AFTER this hit's drain. Healthy still clamps. The
+  // knockback still has to reach the rope. isBurstKnockback governs friction;
+  // this flag only opens the rope clamp.
   opponent.isSlapKnockback = true;
-  opponent.slapKnockbackCanRingOut = slapKnockbackArmedForRingOut(opponent);
 
   if (!opponent.isAtTheRopes && !opponent.atTheRopesFacingDirection) {
     opponent.facing = flapper.x < opponent.x ? 1 : -1;
@@ -4954,12 +5095,18 @@ function checkFlapBodySlam(flapper, opponent, rooms, io) {
   // MASTERY Phase 2 (2.2): slap-class posture drain; COUNTER ×1.5 with flag on.
   const postureCounterMult =
     MASTERY_P2_POSTURE && isCounterHit ? POSTURE_COUNTER_DRAIN_MULT : 1;
+  const slamEdgeDist =
+    knockbackDirection > 0
+      ? MAP_RIGHT_BOUNDARY - opponent.x
+      : opponent.x - MAP_LEFT_BOUNDARY;
   applyBalanceDamage(
     opponent,
     (MASTERY_P2_POSTURE ? BALANCE_SLAP_HIT_DRAIN_P2 : BALANCE_SLAP_HIT_DRAIN) *
-      postureCounterMult,
+      postureCounterMult *
+      (slamEdgeDist <= SLAP_ROPE_EDGE_ZONE ? SLAP_EDGE_POSTURE_MULT : 1),
     currentTime
   );
+  opponent.slapKnockbackCanRingOut = slapKnockbackArmedForRingOut(opponent);
 
   setKnockbackImmunity(opponent);
 

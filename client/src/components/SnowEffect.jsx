@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
+import PropTypes from "prop-types";
 import styled from "styled-components";
 import envelope from "../assets/envelope.png";
 
@@ -23,6 +24,33 @@ const getGroundLevel = (depth, screenHeight) => {
 // Performance settings
 const MAX_SNOWFLAKES = 44;
 const MAX_ENVELOPES = 25;
+
+const SNOW_BY_PHASE = {
+  day: {
+    count: 30,
+    opacity: 0.72,
+    speed: 0.8,
+    scale: 0.68,
+    background:
+      "radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(226,242,255,0.42) 34%, rgba(226,242,255,0) 68%)",
+  },
+  afternoon: {
+    count: 16,
+    opacity: 0.58,
+    speed: 0.6,
+    scale: 0.78,
+    background:
+      "radial-gradient(circle, rgba(255,250,244,0.95) 0%, rgba(224,196,255,0.38) 36%, rgba(255,214,180,0) 70%)",
+  },
+  night: {
+    count: 36,
+    opacity: 1,
+    speed: 0.88,
+    scale: 0.6,
+    background:
+      "radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(210,226,255,0.7) 32%, rgba(210,226,255,0) 66%)",
+  },
+};
 
 // Snow stays BEHIND the wrestlers. Foreground bokeh flakes sat on the
 // silhouettes and fought readability. Envelopes (win celebration) may still
@@ -53,7 +81,7 @@ const SnowLayer = styled.div`
   z-index: ${(p) => (p.$front ? Z_IN_FRONT_PLAYER : Z_BEHIND_PLAYER)};
 `;
 
-const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
+const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null, phase = null }) => {
   const backContainerRef = useRef(null);
   const frontContainerRef = useRef(null);
   const particlesRef = useRef([]);
@@ -100,23 +128,21 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
     const screenW = containerSizeRef.current.w;
     const screenH = containerSizeRef.current.h;
 
-    // Scale based on depth. Snow uses a depth-SQUARED curve so far flakes stay
-    // tiny (crisp dots) while the nearest flakes grow into soft bokeh. Kept
-    // smaller than the first pass — big near flakes were grabbing the eye.
+    const tune = phase ? SNOW_BY_PHASE[phase] : null;
     const depthScale = isEnvelope
       ? 0.15 + depth * depth * 1.85
-      : 0.14 + depth * depth * 0.82;
+      : (0.14 + depth * depth * 0.82) * (tune?.scale ?? 1);
 
     // Speed based on depth
     const baseSpeed = isEnvelope
       ? (0.3 + depth * depth * 2.5) * (0.85 + Math.random() * 0.3)
-      : (0.4 + depth * 2.5) * (0.8 + Math.random() * 0.4);
+      : (0.4 + depth * 2.5) * (0.8 + Math.random() * 0.4) * (tune?.speed ?? 1);
 
     // Opacity based on depth. Pulled down so the snow reads as ambient
     // atmosphere rather than competing with the fight for attention.
     const depthOpacity = isEnvelope
       ? 0.2 + depth * 0.75
-      : 0.17 + depth * 0.33;
+      : Math.min(1, (0.17 + depth * 0.33) * (tune?.opacity ?? 1));
 
     // Horizontal drift
     const horizontalDrift = (Math.random() - 0.5) * (0.1 + depth * 0.8);
@@ -149,7 +175,7 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
       swayAmplitude: isEnvelope ? 0.3 + depth * 1.5 : 0,
       swayFrequency: isEnvelope ? 0.6 + Math.random() * 1.0 : 0,
     };
-  }, [getRandomDepth, shouldShowEnvelopes]);
+  }, [getRandomDepth, shouldShowEnvelopes, phase]);
 
   // Create DOM elements once; assign to back or front layer by depth
   useEffect(() => {
@@ -162,7 +188,10 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
     elementsRef.current = [];
     particlesRef.current = [];
 
-    const maxParticles = shouldShowEnvelopes ? MAX_ENVELOPES : MAX_SNOWFLAKES;
+    const tune = phase ? SNOW_BY_PHASE[phase] : null;
+    const maxParticles = shouldShowEnvelopes
+      ? MAX_ENVELOPES
+      : tune?.count ?? MAX_SNOWFLAKES;
 
     for (let i = 0; i < maxParticles; i++) {
       const initialY = -10 - Math.random() * containerSizeRef.current.h * 0.8;
@@ -189,7 +218,8 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
         el.style.height = '14px';
         el.style.borderRadius = '50%';
         el.style.background =
-          'radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(238,247,255,0.55) 38%, rgba(225,240,255,0) 72%)';
+          tune?.background ||
+          "radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(238,247,255,0.55) 38%, rgba(225,240,255,0) 72%)";
       }
 
       const container = isFrontLayer(particle.depth, particle.isEnvelope) ? frontContainer : backContainer;
@@ -203,7 +233,7 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
       elementsRef.current = [];
       particlesRef.current = [];
     };
-  }, [shouldShowEnvelopes, createParticleData]);
+  }, [shouldShowEnvelopes, createParticleData, phase]);
 
   // Animation loop - NO React state updates!
   // Phase 3: pause rAF while the document is hidden (background tabs still paid
@@ -317,3 +347,10 @@ const SnowEffect = ({ mode = "snow", winner = null, playerIndex = null }) => {
 };
 
 export default SnowEffect;
+
+SnowEffect.propTypes = {
+  mode: PropTypes.string,
+  winner: PropTypes.object,
+  playerIndex: PropTypes.number,
+  phase: PropTypes.oneOf(["day", "afternoon", "night"]),
+};

@@ -11,6 +11,7 @@ const {
   TACHIAI_CALL,
   TACHIAI_DODGE_HOP_HEIGHT,
   TACHIAI_DODGE_HOP_MS,
+  TACHIAI_DODGE_TRAVEL,
   sealTachiai,
   isTachiaiLive,
   markTachiaiAction,
@@ -73,6 +74,7 @@ function commitOne(room, rooms, player, call) {
       direction: call === TACHIAI_CALL.DODGE_BACK ? -toward : toward,
       hopHeight: TACHIAI_DODGE_HOP_HEIGHT,
       hopMs: TACHIAI_DODGE_HOP_MS,
+      travelDistance: TACHIAI_DODGE_TRAVEL,
     });
     return;
   }

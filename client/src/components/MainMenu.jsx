@@ -73,7 +73,7 @@ import mainMenuPumo from "../assets/main-menu-pumo.png";
  * older zoomed-out look-test.
  */
 import titleWorld from "../assets/game-map-antarctica2-floor.png";
-import AntarcticaSky from "./AntarcticaSky";
+import AntarcticaSky, { AntarcticaFarRange } from "./AntarcticaSky";
 import {
   playButtonHoverSound,
   playButtonPressSound2,
@@ -1299,17 +1299,17 @@ const MainMenu = ({
           <AntarcticaSky phase="night" />
           <WorldPlate>
             <div className="antarctica-water">
-              <div className="antarctica-water-glint"></div>
-              <div className="antarctica-water-ripples"></div>
               <div className="antarctica-water-shore"></div>
             </div>
+            <AntarcticaFarRange />
             <WorldImage src={titleWorld} alt="" />
             <div className="antarctica-ice-lip"></div>
+            <div className="antarctica-horizon-mist"></div>
             <div className="antarctica-grade"></div>
           </WorldPlate>
         </BackgroundPlate>
         <CinematicOverlay />
-        {!lowSpec && <Snowfall intensity={10} showFrost={false} zIndex={3} />}
+        {!lowSpec && <Snowfall intensity={16} showFrost={false} zIndex={3} tone="night" />}
 
         {protocolMismatch ? (
           <ConnectionErrorBanner>

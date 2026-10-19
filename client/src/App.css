@@ -1047,7 +1047,8 @@ html[data-antarctica-map="1"] .game-map {
    (client/scripts/bake-lake-reflection.mjs): the skyline, peaks under
    the peaks, rippled and cooled the way the painted berg reflections
    are. ::after is a slow gleam so the surface isn't a still sticker.
-   Rebuild the reflection with: node scripts/bake-lake-reflection.mjs */
+   Rebuild with: node scripts/bake-lake-reflection.mjs
+   (day, afternoon, and night plates). */
 .antarctica-water {
   position: absolute;
   left: 0;

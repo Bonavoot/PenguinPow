@@ -18,6 +18,7 @@ const {
   DODGE_STAMINA_COST,
   DODGE_IFRAME_MS,
   DODGE_TRAVEL_DISTANCE,
+  DODGE_HOLD_SLIDE_SPEED,
   GROUND_LEVEL,
   SIDESTEP_STARTUP_MS,
   SIDESTEP_ACTIVE_MS,
@@ -1346,12 +1347,35 @@ function groundPlayerIfNotAirborne(player) {
   return false;
 }
 
+/** Slide only when this Shift press never came up and is still down. */
+function wantsDodgeLandSlide(player, landingDirection) {
+  return !!(
+    player &&
+    landingDirection &&
+    player.keys &&
+    player.keys.shift &&
+    !player.shiftReleasedDuringDodge
+  );
+}
+
+/** Held-slide entry. A tap keeps its own landing momentum instead. */
+function dodgeLandSlideSpeed(landingVelocity) {
+  return Math.max(Math.abs(landingVelocity) || 0, DODGE_HOLD_SLIDE_SPEED);
+}
+
+/** A Shift release during an in-progress dash makes that dash a tap. */
+function rememberDodgeShiftRelease(player, fallingShift) {
+  if (!player || !fallingShift || !player.isDodging) return;
+  player.shiftReleasedDuringDodge = true;
+}
+
 function cancelDodgeHop(player) {
   if (!player) return;
   player.isDodging = false;
   player.isDodgeStartup = false;
   player.isDodgeRecovery = false;
   player.dodgeDirection = null;
+  player.shiftReleasedDuringDodge = false;
   // A grab (or any other cancel) eats the queued belly bump with the hop.
   player.pendingSlideSlap = false;
   player.pendingSlideSlapAt = 0;
@@ -1458,23 +1482,32 @@ function beginPlayerDodge(player, options = {}) {
   groundPlayerIfNotAirborne(player);
 
   player.isDodging = true;
-  player.isDodgeStartup = !options.skipStartup;
+  player.isDodgeStartup = !options.skipStartup && DODGE_STARTUP_MS > 0;
   player.dodgeStartTime = nowSim;
-  player.dodgeStartupEndTime = nowSim + (options.skipStartup ? 0 : DODGE_STARTUP_MS);
+  player.dodgeStartupEndTime =
+    nowSim + (player.isDodgeStartup ? DODGE_STARTUP_MS : 0);
   player.dodgeEndTime = nowSim + DODGE_DURATION;
   player.dodgeStartX = player.x;
   player.dodgeDirection = direction;
+  // A release in this same press (or Shift already up) is a tap. Slide only
+  // if this press stays down through the landing.
+  player.shiftReleasedDuringDodge =
+    !!options.shiftFell || !(player.keys && player.keys.shift);
   // Opening dodge passes a taller, shorter hop. Every other dodge clears it
   // so a tachiai hop cannot leak into the next dash.
   player.tachiaiDodgeHopHeight = options.hopHeight > 0 ? options.hopHeight : 0;
   player.tachiaiDodgeHopMs = options.hopMs > 0 ? options.hopMs : 0;
   // Fixed travel — speed buffs only finish this sooner, never extend it.
+  const travel =
+    typeof options.travelDistance === "number" && options.travelDistance > 0
+      ? options.travelDistance
+      : DODGE_TRAVEL_DISTANCE;
   player.dodgeTargetX = Math.max(
     MAP_LEFT_BOUNDARY,
-    Math.min(MAP_RIGHT_BOUNDARY, player.x + direction * DODGE_TRAVEL_DISTANCE)
+    Math.min(MAP_RIGHT_BOUNDARY, player.x + direction * travel)
   );
   player.currentAction = "dash";
-  player.actionLockUntil = nowSim + 100;
+  player.actionLockUntil = nowSim + DODGE_DURATION;
   player.justLandedFromDodge = false;
 
   // Phase 12 — freeze facing for the hop (travel remains dodgeDirection).
@@ -1740,6 +1773,7 @@ function clearAllActionStates(player) {
   player.dodgeStartTime = 0;
   player.dodgeEndTime = 0;
   player.dodgeDirection = null;
+  player.shiftReleasedDuringDodge = false;
   player.dodgeStartX = 0;
   player.dodgeTargetX = 0;
   player.dodgeStartupEndTime = 0;
@@ -2783,9 +2817,14 @@ function endHitKnockback(player) {
     // victim ate 385px from a palm thrust while a braking one ate 107px.
     // Scaling by the friction ratio makes the glide carry exactly the distance
     // the shove still owed, so an authored number stays the number.
-    player.movementVelocity = handoffVelocity(player.knockbackVelocity.x);
+    player.movementVelocity = handoffVelocity(
+      player.knockbackVelocity.x,
+      player.knockbackFriction
+    );
   }
   player.knockbackVelocity.x = 0;
+  player.knockbackFriction = 0;
+  player.chargedKnockbackIgnoresDI = false;
   player.isHit = false;
   player.isSlapKnockback = false;
   player.slapKnockbackCanRingOut = false;
@@ -2821,9 +2860,11 @@ function finishAirHitFallLanding(player) {
   }
   if (Math.abs(residual) > 0.01) {
     // Same distance-preserving conversion as endHitKnockback.
-    player.movementVelocity = handoffVelocity(residual);
+    player.movementVelocity = handoffVelocity(residual, player.knockbackFriction);
   }
   player.knockbackVelocity.x = 0;
+  player.knockbackFriction = 0;
+  player.chargedKnockbackIgnoresDI = false;
   player.isSlapKnockback = false;
   player.slapKnockbackCanRingOut = false;
   player.isBurstKnockback = false;
@@ -2932,7 +2973,10 @@ function beginChargeHold(player, rooms) {
   player.isPerfectRawParrySuccess = false;
   player.isCrouchStance = false;
   player.isCrouchStrafing = false;
-  beginChargeHop(player);
+  // Rooted startup. Dodge and other actions stay locked until the minimum
+  // hold ends; holding longer for more charge can still be cancelled.
+  player.isChargeHopping = false;
+  player.actionLockUntil = nowSim + CHARGE_MIN_HOLD_MS;
   return true;
 }
 
@@ -3512,6 +3556,9 @@ module.exports = {
   canPlayerUseAction,
   canPlayerDash,
   beginPlayerDodge,
+  wantsDodgeLandSlide,
+  dodgeLandSlideSpeed,
+  rememberDodgeShiftRelease,
   beginChargeHold,
   beginChargeHop,
   cancelChargeHop,

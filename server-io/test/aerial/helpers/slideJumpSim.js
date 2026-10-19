@@ -613,6 +613,9 @@ function stepSlideJumpTick(scenario, options = {}) {
         : now >= attacker.slideJumpLandingTime + recovery;
     if (landDone) {
       attacker.y = GROUND_LEVEL;
+      // Slap cleanup zeroes movementVelocity. Copy the landing speed first.
+      const carriedVel = attacker.movementVelocity;
+      const queuedSlide = !!attacker.slideJumpLandSlideQueued;
       cancelPendingSlapWork(attacker);
       const endingInstanceId =
         attacker.offensiveAerial?.attackInstanceId ||
@@ -620,8 +623,6 @@ function stepSlideJumpTick(scenario, options = {}) {
         null;
       attacker.isRecovering = false;
       attacker.isAlreadyHit = false;
-      const carriedVel = attacker.movementVelocity;
-      const queuedSlide = !!attacker.slideJumpLandSlideQueued;
       clearSlideJumpState(attacker, {
         expectedInstanceId: endingInstanceId,
         debugReason: "harness_recovery_complete",

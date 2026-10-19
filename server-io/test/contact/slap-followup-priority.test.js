@@ -2,8 +2,9 @@
 
 /**
  * After a clean slap hit, same-tick mash-back does not trade — the previous
- * hitter lands a counter-hit. Neutral dual-commit still trades. Clocks stay
- * +0: a late press still loses, and the victim's slap still stuffs a grab.
+ * hitter lands a counter-hit. Neutral dual-commit still trades. The victim
+ * holds the normal step ahead. A late press still loses, and their slap
+ * still stuffs a grab.
  */
 
 const { describe, it, afterEach } = require("node:test");
@@ -22,6 +23,7 @@ const {
   SLAP_FOLLOWUP_PRIORITY_WINDOW_MS,
   SLAP_TRADE_WINDOW_MS,
   SLAP_COUNTER_HIT_BONUS_MS,
+  STRIKE_HIT_ADVANTAGE_MS,
   AP_ACTIVE_MS,
   PERFECT_PARRY_WINDOW,
 } = require("../../constants");
@@ -130,20 +132,20 @@ describe("slap follow-up priority", () => {
     }
   });
 
-  it("follow-up counter-hit stays +0 (no extra stun)", () => {
+  it("follow-up counter-hit keeps the step ahead (no extra stun)", () => {
     const s = sc({ gap: 110 });
     const now = s.room.simTime;
     s.left.lastSlapHitLandedTime = now - 80;
     armSameTickSlaps(s, now);
     runBothCollisionOrders(s.left, s.right, s.rooms, s.io);
 
-    const expectedFree = s.left.attackCooldownUntil;
-    assert.equal(s.right.inputLockUntil, expectedFree);
-    assert.equal(s.left.inputLockUntil, expectedFree);
-    assert.ok(
-      s.right.inputLockUntil - now <
-        expectedFree - now + SLAP_COUNTER_HIT_BONUS_MS
+    const attackerFree = s.left.attackCooldownUntil;
+    assert.equal(s.left.inputLockUntil, attackerFree);
+    assert.equal(
+      s.right.inputLockUntil,
+      attackerFree + STRIKE_HIT_ADVANTAGE_MS
     );
+    assert.ok(SLAP_COUNTER_HIT_BONUS_MS > 0);
   });
 
   it("victim who slaps first still wins the gap", () => {

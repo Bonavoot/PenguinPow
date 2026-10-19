@@ -16,7 +16,7 @@ export const SLAP_TOTAL_MS_SLIDE = SLAP_TOTAL_MS + SLIDE_SLAP_EXTRA_RECOVERY_MS;
 export const AP_LATE_PARRY_MS = (2 * 1000) / 64;
 
 /** Empty-window AP whiff jail — MUST match server-io/constants.js. */
-export const AP_WHIFF_RECOVERY_MS = 300;
+export const AP_WHIFF_RECOVERY_MS = 180;
 
 /** Post-land piano cover — MUST match server-io/constants.js AP_FLURRY_COVER_MS. */
 export const AP_FLURRY_COVER_REGULAR_MS = 20 + 180 + SLAP_STARTUP_MS + 120;
@@ -160,6 +160,10 @@ export const GRAB_SEPARATE_PALM_ANIM = {
   // lands before the tween finishes so they arrive already back in stance.
   ACTIVE_END: 190,
 };
+
+/** Dash hop — MUST match server-io/constants.js DODGE_HOP_MS / DODGE_STARTUP_MS. */
+export const DODGE_STARTUP_MS = 0;
+export const DODGE_HOP_MS = 200;
 
 /** Charge-hold hop / land plant / min hold — MUST match server-io/constants.js. */
 export const CHARGE_HOP_MS = 200;

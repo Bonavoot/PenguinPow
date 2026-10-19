@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import PropTypes from "prop-types";
 import styled, { keyframes } from "styled-components";
 
 // ============================================
@@ -204,21 +205,22 @@ export const Icicle = styled.div`
  * Snowfall - Renders falling snowflakes and optional frost overlay.
  * @param {number} intensity - Number of snowflakes (default 30)
  * @param {boolean} showFrost - Show frost corner overlay (default true)
- * @param {number} zIndex - z-index layering (default 2)
+ * @param {"day"|"night"} tone - night flakes are smaller and sharper
  */
-function Snowfall({ intensity = 30, showFrost = true, zIndex = 2 }) {
+function Snowfall({ intensity = 30, showFrost = true, zIndex = 2, tone = "day" }) {
   const snowflakes = useMemo(() => {
+    const night = tone === "night";
     return Array.from({ length: intensity }, (_, i) => ({
       id: i,
       left: Math.random() * 100,
-      size: 3 + Math.random() * 6,
-      opacity: 0.55 + Math.random() * 0.45,
-      duration: 10 + Math.random() * 16,
-      delay: -(Math.random() * 20), // Negative = start mid-animation (no initial gap)
+      size: night ? 2 + Math.random() * 2.5 : 3 + Math.random() * 6,
+      opacity: night ? 0.8 + Math.random() * 0.2 : 0.55 + Math.random() * 0.45,
+      duration: night ? 12 + Math.random() * 14 : 10 + Math.random() * 16,
+      delay: -(Math.random() * 20),
       variant: Math.floor(Math.random() * 3),
-      blur: Math.random() < 0.25 ? 1 : 0, // Some slightly blurry for depth
+      blur: night ? 0 : Math.random() < 0.25 ? 1 : 0,
     }));
-  }, [intensity]);
+  }, [intensity, tone]);
 
   return (
     <>
@@ -242,3 +244,10 @@ function Snowfall({ intensity = 30, showFrost = true, zIndex = 2 }) {
 }
 
 export default Snowfall;
+
+Snowfall.propTypes = {
+  intensity: PropTypes.number,
+  showFrost: PropTypes.bool,
+  zIndex: PropTypes.number,
+  tone: PropTypes.oneOf(["day", "night"]),
+};

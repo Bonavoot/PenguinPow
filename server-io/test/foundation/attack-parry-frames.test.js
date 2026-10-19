@@ -7,6 +7,10 @@ const {
   AP_STAGGER_SLAP_MS,
   AP_STAGGER_PALM_MS,
   AP_STAGGER_FLAP_MS,
+  AP_STAGGER_CHARGED_MS,
+  AP_WHIFF_RECOVERY_MS,
+  GUARD_CHARGED_LOCK_MS,
+  CHARGED_HIT_RECOVERY_MS,
   AP_FLURRY_STAGGER_BEGIN_MS,
   AP_ATTACKER_KNOCKBACK,
   PERFECT_PARRY_ATTACKER_STUN_DURATION,
@@ -31,6 +35,11 @@ describe("Attack parry frame contract", () => {
     assert.equal(
       AP_FLURRY_STAGGER_BEGIN_MS + AP_STAGGER_SLAP_MS,
       AP_SUCCESS_RECOVERY_MS
+    );
+    assert.equal(
+      AP_FLURRY_STAGGER_BEGIN_MS + AP_STAGGER_CHARGED_MS,
+      AP_SUCCESS_RECOVERY_MS,
+      "regular headbutt parry is answered, not a turn"
     );
   });
 
@@ -71,6 +80,10 @@ describe("Attack parry frame contract", () => {
       Math.max(AP_STAGGER_FLAP_MS, PERFECT_PARRY_ATTACKER_STUN_DURATION),
       PERFECT_PARRY_ATTACKER_STUN_DURATION
     );
+    assert.equal(
+      Math.max(AP_STAGGER_CHARGED_MS, PERFECT_PARRY_ATTACKER_STUN_DURATION),
+      PERFECT_PARRY_ATTACKER_STUN_DURATION
+    );
     assert.ok(
       PERFECT_PARRY_ATTACKER_STUN_DURATION > AP_SUCCESS_RECOVERY_MS,
       "perfect slap stays plus vs the shared plant"
@@ -90,6 +103,15 @@ describe("Attack parry frame contract", () => {
       AP_LATE_PARRY_MS + 15 < SLAP_ACTIVE_MS,
       "open-hit grace must leave confirmable jab active frames"
     );
+  });
+
+  it("empty Space tap is a slap punish, not a long jail", () => {
+    assert.ok(AP_WHIFF_RECOVERY_MS > SLAP_STARTUP_MS);
+    assert.ok(AP_WHIFF_RECOVERY_MS < SLAP_TOTAL_MS);
+  });
+
+  it("headbutt brace lock matches charge hit recovery — no free turn", () => {
+    assert.equal(GUARD_CHARGED_LOCK_MS, CHARGED_HIT_RECOVERY_MS);
   });
 
   it("blocked attack leftover cycle is the lock; mash buffer is still consumed", () => {

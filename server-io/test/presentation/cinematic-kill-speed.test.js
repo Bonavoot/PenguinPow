@@ -16,6 +16,10 @@ const {
   CINEMATIC_KILL_KNOCKBACK_BOOST,
   CINEMATIC_KILL_SPEED_CAP,
   CHARGED_HIT_RECOVERY_MS,
+  CHARGED_HITSTUN_MAX_MS,
+  CHARGED_HITSTUN_COMBO_CAP_MS,
+  CHARGE_MIN_HOLD_MS,
+  SLAP_STARTUP_MS,
   DELTA_TRACKED_PROPS,
   ALL_TRACKED_PROPS,
 } = require("../../constants");
@@ -57,15 +61,29 @@ function landCharged(s, { power, attackerX }) {
   return s;
 }
 
-function expectedLiveChargedVel(chargePct) {
+function expectedChargedSendPx(chargePct) {
   const chargeFraction = Math.max(0, Math.min(chargePct / 100, 1));
   const vSelf = MomentumTransfer.V_REF * chargeFraction;
   const profile = MomentumTransfer.MOVE_TRANSFER.charged;
-  const sendPx = Math.min(
-    MomentumTransfer.transfer(vSelf, profile.floor, profile.ceil, 1),
-    MomentumTransfer.MAX_SEND_PX
+  const raw = MomentumTransfer.transfer(vSelf, profile.floor, profile.ceil, 1);
+  const cap = profile.maxSend > 0 ? profile.maxSend : MomentumTransfer.MAX_SEND_PX;
+  return Math.min(raw, cap);
+}
+
+function expectedLiveChargedVel(chargePct) {
+  const profile = MomentumTransfer.MOVE_TRANSFER.charged;
+  return MomentumTransfer.velocityForSendPx(
+    expectedChargedSendPx(chargePct),
+    profile.kbFriction
   );
-  return MomentumTransfer.pxToKbVelocity(sendPx);
+}
+
+function expectedCinematicChargedVel(chargePct) {
+  return Math.abs(
+    applyCinematicKillSpeed(
+      MomentumTransfer.pxToKbVelocity(expectedChargedSendPx(chargePct))
+    )
+  );
 }
 
 describe("applyCinematicKillSpeed", () => {
@@ -103,7 +121,7 @@ describe("charged cinematic kill flight speed", () => {
     const cinematicVel = Math.abs(edge.right.knockbackVelocity.x);
     const liveVel = Math.abs(mid.right.knockbackVelocity.x);
     const expectedLive = expectedLiveChargedVel(100);
-    const expectedRocket = applyCinematicKillSpeed(expectedLive);
+    const expectedRocket = expectedCinematicChargedVel(100);
 
     assert.ok(
       Math.abs(liveVel - expectedLive) < 0.08,
@@ -111,11 +129,15 @@ describe("charged cinematic kill flight speed", () => {
     );
     assert.ok(
       Math.abs(cinematicVel - expectedRocket) < 0.08,
-      `cinematic is the boosted send (${cinematicVel.toFixed(2)} vs ${expectedRocket.toFixed(2)})`
+      `cinematic is the boosted ice send (${cinematicVel.toFixed(2)} vs ${expectedRocket.toFixed(2)})`
     );
     assert.ok(
-      cinematicVel > liveVel * 3,
-      `rocket must beat the live crawl (${cinematicVel.toFixed(2)} vs ${liveVel.toFixed(2)})`
+      liveVel < CINEMATIC_KILL_SPEED_CAP - 2,
+      `live shove stays under the kill cap (${liveVel.toFixed(2)})`
+    );
+    assert.ok(
+      cinematicVel > liveVel + 3,
+      `rocket must clearly beat the live shove (${cinematicVel.toFixed(2)} vs ${liveVel.toFixed(2)})`
     );
     assert.ok(
       cinematicVel <= CINEMATIC_KILL_SPEED_CAP + 1e-9,
@@ -147,7 +169,34 @@ describe("charged cinematic kill flight speed", () => {
     assert.ok(ALL_TRACKED_PROPS.includes("isCinematicKillVictim"));
   });
 
-  it("attacker freezes on the strike pose, then recoils like a live charged connect", () => {
+  it("a live full charge plants short, and their stun ends before a follow-up can hit", () => {
+    const mid = landCharged(sc(), { power: 100, attackerX: 560 });
+    assert.equal(!!mid.right.isCinematicKillVictim, false);
+    assert.equal(mid.right.isHit, true);
+    assert.equal(mid.left.chargedOnHitLockMs, undefined);
+
+    mid.room.hitstopUntil = 0;
+    timeoutManager.processRoom(mid.room);
+
+    assert.equal(mid.left.isRecovering, true);
+    assert.equal(mid.left.recoveryDuration, CHARGED_HIT_RECOVERY_MS);
+    assert.ok(mid.right.isHit, "the shove is still playing when you plant");
+    const victimStun = CHARGED_HITSTUN_MAX_MS;
+    assert.ok(
+      victimStun <= CHARGED_HITSTUN_COMBO_CAP_MS,
+      "counter scaling must not push stun back into a combo"
+    );
+    assert.ok(
+      victimStun < CHARGED_HIT_RECOVERY_MS + SLAP_STARTUP_MS,
+      "they can act before a slap thrown on the first free frame is active"
+    );
+    assert.ok(
+      victimStun < CHARGED_HIT_RECOVERY_MS + CHARGE_MIN_HOLD_MS,
+      "a second headbutt cannot release while they are still stunned"
+    );
+  });
+
+  it("attacker freezes on the strike pose, then plants like a live charged connect", () => {
     const edge = landCharged(sc(), { power: 100, attackerX: MAP_RIGHT_BOUNDARY - 140 });
     assert.equal(edge.right.isCinematicKillVictim, true);
     assert.equal(edge.left.chargedConnectPoseHold, true);
@@ -164,11 +213,8 @@ describe("charged cinematic kill flight speed", () => {
     assert.equal(edge.left.isAttacking, false);
     assert.equal(edge.left.isRecovering, true);
     assert.equal(edge.left.recoveryDuration, CHARGED_HIT_RECOVERY_MS);
-    assert.equal(edge.left.isChargedHitRecoil, true);
-    const expectedRecoil = chargedHitRecoilVelocity(edge.left);
-    assert.ok(
-      Math.abs(edge.left.movementVelocity - expectedRecoil) < 1e-6,
-      `recoil ${edge.left.movementVelocity} vs ${expectedRecoil}`
-    );
+    assert.equal(edge.left.isChargedHitRecoil, false);
+    assert.equal(chargedHitRecoilVelocity(edge.left), 0);
+    assert.equal(edge.left.movementVelocity, 0);
   });
 });

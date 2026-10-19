@@ -369,8 +369,8 @@ test("command grab defaults", async (t) => {
       (BALANCE_MAX - CLINCH_THROW_KILL_THRESHOLD) / CMD_DRIVE_POSTURE_CHIP
     );
     assert.ok(
-      chipsToLethal >= 5,
-      `grabs ladder toward lethality (${chipsToLethal} chips) — strikes stay the posture engine`
+      chipsToLethal >= 3,
+      `a drive still takes a few connects (${chipsToLethal}), not one`
     );
   });
 });

@@ -36,7 +36,7 @@ const {
   MOVEMENT_MOMENTUM, MOVEMENT_FRICTION, ICE_DRIFT_FACTOR,
   CHARGED_RECOIL_FRICTION,
   MIN_MOVEMENT_THRESHOLD,
-  DODGE_DURATION, DODGE_BASE_SPEED,
+  DODGE_HOP_MS, DODGE_HOP_HEIGHT,
   DODGE_TRAVEL_DISTANCE, DODGE_SPEED_MULT_CAP,
   DODGE_STARTUP_MS, DODGE_RECOVERY_MS, DODGE_COOLDOWN_MS,
   SLAP_STARTUP_MS, SLAP_ACTIVE_MS,
@@ -144,6 +144,8 @@ const {
   tryIceSlideReverse,
   isInSlideRedirectIFrames,
   beginIceSlide,
+  wantsDodgeLandSlide,
+  dodgeLandSlideSpeed,
   isThrowerLocked,
   tryBeginSetupThrowChaseSlide,
   clampSetupThrowChaseStandoffX,
@@ -1820,25 +1822,32 @@ function tick(delta) {
               // gameOver — that fires later in the same tick loop).
               player.knockbackVelocity.x *= PAST_MAP_DIRT_KB_FRICTION;
             } else {
-              // MOMENTUM TRANSFER — one friction for knockback and free glide.
-              // The old per-move split (burst 0.982 / slap 0.97 / charged 0.96)
-              // meant a shove's reach depended on WHICH MOVE threw it rather
-              // than how hard it landed. Sharing ICE_COAST_FRICTION also makes
-              // the hitstun-end handoff continuous: a shove flows into a glide
-              // with no speed discontinuity, which is where the ice feel lives.
+              // MOMENTUM TRANSFER — slap, palm, and grabs share ice friction so the
+              // hitstun-end handoff is continuous. A charged shove uses its own
+              // faster decay (knockbackFriction) and converts the leftover into
+              // ice speed at the handoff, so the authored distance still arrives.
               //
-              // DI stays a per-tick friction multiplier, universal across every
-              // knockback type. Burst and charged used to lock it out; there is
-              // no longer a reason to, since kill speed is governed by the
-              // floor/ceiling values rather than by removing the defender's
-              // control of their own slide.
+              // DI is a per-tick friction multiplier on contested strikes. A charged
+              // shove skips it: the rooted windup is the price, and holding back
+              // must not turn the hit back into a slap.
               const knockbackDirection = player.knockbackVelocity.x > 0 ? 1 : -1;
               const isHoldingOpposite =
                 (knockbackDirection > 0 && player.keys.a && !player.keys.d) ||
                 (knockbackDirection < 0 && player.keys.d && !player.keys.a);
 
-              player.knockbackVelocity.x *= KB_FRICTION;
-              if (isHoldingOpposite) {
+              // Charged shoves decay on their own friction so the authored
+              // distance arrives as a hit. Holding back does not shave them —
+              // the windup already paid for the send.
+              const chargedShove =
+                player.isChargedKnockback && !player.isCinematicKillVictim;
+              const kbFriction =
+                chargedShove &&
+                player.knockbackFriction > 0 &&
+                player.knockbackFriction < 1
+                  ? player.knockbackFriction
+                  : KB_FRICTION;
+              player.knockbackVelocity.x *= kbFriction;
+              if (isHoldingOpposite && !(chargedShove && player.chargedKnockbackIgnoresDI)) {
                 player.knockbackVelocity.x *= DI_FRICTION_FACTOR;
               }
             }
@@ -2754,8 +2763,10 @@ function tick(delta) {
           }
           // No movement during startup — player is committed but stationary
         }
-        // ACTIVE PHASE: fixed-distance hop. Speed buffs raise rate (capped) so
-        // the hop finishes sooner — they never extend travel past dodgeTargetX.
+        // ACTIVE PHASE: fixed-distance dash hop. X and Y share one clock so
+        // the arc lands when the distance is done — it does not get clipped
+        // short. Speed buffs raise the rate (capped) and finish sooner.
+        // They never extend travel past dodgeTargetX.
         else {
           let dodgeRate = 1;
           if (player.activePowerUp === POWER_UP_TYPES.SPEED) {
@@ -2768,17 +2779,26 @@ function tick(delta) {
           }
           dodgeRate = Math.min(dodgeRate, DODGE_SPEED_MULT_CAP);
 
-          const currentDodgeSpeed = speedFactor * DODGE_BASE_SPEED * dodgeRate;
           const dir = player.dodgeDirection || 1;
+          const startX =
+            typeof player.dodgeStartX === "number" ? player.dodgeStartX : player.x;
           const targetX =
             typeof player.dodgeTargetX === "number"
               ? player.dodgeTargetX
-              : player.x + dir * DODGE_TRAVEL_DISTANCE;
-
-          let newX = player.x + dir * delta * currentDodgeSpeed;
-          // Never overshoot the fixed hop end.
-          if (dir > 0) newX = Math.min(newX, targetX);
-          else newX = Math.max(newX, targetX);
+              : startX + dir * DODGE_TRAVEL_DISTANCE;
+          const hopStart = player.dodgeStartupEndTime || player.dodgeStartTime || now;
+          const baseHopMs = player.tachiaiDodgeHopMs > 0
+            ? player.tachiaiDodgeHopMs
+            : DODGE_HOP_MS;
+          const hopMs = Math.max(1, baseHopMs / dodgeRate);
+          const hopHeight = player.tachiaiDodgeHopHeight > 0
+            ? player.tachiaiDodgeHopHeight
+            : DODGE_HOP_HEIGHT;
+          const hopT = Math.min(
+            1,
+            Math.max(0, (now - hopStart) / hopMs)
+          );
+          let newX = startX + (targetX - startX) * hopT;
           newX = Math.max(MAP_LEFT_BOUNDARY, Math.min(newX, MAP_RIGHT_BOUNDARY));
           const prePushboxX = newX;
 
@@ -2808,28 +2828,13 @@ function tick(delta) {
             }
           }
 
-          const hopStart = player.dodgeStartupEndTime || player.dodgeStartTime || now;
-          const hopMs = player.tachiaiDodgeHopMs > 0
-            ? player.tachiaiDodgeHopMs
-            : ICE_SLIDE_REVERSE_HOP_MS;
-          const hopHeight = player.tachiaiDodgeHopHeight > 0
-            ? player.tachiaiDodgeHopHeight
-            : ICE_SLIDE_REVERSE_HOP_HEIGHT;
-          const hopT = Math.min(
-            1,
-            Math.max(0, (now - hopStart) / hopMs)
-          );
           player.y =
             GROUND_LEVEL + hopHeight * 4 * hopT * (1 - hopT);
           player.x = newX;
 
-          // Arrived at fixed end, or the kick-off ate the pocket — land into slide.
+          // Full arc done, or the dash ate the pocket — land.
           const blockedByBody = Math.abs(newX - prePushboxX) > 0.01;
-          if (
-            blockedByBody ||
-            (dir > 0 && player.x >= targetX - 0.01) ||
-            (dir < 0 && player.x <= targetX + 0.01)
-          ) {
+          if (blockedByBody || hopT >= 1) {
             player.dodgeEndTime = Math.min(player.dodgeEndTime || now, now);
           }
         }
@@ -2886,16 +2891,15 @@ function tick(delta) {
             player.movementVelocity += 0.2;
           }
 
-          // SHIFT held through dodge land → committed ice slide (sliding pose).
-          // Tap-release SHIFT keeps today's soft ice coast.
-          // (New dodges are locked while gassed; this only applies if a dodge
-          // already started before the gassed state began.)
+          // SHIFT held for the whole hop → ice slide, already at slide speed.
+          // Any release during the hop is a tap: soft coast only, so the next
+          // press can hop again instead of being eaten by the slide.
           let dodgeLandKickoff = false;
-          if (player.keys.shift && landingDirection !== 0) {
+          if (wantsDodgeLandSlide(player, landingDirection)) {
             const started = beginIceSlide(
               player,
               landingDirection,
-              player.movementVelocity,
+              dodgeLandSlideSpeed(player.movementVelocity),
               now,
               { kickoffOriginX: player.dodgeStartX }
             );
@@ -2909,6 +2913,7 @@ function tick(delta) {
           if (dodgeLandKickoff) {
             emitThrottledScreenShake(room, io, { type: "rope_kickoff" });
           }
+          player.shiftReleasedDuringDodge = false;
 
           player.justLandedFromDodge = true;
           player.dodgeLandTime = now;
@@ -3700,6 +3705,10 @@ function tick(delta) {
 
           if (landDone) {
             player.y = GROUND_LEVEL;
+            // Slap cleanup zeroes movementVelocity. The landing slide needs
+            // the speed copied first.
+            const carriedVel = player.movementVelocity;
+            const queuedSlide = !!player.slideJumpLandSlideQueued;
             cancelPendingSlapWork(player);
             const endingInstanceId =
               player.offensiveAerial?.attackInstanceId ||
@@ -3708,8 +3717,6 @@ function tick(delta) {
             player.isRecovering = false;
             player.isAlreadyHit = false;
             player._oaGroundedStagger = false;
-            const carriedVel = player.movementVelocity;
-            const queuedSlide = !!player.slideJumpLandSlideQueued;
             clearSlideJumpState(player, {
               expectedInstanceId: endingInstanceId,
               debugReason: "landing_recovery_complete",

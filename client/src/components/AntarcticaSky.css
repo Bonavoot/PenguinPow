@@ -204,6 +204,111 @@
   inherits: true;
   initial-value: 52%;
 }
+@property --mist {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #e7f3ff;
+}
+@property --mist-op {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0.2;
+}
+@property --far-peak {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #c9ddf0;
+}
+@property --far-shade {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #a9c6e0;
+}
+@property --far-op {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0.92;
+}
+@property --shaft {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #fff3d4;
+}
+@property --shaft-op {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0.28;
+}
+@property --sky-high {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #1f62b0;
+}
+@property --sky-low {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #ffe3a8;
+}
+@property --high-at {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 0%;
+}
+@property --low-at {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 72%;
+}
+@property --sky-wash {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #00000000;
+}
+@property --sky-wash-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #00000000;
+}
+@property --sun-hot {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #fff;
+}
+@property --sun-limb {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #fffaf0;
+}
+@property --sun-core-at {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 42%;
+}
+@property --sun-fringe {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #00000000;
+}
+@property --bloom-hold {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 28%;
+}
+@property --fringe-at {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 68%;
+}
+@property --sky-flare {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #00000000;
+}
+@property --sky-flare-edge {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #00000000;
+}
 
 [data-sky] {
   transition:
@@ -246,7 +351,29 @@
     --ripple-op 1.8s ease,
     --glint-w 1.8s ease,
     --mid-at 1.8s ease,
-    --horizon-at 1.8s ease;
+    --horizon-at 1.8s ease,
+    --mist 1.8s ease,
+    --mist-op 1.8s ease,
+    --far-peak 1.8s ease,
+    --far-shade 1.8s ease,
+    --far-op 1.8s ease,
+    --shaft 1.8s ease,
+    --shaft-op 1.8s ease,
+    --sky-high 1.8s ease,
+    --sky-low 1.8s ease,
+    --high-at 1.8s ease,
+    --low-at 1.8s ease,
+    --sky-wash 1.8s ease,
+    --sky-wash-2 1.8s ease,
+    --sun-hot 1.8s ease,
+    --sun-limb 1.8s ease,
+    --sun-core-at 1.8s ease,
+    --sun-fringe 1.8s ease,
+    --bloom-hold 1.8s ease,
+    --fringe-at 1.8s ease,
+    --corona-fade 1.8s ease,
+    --sky-flare 1.8s ease,
+    --sky-flare-edge 1.8s ease;
 }
 
 [data-sky="day"] {
@@ -254,23 +381,45 @@
   --sky-mid: #6aade0;
   --sky-horizon: #ffe3a8;
   --sky-glow: #ffe39a55;
+  --sky-high: #1f62b0;
+  --high-at: 0%;
+  --sky-low: #ffe3a8;
+  --low-at: 72%;
+  --sky-wash: #00000000;
+  --sky-wash-2: #00000000;
   --sun-core: #fffaf0;
+  --sun-hot: #fff;
+  --sun-limb: #fffaf0;
+  --sun-core-at: 42%;
   --sun-bloom: #ffd15ccc;
+  --sun-fringe: #00000000;
+  --bloom-hold: 28%;
+  --fringe-at: 68%;
+  --corona-fade: 68%;
+  --sky-flare: #00000000;
+  --sky-flare-edge: #00000000;
   --cloud: #ffffff;
   --cloud-shade: #d7ebf8;
   --mtn-tint: #ffffff;
   --grade-op: 0;
-  --water-0: #146ca8;
-  --water-1: #1a80bc;
-  --water-2: #2292cc;
-  --water-3: #3e97c2;
-  --water-4: #348aaf;
-  --water-lip: #164868;
+  --mist: #f7fbff;
+  --mist-op: 0.2;
+  --far-peak: #d4e6f4;
+  --far-shade: #b7d2ea;
+  --far-op: 0.95;
+  --shaft: #fff6d4;
+  --shaft-op: 0.34;
+  --water-0: #0c4a72;
+  --water-1: #14648f;
+  --water-2: #1c7eac;
+  --water-3: #1a709c;
+  --water-4: #145e86;
+  --water-lip: #0e3d5c;
   --ice-fill: #eaf4fb;
-  --glint: #ffffff55;
-  --glint-2: #d7f3ff28;
+  --glint: #ffffffd0;
+  --glint-2: #e7f6ff88;
   --body-x: 0.42;
-  --glint-w: 42%;
+  --glint-w: 5%;
   --glint-reach: 100%;
   --ripple: #ffffff66;
   --ripple-dark: #0c4a6e2e;
@@ -289,35 +438,63 @@
   --horizon-at: 72%;
 }
 
+/* Afternoon is polar twilight: blue-indigo overhead, violet through the
+   peak gaps, gold only in the sun's air. Disc position and size stay put. */
 [data-sky="afternoon"] {
-  --sky-zenith: #1c356e;
-  --sky-mid: #e07a72;
-  --sky-horizon: #ffb15e;
-  --sky-glow: #ff8a3c88;
-  --sun-core: #fff6ea;
-  --sun-bloom: #ff7a2888;
-  --cloud: #ffe6d0;
-  --cloud-shade: #f0b898;
-  --mtn-tint: #f6d3b4;
-  --grade-op: 1;
-  --water-0: #9a4034;
-  --water-1: #c4543c;
-  --water-2: #d85e3e;
-  --water-3: #c65238;
-  --water-4: #b84832;
-  --water-lip: #7c3224;
-  --water-at-1: 22%;
-  --water-at-2: 52%;
-  --water-at-3: 78%;
-  --ice-fill: #f4e4d2;
-  --glint: #ffc87844;
-  --glint-2: #ff7a3022;
+  --sky-zenith: #163888;
+  --sky-high: #2e348f;
+  --high-at: 16%;
+  --sky-mid: #5c348c;
+  --mid-at: 30%;
+  --sky-low: #c24e7c;
+  --low-at: 44%;
+  --sky-horizon: #f0a060;
+  --horizon-at: 60%;
+  --sky-glow: #fff8dcf2;
+  --sky-wash: #ffc060c0;
+  --sky-wash-2: #68288866;
+  --wash-w: 70%;
+  --wash-h: 54%;
+  --sky-flare: #fff6d4f8;
+  --sky-flare-edge: #ff7a38bb;
+  --sun-core: #fff3c8;
+  --sun-hot: #ffffff;
+  --sun-limb: #ffd080;
+  --sun-core-at: 32%;
+  --sun-bloom: #fff2c8f2;
+  --sun-fringe: #d2549a8c;
+  --bloom-hold: 11%;
+  --fringe-at: 40%;
+  --corona-fade: 68%;
+  --cloud: #f4d6ee;
+  --cloud-shade: #6a407c;
+  --mtn-tint: #e8b49a;
+  --grade-op: 0.9;
+  --mist: #f0c6e6;
+  --mist-op: 0.36;
+  --far-peak: #c9a2c6;
+  --far-shade: #463670;
+  --far-op: 0.96;
+  --shaft: #ffe6c4;
+  --shaft-op: 0.66;
+  --water-0: #1c1658;
+  --water-1: #3c2278;
+  --water-2: #7a387c;
+  --water-3: #d47880;
+  --water-4: #6a3860;
+  --water-lip: #301840;
+  --water-at-1: 30%;
+  --water-at-2: 58%;
+  --water-at-3: 82%;
+  --ice-fill: #f4e6f0;
+  --glint: #ffe8d8ee;
+  --glint-2: #e4a8dc88;
   --body-x: 0.72;
-  --glint-w: 62%;
+  --glint-w: 6%;
   --glint-reach: 100%;
-  --ripple: #fff1e038;
-  --ripple-dark: #5c201418;
-  --ripple-op: 0.55;
+  --ripple: #ffe4f24a;
+  --ripple-dark: #2810381c;
+  --ripple-op: 0.6;
   --sun-x: 0.73;
   --sun-y: 0.24;
   --sun-size: 0.11;
@@ -327,9 +504,7 @@
   --glow-y: 0.32;
   --aurora-op: 0;
   --star-op: 0;
-  --cloud-op: 0.82;
-  --mid-at: 16%;
-  --horizon-at: 34%;
+  --cloud-op: 0.9;
 }
 
 [data-sky="night"] {
@@ -337,23 +512,45 @@
   --sky-mid: #141e42;
   --sky-horizon: #1a4d66;
   --sky-glow: #d6e8ff55;
+  --sky-high: #050814;
+  --high-at: 0%;
+  --sky-low: #1a4d66;
+  --low-at: 58%;
+  --sky-wash: #00000000;
+  --sky-wash-2: #00000000;
   --sun-core: #ffb070;
+  --sun-hot: #fff;
+  --sun-limb: #ffb070;
+  --sun-core-at: 42%;
   --sun-bloom: #ff6a1800;
-  --cloud: #c5d4ea;
-  --cloud-shade: #8aa0be;
-  --mtn-tint: #9eb6d8;
-  --grade-op: 1;
-  --water-0: #061018;
-  --water-1: #0a2844;
-  --water-2: #12324e;
-  --water-3: #18445c;
-  --water-4: #14384c;
-  --water-lip: #0a2030;
-  --ice-fill: #c5d4e8;
-  --glint: #e7f3ff44;
-  --glint-2: #b9d7ff22;
+  --sun-fringe: #00000000;
+  --bloom-hold: 28%;
+  --fringe-at: 68%;
+  --corona-fade: 68%;
+  --sky-flare: #00000000;
+  --sky-flare-edge: #00000000;
+  --cloud: #d7e4f4;
+  --cloud-shade: #93aac8;
+  --mtn-tint: #8eacd4;
+  --grade-op: 0.42;
+  --mist: #c5dbe6;
+  --mist-op: 0.18;
+  --far-peak: #1c3050;
+  --far-shade: #121c36;
+  --far-op: 1;
+  --shaft: #d5e4ff;
+  --shaft-op: 0;
+  --water-0: #071018;
+  --water-1: #0c2438;
+  --water-2: #14384e;
+  --water-3: #102c40;
+  --water-4: #0a2030;
+  --water-lip: #071820;
+  --ice-fill: #d5e0ee;
+  --glint: #f7fbffee;
+  --glint-2: #c5dff888;
   --body-x: 0.3;
-  --glint-w: 34%;
+  --glint-w: 4.2%;
   --glint-reach: 100%;
   --ripple: #e4f2ff55;
   --ripple-dark: #02060c66;
@@ -367,7 +564,7 @@
   --glow-y: 0.18;
   --aurora-op: 1;
   --star-op: 1;
-  --cloud-op: 0.16;
+  --cloud-op: 0.78;
   --mid-at: 26%;
   --horizon-at: 58%;
 }
@@ -393,17 +590,35 @@
 .sky-field {
   background:
     radial-gradient(
-      ellipse 46% 38% at
+      ellipse 18% 14% at
         calc((var(--glow-x) + 0.18) / 1.36 * 100%)
         calc((var(--glow-y) + 0.12) / 1.24 * 100%),
       var(--sky-glow) 0%,
-      transparent 70%
+      transparent 72%
+    ),
+    radial-gradient(
+      ellipse var(--wash-w, 48%) var(--wash-h, 36%) at
+        calc((var(--glow-x) + 0.18) / 1.36 * 100%)
+        calc((var(--glow-y) + 0.12) / 1.24 * 100%),
+      var(--sky-wash) 0%,
+      var(--sky-wash-2) 44%,
+      transparent 76%
+    ),
+    radial-gradient(
+      ellipse 34% 20% at
+        calc((var(--glow-x) + 0.18) / 1.36 * 100%)
+        calc((var(--glow-y) * 0.35 + 0.1) / 1.24 * 100%),
+      var(--sky-flare) 0%,
+      var(--sky-flare-edge) 40%,
+      transparent 72%
     ),
     linear-gradient(
       180deg,
       var(--sky-zenith) 0%,
-      var(--sky-mid) var(--mid-at, 28%),
-      var(--sky-horizon) var(--horizon-at, 52%),
+      var(--sky-high) var(--high-at),
+      var(--sky-mid) var(--mid-at),
+      var(--sky-low) var(--low-at),
+      var(--sky-horizon) var(--horizon-at),
       var(--sky-horizon) 100%
     );
   transform: translate3d(
@@ -437,7 +652,7 @@
 }
 
 .sky-constellation {
-  opacity: 0.46;
+  opacity: 0.28;
 }
 
 .star-spark {
@@ -479,15 +694,150 @@
   animation: sky-aurora-drift 48s ease-in-out infinite alternate;
 }
 
-/* Clouds, the sun, and the moon share one parallax so a pan cannot
-   slide a disc out through a cloud. The lake path uses the same lag.
-   Percentages are the fight frame. */
-.sky-clouds,
-.sky-celestial {
+.aurora-fold {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.28);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+/* Distant peaks share the mountain plate, then lag it. The tips stay
+   tucked in the skyline when the camera is still, and slide behind the
+   near peaks when it pans — that is the distance. */
+.antarctica-far {
+  position: absolute;
+  left: -6%;
+  right: -6%;
+  top: 48%;
+  height: 12%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--far-op, 0.9);
+  transform: translate3d(
+    calc(var(--cam-track-x, 0px) * -0.16),
+    calc(var(--cam-track-y, 0px) * -0.05),
+    0
+  );
+}
+
+.antarctica-far .sky-far-svg {
+  position: absolute;
+  inset: 0;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform: none;
+  aspect-ratio: auto;
+}
+
+.far-shade {
+  fill: var(--far-shade);
+}
+
+.far-body {
+  fill: var(--far-peak);
+}
+
+.far-lit {
+  fill: #fff;
+  opacity: 0.42;
+}
+
+[data-sky="afternoon"] .far-lit {
+  fill: #ffe3bc;
+  opacity: 0.78;
+}
+
+[data-sky="night"] .far-lit {
+  opacity: 0.12;
+}
+
+/* Light falls from the sun and dies above the ring. The mask is the
+   fight frame, so a low afternoon sun cannot wash the dohyo. */
+.sky-shafts {
   left: 0;
   top: 0;
   width: 100%;
   height: 100%;
+  opacity: var(--shaft-op);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 22%, transparent 40%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 22%, transparent 40%);
+}
+
+.sun-shaft {
+  position: absolute;
+  left: calc(var(--sun-x) * 100%);
+  top: calc(var(--sun-y) * 100%);
+  width: 34%;
+  height: 28%;
+  transform: translate(-50%, -2%);
+  pointer-events: none;
+}
+
+.sun-shaft i {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  height: 100%;
+  transform-origin: 50% 0;
+  background: linear-gradient(to bottom, var(--shaft) 0%, transparent 82%);
+}
+
+.sun-shaft i.a {
+  width: 16%;
+  transform: translateX(-50%) rotate(-12deg);
+}
+
+.sun-shaft i.b {
+  width: 7%;
+  opacity: 0.85;
+  transform: translateX(-50%) rotate(1deg);
+}
+
+.sun-shaft i.c {
+  width: 12%;
+  transform: translateX(-50%) rotate(14deg);
+}
+
+/* Far and mid banks sit just behind the sun. Near banks share the
+   sun's parallax and paint in front, tucked into the corners so a
+   pan cannot drag the disc out through a cloud. Percentages are
+   the fight frame. */
+.sky-clouds,
+.sky-celestial,
+.sky-shafts {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.sky-clouds-far {
+  color: var(--cloud);
+  opacity: calc(var(--cloud-op) * 0.8);
+  transform: translate3d(
+      calc(var(--cam-track-x, 0px) * 0.6 + var(--cam-shake-x, 0px) * 0.18),
+      calc(var(--cam-track-y, 0px) * 0.18 + var(--cam-shake-y, 0px) * 0.18),
+      0
+    )
+    scale(calc(1 + (var(--cam-scale, 1) - 1) * 0.66));
+}
+
+.sky-clouds-mid {
+  color: var(--cloud);
+  opacity: calc(var(--cloud-op) * 0.86);
+  transform: translate3d(
+      calc(var(--cam-track-x, 0px) * 0.66 + var(--cam-shake-x, 0px) * 0.2),
+      calc(var(--cam-track-y, 0px) * 0.21 + var(--cam-shake-y, 0px) * 0.2),
+      0
+    )
+    scale(calc(1 + (var(--cam-scale, 1) - 1) * 0.71));
+}
+
+.sky-clouds-near,
+.sky-celestial,
+.sky-shafts {
   transform: translate3d(
       calc(var(--cam-track-x, 0px) * 0.7 + var(--cam-shake-x, 0px) * 0.22),
       calc(var(--cam-track-y, 0px) * 0.24 + var(--cam-shake-y, 0px) * 0.22),
@@ -496,56 +846,94 @@
     scale(calc(1 + (var(--cam-scale, 1) - 1) * 0.75));
 }
 
-.sky-clouds {
+.sky-clouds-near {
   color: var(--cloud);
   opacity: var(--cloud-op);
 }
 
-.cloud {
+.cloud-drift {
   position: absolute;
-  background: currentColor;
+  inset: 0;
 }
 
-.cloud.shade {
-  background: var(--cloud-shade);
+.cloud-bank {
+  position: absolute;
 }
 
-.cloud.c1 {
-  left: 11%;
-  top: 8%;
-  width: 10%;
-  height: 4.2%;
-  clip-path: polygon(0 78%, 14% 34%, 32% 62%, 48% 18%, 66% 52%, 82% 28%, 100% 70%, 100% 100%, 0 100%);
+.cloud-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
 }
 
-.cloud.c1s {
-  left: 13.2%;
-  top: 9.4%;
-  width: 4.2%;
-  height: 2.2%;
-  clip-path: polygon(0 70%, 28% 18%, 62% 64%, 100% 28%, 100% 100%, 0 100%);
+.cf-body {
+  fill: currentColor;
 }
 
-.cloud.c2 {
-  left: 60%;
-  top: 6.5%;
-  width: 8.5%;
-  height: 3.6%;
-  clip-path: polygon(0 72%, 18% 30%, 38% 58%, 54% 16%, 74% 48%, 100% 26%, 100% 100%, 0 100%);
+.cf-shade,
+.cf-shadow {
+  fill: var(--cloud-shade);
 }
 
-.cloud.c2s {
-  left: 62%;
-  top: 7.6%;
-  width: 3.4%;
-  height: 1.8%;
-  clip-path: polygon(0 80%, 34% 22%, 70% 70%, 100% 36%, 100% 100%, 0 100%);
+.cf-lit {
+  fill: #fff;
+  opacity: 0.72;
+}
+
+[data-sky="afternoon"] .cf-lit {
+  fill: #ffe8c4;
+  opacity: 0.92;
+}
+
+[data-sky="night"] .cf-lit {
+  fill: #f4f8ff;
+  opacity: 0.55;
+}
+
+.bank-far-a {
+  left: 6%;
+  top: 11%;
+  width: 18%;
+  aspect-ratio: 720 / 180;
+}
+
+.bank-mid-a {
+  left: 0%;
+  top: 1%;
+  width: 22%;
+  aspect-ratio: 640 / 230;
+}
+
+.bank-mid-b {
+  left: 78%;
+  top: 3%;
+  width: 14%;
+  aspect-ratio: 420 / 250;
+}
+
+.bank-near-a {
+  left: 90%;
+  top: 9%;
+  width: 12%;
+  aspect-ratio: 720 / 180;
+}
+
+.sky-clouds-far .cloud-drift {
+  animation: cloud-drift-far 96s ease-in-out infinite alternate;
+}
+
+.sky-clouds-mid .cloud-drift {
+  animation: cloud-drift-mid 72s ease-in-out infinite alternate;
+}
+
+.sky-clouds-near .cloud-drift {
+  animation: cloud-drift-near 56s ease-in-out infinite alternate;
 }
 
 .sky-sun,
 .sky-moon {
   position: absolute;
-  border-radius: 50%;
   transform: translate(-50%, -50%);
 }
 
@@ -555,11 +943,53 @@
   width: calc(var(--sun-size) * 100%);
   aspect-ratio: 1;
   opacity: var(--sun-op);
-  background: var(--sun-core);
+}
+
+.sun-corona {
+  position: absolute;
+  inset: -70%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    var(--sun-bloom) 0%,
+    var(--sun-bloom) var(--bloom-hold),
+    var(--sun-fringe) var(--fringe-at),
+    transparent var(--corona-fade)
+  );
+}
+
+.sun-disc {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 40% 38%,
+    var(--sun-hot) 0%,
+    var(--sun-core) var(--sun-core-at),
+    var(--sun-limb) 100%
+  );
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.95);
+}
+
+/* Local to the disc. No blur filter — the falloff is the gradient. */
+[data-sky="afternoon"] .sun-corona {
+  inset: -120%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 253, 246, 0.98) 0%,
+    rgba(255, 220, 130, 0.82) 14%,
+    rgba(255, 150, 48, 0.46) 32%,
+    rgba(214, 64, 138, 0.24) 50%,
+    rgba(70, 36, 150, 0.1) 66%,
+    transparent 78%
+  );
+}
+
+[data-sky="afternoon"] .sun-disc {
   box-shadow:
-    0 0 0 2px #fff,
-    0 0 8px 1px var(--sun-bloom),
-    0 0 22px 6px var(--sun-bloom);
+    0 0 0 1px rgba(255, 255, 255, 0.98),
+    0 0 10px 2px rgba(255, 246, 220, 0.98),
+    0 0 18px 5px rgba(255, 150, 60, 0.55);
 }
 
 .sky-moon {
@@ -568,65 +998,215 @@
   width: 6.4%;
   aspect-ratio: 1;
   opacity: var(--moon-op);
-  background: #f7fbff;
-  box-shadow:
-    0 0 0 2px #fff,
-    0 0 10px 2px rgba(255, 255, 255, 0.9),
-    0 0 26px 6px rgba(186, 214, 255, 0.55);
+}
+
+.moon-halo {
+  position: absolute;
+  inset: -32%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(236, 244, 255, 0.95) 34%,
+    rgba(190, 214, 255, 0.28) 52%,
+    transparent 68%
+  );
+}
+
+.moon-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.88);
+}
+
+.moon-disc {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 36% 34%, #ffffff 0%, #f3f6fb 34%, #d5deea 70%, #c3cedc 100%);
+}
+
+.moon-shade {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 82% 46%,
+    rgba(46, 64, 88, 0.62) 0%,
+    rgba(46, 64, 88, 0.22) 26%,
+    transparent 48%
+  );
 }
 
 .moon-crater {
   position: absolute;
   display: block;
   border-radius: 50%;
-  background: #d5e4f2;
+  background: #c5d0de;
+  box-shadow:
+    inset 1px 1px 0 rgba(86, 104, 124, 0.55),
+    inset -1px -1px 0 rgba(255, 255, 255, 0.75);
 }
 
 .moon-crater.a {
-  width: 26%;
-  height: 26%;
-  left: 24%;
-  top: 34%;
+  width: 22%;
+  height: 22%;
+  left: 26%;
+  top: 36%;
 }
 
 .moon-crater.b {
-  width: 14%;
-  height: 14%;
-  left: 56%;
-  top: 26%;
-  background: #c3d3e4;
+  width: 11%;
+  height: 11%;
+  left: 54%;
+  top: 28%;
+  background: #b7c4d4;
 }
 
-/* Ice and water pick up the phase. The grade is masked to the floor
-   alpha so the sky hole and the lake stay open. */
+.moon-crater.c {
+  width: 8%;
+  height: 8%;
+  left: 40%;
+  top: 58%;
+}
+
+.moon-crater.d {
+  width: 6%;
+  height: 6%;
+  left: 62%;
+  top: 52%;
+}
+
+.moon-crater.e {
+  width: 5%;
+  height: 5%;
+  left: 32%;
+  top: 24%;
+}
+
+.moon-spec {
+  position: absolute;
+  width: 16%;
+  height: 10%;
+  left: 30%;
+  top: 32%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+/* Day and night: hue only, mountain band only, so snow highlights
+   stay white. Afternoon overrides this below and includes the ice. */
 .antarctica-grade {
   position: absolute;
   inset: 0;
   z-index: 2;
   pointer-events: none;
   background: var(--mtn-tint);
-  mix-blend-mode: multiply;
+  mix-blend-mode: color;
   opacity: var(--grade-op);
-  -webkit-mask-image: url(../assets/game-map-antarctica2-floor.png);
-  mask-image: url(../assets/game-map-antarctica2-floor.png);
+  -webkit-mask-image:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      transparent 30%,
+      #000 40%,
+      #000 60%,
+      transparent 70%,
+      transparent 100%
+    ),
+    url(../assets/game-map-antarctica2-floor.png);
+  mask-image:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      transparent 30%,
+      #000 40%,
+      #000 60%,
+      transparent 70%,
+      transparent 100%
+    ),
+    url(../assets/game-map-antarctica2-floor.png);
+  -webkit-mask-size: 100% 100%;
   mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   mask-mode: alpha;
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
 }
 
-/* Mountain mirror. Afternoon drinks the sunset under it. */
+/* Same layer as day and night. Color keeps the peak shading and
+   replaces the blue with violet and gold. */
+[data-sky="afternoon"] .antarctica-grade {
+  mix-blend-mode: color;
+  opacity: 0.82;
+  background:
+    linear-gradient(180deg, #ffb25a 16%, #c44a88 40%, rgba(196, 74, 136, 0) 56%),
+    linear-gradient(104deg, #4e38c4 0%, #9a3898 38%, #e06858 68%, #ffb050 100%);
+  -webkit-mask-image:
+    linear-gradient(180deg, transparent 0%, transparent 20%, #000 32%, #000 100%),
+    url(../assets/game-map-antarctica2-floor.png);
+  mask-image:
+    linear-gradient(180deg, transparent 0%, transparent 20%, #000 32%, #000 100%),
+    url(../assets/game-map-antarctica2-floor.png);
+}
+
+/* Mountain mirror. Afternoon drinks the sky under it. */
 .antarctica-water::before {
   opacity: 0.86;
   z-index: 0;
 }
 
+[data-sky="day"] .antarctica-water::before {
+  opacity: 0.9;
+  background-image: url(../assets/map-antarctica-lake.webp);
+  background-color: transparent;
+  background-blend-mode: normal;
+}
+
+[data-sky="afternoon"] .antarctica-water {
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      transparent 30%,
+      rgba(120, 50, 160, 0.28) 46%,
+      rgba(255, 168, 80, 0.5) 64%,
+      rgba(255, 244, 220, 0.7) 76%,
+      rgba(190, 70, 140, 0.22) 90%,
+      transparent 100%
+    ),
+    linear-gradient(
+      180deg,
+      var(--water-0) 0%,
+      var(--water-1) var(--water-at-1),
+      var(--water-2) var(--water-at-2),
+      var(--water-3) var(--water-at-3),
+      var(--water-4) 100%
+    );
+}
+
 [data-sky="afternoon"] .antarctica-water::before {
-  opacity: 0.78;
-  filter: sepia(0.7) saturate(1.7) brightness(1.25);
+  opacity: 0.86;
+  background-image: url(../assets/map-antarctica-lake-afternoon.webp);
+  background-color: transparent;
+  background-blend-mode: normal;
+}
+
+[data-sky="afternoon"] .antarctica-water-shore {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 236, 224, 0.94) 0%,
+    rgba(244, 214, 255, 0.9) 34%,
+    var(--water-lip) 34%,
+    var(--water-lip) 100%
+  );
 }
 
 [data-sky="night"] .antarctica-water::before {
-  opacity: 0.72;
+  opacity: 0.82;
+  background-image: url(../assets/map-antarctica-lake-night.webp);
+  background-color: transparent;
+  background-blend-mode: normal;
 }
 
 /* Near shelf. The floor art covers this outside the lake hole.
@@ -683,62 +1263,40 @@
   mask-composite: intersect;
 }
 
-.antarctica-water-glint,
 .antarctica-water-shore {
   position: absolute;
   pointer-events: none;
-}
-
-/* Wide field of the sun or moon's color in the water. Feathered
-   across the lake, not a disc and not a beam. */
-.antarctica-water-glint {
-  z-index: 1;
-  top: 0;
-  bottom: 0;
-  left: calc(var(--body-x, 0.42) * 100%);
-  width: var(--glint-w, 42%);
-  transform: translateX(-50%);
-  mix-blend-mode: screen;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--glint-2) 16%,
-    var(--glint) 50%,
-    var(--glint-2) 84%,
-    transparent 100%
-  );
-}
-
-/* Title plate is shifted and wider than the sky. Put the same
-   fraction back under the moon. */
-.title-sky .antarctica-water-glint {
-  left: calc((var(--body-x, 0.3) + 0.06) / 1.12 * 100%);
-}
-
-.antarctica-water-ripples {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  opacity: var(--ripple-op, 0.85);
-  background: repeating-linear-gradient(
-    180deg,
-    transparent 0px,
-    var(--ripple, #ffffff66) 6px,
-    transparent 13px,
-    transparent 18px,
-    var(--ripple-dark, #0c4a6e2e) 24px,
-    transparent 32px
-  );
-}
-
-.antarctica-water-shore {
   z-index: 3;
   left: 0;
   right: 0;
   top: 0;
-  height: 2px;
-  background: rgba(6, 20, 34, 0.4);
+  height: 3px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(255, 255, 255, 0.88) 34%,
+    var(--water-lip, #0e3d5c) 34%,
+    var(--water-lip, #0e3d5c) 100%
+  );
+}
+
+/* Far-shore air. A short band where the peaks meet the lake.
+   No blur — the plate stays sharp under it. */
+.antarctica-horizon-mist {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 59.4%;
+  height: 2.2%;
+  z-index: 3;
+  pointer-events: none;
+  opacity: var(--mist-op, 0.2);
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    var(--mist, #e7f3ff) 48%,
+    transparent 100%
+  );
 }
 
 @keyframes sky-aurora-drift {
@@ -753,18 +1311,46 @@
 @keyframes star-twinkle {
   0%,
   100% {
-    opacity: 0.38;
+    opacity: 0.55;
   }
   46% {
     opacity: 1;
   }
   68% {
-    opacity: 0.62;
+    opacity: 0.72;
+  }
+}
+
+@keyframes cloud-drift-far {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(1.6%, 0.25%, 0);
+  }
+}
+
+@keyframes cloud-drift-mid {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-2.2%, 0.15%, 0);
+  }
+}
+
+@keyframes cloud-drift-near {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(2.4%, 0.1%, 0);
   }
 }
 
 html[data-low-spec="1"] .sky-aurora-svg,
-html[data-low-spec="1"] .star-spark {
+html[data-low-spec="1"] .star-spark,
+html[data-low-spec="1"] .cloud-drift {
   animation: none;
 }
 
@@ -774,7 +1360,8 @@ html[data-low-spec="1"] .star-spark {
   }
 
   .sky-aurora-svg,
-  .star-spark {
+  .star-spark,
+  .cloud-drift {
     animation: none;
   }
 

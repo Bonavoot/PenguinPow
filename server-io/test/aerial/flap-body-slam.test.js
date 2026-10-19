@@ -246,7 +246,7 @@ describe("offensive aerial — FLAP / slide-jump clean hit", () => {
     assert.equal(s.defender.slapKnockbackCanRingOut, true);
   });
 
-  it("slam that cracks posture still clamps — next hit is the KO", () => {
+  it("slam that breaks posture can ring out", () => {
     const s = createSlideJumpScenario({
       name: "crack_still_clamps",
       attackerX: MAP_RIGHT_BOUNDARY - 30,
@@ -264,7 +264,7 @@ describe("offensive aerial — FLAP / slide-jump clean hit", () => {
     stepSlideJumpTick(s);
     assert.equal(s.attacker.slideJumpHitLanded, true);
     assert.ok(s.defender.balance < CLINCH_THROW_KILL_THRESHOLD);
-    assert.equal(s.defender.slapKnockbackCanRingOut, false);
+    assert.equal(s.defender.slapKnockbackCanRingOut, true);
   });
 
   it("hit immediately before touchdown still latches before landing phase", () => {

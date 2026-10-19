@@ -3120,17 +3120,41 @@ function executeInputBuffer(player, rooms) {
 
   const nowBuf = simNowForPlayer(player);
   // Keep the press while still locked — the 200ms window is for AFTER you're
-  // free. Expiring during the toss hold ate buffered slaps/parries.
+  // free. Expiring during the toss hold ate buffered slaps/parries. Expiring
+  // during on-hit recovery ate a mashed charge: the pose started, or the
+  // press vanished, and the headbutt never came out.
+  if (player.isRecovering) return false;
   if (player.inputLockUntil && nowBuf < player.inputLockUntil) return false;
   if (player.actionLockUntil && nowBuf < player.actionLockUntil) return false;
   if (isThrowerLocked(player)) return false;
 
+  const recoveryEndedAt =
+    player.recoveryStartTime && player.recoveryDuration
+      ? player.recoveryStartTime + player.recoveryDuration
+      : 0;
+  const stampedDuringRecovery =
+    recoveryEndedAt > 0 &&
+    player.inputBuffer.timestamp <= recoveryEndedAt &&
+    nowBuf < recoveryEndedAt + INPUT_BUFFER_WINDOW_MS;
   const stampedDuringThrowHold =
     player.throwChaseUnlockAt &&
     player.inputBuffer.timestamp <= player.throwChaseUnlockAt &&
     nowBuf < player.throwChaseUnlockAt + INPUT_BUFFER_WINDOW_MS;
   const age = nowBuf - player.inputBuffer.timestamp;
-  if (!stampedDuringThrowHold && age >= INPUT_BUFFER_WINDOW_MS) {
+  // A dash tap during the hop has to survive the hop plus the gap after it.
+  // The generic window is shorter than that, so an early mash was dropped
+  // and the next press never came out.
+  const dodgeBufferWaiting =
+    player.inputBuffer.type === "dodge" &&
+    (player.isDodging ||
+      player.isDodgeRecovery ||
+      (player.dodgeCooldownUntil && nowBuf < player.dodgeCooldownUntil));
+  if (
+    !dodgeBufferWaiting &&
+    !stampedDuringThrowHold &&
+    !stampedDuringRecovery &&
+    age >= INPUT_BUFFER_WINDOW_MS
+  ) {
     player.inputBuffer = null;
     return false;
   }

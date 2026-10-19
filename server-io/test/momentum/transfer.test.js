@@ -142,10 +142,10 @@ test("momentum curve: walking buys a real but partial share, slide buys all", ()
 // CONTESTED VS GUARANTEED — the grab's reason to exist
 // ────────────────────────────────────────────────────────────────────────────
 test("grabs are guaranteed, strikes are contested", () => {
-  for (const key of ["drive", "pull", "throw", "matador"]) {
+  for (const key of ["drive", "pull", "throw", "matador", "charged"]) {
     assert.strictEqual(M.profileFor(key).guaranteed, true, `${key} must be guaranteed`);
   }
-  for (const key of ["slap", "palm", "charged", "bodySlam"]) {
+  for (const key of ["slap", "palm", "bodySlam"]) {
     assert.strictEqual(M.profileFor(key).guaranteed, false, `${key} must be contested`);
   }
 });
@@ -606,21 +606,20 @@ test("MOVE IDENTITY: palm is power NOW, slap is power OVER TIME", () => {
   }
 });
 
-test("POSTURE: grabs break balance, strikes only chip it", () => {
+test("POSTURE: strikes move the bar, grabs still break faster", () => {
   const TO_LETHAL = 85; // BALANCE_MAX 100 -> CLINCH_THROW_KILL_THRESHOLD 15
-  const GRAB_CHIPS = { drive: 20, pull: 16, throw: 24 }; // mirrors constants.js
+  const GRAB_CHIPS = { drive: 21, pull: 18, throw: 26 }; // mirrors constants.js
 
   const avg = (key) =>
     (M.postureChipForMove(key, 0) + M.postureChipForMove(key, M.V_IMPACT_REF)) / 2;
 
-  // A poke must chip, never break. Old flat value was 7 per slap.
+  // A poke is a real chip. It does not break anyone by itself.
+  const flatSlap = M.postureChipForMove("slap", 0);
+  assert.ok(flatSlap >= 6 && flatSlap <= 12, `flat slap chip ${flatSlap}`);
+  const slapHits = TO_LETHAL / avg("slap");
   assert.ok(
-    M.postureChipForMove("slap", 0) <= 4,
-    "a flat-footed slap must barely disturb balance"
-  );
-  assert.ok(
-    TO_LETHAL / avg("slap") > 10,
-    "slaps alone must not be a realistic route to a posture break"
+    slapHits > 4 && slapHits < 10,
+    `a slap barrage should be able to break posture, got ${slapHits.toFixed(1)} hits`
   );
 
   // Closing speed has to matter, or this is just a flat constant again.

@@ -4,6 +4,8 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   DODGE_TRAVEL_DISTANCE,
+  DODGE_HOP_MS,
+  DODGE_BASE_SPEED,
   DOHYO_EDGE_PANIC_ZONE,
   ICE_SLIDE_MAX_SPEED,
   ICE_SLIDE_REVERSE_HOP_MS,
@@ -13,6 +15,7 @@ const {
   SLIDE_JUMP_LANDING_RECOVERY_MS,
   GROUND_LEVEL,
   speedFactor,
+  HITBOX_DISTANCE_VALUE,
 } = require("../../constants");
 const {
   MAP_LEFT_BOUNDARY,
@@ -36,15 +39,17 @@ const {
 } = require("../aerial/helpers/slideJumpSim");
 
 describe("kick-off dodge + ice slide", () => {
-  it("dodge travel is a short kick-off, not a third of the ring", () => {
+  it("dodge travel is a short dash, just under one body, not a third of the ring", () => {
+    const body = HITBOX_DISTANCE_VALUE * 2 * 0.85;
     assert.equal(
       DODGE_TRAVEL_DISTANCE,
-      Math.round(ICE_SLIDE_REVERSE_HOP_MS * speedFactor * ICE_SLIDE_REVERSE_BURST)
+      Math.round(speedFactor * DODGE_BASE_SPEED * DODGE_HOP_MS)
     );
+    assert.ok(DODGE_TRAVEL_DISTANCE < body, "dash is shorter than a body width");
+    assert.ok(DODGE_TRAVEL_DISTANCE > body * 0.8, "dash is only slightly shorter");
     assert.equal(ICE_SLIDE_REVERSE_HOP_HEIGHT, 16);
     assert.equal(ICE_SLIDE_REVERSE_HOP_MS, 85);
-    assert.ok(DODGE_TRAVEL_DISTANCE < 50);
-    assert.ok(DODGE_TRAVEL_DISTANCE < (MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY) / 8);
+    assert.ok(DODGE_TRAVEL_DISTANCE < (MAP_RIGHT_BOUNDARY - MAP_LEFT_BOUNDARY) / 4);
   });
 
   it("redirect hop is strike+grab invuln for the hop window only", () => {

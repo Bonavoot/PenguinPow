@@ -41,6 +41,7 @@ const {
   clearIceSlideState,
   tryIceSlideReverse,
   beginPlayerDodge,
+  rememberDodgeShiftRelease,
   beginGrabStartup,
   emitStaminaBlocked,
   cancelPendingSlapWork,
@@ -397,6 +398,7 @@ function processInputPacket(room, player, data, io, rooms) {
         data.events,
         data.keys,
       );
+      rememberDodgeShiftRelease(player, falling.shift);
 
       // Capture true press moment for lag-compensated parry timing even while
       // input-locked — the buffered parry fires when the lock ends and reads it.
@@ -550,6 +552,9 @@ function processInputPacket(room, player, data, io, rooms) {
   // Captured for V2 same-packet palm chord ordering (Mouse1 vs A/D events).
   let packetPrevKeys = null;
 
+  // Survives the keys block so the dash starter can see a release that
+  // happened in the same packet as the press.
+  let shiftFellThisPacket = false;
   if (data.keys) {
     // Edge detection across the entire packet window. When `data.events`
     // is present, walks each per-event transition AND reconciles against
@@ -560,6 +565,8 @@ function processInputPacket(room, player, data, io, rooms) {
     const previousKeys = { ...player.keys };
     packetPrevKeys = previousKeys;
     const { rising, falling } = detectEdges(previousKeys, data.events, data.keys);
+    rememberDodgeShiftRelease(player, falling.shift);
+    if (falling.shift) shiftFellThisPacket = true;
     player.keys = data.keys;
 
     // Clear the one-window-per-press latch on the FALLING Space edge, before
@@ -1181,7 +1188,7 @@ function processInputPacket(room, player, data, io, rooms) {
     if (tryBeginSetupThrowChaseSlide(player, nowSim, chaseOpp)) {
       noteCommandAccept(player, "iceSlide", {});
     } else {
-      beginPlayerDodge(player, { nowSim });
+      beginPlayerDodge(player, { nowSim, shiftFell: shiftFellThisPacket });
       noteCommandAccept(player, "dodge", {});
     }
 

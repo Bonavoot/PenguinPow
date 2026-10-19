@@ -4,7 +4,6 @@ const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   GROUND_LEVEL,
-  DODGE_TRAVEL_DISTANCE,
   CHARGE_HOP_DISTANCE,
   CHARGE_HOP_MS,
   CHARGE_LAND_HOLD_MS,
@@ -58,40 +57,37 @@ after(() => {
   setSimRoomResolver(null);
 });
 
-describe("charge-hold hop-back + min hold", () => {
-  it("min hold is hop plus landing plant", () => {
+describe("charge-hold rooted startup + min hold", () => {
+  it("min hold is the old hop plus landing plant, spent in place", () => {
     assert.equal(CHARGE_MIN_HOLD_MS, CHARGE_HOP_MS + CHARGE_LAND_HOLD_MS);
     assert.ok(CHARGE_MIN_HOLD_MS > CHARGE_HOP_MS);
+    assert.equal(CHARGE_HOP_DISTANCE, 0);
   });
 
-  it("hop travels farther than a dodge and away from facing", () => {
+  it("charge hold plants and faces the opponent", () => {
     room = { id: "r", simTime: 1000, players: [] };
     const opp = makePlayer({ id: "opp", x: 720, facing: 1 });
     const p = makePlayer({ id: "p1", x: 600, facing: 1 });
     room.players = [p, opp];
     beginChargeHold(p, roomsFor(p));
     assert.equal(p.isChargingAttack, true);
-    assert.equal(p.isChargeHopping, true);
-    assert.equal(p.facing, -1, "faces opponent to the right");
-    assert.equal(p.chargeHopDirection, -1, "hops back (−X)");
-    assert.ok(CHARGE_HOP_DISTANCE > DODGE_TRAVEL_DISTANCE);
-    assert.equal(p.chargeHopTargetX, 600 - CHARGE_HOP_DISTANCE);
-    stepChargeHop(p, room.simTime + CHARGE_HOP_MS);
     assert.equal(p.isChargeHopping, false);
-    assert.equal(p.x, 600 - CHARGE_HOP_DISTANCE);
+    assert.equal(p.facing, -1, "faces opponent to the right");
+    assert.equal(p.x, 600);
     assert.equal(p.y, GROUND_LEVEL);
+    assert.equal(p.actionLockUntil, room.simTime + CHARGE_MIN_HOLD_MS);
   });
 
-  it("near-rope hop clamps to map bounds", () => {
+  it("near-rope charge hold does not step backward", () => {
     room = { id: "r", simTime: 2000, players: [] };
     const opp = makePlayer({ id: "opp2", x: 500, facing: 1 });
-    const p = makePlayer({ id: "p2", x: MAP_LEFT_BOUNDARY + 8, facing: 1 });
+    const startX = MAP_LEFT_BOUNDARY + 8;
+    const p = makePlayer({ id: "p2", x: startX, facing: 1 });
     room.players = [p, opp];
     beginChargeHold(p, roomsFor(p));
     assert.equal(p.facing, -1);
-    assert.equal(p.chargeHopTargetX, MAP_LEFT_BOUNDARY);
-    stepChargeHop(p, room.simTime + CHARGE_HOP_MS);
-    assert.equal(p.x, MAP_LEFT_BOUNDARY);
+    assert.equal(p.isChargeHopping, false);
+    assert.equal(p.x, startX);
     assert.ok(p.x >= MAP_LEFT_BOUNDARY);
     assert.ok(p.x <= MAP_RIGHT_BOUNDARY);
   });

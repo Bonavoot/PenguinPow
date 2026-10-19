@@ -16,8 +16,6 @@ const {
   CHARGED_STARTUP_MS,
   CHARGED_LUNGE_BASE_SPEED,
   CHARGED_LUNGE_POWER_SCALE,
-  CHARGED_HIT_RECOIL_MIN,
-  CHARGED_HIT_RECOIL_MAX,
   SLAP_TRADE_WINDOW_MS,
 } = require("./constants");
 const { isAirborneForGroundCollision } = require("./groundCollision");
@@ -644,16 +642,9 @@ function getChargedActiveMs(charged) {
   return Math.max(1, end - start);
 }
 
-/** Backward ice pop after connect. Opposite the lunge. Charge scales it. */
-function chargedHitRecoilVelocity(player) {
-  const pct = Number.isFinite(player && player.chargedReleasePower)
-    ? player.chargedReleasePower
-    : Number(player && player.chargeAttackPower) || 0;
-  const t = Math.max(0, Math.min(pct / 100, 1));
-  const speed =
-    CHARGED_HIT_RECOIL_MIN +
-    (CHARGED_HIT_RECOIL_MAX - CHARGED_HIT_RECOIL_MIN) * t;
-  return -getAttackDir(player) * speed;
+/** Landed headbutt plants. Kept so older call sites cannot reintroduce a pop. */
+function chargedHitRecoilVelocity(_player) {
+  return 0;
 }
 
 function chargedLungeBaseSpeed(chargePower) {

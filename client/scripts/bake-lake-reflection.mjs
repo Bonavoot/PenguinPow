@@ -8,6 +8,9 @@
  * in the gaps. Facets stay sharp. The painted iceberg reflections live
  * in the floor art and are not touched.
  *
+ * Writes three plates: day (also map-antarctica-lake.webp), afternoon, night.
+ * Facets stay sharp. Only the water nearest the ice softens.
+ *
  * Usage: node scripts/bake-lake-reflection.mjs
  */
 import sharp from "sharp";
@@ -18,7 +21,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(__dirname, "../src/assets");
 const SRC = path.join(ASSETS, "game-map-antarctica2-floor.png");
 const SKY = path.join(ASSETS, "map-antarctica-sky.webp");
-const OUT = path.join(ASSETS, "map-antarctica-lake.webp");
+const OUT_DAY = path.join(ASSETS, "map-antarctica-lake.webp");
+const OUT_AFTERNOON = path.join(ASSETS, "map-antarctica-lake-afternoon.webp");
+const OUT_NIGHT = path.join(ASSETS, "map-antarctica-lake-night.webp");
 
 // Image fractions. Must match .antarctica-water (top 60.2%, height 12.8%).
 const STRIP_TOP = 0.602;
@@ -28,9 +33,8 @@ const ICE = 0.726;
 const PEAK = 0.2912;
 // Full skyline is in frame by this fraction of the water's depth.
 const REACH = 0.92;
-const WOBBLE = 30;
-const SHEAR = 22;
-const BLUR = 1.6;
+const WOBBLE = 14;
+const SHEAR = 8;
 /* Sky color in the gaps is painted live (the water gradient + glint).
    Mixing the old photo in here left a soft aurora under hard ice. */
 const SKY_MIX = 0;
@@ -129,15 +133,57 @@ function sampleSky(u, v) {
   return out;
 }
 
-function gradeMtn(r, g, b, t) {
-  let R = r * 0.86 + 4;
-  let G = g * 0.9 + 2;
-  let B = b * 0.94 + 2;
-  const melt = smoothstep(0.78, 1, t);
-  R = R * (1 - melt * 0.4) + 48 * melt * 0.4;
-  G = G * (1 - melt * 0.4) + 140 * melt * 0.4;
-  B = B * (1 - melt * 0.4) + 196 * melt * 0.4;
+function gradeDay(r, g, b, t) {
+  let R = r * 0.9 + 2;
+  let G = g * 0.93 + 2;
+  let B = b * 0.98 + 4;
+  const melt = smoothstep(0.82, 1, t);
+  R = R * (1 - melt * 0.28) + 70 * melt * 0.28;
+  G = G * (1 - melt * 0.28) + 150 * melt * 0.28;
+  B = B * (1 - melt * 0.28) + 200 * melt * 0.28;
   return [R, G, B];
+}
+
+function gradeAfternoon(r, g, b, t, xFrac = 0.5) {
+  const [R, G, B] = gradeDay(r, g, b, t);
+  const y = R * 0.27 + G * 0.52 + B * 0.21;
+  const lum = clamp((y - 18) / 220, 0, 1);
+  const shadow = (1 - smoothstep(0.08, 0.5, lum)) ** 1.15;
+  const high = smoothstep(0.55, 0.95, lum);
+  const mid = clamp(1 - shadow * 0.8 - high * 0.65, 0, 1);
+  const norm = shadow + mid + high || 1;
+  const s = shadow / norm;
+  const m = mid / norm;
+  const h = high / norm;
+  const sun = smoothstep(0.28, 0.78, xFrac);
+  const shR = 62 + sun * 48;
+  const shG = 40 + sun * 22;
+  const shB = 128 - sun * 18;
+  const midR = 176 + sun * 55;
+  const midG = 96 + sun * 42;
+  const midB = 198 - sun * 46;
+  const hiR = 255;
+  const hiG = 206 + sun * 28;
+  const hiB = 226 - sun * 86;
+  let nr = shR * s + midR * m + hiR * h;
+  let ng = shG * s + midG * m + hiG * h;
+  let nb = shB * s + midB * m + hiB * h;
+  const shore = smoothstep(0.5, 1, t) * (0.25 + 0.75 * h);
+  nr = nr * (1 - shore * 0.22) + 255 * shore * 0.22;
+  ng = ng * (1 - shore * 0.14) + 186 * shore * 0.14;
+  nb = nb * (1 - shore * 0.1) + 140 * shore * 0.1;
+  const keep = 0.34;
+  return [
+    R * keep + nr * (1 - keep),
+    G * keep + ng * (1 - keep),
+    B * keep + nb * (1 - keep),
+  ];
+}
+
+function gradeNight(r, g, b, t) {
+  const [R, G, B] = gradeDay(r, g, b, t);
+  const sink = 0.34 + smoothstep(0.2, 0.9, t) * 0.08;
+  return [R * sink * 0.7 + 8, G * sink * 0.85 + 14, B * sink + 22];
 }
 
 function gradeSky(r, g, b) {
@@ -149,7 +195,7 @@ function gradeSky(r, g, b) {
   ];
 }
 
-const sharpBuf = Buffer.alloc(outW * outH * 4);
+const geom = Buffer.alloc(outW * outH * 4);
 for (let y = 0; y < outH; y++) {
   const fv = STRIP_TOP + ((y + 0.5) / outH) * STRIP_H;
   const t = (fv - SHORE) / (ICE - SHORE);
@@ -167,28 +213,9 @@ for (let y = 0; y < outH; y++) {
     const srcFrac = SHORE - (tc / REACH) * (SHORE - PEAK);
     const sy = srcFrac * (FH - 1) + dy;
     const sx = x + dx;
-    const span = 2.8;
-    const taps = [
-      sampleFloor(sx, sy - span * 0.5),
-      sampleFloor(sx, sy),
-      sampleFloor(sx, sy + span * 0.5),
-    ];
-    let pr = 0;
-    let pg = 0;
-    let pb = 0;
-    let pa = 0;
-    for (const p of taps) {
-      const a = p[3] / 255;
-      pr += p[0] * a;
-      pg += p[1] * a;
-      pb += p[2] * a;
-      pa += a;
-    }
-    pa /= 3;
-    const rec = pa < 0.004 ? [0, 0, 0, 0] : [pr / 3 / pa, pg / 3 / pa, pb / 3 / pa, pa * 255];
+    const rec = sampleFloor(sx, sy);
     const cover = clamp(rec[3] / 255, 0, 1);
-    const mtn = gradeMtn(rec[0], rec[1], rec[2], tc);
-    let col = mtn;
+    let col = [rec[0], rec[1], rec[2]];
     let alphaBase = cover;
     if (cover < 0.98 && SKY_MIX > 0) {
       const above = (PEAK - srcFrac) / 0.22;
@@ -196,35 +223,23 @@ for (let y = 0; y < outH; y++) {
       const sk = sampleSky(clamp(sx / (FW - 1), 0, 1), skyV);
       const skyCol = gradeSky(sk[0], sk[1], sk[2]);
       col = [
-        skyCol[0] * (1 - cover) + mtn[0] * cover,
-        skyCol[1] * (1 - cover) + mtn[1] * cover,
-        skyCol[2] * (1 - cover) + mtn[2] * cover,
+        skyCol[0] * (1 - cover) + rec[0] * cover,
+        skyCol[1] * (1 - cover) + rec[1] * cover,
+        skyCol[2] * (1 - cover) + rec[2] * cover,
       ];
       alphaBase = cover + (1 - cover) * SKY_MIX;
     }
-    const patch = smoothstep(0.62, 0.9, noise(x * 0.0034 + 2.0, tc * 0.8));
-    const spec = patch * 0.07 * (0.4 + tc * 0.45);
-    col[0] = clamp(col[0] + (248 - col[0]) * spec, 0, 255);
-    col[1] = clamp(col[1] + (252 - col[1]) * spec, 0, 255);
-    col[2] = clamp(col[2] + (255 - col[2]) * spec, 0, 255);
     const vis = 1 - smoothstep(0.86, 1.04, tc);
     const alpha = alphaBase * (STRENGTH * vis + 0.08 * (1 - vis));
-    sharpBuf[o] = Math.round(col[0]);
-    sharpBuf[o + 1] = Math.round(col[1]);
-    sharpBuf[o + 2] = Math.round(col[2]);
-    sharpBuf[o + 3] = Math.round(clamp(alpha * 255, 0, 255));
+    geom[o] = Math.round(clamp(col[0], 0, 255));
+    geom[o + 1] = Math.round(clamp(col[1], 0, 255));
+    geom[o + 2] = Math.round(clamp(col[2], 0, 255));
+    geom[o + 3] = Math.round(clamp(alpha * 255, 0, 255));
   }
 }
 
-const out = Buffer.alloc(outW * outH * 4);
-for (let y = 0; y < outH; y++) {
-  const fv = STRIP_TOP + ((y + 0.5) / outH) * STRIP_H;
-  const t = clamp((fv - SHORE) / (ICE - SHORE), 0, 1);
-  const rad = t < 0.45 ? t * 0.4 : 0.18 + ((t - 0.45) / 0.55) ** 2 * BLUR;
-  if (rad < 0.6) {
-    sharpBuf.copy(out, y * outW * 4, y * outW * 4, (y + 1) * outW * 4);
-    continue;
-  }
+function blurRow(src, y, rad) {
+  if (rad < 0.55) return null;
   const r = Math.ceil(rad * 2);
   const w = new Float32Array(r * 2 + 1);
   let ws = 0;
@@ -233,6 +248,7 @@ for (let y = 0; y < outH; y++) {
     w[k + r] = g;
     ws += g;
   }
+  const row = Buffer.alloc(outW * 4);
   for (let x = 0; x < outW; x++) {
     let R = 0;
     let G = 0;
@@ -242,21 +258,55 @@ for (let y = 0; y < outH; y++) {
       const xx = clamp(x + k, 0, outW - 1);
       const i = (y * outW + xx) * 4;
       const wk = w[k + r];
-      R += sharpBuf[i] * wk;
-      G += sharpBuf[i + 1] * wk;
-      B += sharpBuf[i + 2] * wk;
-      A += sharpBuf[i + 3] * wk;
+      R += src[i] * wk;
+      G += src[i + 1] * wk;
+      B += src[i + 2] * wk;
+      A += src[i + 3] * wk;
     }
-    const o = (y * outW + x) * 4;
-    out[o] = Math.round(R / ws);
-    out[o + 1] = Math.round(G / ws);
-    out[o + 2] = Math.round(B / ws);
-    out[o + 3] = Math.round(A / ws);
+    const o = x * 4;
+    row[o] = Math.round(R / ws);
+    row[o + 1] = Math.round(G / ws);
+    row[o + 2] = Math.round(B / ws);
+    row[o + 3] = Math.round(A / ws);
   }
+  return row;
 }
 
-await sharp(out, { raw: { width: outW, height: outH, channels: 4 } })
-  .webp({ quality: 90, alphaQuality: 100 })
-  .toFile(OUT);
+async function writePhase(file, grade, blurAmt, specAmt) {
+  const buf = Buffer.alloc(outW * outH * 4);
+  for (let y = 0; y < outH; y++) {
+    const fv = STRIP_TOP + ((y + 0.5) / outH) * STRIP_H;
+    const t = clamp((fv - SHORE) / (ICE - SHORE), 0, 1.15);
+    for (let x = 0; x < outW; x++) {
+      const i = (y * outW + x) * 4;
+      const graded = grade(geom[i], geom[i + 1], geom[i + 2], t, x / (outW - 1));
+      const patch = smoothstep(0.7, 0.92, noise(x * 0.0034 + 2.0, t * 0.8));
+      const spec = patch * specAmt * (0.35 + t * 0.4);
+      buf[i] = Math.round(clamp(graded[0] + (250 - graded[0]) * spec, 0, 255));
+      buf[i + 1] = Math.round(clamp(graded[1] + (252 - graded[1]) * spec, 0, 255));
+      buf[i + 2] = Math.round(clamp(graded[2] + (255 - graded[2]) * spec, 0, 255));
+      buf[i + 3] = geom[i + 3];
+    }
+  }
+  const out = Buffer.alloc(outW * outH * 4);
+  for (let y = 0; y < outH; y++) {
+    const fv = STRIP_TOP + ((y + 0.5) / outH) * STRIP_H;
+    const t = clamp((fv - SHORE) / (ICE - SHORE), 0, 1);
+    const rad = t < 0.55 ? 0 : ((t - 0.55) / 0.45) ** 2 * blurAmt;
+    const row = blurRow(buf, y, rad);
+    if (!row) {
+      buf.copy(out, y * outW * 4, y * outW * 4, (y + 1) * outW * 4);
+    } else {
+      row.copy(out, y * outW * 4);
+    }
+  }
+  await sharp(out, { raw: { width: outW, height: outH, channels: 4 } })
+    .webp({ quality: 90, alphaQuality: 100 })
+    .toFile(file);
+  console.log(`wrote ${file} ${outW}x${outH}`);
+}
 
-console.log(`wrote ${OUT} ${outW}x${outH}`);
+const only = process.argv[2];
+if (!only || only === "day") await writePhase(OUT_DAY, gradeDay, 0.45, 0.05);
+if (!only || only === "afternoon") await writePhase(OUT_AFTERNOON, gradeAfternoon, 0.45, 0.07);
+if (!only || only === "night") await writePhase(OUT_NIGHT, gradeNight, 0.35, 0.06);

@@ -265,6 +265,10 @@ const SLAP_TOTAL_MS_SLIDE = SLAP_TOTAL_MS + SLIDE_SLAP_EXTRA_RECOVERY_MS;
 // Convert is +X, not +0. Just enough lock after you are free that they
 // cannot sprint the hole closed during the plant. Pocket mash stays +0.
 const SLIDE_SLAP_ADVANTAGE_MS = 50;
+// Standing slap and palm: victim stays locked this long after the attacker
+// is free. Enough to step in or start a grab. A hesitation still loses to
+// their slap. Belly-bump keeps SLIDE_SLAP_ADVANTAGE_MS. Headbutt is unchanged.
+const STRIKE_HIT_ADVANTAGE_MS = 80;
 // Convert freeze: thick enough to read as a body check, capped so a
 // fast slide stays a punch, not a cinematic. MUST match momentumTransfer.
 const SLIDE_SLAP_HITSTOP_FLOOR_MS = 88;
@@ -283,17 +287,20 @@ const BURST_KB_VELOCITY = 3.1;             // Flap body-slam impulse.
 const BURST_STUN_MS = 200;                 // No-DI window, then leftover velocity → ice coast.
 const BURST_KB_FRICTION = 0.982;           // Matched to ICE_COAST_FRICTION.
 
-// Slap + palm + body-slam ring-out: posture-gated on PRE-HIT balance
-// (< CLINCH_THROW_KILL_THRESHOLD). The hit that crosses the threshold still
-// clamps; the next lethal strike can KO.
+// Slap + palm + body-slam ring-out: posture under 15 AFTER this hit's drain.
+// Healthy still clamps. The shove still has to reach the rope.
 // SLAP_KILL_RANGE is the remaining positional kill band for projectiles.
 const SLAP_KILL_RANGE = 25;
 // Rest position inward from the rope after a clamp. Short of the ring-out line.
 const SLAP_ROPE_RESIST_BUFFER = 12;
 // "On the clamp" if the victim is within this of the boundary they're sent toward.
 const SLAP_ROPE_EDGE_ZONE = 28;
-const SLAP_EDGE_POSTURE_MULT = 3.6;
-const PALM_EDGE_POSTURE_MULT = 1.85;
+// Rope posture tax on top of the hit's own chip. 2.25× keeps the straw
+// clearly worse than the same hit in the middle, without the 7.2× spike
+// that made everything before the rope feel free. Headbutt and body slam
+// use the slap rate. Palm keeps its own rate at the same 2.25×.
+const SLAP_EDGE_POSTURE_MULT = 2.25;
+const PALM_EDGE_POSTURE_MULT = 2.25;
 const SLAP_EDGE_HITSTOP_MS = 110;
 const PALM_EDGE_HITSTOP_MS = 130;
 
@@ -323,14 +330,16 @@ const CHARGED_STARTUP_MS = 150;
 // distance still matches the old startup+active travel window.
 const CHARGED_LUNGE_BASE_SPEED = 1.5;
 const CHARGED_LUNGE_POWER_SCALE = 5.5;
-// Charge-hold hop-back (S+forward+Mouse1 press). Travel is farther than a
-// dodge; the hop clock IS the minimum hold before release can fire.
-const CHARGE_HOP_DISTANCE = 64;
+// Charge hold (S+forward+Mouse1). Rooted in place — the startup is the risk,
+// not a backdash. Hop helpers still exist so a stale hop state can be cleared;
+// beginChargeHold does not start one.
+const CHARGE_HOP_DISTANCE = 0;
 const CHARGE_HOP_MS = 200;
-// Plant on the landing / charge pose before release is legal.
+// Minimum rooted hold before release is legal. Same 350ms window the hop used
+// to occupy, now spent planted in the charge pose.
 const CHARGE_LAND_HOLD_MS = 150;
 const CHARGE_MIN_HOLD_MS = CHARGE_HOP_MS + CHARGE_LAND_HOLD_MS;
-const CHARGE_HOP_HEIGHT = 18;
+const CHARGE_HOP_HEIGHT = 0;
 // Active window after startup. Charge scales MIN→MAX; lunge ends with the window.
 const CHARGED_ACTIVE_MIN_MS = 200;
 const CHARGED_ACTIVE_MAX_MS = 450;
@@ -369,9 +378,9 @@ const LOW_KICK_TOTAL_MS =
 const LOW_KICK_STAMINA_COST = 3;
 const LOW_KICK_HITBOX_DISTANCE_VALUE = 142; // Slightly past slap (138); was 178 (far too long)
 const LOW_KICK_KB_VELOCITY = 1.05;      // ≈ slap victim drift, not a shove
-const LOW_KICK_BALANCE_DRAIN = 12;      // Above slap (~7), under palm (20)
-const LOW_KICK_BALANCE_DRAIN_VS_PARRY = 16; // Bonus for beating Space
-const LOW_KICK_BALANCE_DRAIN_COUNTER = 16;
+const LOW_KICK_BALANCE_DRAIN = 13;      // Above a flat slap, under a palm
+const LOW_KICK_BALANCE_DRAIN_VS_PARRY = 18; // Bonus for beating Space
+const LOW_KICK_BALANCE_DRAIN_COUNTER = 18;
 
 // Grab — close-range grip that can run to get there.
 // Reaching is hittable. Tip poke stuffs the approach. Once the grip is on,
@@ -383,14 +392,21 @@ const GRAB_STARTUP_MS = 85;
 const GRAB_ACTIVE_MS = 650;
 const GRAB_ARMOR_ABSORB_HITSTOP_MS = 90;
 
-const DODGE_STARTUP_MS = 50;      // Readable windup/anticipation before the hop (was 20)
-const DODGE_ACTIVE_MS = 85;       // Kick-off only — sit down onto the ice, then the slide owns travel
-const DODGE_RECOVERY_MS = 0;      // No recovery — cooldown prevents chain-dash (was 90)
-const DODGE_TOTAL_MS = DODGE_STARTUP_MS + DODGE_ACTIVE_MS + DODGE_RECOVERY_MS; // 135ms
-const DODGE_COOLDOWN_MS = 100;    // Forced idle gap after recovery before next dash (prevents chain-dash blur)
-// Strike-only startup invuln from dodge press. Covers most of the 50ms windup so
-// a committed dodge slips a meaty; cuts off before/as active travel begins so
-// late panic into live hitboxes is still hittable. Grabs ignore this entirely.
+// Dash hop. Movement starts on the press (no windup) so the tap feels instant.
+// Air time is the old charge hop-back (200ms) — that arc was the one that felt
+// right. Height stays a low fighting-game dash, not a jump.
+const DODGE_STARTUP_MS = 0;
+const DODGE_HOP_MS = 200;
+const DODGE_HOP_HEIGHT = 32;
+const DODGE_ACTIVE_MS = DODGE_HOP_MS;
+const DODGE_RECOVERY_MS = 0;      // No recovery — cooldown is the gap between taps
+const DODGE_TOTAL_MS = DODGE_STARTUP_MS + DODGE_ACTIVE_MS + DODGE_RECOVERY_MS;
+// Gap after a tap before the next dash. Long enough that chained taps lose to
+// a held slide, short enough that a buffered re-tap still comes out on frame 1.
+const DODGE_COOLDOWN_MS = 160;
+// Strike-only invuln from the press, covering the first instant of the dash.
+// Cuts off while the hop is still traveling so a late panic into a live
+// hitbox is still hittable. Grabs ignore this entirely.
 const DODGE_IFRAME_MS = 40;
 // Gassed: dodge / sidestep / rope jump / flap are all hard-locked while gassed
 // (denied attempts surface the "not enough stamina" cue).
@@ -608,13 +624,17 @@ const MIN_MOVEMENT_THRESHOLD = ICE_STOP_THRESHOLD;
 // ============================================
 // Dash Physics - grounded dash with dash slap
 // ============================================
-const DODGE_DURATION = DODGE_STARTUP_MS + DODGE_ACTIVE_MS; // 135ms total before recovery phase
-const DODGE_BASE_SPEED = 2.67; // Baseline px-rate unit — travel distance is FIXED (see DODGE_TRAVEL_DISTANCE)
-// Same ground a redirect hop covers at burst (85ms × speedFactor × 2.15).
-// Speed buffs finish this sooner — they never extend travel.
+const DODGE_DURATION = DODGE_STARTUP_MS + DODGE_ACTIVE_MS;
+// Burst rate of the dash. Travel is this rate held for DODGE_HOP_MS, so the
+// arc and the distance finish together. ~99px: just under one body (110px).
+const DODGE_BASE_SPEED = 2.67;
 const DODGE_TRAVEL_DISTANCE = Math.round(
-  ICE_SLIDE_REVERSE_HOP_MS * speedFactor * ICE_SLIDE_REVERSE_BURST
+  speedFactor * DODGE_BASE_SPEED * DODGE_HOP_MS
 );
+// Speed a HELD shift enters the ice slide at, after the hop. Above the
+// average of tap-dash + walk-speed gaps (tap uses ICE_MAX_SPEED between
+// hops), under ICE_SLIDE_MAX_SPEED so a rope kick-off is still faster.
+const DODGE_HOLD_SLIDE_SPEED = 2.35;
 const DODGE_SPEED_MULT_CAP = 1.5; // Max Happy Feet / draft rate on dodge — duration shrink only
 const DODGE_CANCEL_ACTION_LOCK = 80; // Unused — grounded S-during-dodge cancel removed
 
@@ -782,16 +802,17 @@ const PERFECT_PARRY_BALANCE_REFUND = 0;
 // ============================================
 // GUARD & PARRY (Space) — one stance, three outcomes
 // ============================================
-// Space tap = parry (slap/palm only; not grab or charged). Hold = guard.
+// Space answers every grounded strike: slap, palm, and the flying headbutt.
+// Tap = parry. Hold = brace. Grab still beats both (counter-grab on connect).
 // Empty release/expiry = whiff (AP_WHIFF_RECOVERY_MS). Reuses isRawParrying /
 // isRawParrySuccess. Landed parry opens AP_FLURRY_COVER_MS for the next re-tap.
-// Regular vs Perfect: already in the window = Regular (callout). Armed in the
-// last PERFECT_PARRY_JUST_TICKS before contact = Perfect (just). A clap tap
-// during early ACTIVE (open-hit grace) is the same just — it can Perfect.
-// Way late = hit. Neither grade KOs while AP_KILL_ENABLED is false (Perfect
-// is a starstun confirm).
-// Guard: chip + pushback + stamina; rooted; does not stop grab/charged.
-// Stamina 0 while guarding → guard-crush → gassed. One parry per physical press.
+// Regular vs Perfect: already in the window = Regular (the strike is answered,
+// roughly even). Armed in the last PERFECT_PARRY_JUST_TICKS before contact =
+// Perfect (the turn: starstun, free to slap or grab). A clap tap during early
+// slap ACTIVE is the same just. Way late = hit.
+// Neither grade KOs while AP_KILL_ENABLED is false.
+// Brace: less ground and less posture than eating the hit, and no turn.
+// Stamina 0 while bracing → guard-crush → gassed. One parry per physical press.
 const AP_ACTIVE_MS = 180;            // Callout window. Just grade is PERFECT_PARRY_WINDOW (2 ticks).
 // First N ms of slap ACTIVE: open hits wait so a clap tap can still land.
 // Live PARRY/GUARD resolve immediately. Slap-only. Sized to the just window
@@ -811,11 +832,12 @@ const AP_FLOW_WINDOW_MS = 400;       // DEPRECATED (Deflect Flow removed). Kept 
 const AP_SUCCESS_RECOVERY_MS = 200;
 // Empty-window recovery: rooted endlag when a live window EXPIRES into
 // nothing with no deflect (Space-up mid-window no longer cancels — tap parry
-// stays armed until land or expiry). Long enough to read the client whiff
-// pose (success-f1 hold) and eat a slap punish. LANDED parries never enter
-// this — success uses AP_SUCCESS_RECOVERY_MS plant instead.
+// stays armed until land or expiry). A slap that is already coming, or pressed
+// as the window dies, still lands (startup 55ms sits inside this). A late
+// reaction does not get a second swing, so the button stays worth pressing.
+// LANDED parries never enter this — success uses AP_SUCCESS_RECOVERY_MS.
 // Re-arm is blocked for the full duration (canArmAttackParry).
-const AP_WHIFF_RECOVERY_MS = 300;
+const AP_WHIFF_RECOVERY_MS = 180;
 const AP_COOLDOWN_MS = 40;           // Tiny gap before GUARD may re-enter after a drop. Fresh taps (rising Space) ignore this so release→re-press is an immediate parry window.
 
 // ── MATADOR (BACK + SPACE) ───────────────────────────────────────────────────
@@ -825,7 +847,7 @@ const AP_COOLDOWN_MS = 40;           // Tiny gap before GUARD may re-enter after
 // Beats grabs only → instant pull (land-threshold bypassed). Wrong into a
 // strike = GORED. Separate flags from isRawParrying so grabs don't CLAMP it.
 const MATADOR_ACTIVE_MS = AP_ACTIVE_MS;                 // 180 — arm window; hold keeps the stance
-const MATADOR_WHIFF_RECOVERY_MS = AP_WHIFF_RECOVERY_MS; // 300 — same empty-tap jail
+const MATADOR_WHIFF_RECOVERY_MS = AP_WHIFF_RECOVERY_MS; // same empty-tap jail as Space
 const MATADOR_HITSTOP_MS = 110;                         // Confirm/steal tier — same rung as AP regular
 const MATADOR_SUCCESS_LOCK_MS = AP_SUCCESS_RECOVERY_MS;  // Brief plant on the matador after pull starts
 // Non-kill yank. Floor = standing grab; ceiling uses grabApproachSpeed.
@@ -844,8 +866,8 @@ const AP_KILL_ENABLED = false;
 const AP_KILL_THRESHOLD = 8; // legacy (unused) — kills use AP_PERFECT_KILL_THRESHOLD only
 const AP_PERFECT_KILL_THRESHOLD = 12;
 // Balance drained from the parried attacker (vs BALANCE_SLAP_HIT_DRAIN_P2 slap drain).
-const AP_BALANCE_DRAIN = 7;           // Regular parry (was 12; ~40% less)
-const AP_PERFECT_BALANCE_DRAIN = 11;  // Perfect parry (was 18; ~40% less)
+const AP_BALANCE_DRAIN = 8;           // Regular parry.
+const AP_PERFECT_BALANCE_DRAIN = 13;  // Perfect parry.
 // Attacker shove via slap-parry slide (slapParryKnockbackVelocity,
 // SLAP_PARRY_KB_FRICTION ≈ 0.82). Travel ≈ v · 16px at 64Hz. ATTACK/recovery pose, not hit reaction.
 // Regular is a pocket reject, not a spacing reset. Mash vs regular parry must
@@ -866,6 +888,9 @@ const AP_PERFECT_BALANCE_REFUND = 0;
 const AP_STAGGER_SLAP_MS = 180;
 const AP_STAGGER_PALM_MS = 420;
 const AP_STAGGER_FLAP_MS = 500;
+// Regular headbutt parry matches the slap +0 (begin delay + this = the plant).
+// The charge is answered. The turn is still Perfect's starstun.
+const AP_STAGGER_CHARGED_MS = 180;
 const AP_PERFECT_ADVANTAGE_MS = 220; // Legacy slap-only add-on. Live Perfect uses max(move stagger, PERFECT_PARRY_ATTACKER_STUN_DURATION).
 // Post-parry flurry cover (tap-every-slap). After a landed parry, the next
 // rising-edge re-tap may extend its live window to (parryTime + cover). Cover
@@ -884,14 +909,20 @@ const AP_KILL_SLIDE_DISTANCE = 210;      // == CLINCH_KILL_PULL_DISTANCE
 const AP_KILL_SLIDE_DURATION_MS = 950;   // clinch pull is 850; +100ms
 
 // ── GUARD (hold Space) ──────────────────────────────────────────────────────
-// Blocked strike: chip + pushback + stamina drain. Same slide as parry shove (no hurt pose).
-// Rooted. Does not stop grabs or charged. Stamina 0 while guarding → guard-crush → gassed.
-const GUARD_SLAP_BALANCE_CHIP = 2;    // Blocked slap posture chip (vs 7 on a clean slap)
-const GUARD_PALM_BALANCE_CHIP = 6;    // Blocked palm posture chip
+// Brace: chip + pushback + stamina drain. Same slide as parry shove (no hurt pose).
+// Rooted. Does not stop grabs. Does stop the flying headbutt — you lose ground
+// and posture, and you do not get a turn. Stamina 0 → guard-crush → gassed.
+const GUARD_SLAP_BALANCE_CHIP = 3;    // Brace. Still under a clean slap.
+const GUARD_PALM_BALANCE_CHIP = 7;    // Still under a clean palm.
+const GUARD_CHARGED_BALANCE_CHIP = 10; // Still under a clean headbutt.
 const GUARD_SLAP_STAMINA_DRAIN = 4;
 const GUARD_PALM_STAMINA_DRAIN = 7;
+const GUARD_CHARGED_STAMINA_DRAIN = 8;
 const GUARD_SLAP_PUSHBACK = 2.0;      // Slide-model velocity — blocked slap ≈ 32px
 const GUARD_PALM_PUSHBACK = 4.0;      // Blocked palm ≈ 64px
+const GUARD_CHARGED_PUSHBACK = 5.0;   // Headbutt brace ≈ 80px — mass, not a ring-out
+// Shared lock so a brace is not a punish. Kept equal to CHARGED_HIT_RECOVERY_MS.
+const GUARD_CHARGED_LOCK_MS = 280;
 const GUARD_HITSTOP_MS = 70;          // Match HITSTOP_SLAP_MS — freeze the strike pose like a connect
 const GUARD_ATTACKER_RECOVERY_MS = 80; // Floor only. Live lock is leftover slap/palm cycle so the swing can finish. Mash buffer is still consumed.
 const GUARD_CRUSH_STUN_MS = 500;      // Guard broken (stamina hit 0 while blocking), then gassed
@@ -1091,8 +1122,8 @@ const BALANCE_REGEN_DELAY_MS = 1750;
 const BALANCE_REGEN_PER_SEC = 35;
 // Legacy drip rates (unused by the live tick — kept for reference / old docs).
 const BALANCE_PASSIVE_REGEN_PER_SEC = 5;
-const BALANCE_SLAP_HIT_DRAIN = 8;               // Balance lost when hit by a slap
-const BALANCE_CHARGED_HIT_DRAIN = 15;           // Balance lost when hit by a charged attack (primary hit tax; stam is a light chip)
+const BALANCE_SLAP_HIT_DRAIN = 10;              // Flat slap/trade/slam drain.
+const BALANCE_CHARGED_HIT_DRAIN = 18;          // Flat charged drain.
 
 // ============================================
 // Mutual Clinch System — push/plant/throw interactions
@@ -1208,7 +1239,7 @@ const CLINCH_BRACE_ACTIVE_MS = 272;   // 17 ticks ≥ 250 + 16 slack
 //   • Victim offense locked: no push / throw / pull / jolt / break
 // Plant brace remains available. Clamp clears on: burst end (no pending/active
 // throw), boundary contact, or once the grabber's filed technique is no longer pending/active.
-const COUNTER_GRAB_BALANCE_DEBUFF = 10;          // Balance hit on counter-grab connect
+const COUNTER_GRAB_BALANCE_DEBUFF = 12;          // Balance hit on counter-grab connect.
 
 // DEEP GRIP — breaks held Plant on throw/pull; consumed on technique commit.
 // Still boosts push. Earned via jolt-vs-plant / push win.
@@ -1390,7 +1421,7 @@ const CMD_PULL_KILL_CLAMP_ROOM_PX = 110;
 const CMD_THROW_TRAVEL_MIN = SETUP_THROW_TRAVEL_PX;
 const CMD_THROW_TRAVEL_MAX = SETUP_THROW_TRAVEL_PX;
 const CMD_THROW_TRAVEL_CAP = SETUP_THROW_TRAVEL_PX;
-const CMD_DRIVE_POSTURE_CHIP = 20;
+const CMD_DRIVE_POSTURE_CHIP = 21; // A few drives break; one does not.
 const CMD_DRIVE_GASSED_DISTANCE_MULT = 0.35; // Gassed scales carry, not lethality
 // Approach momentum (grabApproachSpeed, captured at grab startup) adds carry.
 // REF ≈ ICE_SLIDE_MAX_SPEED 2.4; walk tops out near ICE_MAX_SPEED 1.3.
@@ -1420,8 +1451,8 @@ const CMD_DRIVE_RELEASE_VICTIM_SHARE = 0.7;
 const CMD_DRIVE_RELEASE_POSE_DROP_FRACTION = 0.6;
 
 // ── Pull / Throw posture chip ───────────────────────────────────────────────
-const CMD_PULL_POSTURE_CHIP = 16;
-const CMD_THROW_POSTURE_CHIP = 24;
+const CMD_PULL_POSTURE_CHIP = 18;
+const CMD_THROW_POSTURE_CHIP = 26; // Heaviest grab chip.
 
 // ── Recovery ────────────────────────────────────────────────────────────────
 // Real `isRecovering` window (not just an action lock). Starts at
@@ -1509,16 +1540,42 @@ const CHARGED_KILL_REACH_CAP = 135;  // absolute max reach — the deadzone guar
 const CHARGED_KILL_MULT_MIN = 0.45;  // finalKnockbackMultiplier at 0% charge (curve floor)
 const CHARGED_KILL_MULT_MAX = 1.2;   // finalKnockbackMultiplier at a neutral 100% charge
 
-// On-hit ice recoil (backward). Recovery loop uses CHARGED_RECOIL_FRICTION.
-const CHARGED_ATTACKER_RECOIL_BASE = 0.3;
-const CHARGED_ATTACKER_RECOIL_CHARGE_SCALE = 0.5;
+// On-hit the attacker plants. These recoil dials are unused by the live connect
+// (a landed headbutt keeps the ground it took). Whiff recovery still slides.
+const CHARGED_ATTACKER_RECOIL_BASE = 0;
+const CHARGED_ATTACKER_RECOIL_CHARGE_SCALE = 0;
 const CHARGED_RECOIL_FRICTION = 0.85;
-// Recovery AFTER hitstop. Victim hitstun is ~380ms; this stays shorter so a
-// landed charge is still PLUS. Whiff is longer.
+// On-hit plant AFTER hitstop. Short on purpose: the reward is being free to
+// take the space while they are still sliding. A full-stun lock ate that
+// reward and stranded mash inputs in the charge pose. Whiff recovery is longer.
 const CHARGED_HIT_RECOVERY_MS = 280;
-// Backward ice pop after a landed flying headbutt (movementVelocity units).
-const CHARGED_HIT_RECOIL_MIN = 1.15;
-const CHARGED_HIT_RECOIL_MAX = 1.85;
+// Retired backward pop. Live connects write velocity 0.
+const CHARGED_HIT_RECOIL_MIN = 0;
+const CHARGED_HIT_RECOIL_MAX = 0;
+// Live charged shove. Snappier than ice coast so the hit arrives as a strike
+// and settles before they can brake the tail home. Distance is authored in px
+// (CHARGED_SEND_*); this friction only changes how fast that distance plays.
+// Cinematic kill flight does NOT use this — it still boosts the ice-channel
+// velocity and clamps at CINEMATIC_KILL_SPEED_CAP.
+const CHARGED_KB_FRICTION = 0.963;
+// Delivered px against a victim who cannot DI this move. Centre-to-rope is
+// ~297px, so a minimum legal release (~35% charge, ~320px) already beats a
+// standing palm, and a full charge (~540px) pins a mid-ring opponent to the
+// rope. Kill reach is a separate gate and is not changed by these numbers.
+const CHARGED_SEND_FLOOR_PX = 260;
+const CHARGED_SEND_CEIL_PX = 540;
+// Stacked counter / power / GORED can push past the ceiling. This stops a
+// single hit from authoring more than about one ring-width of travel. The
+// rope clamp still decides whether they actually ring out.
+const CHARGED_MAX_SEND_PX = 620;
+// How long they stay in the shove before they can act. Capped under the
+// attacker's plant (280ms) plus the fastest startup (slap, 55ms) so neither
+// a slap nor a second headbutt can land while they are still stunned. The
+// attacker is free with them — the reward is the ground, not a combo.
+const CHARGED_HITSTUN_MIN_MS = 240;
+const CHARGED_HITSTUN_MAX_MS = 300;
+// Counter / GORED multiply stun. Never let that cross the combo line.
+const CHARGED_HITSTUN_COMBO_CAP_MS = 300;
 
 const CINEMATIC_KILL_HITSTOP_MS = 550;
 const CINEMATIC_KILL_KNOCKBACK_BOOST = 4.0;
@@ -1659,9 +1716,9 @@ const POSTURE_RECOVER_THRESHOLD = 45;    // balance > this ⇒ isPostureBroken =
 
 // Shadow BALANCE_* while the flag is on. Counter-hits × POSTURE_COUNTER_DRAIN_MULT.
 // Open-field regen: BALANCE_REGEN_DELAY_MS + BALANCE_REGEN_PER_SEC.
-const BALANCE_SLAP_HIT_DRAIN_P2 = 7;        // was 12
-const BALANCE_CHARGED_HIT_DRAIN_P2 = 18;    // today 15; SAFE 16
-const BALANCE_PALM_HIT_DRAIN_P2 = 20;       // today 15 (charged); SAFE 18
+const BALANCE_SLAP_HIT_DRAIN_P2 = 10;       // Body slam and slap trades.
+const BALANCE_CHARGED_HIT_DRAIN_P2 = 21;
+const BALANCE_PALM_HIT_DRAIN_P2 = 22;       // Palm trades.
 // Legacy drip (replaced by Halo BALANCE_REGEN_PER_SEC + BALANCE_REGEN_DELAY_MS).
 const BALANCE_PASSIVE_REGEN_PER_SEC_P2 = 6;
 // Gassed taxes posture recovery (does not freeze it). No open-field regen while inClinch.
@@ -1688,7 +1745,7 @@ const POSTURE_CHARGED_KILL_REACH_MULT = 1.25;
 // via the existing buffer timestamp (never packet arrival).
 const CADENCE_WINDOW_MS = 85;          // gap ≤ this (cycleEnd − buffered press) ⇒ enhanced (was 60)
 const SLAP_TOTAL_MS_ENHANCED = SLAP_TOTAL_MS - 25; // recovery tail only (startup/active untouched)
-const BALANCE_SLAP_HIT_DRAIN_ENHANCED = 10; // was 16; P2 base is 7
+const BALANCE_SLAP_HIT_DRAIN_ENHANCED = 13; // Cadence slap. P2 base is 10.
 const CADENCE_STEP_IN_MULT = 1.15;     // SAFE 1.1 — enhanced on-hit pair shift (step-in) scale
 // Fraction of follow-up slaps a CPU times into the window, by difficulty.
 const CPU_CADENCE_EASY = 0.0;
@@ -1890,6 +1947,7 @@ module.exports = {
   SLIDE_SLAP_EXTRA_RECOVERY_MS,
   SLAP_TOTAL_MS_SLIDE,
   SLIDE_SLAP_ADVANTAGE_MS,
+  STRIKE_HIT_ADVANTAGE_MS,
   SLIDE_SLAP_HITSTOP_FLOOR_MS,
   SLIDE_SLAP_HITSTOP_CAP_MS,
   SLIDE_SLAP_FOLLOW_VEL,
@@ -1950,6 +2008,8 @@ module.exports = {
   GRAB_ACTIVE_MS,
   GRAB_ARMOR_ABSORB_HITSTOP_MS,
   DODGE_STARTUP_MS,
+  DODGE_HOP_MS,
+  DODGE_HOP_HEIGHT,
   DODGE_ACTIVE_MS,
   DODGE_RECOVERY_MS,
   DODGE_TOTAL_MS,
@@ -1973,6 +2033,7 @@ module.exports = {
   DODGE_DURATION,
   DODGE_BASE_SPEED,
   DODGE_TRAVEL_DISTANCE,
+  DODGE_HOLD_SLIDE_SPEED,
   DODGE_SPEED_MULT_CAP,
   DODGE_CANCEL_ACTION_LOCK,
 
@@ -2082,6 +2143,7 @@ module.exports = {
   AP_STAGGER_SLAP_MS,
   AP_STAGGER_PALM_MS,
   AP_STAGGER_FLAP_MS,
+  AP_STAGGER_CHARGED_MS,
   AP_PERFECT_ADVANTAGE_MS,
   AP_FLURRY_STAGGER_BEGIN_MS,
   AP_FLURRY_SLACK_MS,
@@ -2091,10 +2153,14 @@ module.exports = {
   // Guard (block floor)
   GUARD_SLAP_BALANCE_CHIP,
   GUARD_PALM_BALANCE_CHIP,
+  GUARD_CHARGED_BALANCE_CHIP,
   GUARD_SLAP_STAMINA_DRAIN,
   GUARD_PALM_STAMINA_DRAIN,
+  GUARD_CHARGED_STAMINA_DRAIN,
   GUARD_SLAP_PUSHBACK,
   GUARD_PALM_PUSHBACK,
+  GUARD_CHARGED_PUSHBACK,
+  GUARD_CHARGED_LOCK_MS,
   GUARD_HITSTOP_MS,
   GUARD_ATTACKER_RECOVERY_MS,
   GUARD_CRUSH_STUN_MS,
@@ -2419,6 +2485,13 @@ module.exports = {
   CHARGED_HIT_RECOVERY_MS,
   CHARGED_HIT_RECOIL_MIN,
   CHARGED_HIT_RECOIL_MAX,
+  CHARGED_KB_FRICTION,
+  CHARGED_SEND_FLOOR_PX,
+  CHARGED_SEND_CEIL_PX,
+  CHARGED_MAX_SEND_PX,
+  CHARGED_HITSTUN_MIN_MS,
+  CHARGED_HITSTUN_MAX_MS,
+  CHARGED_HITSTUN_COMBO_CAP_MS,
   CINEMATIC_KILL_HITSTOP_MS,
   CINEMATIC_KILL_KNOCKBACK_BOOST,
   CINEMATIC_KILL_SPEED_CAP,

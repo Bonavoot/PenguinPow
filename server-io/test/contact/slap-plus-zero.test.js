@@ -1,9 +1,9 @@
 "use strict";
 
 /**
- * Pocket slap on-hit is +0: victim hitstun + both input locks equal the
- * attacker's remaining cycle (attackCooldownUntil). Counter-hit is a
- * callout / knockback bonus — it must not extend stun.
+ * Pocket slap on-hit is a short step ahead: the attacker is free at the end
+ * of their cycle, the victim holds STRIKE_HIT_ADVANTAGE_MS longer. Counter-hit
+ * is a callout / knockback bonus — it must not extend stun further.
  */
 
 const { describe, it, afterEach } = require("node:test");
@@ -19,6 +19,7 @@ const {
 const {
   SLAP_COUNTER_HIT_BONUS_MS,
   SLAP_MIN_HITSTUN_MS,
+  STRIKE_HIT_ADVANTAGE_MS,
 } = require("../../constants");
 
 const scenarios = [];
@@ -47,45 +48,46 @@ function connectSlap(opts = {}) {
   return { s, now };
 }
 
-function assertSlapPlusZero(s, now, label) {
+function assertSlapStepAhead(s, now, label) {
   assert.equal(s.right.isHit, true, `${label}: victim must be in hitstun`);
   assert.equal(s.left.isHit, false, `${label}: slapper must not be hit`);
 
-  const expectedFree = s.left.attackCooldownUntil;
-  assert.ok(expectedFree > now, `${label}: attacker cycle must still be live`);
-  const remain = expectedFree - now;
+  const attackerFree = s.left.attackCooldownUntil;
+  assert.ok(attackerFree > now, `${label}: attacker cycle must still be live`);
+  const remain = attackerFree - now;
   assert.ok(
     remain >= SLAP_MIN_HITSTUN_MS,
     `${label}: remaining cycle ${remain} must clear the hitstun floor`
   );
 
   assert.equal(
-    s.right.inputLockUntil,
-    expectedFree,
-    `${label}: victim lock must end with the slapper's cycle`
+    s.left.inputLockUntil,
+    attackerFree,
+    `${label}: slapper is free at the end of the cycle`
   );
   assert.equal(
-    s.left.inputLockUntil,
-    expectedFree,
-    `${label}: slapper movement lock must match the victim (+0)`
+    s.right.inputLockUntil,
+    attackerFree + STRIKE_HIT_ADVANTAGE_MS,
+    `${label}: victim stays the step ahead`
   );
 }
 
-describe("pocket slap on-hit +0", () => {
-  it("neutral connect: both free at remaining cycle", () => {
+describe("pocket slap on-hit step ahead", () => {
+  it("neutral connect: victim holds past the slapper's cycle", () => {
     const { s, now } = connectSlap();
-    assertSlapPlusZero(s, now, "neutral");
+    assertSlapStepAhead(s, now, "neutral");
   });
 
-  it("counter-hit connect: still +0 (no silent plus)", () => {
+  it("counter-hit connect: same step ahead (no silent extra stun)", () => {
     const { s, now } = connectSlap({ victimStartup: true });
-    assertSlapPlusZero(s, now, "counter");
+    assertSlapStepAhead(s, now, "counter");
     const hit = s.io.find("player_hit").pop();
     assert.equal(hit.payload.isCounterHit, true, "counter callout still fires");
-    assert.ok(
-      s.right.inputLockUntil - now <
-        s.left.attackCooldownUntil - now + SLAP_COUNTER_HIT_BONUS_MS,
+    assert.equal(
+      s.right.inputLockUntil,
+      s.left.attackCooldownUntil + STRIKE_HIT_ADVANTAGE_MS,
       "counter must not add the old 35ms stun bonus"
     );
+    assert.ok(SLAP_COUNTER_HIT_BONUS_MS > 0);
   });
 });

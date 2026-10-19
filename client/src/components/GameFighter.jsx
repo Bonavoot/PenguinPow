@@ -128,6 +128,7 @@ import {
   AP_WHIFF_RECOVERY_MS,
   AP_FLURRY_COVER_REGULAR_MS,
   CHARGE_HOP_MS,
+  DODGE_STARTUP_MS,
 } from "../config/combatTiming";
 import { shouldPredictChargeRelease } from "../prediction/chargeHoldPrediction";
 import {
@@ -1009,10 +1010,11 @@ const GameFighter = ({
   }, []);
 
   // Dash phase clock. Anchored locally on the rising edge of the (predicted)
-  // dodge so the windup→jump pose/arc sequence is reliable regardless of
-  // netcode jitter. Must match DODGE_STARTUP_MS on the server.
+  // dodge so the pose doesn't flicker if the server startup flag arrives late.
+  // Must match DODGE_STARTUP_MS on the server. The dash moves on the press,
+  // so this windup is 0 — the squat pose is the dash itself.
   const dodgeVisualRef = useRef({ startedAt: 0, active: false });
-  const DASH_WINDUP_MS = 50;
+  const DASH_WINDUP_MS = DODGE_STARTUP_MS;
 
   const [penguin, setPenguin] = useState(() => ({
     id: "",
@@ -1760,7 +1762,7 @@ const GameFighter = ({
             predictedState.current = {
               ...predictedState.current,
               isChargingAttack: true,
-              isChargeHopping: true,
+              isChargeHopping: false,
               isSlapAttack: false,
               isPalmThrust: false,
               isLowKick: false,
@@ -1778,7 +1780,7 @@ const GameFighter = ({
         case "charge_release":
           // Only predict release if we were charging AND min hold has elapsed.
           // A tap before CHARGE_MIN_HOLD_MS stays on the hold pose — the server
-          // buffers the fire until hop-land.
+          // buffers the fire until the rooted minimum hold ends.
           if (
             (penguin.isChargingAttack ||
               predictedState.current.isChargingAttack) &&
@@ -5631,7 +5633,7 @@ const GameFighter = ({
     };
     socket.on("raw_parry_success", handleRawParrySuccess);
 
-    // GUARD BLOCK — the block floor absorbed a slap/palm as chip. Tilted blue
+    // GUARD BLOCK — the brace absorbed a slap, palm, or headbutt as chip. Tilted blue
     // absorb ring + muffled thud; distinctly weaker than a parry's bright clink.
     // Pose: brief block-parry.png SUCCESS (BLOCK_SUCCESS_POSE_MS ≈ AP success pose),
     // then back to attempting so a flurry re-fires instead of freezing on success.
@@ -5657,7 +5659,12 @@ const GameFighter = ({
       }
       // Attacker: hold the extended strike pose through hitstop, same as a
       // landed slap. Guard used to snap them off the swing the same frame.
-      if (data.attackerId === player.id && !data.isPalm && !data.isPalmThrust) {
+      if (
+        data.attackerId === player.id &&
+        !data.isPalm &&
+        !data.isPalmThrust &&
+        !data.isHeadbutt
+      ) {
         const nowBlock = performance.now();
         const hsUntil = getDisplayHitstopUntil();
         const connectArmed = armSlapConnectHold(
@@ -9867,11 +9874,23 @@ const GameFighter = ({
     displayPenguin.isDodging &&
     performance.now() - dodgeVisualRef.current.startedAt < DASH_WINDUP_MS;
 
+  // Headbutt parry kills isAttacking immediately (hitbox) but leaves
+  // attackType until the stagger callback, which waits out hitstop. Hold the
+  // lunge pose through that freeze. chargedAttackHit is the brace/parry stamp
+  // so a leftover attackType alone cannot stick the pose.
+  const chargeDeflectPose =
+    displayPenguin.attackType === "charged" &&
+    !displayPenguin.isPalmThrust &&
+    !displayPenguin.isAttacking &&
+    !!displayPenguin.chargedAttackHit &&
+    !displayPenguin.isRecovering &&
+    !displayPenguin.isRawParryStun &&
+    !penguin.isHit;
   let rawSpriteSrc = getImageSrc(
     penguin.fighter,
     penguin.isDiving,
     penguin.isJumping,
-    displayPenguin.isAttacking,
+    displayPenguin.isAttacking || chargeDeflectPose,
     displayPenguin.isDodging,
     penguin.isStrafing,
     // Attempt stance = AP blocking.png. Success uses the pull pose below.
